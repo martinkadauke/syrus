@@ -21,7 +21,7 @@ and PR-creation boilerplate. When that mechanics layer goes off the rails
 
 | Choice | Decision |
 | --- | --- |
-| Stack | Rails 8 + MySQL + Sidekiq + Redis |
+| Stack | Rails 8 + Solid Queue (MySQL in prod, SQLite in dev/test) |
 | Trigger model | Polling (no webhooks for v1 — keeps deploy boundary clean) |
 | Auth | Multi-user, first signup = admin, then invite-only |
 | Credentials | Per-user, encrypted at rest (Claude API key + GitHub token) |
@@ -38,7 +38,7 @@ empty PRs reliably, swapping in the agent at M4 is mechanical.
 
 | Milestone | Goal |
 | --- | --- |
-| **M0** | Rails 8 scaffold: MySQL, Sidekiq, Redis, Procfile, dev bootstrap |
+| **M0** | Rails 8 scaffold: SQLite (dev/test) + MySQL (prod), Solid Queue, Procfile, dev bootstrap |
 | **M1** | Data model: User (first=admin), encrypted creds, RepositoryRegistry, Job state machine |
 | **M2** | GitHub poller: per-user token, label-triggered issue ingestion, dedup |
 | **M3** | Deterministic harness — clones, branches, opens an empty PR, cleans up. **No AI yet.** |

@@ -14,10 +14,14 @@ in an AI agent only adds entropy. Get the slave's mechanics right first.
 Bootstrap a working Rails 8 app that boots locally and in CI. No domain logic.
 
 **Deliverables**
-- `rails new syrus --database=mysql --css=tailwind --javascript=importmap`
-- Sidekiq + Redis wired up; one no-op job runs end-to-end
-- `Procfile.dev` runs `web` + `worker` together; `bin/dev` boots both
-- `Gemfile` pins Rails 8, sidekiq, redis-rb, mysql2, devise (or rodauth — TBD)
+- `rails new syrus --css=tailwind --javascript=importmap` — SQLite for
+  dev/test, MySQL configured for `production` in `config/database.yml`
+- Solid Queue wired up (Rails 8 default); one no-op job runs end-to-end via
+  `bin/jobs`
+- `Procfile.dev` runs `web` + `worker` (`bin/jobs`) together; `bin/dev`
+  boots both
+- `Gemfile` pins Rails 8, sqlite3 (default), mysql2 (`:production`), devise
+  (or rodauth — TBD); Solid Queue / Cache / Cable ship in Rails 8
 - `.github/workflows/ci.yml` runs `rspec` + `rubocop` against MySQL service
 - `README` updated with `bin/setup` instructions
 
@@ -48,10 +52,11 @@ Define the domain. No background work yet — just migrations + model invariants
 
 ## M2 — GitHub poller
 
-Periodic Sidekiq job ingests issues from registered repos and queues `Job`s.
+Periodic Solid Queue job ingests issues from registered repos and queues `Job`s.
 
 **Deliverables**
-- `PollRepositoryJob`: per-repo, runs every N minutes via sidekiq-cron
+- `PollRepositoryJob`: per-repo, runs every N minutes via Solid Queue's
+  recurring tasks (`config/recurring.yml`)
 - Uses the *repo owner's* `github_token` (per-user, never global)
 - Triggers on a label (default `syrus`) being applied to an issue
 - Dedup: don't enqueue if a non-terminal `Job` already exists for that issue
@@ -70,7 +75,7 @@ Periodic Sidekiq job ingests issues from registered repos and queues `Job`s.
 empty PR with zero AI involvement. If this layer is flaky, M4 is hopeless.
 
 **Deliverables**
-- `RunJob` Sidekiq worker (separate container in M7; same process for now)
+- `RunJob` Solid Queue worker (separate container in M7; same process for now)
 - Acquires a `git worktree` under `tmp/worktrees/{job_id}/`
 - Creates branch `syrus/issue-{N}-{slug}` from `default_branch`
 - Makes a placeholder commit (e.g., touches `.syrus-marker` with the job id)
