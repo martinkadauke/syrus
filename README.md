@@ -1,7 +1,7 @@
 # Syrus
 
-> *Syrus est servus, qui laborem facit.*
-> Syrus is the slave who does the work.
+> *Bis dat qui cito dat.*
+> He gives twice who gives quickly. — Publilius Syrus
 
 A multi-user, cross-repo issue→PR automation harness. Replaces the per-repo
 `process-issues` / `process-prs` / `implement-issue` Claude skills with a
@@ -48,9 +48,24 @@ empty PRs reliably, swapping in the agent at M4 is mechanical.
 | **M7** | Hardening: worker isolation, resource limits, k8s secrets, Prometheus metrics, retention |
 | **M8** | Rollout: deploy to K3s, migrate first real repo, retire per-repo claude skills |
 
+## Getting started
+
+Requires Ruby 3.2.3 (see `.ruby-version`). MySQL is **not** needed for local dev.
+
+```sh
+bin/setup    # bundle, db:prepare, log:clear; tails into bin/dev
+bin/dev      # foreman: web (rails s) + worker (bin/jobs) + css (tailwind:watch)
+bin/rspec    # run the test suite
+```
+
+`bin/setup --skip-server` if you want to bootstrap without booting the dev server.
+
 ## Naming
 
-Named after [Syrus](https://en.wikipedia.org/wiki/Publilius_Syrus) the slave
-character from Thomas's high-school Latin readings. *The slave does the work,
-the master takes the credit* — which is exactly the right division of labor
-between this harness and the human reviewing the PR.
+Named after [Publilius Syrus](https://en.wikipedia.org/wiki/Publilius_Syrus),
+the 1st-century-BCE Roman writer whose *Sententiae* — a collection of
+one-line maxims — were schoolbook material for over a millennium and seeded
+a surprising number of phrases still in everyday use. He was a writer, same
+job the LLM is doing inside this harness, and his output outlived him by
+two thousand years. That's the aspiration: small, durable text that
+compounds. Thomas first encountered him in high-school Latin readings.
