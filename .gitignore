@@ -1,0 +1,34 @@
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Rails (placeholders so M0 doesn't fight them)
+/log/*
+!/log/.keep
+/tmp/*
+!/tmp/.keep
+/storage/*
+!/storage/.keep
+/public/assets
+/public/packs
+/coverage/
+.bundle/
+vendor/bundle/
+node_modules/
+.byebug_history
+
+# Secrets
+.env
+.env.*
+!.env.example
+config/master.key
+config/credentials/*.key
+
+# DB
+*.sqlite3
+*.sqlite3-journal
+
+# Worktrees managed by Syrus itself
+/tmp/worktrees/
