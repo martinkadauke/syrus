@@ -1,6 +1,6 @@
 require "rails_helper"
 
-RSpec.describe PrFeedbackPrompt do
+RSpec.describe Prompts::PrFeedback do
   let(:issue) { Struct.new(:title, :body).new("Add greeting", "We need a greeting helper.") }
 
   let(:user_login) { Struct.new(:login).new("reviewer") }

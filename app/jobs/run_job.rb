@@ -95,12 +95,12 @@ class RunJob < ApplicationJob
     @run.update!(agent_diff: diff, head_sha: head_sha)
   end
 
-  # Initial runs get the issue title + body. Follow-up runs (pr_comment,
-  # ci_failure, ...) arrive with @run.prompt already composed by whatever
-  # job created them — we use it as-is.
+  # Initial runs get the issue title + body via Prompts::Initial.
+  # Follow-up runs (pr_comment, ci_failure, ...) arrive with @run.prompt
+  # already composed by whatever job created them — we use it as-is.
   def compose_initial_prompt
     issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
-    "#{issue.title}\n\n#{issue.body}".strip
+    Prompts::Initial.new(issue: issue).to_s
   end
 
   def persist_agent_metadata(result)
