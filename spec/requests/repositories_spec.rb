@@ -59,5 +59,50 @@ RSpec.describe "Repositories", type: :request do
       expect(response).to redirect_to(repositories_path)
       expect(flash[:notice]).to match(/Polling/)
     end
+
+    describe "archive / unarchive" do
+      it "archive stamps archived_at + flips polling off" do
+        mine = Factories.repository(user: user, polling_enabled: true)
+        post archive_repository_path(mine)
+        expect(response).to redirect_to(repositories_path)
+        expect(mine.reload).to be_archived
+        expect(mine.polling_enabled).to be false
+      end
+
+      it "unarchive clears archived_at" do
+        mine = Factories.repository(user: user)
+        mine.archive!
+        post unarchive_repository_path(mine)
+        expect(response).to redirect_to(repositories_path)
+        expect(mine.reload).not_to be_archived
+      end
+
+      it "archive/unarchive on another user's repo is not found" do
+        foreign = Factories.repository(user: other)
+        post archive_repository_path(foreign)
+        expect(response).to have_http_status(:not_found).or redirect_to(repositories_path)
+      end
+
+      it "manual poll on an archived repo is rejected (does not enqueue)" do
+        mine = Factories.repository(user: user)
+        mine.archive!
+        expect {
+          post poll_repository_path(mine)
+        }.not_to have_enqueued_job(PollRepositoryJob)
+        expect(response).to redirect_to(repositories_path)
+        expect(flash[:alert]).to match(/archived/)
+      end
+
+      it "index splits active and archived repositories" do
+        active   = Factories.repository(user: user, owner: "active",   name: "one")
+        archived = Factories.repository(user: user, owner: "archived", name: "two")
+        archived.archive!
+
+        get repositories_path
+        expect(response.body).to include("active/one")
+        expect(response.body).to include("archived/two")
+        expect(response.body).to match(/Archived\s*\(\s*1\s*\)/)
+      end
+    end
   end
 end

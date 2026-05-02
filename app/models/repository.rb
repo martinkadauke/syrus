@@ -10,6 +10,25 @@ class Repository < ApplicationRecord
   validates :trigger_label, presence: true
   validates :owner, uniqueness: { scope: [ :user_id, :name ], case_sensitive: false }
 
+  scope :active,   -> { where(archived_at: nil) }
+  scope :archived, -> { where.not(archived_at: nil) }
+
+  def archived?
+    archived_at.present?
+  end
+
+  # Mark the repo as done. Side-effect: also flips polling_enabled off so
+  # that *if* someone unarchives later, polling stays off until they
+  # explicitly re-enable it (re-enabling polling is a deliberate act, not
+  # something that should silently rehydrate from a stale flag).
+  def archive!
+    update!(archived_at: Time.current, polling_enabled: false)
+  end
+
+  def unarchive!
+    update!(archived_at: nil)
+  end
+
   def slug
     "#{owner}/#{name}"
   end

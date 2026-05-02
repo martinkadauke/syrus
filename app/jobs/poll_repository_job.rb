@@ -8,6 +8,9 @@ class PollRepositoryJob < ApplicationJob
   def perform(repository_id, force: false)
     repository = Repository.find_by(id: repository_id)
     return unless repository
+    # Archive is stricter than polling-off — it blocks even force: true
+    # so a stale "Poll now" tab can't reanimate an archived repo.
+    return if repository.archived?
     return unless force || repository.polling_enabled?
 
     issues = GithubClient.for(repository.user)

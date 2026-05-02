@@ -12,4 +12,15 @@ RSpec.describe PollAllRepositoriesJob do
       .and have_enqueued_job(PollRepositoryJob).with(enabled.id)
       .and have_enqueued_job(PollRepositoryJob).with(other_enabled.id)
   end
+
+  it "skips archived repositories even if polling_enabled is true" do
+    archived = Factories.repository(polling_enabled: true)
+    archived.archive!
+    expect(archived.polling_enabled).to be false   # archive! turned it off too
+    archived.update_column(:polling_enabled, true) # simulate inconsistent state to prove the scope filters
+
+    expect {
+      described_class.perform_now
+    }.not_to have_enqueued_job(PollRepositoryJob)
+  end
 end

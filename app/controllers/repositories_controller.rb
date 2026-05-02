@@ -1,8 +1,10 @@
 class RepositoriesController < ApplicationController
-  before_action :load_repository, only: %i[ edit update destroy poll ]
+  before_action :load_repository, only: %i[ edit update destroy poll archive unarchive ]
 
   def index
-    @repositories = Current.user.repositories.order(:owner, :name)
+    repos = Current.user.repositories.order(:owner, :name)
+    @active_repositories   = repos.active
+    @archived_repositories = repos.archived
   end
 
   def new
@@ -35,8 +37,22 @@ class RepositoriesController < ApplicationController
   end
 
   def poll
-    PollRepositoryJob.perform_later(@repository.id, force: true)
-    redirect_to repositories_path, notice: "Polling #{@repository.slug} now…"
+    if @repository.archived?
+      redirect_to repositories_path, alert: "#{@repository.slug} is archived — unarchive it first."
+    else
+      PollRepositoryJob.perform_later(@repository.id, force: true)
+      redirect_to repositories_path, notice: "Polling #{@repository.slug} now…"
+    end
+  end
+
+  def archive
+    @repository.archive!
+    redirect_to repositories_path, notice: "#{@repository.slug} archived."
+  end
+
+  def unarchive
+    @repository.unarchive!
+    redirect_to repositories_path, notice: "#{@repository.slug} unarchived. Re-enable polling to start ingestion again."
   end
 
   private

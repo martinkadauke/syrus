@@ -7,6 +7,8 @@ Rails.application.routes.draw do
   resources :repositories, except: %i[ show ] do
     member do
       post :poll
+      post :archive
+      post :unarchive
     end
   end
   resources :invitations, only: %i[ index create destroy ]

@@ -54,4 +54,37 @@ RSpec.describe Repository do
       expect(repo.remote_url).not_to include("x-access-token")
     end
   end
+
+  describe "archive lifecycle" do
+    let(:repo) { Factories.repository(user: owner, polling_enabled: true) }
+
+    it "starts active (archived_at: nil)" do
+      expect(repo).not_to be_archived
+      expect(Repository.active).to include(repo)
+      expect(Repository.archived).not_to include(repo)
+    end
+
+    it "archive! stamps archived_at and turns off polling" do
+      freeze_time do
+        repo.archive!
+        expect(repo.archived_at).to eq(Time.current)
+        expect(repo.polling_enabled).to be false
+        expect(repo).to be_archived
+      end
+    end
+
+    it "archive! moves the repo from active to archived scope" do
+      repo.archive!
+      expect(Repository.active).not_to include(repo)
+      expect(Repository.archived).to include(repo)
+    end
+
+    it "unarchive! clears archived_at but does NOT auto-resume polling" do
+      repo.archive!
+      repo.unarchive!
+      expect(repo.archived_at).to be_nil
+      expect(repo).not_to be_archived
+      expect(repo.polling_enabled).to be false   # stays off — user re-enables explicitly
+    end
+  end
 end

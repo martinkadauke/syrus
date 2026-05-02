@@ -5,7 +5,7 @@
           class: "rounded-md px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium" %>
   </div>
 
-  <% if @repositories.any? %>
+  <% if @active_repositories.any? %>
     <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50 text-xs uppercase text-gray-500">
@@ -18,7 +18,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 text-sm">
-          <% @repositories.each do |repo| %>
+          <% @active_repositories.each do |repo| %>
             <tr>
               <td class="px-4 py-3 font-mono"><%= repo.slug %></td>
               <td class="px-4 py-3"><%= repo.default_branch %></td>
@@ -35,9 +35,12 @@
                       class: "text-blue-600 underline hover:no-underline cursor-pointer",
                       form: { class: "inline" } %>
                 <%= link_to "Edit", edit_repository_path(repo), class: "text-blue-600 underline hover:no-underline" %>
+                <%= button_to "Archive", archive_repository_path(repo), method: :post,
+                      class: "text-amber-700 underline hover:no-underline cursor-pointer",
+                      form: { class: "inline", data: { turbo_confirm: "Archive #{repo.slug}? Polling stops; existing jobs are unaffected." } } %>
                 <%= button_to "Remove", repository_path(repo), method: :delete,
                       class: "text-red-600 underline hover:no-underline cursor-pointer",
-                      form: { class: "inline", data: { turbo_confirm: "Remove #{repo.slug}?" } } %>
+                      form: { class: "inline", data: { turbo_confirm: "Remove #{repo.slug}? This deletes all jobs for this repo." } } %>
               </td>
             </tr>
           <% end %>
@@ -46,7 +49,33 @@
     </div>
   <% else %>
     <div class="bg-white border border-gray-200 rounded-lg p-6 text-sm text-gray-600">
-      No repositories registered yet. Add one to start polling for issues labelled <code class="bg-gray-100 px-1 rounded">syrus</code>.
+      No active repositories. Add one to start polling for issues labelled <code class="bg-gray-100 px-1 rounded">syrus</code>.
+    </div>
+  <% end %>
+
+  <% if @archived_repositories.any? %>
+    <div class="space-y-2">
+      <h2 class="text-sm font-medium text-gray-500 uppercase tracking-wide">Archived (<%= @archived_repositories.size %>)</h2>
+      <div class="bg-white border border-gray-200 rounded-lg overflow-hidden opacity-75">
+        <table class="min-w-full divide-y divide-gray-200">
+          <tbody class="divide-y divide-gray-100 text-sm">
+            <% @archived_repositories.each do |repo| %>
+              <tr>
+                <td class="px-4 py-3 font-mono text-gray-500"><%= repo.slug %></td>
+                <td class="px-4 py-3 text-gray-500">archived <%= time_ago_in_words(repo.archived_at) %> ago</td>
+                <td class="px-4 py-3 text-right space-x-3">
+                  <%= button_to "Unarchive", unarchive_repository_path(repo), method: :post,
+                        class: "text-blue-600 underline hover:no-underline cursor-pointer",
+                        form: { class: "inline" } %>
+                  <%= button_to "Remove", repository_path(repo), method: :delete,
+                        class: "text-red-600 underline hover:no-underline cursor-pointer",
+                        form: { class: "inline", data: { turbo_confirm: "Remove #{repo.slug}? This deletes all jobs for this repo." } } %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
     </div>
   <% end %>
 </div>

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_151433) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_180844) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "signups_open", default: false, null: false
@@ -60,6 +60,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_151433) do
   end
 
   create_table "repositories", force: :cascade do |t|
+    t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
     t.string "name", null: false
@@ -68,6 +69,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_151433) do
     t.string "trigger_label", default: "syrus", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
+    t.index ["archived_at"], name: "index_repositories_on_archived_at"
     t.index ["user_id", "owner", "name"], name: "index_repositories_on_user_id_and_owner_and_name", unique: true
     t.index ["user_id"], name: "index_repositories_on_user_id"
   end

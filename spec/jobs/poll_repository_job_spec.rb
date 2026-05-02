@@ -51,5 +51,12 @@ RSpec.describe PollRepositoryJob do
         described_class.perform_now(repository.id, force: true)
       }.to change(Job, :count).by_at_least(1)
     end
+
+    it "skips archived repositories even with force: true" do
+      repository.archive!
+      expect {
+        described_class.perform_now(repository.id, force: true)
+      }.not_to change(Job, :count)
+    end
   end
 end
