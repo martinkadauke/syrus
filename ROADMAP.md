@@ -345,7 +345,11 @@ act on its own run.
 - `mark_failed(category, reason)` — categories: `cant_implement`,
   `already_done`, `needs_clarification`, `blocked_external`
 - `submit_summary(pr_title:, pr_body:, summary:)` — the agent-authored
-  PR copy (single source for it; no JSON-blob fallback)
+  PR copy (single source for it; no JSON-blob fallback). Also rendered
+  in the comment feed at the point in the run where the agent called
+  it, so the operator sees "the agent submitted its summary here" in
+  context with the streamed transcript — not just buried in the PR
+  body once the run finishes
 - `set_progress(stage, note)` — optional mid-run telemetry
 
 **Degradation hierarchy** for the PR-copy case specifically:
