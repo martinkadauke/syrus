@@ -14,18 +14,34 @@ FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
 # Rails app lives here
 WORKDIR /rails
 
-# Install base packages
+# Install base packages. Notes specific to Syrus:
+#   - `git` is needed at *runtime*, not just build, because the worker
+#     shells out to it for every clone / commit / push.
+#   - `nodejs` + `npm` are required to install the `claude` CLI, which
+#     the agent worker spawns per Run via AgentInvocation.
+#   - `gnupg` and `ca-certificates` are needed for NodeSource's apt repo.
+ARG NODE_MAJOR=22
+ARG CLAUDE_CODE_VERSION=2.1.126
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl default-mysql-client libjemalloc2 libvips && \
+    apt-get install --no-install-recommends -y \
+      ca-certificates curl default-mysql-client git gnupg libjemalloc2 libvips && \
     ln -s /usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so && \
+    curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
+    apt-get install --no-install-recommends -y nodejs && \
+    npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && \
+    npm cache clean --force && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # Set production environment variables and enable jemalloc for reduced memory usage and latency.
+# BUNDLE_WITHOUT excludes both groups so test-only gems (capybara, vcr,
+# webmock, selenium-webdriver, rspec-rails, brakeman) don't ship in the
+# image. Single colon-separated string per Bundler's docs.
 ENV RAILS_ENV="production" \
     BUNDLE_DEPLOYMENT="1" \
     BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development" \
-    LD_PRELOAD="/usr/local/lib/libjemalloc.so"
+    BUNDLE_WITHOUT="development:test" \
+    LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
+    RAILS_LOG_TO_STDOUT="1"
 
 # Throw-away build stage to reduce size of final image
 FROM base AS build
