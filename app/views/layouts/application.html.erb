@@ -8,6 +8,11 @@
     <meta name="mobile-web-app-capable" content="yes">
     <%= csrf_meta_tags %>
     <%= csp_meta_tag %>
+    <%# Turbo refresh broadcasts (broadcasts_refreshes / broadcasts_refreshes_to)
+        morph the page in place instead of reloading. Preserves scroll
+        position and any element marked data-turbo-permanent (the live
+        transcript). %>
+    <%= turbo_refreshes_with method: :morph, scroll: :preserve %>
 
     <%= yield :head %>
 

@@ -68,6 +68,9 @@
     </div>
   </div>
 
+  <%# Two streams: refreshes (Job + Run state changes morph the page)
+      + targeted log appends (live transcript). %>
+  <%= turbo_stream_from @job %>
   <%= turbo_stream_from @job, "logs" %>
 
   <% @job.runs.each_with_index do |run, idx| %>
@@ -99,7 +102,11 @@
       <div class="p-4 space-y-4">
         <div>
           <h3 class="text-xs uppercase text-gray-500 mb-2">Transcript</h3>
-          <div id="run_<%= run.id %>_logs" class="bg-black text-gray-100 rounded p-3 max-h-72 overflow-y-auto space-y-1">
+          <%# data-turbo-permanent: keep this element + its children
+              untouched across morph refreshes. Streamed JobLog appends
+              land here directly and we don't want morph to wipe them
+              if they got streamed in mid-render. %>
+          <div id="run_<%= run.id %>_logs" data-turbo-permanent class="bg-black text-gray-100 rounded p-3 max-h-72 overflow-y-auto space-y-1">
             <% if run.job_logs.any? %>
               <%= render run.job_logs %>
             <% else %>

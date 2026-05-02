@@ -35,6 +35,13 @@ class Run < ApplicationRecord
 
   after_create_commit :enqueue_run_job
 
+  # State changes (queued → running → succeeded/failed/cancelled) and
+  # field updates (agent_turns, agent_outcome, agent_diff) all need to
+  # show up on the Job's show page without requiring the operator to
+  # refresh. Broadcasting refreshes to the parent Job's stream means
+  # "tell anyone watching this Job to morph itself".
+  broadcasts_refreshes_to ->(run) { run.job }
+
   def initial?
     trigger_kind == "initial"
   end
