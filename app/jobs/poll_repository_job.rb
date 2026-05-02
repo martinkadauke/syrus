@@ -40,6 +40,10 @@ class PollRepositoryJob < ApplicationJob
     # the lookup would be wasted).
     needs_lookup = prior.nil? || prior.open?
     linked = needs_lookup ? GithubClient.for(repository.user).linked_open_pr_for_issue(repository.slug, issue.number) : nil
+    # Filter out our OWN PR — `closedByPullRequestsReferences` returns
+    # every PR that closes this issue, including the one Syrus opened.
+    # If the linked PR is ours, it's not "external preemption", just us.
+    linked = nil if linked && prior&.pr_number == linked[:number]
 
     # Existing Job for this issue → either attach the external PR
     # discovery to it, or just dedup as before.

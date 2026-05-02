@@ -66,8 +66,16 @@
         <% if @job.pr_number.nil? && @job.external_pr_number.nil? %>
           <span class="text-gray-400">—</span>
         <% end %>
-        <% if (@job.pr_number || @job.external_pr_number) && @job.pr_mergeable_checked_at %>
-          <div class="text-xs text-gray-400">checked <%= time_ago_in_words(@job.pr_mergeable_checked_at) %> ago</div>
+        <% if @job.pr_number || @job.external_pr_number %>
+          <div class="text-xs text-gray-400 flex items-center gap-2">
+            <% if @job.pr_mergeable_checked_at %>
+              <span>checked <%= time_ago_in_words(@job.pr_mergeable_checked_at) %> ago</span>
+              <span class="text-gray-300">·</span>
+            <% end %>
+            <%= button_to "Check now", check_mergeability_job_path(@job), method: :post,
+                  class: "text-blue-500 underline hover:no-underline cursor-pointer",
+                  form: { class: "inline" } %>
+          </div>
         <% end %>
       </div>
     </div>

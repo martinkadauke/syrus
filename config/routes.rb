@@ -21,6 +21,7 @@ Rails.application.routes.draw do
       post :reopen         # undo a close — closed → open, polling resumes
       post :poll_feedback  # manually trigger PollPullRequestJob for this Job
       post :rebase         # manually trigger a rebase Run on this Job's PR
+      post :check_mergeability  # ask GitHub for the latest mergeable status now
     end
   end
 

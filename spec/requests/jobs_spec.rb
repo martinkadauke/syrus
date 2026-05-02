@@ -274,6 +274,34 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
+  describe "POST /jobs/:id/check_mergeability" do
+    before { sign_in_as(user) }
+
+    it "enqueues PollRebaseJob when the Job has a PR" do
+      job.update!(pr_number: 7)
+      expect {
+        post check_mergeability_job_path(job)
+      }.to have_enqueued_job(PollRebaseJob).with(job.id)
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:notice]).to match(/Checking mergeability/)
+    end
+
+    it "works on a preempted Job using external_pr_number" do
+      job.update!(state: "closed", closure_reason: "preempted",
+                  external_pr_number: 99, finished_at: Time.current)
+      expect {
+        post check_mergeability_job_path(job)
+      }.to have_enqueued_job(PollRebaseJob).with(job.id)
+    end
+
+    it "refuses when the Job has no PR" do
+      expect {
+        post check_mergeability_job_path(job)
+      }.not_to have_enqueued_job(PollRebaseJob)
+      expect(flash[:alert]).to match(/No PR/)
+    end
+  end
+
   describe "show page mergeability badge + Rebase button" do
     before { sign_in_as(user) }
 

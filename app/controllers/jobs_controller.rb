@@ -59,6 +59,20 @@ class JobsController < ApplicationController
     redirect_to job_path(@job), notice: "Checking PR feedback now…"
   end
 
+  # Manually trigger PollRebaseJob for this Job — same poller that
+  # runs every 15min, just operator-initiated when they don't want
+  # to wait. Persists pr_mergeable + checked_at on the Job (and
+  # broadcasts a refresh to morph the badge in place).
+  def check_mergeability
+    unless @job.pr_number.present? || @job.external_pr_number.present?
+      redirect_to job_path(@job), alert: "No PR on this Job to check."
+      return
+    end
+
+    PollRebaseJob.perform_later(@job.id)
+    redirect_to job_path(@job), notice: "Checking mergeability now…"
+  end
+
   # Manually enqueue a rebase Run on this Job's PR. Same trigger the
   # auto-rebase poller uses, just operator-initiated when they don't
   # want to wait for the next 15-min sweep. Refuses to stack rebases

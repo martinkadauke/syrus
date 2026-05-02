@@ -123,6 +123,21 @@ RSpec.describe PollRepositoryJob do
         expect(prior.external_pr_number).to eq(99)
         expect(prior).to be_open
       end
+
+      it "does NOT record Syrus's own PR as external (closedByPullRequestsReferences includes ours)" do
+        # Same setup as the "informational" test above, except now the
+        # linked PR GitHub returns IS our own PR (#7). The detector must
+        # recognize itself and skip the attachment instead of pretending
+        # someone else opened the PR.
+        prior = Job.create!(user: user, repository: repository, issue_number: 42, pr_number: 7, branch_name: "syrus/issue-42-1")
+        # Override: GraphQL returns OUR PR as the linked one for #42.
+        allow_any_instance_of(GithubClient).to receive(:linked_open_pr_for_issue) do |_inst, _slug, issue_number|
+          issue_number == 42 ? { number: 7, url: "https://github.com/acme/widgets/pull/7" } : nil
+        end
+
+        described_class.perform_now(repository.id)
+        expect(prior.reload.external_pr_number).to be_nil   # still nil — it's our own PR
+      end
     end
   end
 end
