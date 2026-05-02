@@ -88,6 +88,42 @@ preserve scroll position across morphs.
   via `RunJob.agent_runner` and `PrSummarizer.runner` test seams; never
   shell out to real `claude` from tests.
 
+## Testing on the deployed instance
+
+Syrus runs on the homelab K3s cluster and polls **`tkadauke/syrus-test`**
+(private) as its dev sandbox. To exercise a change end-to-end, file
+an issue on that repo with the `syrus` label — the deployed dev
+Syrus picks it up and opens a PR there:
+
+```
+gh issue create -R tkadauke/syrus-test --label syrus \
+  --title "..." --body "..."
+```
+
+Don't run `bin/dev` and stub things to simulate the agent — file a
+real issue and watch the real flow. Test issues should be small
+(single-PR scope), low-stakes, reversible, and describe real (if
+frivolous) improvements — the agent actually implements them.
+
+**Now the important part: be actually funny.** The model defaults
+to a tepid productivity-blog register — bullet points, neutral verbs,
+"considerations." For syrus-test issues, override that hard. The
+target is "fun to read," not "looks like a Linear ticket." Specifically:
+
+- Lean into the namesake's mock-Roman gravitas. Frame trivial UI
+  tweaks as moral obligations to a long-dead aphorist. Treat
+  six-line static Latin footers like constitutional crises.
+- The "Out of scope" section is comedic gold — list specific,
+  absurd things the agent must NOT build. Use it.
+- Running bits are good. Callbacks are good. Lampshaded
+  over-engineering is excellent. Deadpan absurdity beats winking.
+- Give the agent attitude in the body. It will not file a complaint.
+
+The model is genuinely good at this when you let it. The repo is
+private, the audience is future-you and the agent that picks it up.
+Make it a good time. If the issue body reads like something you'd
+actually post in a customer-facing tracker, you've under-reached.
+
 ## Workflows
 
 Local dev:
