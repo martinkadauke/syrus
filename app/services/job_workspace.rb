@@ -34,6 +34,7 @@ class JobWorkspace
   # recovery from a dead initial Run that never reached the push step).
   def setup
     ensure_bare_clone
+    sweep_orphan_worktrees   # before fetch — orphan worktrees lock branches
     fetch_origin
     FileUtils.mkdir_p(path.dirname)
 
@@ -85,6 +86,50 @@ class JobWorkspace
 
   def authenticated_url
     @repository.authenticated_push_url(@job.user.github_token)
+  end
+
+  # Garbage-collect worktree registrations whose Run is terminal (or
+  # whose Run record is gone). These come from RunJob processes that
+  # got SIGKILLed before their `ensure` block could run — typical
+  # triggers are pod evictions, OOM kills, the multi-attach PVC
+  # disaster. Each orphan registration locks its branch ref ("refusing
+  # to fetch into branch X checked out at <orphan path>"), which
+  # blocks every subsequent fetch + every rebase Run on that branch.
+  # Cheap to run on every setup — bounded by the number of worktrees
+  # for one repo, which is bounded by concurrent Runs.
+  def sweep_orphan_worktrees
+    list = @git.run("worktree", "list", "--porcelain", chdir: bare_clone_path.to_s) rescue ""
+    current = nil
+    worktrees = []
+    list.each_line do |l|
+      if l.start_with?("worktree ")
+        current = { path: l.sub("worktree ", "").chomp }
+        worktrees << current
+      elsif current && l.start_with?("branch ")
+        current[:branch] = l.sub("branch ", "").chomp
+      end
+    end
+
+    worktrees.each do |w|
+      # Worktree directory names are pure integer run IDs (per
+      # JobWorkspace#initialize: `data_root/worktrees/<run_id>`).
+      # Bare clone path basename is `<repo_id>.git`. Filtering on
+      # basename matching /\A\d+\z/ excludes the bare safely and
+      # avoids macOS /var ↔ /private/var realpath confusion.
+      basename = File.basename(w[:path])
+      next unless basename =~ /\A\d+\z/
+      run_id = basename.to_i
+      run = Run.find_by(id: run_id)
+      orphan = run.nil? || %w[succeeded failed cancelled].include?(run.state)
+      next unless orphan
+
+      @git.run("worktree", "remove", "--force", w[:path], chdir: bare_clone_path.to_s) rescue nil
+      FileUtils.rm_rf(w[:path]) if File.exist?(w[:path])
+    end
+
+    # Catch any registrations whose directory disappeared without
+    # going through git worktree remove.
+    @git.run("worktree", "prune", chdir: bare_clone_path.to_s) rescue nil
   end
 
   # `git branch --list <name>` returns 0 with empty output when the

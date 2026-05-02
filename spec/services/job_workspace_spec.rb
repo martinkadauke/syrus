@@ -68,6 +68,36 @@ RSpec.describe JobWorkspace do
       workspace = described_class.new(job.initial_run)
       expect { workspace.cleanup }.not_to raise_error
     end
+
+    it "sweeps orphan worktrees from prior crashed Runs (terminal Run, worktree still registered)" do
+      # First Run sets up a worktree, then "crashes" mid-flight: we
+      # mark its Run failed and DON'T call cleanup, simulating a
+      # SIGKILLed RunJob that never reached its `ensure` block.
+      first_run = job.initial_run
+      first_workspace = described_class.new(first_run)
+      first_workspace.setup
+      first_run.update!(state: "failed", finished_at: Time.current)
+      orphan_path = first_workspace.path
+      expect(orphan_path).to exist  # still on disk
+
+      # A new Run on a *different* Job for the same repo would normally
+      # fail at fetch with "refusing to fetch into branch X checked out
+      # at <orphan>". The sweep on setup must drop the orphan before
+      # fetch_origin runs.
+      second_job = Factories.job(repository: repository, issue_number: 99)
+      second_workspace = described_class.new(second_job.initial_run)
+      expect { second_workspace.setup }.not_to raise_error
+      expect(second_workspace.path).to exist
+
+      # Orphan is gone — both the directory on disk and the git
+      # worktree registration. realpath normalizes /var vs /private/var
+      # on macOS so the comparison works either way.
+      expect(orphan_path).not_to exist
+      list = `git --git-dir=#{first_workspace.bare_clone_path} worktree list --porcelain`
+      registered = list.scan(/^worktree (.+)$/).flatten.select { |p| File.exist?(p) }.map { |p| File.realpath(p) }
+      expect(registered).not_to include(File.realpath(second_workspace.path.parent) + "/#{File.basename(orphan_path)}")
+      second_workspace.cleanup
+    end
   end
 
   describe "follow-up run" do
