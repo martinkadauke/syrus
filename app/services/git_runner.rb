@@ -1,14 +1,29 @@
 require "open3"
 
 class GitRunner
+  # Redacts tokens out of any string that contains a
+  # `https://x-access-token:TOKEN@github.com/...` URL — the form
+  # JobWorkspace + RunJob pass when they need authenticated git.
+  # Applied to:
+  #   - argv stored on GitError (so the exception message is clean
+  #     when it bubbles into JobLog / Solid Queue's failed_executions)
+  #   - every line streamed to log_sink + captured into `output`
+  #     (git prints the full URL in some network-error messages,
+  #     e.g. "fatal: unable to access 'https://x-access-token:T@…'")
+  AUTH_URL_PATTERN = %r{(https://x-access-token:)[^@\s]+(@)}.freeze
+
+  def self.redact(text)
+    text.to_s.gsub(AUTH_URL_PATTERN, '\1[REDACTED]\2')
+  end
+
   class GitError < StandardError
     attr_reader :command, :exit_status, :output
 
     def initialize(command, exit_status, output)
-      @command = command
+      @command = command.map { |a| GitRunner.redact(a) }
       @exit_status = exit_status
-      @output = output
-      super("git #{command.join(' ')} exited #{exit_status}")
+      @output = GitRunner.redact(output)
+      super("git #{@command.join(' ')} exited #{exit_status}")
     end
   end
 
@@ -29,7 +44,8 @@ class GitRunner
 
     Open3.popen2e(@env.merge(env), *cmd, chdir: chdir || Dir.pwd) do |stdin, stream, wait_thread|
       stdin.close
-      stream.each_line do |line|
+      stream.each_line do |raw_line|
+        line = self.class.redact(raw_line)
         output << line
         @log_sink.call(line)
       end

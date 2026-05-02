@@ -28,4 +28,57 @@ RSpec.describe GitRunner do
       expect(File.directory?(File.join(dir, ".git"))).to be true
     end
   end
+
+  describe ".redact" do
+    it "redacts the token in an x-access-token URL" do
+      input = "git fetch https://x-access-token:github_pat_11ABC123XYZ@github.com/owner/repo.git"
+      expect(described_class.redact(input)).to eq(
+        "git fetch https://x-access-token:[REDACTED]@github.com/owner/repo.git"
+      )
+    end
+
+    it "redacts ghp_-prefixed tokens too (older PATs)" do
+      input = "fatal: unable to access 'https://x-access-token:ghp_secret@github.com/o/r.git/'"
+      expect(described_class.redact(input)).to include("[REDACTED]")
+      expect(described_class.redact(input)).not_to include("ghp_secret")
+    end
+
+    it "leaves non-auth URLs and other strings alone" do
+      expect(described_class.redact("https://github.com/foo/bar.git")).to eq("https://github.com/foo/bar.git")
+      expect(described_class.redact("nothing to see here")).to eq("nothing to see here")
+    end
+  end
+
+  describe "GitError redaction (defense in depth)" do
+    it "scrubs the token from the stored command + the exception message" do
+      auth_url = "https://x-access-token:github_pat_AAA111@github.com/o/r.git"
+      err = GitRunner::GitError.new([ "fetch", auth_url, "+refs/heads/*:refs/heads/*" ], 128, "")
+      expect(err.command).to include(/\[REDACTED\]/)
+      expect(err.message).to include("[REDACTED]")
+      expect(err.command).not_to include(/github_pat_AAA111/)
+      expect(err.message).not_to include("github_pat_AAA111")
+    end
+
+    it "scrubs the token from captured stderr/stdout (git prints the URL on network errors)" do
+      err = GitRunner::GitError.new(
+        [ "fetch" ], 128,
+        "fatal: unable to access 'https://x-access-token:ghp_oops@github.com/o/r.git/': Could not resolve host"
+      )
+      expect(err.output).to include("[REDACTED]")
+      expect(err.output).not_to include("ghp_oops")
+    end
+  end
+
+  describe "streaming redaction" do
+    it "redacts tokens that git echoes into stderr/stdout before they reach log_sink" do
+      lines = []
+      runner = described_class.new(log_sink: ->(l) { lines << l })
+      auth_url_with_garbage_path = "https://x-access-token:github_pat_BBB@github.com/this-repo/does-not-exist-12345.git"
+      expect {
+        runner.run("ls-remote", auth_url_with_garbage_path)
+      }.to raise_error(GitRunner::GitError)
+      combined = lines.join
+      expect(combined).not_to include("github_pat_BBB"), "log_sink received an unredacted token: #{combined.inspect}"
+    end
+  end
 end
