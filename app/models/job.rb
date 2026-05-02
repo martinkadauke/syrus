@@ -27,6 +27,18 @@ class Job < ApplicationRecord
     close!
   end
 
+  # Cancels every active Run on this Job and closes the thread. Used by
+  # both the Cancel button (reason: "cancelled") and Restart (reason:
+  # "replaced"). Idempotent on already-closed Jobs.
+  def cancel_active_runs_and_close!(reason)
+    return if closed?
+    runs.active.find_each do |run|
+      run.cancel! if run.may_cancel?
+      run.save!
+    end
+    close_with_reason!(reason)
+  end
+
   # The most recently created Run on this thread, regardless of state.
   def current_run
     runs.last

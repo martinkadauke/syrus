@@ -39,21 +39,72 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
-  describe "POST /jobs/:id/replay" do
+  describe "POST /jobs/:id/run_again (soft replay)" do
     before { sign_in_as(user) }
 
-    it "creates a new Job (hard reset, new branch + new PR) and enqueues an initial Run" do
-      job
+    it "creates a new Run with trigger_kind=replay on the existing Job and enqueues RunJob" do
+      job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
       expect {
-        post replay_job_path(job)
+        post run_again_job_path(job)
+      }.to change { job.runs.count }.by(1)
+        .and have_enqueued_job(RunJob)
+
+      new_run = job.runs.last
+      expect(new_run.trigger_kind).to eq("replay")
+      expect(new_run.state).to eq("queued")
+      expect(response).to redirect_to(job_path(job))
+    end
+
+    it "refuses when the Job is closed" do
+      job.close_with_reason!("manual")
+      expect {
+        post run_again_job_path(job)
+      }.not_to change { job.runs.count }
+      expect(flash[:alert]).to match(/use Start over/)
+    end
+
+    it "refuses when an active Run is already in progress" do
+      job.initial_run  # queued by default
+      expect {
+        post run_again_job_path(job)
+      }.not_to change { job.runs.count }
+      expect(flash[:alert]).to match(/already in progress/)
+    end
+  end
+
+  describe "POST /jobs/:id/restart (hard reset)" do
+    before { sign_in_as(user) }
+
+    it "closes the existing Job and creates a new one with a fresh initial Run" do
+      job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
+      original_id = job.id
+
+      expect {
+        post restart_job_path(job)
       }.to change(Job, :count).by(1)
         .and have_enqueued_job(RunJob)
 
+      job.reload
+      expect(job.state).to eq("closed")
+      expect(job.closure_reason).to eq("replaced")
+
       new_job = Job.where(repository_id: repository.id, issue_number: 42).order(:created_at).last
-      expect(new_job.id).not_to eq(job.id)
-      expect(new_job.runs.size).to eq(1)
+      expect(new_job.id).not_to eq(original_id)
       expect(new_job.runs.first.trigger_kind).to eq("initial")
       expect(response).to redirect_to(job_path(new_job))
+    end
+
+    it "cancels active runs on the original before creating the new one" do
+      job.initial_run  # queued
+      post restart_job_path(job)
+      expect(job.runs.first.reload.state).to eq("cancelled")
+    end
+
+    it "still creates a new Job when the original is already closed" do
+      job.close_with_reason!("manual")
+      expect {
+        post restart_job_path(job)
+      }.to change(Job, :count).by(1)
     end
   end
 
@@ -78,6 +129,27 @@ RSpec.describe "Jobs", type: :request do
       job.close_with_reason!("manual")
       post cancel_job_path(job)
       expect(flash[:alert]).to match(/already closed/)
+    end
+  end
+
+  describe "show page button confirmations" do
+    before { sign_in_as(user) }
+
+    it "puts a turbo_confirm on Cancel & close" do
+      get job_path(job)
+      expect(response.body).to match(/data-turbo-confirm=.*Cancel any running work/)
+    end
+
+    it "puts a turbo_confirm on Start over" do
+      get job_path(job)
+      expect(response.body).to match(/data-turbo-confirm=.*abandons the existing branch/)
+    end
+
+    it "does NOT put a confirm on Run again on this branch (additive, not destructive)" do
+      job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
+      get job_path(job)
+      expect(response.body).to include("Run again on this branch")
+      expect(response.body).not_to match(/data-turbo-confirm=.*on this branch/)
     end
   end
 end

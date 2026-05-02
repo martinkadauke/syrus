@@ -10,14 +10,19 @@
     </div>
     <div class="flex items-center gap-3">
       <%= state_pill(job_summary_state(@job)) %>
+      <% if @job.open? && !@job.any_active_run? %>
+        <%= button_to "Run again on this branch", run_again_job_path(@job), method: :post,
+              class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium cursor-pointer",
+              form: { class: "inline" } %>
+      <% end %>
       <% if @job.open? %>
         <%= button_to "Cancel & close", cancel_job_path(@job), method: :post,
               class: "rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium cursor-pointer",
               form: { class: "inline", data: { turbo_confirm: "Cancel any running work and close this thread?" } } %>
       <% end %>
-      <%= button_to "Replay", replay_job_path(@job), method: :post,
-            class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium cursor-pointer",
-            form: { class: "inline" } %>
+      <%= button_to "Start over with a new branch", restart_job_path(@job), method: :post,
+            class: "rounded-md px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium cursor-pointer",
+            form: { class: "inline", data: { turbo_confirm: "This abandons the existing branch and PR (#{@job.pr_number ? "##{@job.pr_number}" : "none yet"}) and opens a new one. Continue?" } } %>
     </div>
   </div>
 

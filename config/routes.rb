@@ -13,8 +13,9 @@ Rails.application.routes.draw do
   resource :settings, only: %i[ edit update ]
   resources :jobs, only: %i[ show ] do
     member do
-      post :replay
-      post :cancel
+      post :run_again   # soft replay — new Run on the existing branch
+      post :restart     # hard reset — close this thread, open a new one with a fresh branch + PR
+      post :cancel      # cancel active runs + close the thread
     end
   end
 
