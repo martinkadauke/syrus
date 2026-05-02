@@ -1,10 +1,18 @@
 class RunJob < ApplicationJob
   queue_as :default
 
-  # One Run at a time per repository — the agent serializes per branch
-  # by way of the per-repo lock since Job has at most one branch open.
+  # One Run at a time per Job. Per-Job (not per-repo) is the right
+  # granularity: each Run gets its own worktree under
+  # $SYRUS_DATA_ROOT/worktrees/<run_id>/ and works on its own branch
+  # (one branch per Job), so two Runs on different Jobs in the same
+  # repo never collide. The collision risk is *within* a Job — two
+  # follow-ups racing on the same branch — which the per-Job key
+  # prevents. (Worth keeping an eye on: simultaneous initial Runs on
+  # different Jobs in a fresh repo race to create the bare clone.
+  # First-write-wins is a one-time thing per repo and recovers on
+  # retry; not worth a separate global lock unless it bites.)
   limits_concurrency to: 1, key: ->(run_id) {
-    "repo:#{::Run.where(id: run_id).joins(:job).pick('jobs.repository_id')}"
+    "job:#{::Run.where(id: run_id).pick(:job_id)}"
   }
 
   discard_on ActiveRecord::RecordNotFound
