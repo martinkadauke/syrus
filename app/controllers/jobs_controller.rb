@@ -46,6 +46,19 @@ class JobsController < ApplicationController
     redirect_to job_path(@job), notice: "Cancellation requested."
   end
 
+  # Manually fire PollPullRequestJob for this Job — useful when the
+  # operator just left a review comment and doesn't want to wait for
+  # the 5-min recurring schedule.
+  def poll_feedback
+    unless @job.open? && @job.pr_number.present?
+      redirect_to job_path(@job), alert: "Can only check feedback on open Jobs that have a PR."
+      return
+    end
+
+    PollPullRequestJob.perform_later(@job.id)
+    redirect_to job_path(@job), notice: "Checking PR feedback now…"
+  end
+
   # Undo a close. The next poll cycle may immediately re-close the
   # Job if the underlying reason still applies (e.g. syrus-stop label
   # still on the PR, PR merged on GitHub) — that's intentional. Local

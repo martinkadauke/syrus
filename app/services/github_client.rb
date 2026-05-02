@@ -75,13 +75,4 @@ class GithubClient
     Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug} PR ##{pr_number} reviews: #{e.message}")
     raise
   end
-
-  # The login of the operator authenticating this client — used to skip
-  # the operator's own comments in the feedback loop.
-  def authenticated_login
-    @authenticated_login ||= @client.user.login
-  rescue Octokit::TooManyRequests => e
-    Rails.logger.warn("[GithubClient] rate-limited on /user: #{e.message}")
-    raise
-  end
 end

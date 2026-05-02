@@ -62,14 +62,16 @@ class PollPullRequestJob < ApplicationJob
     @job.runs.where(trigger_kind: "pr_comment").active.exists?
   end
 
+  # We don't filter by author. Syrus runs under the operator's PAT today
+  # and doesn't post comments via the API — only pushes commits — so
+  # there's no self-loop to prevent. The operator IS the reviewer; their
+  # comments are exactly what we want to act on. When/if Syrus gets its
+  # own bot identity (separate GitHub account or App), add a configurable
+  # skip-by-login filter back here.
   def fetch_new_comments
     issue_comments = @client.pr_issue_comments(@slug, @job.pr_number, since: @job.last_seen_comment_at)
     review_comments = @client.pr_review_comments(@slug, @job.pr_number, since: @job.last_seen_comment_at)
-    operator_login = @client.authenticated_login
-
-    (issue_comments + review_comments)
-      .reject { |c| c.user&.login == operator_login }
-      .sort_by(&:created_at)
+    (issue_comments + review_comments).sort_by(&:created_at)
   end
 
   def enqueue_followup_run(new_comments)

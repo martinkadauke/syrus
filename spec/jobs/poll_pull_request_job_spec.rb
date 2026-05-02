@@ -16,14 +16,9 @@ RSpec.describe PollPullRequestJob do
   let(:issue_comments_url) { "https://api.github.com/repos/acme/widgets/issues/7/comments" }
   let(:review_comments_url) { "https://api.github.com/repos/acme/widgets/pulls/7/comments" }
   let(:issue_url) { "https://api.github.com/repos/acme/widgets/issues/42" }
-  let(:user_url) { "https://api.github.com/user" }
 
   before do
     # Octokit appends ?per_page=100 etc. to every call; match any query string.
-    stub_request(:get, user_url).with(query: hash_including({})).to_return(
-      status: 200, headers: { "Content-Type" => "application/json" },
-      body: { login: "operator" }.to_json
-    )
     stub_request(:get, issue_url).with(query: hash_including({})).to_return(
       status: 200, headers: { "Content-Type" => "application/json" },
       body: { number: 42, title: "Add greeting", body: "We need a greeting helper." }.to_json
@@ -123,16 +118,16 @@ RSpec.describe PollPullRequestJob do
       expect(job.reload.last_seen_comment_at.utc).to be_within(1.second).of(t2)
     end
 
-    it "skips comments authored by the operator (avoids self-loops)" do
+    it "DOES process operator-authored comments (Syrus runs under the operator's PAT today; the operator IS the reviewer)" do
       stub_issue_comments([
-        { id: 1, body: "I'm the operator talking to myself",
+        { id: 1, body: "extract this into a helper",
           user: { login: "operator" }, created_at: t1.iso8601 }
       ])
       stub_review_comments([])
 
       expect {
         described_class.perform_now(job.id)
-      }.not_to change { job.runs.count }
+      }.to change { job.runs.where(trigger_kind: "pr_comment").count }.by(1)
     end
 
     it "respects the loop guard (5 pr_comment runs already)" do

@@ -132,6 +132,33 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
+  describe "POST /jobs/:id/poll_feedback" do
+    before { sign_in_as(user) }
+
+    it "enqueues PollPullRequestJob for an open Job with a PR" do
+      job.update!(pr_number: 42)
+      expect {
+        post poll_feedback_job_path(job)
+      }.to have_enqueued_job(PollPullRequestJob).with(job.id)
+      expect(response).to redirect_to(job_path(job))
+    end
+
+    it "refuses on a Job with no PR" do
+      expect {
+        post poll_feedback_job_path(job)
+      }.not_to have_enqueued_job(PollPullRequestJob)
+      expect(flash[:alert]).to match(/PR/)
+    end
+
+    it "refuses on a closed Job" do
+      job.update!(pr_number: 42)
+      job.close_with_reason!("manual")
+      expect {
+        post poll_feedback_job_path(job)
+      }.not_to have_enqueued_job(PollPullRequestJob)
+    end
+  end
+
   describe "POST /jobs/:id/reopen" do
     before { sign_in_as(user) }
 
