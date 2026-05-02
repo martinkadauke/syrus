@@ -37,4 +37,51 @@ class GithubClient
     Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug}##{number}: #{e.message}")
     raise
   end
+
+  def pull_request(repo_slug, pr_number)
+    @client.pull_request(repo_slug, pr_number)
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug} PR ##{pr_number}: #{e.message}")
+    raise
+  end
+
+  # PR conversation-tab comments. GitHub's `since` filter is honored
+  # server-side here.
+  def pr_issue_comments(repo_slug, pr_number, since: nil)
+    options = {}
+    options[:since] = since.utc.iso8601 if since
+    @client.issue_comments(repo_slug, pr_number, options)
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug} PR ##{pr_number} issue_comments: #{e.message}")
+    raise
+  end
+
+  # Inline (line-anchored) review comments. Octokit's pull_request_comments
+  # endpoint doesn't accept `since`, so filter client-side.
+  def pr_review_comments(repo_slug, pr_number, since: nil)
+    comments = @client.pull_request_comments(repo_slug, pr_number)
+    return comments unless since
+    comments.select { |c| c.created_at && c.created_at > since }
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug} PR ##{pr_number} review_comments: #{e.message}")
+    raise
+  end
+
+  # The "Approve / Request changes / Comment" wrapper rows. Used to detect
+  # APPROVED state as a soft-stop signal for the feedback loop.
+  def pr_reviews(repo_slug, pr_number)
+    @client.pull_request_reviews(repo_slug, pr_number)
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug} PR ##{pr_number} reviews: #{e.message}")
+    raise
+  end
+
+  # The login of the operator authenticating this client — used to skip
+  # the operator's own comments in the feedback loop.
+  def authenticated_login
+    @authenticated_login ||= @client.user.login
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] rate-limited on /user: #{e.message}")
+    raise
+  end
 end

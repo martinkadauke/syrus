@@ -69,10 +69,9 @@ class RunJob < ApplicationJob
   end
 
   def run_agent_and_commit
-    issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
-    prompt = build_prompt(issue)
+    prompt = @run.prompt.presence || compose_initial_prompt
+    @run.update!(prompt: prompt) if @run.prompt.blank?
 
-    @run.update!(prompt: prompt)
     log("invoking agent for #{@job.repository.slug}##{@job.issue_number} (run #{@run.id}, trigger=#{@run.trigger_kind})")
     result = AgentInvocation.new(
       @workspace.path,
@@ -96,9 +95,11 @@ class RunJob < ApplicationJob
     @run.update!(agent_diff: diff, head_sha: head_sha)
   end
 
-  # Initial runs get just the issue body. Follow-up triggers will compose
-  # comment + diff context here in M6.
-  def build_prompt(issue)
+  # Initial runs get the issue title + body. Follow-up runs (pr_comment,
+  # ci_failure, ...) arrive with @run.prompt already composed by whatever
+  # job created them — we use it as-is.
+  def compose_initial_prompt
+    issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
     "#{issue.title}\n\n#{issue.body}".strip
   end
 
