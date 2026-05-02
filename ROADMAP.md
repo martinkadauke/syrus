@@ -287,6 +287,15 @@ post-run state of any `Job` (the worktree as it was when the PR opened).
 Lets users inspect what the agent actually produced beyond the diff —
 helpful when reviewing large or generated changes.
 
+### Auto rebase-and-merge on approval
+
+Watch the review signal as another input alongside review comments (M6).
+When a syrus-opened PR receives an approving review and all required
+checks/graders are green, automatically rebase the branch onto its base
+and merge — no human button-press needed. Per-repo opt-in, with a kill
+switch label (e.g. `syrus-no-automerge`) for cases the reviewer wants
+to merge by hand.
+
 ### Auto-rebase stale PRs
 
 When a syrus-opened PR's branch falls behind its base and would no longer
