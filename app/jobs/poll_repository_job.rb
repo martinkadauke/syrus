@@ -30,13 +30,49 @@ class PollRepositoryJob < ApplicationJob
       return
     end
 
-    # Dedup against ANY prior Job for this issue, not just active ones —
-    # otherwise a succeeded/failed Job on the same issue stops protecting
-    # against re-ingest, and every poll after that opens a fresh PR.
-    # To intentionally re-process an issue, use the Replay button on the
-    # original Job (which bypasses this poller).
-    if existing_job_for_issue?(repository, issue.number)
-      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior Job exists")
+    prior = latest_job_for_issue(repository, issue.number)
+
+    # Look up linked PRs for any issue we might still act on — i.e.
+    # brand-new issues *and* any open Job, regardless of whether
+    # Syrus has shipped its own PR or has a Run mid-flight. That way
+    # a human PR landing on an in-flight or mid-failure Job surfaces
+    # immediately. Skip only fully-closed Jobs (they're terminal and
+    # the lookup would be wasted).
+    needs_lookup = prior.nil? || prior.open?
+    linked = needs_lookup ? GithubClient.for(repository.user).linked_open_pr_for_issue(repository.slug, issue.number) : nil
+
+    # Existing Job for this issue → either attach the external PR
+    # discovery to it, or just dedup as before.
+    if prior
+      if linked && prior.external_pr_number != linked[:number]
+        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} preempt-attach to Job ##{prior.id}: external PR ##{linked[:number]}")
+        prior.update!(external_pr_number: linked[:number])
+        # If Syrus has nothing in flight here, close the thread as
+        # preempted so the operator sees the right state. Open Jobs
+        # with an active Run are left alone — that agent finishes and
+        # the duplicate-PR situation gets surfaced at PR-opening time.
+        if prior.open? && prior.pr_number.blank? && !prior.any_active_run?
+          prior.cancel_active_runs_and_close!("preempted")
+        end
+      else
+        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior Job ##{prior.id} exists")
+      end
+      return
+    end
+
+    # Brand-new issue — preempted at first sight: record the Job in
+    # closed state and don't schedule a Run.
+    if linked
+      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} preempted by PR ##{linked[:number]}")
+      Job.create!(
+        user: repository.user,
+        repository: repository,
+        issue_number: issue.number,
+        state: "closed",
+        closure_reason: "preempted",
+        external_pr_number: linked[:number],
+        finished_at: Time.current
+      )
       return
     end
 
@@ -47,7 +83,7 @@ class PollRepositoryJob < ApplicationJob
     )
   end
 
-  def existing_job_for_issue?(repository, issue_number)
-    Job.exists?(repository_id: repository.id, issue_number: issue_number)
+  def latest_job_for_issue(repository, issue_number)
+    Job.where(repository_id: repository.id, issue_number: issue_number).order(:created_at).last
   end
 end

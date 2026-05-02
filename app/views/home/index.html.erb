@@ -21,6 +21,12 @@
               <td class="px-4 py-3 font-mono"><%= job.repository.slug %></td>
               <td class="px-4 py-3">
                 <%= link_to "##{job.issue_number}", job_issue_url(job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
+                <% if job.external_pr_number %>
+                  <span class="ml-1 text-xs text-violet-700">
+                    ↪
+                    <%= link_to "PR ##{job.external_pr_number}", external_pr_url(job), target: "_blank", rel: "noopener", class: "underline hover:no-underline" %>
+                  </span>
+                <% end %>
               </td>
               <td class="px-4 py-3 text-gray-600"><%= job.runs.size %></td>
               <td class="px-4 py-3 text-gray-500"><%= job.started_at&.to_fs(:short) || "—" %></td>

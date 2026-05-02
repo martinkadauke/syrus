@@ -108,4 +108,27 @@ RSpec.describe Job do
       expect(job.any_active_run?).to be false
     end
   end
+
+  describe "preempted creation (state: closed at create time)" do
+    let(:user) { Factories.user }
+    let(:repository) { Factories.repository(user: user) }
+
+    it "does NOT auto-spawn an initial Run when the Job is born closed" do
+      preempted = Job.create!(
+        user: user, repository: repository, issue_number: 99,
+        state: "closed", closure_reason: "preempted",
+        external_pr_number: 7, finished_at: Time.current
+      )
+      expect(preempted.runs).to be_empty
+      expect(preempted).to be_closed
+      expect(preempted.closure_reason).to eq("preempted")
+      expect(preempted.external_pr_number).to eq(7)
+    end
+
+    it "auto-spawns a Run for ordinary (open) Job creation" do
+      ordinary = Job.create!(user: user, repository: repository, issue_number: 100)
+      expect(ordinary.runs.size).to eq(1)
+      expect(ordinary.initial_run).to be_present
+    end
+  end
 end

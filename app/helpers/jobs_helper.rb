@@ -7,6 +7,7 @@ module JobsHelper
     "cancelled" => "bg-amber-100 text-amber-700",
     "open"      => "bg-emerald-100 text-emerald-700",
     "closed"    => "bg-gray-200 text-gray-800",
+    "preempted" => "bg-violet-100 text-violet-700",
     "pending"   => "bg-gray-100 text-gray-700"
   }.freeze
 
@@ -28,9 +29,11 @@ module JobsHelper
     tag.span(trigger_kind, class: "inline-block px-2 py-0.5 rounded text-xs font-medium #{style}")
   end
 
-  # The most useful one-word summary for a Job in a list view: closure
-  # state if closed, otherwise the latest run's state, otherwise "pending".
+  # The most useful one-word summary for a Job in a list view:
+  # "preempted" beats "closed" when a Job was preempted by an external
+  # PR — that's a more informative bucket than generic "closed."
   def job_summary_state(job)
+    return "preempted" if job.closure_reason == "preempted"
     return "closed" if job.closed?
     job.current_run&.state || "pending"
   end
@@ -38,6 +41,11 @@ module JobsHelper
   def job_pr_url(job)
     return nil unless job.pr_number
     "https://github.com/#{job.repository.slug}/pull/#{job.pr_number}"
+  end
+
+  def external_pr_url(job)
+    return nil unless job.external_pr_number
+    "https://github.com/#{job.repository.slug}/pull/#{job.external_pr_number}"
   end
 
   def job_issue_url(job)

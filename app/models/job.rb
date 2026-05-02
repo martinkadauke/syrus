@@ -32,7 +32,11 @@ class Job < ApplicationRecord
     end
   end
 
-  after_create_commit :create_initial_run
+  # Skip the initial-run autostart for Jobs that are created already
+  # closed — that's the "preempted" path, where Syrus discovered an
+  # external PR already targeting this issue and recorded the Job for
+  # the operator's awareness without scheduling any agent work.
+  after_create_commit :create_initial_run, if: :open?
 
   # Trigger a Turbo morph-refresh on the Job's show page on any change.
   # Combined with turbo_refreshes_with method: :morph in the layout,

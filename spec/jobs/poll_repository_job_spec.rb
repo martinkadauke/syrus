@@ -7,6 +7,11 @@ RSpec.describe PollRepositoryJob do
   end
 
   describe "#perform", vcr: { cassette_name: "poll_repository_job/lists_issues" } do
+    # Default: pretend GitHub reports no linked PR for these issues.
+    # Tests covering the preempted path (below) override this stub to
+    # return a real linked PR.
+    before { allow_any_instance_of(GithubClient).to receive(:linked_open_pr_for_issue).and_return(nil) }
+
     it "creates a Job for each issue that passes IngestPolicy and isn't dedup'd" do
       # Pre-seed: issue 46 already has a Job, must be dedup'd.
       Job.create!(user: user, repository: repository, issue_number: 46)
@@ -57,6 +62,67 @@ RSpec.describe PollRepositoryJob do
       expect {
         described_class.perform_now(repository.id, force: true)
       }.not_to change(Job, :count)
+    end
+
+    describe "preempted by external PR" do
+      before do
+        # Cassette returns issues #42 and #46. Pretend an external PR
+        # already targets #42, but #46 is unspoken-for.
+        allow_any_instance_of(GithubClient).to receive(:linked_open_pr_for_issue) do |_inst, _slug, issue_number|
+          issue_number == 42 ? { number: 99, url: "https://github.com/acme/widgets/pull/99" } : nil
+        end
+      end
+
+      it "creates a brand-new issue's Job in closed/preempted state with the external PR captured, no Run" do
+        expect {
+          described_class.perform_now(repository.id)
+        }.to change(Job, :count).by(2)  # one for #42 (preempted), one for #46 (normal)
+
+        preempted = Job.find_by(repository: repository, issue_number: 42)
+        expect(preempted.state).to eq("closed")
+        expect(preempted.closure_reason).to eq("preempted")
+        expect(preempted.external_pr_number).to eq(99)
+        expect(preempted.finished_at).to be_present
+        expect(preempted.runs).to be_empty   # no auto-Run
+
+        normal = Job.find_by(repository: repository, issue_number: 46)
+        expect(normal.state).to eq("open")
+        expect(normal.runs.size).to eq(1)
+      end
+
+      it "attaches the external PR to a stalled prior Job (failed, no Syrus PR shipped) and closes it as preempted" do
+        # Pre-seed: #42 has a Job whose initial run failed and we never opened a PR.
+        prior = Job.create!(user: user, repository: repository, issue_number: 42)
+        prior.runs.first.tap { |r| r.fail!; r.save! }
+
+        expect {
+          described_class.perform_now(repository.id)
+        }.to change { prior.reload.external_pr_number }.from(nil).to(99)
+
+        expect(prior).to be_closed
+        expect(prior.closure_reason).to eq("preempted")
+      end
+
+      it "attaches the external PR to a Job that already has a Syrus PR (informational) — does NOT close it" do
+        prior = Job.create!(user: user, repository: repository, issue_number: 42, pr_number: 7, branch_name: "syrus/issue-42-1")
+        # Job is open with a syrus PR; we just learned about a competing external PR.
+        expect {
+          described_class.perform_now(repository.id)
+        }.to change { prior.reload.external_pr_number }.from(nil).to(99)
+
+        expect(prior).to be_open                  # NOT closed
+        expect(prior.closure_reason).to be_nil
+      end
+
+      it "leaves a Job alone if it has an active Run (mid-flight), but still records the external PR" do
+        prior = Job.create!(user: user, repository: repository, issue_number: 42)
+        prior.runs.first.start!  # running
+
+        described_class.perform_now(repository.id)
+        prior.reload
+        expect(prior.external_pr_number).to eq(99)
+        expect(prior).to be_open
+      end
     end
   end
 end

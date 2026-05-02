@@ -43,10 +43,20 @@
     </div>
     <div>
       <div class="text-xs uppercase text-gray-500">Pull request</div>
-      <div>
+      <div class="space-y-1">
         <% if @job.pr_number %>
-          <%= link_to "##{@job.pr_number}", job_pr_url(@job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
-        <% else %>
+          <div>
+            <%= link_to "##{@job.pr_number}", job_pr_url(@job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
+            <span class="text-gray-500 text-xs">(Syrus)</span>
+          </div>
+        <% end %>
+        <% if @job.external_pr_number %>
+          <div>
+            <%= link_to "##{@job.external_pr_number}", external_pr_url(@job), target: "_blank", rel: "noopener", class: "text-violet-700 underline hover:no-underline" %>
+            <span class="text-gray-500 text-xs">(external)</span>
+          </div>
+        <% end %>
+        <% if @job.pr_number.nil? && @job.external_pr_number.nil? %>
           <span class="text-gray-400">—</span>
         <% end %>
       </div>

@@ -40,4 +40,51 @@ RSpec.describe GithubClient do
       expect(issue.body).to match(/greeting helper/)
     end
   end
+
+  describe "#linked_open_pr_for_issue" do
+    let(:client) { GithubClient.for(user) }
+
+    def stub_graphql(response_body)
+      stub_request(:post, "https://api.github.com/graphql")
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: response_body.to_json)
+    end
+
+    it "returns {number, url} for the first OPEN linked PR" do
+      stub_graphql(data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [
+        { number: 7, url: "https://github.com/acme/widgets/pull/7", state: "OPEN" }
+      ] } } } })
+
+      result = client.linked_open_pr_for_issue("acme/widgets", 42)
+      expect(result).to eq(number: 7, url: "https://github.com/acme/widgets/pull/7")
+    end
+
+    it "returns nil when there are no linked PRs" do
+      stub_graphql(data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [] } } } })
+      expect(client.linked_open_pr_for_issue("acme/widgets", 42)).to be_nil
+    end
+
+    it "returns nil when the issue path resolves to nil (e.g. issue deleted between calls)" do
+      stub_graphql(data: { repository: { issue: nil } })
+      expect(client.linked_open_pr_for_issue("acme/widgets", 42)).to be_nil
+    end
+
+    it "skips non-OPEN states defensively (in case the API returns one despite includeClosedPrs:false)" do
+      stub_graphql(data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [
+        { number: 5, url: "https://github.com/acme/widgets/pull/5", state: "CLOSED" }
+      ] } } } })
+
+      expect(client.linked_open_pr_for_issue("acme/widgets", 42)).to be_nil
+    end
+
+    it "sends the right GraphQL query (variables include owner/name/number)" do
+      stub = stub_request(:post, "https://api.github.com/graphql")
+        .with(body: hash_including("variables" => { "owner" => "acme", "name" => "widgets", "number" => 42 }))
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: { data: { repository: { issue: { closedByPullRequestsReferences: { nodes: [] } } } } }.to_json)
+
+      client.linked_open_pr_for_issue("acme/widgets", 42)
+      expect(stub).to have_been_requested
+    end
+  end
 end

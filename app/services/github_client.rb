@@ -75,4 +75,43 @@ class GithubClient
     Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug} PR ##{pr_number} reviews: #{e.message}")
     raise
   end
+
+  # Returns { number:, url: } of the first OPEN PR that claims to close
+  # this issue ("Closes #N" / "Fixes #N" / "Resolves #N" in the body, or
+  # the manual GitHub "Linked issues" UI), or nil if there isn't one.
+  # Used by PollRepositoryJob to detect the case where a human (or a
+  # prior Syrus run we lost track of) already opened a PR for the
+  # issue — so we don't pile a duplicate Syrus PR on top of it.
+  #
+  # GraphQL is the right tool here: `closedByPullRequestsReferences`
+  # is the authoritative reverse of "this PR closes #N", with no
+  # false positives from prose mentions. `includeClosedPrs: false`
+  # filters merged/closed PRs at the API layer.
+  def linked_open_pr_for_issue(repo_slug, issue_number)
+    owner, name = repo_slug.split("/", 2)
+    query = <<~GQL
+      query($owner: String!, $name: String!, $number: Int!) {
+        repository(owner: $owner, name: $name) {
+          issue(number: $number) {
+            closedByPullRequestsReferences(first: 5, includeClosedPrs: false) {
+              nodes { number url state }
+            }
+          }
+        }
+      }
+    GQL
+    body = { query: query, variables: { owner: owner, name: name, number: issue_number } }
+    result = @client.post("/graphql", body.to_json)
+    # Sawyer preserves the GraphQL camelCase keys verbatim — access via
+    # method-missing on that name. dig with the symbol is the safest
+    # null-tolerant traversal.
+    nodes = result.to_h.dig(:data, :repository, :issue, :closedByPullRequestsReferences, :nodes)
+    return nil unless nodes
+    pr = nodes.find { |n| (n[:state] || n["state"]).to_s == "OPEN" }
+    return nil unless pr
+    { number: pr[:number] || pr["number"], url: pr[:url] || pr["url"] }
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] rate-limited on #{repo_slug}##{issue_number} linked-PR lookup: #{e.message}")
+    raise
+  end
 end

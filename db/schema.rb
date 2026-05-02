@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_180844) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_183451) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "signups_open", default: false, null: false
@@ -44,6 +44,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_180844) do
     t.string "branch_name"
     t.string "closure_reason"
     t.datetime "created_at", null: false
+    t.integer "external_pr_number"
     t.datetime "finished_at"
     t.integer "issue_number", null: false
     t.datetime "last_seen_comment_at"
@@ -53,6 +54,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_180844) do
     t.string "state", default: "open", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
+    t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
     t.index ["repository_id", "issue_number", "state"], name: "index_jobs_on_repository_id_and_issue_number_and_state"
     t.index ["repository_id", "state"], name: "index_jobs_on_repository_id_and_state"
     t.index ["repository_id"], name: "index_jobs_on_repository_id"
