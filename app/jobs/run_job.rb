@@ -133,9 +133,16 @@ class RunJob < ApplicationJob
     end
   end
 
+  # Three-dot diff (`main...HEAD`) — the same view GitHub's "Files
+  # changed" tab shows. It's `git diff $(merge-base main HEAD) HEAD`,
+  # so it captures only what *this branch* contributed since it
+  # diverged from default. Two-dot (`main..HEAD`) would also include
+  # commits that landed on main after the branch was opened, rendered
+  # as spurious "deletions" — which made follow-up Run diffs look
+  # gigantic when main moved forward.
   def capture_diff_against_default
     base = @job.repository.default_branch
-    GitRunner.new.run("diff", "#{base}..HEAD", chdir: @workspace.path.to_s)
+    GitRunner.new.run("diff", "#{base}...HEAD", chdir: @workspace.path.to_s)
   end
 
   def head_sha
