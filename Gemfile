@@ -22,6 +22,9 @@ gem "jbuilder"
 # State machines for Job and friends [https://github.com/aasm/aasm]
 gem "aasm"
 
+# GitHub API client [https://github.com/octokit/octokit.rb]
+gem "octokit", "~> 10.0"
+
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 gem "bcrypt", "~> 3.1.7"
 
@@ -76,4 +79,8 @@ group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
   gem "capybara"
   gem "selenium-webdriver"
+
+  # Stub HTTP and replay GitHub responses [https://github.com/vcr/vcr, https://github.com/bblimke/webmock]
+  gem "vcr"
+  gem "webmock"
 end
