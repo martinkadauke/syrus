@@ -21,6 +21,17 @@ module Factories
       issue_number: 42
     }.merge(attrs))
   end
+
+  # Returns the auto-created initial Run on a fresh Job, or builds an
+  # extra Run on an existing Job (use `job:` and pass a different
+  # trigger_kind, e.g. trigger_kind: "pr_comment").
+  def run(**attrs)
+    if attrs[:job]
+      Run.create!({ trigger_kind: "initial" }.merge(attrs))
+    else
+      job(**attrs).initial_run
+    end
+  end
 end
 
 RSpec.configure do |config|

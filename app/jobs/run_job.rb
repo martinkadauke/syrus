@@ -1,8 +1,10 @@
 class RunJob < ApplicationJob
   queue_as :default
 
-  limits_concurrency to: 1, key: ->(job_id) {
-    "repo:#{::Job.where(id: job_id).pick(:repository_id)}"
+  # One Run at a time per repository — the agent serializes per branch
+  # by way of the per-repo lock since Job has at most one branch open.
+  limits_concurrency to: 1, key: ->(run_id) {
+    "repo:#{::Run.where(id: run_id).joins(:job).pick('jobs.repository_id')}"
   }
 
   discard_on ActiveRecord::RecordNotFound
@@ -15,16 +17,21 @@ class RunJob < ApplicationJob
     attr_accessor :agent_runner
   end
 
-  def perform(job_id)
-    @job = ::Job.find(job_id)
-    return if @job.terminal?
+  def perform(run_id)
+    @run = ::Run.find(run_id)
+    @job = @run.job
+    return if @run.terminal?
+    return if @job.closed?
 
-    @job.start!
-    log("starting job #{@job.id} for #{@job.repository.slug}##{@job.issue_number}")
+    @run.start!
+    @run.save!  # AASM after-callbacks set started_at; persist it.
+    @job.update!(started_at: Time.current) if @job.started_at.nil?
 
-    @workspace = JobWorkspace.new(@job, git: streaming_git)
+    log("starting #{@run.trigger_kind} run #{@run.id} for #{@job.repository.slug}##{@job.issue_number}")
+
+    @workspace = JobWorkspace.new(@run, git: streaming_git)
     @workspace.setup
-    @job.update!(branch_name: @workspace.branch_name)
+    @job.update!(branch_name: @workspace.branch_name) if @run.initial?
     abort_if_cancelled!
 
     run_agent_and_commit
@@ -33,16 +40,19 @@ class RunJob < ApplicationJob
     push_branch
     abort_if_cancelled!
 
-    pr_number = open_pull_request
-    @job.update!(pr_number: pr_number)
+    open_pull_request_if_initial
 
-    @job.succeed!
-    log("PR ##{pr_number} opened — job complete")
+    @run.succeed!
+    @run.save!
+    log("run complete — #{@run.initial? ? "PR ##{@job.pr_number} opened" : "follow-up commit pushed"}")
   rescue CancelledMidRun
     log("cancelled mid-run")
   rescue StandardError => e
     log("FAIL: #{e.class}: #{e.message}")
-    @job&.fail! if @job&.may_fail?
+    if @run&.may_fail?
+      @run.fail!
+      @run.save!
+    end
     raise
   ensure
     @workspace&.cleanup
@@ -51,7 +61,7 @@ class RunJob < ApplicationJob
   private
 
   def abort_if_cancelled!
-    raise CancelledMidRun if @job.reload.cancelled?
+    raise CancelledMidRun if @run.reload.cancelled? || @job.reload.closed?
   end
 
   def streaming_git(env: {})
@@ -60,9 +70,10 @@ class RunJob < ApplicationJob
 
   def run_agent_and_commit
     issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
-    prompt = "#{issue.title}\n\n#{issue.body}".strip
+    prompt = build_prompt(issue)
 
-    log("invoking agent for #{@job.repository.slug}##{@job.issue_number}")
+    @run.update!(prompt: prompt)
+    log("invoking agent for #{@job.repository.slug}##{@job.issue_number} (run #{@run.id}, trigger=#{@run.trigger_kind})")
     result = AgentInvocation.new(
       @workspace.path,
       prompt: prompt,
@@ -82,14 +93,20 @@ class RunJob < ApplicationJob
 
     raise AgentRunFailed, "agent produced no changes" if diff.blank?
 
-    @job.update!(agent_diff: diff)
+    @run.update!(agent_diff: diff, head_sha: head_sha)
+  end
+
+  # Initial runs get just the issue body. Follow-up triggers will compose
+  # comment + diff context here in M6.
+  def build_prompt(issue)
+    "#{issue.title}\n\n#{issue.body}".strip
   end
 
   def persist_agent_metadata(result)
     updates = {}
     updates[:agent_turns] = result.turns if result.turns
     updates[:agent_outcome] = result.outcome if result.outcome
-    @job.update!(updates) if updates.any?
+    @run.update!(updates) if updates.any?
   end
 
   def commit_agent_changes
@@ -102,14 +119,26 @@ class RunJob < ApplicationJob
     git.run(
       "-c", "user.name=Syrus",
       "-c", "user.email=syrus@noreply.invalid",
-      "commit", "-m", "Syrus agent for #{@job.repository.slug}##{@job.issue_number}",
+      "commit", "-m", commit_message,
       chdir: chdir
     )
+  end
+
+  def commit_message
+    if @run.initial?
+      "Syrus agent for #{@job.repository.slug}##{@job.issue_number}"
+    else
+      "Syrus #{@run.trigger_kind} for #{@job.repository.slug}##{@job.issue_number}"
+    end
   end
 
   def capture_diff_against_default
     base = @job.repository.default_branch
     GitRunner.new.run("diff", "#{base}..HEAD", chdir: @workspace.path.to_s)
+  end
+
+  def head_sha
+    GitRunner.new.run("rev-parse", "HEAD", chdir: @workspace.path.to_s).strip
   end
 
   def push_branch
@@ -118,16 +147,18 @@ class RunJob < ApplicationJob
     git.run("push", push_url, "HEAD:refs/heads/#{@workspace.branch_name}", chdir: @workspace.path.to_s)
   end
 
-  def open_pull_request
-    PullRequestOpener.new(@job.repository).open(
+  def open_pull_request_if_initial
+    return unless @run.initial?
+    pr_number = PullRequestOpener.new(@job.repository).open(
       branch: @workspace.branch_name,
       title: "[syrus] #{@job.repository.slug}##{@job.issue_number}",
-      body: "Opened by Syrus from issue ##{@job.issue_number}. Agent ran for #{@job.agent_turns || '?'} turn(s).\n\nReview the diff below — this PR was authored by an LLM and merits a careful read."
+      body: "Opened by Syrus from issue ##{@job.issue_number}. Initial agent run took #{@run.agent_turns || '?'} turn(s).\n\nReview the diff carefully — this PR was authored by an LLM."
     )
+    @job.update!(pr_number: pr_number)
   end
 
   def log(chunk)
-    next_seq = (@job.job_logs.maximum(:sequence) || -1) + 1
-    @job.job_logs.create!(chunk: chunk, sequence: next_seq)
+    next_seq = (@run.job_logs.maximum(:sequence) || -1) + 1
+    @run.job_logs.create!(chunk: chunk, sequence: next_seq)
   end
 end

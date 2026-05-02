@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_033823) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_045236) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "signups_open", default: false, null: false
@@ -33,25 +33,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_033823) do
   create_table "job_logs", force: :cascade do |t|
     t.text "chunk", null: false
     t.datetime "created_at", null: false
-    t.integer "job_id", null: false
+    t.integer "run_id", null: false
     t.integer "sequence", null: false
     t.datetime "updated_at", null: false
-    t.index ["job_id", "sequence"], name: "index_job_logs_on_job_id_and_sequence", unique: true
-    t.index ["job_id"], name: "index_job_logs_on_job_id"
+    t.index ["run_id", "sequence"], name: "index_job_logs_on_run_id_and_sequence", unique: true
+    t.index ["run_id"], name: "index_job_logs_on_run_id"
   end
 
   create_table "jobs", force: :cascade do |t|
-    t.text "agent_diff"
-    t.string "agent_outcome"
-    t.integer "agent_turns"
     t.string "branch_name"
+    t.string "closure_reason"
     t.datetime "created_at", null: false
     t.datetime "finished_at"
     t.integer "issue_number", null: false
     t.integer "pr_number"
     t.integer "repository_id", null: false
     t.datetime "started_at"
-    t.string "state", default: "queued", null: false
+    t.string "state", default: "open", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
     t.index ["repository_id", "issue_number", "state"], name: "index_jobs_on_repository_id_and_issue_number_and_state"
@@ -71,6 +69,23 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_033823) do
     t.integer "user_id", null: false
     t.index ["user_id", "owner", "name"], name: "index_repositories_on_user_id_and_owner_and_name", unique: true
     t.index ["user_id"], name: "index_repositories_on_user_id"
+  end
+
+  create_table "runs", force: :cascade do |t|
+    t.text "agent_diff"
+    t.string "agent_outcome"
+    t.integer "agent_turns"
+    t.datetime "created_at", null: false
+    t.datetime "finished_at"
+    t.string "head_sha"
+    t.integer "job_id", null: false
+    t.text "prompt"
+    t.datetime "started_at"
+    t.string "state", default: "queued", null: false
+    t.string "trigger_kind", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_id", "state"], name: "index_runs_on_job_id_and_state"
+    t.index ["job_id"], name: "index_runs_on_job_id"
   end
 
   create_table "sessions", force: :cascade do |t|
@@ -94,9 +109,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_033823) do
   end
 
   add_foreign_key "invitations", "users", column: "invited_by_id"
-  add_foreign_key "job_logs", "jobs"
+  add_foreign_key "job_logs", "runs"
   add_foreign_key "jobs", "repositories"
   add_foreign_key "jobs", "users"
   add_foreign_key "repositories", "users"
+  add_foreign_key "runs", "jobs"
   add_foreign_key "sessions", "users"
 end

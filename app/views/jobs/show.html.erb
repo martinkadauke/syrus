@@ -6,14 +6,14 @@
         <span class="text-gray-400">·</span>
         <%= link_to "##{@job.issue_number}", job_issue_url(@job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
       </h1>
-      <p class="mt-1 text-sm text-gray-500">Job #<%= @job.id %></p>
+      <p class="mt-1 text-sm text-gray-500">Job #<%= @job.id %> · <%= pluralize(@job.runs.size, "run") %></p>
     </div>
     <div class="flex items-center gap-3">
-      <%= job_state_pill(@job.state) %>
-      <% if @job.may_cancel? %>
-        <%= button_to "Cancel", cancel_job_path(@job), method: :post,
+      <%= state_pill(job_summary_state(@job)) %>
+      <% if @job.open? %>
+        <%= button_to "Cancel & close", cancel_job_path(@job), method: :post,
               class: "rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium cursor-pointer",
-              form: { class: "inline", data: { turbo_confirm: "Cancel this job?" } } %>
+              form: { class: "inline", data: { turbo_confirm: "Cancel any running work and close this thread?" } } %>
       <% end %>
       <%= button_to "Replay", replay_job_path(@job), method: :post,
             class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium cursor-pointer",
@@ -41,35 +41,65 @@
       <div class="text-gray-700"><%= @job.started_at&.to_fs(:long) || "—" %></div>
     </div>
     <div>
-      <div class="text-xs uppercase text-gray-500">Finished</div>
-      <div class="text-gray-700"><%= @job.finished_at&.to_fs(:long) || "—" %></div>
-    </div>
-    <div>
-      <div class="text-xs uppercase text-gray-500">Agent turns</div>
-      <div class="text-gray-700"><%= @job.agent_turns || "—" %></div>
-    </div>
-    <div>
-      <div class="text-xs uppercase text-gray-500">Agent outcome</div>
-      <div class="text-gray-700 font-mono text-xs"><%= @job.agent_outcome || "—" %></div>
+      <div class="text-xs uppercase text-gray-500">Closed</div>
+      <div class="text-gray-700">
+        <% if @job.closed? %>
+          <%= @job.finished_at&.to_fs(:long) %>
+          <span class="ml-1 text-gray-500 text-xs">(<%= @job.closure_reason || "unspecified" %>)</span>
+        <% else %>
+          <span class="text-gray-400">still open</span>
+        <% end %>
+      </div>
     </div>
   </div>
 
-  <section>
-    <h2 class="font-semibold text-lg mb-2">Transcript</h2>
-    <%= turbo_stream_from @job, "logs" %>
-    <div id="job_logs" class="bg-black text-gray-100 rounded-lg p-4 max-h-96 overflow-y-auto space-y-1">
-      <% if @job.job_logs.any? %>
-        <%= render @job.job_logs %>
-      <% else %>
-        <p class="font-mono text-xs text-gray-500">No transcript chunks yet — waiting for the worker.</p>
-      <% end %>
-    </div>
-  </section>
+  <%= turbo_stream_from @job, "logs" %>
 
-  <% if @job.agent_diff.present? %>
-    <section>
-      <h2 class="font-semibold text-lg mb-2">Diff</h2>
-      <pre class="bg-black text-gray-100 rounded-lg p-4 overflow-x-auto text-xs font-mono whitespace-pre"><%= @job.agent_diff %></pre>
+  <% @job.runs.each_with_index do |run, idx| %>
+    <section class="border border-gray-200 rounded-lg overflow-hidden">
+      <header class="bg-gray-50 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="font-medium text-gray-900">Run <%= idx + 1 %></span>
+          <%= trigger_pill(run.trigger_kind) %>
+          <%= state_pill(run.state) %>
+        </div>
+        <div class="text-xs text-gray-500">
+          <% if run.started_at %>
+            <%= run.started_at.to_fs(:short) %>
+            <% if run.finished_at %>
+              → <%= run.finished_at.to_fs(:short) %>
+            <% end %>
+          <% else %>
+            not yet started
+          <% end %>
+          <% if run.agent_turns %>
+            · turns=<%= run.agent_turns %>
+          <% end %>
+          <% if run.agent_outcome %>
+            · <span class="font-mono"><%= run.agent_outcome %></span>
+          <% end %>
+        </div>
+      </header>
+
+      <div class="p-4 space-y-4">
+        <div>
+          <h3 class="text-xs uppercase text-gray-500 mb-2">Transcript</h3>
+          <div id="run_<%= run.id %>_logs" class="bg-black text-gray-100 rounded p-3 max-h-72 overflow-y-auto space-y-1">
+            <% if run.job_logs.any? %>
+              <%= render run.job_logs %>
+            <% else %>
+              <p class="font-mono text-xs text-gray-500">No transcript chunks yet.</p>
+            <% end %>
+          </div>
+        </div>
+
+        <% if run.agent_diff.present? %>
+          <div>
+            <h3 class="text-xs uppercase text-gray-500 mb-2">Diff</h3>
+            <pre class="bg-black text-gray-100 rounded p-3 overflow-x-auto text-xs font-mono whitespace-pre"><%= run.agent_diff %></pre>
+          </div>
+        <% end %>
+      </div>
     </section>
   <% end %>
 

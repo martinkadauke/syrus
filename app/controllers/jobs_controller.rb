@@ -9,21 +9,26 @@ class JobsController < ApplicationController
       repository: @job.repository,
       issue_number: @job.issue_number
     )
-    redirect_to job_path(new_job), notice: "Replay enqueued."
+    redirect_to job_path(new_job), notice: "Replay enqueued — new branch and PR will be created."
   end
 
   def cancel
-    if @job.may_cancel?
-      @job.cancel!
-      redirect_to job_path(@job), notice: "Cancellation requested."
-    else
-      redirect_to job_path(@job), alert: "Job is already #{@job.state} — can't cancel."
+    if @job.closed?
+      redirect_to job_path(@job), alert: "Job is already closed."
+      return
     end
+
+    @job.runs.active.find_each do |run|
+      run.cancel! if run.may_cancel?
+      run.save!
+    end
+    @job.close_with_reason!("cancelled")
+    redirect_to job_path(@job), notice: "Cancellation requested."
   end
 
   private
 
   def load_job
-    @job = Current.user.jobs.includes(:repository, :job_logs).find(params[:id])
+    @job = Current.user.jobs.includes(:repository, runs: :job_logs).find(params[:id])
   end
 end

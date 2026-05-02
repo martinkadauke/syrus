@@ -3,27 +3,34 @@ require "fileutils"
 class JobWorkspace
   attr_reader :path, :branch_name
 
-  def initialize(job, git: nil)
-    @job = job
-    @repository = job.repository
+  def initialize(run, git: nil)
+    @run = run
+    @job = run.job
+    @repository = @job.repository
     @git = git || GitRunner.new
-    @path = Rails.root.join("tmp/worktrees/#{@job.id}")
-    @branch_name = "syrus/issue-#{@job.issue_number}-#{@job.id}"
+    @path = Rails.root.join("tmp/worktrees/#{@run.id}")
+    @branch_name = @run.initial? ? initial_branch_name : @job.branch_name
   end
 
-  # Ensures the bare clone exists (cloned on first use, fetched on later runs)
-  # and adds a fresh worktree on a new branch off origin/{default_branch}.
+  # Per-Run worktree: bare clone at tmp/clones/{repo_id}.git, worktree at
+  # tmp/worktrees/{run_id}. Initial runs create a new syrus branch off
+  # the repo's default branch. Follow-up runs (pr_comment / ci_failure /
+  # replay) check out the existing branch the initial run pushed.
   def setup
+    raise ArgumentError, "follow-up run with no branch_name on Job" if @branch_name.blank?
     ensure_bare_clone
-    fetch_default_branch
-    add_worktree
+    fetch_origin
+    if @run.initial?
+      add_worktree_on_new_branch
+    else
+      add_worktree_on_existing_branch
+    end
   end
 
   def cleanup
     return unless path.exist?
     @git.run("worktree", "remove", "--force", path.to_s, chdir: bare_clone_path.to_s)
   rescue GitRunner::GitError
-    # Best-effort: fall back to plain rm if git refuses
     FileUtils.rm_rf(path)
     @git.run("worktree", "prune", chdir: bare_clone_path.to_s) if bare_clone_path.exist?
   end
@@ -34,22 +41,35 @@ class JobWorkspace
 
   private
 
+  def initial_branch_name
+    "syrus/issue-#{@job.issue_number}-#{@job.id}"
+  end
+
   def ensure_bare_clone
     return if bare_clone_path.exist?
     FileUtils.mkdir_p(bare_clone_path.dirname)
     @git.run("clone", "--bare", @repository.remote_url, bare_clone_path.to_s)
   end
 
-  def fetch_default_branch
-    @git.run("fetch", "origin", @repository.default_branch, chdir: bare_clone_path.to_s)
+  # `git fetch origin` (no refspec) on a bare clone pulls every remote
+  # head into local refs/heads/*. That covers both default-branch updates
+  # and any syrus branches a prior run pushed.
+  def fetch_origin
+    @git.run("fetch", "origin", chdir: bare_clone_path.to_s)
   end
 
-  def add_worktree
+  def add_worktree_on_new_branch
     FileUtils.mkdir_p(path.dirname)
-    # Bare clones store fetched branches as refs/heads/* directly — there's no
-    # refs/remotes/origin/main, so start the new branch from the local ref.
     @git.run(
-      "worktree", "add", path.to_s, "-b", branch_name, @repository.default_branch,
+      "worktree", "add", path.to_s, "-b", @branch_name, @repository.default_branch,
+      chdir: bare_clone_path.to_s
+    )
+  end
+
+  def add_worktree_on_existing_branch
+    FileUtils.mkdir_p(path.dirname)
+    @git.run(
+      "worktree", "add", path.to_s, @branch_name,
       chdir: bare_clone_path.to_s
     )
   end

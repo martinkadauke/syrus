@@ -3,44 +3,51 @@ class Job < ApplicationRecord
 
   belongs_to :user
   belongs_to :repository
-  has_many :job_logs, -> { order(:sequence) }, dependent: :destroy
+  has_many :runs, -> { order(:created_at) }, dependent: :destroy
+  has_many :job_logs, through: :runs
 
   validates :issue_number, presence: true, numericality: { only_integer: true, greater_than: 0 }
 
-  scope :active, -> { where(state: %w[queued running]) }
-  scope :terminal, -> { where(state: %w[succeeded failed cancelled]) }
+  scope :open_threads, -> { where(state: "open") }
+  scope :closed_threads, -> { where(state: "closed") }
 
-  def terminal?
-    succeeded? || failed? || cancelled?
+  aasm column: :state, whiny_transitions: false do
+    state :open, initial: true
+    state :closed
+
+    event :close do
+      transitions from: :open, to: :closed, after: -> { self.finished_at = Time.current }
+    end
   end
 
-  after_create_commit :enqueue_run
+  after_create_commit :create_initial_run
+
+  def close_with_reason!(reason)
+    update!(closure_reason: reason)
+    close!
+  end
+
+  # The most recently created Run on this thread, regardless of state.
+  def current_run
+    runs.last
+  end
+
+  # The very first Run — the one that created the branch and PR.
+  def initial_run
+    runs.find_by(trigger_kind: "initial")
+  end
+
+  def latest_succeeded_run
+    runs.where(state: "succeeded").last
+  end
+
+  def any_active_run?
+    runs.active.exists?
+  end
 
   private
 
-  def enqueue_run
-    return if terminal?
-    RunJob.perform_later(id)
-  end
-
-  aasm column: :state, whiny_transitions: false do
-    state :queued, initial: true
-    state :running, :succeeded, :failed, :cancelled
-
-    event :start do
-      transitions from: :queued, to: :running, after: -> { self.started_at = Time.current }
-    end
-
-    event :succeed do
-      transitions from: :running, to: :succeeded, after: -> { self.finished_at = Time.current }
-    end
-
-    event :fail do
-      transitions from: [ :queued, :running ], to: :failed, after: -> { self.finished_at = Time.current }
-    end
-
-    event :cancel do
-      transitions from: [ :queued, :running ], to: :cancelled, after: -> { self.finished_at = Time.current }
-    end
+  def create_initial_run
+    runs.create!(trigger_kind: "initial")
   end
 end

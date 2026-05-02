@@ -8,7 +8,7 @@ RSpec.describe PollRepositoryJob do
 
   describe "#perform", vcr: { cassette_name: "poll_repository_job/lists_issues" } do
     it "creates a Job for each issue that passes IngestPolicy and isn't dedup'd" do
-      # Pre-seed: issue 46 already has a queued Job, must be dedup'd.
+      # Pre-seed: issue 46 already has a Job, must be dedup'd.
       Job.create!(user: user, repository: repository, issue_number: 46)
 
       expect {
@@ -17,15 +17,21 @@ RSpec.describe PollRepositoryJob do
 
       created = Job.where(repository: repository).order(:created_at).last
       expect(created.issue_number).to eq(42)
-      expect(created.state).to eq("queued")
+      expect(created.state).to eq("open")
+      expect(created.runs.first.state).to eq("queued")
     end
 
-    it "dedups against terminal Jobs too — prevents the duplicate-PR loop" do
-      # Pre-seed: issue 46 has a SUCCEEDED Job (PR already opened). The
-      # old code only dedup'd against active state, so this poll would
-      # have created a fresh Job → a fresh PR. With the fix, it doesn't.
-      Job.create!(user: user, repository: repository, issue_number: 46, state: "succeeded")
-      Job.create!(user: user, repository: repository, issue_number: 42, state: "failed")
+    it "dedups against any prior Job (open or closed) — prevents the duplicate-PR loop" do
+      # Pre-seed: issue 46 has a Job whose initial run already succeeded
+      # (PR is open and the thread is alive); issue 42 has a Job that
+      # was closed. Either way the poller must not re-ingest. The old
+      # code dedup'd only on active Job state and opened a fresh PR
+      # every poll cycle.
+      job_46 = Job.create!(user: user, repository: repository, issue_number: 46)
+      job_46.runs.first.tap { |r| r.start!; r.succeed!; r.save! }
+
+      job_42 = Job.create!(user: user, repository: repository, issue_number: 42)
+      job_42.close_with_reason!("manual")
 
       expect {
         described_class.perform_now(repository.id)

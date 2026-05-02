@@ -1,115 +1,75 @@
 require "rails_helper"
 
 RSpec.describe Job do
-  describe "initial state" do
-    it "is queued on create" do
-      expect(Factories.job).to be_queued
-    end
-  end
-
-  describe "legal transitions" do
-    it "queued → running via start, sets started_at" do
+  describe "thread state machine" do
+    it "starts open" do
       job = Factories.job
-      freeze_time do
-        expect { job.start! }.to change(job, :state).from("queued").to("running")
-        expect(job.started_at).to eq(Time.current)
-      end
+      expect(job).to be_open
     end
 
-    it "running → succeeded via succeed, sets finished_at" do
+    it "transitions open → closed via close!" do
       job = Factories.job
-      job.start!
+      expect { job.close! }.to change(job, :state).from("open").to("closed")
+    end
+
+    it "captures finished_at on close" do
+      job = Factories.job
       freeze_time do
-        expect { job.succeed! }.to change(job, :state).from("running").to("succeeded")
+        job.close!
         expect(job.finished_at).to eq(Time.current)
       end
     end
 
-    it "queued → cancelled via cancel" do
+    it "stores closure_reason via close_with_reason!" do
       job = Factories.job
-      expect { job.cancel! }.to change(job, :state).from("queued").to("cancelled")
-      expect(job.finished_at).to be_present
+      job.close_with_reason!("manual")
+      expect(job).to be_closed
+      expect(job.closure_reason).to eq("manual")
     end
 
-    it "running → cancelled via cancel" do
+    it "cannot re-open a closed job" do
       job = Factories.job
-      job.start!
-      expect { job.cancel! }.to change(job, :state).from("running").to("cancelled")
-    end
-
-    it "running → failed via fail" do
-      job = Factories.job
-      job.start!
-      expect { job.fail! }.to change(job, :state).from("running").to("failed")
-    end
-
-    it "queued → failed via fail (pre-flight failure)" do
-      job = Factories.job
-      expect { job.fail! }.to change(job, :state).from("queued").to("failed")
+      job.close!
+      expect(job.may_close?).to be false
     end
   end
 
-  describe "illegal transitions" do
-    it "cannot start from a terminal state" do
+  describe "auto-create initial Run on commit" do
+    it "creates exactly one Run with trigger_kind=initial" do
       job = Factories.job
-      job.cancel!
-      expect(job.may_start?).to be false
-    end
-
-    it "cannot succeed without starting first" do
-      job = Factories.job
-      expect(job.may_succeed?).to be false
-    end
-
-    it "cannot cancel a terminal job" do
-      job = Factories.job
-      job.start!
-      job.succeed!
-      expect(job.may_cancel?).to be false
+      expect(job.runs.size).to eq(1)
+      expect(job.runs.first.trigger_kind).to eq("initial")
     end
   end
 
-  describe "scopes" do
-    it "active includes queued and running" do
-      a = Factories.job
-      b = Factories.job
-      b.start!
-      done = Factories.job
-      done.cancel!
-      expect(Job.active).to contain_exactly(a, b)
-    end
-  end
+  describe "Run helpers" do
+    let(:job) { Factories.job }
 
-  describe "#terminal?" do
-    it "is false for queued and running" do
-      job = Factories.job
-      expect(job).not_to be_terminal
-      job.start!
-      expect(job).not_to be_terminal
+    it "current_run is the most recent Run" do
+      first = job.initial_run
+      later = Run.create!(job: job, trigger_kind: "pr_comment")
+      expect(job.current_run).to eq(later)
+      expect(job.initial_run).to eq(first)
     end
 
-    it "is true for succeeded, failed, and cancelled" do
-      [ ->(j) { j.start!; j.succeed! }, ->(j) { j.fail! }, ->(j) { j.cancel! } ].each do |drive|
-        job = Factories.job
-        drive.call(job)
-        expect(job).to be_terminal
-      end
-    end
-  end
-
-  describe "auto-enqueue RunJob on commit" do
-    it "enqueues a RunJob carrying the new Job's id" do
-      repo = Factories.repository
-      expect {
-        Job.create!(user: repo.user, repository: repo, issue_number: 99)
-      }.to have_enqueued_job(RunJob).with { |id| expect(id).to be_a(Integer) }
+    it "latest_succeeded_run is the most recent succeeded Run" do
+      r1 = job.initial_run
+      r1.start!; r1.succeed!; r1.save!
+      r2 = Run.create!(job: job, trigger_kind: "pr_comment")
+      expect(job.latest_succeeded_run).to eq(r1)
+      r2.start!; r2.succeed!; r2.save!
+      expect(job.latest_succeeded_run).to eq(r2)
     end
 
-    it "does not enqueue if the Job is created in a terminal state" do
-      repo = Factories.repository
-      expect {
-        Job.create!(user: repo.user, repository: repo, issue_number: 100, state: "cancelled")
-      }.not_to have_enqueued_job(RunJob)
+    it "any_active_run? reflects queued/running runs" do
+      job
+      expect(job.any_active_run?).to be true   # initial run starts queued
+      job.initial_run.start!
+      job.initial_run.save!
+      expect(job.any_active_run?).to be true
+      job.initial_run.cancel!
+      job.initial_run.save!
+      expect(job.any_active_run?).to be false
     end
   end
 end

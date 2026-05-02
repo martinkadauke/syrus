@@ -17,6 +17,7 @@ RSpec.describe RunJob do
     )
   end
   let(:job) { Factories.job(repository: repository, issue_number: 42) }
+  let(:run) { job.initial_run }
 
   before do
     seed_remote_with_initial_commit(bare_remote_dir)
@@ -48,105 +49,133 @@ RSpec.describe RunJob do
     FileUtils.rm_rf(Rails.root.join("tmp/worktrees"))
   end
 
-  describe "happy path" do
-    it "runs the agent, commits its work, pushes the branch, opens the PR, succeeds" do
-      described_class.perform_now(job.id)
+  describe "happy path (initial run)" do
+    it "runs the agent, commits, pushes, opens PR, succeeds — Run holds the metadata, Job holds the thread" do
+      described_class.perform_now(run.id)
 
+      run.reload
       job.reload
-      expect(job.state).to eq("succeeded")
+
+      expect(run.state).to eq("succeeded")
+      expect(run.agent_turns).to eq(4)
+      expect(run.agent_outcome).to eq("success")
+      expect(run.agent_diff).to include("feature.rb").and include("def greet")
+      expect(run.head_sha).to be_present
+      expect(run.prompt).to include("Add greeting helper")
+
+      expect(job.state).to eq("open")     # thread stays open even after a successful run
       expect(job.branch_name).to eq("syrus/issue-42-#{job.id}")
       expect(job.pr_number).to eq(123)
-      expect(job.agent_turns).to eq(4)
-      expect(job.agent_outcome).to eq("success")
-      expect(job.agent_diff).to include("feature.rb")
-      expect(job.agent_diff).to include("def greet")
       expect(@pr_stub).to have_been_requested
 
       branches = `git --git-dir=#{bare_remote_dir} branch --list 'syrus/*'`.split("\n").map(&:strip)
-      expect(branches).to include("syrus/issue-42-#{job.id}")
+      expect(branches).to include(job.branch_name)
 
-      files = `git --git-dir=#{bare_remote_dir} ls-tree --name-only syrus/issue-42-#{job.id}`.split("\n")
+      files = `git --git-dir=#{bare_remote_dir} ls-tree --name-only #{job.branch_name}`.split("\n")
       expect(files).to include("feature.rb")
 
-      tip = `git --git-dir=#{bare_remote_dir} log -1 --format='%s' syrus/issue-42-#{job.id}`.strip
+      tip = `git --git-dir=#{bare_remote_dir} log -1 --format='%s' #{job.branch_name}`.strip
       expect(tip).to match(/Syrus agent for acme\/widgets#42/)
     end
 
     it "tears down the worktree" do
-      described_class.perform_now(job.id)
-      expect(Rails.root.join("tmp/worktrees/#{job.id}")).not_to exist
+      described_class.perform_now(run.id)
+      expect(Rails.root.join("tmp/worktrees/#{run.id}")).not_to exist
+    end
+  end
+
+  describe "follow-up run" do
+    it "pushes a new commit to the existing branch and does NOT open a second PR" do
+      # Run the initial run end-to-end first.
+      described_class.perform_now(run.id)
+      job.reload
+      expect(job.pr_number).to eq(123)
+      WebMock.reset_executed_requests!
+
+      # Now create a follow-up run.
+      followup = Run.create!(job: job, trigger_kind: "pr_comment")
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi there'\n")
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
+      }
+      described_class.perform_now(followup.id)
+
+      followup.reload
+      job.reload
+      expect(followup.state).to eq("succeeded")
+      expect(followup.trigger_kind).to eq("pr_comment")
+      expect(job.pr_number).to eq(123)  # unchanged — no new PR
+      expect(@pr_stub).not_to have_been_requested  # no new POST /pulls
+
+      # The branch should now have two syrus commits.
+      log = `git --git-dir=#{bare_remote_dir} log --format='%s' #{job.branch_name}`.split("\n")
+      expect(log.grep(/Syrus/).count).to eq(2)
     end
   end
 
   describe "pre-pickup cancellation" do
-    it "returns early when the Job was cancelled before pickup" do
-      job.cancel!
-      expect { described_class.perform_now(job.id) }.not_to raise_error
-      expect(job.reload.state).to eq("cancelled")
+    it "returns early when the Run was cancelled before pickup" do
+      run.cancel!
+      run.save!
+      expect { described_class.perform_now(run.id) }.not_to raise_error
+      expect(run.reload.state).to eq("cancelled")
+      expect(@pr_stub).not_to have_been_requested
+    end
+
+    it "returns early when the Job was closed before pickup" do
+      job.close_with_reason!("manual")
+      expect { described_class.perform_now(run.id) }.not_to raise_error
       expect(@pr_stub).not_to have_been_requested
     end
   end
 
   describe "agent produced no changes" do
-    it "marks the Job failed and skips push/PR" do
+    it "marks the Run failed; Job stays open (replay possible)" do
       RunJob.agent_runner = ->(**_) {
         AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
       }
 
-      expect { described_class.perform_now(job.id) }.to raise_error(RunJob::AgentRunFailed, /no changes/)
+      expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentRunFailed, /no changes/)
 
+      run.reload
       job.reload
-      expect(job.state).to eq("failed")
-      expect(job.agent_turns).to eq(1)
-      expect(job.agent_diff).to be_nil
+      expect(run.state).to eq("failed")
+      expect(run.agent_turns).to eq(1)
+      expect(run.agent_diff).to be_nil
+      expect(job.state).to eq("open")
       expect(@pr_stub).not_to have_been_requested
     end
   end
 
-  describe "agent timed out" do
-    it "marks the Job failed and skips push/PR" do
-      RunJob.agent_runner = ->(**_) {
-        AgentInvocation::Result.new(turns: 30, exit_status: nil, timed_out: true, is_error: false, outcome: nil)
-      }
-
-      expect { described_class.perform_now(job.id) }.to raise_error(RunJob::AgentRunFailed, /timed out/)
-
-      job.reload
-      expect(job.state).to eq("failed")
-      expect(job.agent_turns).to eq(30)
-      expect(@pr_stub).not_to have_been_requested
-    end
-  end
-
-  describe "agent reported semantic error (e.g. error_max_turns)" do
-    it "persists the outcome, marks the Job failed, and skips push/PR" do
+  describe "agent reported semantic error" do
+    it "persists outcome on Run, marks Run failed, Job stays open" do
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "partial.rb"), "# half-done")
         AgentInvocation::Result.new(turns: 50, exit_status: 0, timed_out: false,
                                     is_error: true, outcome: "error_max_turns")
       }
 
-      expect { described_class.perform_now(job.id) }.to raise_error(RunJob::AgentRunFailed, /error_max_turns/)
+      expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentRunFailed, /error_max_turns/)
 
-      job.reload
-      expect(job.state).to eq("failed")
-      expect(job.agent_turns).to eq(50)
-      expect(job.agent_outcome).to eq("error_max_turns")
+      run.reload
+      expect(run.state).to eq("failed")
+      expect(run.agent_turns).to eq(50)
+      expect(run.agent_outcome).to eq("error_max_turns")
       expect(@pr_stub).not_to have_been_requested
     end
   end
 
   describe "PR-opening failure" do
-    it "marks the Job failed and cleans up" do
+    it "marks the Run failed and cleans up the worktree" do
       stub_request(:post, "https://api.github.com/repos/acme/widgets/pulls")
         .to_return(status: 422, body: { message: "Validation Failed" }.to_json,
                    headers: { "Content-Type" => "application/json" })
 
-      expect { described_class.perform_now(job.id) }.to raise_error(Octokit::UnprocessableEntity)
+      expect { described_class.perform_now(run.id) }.to raise_error(Octokit::UnprocessableEntity)
 
-      job.reload
-      expect(job.state).to eq("failed")
-      expect(Rails.root.join("tmp/worktrees/#{job.id}")).not_to exist
+      run.reload
+      expect(run.state).to eq("failed")
+      expect(Rails.root.join("tmp/worktrees/#{run.id}")).not_to exist
     end
   end
 

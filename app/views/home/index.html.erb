@@ -9,23 +9,21 @@
             <th class="px-4 py-2 text-left">State</th>
             <th class="px-4 py-2 text-left">Repository</th>
             <th class="px-4 py-2 text-left">Issue</th>
-            <th class="px-4 py-2 text-left">Turns</th>
+            <th class="px-4 py-2 text-left">Runs</th>
             <th class="px-4 py-2 text-left">Started</th>
-            <th class="px-4 py-2 text-left">Finished</th>
             <th class="px-4 py-2"></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100 text-sm">
           <% @jobs.each do |job| %>
             <tr>
-              <td class="px-4 py-3"><%= job_state_pill(job.state) %></td>
+              <td class="px-4 py-3"><%= state_pill(job_summary_state(job)) %></td>
               <td class="px-4 py-3 font-mono"><%= job.repository.slug %></td>
               <td class="px-4 py-3">
                 <%= link_to "##{job.issue_number}", job_issue_url(job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
               </td>
-              <td class="px-4 py-3 text-gray-600"><%= job.agent_turns || "—" %></td>
+              <td class="px-4 py-3 text-gray-600"><%= job.runs.size %></td>
               <td class="px-4 py-3 text-gray-500"><%= job.started_at&.to_fs(:short) || "—" %></td>
-              <td class="px-4 py-3 text-gray-500"><%= job.finished_at&.to_fs(:short) || "—" %></td>
               <td class="px-4 py-3 text-right">
                 <%= link_to "View", job_path(job), class: "text-blue-600 underline hover:no-underline" %>
               </td>
