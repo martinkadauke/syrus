@@ -11,20 +11,44 @@
 
     <%= yield :head %>
 
-    <%# Enable PWA manifest for installable apps (make sure to enable in config/routes.rb too!) %>
-    <%#= tag.link rel: "manifest", href: pwa_manifest_path(format: :json) %>
-
     <link rel="icon" href="/icon.png" type="image/png">
     <link rel="icon" href="/icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="/icon.png">
 
-    <%# Includes all stylesheet files in app/assets/stylesheets %>
     <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
     <%= javascript_importmap_tags %>
   </head>
 
-  <body>
-    <main class="container mx-auto mt-28 px-5 flex">
+  <body class="bg-gray-50 text-gray-900">
+    <header class="bg-white border-b border-gray-200">
+      <nav class="container mx-auto px-5 py-4 flex items-center justify-between">
+        <%= link_to "Syrus", root_path, class: "font-bold text-xl text-gray-900 hover:text-blue-600" %>
+
+        <div class="flex items-center gap-4 text-sm">
+          <% if Current.user %>
+            <span class="text-gray-600">
+              <%= Current.user.email_address %>
+              <% if Current.user.admin? %>
+                <span class="ml-1 px-1.5 py-0.5 rounded text-xs bg-blue-100 text-blue-700">admin</span>
+              <% end %>
+            </span>
+            <%= button_to "Sign out", session_path, method: :delete, class: "text-gray-700 underline hover:no-underline cursor-pointer", form: { class: "inline" } %>
+          <% else %>
+            <%= link_to "Sign in", new_session_path, class: "text-gray-700 underline hover:no-underline" %>
+          <% end %>
+        </div>
+      </nav>
+    </header>
+
+    <main class="container mx-auto mt-10 px-5">
+      <% if alert = flash[:alert] %>
+        <p class="py-2 px-3 bg-red-50 mb-5 text-red-500 font-medium rounded-lg inline-block" id="alert"><%= alert %></p>
+      <% end %>
+
+      <% if notice = flash[:notice] %>
+        <p class="py-2 px-3 bg-green-50 mb-5 text-green-500 font-medium rounded-lg inline-block" id="notice"><%= notice %></p>
+      <% end %>
+
       <%= yield %>
     </main>
   </body>
