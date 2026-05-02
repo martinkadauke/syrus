@@ -6,9 +6,11 @@ class AgentInvocation
   DEFAULT_MAX_TURNS = 50
 
   # Outcome of one claude invocation. `turns` is parsed from the final
-  # stream-json result event (or nil if claude never reached one).
-  Result = Data.define(:turns, :exit_status, :timed_out) do
-    def success? = !timed_out && exit_status == 0
+  # stream-json result event; `outcome` is the result event's subtype
+  # ("success" / "error_max_turns" / "error_during_execution") and
+  # `is_error` mirrors its is_error boolean.
+  Result = Data.define(:turns, :exit_status, :timed_out, :is_error, :outcome) do
+    def success? = !timed_out && exit_status == 0 && !is_error
   end
 
   def initialize(workspace_path, prompt:, oauth_token:,
@@ -39,19 +41,24 @@ class AgentInvocation
   private
 
   # Spawns `claude --print --output-format stream-json --verbose
-  # --max-turns N "<prompt>"` in the worktree with CLAUDE_CODE_OAUTH_TOKEN
-  # set (Claude Pro/Max OAuth flow). Streams readable assistant text into
-  # log_sink as it arrives, captures num_turns from the final result event,
-  # kills the process after timeout.
+  # --dangerously-skip-permissions --max-turns N "<prompt>"` in the
+  # worktree with CLAUDE_CODE_OAUTH_TOKEN set. Streams readable assistant
+  # text into log_sink, captures num_turns + is_error + subtype from the
+  # final result event, kills the process after timeout.
+  #
+  # --dangerously-skip-permissions is intentional: the agent runs in an
+  # isolated per-job worktree, never against the operator's checkout. Same
+  # trust posture as letting a human dev pair on a branch.
   def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:)
     env = { "CLAUDE_CODE_OAUTH_TOKEN" => oauth_token }
     cmd = [ "claude", "--print",
             "--output-format", "stream-json",
             "--verbose",
+            "--dangerously-skip-permissions",
             "--max-turns", max_turns.to_s,
             prompt ]
 
-    turns = nil
+    metadata = { turns: nil, is_error: false, outcome: nil }
     timed_out = false
 
     Open3.popen2e(env, *cmd, chdir: workspace_path) do |stdin, output, wait_thread|
@@ -64,16 +71,23 @@ class AgentInvocation
       end
 
       output.each_line do |line|
-        turns = process_event(line, log_sink) || turns
+        update = process_event(line, log_sink)
+        metadata.merge!(update.compact) if update
       end
 
       killer.kill
       status = wait_thread.value
-      Result.new(turns: turns, exit_status: status.exitstatus, timed_out: timed_out)
+      Result.new(
+        turns: metadata[:turns],
+        exit_status: status.exitstatus,
+        timed_out: timed_out,
+        is_error: metadata[:is_error],
+        outcome: metadata[:outcome]
+      )
     end
   end
 
-  # Returns num_turns if the line was a result event, nil otherwise.
+  # Returns a hash of metadata updates if the line was a result event.
   # Streams readable text into log_sink for assistant events; falls back
   # to passing non-JSON lines through verbatim.
   def process_event(line, log_sink)
@@ -84,8 +98,12 @@ class AgentInvocation
       log_sink.call(text) if text
       nil
     when "result"
-      log_sink.call("[result] turns=#{event['num_turns']}, duration_ms=#{event['duration_ms']}")
-      event["num_turns"]
+      log_sink.call("[result] subtype=#{event['subtype']}, is_error=#{event['is_error']}, turns=#{event['num_turns']}, duration_ms=#{event['duration_ms']}")
+      {
+        turns: event["num_turns"],
+        is_error: event["is_error"],
+        outcome: event["subtype"]
+      }
     else
       nil
     end

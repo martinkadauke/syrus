@@ -1,12 +1,17 @@
 require "rails_helper"
 
 RSpec.describe AgentInvocation do
+  def result_fixture(**overrides)
+    defaults = { turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success" }
+    AgentInvocation::Result.new(**defaults.merge(overrides))
+  end
+
   describe "#run" do
     it "delegates to the injected runner with all the kwargs" do
       received = {}
       runner = ->(**kwargs) {
         received.merge!(kwargs)
-        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false)
+        result_fixture(turns: 2)
       }
 
       result = described_class.new("/tmp/wkt", prompt: "do the thing", oauth_token: "oat-x",
@@ -23,18 +28,23 @@ RSpec.describe AgentInvocation do
   end
 
   describe AgentInvocation::Result do
-    it "is success when not timed out and exit_status is 0" do
-      r = described_class.new(turns: 1, exit_status: 0, timed_out: false)
+    it "is success when not timed out, exit_status 0, and not is_error" do
+      r = described_class.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
       expect(r).to be_success
     end
 
     it "is not success when timed_out" do
-      r = described_class.new(turns: 30, exit_status: nil, timed_out: true)
+      r = described_class.new(turns: 30, exit_status: nil, timed_out: true, is_error: false, outcome: nil)
       expect(r).not_to be_success
     end
 
     it "is not success when exit_status non-zero" do
-      r = described_class.new(turns: 1, exit_status: 1, timed_out: false)
+      r = described_class.new(turns: 1, exit_status: 1, timed_out: false, is_error: false, outcome: nil)
+      expect(r).not_to be_success
+    end
+
+    it "is not success when is_error is true (e.g. error_max_turns)" do
+      r = described_class.new(turns: 50, exit_status: 0, timed_out: false, is_error: true, outcome: "error_max_turns")
       expect(r).not_to be_success
     end
   end
@@ -50,11 +60,17 @@ RSpec.describe AgentInvocation do
       expect(result).to be_nil
     end
 
-    it "captures num_turns from the result event" do
-      event = { type: "result", num_turns: 5, duration_ms: 12345 }.to_json
-      result = invocation.send(:process_event, event, ->(l) { lines << l })
-      expect(result).to eq(5)
-      expect(lines.last).to match(/turns=5/)
+    it "captures num_turns + is_error + outcome from the result event" do
+      event = { type: "result", num_turns: 5, duration_ms: 12345, is_error: false, subtype: "success" }.to_json
+      update = invocation.send(:process_event, event, ->(l) { lines << l })
+      expect(update).to eq(turns: 5, is_error: false, outcome: "success")
+      expect(lines.last).to match(/subtype=success/).and match(/turns=5/)
+    end
+
+    it "captures error subtype on max-turns" do
+      event = { type: "result", num_turns: 50, is_error: true, subtype: "error_max_turns" }.to_json
+      update = invocation.send(:process_event, event, ->(l) { lines << l })
+      expect(update).to include(is_error: true, outcome: "error_max_turns")
     end
 
     it "passes non-JSON lines through verbatim" do

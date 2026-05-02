@@ -37,7 +37,7 @@ RSpec.describe RunJob do
 
     RunJob.agent_runner = ->(workspace_path:, **_) {
       File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
-      AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false)
+      AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
     }
   end
 
@@ -57,6 +57,7 @@ RSpec.describe RunJob do
       expect(job.branch_name).to eq("syrus/issue-42-#{job.id}")
       expect(job.pr_number).to eq(123)
       expect(job.agent_turns).to eq(4)
+      expect(job.agent_outcome).to eq("success")
       expect(job.agent_diff).to include("feature.rb")
       expect(job.agent_diff).to include("def greet")
       expect(@pr_stub).to have_been_requested
@@ -89,7 +90,7 @@ RSpec.describe RunJob do
   describe "agent produced no changes" do
     it "marks the Job failed and skips push/PR" do
       RunJob.agent_runner = ->(**_) {
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
       }
 
       expect { described_class.perform_now(job.id) }.to raise_error(RunJob::AgentRunFailed, /no changes/)
@@ -105,7 +106,7 @@ RSpec.describe RunJob do
   describe "agent timed out" do
     it "marks the Job failed and skips push/PR" do
       RunJob.agent_runner = ->(**_) {
-        AgentInvocation::Result.new(turns: 30, exit_status: nil, timed_out: true)
+        AgentInvocation::Result.new(turns: 30, exit_status: nil, timed_out: true, is_error: false, outcome: nil)
       }
 
       expect { described_class.perform_now(job.id) }.to raise_error(RunJob::AgentRunFailed, /timed out/)
@@ -113,6 +114,24 @@ RSpec.describe RunJob do
       job.reload
       expect(job.state).to eq("failed")
       expect(job.agent_turns).to eq(30)
+      expect(@pr_stub).not_to have_been_requested
+    end
+  end
+
+  describe "agent reported semantic error (e.g. error_max_turns)" do
+    it "persists the outcome, marks the Job failed, and skips push/PR" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        File.write(File.join(workspace_path, "partial.rb"), "# half-done")
+        AgentInvocation::Result.new(turns: 50, exit_status: 0, timed_out: false,
+                                    is_error: true, outcome: "error_max_turns")
+      }
+
+      expect { described_class.perform_now(job.id) }.to raise_error(RunJob::AgentRunFailed, /error_max_turns/)
+
+      job.reload
+      expect(job.state).to eq("failed")
+      expect(job.agent_turns).to eq(50)
+      expect(job.agent_outcome).to eq("error_max_turns")
       expect(@pr_stub).not_to have_been_requested
     end
   end

@@ -71,9 +71,10 @@ class RunJob < ApplicationJob
       runner: self.class.agent_runner
     ).run
 
-    @job.update!(agent_turns: result.turns) if result.turns
+    persist_agent_metadata(result)
 
     raise AgentRunFailed, "agent timed out" if result.timed_out
+    raise AgentRunFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
     raise AgentRunFailed, "agent exited #{result.exit_status}" unless result.success?
 
     commit_agent_changes
@@ -82,6 +83,13 @@ class RunJob < ApplicationJob
     raise AgentRunFailed, "agent produced no changes" if diff.blank?
 
     @job.update!(agent_diff: diff)
+  end
+
+  def persist_agent_metadata(result)
+    updates = {}
+    updates[:agent_turns] = result.turns if result.turns
+    updates[:agent_outcome] = result.outcome if result.outcome
+    @job.update!(updates) if updates.any?
   end
 
   def commit_agent_changes

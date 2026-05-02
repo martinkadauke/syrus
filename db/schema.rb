@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_025611) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_033823) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "signups_open", default: false, null: false
@@ -42,6 +42,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_025611) do
 
   create_table "jobs", force: :cascade do |t|
     t.text "agent_diff"
+    t.string "agent_outcome"
     t.integer "agent_turns"
     t.string "branch_name"
     t.datetime "created_at", null: false
