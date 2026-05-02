@@ -30,4 +30,14 @@ RSpec.describe GithubClient do
       expect(pr.html_url).to eq("https://github.com/acme/widgets/pull/7")
     end
   end
+
+  describe "#fetch_issue", :vcr do
+    it "returns the issue title + body for prompt construction",
+       vcr: { cassette_name: "github_client/fetch_issue" } do
+      issue = GithubClient.for(user).fetch_issue("acme/widgets", 42)
+      expect(issue.number).to eq(42)
+      expect(issue.title).to eq("Add greeting helper")
+      expect(issue.body).to match(/greeting helper/)
+    end
+  end
 end

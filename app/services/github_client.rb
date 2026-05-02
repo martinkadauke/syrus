@@ -30,4 +30,11 @@ class GithubClient
     Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug}: #{e.message}")
     raise
   end
+
+  def fetch_issue(repo_slug, number)
+    @client.issue(repo_slug, number)
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug}##{number}: #{e.message}")
+    raise
+  end
 end

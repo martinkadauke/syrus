@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_01_235456) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_015009) do
   create_table "invitations", force: :cascade do |t|
     t.datetime "accepted_at"
     t.datetime "created_at", null: false
@@ -35,6 +35,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_01_235456) do
   end
 
   create_table "jobs", force: :cascade do |t|
+    t.text "agent_diff"
+    t.integer "agent_turns"
     t.string "branch_name"
     t.datetime "created_at", null: false
     t.datetime "finished_at"

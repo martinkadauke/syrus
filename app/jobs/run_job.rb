@@ -8,6 +8,12 @@ class RunJob < ApplicationJob
   discard_on ActiveRecord::RecordNotFound
 
   class CancelledMidRun < StandardError; end
+  class AgentRunFailed < StandardError; end
+
+  # Test seam — let specs swap in a fake runner without exec'ing claude.
+  class << self
+    attr_accessor :agent_runner
+  end
 
   def perform(job_id)
     @job = ::Job.find(job_id)
@@ -21,7 +27,7 @@ class RunJob < ApplicationJob
     @job.update!(branch_name: @workspace.branch_name)
     abort_if_cancelled!
 
-    placeholder_commit
+    run_agent_and_commit
     abort_if_cancelled!
 
     push_branch
@@ -52,18 +58,50 @@ class RunJob < ApplicationJob
     GitRunner.new(log_sink: ->(line) { log(line.chomp) }, env: env)
   end
 
-  def placeholder_commit
-    marker = @workspace.path.join(".syrus-marker")
-    File.write(marker, "job_id: #{@job.id}\nissue: #{@job.repository.slug}##{@job.issue_number}\n")
-    git = streaming_git
+  def run_agent_and_commit
+    issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
+    prompt = "#{issue.title}\n\n#{issue.body}".strip
+
+    log("invoking agent for #{@job.repository.slug}##{@job.issue_number}")
+    result = AgentInvocation.new(
+      @workspace.path,
+      prompt: prompt,
+      api_key: @job.user.claude_api_key,
+      log_sink: ->(chunk) { log(chunk) },
+      runner: self.class.agent_runner
+    ).run
+
+    @job.update!(agent_turns: result.turns) if result.turns
+
+    raise AgentRunFailed, "agent timed out" if result.timed_out
+    raise AgentRunFailed, "agent exited #{result.exit_status}" unless result.success?
+
+    commit_agent_changes
+    diff = capture_diff_against_default
+
+    raise AgentRunFailed, "agent produced no changes" if diff.blank?
+
+    @job.update!(agent_diff: diff)
+  end
+
+  def commit_agent_changes
     chdir = @workspace.path.to_s
-    git.run("add", ".syrus-marker", chdir: chdir)
+    git = streaming_git
+    status = git.run("status", "--porcelain", chdir: chdir)
+    return if status.strip.empty?
+
+    git.run("add", "-A", chdir: chdir)
     git.run(
       "-c", "user.name=Syrus",
       "-c", "user.email=syrus@noreply.invalid",
-      "commit", "-m", "Syrus placeholder for #{@job.repository.slug}##{@job.issue_number}",
+      "commit", "-m", "Syrus agent for #{@job.repository.slug}##{@job.issue_number}",
       chdir: chdir
     )
+  end
+
+  def capture_diff_against_default
+    base = @job.repository.default_branch
+    GitRunner.new.run("diff", "#{base}..HEAD", chdir: @workspace.path.to_s)
   end
 
   def push_branch
@@ -75,8 +113,8 @@ class RunJob < ApplicationJob
   def open_pull_request
     PullRequestOpener.new(@job.repository).open(
       branch: @workspace.branch_name,
-      title: "[syrus] placeholder for ##{@job.issue_number}",
-      body: "Opened by Syrus's deterministic harness as a placeholder for issue ##{@job.issue_number}. No agent involvement yet — M3 proves the plumbing; the real work lands in M4."
+      title: "[syrus] #{@job.repository.slug}##{@job.issue_number}",
+      body: "Opened by Syrus from issue ##{@job.issue_number}. Agent ran for #{@job.agent_turns || '?'} turn(s).\n\nReview the diff below — this PR was authored by an LLM and merits a careful read."
     )
   end
 

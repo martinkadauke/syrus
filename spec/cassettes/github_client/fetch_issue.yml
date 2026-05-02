@@ -1,0 +1,25 @@
+---
+http_interactions:
+- request:
+    method: get
+    uri: https://api.github.com/repos/acme/widgets/issues/42
+    headers:
+      Accept:
+      - application/vnd.github.v3+json
+      Authorization:
+      - token <GITHUB_TOKEN>
+      User-Agent:
+      - Syrus/0.1 (+https://github.com/tkadauke/syrus)
+  response:
+    status:
+      code: 200
+      message: OK
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+    body:
+      encoding: UTF-8
+      string: '{"number":42,"state":"open","title":"Add greeting helper","body":"We need a greeting helper that returns hello.","labels":[{"name":"syrus"}],"html_url":"https://github.com/acme/widgets/issues/42"}'
+    http_version: '1.1'
+  recorded_at: Fri, 01 May 2026 00:00:00 GMT
+recorded_with: VCR 6.4.0
