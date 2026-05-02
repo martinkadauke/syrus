@@ -23,4 +23,11 @@ class GithubClient
     Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug}: #{e.message}")
     raise
   end
+
+  def create_pull_request(repo_slug, base:, head:, title:, body:)
+    @client.create_pull_request(repo_slug, base, head, title, body)
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug}: #{e.message}")
+    raise
+  end
 end

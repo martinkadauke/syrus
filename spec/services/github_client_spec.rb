@@ -15,4 +15,19 @@ RSpec.describe GithubClient do
       expect(numbers).to include(42, 43, 44, 45, 46)
     end
   end
+
+  describe "#create_pull_request", :vcr do
+    it "opens a PR through Octokit and returns the new resource",
+       vcr: { cassette_name: "github_client/create_pull_request" } do
+      pr = GithubClient.for(user).create_pull_request(
+        "acme/widgets",
+        base: "main",
+        head: "syrus/issue-42-1",
+        title: "hello",
+        body: "there"
+      )
+      expect(pr.number).to eq(7)
+      expect(pr.html_url).to eq("https://github.com/acme/widgets/pull/7")
+    end
+  end
 end

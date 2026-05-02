@@ -1,0 +1,30 @@
+---
+http_interactions:
+- request:
+    method: post
+    uri: https://api.github.com/repos/acme/widgets/pulls
+    headers:
+      Accept:
+      - application/vnd.github.v3+json
+      Authorization:
+      - token <GITHUB_TOKEN>
+      Content-Type:
+      - application/json
+      User-Agent:
+      - Syrus/0.1 (+https://github.com/tkadauke/syrus)
+    body:
+      encoding: UTF-8
+      string: '{"base":"main","head":"syrus/issue-42-1","title":"hello","body":"there"}'
+  response:
+    status:
+      code: 201
+      message: Created
+    headers:
+      Content-Type:
+      - application/json; charset=utf-8
+    body:
+      encoding: UTF-8
+      string: '{"number":7,"state":"open","html_url":"https://github.com/acme/widgets/pull/7","title":"hello","body":"there","head":{"ref":"syrus/issue-42-1"},"base":{"ref":"main"}}'
+    http_version: '1.1'
+  recorded_at: Fri, 01 May 2026 00:00:00 GMT
+recorded_with: VCR 6.4.0

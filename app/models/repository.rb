@@ -13,4 +13,15 @@ class Repository < ApplicationRecord
   def slug
     "#{owner}/#{name}"
   end
+
+  # Anonymous URL — safe to bake into a saved clone's remote.
+  def remote_url
+    "https://github.com/#{owner}/#{name}.git"
+  end
+
+  # Token-bearing URL used for push only. Constructed per-call so the token
+  # never lives on disk inside .git/config.
+  def authenticated_push_url(token)
+    "https://x-access-token:#{token}@github.com/#{owner}/#{name}.git"
+  end
 end

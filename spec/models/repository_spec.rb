@@ -35,4 +35,23 @@ RSpec.describe Repository do
     repo = Repository.new(owner: "acme", name: "widgets")
     expect(repo.slug).to eq("acme/widgets")
   end
+
+  describe "remote URLs" do
+    let(:repo) { Repository.new(owner: "acme", name: "widgets") }
+
+    it "exposes an anonymous remote_url safe to bake into a saved clone" do
+      expect(repo.remote_url).to eq("https://github.com/acme/widgets.git")
+    end
+
+    it "builds a token-bearing push URL per call (so the token never lands on disk)" do
+      expect(repo.authenticated_push_url("ghp_secret")).to eq(
+        "https://x-access-token:ghp_secret@github.com/acme/widgets.git"
+      )
+    end
+
+    it "keeps the token out of remote_url" do
+      expect(repo.remote_url).not_to include("ghp_")
+      expect(repo.remote_url).not_to include("x-access-token")
+    end
+  end
 end

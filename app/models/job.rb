@@ -10,6 +10,19 @@ class Job < ApplicationRecord
   scope :active, -> { where(state: %w[queued running]) }
   scope :terminal, -> { where(state: %w[succeeded failed cancelled]) }
 
+  def terminal?
+    succeeded? || failed? || cancelled?
+  end
+
+  after_create_commit :enqueue_run
+
+  private
+
+  def enqueue_run
+    return if terminal?
+    RunJob.perform_later(id)
+  end
+
   aasm column: :state, whiny_transitions: false do
     state :queued, initial: true
     state :running, :succeeded, :failed, :cancelled
