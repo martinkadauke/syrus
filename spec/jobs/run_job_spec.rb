@@ -274,6 +274,67 @@ RSpec.describe RunJob do
     end
   end
 
+  describe "rebase Run" do
+    # Run an initial Run so we have a real branch on origin to rebase.
+    before do
+      described_class.perform_now(run.id)
+      job.reload
+      WebMock.reset_executed_requests!
+    end
+
+    it "force-pushes a rebased HEAD when the agent moves it" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        # Simulate a rebase by creating a new commit (changes HEAD sha)
+        # without changing the working tree's diff against base.
+        sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} commit --allow-empty -q -m 'rebased'")
+        AgentInvocation::Result.new(turns: 3, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      }
+
+      rebase = Run.create!(job: job, trigger_kind: "rebase")
+      expect { described_class.perform_now(rebase.id) }.not_to raise_error
+
+      expect(rebase.reload.state).to eq("succeeded")
+      # The branch on origin should have advanced: log shows >= 2
+      # commits (original + rebase commit).
+      log = `git --git-dir=#{bare_remote_dir} log --format='%s' #{job.branch_name}`.lines.size
+      expect(log).to be >= 2
+    end
+
+    it "fails the Run when the agent doesn't move HEAD (rebase aborted or no-op)" do
+      RunJob.agent_runner = ->(**_) {
+        # Agent succeeded at the call but didn't actually rebase.
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      }
+
+      rebase = Run.create!(job: job, trigger_kind: "rebase")
+      expect { described_class.perform_now(rebase.id) }.to raise_error(RunJob::AgentRunFailed, /did not move HEAD/)
+      expect(rebase.reload.state).to eq("failed")
+    end
+
+    it "doesn't open a second PR" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} commit --allow-empty -q -m 'rebased'")
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      }
+      rebase = Run.create!(job: job, trigger_kind: "rebase")
+      described_class.perform_now(rebase.id)
+
+      expect(@pr_stub).not_to have_been_requested
+      expect(job.reload.pr_number).to eq(123)  # unchanged
+    end
+
+    it "runs even when the Job is closed (rebase is independent of Job lifecycle)" do
+      job.close_with_reason!("manual")
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} commit --allow-empty -q -m 'rebased'")
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      }
+      rebase = Run.create!(job: job, trigger_kind: "rebase")
+      described_class.perform_now(rebase.id)
+      expect(rebase.reload.state).to eq("succeeded")
+    end
+  end
+
   describe "pre-pickup cancellation" do
     it "returns early when the Run was cancelled before pickup" do
       run.cancel!

@@ -21,13 +21,21 @@ class RunJob < ApplicationJob
     @run = ::Run.find(run_id)
     @job = @run.job
     return if @run.terminal?
-    return if @job.closed?
+    # Rebase Runs are independent of Job lifecycle — they exist to keep
+    # an existing PR's branch mergeable, including for preempted (closed)
+    # Jobs where the PR is external. Skip the closed-Job guard for them.
+    return if @job.closed? && !@run.rebase?
 
     @run.start!
     @run.save!  # AASM after-callbacks set started_at; persist it.
     @job.update!(started_at: Time.current) if @job.started_at.nil?
 
     log("starting #{@run.trigger_kind} run #{@run.id} for #{@job.repository.slug}##{@job.issue_number}")
+
+    # External rebase: the PR head branch isn't recorded on the Job.
+    # Resolve it from the PR before workspace setup so JobWorkspace can
+    # check it out via the existing-branch path.
+    resolve_branch_for_rebase if @run.rebase? && @job.branch_name.blank?
 
     @workspace = JobWorkspace.new(@run, git: streaming_git)
     @workspace.setup
@@ -37,17 +45,21 @@ class RunJob < ApplicationJob
     @job.update!(branch_name: @workspace.branch_name) if @job.branch_name != @workspace.branch_name
     abort_if_cancelled!
 
-    run_agent_and_commit
-    abort_if_cancelled!
+    if @run.rebase?
+      rebase_and_force_push
+    else
+      run_agent_and_commit
+      abort_if_cancelled!
 
-    push_branch
-    abort_if_cancelled!
+      push_branch
+      abort_if_cancelled!
 
-    open_pull_request_if_missing
+      open_pull_request_if_missing
+    end
 
     @run.succeed!
     @run.save!
-    log("run complete — #{@run.initial? ? "PR ##{@job.pr_number} opened" : "follow-up commit pushed"}")
+    log(complete_message)
   rescue CancelledMidRun
     log("cancelled mid-run")
   rescue StandardError => e
@@ -64,7 +76,10 @@ class RunJob < ApplicationJob
   private
 
   def abort_if_cancelled!
-    raise CancelledMidRun if @run.reload.cancelled? || @job.reload.closed?
+    raise CancelledMidRun if @run.reload.cancelled?
+    # Rebase Runs ignore Job-closure: they're independent of the Job
+    # lifecycle (a preempted Job's external PR can still need rebases).
+    raise CancelledMidRun if @job.reload.closed? && !@run.rebase?
   end
 
   def streaming_git(env: {})
@@ -120,6 +135,96 @@ class RunJob < ApplicationJob
       }.to_json)
       f.flush
       yield f.path
+    end
+  end
+
+  # Rebase Runs: skip commit_agent_changes (the rebase rewrites
+  # history, not the working tree). Detect HEAD-sha movement to
+  # confirm the agent actually rebased; force-push-with-lease so we
+  # don't clobber an in-flight push from elsewhere. No PR opening —
+  # the PR already exists.
+  def rebase_and_force_push
+    prompt = @run.prompt.presence || compose_rebase_prompt
+    @run.update!(prompt: prompt) if @run.prompt.blank?
+
+    pre_sha = head_sha
+    log("rebase pre-sha: #{pre_sha}")
+
+    result = with_mcp_config do |mcp_config_path|
+      AgentInvocation.new(
+        @workspace.path,
+        prompt: prompt,
+        oauth_token: @job.user.claude_oauth_token,
+        log_sink: ->(chunk) { log(chunk) },
+        runner: self.class.agent_runner,
+        mcp_config: mcp_config_path
+      ).run
+    end
+
+    persist_agent_metadata(result)
+
+    raise AgentRunFailed, "agent timed out" if result.timed_out
+    raise AgentRunFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
+    raise AgentRunFailed, "agent exited #{result.exit_status}" unless result.success?
+
+    post_sha = head_sha
+    if pre_sha == post_sha
+      raise AgentRunFailed, "rebase did not move HEAD (agent aborted or did nothing)"
+    end
+
+    log("rebase post-sha: #{post_sha}")
+    diff = capture_diff_against_default
+    @run.update!(agent_diff: diff, head_sha: post_sha)
+
+    push_branch_force
+  end
+
+  def push_branch_force
+    git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
+    push_url = @job.repository.authenticated_push_url(@job.user.github_token)
+    # Plain --force, not --force-with-lease: the worktree clones from
+    # the bare cache and doesn't carry a local-tracking ref for the
+    # remote branch, so --force-with-lease has no recorded "expected"
+    # value and rejects the push. We own the branch (`syrus/...` for
+    # internal Runs, the PR's head for external Runs we're rebasing
+    # on the operator's behalf) and Syrus is the only writer, so a
+    # bare --force is safe.
+    git.run("push", "--force", push_url,
+            "HEAD:refs/heads/#{@workspace.branch_name}",
+            chdir: @workspace.path.to_s)
+  end
+
+  def compose_rebase_prompt
+    Prompts::Rebase.new(
+      repo_slug: @job.repository.slug,
+      branch_name: @job.branch_name || rebase_pr_head_ref,
+      base_branch: @job.repository.default_branch,
+      pr_number: rebase_pr_number
+    ).to_s
+  end
+
+  def rebase_pr_number
+    @job.pr_number || @job.external_pr_number
+  end
+
+  def rebase_pr_head_ref
+    @rebase_pr_head_ref ||= GithubClient.for(@job.user).pull_request(@job.repository.slug, rebase_pr_number).head.ref
+  end
+
+  # Look up the external PR's head branch and stash it on the Job so
+  # JobWorkspace's normal "existing-branch checkout" path takes over.
+  def resolve_branch_for_rebase
+    return unless rebase_pr_number
+    @job.update!(branch_name: rebase_pr_head_ref)
+  end
+
+  def complete_message
+    if @run.rebase?
+      "rebase complete — branch force-pushed"
+    elsif @run.initial?
+      "run complete — PR ##{@job.pr_number} opened"
+    else
+      "run complete — follow-up commit pushed"
     end
   end
 

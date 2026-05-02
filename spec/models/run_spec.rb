@@ -70,6 +70,17 @@ RSpec.describe Run do
       followup = Run.create!(job: job, trigger_kind: "pr_comment")
       expect(followup).not_to be_initial
     end
+
+    it "accepts 'rebase' as a valid trigger" do
+      r = Run.new(job: job, trigger_kind: "rebase")
+      expect(r).to be_valid
+    end
+
+    it "exposes #rebase?" do
+      r = Run.create!(job: job, trigger_kind: "rebase")
+      expect(r).to be_rebase
+      expect(job.initial_run).not_to be_rebase
+    end
   end
 
   describe "scopes" do

@@ -1,7 +1,7 @@
 class Run < ApplicationRecord
   include AASM
 
-  TRIGGER_KINDS = %w[ initial pr_comment ci_failure replay manual ].freeze
+  TRIGGER_KINDS = %w[ initial pr_comment ci_failure replay manual rebase ].freeze
 
   belongs_to :job
   has_many :job_logs, -> { order(:sequence) }, dependent: :destroy
@@ -44,6 +44,15 @@ class Run < ApplicationRecord
 
   def initial?
     trigger_kind == "initial"
+  end
+
+  # Rebase Runs are maintenance attempts on an existing PR's branch —
+  # they DON'T progress the Job's state. RunJob takes a different code
+  # path for them: skip the closed-Job guard, skip commit_agent_changes
+  # (the rebase rewrites history rather than modifying the working
+  # tree), force-push-with-lease, and skip the PR-opening step.
+  def rebase?
+    trigger_kind == "rebase"
   end
 
   def terminal?

@@ -31,6 +31,21 @@ Run (one per attempt):  queued → running → succeeded | failed | cancelled
 `Run` carries the per-attempt state — prompt, agent metadata, diff,
 PR copy submitted by the agent.
 
+### Run trigger kinds
+
+`Run.trigger_kind` distinguishes what an attempt is *for*:
+
+- `initial` — first attempt on a Job (issue → branch → PR)
+- `pr_comment` — review feedback follow-up; reuses the same branch
+- `ci_failure`, `replay`, `manual` — operator-initiated retries
+- `rebase` — maintenance Run that rebases the PR's branch onto base
+  when the PR has gone unmergeable. Skips the closed-Job guard (a
+  preempted Job's external PR can still need rebases), skips
+  `commit_agent_changes` (rebase rewrites history, not the working
+  tree), uses `git push --force` instead of fast-forward, and skips
+  the PR-opening step. Triggered by `PollAllRebasesJob` when a PR is
+  `mergeable: false` and we control the head branch.
+
 ### Per-Run pipeline (`app/jobs/run_job.rb`)
 
 1. **`JobWorkspace`** lazy-clones the repo into a shared bare cache at
@@ -205,7 +220,7 @@ app/services/syrus_mcp/sidecar.rb            # MCP::Server boot + SIGTERM trap
 app/services/syrus_mcp/submit_summary_tool.rb # the one MCP tool
 app/services/prompts/                        # all agent prompts (PORO)
 app/services/pr_summarizer.rb                # second-shot fallback
-app/jobs/poll_*.rb                           # 4 polling jobs (cron-style)
+app/jobs/poll_*.rb                           # 6 polling jobs (cron-style; see config/recurring.yml)
 app/models/{job,run,repository,user}.rb      # core models + AASM
 bin/syrus-mcp-sidecar                        # Ruby binstub, claude spawns this
 bin/jobs                                     # Solid Queue worker entry

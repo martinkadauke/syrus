@@ -1,0 +1,99 @@
+require "rails_helper"
+require "ostruct"
+
+RSpec.describe PollRebaseJob do
+  let(:user) { Factories.user(github_token: "ghp_test") }
+  let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets", default_branch: "main") }
+  let(:job) { Factories.job(user: user, repository: repository, issue_number: 42, pr_number: 7, branch_name: "syrus/issue-42-1") }
+
+  # Build a Sawyer-ish PR resource using OpenStruct so the job can call
+  # pr.merged, pr.state, pr.mergeable, pr.head.repo.full_name, etc.
+  def pr_resource(merged: false, state: "open", mergeable: false,
+                  head_repo: "acme/widgets", base_repo: "acme/widgets")
+    head = OpenStruct.new(repo: OpenStruct.new(full_name: head_repo), ref: "syrus/issue-42-1")
+    base = OpenStruct.new(repo: OpenStruct.new(full_name: base_repo), ref: "main")
+    OpenStruct.new(merged: merged, state: state, mergeable: mergeable, head: head, base: base)
+  end
+
+  def stub_pr(pr)
+    allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr)
+  end
+
+  describe "happy path" do
+    it "creates a rebase Run when the PR is unmergeable and we own the head" do
+      stub_pr(pr_resource(mergeable: false))
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+    end
+  end
+
+  describe "skips" do
+    # Force the job (and its auto-created initial Run) into existence
+    # BEFORE each assertion's `expect { ... }.to change(Run, :count)`
+    # block — otherwise lazy let-creation makes the initial Run look
+    # like it was created by perform_now.
+    before { job }
+
+    it "skips when the PR has already merged" do
+      stub_pr(pr_resource(merged: true, state: "closed"))
+      expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
+    end
+
+    it "skips when the PR was closed without merging" do
+      stub_pr(pr_resource(state: "closed"))
+      expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
+    end
+
+    it "skips when GitHub hasn't computed mergeability yet (mergeable: nil)" do
+      stub_pr(pr_resource(mergeable: nil))
+      expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
+    end
+
+    it "skips when the PR is mergeable" do
+      stub_pr(pr_resource(mergeable: true))
+      expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
+    end
+
+    it "skips when the head is in a fork (different repo from base)" do
+      stub_pr(pr_resource(mergeable: false, head_repo: "fork/widgets", base_repo: "acme/widgets"))
+      expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
+    end
+
+    it "skips when a rebase Run is already active on this Job" do
+      stub_pr(pr_resource(mergeable: false))
+      job.runs.create!(trigger_kind: "rebase")  # active by default (queued)
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.runs.where(trigger_kind: "rebase").count }
+    end
+
+    it "skips when the rebase attempt cap is hit" do
+      stub_pr(pr_resource(mergeable: false))
+      described_class::REBASE_ATTEMPT_CAP.times do
+        run = job.runs.create!(trigger_kind: "rebase")
+        run.fail!; run.save!
+      end
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.runs.where(trigger_kind: "rebase").count }
+    end
+
+    it "uses external_pr_number when pr_number is nil" do
+      job.update!(pr_number: nil, external_pr_number: 99)
+      pr = pr_resource(mergeable: false)
+      expect_any_instance_of(GithubClient).to receive(:pull_request).with("acme/widgets", 99).and_return(pr)
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+    end
+
+    it "skips silently when neither pr_number nor external_pr_number is set" do
+      job.update!(pr_number: nil, external_pr_number: nil)
+      expect_any_instance_of(GithubClient).not_to receive(:pull_request)
+      expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
+    end
+  end
+end
