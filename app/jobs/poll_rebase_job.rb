@@ -22,6 +22,11 @@ class PollRebaseJob < ApplicationJob
     @client = GithubClient.for(@job.user)
     pr = @client.pull_request(@job.repository.slug, pr_number)
 
+    # Cache what GitHub told us so the show page doesn't have to call
+    # back here on every render. Persist BEFORE any early returns so
+    # closed/merged/draft PRs also show their last-known status.
+    persist_mergeable(pr.mergeable)
+
     return if pr.merged
     return if pr.state == "closed"
 
@@ -37,6 +42,16 @@ class PollRebaseJob < ApplicationJob
 
     Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} is unmergeable; enqueueing rebase Run")
     @job.runs.create!(trigger_kind: "rebase")
+  end
+
+  def persist_mergeable(value)
+    # update! (not update_columns) so the after_update_commit
+    # broadcasts_refreshes hook fires and morphs the Job show page if
+    # the operator is watching it.
+    @job.update!(
+      pr_mergeable: value,
+      pr_mergeable_checked_at: Time.current
+    )
   end
 
   private

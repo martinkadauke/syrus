@@ -29,6 +29,39 @@ RSpec.describe PollRebaseJob do
     end
   end
 
+  describe "persisting last-known mergeability for the show page" do
+    before { job }   # force initial Run creation before assertions
+
+    it "stamps pr_mergeable + checked_at on every check (true)" do
+      stub_pr(pr_resource(mergeable: true))
+      freeze_time do
+        described_class.perform_now(job.id)
+        expect(job.reload.pr_mergeable).to be true
+        expect(job.pr_mergeable_checked_at).to eq(Time.current)
+      end
+    end
+
+    it "stamps pr_mergeable + checked_at on every check (false)" do
+      stub_pr(pr_resource(mergeable: false))
+      described_class.perform_now(job.id)
+      expect(job.reload.pr_mergeable).to be false
+      expect(job.pr_mergeable_checked_at).to be_present
+    end
+
+    it "stamps pr_mergeable=nil when GitHub is still computing" do
+      stub_pr(pr_resource(mergeable: nil))
+      described_class.perform_now(job.id)
+      expect(job.reload.pr_mergeable).to be_nil
+      expect(job.pr_mergeable_checked_at).to be_present
+    end
+
+    it "still stamps when the PR is merged or closed (so the badge surfaces the terminal state)" do
+      stub_pr(pr_resource(merged: true, state: "closed", mergeable: true))
+      described_class.perform_now(job.id)
+      expect(job.reload.pr_mergeable_checked_at).to be_present
+    end
+  end
+
   describe "skips" do
     # Force the job (and its auto-created initial Run) into existence
     # BEFORE each assertion's `expect { ... }.to change(Run, :count)`

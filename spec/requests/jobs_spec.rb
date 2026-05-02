@@ -223,4 +223,94 @@ RSpec.describe "Jobs", type: :request do
       expect(response.body).to include("Reopen")
     end
   end
+
+  describe "POST /jobs/:id/rebase" do
+    before { sign_in_as(user) }
+
+    it "enqueues a rebase Run when the Job has a PR and no rebase is in flight" do
+      job.update!(pr_number: 7, branch_name: "syrus/issue-42-1")
+
+      expect {
+        post rebase_job_path(job)
+      }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:notice]).to match(/Rebase enqueued/)
+    end
+
+    it "works on a closed (preempted) Job using external_pr_number" do
+      job.update!(state: "closed", closure_reason: "preempted",
+                  external_pr_number: 99, finished_at: Time.current)
+
+      expect {
+        post rebase_job_path(job)
+      }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+    end
+
+    it "refuses when the Job has no PR at all" do
+      job  # force creation + initial Run before the assertion
+      expect {
+        post rebase_job_path(job)
+      }.not_to change(Run, :count)
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:alert]).to match(/No PR/)
+    end
+
+    it "refuses when a rebase Run is already in flight" do
+      job.update!(pr_number: 7, branch_name: "syrus/issue-42-1")
+      job.runs.create!(trigger_kind: "rebase")  # active by default
+
+      expect {
+        post rebase_job_path(job)
+      }.not_to change { job.runs.where(trigger_kind: "rebase").count }
+      expect(flash[:alert]).to match(/already in progress/)
+    end
+
+    it "404s for another user's job" do
+      foreign_repo = Factories.repository(user: other)
+      foreign_job = Factories.job(repository: foreign_repo, issue_number: 1)
+      foreign_job.update!(pr_number: 7)
+      post rebase_job_path(foreign_job)
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "show page mergeability badge + Rebase button" do
+    before { sign_in_as(user) }
+
+    it "shows 'mergeable' when pr_mergeable is true" do
+      job.update!(pr_number: 7, pr_mergeable: true, pr_mergeable_checked_at: 2.minutes.ago)
+      get job_path(job)
+      expect(response.body).to include("mergeable")
+      expect(response.body).not_to include("Rebase now")
+    end
+
+    it "shows 'needs rebase' + Rebase button when pr_mergeable is false" do
+      job.update!(pr_number: 7, pr_mergeable: false, pr_mergeable_checked_at: 1.minute.ago)
+      get job_path(job)
+      expect(response.body).to include("needs rebase")
+      expect(response.body).to include("Rebase now")
+    end
+
+    it "shows 'checking…' when pr_mergeable is nil but a PR exists" do
+      job.update!(pr_number: 7, pr_mergeable: nil)
+      get job_path(job)
+      expect(response.body).to include("checking…")
+      expect(response.body).not_to include("Rebase now")
+    end
+
+    it "hides the Rebase button while a rebase Run is already active (avoid stacking)" do
+      job.update!(pr_number: 7, pr_mergeable: false, pr_mergeable_checked_at: 1.minute.ago)
+      job.runs.create!(trigger_kind: "rebase")
+
+      get job_path(job)
+      expect(response.body).to include("needs rebase")
+      expect(response.body).not_to include("Rebase now")
+    end
+
+    it "renders no mergeability pill when the Job has no PR" do
+      get job_path(job)
+      expect(response.body).not_to include("mergeable")
+      expect(response.body).not_to include("Rebase now")
+    end
+  end
 end

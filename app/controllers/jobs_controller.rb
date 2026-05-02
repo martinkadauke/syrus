@@ -59,6 +59,27 @@ class JobsController < ApplicationController
     redirect_to job_path(@job), notice: "Checking PR feedback now…"
   end
 
+  # Manually enqueue a rebase Run on this Job's PR. Same trigger the
+  # auto-rebase poller uses, just operator-initiated when they don't
+  # want to wait for the next 15-min sweep. Refuses to stack rebases
+  # or rebase a Job with no PR. Skips the closed-Job guard since rebase
+  # Runs are independent of Job lifecycle (preempted Job's external PR
+  # can still need rebases).
+  def rebase
+    unless @job.pr_number.present? || @job.external_pr_number.present?
+      redirect_to job_path(@job), alert: "No PR on this Job to rebase."
+      return
+    end
+
+    if @job.runs.where(trigger_kind: "rebase").active.exists?
+      redirect_to job_path(@job), alert: "A rebase is already in progress — wait for it to finish."
+      return
+    end
+
+    @job.runs.create!(trigger_kind: "rebase")
+    redirect_to job_path(@job), notice: "Rebase enqueued."
+  end
+
   # Undo a close. The next poll cycle may immediately re-close the
   # Job if the underlying reason still applies (e.g. syrus-stop label
   # still on the PR, PR merged on GitHub) — that's intentional. Local

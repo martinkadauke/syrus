@@ -20,6 +20,7 @@ Rails.application.routes.draw do
       post :cancel         # cancel active runs + close the thread
       post :reopen         # undo a close — closed → open, polling resumes
       post :poll_feedback  # manually trigger PollPullRequestJob for this Job
+      post :rebase         # manually trigger a rebase Run on this Job's PR
     end
   end
 

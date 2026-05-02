@@ -52,4 +52,24 @@ module JobsHelper
   def job_issue_url(job)
     "https://github.com/#{job.repository.slug}/issues/#{job.issue_number}"
   end
+
+  MERGEABILITY_STYLES = {
+    "mergeable"    => "bg-green-100 text-green-700",
+    "needs rebase" => "bg-red-100 text-red-700",
+    "checking…"    => "bg-gray-100 text-gray-500"
+  }.freeze
+
+  # Renders the last-known mergeability of a Job's PR as a pill.
+  # PollRebaseJob caches `pr_mergeable` on the Job every 15 minutes;
+  # the show page reads from that cache (no live GitHub call). Returns
+  # nil when the Job has no PR — caller can ignore.
+  def mergeable_pill(job)
+    return nil unless job.pr_number.present? || job.external_pr_number.present?
+    label = case job.pr_mergeable
+            when true  then "mergeable"
+            when false then "needs rebase"
+            else            "checking…"
+    end
+    tag.span(label, class: "inline-block px-2 py-0.5 rounded text-xs font-medium #{MERGEABILITY_STYLES[label]}")
+  end
 end

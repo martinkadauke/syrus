@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_183451) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_225907) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "signups_open", default: false, null: false
@@ -48,6 +48,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_183451) do
     t.datetime "finished_at"
     t.integer "issue_number", null: false
     t.datetime "last_seen_comment_at"
+    t.boolean "pr_mergeable"
+    t.datetime "pr_mergeable_checked_at"
     t.integer "pr_number"
     t.integer "repository_id", null: false
     t.datetime "started_at"
