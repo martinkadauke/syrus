@@ -50,4 +50,10 @@ Rails.application.configure do
 
   # Raise error when a before_action's only/except options reference missing actions.
   config.action_controller.raise_on_missing_callback_actions = true
+
+  # Test-only Active Record encryption keys. Fixed values so CI (which has no
+  # master.key) can still round-trip `encrypts :attr` columns. Not real secrets.
+  config.active_record.encryption.primary_key = "test_primary_key_at_least_32_bytes_xx"
+  config.active_record.encryption.deterministic_key = "test_deterministic_key_at_least_32by"
+  config.active_record.encryption.key_derivation_salt = "test_key_derivation_salt_min_32_byte"
 end
