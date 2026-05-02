@@ -94,6 +94,29 @@ RSpec.describe JobWorkspace do
       first.cleanup
     end
 
+    it "force-clears its own worktree before fetch (handles Solid Queue retry of the same RunJob)" do
+      # Simulate the killed-mid-flight scenario: the first perform set
+      # up a worktree on the branch, then died. The Run is still
+      # state=running because @run.fail! never fired. Solid Queue
+      # re-claims and a NEW perform invocation is created on the same
+      # Run id. setup must clear its own previous worktree even though
+      # the Run state isn't terminal.
+      run = job.initial_run
+      first_attempt = described_class.new(run)
+      first_attempt.setup
+      # Run state is "running" via @run.start! in real flow. Mirror that here.
+      run.update!(state: "running", started_at: Time.current)
+      orphan_path = first_attempt.path
+      expect(orphan_path).to exist  # left behind by killed worker
+
+      # Second attempt = new JobWorkspace on the same Run. setup must
+      # not blow up at fetch with "refusing to fetch into branch ...".
+      retry_attempt = described_class.new(run)
+      expect { retry_attempt.setup }.not_to raise_error
+      expect(retry_attempt.path).to exist
+      retry_attempt.cleanup
+    end
+
     it "sweeps orphan worktrees from prior crashed Runs (terminal Run, worktree still registered)" do
       # First Run sets up a worktree, then "crashes" mid-flight: we
       # mark its Run failed and DON'T call cleanup, simulating a

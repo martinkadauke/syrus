@@ -30,6 +30,13 @@ module ApplicationHelper
     SYRUS_QUOTES.sample
   end
 
+  # Constants on a helper module aren't lifted into the view's
+  # constant lookup scope (only methods are mixed in). Expose the URL
+  # via a method so the layout can `link_to syrus_wikipedia_url, …`.
+  def syrus_wikipedia_url
+    SYRUS_WIKIPEDIA_URL
+  end
+
   # The git SHA the running image was built from. bin/deploy passes
   # --build-arg GIT_SHA=$(git rev-parse --short HEAD) at build time;
   # the Dockerfile turns that into a runtime ENV. In local dev (no

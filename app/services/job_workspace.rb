@@ -34,7 +34,8 @@ class JobWorkspace
   # recovery from a dead initial Run that never reached the push step).
   def setup
     ensure_bare_clone
-    sweep_orphan_worktrees   # before fetch — orphan worktrees lock branches
+    sweep_orphan_worktrees       # before fetch — orphan worktrees lock branches
+    force_clear_own_worktree      # before fetch — handles RunJob retries
     fetch_origin
     FileUtils.mkdir_p(path.dirname)
 
@@ -93,6 +94,18 @@ class JobWorkspace
 
   def authenticated_url
     @repository.authenticated_push_url(@job.user.github_token)
+  end
+
+  # When Solid Queue retries a RunJob (worker died mid-perform → claim
+  # released → another worker re-claims the same SQ::Job), the previous
+  # attempt may have left a worktree at our target path with the branch
+  # registered as checked out. The orphan sweep would skip it because
+  # Run state is "running" (set by the killed attempt's `@run.start!`,
+  # never reset). Force-clear our own path defensively before fetch.
+  def force_clear_own_worktree
+    @git.run("worktree", "remove", "--force", path.to_s, chdir: bare_clone_path.to_s) rescue nil
+    FileUtils.rm_rf(path) if File.exist?(path)
+    @git.run("worktree", "prune", chdir: bare_clone_path.to_s) rescue nil
   end
 
   # Garbage-collect worktree registrations whose Run is terminal (or
