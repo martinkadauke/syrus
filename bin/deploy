@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# Build the current HEAD as a linux/amd64 image, push to GHCR with
+# both :<sha> and :latest tags, and rollout-restart staging +
+# production K3s deployments. Reads the GHCR token from $GHCR_TOKEN
+# or ~/.config/syrus/ghcr-token (chmod 600). Never prints it.
+#
+# Usage:
+#   bin/deploy                      # both clusters (default)
+#   bin/deploy --staging             # staging only
+#   bin/deploy --production          # production only
+#   bin/deploy --skip-build           # assume :<sha> already pushed
+#                                       (just rollout restart)
+set -euo pipefail
+
+REGISTRY="ghcr.io/tkadauke/syrus"
+GHCR_USER="tkadauke"
+TOKEN_FILE="${HOME}/.config/syrus/ghcr-token"
+
+# Where each cluster's kubeconfig lives. Staging uses the default
+# context (whatever kubectl points at out of the box); production
+# uses an explicit file. Keeps the two clusters from racing each
+# other through context switches.
+STAGING_KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+PRODUCTION_KUBECONFIG="$HOME/.kube/config-production"
+
+NAMESPACE_STAGING="syrus-staging"
+NAMESPACE_PRODUCTION="syrus-production"
+DEPLOYMENTS=(deployment/syrus-web deployment/syrus-worker)
+
+# --- argv parsing ----------------------------------------------------
+DEPLOY_STAGING=true
+DEPLOY_PRODUCTION=true
+SKIP_BUILD=false
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --staging)        DEPLOY_PRODUCTION=false ;;
+    --production)     DEPLOY_STAGING=false ;;
+    --skip-build)     SKIP_BUILD=true ;;
+    -h|--help)
+      sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+cd "$(git rev-parse --show-toplevel)"
+
+# --- preflight: clean tree, sane HEAD --------------------------------
+if ! git diff-index --quiet HEAD --; then
+  echo "✗ uncommitted changes — commit or stash first" >&2
+  exit 1
+fi
+SHA="$(git rev-parse --short HEAD)"
+BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+echo "→ deploying ${SHA} (branch ${BRANCH})"
+
+# --- auth ------------------------------------------------------------
+if [ -z "${GHCR_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
+  GHCR_TOKEN="$(cat "$TOKEN_FILE")"
+fi
+if [ -z "${GHCR_TOKEN:-}" ]; then
+  cat >&2 <<MSG
+✗ no GHCR token found.
+
+  set the env var:
+    export GHCR_TOKEN=ghp_xxx
+
+  or save it to a file (and chmod 600):
+    mkdir -p $(dirname "$TOKEN_FILE")
+    echo ghp_xxx > $TOKEN_FILE
+    chmod 600 $TOKEN_FILE
+
+  the token needs write:packages scope.
+MSG
+  exit 1
+fi
+
+# --- build + push ----------------------------------------------------
+if [ "$SKIP_BUILD" = false ]; then
+  echo "→ ${REGISTRY}:${SHA} build (linux/amd64 via colima/Rosetta)"
+  docker buildx use colima >/dev/null 2>&1 || true
+  docker build --platform linux/amd64 \
+    -t "${REGISTRY}:${SHA}" \
+    -t "${REGISTRY}:latest" \
+    .
+
+  echo "→ ${REGISTRY} login"
+  printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+
+  echo "→ ${REGISTRY}:${SHA} push"
+  docker push "${REGISTRY}:${SHA}"
+  echo "→ ${REGISTRY}:latest push"
+  docker push "${REGISTRY}:latest"
+else
+  echo "→ skipping build/push (--skip-build); rolling existing ${REGISTRY}:${SHA}"
+fi
+
+# --- rollout helpers -------------------------------------------------
+rollout() {
+  local label="$1" kubeconfig="$2" namespace="$3"
+  echo "→ ${label}: rollout restart in ${namespace}"
+  KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${DEPLOYMENTS[@]}"
+  for dep in "${DEPLOYMENTS[@]}"; do
+    KUBECONFIG="$kubeconfig" kubectl rollout status -n "$namespace" "$dep" --timeout=5m
+  done
+  echo "✓ ${label} rolled to ${SHA}"
+}
+
+# --- restart -----------------------------------------------------------
+if [ "$DEPLOY_STAGING" = true ]; then
+  rollout "staging" "$STAGING_KUBECONFIG" "$NAMESPACE_STAGING"
+fi
+
+if [ "$DEPLOY_PRODUCTION" = true ]; then
+  rollout "production" "$PRODUCTION_KUBECONFIG" "$NAMESPACE_PRODUCTION"
+fi
+
+echo ""
+echo "✓ deployed ${SHA}$([ "$DEPLOY_STAGING" = true ] && echo " · staging")$([ "$DEPLOY_PRODUCTION" = true ] && echo " · production")"

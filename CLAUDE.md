@@ -145,6 +145,22 @@ The image is single-purpose (worker pod overrides CMD to `["./bin/jobs"]`);
 web pod uses the default `./bin/thrust ./bin/rails server`. See
 "Deploy target" below for the amd64 / Apple Silicon gotcha.
 
+Deploying to staging + production (K3s):
+
+```
+bin/deploy                # both clusters (default)
+bin/deploy --staging      # staging only
+bin/deploy --production   # production only
+bin/deploy --skip-build   # assume :<sha> already pushed
+```
+
+Reads the GHCR PAT from `$GHCR_TOKEN` or
+`~/.config/syrus/ghcr-token` (chmod 600). Builds linux/amd64,
+pushes `ghcr.io/tkadauke/syrus:<sha>` + `:latest`, runs
+`kubectl rollout restart` on `syrus-web` and `syrus-worker` in
+both namespaces, waits for rollout status. Production uses
+`~/.kube/config-production`; staging uses the default kubeconfig.
+
 ## Deploy target
 
 K3s on the homelab cluster (Intel NUC 12 → **linux/amd64**). Build
