@@ -165,12 +165,63 @@ class RunJob < ApplicationJob
   # with a branch on origin and no PR pointing at it.
   def open_pull_request_if_missing
     return if @job.pr_number.present?
+
+    summary = summarize_for_pr
+    title, body = pr_title_and_body(summary)
+
     pr_number = PullRequestOpener.new(@job.repository).open(
       branch: @workspace.branch_name,
-      title: "[syrus] #{@job.repository.slug}##{@job.issue_number}",
-      body: "Closes ##{@job.issue_number}\n\nOpened by Syrus from issue ##{@job.issue_number}. Run took #{@run.agent_turns || '?'} turn(s) (#{@run.trigger_kind}).\n\nReview the diff carefully — this PR was authored by an LLM."
+      title: title,
+      body: body
     )
     @job.update!(pr_number: pr_number)
+  end
+
+  # Asks claude to author a clean PR title + body from the issue + the
+  # diff we just produced. Returns a PrSummarizer::Result. We never let
+  # this fail the Run: any error path falls back to the templated title
+  # and body.
+  def summarize_for_pr
+    issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
+    log("[summarizer] composing PR title and body…")
+    PrSummarizer.new(
+      issue: issue,
+      diff: @run.agent_diff,
+      oauth_token: @job.user.claude_oauth_token,
+      log_sink: ->(chunk) { log("[summarizer] #{chunk}") }
+    ).call
+  rescue StandardError => e
+    log("[summarizer] failed: #{e.class}: #{e.message} — falling back to template")
+    PrSummarizer::Result.new(title: nil, body: nil, error: "#{e.class}: #{e.message}")
+  end
+
+  def pr_title_and_body(summary)
+    if summary.success?
+      log("[summarizer] using agent-authored title: #{summary.title.inspect}")
+      [ summary.title, compose_body(summary.body) ]
+    else
+      log("[summarizer] #{summary.error || 'unspecified error'} — falling back to template")
+      [ template_title, template_body ]
+    end
+  end
+
+  def compose_body(agent_body)
+    [
+      "Closes ##{@job.issue_number}",
+      "",
+      agent_body,
+      "",
+      "---",
+      "*Authored by an LLM (Run took #{@run.agent_turns || '?'} turn(s), trigger=#{@run.trigger_kind}). Review carefully.*"
+    ].join("\n")
+  end
+
+  def template_title
+    "[syrus] #{@job.repository.slug}##{@job.issue_number}"
+  end
+
+  def template_body
+    "Closes ##{@job.issue_number}\n\nOpened by Syrus from issue ##{@job.issue_number}. Run took #{@run.agent_turns || '?'} turn(s) (#{@run.trigger_kind}).\n\nReview the diff carefully — this PR was authored by an LLM."
   end
 
   def log(chunk)

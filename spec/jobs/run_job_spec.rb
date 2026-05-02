@@ -38,7 +38,17 @@ RSpec.describe RunJob do
 
     RunJob.agent_runner = ->(workspace_path:, **_) {
       File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
-      AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
+      AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+    }
+
+    # Default summarizer stub: pretends claude returned valid JSON so the
+    # agent-authored title path is exercised. Specs that want to test the
+    # template fallback override this locally.
+    PrSummarizer.runner = ->(**_) {
+      AgentInvocation::Result.new(
+        turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success",
+        final_text: '{"title":"Add greeting helper","body":"Adds a tiny greet helper used by the welcome page."}'
+      )
     }
 
     @syrus_data_root = Dir.mktmpdir("syrus-test-data")
@@ -48,6 +58,7 @@ RSpec.describe RunJob do
   after do
     ENV.delete("SYRUS_DATA_ROOT")
     RunJob.agent_runner = nil
+    PrSummarizer.runner = nil
     FileUtils.rm_rf(bare_remote_dir)
     FileUtils.rm_rf(@syrus_data_root) if @syrus_data_root
   end
@@ -85,6 +96,50 @@ RSpec.describe RunJob do
       described_class.perform_now(run.id)
       expect(JobWorkspace.data_root.join("worktrees", run.id.to_s)).not_to exist
     end
+
+    it "opens the PR with the agent-authored title and body when the summarizer succeeds" do
+      described_class.perform_now(run.id)
+
+      expect(WebMock).to have_requested(:post, "https://api.github.com/repos/acme/widgets/pulls").with { |req|
+        body = JSON.parse(req.body)
+        body["title"] == "Add greeting helper" &&
+          body["body"].start_with?("Closes #42") &&
+          body["body"].include?("Adds a tiny greet helper")
+      }
+    end
+
+    it "falls back to the template title and body when the summarizer returns unparseable output" do
+      PrSummarizer.runner = ->(**_) {
+        AgentInvocation::Result.new(
+          turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success",
+          final_text: "this is not JSON, claude ignored the instructions"
+        )
+      }
+
+      described_class.perform_now(run.id)
+
+      expect(WebMock).to have_requested(:post, "https://api.github.com/repos/acme/widgets/pulls").with { |req|
+        body = JSON.parse(req.body)
+        body["title"] == "[syrus] acme/widgets#42" &&
+          body["body"].start_with?("Closes #42")
+      }
+      expect(run.reload.state).to eq("succeeded")
+    end
+
+    it "falls back when the summarizer agent times out" do
+      PrSummarizer.runner = ->(**_) {
+        AgentInvocation::Result.new(
+          turns: 1, exit_status: nil, timed_out: true, is_error: false, outcome: nil, final_text: nil
+        )
+      }
+
+      described_class.perform_now(run.id)
+
+      expect(WebMock).to have_requested(:post, "https://api.github.com/repos/acme/widgets/pulls").with { |req|
+        JSON.parse(req.body)["title"] == "[syrus] acme/widgets#42"
+      }
+      expect(run.reload.state).to eq("succeeded")
+    end
   end
 
   describe "follow-up run" do
@@ -99,7 +154,7 @@ RSpec.describe RunJob do
       followup = Run.create!(job: job, trigger_kind: "pr_comment")
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi there'\n")
-        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
       }
       described_class.perform_now(followup.id)
 
@@ -138,7 +193,7 @@ RSpec.describe RunJob do
       replay = Run.create!(job: job, trigger_kind: "replay")
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi again'\n")
-        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
       }
       described_class.perform_now(replay.id)
 
@@ -166,7 +221,7 @@ RSpec.describe RunJob do
       followup = Run.create!(job: job, trigger_kind: "pr_comment")
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi there'\n")
-        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
       }
       described_class.perform_now(followup.id)
 
@@ -198,7 +253,7 @@ RSpec.describe RunJob do
   describe "agent produced no changes" do
     it "marks the Run failed; Job stays open (replay possible)" do
       RunJob.agent_runner = ->(**_) {
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
       }
 
       expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentRunFailed, /no changes/)
@@ -218,7 +273,7 @@ RSpec.describe RunJob do
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "partial.rb"), "# half-done")
         AgentInvocation::Result.new(turns: 50, exit_status: 0, timed_out: false,
-                                    is_error: true, outcome: "error_max_turns")
+                                    is_error: true, outcome: "error_max_turns", final_text: nil)
       }
 
       expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentRunFailed, /error_max_turns/)

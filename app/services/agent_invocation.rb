@@ -8,8 +8,11 @@ class AgentInvocation
   # Outcome of one claude invocation. `turns` is parsed from the final
   # stream-json result event; `outcome` is the result event's subtype
   # ("success" / "error_max_turns" / "error_during_execution") and
-  # `is_error` mirrors its is_error boolean.
-  Result = Data.define(:turns, :exit_status, :timed_out, :is_error, :outcome) do
+  # `is_error` mirrors its is_error boolean. `final_text` is the agent's
+  # final assistant text from the result event — useful for single-shot
+  # callers (PR summarizer, etc.) that want the response without
+  # re-aggregating the streamed assistant chunks.
+  Result = Data.define(:turns, :exit_status, :timed_out, :is_error, :outcome, :final_text) do
     def success? = !timed_out && exit_status == 0 && !is_error
   end
 
@@ -58,7 +61,7 @@ class AgentInvocation
             "--max-turns", max_turns.to_s,
             prompt ]
 
-    metadata = { turns: nil, is_error: false, outcome: nil }
+    metadata = { turns: nil, is_error: false, outcome: nil, final_text: nil }
     timed_out = false
 
     Open3.popen2e(env, *cmd, chdir: workspace_path) do |stdin, output, wait_thread|
@@ -82,7 +85,8 @@ class AgentInvocation
         exit_status: status.exitstatus,
         timed_out: timed_out,
         is_error: metadata[:is_error],
-        outcome: metadata[:outcome]
+        outcome: metadata[:outcome],
+        final_text: metadata[:final_text]
       )
     end
   end
@@ -102,7 +106,8 @@ class AgentInvocation
       {
         turns: event["num_turns"],
         is_error: event["is_error"],
-        outcome: event["subtype"]
+        outcome: event["subtype"],
+        final_text: event["result"]
       }
     else
       nil
