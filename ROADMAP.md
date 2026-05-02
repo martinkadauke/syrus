@@ -315,6 +315,90 @@ can't resolve mechanically, dispatch a follow-up `Job` with the conflict
 context so the agent can fix it. Keeps long-lived PRs mergeable without
 manual intervention.
 
+### Properly formatted diff view
+
+Render the agent's `git diff` in the job UI as a real diff — syntax
+highlighting, side-by-side or unified toggle, expand/collapse per file,
+line numbers, copy-line. Today's "DIFF" panel is a raw monospace dump;
+this turns it into something a reviewer actually wants to read before
+clicking through to GitHub.
+
+### Agent ↔ Syrus MCP sidecar
+
+The agent needs a way to communicate structured signals back to Syrus
+beyond just the diff: "I can't implement this", "this is already done in
+commit X", "here's the PR title and body I want", "please ask the user
+to clarify Y". Don't parse trailing JSON from the transcript — that's
+one-shot, brittle, and dies with the run. Use MCP instead: the agent
+already speaks tool-use natively.
+
+**Shape**: a stdio-mode MCP server spawned by the worker as a sidecar to
+`claude-code`. Agent talks to the sidecar over stdio; sidecar talks to
+ActiveRecord directly in-process. No network, no auth, no token
+lifecycle. The sidecar holds the current `run_id` so the agent can only
+act on its own run.
+
+**Initial tool surface** (run-scoped):
+
+- `comment(body)` — append a comment to the run, visible in the UI
+  alongside the transcript
+- `mark_failed(category, reason)` — categories: `cant_implement`,
+  `already_done`, `needs_clarification`, `blocked_external`
+- `submit_summary(pr_title:, pr_body:, summary:)` — the agent-authored
+  PR copy (single source for it; no JSON-blob fallback)
+- `set_progress(stage, note)` — optional mid-run telemetry
+
+**Degradation hierarchy** for the PR-copy case specifically:
+
+1. Agent called `submit_summary` during the main run (cheapest — no
+   extra tokens, signal is volunteered)
+2. `PrSummarizer` second-shot invocation: a fresh `max_turns: 1` claude
+   call rooted in a tmpdir, given the issue + the produced diff, asked
+   for `{title, body}`. Catches the "agent forgot to call the tool"
+   case without needing a parallel transcript-parsing channel
+3. Templated PR body as a last resort, with "no agent summary"
+   surfaced in the UI
+
+For non-PR-copy signals (`comment`, `mark_failed`, etc.) there is no
+fallback — if the tool wasn't called, the signal didn't happen.
+
+**Audit**: every tool call lands in `JobLog` automatically.
+
+**Reuse**: when the public REST API and MCP API entries below ship,
+they expose the same internal services this sidecar uses.
+
+### Unified job page context
+
+Surface *all* relevant context for a job on its detail page, not just
+the transcript and diff: the source issue title + body, every issue
+comment, the PR title + body, every PR/review comment, plus key
+metadata (reviewers, labels, checks). One screen captures the full
+state of the conversation around this job — no tab-switching to
+GitHub to figure out what's going on.
+
+### In-Syrus comments that trigger re-runs
+
+Let the user comment on a job inside Syrus itself, alongside the
+issue/PR comments mirrored from GitHub. By default a new in-Syrus
+comment triggers a re-run with the comment appended to the prompt
+(opt-out per repo, or per-comment via a "don't re-run" toggle).
+Bypasses the heavy GitHub-issue/PR comment workflow when the user
+just wants to give a quick instruction — same effect as commenting on
+the PR, without the round-trip through GitHub's UI.
+
+### Multiple PRs per issue
+
+Treat one GitHub issue as a collection of attempts, not a single PR.
+Replays, parallel variants ("show me three approaches"), and natural
+splits (foundation refactor first, then the feature) all want >1
+thread on the same issue. M2's dedup already only blocks *non-terminal*
+duplicates, so this is mostly a first-class UI/data-model surfacing
+job: list every `Job` (thread) attached to an issue, link them
+together, and let the user pick a "primary" if useful. The opposite —
+one PR closing multiple issues — is *not* modeled structurally;
+honor GitHub's `Closes #X, #Y` in agent-authored PR bodies and surface
+"also closes #Y" as a read-only link on the job page.
+
 ### In-UI agent chat
 
 Optional chat window in the web UI where the user can talk to an agent
