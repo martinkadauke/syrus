@@ -43,7 +43,7 @@ class RunJob < ApplicationJob
     push_branch
     abort_if_cancelled!
 
-    open_pull_request_if_initial
+    open_pull_request_if_missing
 
     @run.succeed!
     @run.save!
@@ -158,12 +158,17 @@ class RunJob < ApplicationJob
     git.run("push", push_url, "HEAD:refs/heads/#{@workspace.branch_name}", chdir: @workspace.path.to_s)
   end
 
-  def open_pull_request_if_initial
-    return unless @run.initial?
+  # Open a PR whenever the Job doesn't have one yet, regardless of which
+  # Run is doing the pushing. Most often that's the initial Run, but if
+  # an initial Run died before pushing and a replay Run took over and
+  # succeeded, the replay needs to open the PR too — otherwise we end up
+  # with a branch on origin and no PR pointing at it.
+  def open_pull_request_if_missing
+    return if @job.pr_number.present?
     pr_number = PullRequestOpener.new(@job.repository).open(
       branch: @workspace.branch_name,
       title: "[syrus] #{@job.repository.slug}##{@job.issue_number}",
-      body: "Opened by Syrus from issue ##{@job.issue_number}. Initial agent run took #{@run.agent_turns || '?'} turn(s).\n\nReview the diff carefully — this PR was authored by an LLM."
+      body: "Opened by Syrus from issue ##{@job.issue_number}. Run took #{@run.agent_turns || '?'} turn(s) (#{@run.trigger_kind}).\n\nReview the diff carefully — this PR was authored by an LLM."
     )
     @job.update!(pr_number: pr_number)
   end
