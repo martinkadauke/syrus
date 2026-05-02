@@ -27,7 +27,14 @@ RSpec.describe Prompts::PrFeedback do
     expect(out).to start_with("Original issue: Add greeting")
     expect(out).to include("We need a greeting helper.")
     expect(out).to include("Reviewer feedback received since the last commit:")
-    expect(out).to end_with("Address each piece of feedback. Make commits to the current branch.")
+    expect(out).to include("Address each piece of feedback. Make commits to the current branch.")
+  end
+
+  it "appends the submit_summary instruction so follow-up runs also volunteer PR copy" do
+    out = described_class.new(issue: issue, comments: [ conversation ]).to_s
+
+    expect(out).to include("CALL THE `submit_summary` MCP TOOL")
+    expect(out).to end_with(Prompts::SubmitSummaryInstructions::TEXT)
   end
 
   it "renders inline comments with path:line + indented diff_hunk" do

@@ -10,7 +10,8 @@ module Prompts
     end
 
     def to_s
-      "#{@issue.title}\n\n#{@issue.body}".strip
+      [ "#{@issue.title}\n\n#{@issue.body}".strip,
+        SubmitSummaryInstructions::TEXT ].join("\n\n")
     end
   end
 end

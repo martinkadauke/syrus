@@ -1,0 +1,13 @@
+#!/usr/bin/env ruby
+# Entry point for the per-run MCP server. Spawned by `claude` over
+# stdio (configured via the --mcp-config tempfile RunJob writes).
+#
+# Boots full Rails so the sidecar can read/write the Run via
+# ActiveRecord and append to JobLog. Same boot path as bin/jobs.
+
+require_relative "../config/environment"
+
+run_id_index = ARGV.index("--run-id")
+abort("usage: syrus-mcp-sidecar --run-id <id>") unless run_id_index && ARGV[run_id_index + 1]
+
+SyrusMcp::Sidecar.new(run_id: ARGV[run_id_index + 1].to_i).run

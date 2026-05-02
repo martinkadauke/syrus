@@ -76,13 +76,17 @@ class RunJob < ApplicationJob
     @run.update!(prompt: prompt) if @run.prompt.blank?
 
     log("invoking agent for #{@job.repository.slug}##{@job.issue_number} (run #{@run.id}, trigger=#{@run.trigger_kind})")
-    result = AgentInvocation.new(
-      @workspace.path,
-      prompt: prompt,
-      oauth_token: @job.user.claude_oauth_token,
-      log_sink: ->(chunk) { log(chunk) },
-      runner: self.class.agent_runner
-    ).run
+
+    result = with_mcp_config do |mcp_config_path|
+      AgentInvocation.new(
+        @workspace.path,
+        prompt: prompt,
+        oauth_token: @job.user.claude_oauth_token,
+        log_sink: ->(chunk) { log(chunk) },
+        runner: self.class.agent_runner,
+        mcp_config: mcp_config_path
+      ).run
+    end
 
     persist_agent_metadata(result)
 
@@ -96,6 +100,27 @@ class RunJob < ApplicationJob
     raise AgentRunFailed, "agent produced no changes" if diff.blank?
 
     @run.update!(agent_diff: diff, head_sha: head_sha)
+  end
+
+  # Writes a per-run mcp.json tempfile and yields its path to the
+  # block. The agent (claude) reads it via --mcp-config and spawns
+  # bin/syrus-mcp-sidecar over stdio, scoped to this run via --run-id.
+  def with_mcp_config
+    require "tempfile"
+    Tempfile.create([ "syrus-mcp-#{@run.id}-", ".json" ]) do |f|
+      f.write({
+        mcpServers: {
+          syrus: {
+            type: "stdio",
+            command: Rails.root.join("bin/syrus-mcp-sidecar").to_s,
+            args: [ "--run-id", @run.id.to_s ],
+            env: {}
+          }
+        }
+      }.to_json)
+      f.flush
+      yield f.path
+    end
   end
 
   # Initial runs get the issue title + body via Prompts::Initial.
@@ -166,8 +191,9 @@ class RunJob < ApplicationJob
   def open_pull_request_if_missing
     return if @job.pr_number.present?
 
-    summary = summarize_for_pr
-    title, body = pr_title_and_body(summary)
+    title, body = pr_title_and_body_from_agent ||
+                  pr_title_and_body_from_summarizer ||
+                  [ template_title, template_body ]
 
     pr_number = PullRequestOpener.new(@job.repository).open(
       branch: @workspace.branch_name,
@@ -175,6 +201,23 @@ class RunJob < ApplicationJob
       body: body
     )
     @job.update!(pr_number: pr_number)
+  end
+
+  # Path 1 (preferred): the agent called the `submit_summary` MCP tool
+  # during the run, so the sidecar persisted a title + body on Run.
+  def pr_title_and_body_from_agent
+    @run.reload
+    return nil unless @run.agent_pr_title.present? && @run.agent_pr_body.present?
+    log("[mcp] using agent-submitted title: #{@run.agent_pr_title.inspect}")
+    [ @run.agent_pr_title, compose_body(@run.agent_pr_body) ]
+  end
+
+  # Path 2 (fallback): single-shot claude call against the diff.
+  def pr_title_and_body_from_summarizer
+    summary = summarize_for_pr
+    return nil unless summary.success?
+    log("[summarizer] using agent-authored title: #{summary.title.inspect}")
+    [ summary.title, compose_body(summary.body) ]
   end
 
   # Asks claude to author a clean PR title + body from the issue + the
@@ -193,16 +236,6 @@ class RunJob < ApplicationJob
   rescue StandardError => e
     log("[summarizer] failed: #{e.class}: #{e.message} — falling back to template")
     PrSummarizer::Result.new(title: nil, body: nil, error: "#{e.class}: #{e.message}")
-  end
-
-  def pr_title_and_body(summary)
-    if summary.success?
-      log("[summarizer] using agent-authored title: #{summary.title.inspect}")
-      [ summary.title, compose_body(summary.body) ]
-    else
-      log("[summarizer] #{summary.error || 'unspecified error'} — falling back to template")
-      [ template_title, template_body ]
-    end
   end
 
   def compose_body(agent_body)

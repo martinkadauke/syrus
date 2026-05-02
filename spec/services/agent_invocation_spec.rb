@@ -22,8 +22,22 @@ RSpec.describe AgentInvocation do
       expect(received[:oauth_token]).to eq("oat-x")
       expect(received[:timeout]).to eq(60)
       expect(received[:max_turns]).to eq(7)
+      expect(received[:mcp_config]).to be_nil
       expect(result.turns).to eq(2)
       expect(result).to be_success
+    end
+
+    it "passes mcp_config through to the runner when set" do
+      received = {}
+      runner = ->(**kwargs) {
+        received.merge!(kwargs)
+        result_fixture
+      }
+
+      described_class.new("/tmp/wkt", prompt: "x", oauth_token: "x",
+                          runner: runner, mcp_config: "/tmp/mcp.json").run
+
+      expect(received[:mcp_config]).to eq("/tmp/mcp.json")
     end
   end
 

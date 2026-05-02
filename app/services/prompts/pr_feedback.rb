@@ -11,7 +11,7 @@ module Prompts
     end
 
     def to_s
-      <<~PROMPT.strip
+      body = <<~PROMPT.strip
         Original issue: #{@issue.title}
 
         #{@issue.body}
@@ -26,6 +26,8 @@ module Prompts
 
         Address each piece of feedback. Make commits to the current branch.
       PROMPT
+
+      "#{body}\n\n#{SubmitSummaryInstructions::TEXT}"
     end
 
     private

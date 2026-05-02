@@ -36,18 +36,27 @@ RSpec.describe RunJob do
       body: { number: 123, html_url: "https://github.com/acme/widgets/pull/123" }.to_json
     )
 
+    # Default agent_runner: writes a diff *and* simulates the agent
+    # calling `submit_summary` via the MCP sidecar (which under
+    # normal operation persists onto Run). This is the realistic
+    # happy path now — RunJob reads these fields when opening the PR.
     RunJob.agent_runner = ->(workspace_path:, **_) {
       File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
+      Run.last.update!(
+        agent_pr_title: "Add greeting helper",
+        agent_pr_body:  "Adds a tiny greet helper used by the welcome page.",
+        agent_summary:  "Implemented greet."
+      )
       AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
     }
 
-    # Default summarizer stub: pretends claude returned valid JSON so the
-    # agent-authored title path is exercised. Specs that want to test the
-    # template fallback override this locally.
+    # Default summarizer stub: returns valid JSON so the fallback
+    # path also works when a test overrides the agent_runner to
+    # *not* call submit_summary.
     PrSummarizer.runner = ->(**_) {
       AgentInvocation::Result.new(
         turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success",
-        final_text: '{"title":"Add greeting helper","body":"Adds a tiny greet helper used by the welcome page."}'
+        final_text: '{"title":"Summarizer fallback title","body":"Summarizer fallback body."}'
       )
     }
 
@@ -97,7 +106,7 @@ RSpec.describe RunJob do
       expect(JobWorkspace.data_root.join("worktrees", run.id.to_s)).not_to exist
     end
 
-    it "opens the PR with the agent-authored title and body when the summarizer succeeds" do
+    it "opens the PR with the title/body the agent submitted via the MCP sidecar (path 1)" do
       described_class.perform_now(run.id)
 
       expect(WebMock).to have_requested(:post, "https://api.github.com/repos/acme/widgets/pulls").with { |req|
@@ -106,13 +115,40 @@ RSpec.describe RunJob do
           body["body"].start_with?("Closes #42") &&
           body["body"].include?("Adds a tiny greet helper")
       }
+      expect(run.reload).to have_attributes(
+        agent_pr_title: "Add greeting helper",
+        agent_summary:  "Implemented greet."
+      )
     end
 
-    it "falls back to the template title and body when the summarizer returns unparseable output" do
+    it "falls back to PrSummarizer when the agent didn't call submit_summary (path 2)" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
+        # NOTE: deliberately skipping the Run.update! that would simulate
+        # submit_summary — pretending the agent forgot the tool call.
+        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      }
+
+      described_class.perform_now(run.id)
+
+      expect(WebMock).to have_requested(:post, "https://api.github.com/repos/acme/widgets/pulls").with { |req|
+        body = JSON.parse(req.body)
+        body["title"] == "Summarizer fallback title" &&
+          body["body"].start_with?("Closes #42") &&
+          body["body"].include?("Summarizer fallback body")
+      }
+      expect(run.reload.agent_pr_title).to be_nil
+    end
+
+    it "falls back to the templated title/body when both the agent and the summarizer fail (path 3)" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
+        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      }
       PrSummarizer.runner = ->(**_) {
         AgentInvocation::Result.new(
           turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success",
-          final_text: "this is not JSON, claude ignored the instructions"
+          final_text: "definitely not JSON"
         )
       }
 
@@ -120,25 +156,29 @@ RSpec.describe RunJob do
 
       expect(WebMock).to have_requested(:post, "https://api.github.com/repos/acme/widgets/pulls").with { |req|
         body = JSON.parse(req.body)
-        body["title"] == "[syrus] acme/widgets#42" &&
-          body["body"].start_with?("Closes #42")
+        body["title"] == "[syrus] acme/widgets#42" && body["body"].start_with?("Closes #42")
       }
       expect(run.reload.state).to eq("succeeded")
     end
 
-    it "falls back when the summarizer agent times out" do
-      PrSummarizer.runner = ->(**_) {
-        AgentInvocation::Result.new(
-          turns: 1, exit_status: nil, timed_out: true, is_error: false, outcome: nil, final_text: nil
-        )
+    it "writes the per-run mcp.json tempfile and passes its path to AgentInvocation" do
+      captured_path = nil
+      captured_config = nil
+      RunJob.agent_runner = ->(workspace_path:, mcp_config:, **_) {
+        captured_path   = mcp_config
+        captured_config = JSON.parse(File.read(mcp_config))   # read inside the Tempfile block
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi'\n")
+        Run.last.update!(agent_pr_title: "x", agent_pr_body: "y", agent_summary: "z")
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
       }
 
       described_class.perform_now(run.id)
 
-      expect(WebMock).to have_requested(:post, "https://api.github.com/repos/acme/widgets/pulls").with { |req|
-        JSON.parse(req.body)["title"] == "[syrus] acme/widgets#42"
-      }
-      expect(run.reload.state).to eq("succeeded")
+      expect(captured_path).to be_a(String).and end_with(".json")
+      sidecar = captured_config.dig("mcpServers", "syrus")
+      expect(sidecar["type"]).to eq("stdio")
+      expect(sidecar["command"]).to end_with("bin/syrus-mcp-sidecar")
+      expect(sidecar["args"]).to eq([ "--run-id", run.id.to_s ])
     end
   end
 

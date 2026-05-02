@@ -20,7 +20,8 @@ class AgentInvocation
                  log_sink: ->(_) { },
                  runner: nil,
                  timeout: DEFAULT_TIMEOUT_SECONDS,
-                 max_turns: DEFAULT_MAX_TURNS)
+                 max_turns: DEFAULT_MAX_TURNS,
+                 mcp_config: nil)
     @workspace_path = workspace_path.to_s
     @prompt = prompt
     @oauth_token = oauth_token
@@ -28,6 +29,7 @@ class AgentInvocation
     @runner = runner || method(:default_runner)
     @timeout = timeout
     @max_turns = max_turns
+    @mcp_config = mcp_config
   end
 
   def run
@@ -37,7 +39,8 @@ class AgentInvocation
       oauth_token: @oauth_token,
       log_sink: @log_sink,
       timeout: @timeout,
-      max_turns: @max_turns
+      max_turns: @max_turns,
+      mcp_config: @mcp_config
     )
   end
 
@@ -52,14 +55,15 @@ class AgentInvocation
   # --dangerously-skip-permissions is intentional: the agent runs in an
   # isolated per-job worktree, never against the operator's checkout. Same
   # trust posture as letting a human dev pair on a branch.
-  def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:)
+  def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:, mcp_config: nil)
     env = { "CLAUDE_CODE_OAUTH_TOKEN" => oauth_token }
     cmd = [ "claude", "--print",
             "--output-format", "stream-json",
             "--verbose",
             "--dangerously-skip-permissions",
-            "--max-turns", max_turns.to_s,
-            prompt ]
+            "--max-turns", max_turns.to_s ]
+    cmd += [ "--mcp-config", mcp_config ] if mcp_config
+    cmd << prompt
 
     metadata = { turns: nil, is_error: false, outcome: nil, final_text: nil }
     timed_out = false

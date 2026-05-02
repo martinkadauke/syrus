@@ -25,6 +25,10 @@ gem "aasm"
 # GitHub API client [https://github.com/octokit/octokit.rb]
 gem "octokit", "~> 10.0"
 
+# Model Context Protocol SDK — used for the per-run sidecar that lets
+# the agent submit PR copy back to Syrus during its run.
+gem "mcp"
+
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 gem "bcrypt", "~> 3.1.7"
 
