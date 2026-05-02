@@ -71,8 +71,6 @@
     </main>
 
     <footer class="container mx-auto px-5 pb-6 text-xs text-gray-400 text-right">
-      <span class="font-mono"><%= app_env_label %></span>
-      <span class="text-gray-300">·</span>
       <% if app_revision_url %>
         <%= link_to app_revision, app_revision_url, target: "_blank", rel: "noopener",
               class: "font-mono underline hover:no-underline hover:text-gray-600" %>

@@ -44,17 +44,4 @@ RSpec.describe ApplicationHelper, type: :helper do
     end
   end
 
-  describe "#app_env_label" do
-    it "honors SYRUS_ENV (so staging/production K3s pods can differentiate themselves)" do
-      with_env(SYRUS_ENV: "staging") do
-        expect(helper.app_env_label).to eq("staging")
-      end
-    end
-
-    it "falls back to Rails.env when SYRUS_ENV is unset" do
-      with_env(SYRUS_ENV: nil) do
-        expect(helper.app_env_label).to eq(Rails.env)
-      end
-    end
-  end
 end

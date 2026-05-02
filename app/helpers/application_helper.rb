@@ -14,12 +14,4 @@ module ApplicationHelper
     return nil if app_revision == "dev"
     "https://github.com/#{GITHUB_REPO}/commit/#{app_revision}"
   end
-
-  # "production" / "staging" / "development". Set explicitly via
-  # SYRUS_ENV when the K3s manifest needs to distinguish staging
-  # from production (both run RAILS_ENV=production); falls back to
-  # Rails.env so dev/test render correctly without extra config.
-  def app_env_label
-    ENV["SYRUS_ENV"].presence || Rails.env
-  end
 end
