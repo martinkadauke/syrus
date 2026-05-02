@@ -183,3 +183,98 @@ Real users on real repos.
 - Runbook: how to register a repo, how to debug a stuck job
 
 **Out of scope:** Multi-tenancy beyond the household, billing, quotas.
+
+---
+
+## Future ideas
+
+Unscheduled directions. Not committed, not ordered — captured here so they
+don't get lost.
+
+### Non-GitHub task sources
+
+Ingest work from todo lists and task trackers beyond GitHub Issues — Jira,
+Asana, Linear, plain Markdown TODO files, etc. Each source becomes another
+poller feeding the same `Job` pipeline; the harness shouldn't care where the
+prompt came from.
+
+### Auto-react to broken-build signals
+
+Watch GitHub for failure signals (red CI, failing checks, new bug reports
+matching a pattern) and dispatch a fix `Job` automatically. A self-healing
+mode for repos that opt in. Needs careful gating to avoid noisy flapping
+PRs.
+
+### Quality graders before PR submission
+
+A `Job` only opens its PR once a configurable set of *graders* all pass.
+Graders are pluggable quality signals; if any fails, the agent receives
+the failure context and iterates rather than shipping a red PR. Examples:
+
+- **CI graders** — delegate test/build execution to an external CI system
+  (TinyCI et al) instead of running tests inside the worker. Keeps the
+  worker pod lean and reuses existing build infra.
+- **Adversarial review graders** — another agent reviews the diff with a
+  critical prompt ("find bugs", "challenge this design") and votes
+  approve/reject with rationale.
+- **Static graders** — linters, type checkers, security scanners,
+  coverage thresholds.
+- **Custom graders** — arbitrary user-defined scripts or LLM prompts
+  scoped per repo.
+
+Per-repo config picks which graders are required vs advisory.
+
+### Task dependency modeling
+
+Let a `Job` declare it depends on other jobs (or external work). Visualize
+the resulting graph as a Gantt chart and a dependency graph in the UI.
+Useful when one issue blocks another or when a multi-step plan is split
+across PRs.
+
+### Agent log storage + UI
+
+Persist full agent transcripts (not just streamed chunks) and surface them
+in the web UI — searchable, linkable, diff-able across runs. Overlaps with
+`JobLog` from M1/M5 but goes further: structured tool-call timelines,
+token/latency breakdowns, replayable sessions.
+
+### REST API
+
+Expose the core resources (`Repository`, `Job`, `JobLog`) over a versioned
+REST API so external tools and scripts can register repos, enqueue jobs,
+and stream logs without going through the web UI.
+
+### MCP API
+
+Speak the Model Context Protocol so other agents can use Syrus as a tool —
+list repos, enqueue a job on an issue, fetch job status and logs. Turns
+Syrus into a building block for higher-level agent workflows.
+
+### Syrus CLI
+
+Command-line tool wrapping the REST/MCP API so a developer (or an agent
+running locally) can drive Syrus from the terminal: `syrus jobs list`,
+`syrus run <repo> <issue>`, `syrus logs --follow <job>`. Useful for ops
+and for agents that prefer a CLI surface to an HTTP one.
+
+### Live read-only job view
+
+While a `Job` is running, users get a read-only view of its in-flight
+state: chat log streaming as the agent talks, current diff, tool calls
+as they happen. Extends the M5 transcript view with richer real-time
+detail. No interaction — just observability.
+
+### Repo browsing view
+
+Browse the working tree of a repo at a given point in time, including the
+post-run state of any `Job` (the worktree as it was when the PR opened).
+Lets users inspect what the agent actually produced beyond the diff —
+helpful when reviewing large or generated changes.
+
+### In-UI agent chat
+
+Optional chat window in the web UI where the user can talk to an agent
+that controls Syrus on their behalf — "rerun the last job on issue 42
+with extra context", "cancel everything on the foo repo", "show me jobs
+that failed this week". A conversational front-end to the same actions
+the REST/MCP/CLI surfaces expose.
