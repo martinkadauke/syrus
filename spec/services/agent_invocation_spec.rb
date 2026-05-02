@@ -100,4 +100,37 @@ RSpec.describe AgentInvocation do
       expect(result).to be_nil
     end
   end
+
+  describe "default_runner cmd line ordering" do
+    # `claude --mcp-config <configs...>` is variadic and will swallow
+    # the next positional arg as a second config. If `--mcp-config <path>`
+    # ends up immediately before the prompt, claude prepends cwd to the
+    # prompt and bails with ENAMETOOLONG. This regression test pins the
+    # ordering: --mcp-config must always be followed by another flag,
+    # never by the prompt directly.
+    it "places --mcp-config before another flag, not directly before the prompt" do
+      invocation = described_class.new("/tmp", prompt: "PROMPT_BODY", oauth_token: "x",
+                                       mcp_config: "/tmp/mcp.json")
+
+      cmd = []
+      allow(Open3).to receive(:popen2e) do |_env, *args, **_opts, &blk|
+        cmd.replace(args)
+        rd, wr = IO.pipe
+        wr.close
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        blk.call($stdin, rd, fake_wait)
+        rd.close
+      end
+
+      invocation.run
+
+      mcp_idx    = cmd.index("--mcp-config")
+      prompt_idx = cmd.index("PROMPT_BODY")
+      expect(mcp_idx).not_to be_nil, "expected --mcp-config in cmd: #{cmd.inspect}"
+      expect(cmd[mcp_idx + 1]).to eq("/tmp/mcp.json")
+      expect(cmd[mcp_idx + 2]).to start_with("--"),
+        "arg after mcp-config path must be another flag, not a positional — got #{cmd[mcp_idx + 2].inspect}"
+      expect(prompt_idx).to eq(cmd.length - 1)  # prompt is the last positional
+    end
+  end
 end

@@ -57,13 +57,19 @@ class AgentInvocation
   # trust posture as letting a human dev pair on a branch.
   def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:, mcp_config: nil)
     env = { "CLAUDE_CODE_OAUTH_TOKEN" => oauth_token }
-    cmd = [ "claude", "--print",
-            "--output-format", "stream-json",
-            "--verbose",
-            "--dangerously-skip-permissions",
-            "--max-turns", max_turns.to_s ]
+    cmd = [ "claude", "--print" ]
+    # `--mcp-config <configs...>` is variadic — claude keeps consuming
+    # subsequent positional args as additional configs until it sees
+    # another flag. If we put it last, the prompt gets eaten as a
+    # second "config" and claude bails with ENAMETOOLONG. Slot it in
+    # *before* another flag (here, --output-format) so the variadic
+    # terminates after one path.
     cmd += [ "--mcp-config", mcp_config ] if mcp_config
-    cmd << prompt
+    cmd += [ "--output-format", "stream-json",
+             "--verbose",
+             "--dangerously-skip-permissions",
+             "--max-turns", max_turns.to_s,
+             prompt ]
 
     metadata = { turns: nil, is_error: false, outcome: nil, final_text: nil }
     timed_out = false
