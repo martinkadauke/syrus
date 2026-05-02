@@ -31,7 +31,10 @@ class RunJob < ApplicationJob
 
     @workspace = JobWorkspace.new(@run, git: streaming_git)
     @workspace.setup
-    @job.update!(branch_name: @workspace.branch_name) if @run.initial?
+    # Persist whenever it differs — covers initial-run setup AND the
+    # recovery case where a previous initial died before pushing,
+    # leaving a stale Job.branch_name without an origin counterpart.
+    @job.update!(branch_name: @workspace.branch_name) if @job.branch_name != @workspace.branch_name
     abort_if_cancelled!
 
     run_agent_and_commit

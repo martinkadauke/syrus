@@ -9,21 +9,28 @@ class JobWorkspace
     @repository = @job.repository
     @git = git || GitRunner.new
     @path = Rails.root.join("tmp/worktrees/#{@run.id}")
-    @branch_name = @run.initial? ? initial_branch_name : @job.branch_name
+    # Same name across initial + every follow-up Run for this Job —
+    # derived from the Job's id, so it's stable as long as the Job
+    # is. Use the persisted Job.branch_name when set so the agent's
+    # commits land on whatever the initial Run put on origin (or, if
+    # the initial died before push, on a freshly-recreated branch).
+    @branch_name = @job.branch_name.presence || initial_branch_name
   end
 
-  # Per-Run worktree: bare clone at tmp/clones/{repo_id}.git, worktree at
-  # tmp/worktrees/{run_id}. Initial runs create a new syrus branch off
-  # the repo's default branch. Follow-up runs (pr_comment / ci_failure /
-  # replay) check out the existing branch the initial run pushed.
+  # Per-Run worktree at tmp/worktrees/{run_id}, all rooted in a shared
+  # bare clone at tmp/clones/{repo_id}.git. The setup checks origin for
+  # the branch: if it's there we check it out (follow-up case); if it
+  # isn't we create it from default (initial case OR recovery from a
+  # dead initial Run that never reached the push step).
   def setup
-    raise ArgumentError, "follow-up run with no branch_name on Job" if @branch_name.blank?
     ensure_bare_clone
     fetch_origin
-    if @run.initial?
-      add_worktree_on_new_branch
-    else
+    FileUtils.mkdir_p(path.dirname)
+
+    if branch_exists?(@branch_name)
       add_worktree_on_existing_branch
+    else
+      add_worktree_on_new_branch
     end
   end
 
@@ -52,14 +59,21 @@ class JobWorkspace
   end
 
   # `git fetch origin` (no refspec) on a bare clone pulls every remote
-  # head into local refs/heads/*. That covers both default-branch updates
-  # and any syrus branches a prior run pushed.
+  # head into local refs/heads/*. That covers both default-branch
+  # updates and any syrus branches a prior run pushed.
   def fetch_origin
     @git.run("fetch", "origin", chdir: bare_clone_path.to_s)
   end
 
+  # `git branch --list <name>` returns 0 with empty output when the
+  # branch doesn't exist, vs 0 with the branch name when it does —
+  # so no exception path here, just a presence check on stdout.
+  def branch_exists?(name)
+    output = @git.run("branch", "--list", name, chdir: bare_clone_path.to_s)
+    output.strip.present?
+  end
+
   def add_worktree_on_new_branch
-    FileUtils.mkdir_p(path.dirname)
     @git.run(
       "worktree", "add", path.to_s, "-b", @branch_name, @repository.default_branch,
       chdir: bare_clone_path.to_s
@@ -67,7 +81,6 @@ class JobWorkspace
   end
 
   def add_worktree_on_existing_branch
-    FileUtils.mkdir_p(path.dirname)
     @git.run(
       "worktree", "add", path.to_s, @branch_name,
       chdir: bare_clone_path.to_s

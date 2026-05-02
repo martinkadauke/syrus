@@ -25,12 +25,20 @@ RSpec.describe JobWorkspace do
       workspace = described_class.new(job.initial_run)
       workspace.setup
       expect(workspace.bare_clone_path).to exist
+
+      # Drop a sentinel inside the bare clone. If the second setup
+      # re-clones (which would obliterate the directory), the sentinel
+      # disappears. If it reuses the existing clone, the sentinel
+      # survives.
+      sentinel = workspace.bare_clone_path.join("SYRUS-CACHE-SENTINEL")
+      File.write(sentinel, "set after first clone")
       workspace.cleanup
 
       second_job = Factories.job(repository: repository, issue_number: 8)
       workspace2 = described_class.new(second_job.initial_run)
-      expect_any_instance_of(GitRunner).not_to receive(:run).with("clone", anything, anything, anything)
       workspace2.setup
+
+      expect(sentinel).to exist
       workspace2.cleanup
     end
 
@@ -77,9 +85,19 @@ RSpec.describe JobWorkspace do
       followup_workspace.cleanup
     end
 
-    it "raises when the parent Job has no branch_name yet" do
-      followup = Run.create!(job: job, trigger_kind: "pr_comment")
-      expect { described_class.new(followup).setup }.to raise_error(ArgumentError, /no branch_name/)
+    it "recovers when Job.branch_name is set but the branch never made it to origin (dead initial run)" do
+      # Reproduces the "killed bin/dev mid-initial-run, then hit Run again"
+      # scenario: Job.branch_name was persisted right after JobWorkspace.setup
+      # in the dead Run, but origin never received the push.
+      job.update!(branch_name: "syrus/issue-7-#{job.id}")
+      followup = Run.create!(job: job, trigger_kind: "replay")
+
+      followup_workspace = described_class.new(followup)
+      followup_workspace.setup
+      expect(followup_workspace.path).to exist
+      head_branch = `git -C #{followup_workspace.path} rev-parse --abbrev-ref HEAD`.strip
+      expect(head_branch).to eq("syrus/issue-7-#{job.id}")  # branch is created fresh from default
+      followup_workspace.cleanup
     end
   end
 
