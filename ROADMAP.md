@@ -224,6 +224,22 @@ the failure context and iterates rather than shipping a red PR. Examples:
 
 Per-repo config picks which graders are required vs advisory.
 
+### Multi-layer rate limiting
+
+The single "one running `Job` per repo" rule from M3 isn't enough.
+Production needs several limits stacked together:
+
+- **Concurrency caps** — max parallel `Job`s globally, per-account, and
+  per-repo. Enforced at dispatch time; excess jobs queue rather than run.
+- **Time spacing** — minimum gap between consecutive `Job`s on the same
+  repo (and same account), so a flood of new issues doesn't unleash a
+  swarm at once. Token-bucket or fixed-window, configurable per scope.
+- **Burst vs sustained** — short-term bursts allowed up to a cap, but
+  sustained rate clamped lower to stay under GitHub / Claude API limits.
+
+Every limit needs to be visible in the UI (current usage vs cap) and
+overridable per repo for trusted setups.
+
 ### Task dependency modeling
 
 Let a `Job` declare it depends on other jobs (or external work). Visualize
@@ -270,6 +286,15 @@ Browse the working tree of a repo at a given point in time, including the
 post-run state of any `Job` (the worktree as it was when the PR opened).
 Lets users inspect what the agent actually produced beyond the diff —
 helpful when reviewing large or generated changes.
+
+### Auto-rebase stale PRs
+
+When a syrus-opened PR's branch falls behind its base and would no longer
+apply cleanly (or has lost its merge-clean status), automatically rebase
+it onto the latest base and push. If the rebase hits conflicts the agent
+can't resolve mechanically, dispatch a follow-up `Job` with the conflict
+context so the agent can fix it. Keeps long-lived PRs mergeable without
+manual intervention.
 
 ### In-UI agent chat
 
