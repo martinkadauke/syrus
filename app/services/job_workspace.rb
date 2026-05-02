@@ -24,6 +24,7 @@ class JobWorkspace
     # commits land on whatever the initial Run put on origin (or, if
     # the initial died before push, on a freshly-recreated branch).
     @branch_name = @job.branch_name.presence || initial_branch_name
+    @env = { "GIT_TERMINAL_PROMPT" => "0" }   # fail fast instead of hanging on a credential prompt
   end
 
   # Per-Run worktree at <data_root>/worktrees/{run_id}, all rooted in a
@@ -61,17 +62,29 @@ class JobWorkspace
     "syrus/issue-#{@job.issue_number}-#{@job.id}"
   end
 
+  # Use the authenticated URL (token in the URL) for both clone and
+  # fetch — private repos need it. After clone, scrub the persisted
+  # `origin` URL back to anonymous so the token isn't sitting in
+  # .git/config indefinitely. Each subsequent fetch passes the
+  # authenticated URL transiently in argv (same pattern push uses).
   def ensure_bare_clone
     return if bare_clone_path.exist?
     FileUtils.mkdir_p(bare_clone_path.dirname)
-    @git.run("clone", "--bare", @repository.remote_url, bare_clone_path.to_s)
+    @git.run("clone", "--bare", authenticated_url, bare_clone_path.to_s, env: @env)
+    @git.run("remote", "set-url", "origin", @repository.remote_url, chdir: bare_clone_path.to_s)
   end
 
-  # `git fetch origin` (no refspec) on a bare clone pulls every remote
-  # head into local refs/heads/*. That covers both default-branch
-  # updates and any syrus branches a prior run pushed.
+  # Pass the authenticated URL explicitly (instead of just `origin`),
+  # plus an explicit refspec since we're not using the named remote.
+  # Mirrors every remote head into local refs/heads/* — covers
+  # default-branch updates AND any syrus / external branches we'll
+  # need to check out later.
   def fetch_origin
-    @git.run("fetch", "origin", chdir: bare_clone_path.to_s)
+    @git.run("fetch", authenticated_url, "+refs/heads/*:refs/heads/*", chdir: bare_clone_path.to_s, env: @env)
+  end
+
+  def authenticated_url
+    @repository.authenticated_push_url(@job.user.github_token)
   end
 
   # `git branch --list <name>` returns 0 with empty output when the

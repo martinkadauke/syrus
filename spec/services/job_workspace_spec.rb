@@ -12,6 +12,11 @@ RSpec.describe JobWorkspace do
   before do
     seed_remote(bare_remote_dir)
     allow_any_instance_of(Repository).to receive(:remote_url).and_return("file://#{bare_remote_dir}")
+    # Tests use a local file:// bare repo which doesn't need auth.
+    # Production stubs token into URL — for the test, just stub the
+    # auth-URL helper to return the same file:// path so clone+fetch
+    # against the local bare repo works whichever URL the code picks.
+    allow_any_instance_of(Repository).to receive(:authenticated_push_url).and_return("file://#{bare_remote_dir}")
     @syrus_data_root = Dir.mktmpdir("syrus-test-data")
     ENV["SYRUS_DATA_ROOT"] = @syrus_data_root
   end

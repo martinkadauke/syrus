@@ -20,11 +20,14 @@ class GitRunner
   end
 
   # run("clone", "--bare", url, dest, chdir: nil)
-  def run(*args, chdir: nil)
+  # Per-call env is merged with the instance env (per-call wins).
+  # Useful for one-shot flags like GIT_TERMINAL_PROMPT=0 that you
+  # only want on git operations that talk to a remote.
+  def run(*args, chdir: nil, env: {})
     cmd = [ "git", *args.map(&:to_s) ]
     output = +""
 
-    Open3.popen2e(@env, *cmd, chdir: chdir || Dir.pwd) do |stdin, stream, wait_thread|
+    Open3.popen2e(@env.merge(env), *cmd, chdir: chdir || Dir.pwd) do |stdin, stream, wait_thread|
       stdin.close
       stream.each_line do |line|
         output << line
