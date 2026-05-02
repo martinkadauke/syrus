@@ -8,7 +8,7 @@ RSpec.describe PollRepositoryJob do
 
   describe "#perform", vcr: { cassette_name: "poll_repository_job/lists_issues" } do
     it "creates a Job for each issue that passes IngestPolicy and isn't dedup'd" do
-      # Pre-seed: issue 46 already has an active Job, must be dedup'd.
+      # Pre-seed: issue 46 already has a queued Job, must be dedup'd.
       Job.create!(user: user, repository: repository, issue_number: 46)
 
       expect {
@@ -18,6 +18,18 @@ RSpec.describe PollRepositoryJob do
       created = Job.where(repository: repository).order(:created_at).last
       expect(created.issue_number).to eq(42)
       expect(created.state).to eq("queued")
+    end
+
+    it "dedups against terminal Jobs too — prevents the duplicate-PR loop" do
+      # Pre-seed: issue 46 has a SUCCEEDED Job (PR already opened). The
+      # old code only dedup'd against active state, so this poll would
+      # have created a fresh Job → a fresh PR. With the fix, it doesn't.
+      Job.create!(user: user, repository: repository, issue_number: 46, state: "succeeded")
+      Job.create!(user: user, repository: repository, issue_number: 42, state: "failed")
+
+      expect {
+        described_class.perform_now(repository.id)
+      }.not_to change(Job, :count)
     end
 
     it "skips a non-existent or polling-disabled repository" do

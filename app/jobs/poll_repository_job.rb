@@ -1,6 +1,10 @@
 class PollRepositoryJob < ApplicationJob
   queue_as :default
 
+  # Serialize per-repo polling so a manual "Poll now" click can't race
+  # the recurring schedule past the dedup check.
+  limits_concurrency to: 1, key: ->(repo_id, *) { "poll:#{repo_id}" }
+
   def perform(repository_id, force: false)
     repository = Repository.find_by(id: repository_id)
     return unless repository
@@ -23,8 +27,13 @@ class PollRepositoryJob < ApplicationJob
       return
     end
 
-    if existing_active_job?(repository, issue.number)
-      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: active Job already exists")
+    # Dedup against ANY prior Job for this issue, not just active ones —
+    # otherwise a succeeded/failed Job on the same issue stops protecting
+    # against re-ingest, and every poll after that opens a fresh PR.
+    # To intentionally re-process an issue, use the Replay button on the
+    # original Job (which bypasses this poller).
+    if existing_job_for_issue?(repository, issue.number)
+      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior Job exists")
       return
     end
 
@@ -35,7 +44,7 @@ class PollRepositoryJob < ApplicationJob
     )
   end
 
-  def existing_active_job?(repository, issue_number)
-    Job.active.exists?(repository_id: repository.id, issue_number: issue_number)
+  def existing_job_for_issue?(repository, issue_number)
+    Job.exists?(repository_id: repository.id, issue_number: issue_number)
   end
 end
