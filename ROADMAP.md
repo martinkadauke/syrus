@@ -250,6 +250,46 @@ Production needs several limits stacked together:
 Every limit needs to be visible in the UI (current usage vs cap) and
 overridable per repo for trusted setups.
 
+### Claude usage budgets and thresholds
+
+A close cousin of multi-layer rate limiting, but oriented around dollar
+cost and subscription-cap percentage rather than concurrency. Lets the
+operator configure thresholds — global, per-account, and per-repo —
+under which Syrus refuses to enqueue new runs.
+
+**Signals available today:**
+
+- Stream-json `result` events include `total_cost_usd` and token counts
+  per run. Syrus already parses these — accumulating them gives us
+  cumulative spend per user / per repo / per time window without any
+  new external dependency.
+- `claude --max-budget-usd <amount>` — per-run hard cap that the CLI
+  itself enforces. Pass through as a per-repo setting.
+- `claude auth status --json` confirms subscription tier
+  (`free` / `pro` / `max`) but does **not** surface usage percentage.
+
+**Not available (yet):**
+
+- Programmatic "% of weekly subscription cap used." Anthropic may
+  expose this — the `claude-code` REPL has a `/usage` slash command —
+  but the CLI doesn't ship it as queryable JSON today. Don't scrape
+  the REPL output; revisit when there's a real endpoint.
+
+**Initial design:**
+
+- Per-repo and per-account dollar budgets over rolling time windows
+  (24h / 7d). Persist `runs.cost_usd` from the stream-json result.
+- New `Run` dispatcher check: if projected cost would exceed the
+  threshold, hold the run in `queued` and surface "budget threshold
+  reached" in the UI rather than letting it run and burn budget.
+- `--max-budget-usd` as a per-run safety net set from the per-repo cap.
+- UI: spend in the current window vs cap, on the Repository show page
+  and globally on the dashboard.
+
+When Anthropic ships a subscription-usage endpoint, layer that signal
+in alongside the self-tracked spend (whichever is more conservative
+wins).
+
 ### Task dependency modeling
 
 Let a `Job` declare it depends on other jobs (or external work). Visualize
