@@ -80,8 +80,15 @@ class JobWorkspace
   # Mirrors every remote head into local refs/heads/* — covers
   # default-branch updates AND any syrus / external branches we'll
   # need to check out later.
+  #
+  # `--prune` drops local refs/heads/* that no longer exist on origin
+  # (typically: branches GitHub auto-deleted after PR merge). Without
+  # it the bare clone accumulates dead refs forever and `git fetch
+  # +refs/heads/*:refs/heads/*` never gets to drop them. Pruning a
+  # branch that's currently checked out in a worktree is a no-op —
+  # git refuses to delete it — so this is safe even mid-Run.
   def fetch_origin
-    @git.run("fetch", authenticated_url, "+refs/heads/*:refs/heads/*", chdir: bare_clone_path.to_s, env: @env)
+    @git.run("fetch", "--prune", authenticated_url, "+refs/heads/*:refs/heads/*", chdir: bare_clone_path.to_s, env: @env)
   end
 
   def authenticated_url

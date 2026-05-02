@@ -69,6 +69,31 @@ RSpec.describe JobWorkspace do
       expect { workspace.cleanup }.not_to raise_error
     end
 
+    it "prunes local refs/heads/* whose remote counterpart was deleted (e.g. GitHub auto-deleted after merge)" do
+      # First setup: clones + fetches main only.
+      first = described_class.new(job.initial_run)
+      first.setup
+      bare = first.bare_clone_path
+
+      # Pretend the remote grew a stale branch, then deleted it.
+      sh("git --git-dir=#{bare_remote_dir} branch ephemeral main")
+      Factories.job(repository: repository, issue_number: 100).initial_run.tap do |r|
+        described_class.new(r).setup.tap { described_class.new(r).cleanup }
+      end
+      expect(`git --git-dir=#{bare} branch --list ephemeral`.strip).to be_present  # we picked it up
+
+      sh("git --git-dir=#{bare_remote_dir} branch -D ephemeral")
+      expect(`git --git-dir=#{bare_remote_dir} branch --list ephemeral`.strip).to be_blank
+
+      # Next setup should --prune the now-missing branch from our local bare.
+      Factories.job(repository: repository, issue_number: 101).initial_run.tap do |r|
+        described_class.new(r).setup.tap { described_class.new(r).cleanup }
+      end
+      expect(`git --git-dir=#{bare} branch --list ephemeral`.strip).to be_blank
+
+      first.cleanup
+    end
+
     it "sweeps orphan worktrees from prior crashed Runs (terminal Run, worktree still registered)" do
       # First Run sets up a worktree, then "crashes" mid-flight: we
       # mark its Run failed and DON'T call cleanup, simulating a
