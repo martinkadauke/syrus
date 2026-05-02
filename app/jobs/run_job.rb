@@ -66,7 +66,7 @@ class RunJob < ApplicationJob
     result = AgentInvocation.new(
       @workspace.path,
       prompt: prompt,
-      api_key: @job.user.claude_api_key,
+      oauth_token: @job.user.claude_oauth_token,
       log_sink: ->(chunk) { log(chunk) },
       runner: self.class.agent_runner
     ).run

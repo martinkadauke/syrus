@@ -5,7 +5,7 @@ class User < ApplicationRecord
   has_many :jobs, dependent: :destroy
   has_many :invitations, foreign_key: :invited_by_id, dependent: :nullify
 
-  encrypts :claude_api_key
+  encrypts :claude_oauth_token
   encrypts :github_token
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }

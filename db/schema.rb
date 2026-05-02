@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_021227) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_02_025611) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.boolean "signups_open", default: false, null: false
@@ -83,7 +83,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_021227) do
 
   create_table "users", force: :cascade do |t|
     t.boolean "admin", default: false, null: false
-    t.string "claude_api_key"
+    t.string "claude_oauth_token"
     t.datetime "created_at", null: false
     t.string "email_address", null: false
     t.string "github_token"

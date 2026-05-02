@@ -3,6 +3,11 @@ Rails.application.routes.draw do
   resources :passwords, param: :token
   resources :users, only: %i[ new create ]
 
+  resource :credentials, only: %i[ edit update ]
+  resources :repositories, except: %i[ show ]
+  resources :invitations, only: %i[ index create destroy ]
+  resource :settings, only: %i[ edit update ]
+
   root "home#index"
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.

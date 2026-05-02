@@ -24,17 +24,17 @@ RSpec.describe User do
   end
 
   describe "encrypted credentials" do
-    it "round-trips claude_api_key and github_token" do
-      user = User.create!(attrs.merge(claude_api_key: "sk-abc", github_token: "ghp_xyz"))
+    it "round-trips claude_oauth_token and github_token" do
+      user = User.create!(attrs.merge(claude_oauth_token: "oat-abc", github_token: "ghp_xyz"))
       reloaded = User.find(user.id)
-      expect(reloaded.claude_api_key).to eq("sk-abc")
+      expect(reloaded.claude_oauth_token).to eq("oat-abc")
       expect(reloaded.github_token).to eq("ghp_xyz")
     end
 
     it "stores ciphertext, not plaintext, in the column" do
-      user = User.create!(attrs.merge(claude_api_key: "sk-secret"))
-      raw = User.connection.select_value("SELECT claude_api_key FROM users WHERE id = #{user.id}")
-      expect(raw).not_to include("sk-secret")
+      user = User.create!(attrs.merge(claude_oauth_token: "oat-secret"))
+      raw = User.connection.select_value("SELECT claude_oauth_token FROM users WHERE id = #{user.id}")
+      expect(raw).not_to include("oat-secret")
     end
   end
 

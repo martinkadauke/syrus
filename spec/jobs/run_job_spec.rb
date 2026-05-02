@@ -9,7 +9,7 @@ RSpec.describe RunJob do
   # fetch_issue are intercepted with WebMock; the agent runner is stubbed so
   # we don't shell out to claude in tests.
   let(:bare_remote_dir) { Pathname.new(Dir.mktmpdir("syrus-bare")) }
-  let(:user) { Factories.user(github_token: "ghp_test_token", claude_api_key: "sk-test") }
+  let(:user) { Factories.user(github_token: "ghp_test_token", claude_oauth_token: "oat-test") }
   let(:repository) do
     Factories.repository(
       user: user, owner: "acme", name: "widgets",

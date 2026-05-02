@@ -11,14 +11,14 @@ class AgentInvocation
     def success? = !timed_out && exit_status == 0
   end
 
-  def initialize(workspace_path, prompt:, api_key:,
+  def initialize(workspace_path, prompt:, oauth_token:,
                  log_sink: ->(_) { },
                  runner: nil,
                  timeout: DEFAULT_TIMEOUT_SECONDS,
                  max_turns: DEFAULT_MAX_TURNS)
     @workspace_path = workspace_path.to_s
     @prompt = prompt
-    @api_key = api_key
+    @oauth_token = oauth_token
     @log_sink = log_sink
     @runner = runner || method(:default_runner)
     @timeout = timeout
@@ -29,7 +29,7 @@ class AgentInvocation
     @runner.call(
       workspace_path: @workspace_path,
       prompt: @prompt,
-      api_key: @api_key,
+      oauth_token: @oauth_token,
       log_sink: @log_sink,
       timeout: @timeout,
       max_turns: @max_turns
@@ -39,11 +39,12 @@ class AgentInvocation
   private
 
   # Spawns `claude --print --output-format stream-json --verbose
-  # --max-turns N "<prompt>"` in the worktree with ANTHROPIC_API_KEY set.
-  # Streams readable assistant text into log_sink as it arrives, captures
-  # num_turns from the final result event, kills the process after timeout.
-  def default_runner(workspace_path:, prompt:, api_key:, log_sink:, timeout:, max_turns:)
-    env = { "ANTHROPIC_API_KEY" => api_key }
+  # --max-turns N "<prompt>"` in the worktree with CLAUDE_CODE_OAUTH_TOKEN
+  # set (Claude Pro/Max OAuth flow). Streams readable assistant text into
+  # log_sink as it arrives, captures num_turns from the final result event,
+  # kills the process after timeout.
+  def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:)
+    env = { "CLAUDE_CODE_OAUTH_TOKEN" => oauth_token }
     cmd = [ "claude", "--print",
             "--output-format", "stream-json",
             "--verbose",

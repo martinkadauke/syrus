@@ -22,7 +22,20 @@
   <body class="bg-gray-50 text-gray-900">
     <header class="bg-white border-b border-gray-200">
       <nav class="container mx-auto px-5 py-4 flex items-center justify-between">
-        <%= link_to "Syrus", root_path, class: "font-bold text-xl text-gray-900 hover:text-blue-600" %>
+        <div class="flex items-center gap-6">
+          <%= link_to "Syrus", root_path, class: "font-bold text-xl text-gray-900 hover:text-blue-600" %>
+
+          <% if Current.user %>
+            <div class="flex items-center gap-4 text-sm">
+              <%= link_to "Repositories", repositories_path, class: "text-gray-700 hover:text-blue-600" %>
+              <%= link_to "Credentials", edit_credentials_path, class: "text-gray-700 hover:text-blue-600" %>
+              <% if Current.user.admin? %>
+                <%= link_to "Invitations", invitations_path, class: "text-gray-700 hover:text-blue-600" %>
+                <%= link_to "Settings", edit_settings_path, class: "text-gray-700 hover:text-blue-600" %>
+              <% end %>
+            </div>
+          <% end %>
+        </div>
 
         <div class="flex items-center gap-4 text-sm">
           <% if Current.user %>

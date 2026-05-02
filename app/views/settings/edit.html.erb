@@ -1,0 +1,18 @@
+<div class="max-w-xl space-y-6">
+  <h1 class="font-bold text-3xl">Settings</h1>
+
+  <%= form_with model: @setting, url: settings_path, scope: :app_setting, method: :patch, class: "bg-white border border-gray-200 rounded-lg p-6 space-y-4" do |form| %>
+    <div class="flex items-start gap-3">
+      <%= form.check_box :signups_open, class: "mt-1 rounded border-gray-400" %>
+      <div>
+        <%= form.label :signups_open, "Open signups", class: "block text-sm font-medium text-gray-700" %>
+        <p class="text-xs text-gray-500 mt-1">
+          When enabled, anyone can create an account at <code>/users/new</code>.
+          When disabled, signup is invitation-only — but invitation links still work either way.
+        </p>
+      </div>
+    </div>
+
+    <%= form.submit "Save", class: "rounded-md px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium cursor-pointer" %>
+  <% end %>
+</div>

@@ -9,12 +9,12 @@ RSpec.describe AgentInvocation do
         AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false)
       }
 
-      result = described_class.new("/tmp/wkt", prompt: "do the thing", api_key: "sk-x",
+      result = described_class.new("/tmp/wkt", prompt: "do the thing", oauth_token: "oat-x",
                                    runner: runner, timeout: 60, max_turns: 7).run
 
       expect(received[:workspace_path]).to eq("/tmp/wkt")
       expect(received[:prompt]).to eq("do the thing")
-      expect(received[:api_key]).to eq("sk-x")
+      expect(received[:oauth_token]).to eq("oat-x")
       expect(received[:timeout]).to eq(60)
       expect(received[:max_turns]).to eq(7)
       expect(result.turns).to eq(2)
@@ -41,7 +41,7 @@ RSpec.describe AgentInvocation do
 
   describe "stream-json event parsing" do
     let(:lines) { [] }
-    let(:invocation) { described_class.new("/tmp", prompt: "x", api_key: "x", log_sink: ->(l) { lines << l }) }
+    let(:invocation) { described_class.new("/tmp", prompt: "x", oauth_token: "x", log_sink: ->(l) { lines << l }) }
 
     it "extracts assistant text into the log_sink" do
       event = { type: "assistant", message: { content: [ { type: "text", text: "Looking at the issue..." } ] } }.to_json
