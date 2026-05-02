@@ -208,6 +208,38 @@ Asana, Linear, plain Markdown TODO files, etc. Each source becomes another
 poller feeding the same `Job` pipeline; the harness shouldn't care where the
 prompt came from.
 
+### Scheduled (cron) jobs
+
+Let users register cron-style schedules that periodically dispatch a
+`Job` with a fixed prompt. Examples: "every Monday 9am, audit
+out-of-date dependencies and open a bump PR", "every hour, check if
+main is red and try a fix", "daily, summarize new issues from the
+last 24h". Distinct from M2's poller (which is *issue-driven*) — this
+is *clock-driven* and the prompt comes from the schedule, not GitHub.
+
+**Shape:**
+
+- New `Schedule` model: `belongs_to :repository` (optional — global
+  schedules allowed too), `cron_expression`, `prompt`, `enabled`,
+  `last_fired_at`, `next_fire_at`.
+- A `FireSchedulesJob` runs every minute via `config/recurring.yml`,
+  finds due schedules, enqueues a `Job` with `trigger_kind:
+  "scheduled"` (new value) carrying the schedule's prompt.
+- UI: list/create/edit/disable schedules per repo (and globally for
+  admins). Show last fire time, next fire time, link to the resulting
+  jobs.
+- One-shot variant: `cron_expression` empty + `fire_at` set =
+  schedule fires once and disables itself. Useful for "in 2 weeks,
+  open a cleanup PR for feature flag X."
+
+**Interactions:**
+
+- Subject to multi-layer rate limits and Claude usage budgets — a
+  misconfigured schedule could otherwise pile up jobs forever.
+- A failed scheduled run does *not* auto-retry; next fire is the
+  next scheduled time (avoid retry storms).
+- `syrus-stop` label or schedule disable toggle halts further fires.
+
 ### Auto-react to broken-build signals
 
 Watch GitHub for failure signals (red CI, failing checks, new bug reports
