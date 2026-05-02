@@ -12,12 +12,14 @@ RSpec.describe JobWorkspace do
   before do
     seed_remote(bare_remote_dir)
     allow_any_instance_of(Repository).to receive(:remote_url).and_return("file://#{bare_remote_dir}")
+    @syrus_data_root = Dir.mktmpdir("syrus-test-data")
+    ENV["SYRUS_DATA_ROOT"] = @syrus_data_root
   end
 
   after do
+    ENV.delete("SYRUS_DATA_ROOT")
     FileUtils.rm_rf(bare_remote_dir)
-    FileUtils.rm_rf(Rails.root.join("tmp/clones"))
-    FileUtils.rm_rf(Rails.root.join("tmp/worktrees"))
+    FileUtils.rm_rf(@syrus_data_root) if @syrus_data_root
   end
 
   describe "initial run" do

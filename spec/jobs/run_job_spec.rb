@@ -40,13 +40,16 @@ RSpec.describe RunJob do
       File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
       AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success")
     }
+
+    @syrus_data_root = Dir.mktmpdir("syrus-test-data")
+    ENV["SYRUS_DATA_ROOT"] = @syrus_data_root
   end
 
   after do
+    ENV.delete("SYRUS_DATA_ROOT")
     RunJob.agent_runner = nil
     FileUtils.rm_rf(bare_remote_dir)
-    FileUtils.rm_rf(Rails.root.join("tmp/clones"))
-    FileUtils.rm_rf(Rails.root.join("tmp/worktrees"))
+    FileUtils.rm_rf(@syrus_data_root) if @syrus_data_root
   end
 
   describe "happy path (initial run)" do
@@ -80,7 +83,7 @@ RSpec.describe RunJob do
 
     it "tears down the worktree" do
       described_class.perform_now(run.id)
-      expect(Rails.root.join("tmp/worktrees/#{run.id}")).not_to exist
+      expect(JobWorkspace.data_root.join("worktrees", run.id.to_s)).not_to exist
     end
   end
 
@@ -238,7 +241,7 @@ RSpec.describe RunJob do
 
       run.reload
       expect(run.state).to eq("failed")
-      expect(Rails.root.join("tmp/worktrees/#{run.id}")).not_to exist
+      expect(JobWorkspace.data_root.join("worktrees", run.id.to_s)).not_to exist
     end
   end
 

@@ -3,12 +3,21 @@ require "fileutils"
 class JobWorkspace
   attr_reader :path, :branch_name
 
+  # Where the bare clones + worktrees live on disk. Default `~/.syrus`
+  # so the agent's chdir is *outside* the operator's main Rails.root —
+  # the agent can't accidentally land in app/ or the live tmp/ via a
+  # stray relative path. Overridable via SYRUS_DATA_ROOT for specs and
+  # for ops who want it on a different volume.
+  def self.data_root
+    Pathname.new(ENV["SYRUS_DATA_ROOT"] || File.expand_path("~/.syrus"))
+  end
+
   def initialize(run, git: nil)
     @run = run
     @job = run.job
     @repository = @job.repository
     @git = git || GitRunner.new
-    @path = Rails.root.join("tmp/worktrees/#{@run.id}")
+    @path = self.class.data_root.join("worktrees", @run.id.to_s)
     # Same name across initial + every follow-up Run for this Job —
     # derived from the Job's id, so it's stable as long as the Job
     # is. Use the persisted Job.branch_name when set so the agent's
@@ -17,11 +26,11 @@ class JobWorkspace
     @branch_name = @job.branch_name.presence || initial_branch_name
   end
 
-  # Per-Run worktree at tmp/worktrees/{run_id}, all rooted in a shared
-  # bare clone at tmp/clones/{repo_id}.git. The setup checks origin for
-  # the branch: if it's there we check it out (follow-up case); if it
-  # isn't we create it from default (initial case OR recovery from a
-  # dead initial Run that never reached the push step).
+  # Per-Run worktree at <data_root>/worktrees/{run_id}, all rooted in a
+  # shared bare clone at <data_root>/clones/{repo_id}.git. setup checks
+  # origin for the branch: if it's there we check it out (follow-up
+  # case); if it isn't we create it from default (initial case OR
+  # recovery from a dead initial Run that never reached the push step).
   def setup
     ensure_bare_clone
     fetch_origin
@@ -43,7 +52,7 @@ class JobWorkspace
   end
 
   def bare_clone_path
-    Rails.root.join("tmp/clones/#{@repository.id}.git")
+    self.class.data_root.join("clones", "#{@repository.id}.git")
   end
 
   private

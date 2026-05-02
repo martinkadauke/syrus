@@ -191,6 +191,16 @@ Real users on real repos.
 Unscheduled directions. Not committed, not ordered — captured here so they
 don't get lost.
 
+### Sandbox the agent in a Docker container
+
+Phase A (`~/.syrus/worktrees/{run_id}`, outside Rails.root) stops the
+*accident* class of agent-leaks-into-the-operator's-checkout. The
+*determined* class needs real isolation: each Run executes inside a
+disposable Docker container with only its worktree bind-mounted, the
+host filesystem otherwise invisible, and process limits applied. Same
+posture we'll need for M8's k8s deployment — building it now is
+production-parity, not premature. Tracked in #29.
+
 ### Non-GitHub task sources
 
 Ingest work from todo lists and task trackers beyond GitHub Issues — Jira,
