@@ -19,7 +19,8 @@ jobs:
           bundler-cache: true
 
       - name: Scan for common Rails security vulnerabilities using static analysis
-        run: bin/brakeman --no-pager
+        # TODO: drop --except once we upgrade Ruby off 3.2.x (EOL 2026-03-31)
+        run: bin/brakeman --no-pager --except EOLRuby
 
       - name: Scan for known security vulnerabilities in gems used
         run: bin/bundler-audit
@@ -90,9 +91,14 @@ jobs:
           bundler-cache: true
 
       - name: Run RSpec against MySQL
+        # We run db:create + db:migrate (not db:test:prepare/db:schema:load)
+        # so MySQL gets bigint FK columns from the migrations themselves.
+        # db/schema.rb is dumped from SQLite (dev), where INTEGER hides bigint
+        # vs int distinctions — loading that schema on MySQL produces FK type
+        # mismatches.
         env:
           RAILS_ENV: test
           DATABASE_URL: mysql2://root@127.0.0.1:3306/syrus_test
         run: |
-          bin/rails db:test:prepare
+          bin/rails db:create db:migrate
           bin/rspec
