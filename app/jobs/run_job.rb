@@ -168,7 +168,7 @@ class RunJob < ApplicationJob
     pr_number = PullRequestOpener.new(@job.repository).open(
       branch: @workspace.branch_name,
       title: "[syrus] #{@job.repository.slug}##{@job.issue_number}",
-      body: "Opened by Syrus from issue ##{@job.issue_number}. Run took #{@run.agent_turns || '?'} turn(s) (#{@run.trigger_kind}).\n\nReview the diff carefully — this PR was authored by an LLM."
+      body: "Closes ##{@job.issue_number}\n\nOpened by Syrus from issue ##{@job.issue_number}. Run took #{@run.agent_turns || '?'} turn(s) (#{@run.trigger_kind}).\n\nReview the diff carefully — this PR was authored by an LLM."
     )
     @job.update!(pr_number: pr_number)
   end
