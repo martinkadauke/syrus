@@ -20,6 +20,11 @@
               class: "rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium cursor-pointer",
               form: { class: "inline", data: { turbo_confirm: "Cancel any running work and close this thread?" } } %>
       <% end %>
+      <% if @job.closed? %>
+        <%= button_to "Reopen", reopen_job_path(@job), method: :post,
+              class: "rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium cursor-pointer",
+              form: { class: "inline" } %>
+      <% end %>
       <%= button_to "Start over with a new branch", restart_job_path(@job), method: :post,
             class: "rounded-md px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium cursor-pointer",
             form: { class: "inline", data: { turbo_confirm: "This abandons the existing branch and PR (#{@job.pr_number ? "##{@job.pr_number}" : "none yet"}) and opens a new one. Continue?" } } %>

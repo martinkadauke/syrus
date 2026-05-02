@@ -18,6 +18,18 @@ class Job < ApplicationRecord
     event :close do
       transitions from: :open, to: :closed, after: -> { self.finished_at = Time.current }
     end
+
+    # Undoes a close. Clears closure_reason + finished_at so the thread
+    # looks alive again. Doesn't un-cancel any cancelled Runs (those
+    # invocations really did stop) — the user follows up with
+    # "Run again on this branch" to spawn a fresh Run if they want.
+    # Polling resumes automatically once the Job is open again.
+    event :reopen do
+      transitions from: :closed, to: :open, after: -> {
+        self.closure_reason = nil
+        self.finished_at = nil
+      }
+    end
   end
 
   after_create_commit :create_initial_run

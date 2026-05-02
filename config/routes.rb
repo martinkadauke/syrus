@@ -16,6 +16,7 @@ Rails.application.routes.draw do
       post :run_again   # soft replay — new Run on the existing branch
       post :restart     # hard reset — close this thread, open a new one with a fresh branch + PR
       post :cancel      # cancel active runs + close the thread
+      post :reopen      # undo a close — closed → open, polling resumes
     end
   end
 

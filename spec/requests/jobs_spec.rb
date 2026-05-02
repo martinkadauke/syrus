@@ -132,7 +132,42 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
-  describe "show page button confirmations" do
+  describe "POST /jobs/:id/reopen" do
+    before { sign_in_as(user) }
+
+    it "transitions a closed Job back to open and clears closure_reason + finished_at" do
+      job.close_with_reason!("cancelled")
+
+      post reopen_job_path(job)
+
+      job.reload
+      expect(job.state).to eq("open")
+      expect(job.closure_reason).to be_nil
+      expect(job.finished_at).to be_nil
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:notice]).to match(/reopened/)
+    end
+
+    it "warns when reopening a thread closed by syrus_stop" do
+      job.close_with_reason!("syrus_stop")
+      post reopen_job_path(job)
+      expect(flash[:notice]).to match(/syrus-stop/)
+    end
+
+    it "warns when reopening a thread closed by pr_merged" do
+      job.close_with_reason!("pr_merged")
+      post reopen_job_path(job)
+      expect(flash[:notice]).to match(/PR state/)
+    end
+
+    it "refuses on an open Job" do
+      post reopen_job_path(job)
+      expect(job.reload.state).to eq("open")
+      expect(flash[:alert]).to match(/isn't closed/)
+    end
+  end
+
+  describe "show page button visibility + confirmations" do
     before { sign_in_as(user) }
 
     it "puts a turbo_confirm on Cancel & close" do
@@ -150,6 +185,15 @@ RSpec.describe "Jobs", type: :request do
       get job_path(job)
       expect(response.body).to include("Run again on this branch")
       expect(response.body).not_to match(/data-turbo-confirm=.*on this branch/)
+    end
+
+    it "shows Reopen on closed jobs and hides it on open ones" do
+      get job_path(job)
+      expect(response.body).not_to include("Reopen")
+
+      job.close_with_reason!("cancelled")
+      get job_path(job)
+      expect(response.body).to include("Reopen")
     end
   end
 end

@@ -27,10 +27,46 @@ RSpec.describe Job do
       expect(job.closure_reason).to eq("manual")
     end
 
-    it "cannot re-open a closed job" do
+    it "may_close? is false for an already-closed job" do
       job = Factories.job
       job.close!
       expect(job.may_close?).to be false
+    end
+
+    it "may_reopen? is true only for closed jobs" do
+      job = Factories.job
+      expect(job.may_reopen?).to be false
+      job.close!
+      expect(job.may_reopen?).to be true
+    end
+
+    it "reopen! transitions closed → open and clears closure_reason + finished_at" do
+      job = Factories.job
+      job.close_with_reason!("cancelled")
+      expect(job.closure_reason).to eq("cancelled")
+      expect(job.finished_at).to be_present
+
+      job.reopen!
+      job.save!
+
+      expect(job.state).to eq("open")
+      expect(job.closure_reason).to be_nil
+      expect(job.finished_at).to be_nil
+    end
+
+    it "reopen does not un-cancel cancelled Runs" do
+      job = Factories.job
+      run = job.initial_run
+      run.start!; run.save!
+      job.cancel_active_runs_and_close!("cancelled")
+      expect(run.reload.state).to eq("cancelled")
+
+      job.reopen!
+      job.save!
+      expect(run.reload.state).to eq("cancelled")  # the cancelled invocation
+      # really did stop — reopen
+      # is about the thread, not
+      # the Run
     end
   end
 

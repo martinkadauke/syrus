@@ -46,7 +46,35 @@ class JobsController < ApplicationController
     redirect_to job_path(@job), notice: "Cancellation requested."
   end
 
+  # Undo a close. The next poll cycle may immediately re-close the
+  # Job if the underlying reason still applies (e.g. syrus-stop label
+  # still on the PR, PR merged on GitHub) — that's intentional. Local
+  # state catches up to GitHub state via the next poll.
+  def reopen
+    unless @job.may_reopen?
+      redirect_to job_path(@job), alert: "Job isn't closed."
+      return
+    end
+
+    prior_reason = @job.closure_reason
+    @job.reopen!
+    @job.save!
+    redirect_to job_path(@job), notice: reopen_notice(prior_reason)
+  end
+
   private
+
+  def reopen_notice(prior_reason)
+    base = "Thread reopened."
+    case prior_reason
+    when "syrus_stop"
+      "#{base} Heads up: the next poll will re-close it if the syrus-stop label is still on the PR."
+    when "pr_merged", "pr_closed"
+      "#{base} Heads up: the next poll will check the PR state and may re-close it."
+    else
+      base
+    end
+  end
 
   def load_job
     @job = Current.user.jobs.includes(:repository, runs: :job_logs).find(params[:id])
