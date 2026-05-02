@@ -85,6 +85,13 @@ USER 1000:1000
 COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --chown=rails:rails --from=build /rails /rails
 
+# Bake the git SHA the image was built from. .git/ is excluded via
+# .dockerignore so the running container can't compute it itself —
+# bin/deploy passes --build-arg GIT_SHA=$(git rev-parse --short HEAD).
+# Placed late so re-baking the SHA doesn't bust the asset/gem cache.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 # Entrypoint prepares the database.
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 

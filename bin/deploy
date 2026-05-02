@@ -82,6 +82,7 @@ if [ "$SKIP_BUILD" = false ]; then
   echo "→ ${REGISTRY}:${SHA} build (linux/amd64 via colima/Rosetta)"
   docker buildx use colima >/dev/null 2>&1 || true
   docker build --platform linux/amd64 \
+    --build-arg "GIT_SHA=${SHA}" \
     -t "${REGISTRY}:${SHA}" \
     -t "${REGISTRY}:latest" \
     .
