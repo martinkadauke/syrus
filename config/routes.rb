@@ -4,9 +4,19 @@ Rails.application.routes.draw do
   resources :users, only: %i[ new create ]
 
   resource :credentials, only: %i[ edit update ]
-  resources :repositories, except: %i[ show ]
+  resources :repositories, except: %i[ show ] do
+    member do
+      post :poll
+    end
+  end
   resources :invitations, only: %i[ index create destroy ]
   resource :settings, only: %i[ edit update ]
+  resources :jobs, only: %i[ show ] do
+    member do
+      post :replay
+      post :cancel
+    end
+  end
 
   root "home#index"
 

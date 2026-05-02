@@ -31,6 +31,9 @@
                 <% end %>
               </td>
               <td class="px-4 py-3 text-right space-x-3">
+                <%= button_to "Poll now", poll_repository_path(repo), method: :post,
+                      class: "text-blue-600 underline hover:no-underline cursor-pointer",
+                      form: { class: "inline" } %>
                 <%= link_to "Edit", edit_repository_path(repo), class: "text-blue-600 underline hover:no-underline" %>
                 <%= button_to "Remove", repository_path(repo), method: :delete,
                       class: "text-red-600 underline hover:no-underline cursor-pointer",

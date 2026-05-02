@@ -26,5 +26,12 @@ RSpec.describe PollRepositoryJob do
         described_class.perform_now(repository.id)
       }.not_to change(Job, :count)
     end
+
+    it "force: true polls even when polling_enabled is false" do
+      repository.update!(polling_enabled: false)
+      expect {
+        described_class.perform_now(repository.id, force: true)
+      }.to change(Job, :count).by_at_least(1)
+    end
   end
 end

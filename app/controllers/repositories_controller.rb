@@ -1,5 +1,5 @@
 class RepositoriesController < ApplicationController
-  before_action :load_repository, only: %i[ edit update destroy ]
+  before_action :load_repository, only: %i[ edit update destroy poll ]
 
   def index
     @repositories = Current.user.repositories.order(:owner, :name)
@@ -32,6 +32,11 @@ class RepositoriesController < ApplicationController
   def destroy
     @repository.destroy
     redirect_to repositories_path, notice: "Repository removed."
+  end
+
+  def poll
+    PollRepositoryJob.perform_later(@repository.id, force: true)
+    redirect_to repositories_path, notice: "Polling #{@repository.slug} now…"
   end
 
   private

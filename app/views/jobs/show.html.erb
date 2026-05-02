@@ -1,0 +1,75 @@
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="font-bold text-2xl">
+        <span class="font-mono"><%= @job.repository.slug %></span>
+        <span class="text-gray-400">·</span>
+        <%= link_to "##{@job.issue_number}", job_issue_url(@job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
+      </h1>
+      <p class="mt-1 text-sm text-gray-500">Job #<%= @job.id %></p>
+    </div>
+    <div class="flex items-center gap-3">
+      <%= job_state_pill(@job.state) %>
+      <% if @job.may_cancel? %>
+        <%= button_to "Cancel", cancel_job_path(@job), method: :post,
+              class: "rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium cursor-pointer",
+              form: { class: "inline", data: { turbo_confirm: "Cancel this job?" } } %>
+      <% end %>
+      <%= button_to "Replay", replay_job_path(@job), method: :post,
+            class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium cursor-pointer",
+            form: { class: "inline" } %>
+    </div>
+  </div>
+
+  <div class="bg-white border border-gray-200 rounded-lg p-4 grid grid-cols-2 gap-4 text-sm">
+    <div>
+      <div class="text-xs uppercase text-gray-500">Branch</div>
+      <div class="font-mono text-gray-700"><%= @job.branch_name || "—" %></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500">Pull request</div>
+      <div>
+        <% if @job.pr_number %>
+          <%= link_to "##{@job.pr_number}", job_pr_url(@job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
+        <% else %>
+          <span class="text-gray-400">—</span>
+        <% end %>
+      </div>
+    </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500">Started</div>
+      <div class="text-gray-700"><%= @job.started_at&.to_fs(:long) || "—" %></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500">Finished</div>
+      <div class="text-gray-700"><%= @job.finished_at&.to_fs(:long) || "—" %></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500">Agent turns</div>
+      <div class="text-gray-700"><%= @job.agent_turns || "—" %></div>
+    </div>
+  </div>
+
+  <section>
+    <h2 class="font-semibold text-lg mb-2">Transcript</h2>
+    <%= turbo_stream_from @job, "logs" %>
+    <div id="job_logs" class="bg-black text-gray-100 rounded-lg p-4 max-h-96 overflow-y-auto space-y-1">
+      <% if @job.job_logs.any? %>
+        <%= render @job.job_logs %>
+      <% else %>
+        <p class="font-mono text-xs text-gray-500">No transcript chunks yet — waiting for the worker.</p>
+      <% end %>
+    </div>
+  </section>
+
+  <% if @job.agent_diff.present? %>
+    <section>
+      <h2 class="font-semibold text-lg mb-2">Diff</h2>
+      <pre class="bg-black text-gray-100 rounded-lg p-4 overflow-x-auto text-xs font-mono whitespace-pre"><%= @job.agent_diff %></pre>
+    </section>
+  <% end %>
+
+  <div class="text-sm">
+    <%= link_to "← Back to dashboard", root_path, class: "text-gray-700 underline hover:no-underline" %>
+  </div>
+</div>

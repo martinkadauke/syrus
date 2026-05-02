@@ -1,13 +1,43 @@
 <div class="space-y-6">
-  <div>
-    <h1 class="font-bold text-3xl">Welcome to Syrus</h1>
-    <p class="text-gray-600 mt-2">Signed in as <%= Current.user.email_address %>.</p>
-  </div>
+  <h1 class="font-bold text-3xl">Dashboard</h1>
 
-  <div class="bg-white border border-gray-200 rounded-lg p-6">
-    <p class="text-sm text-gray-600">
-      The dashboard, repository registry, and job views land in stage M5b/c.
-      For now, this is a placeholder so the auth + signup flow has somewhere to go.
-    </p>
-  </div>
+  <% if @jobs.any? %>
+    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <table class="min-w-full divide-y divide-gray-200">
+        <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+          <tr>
+            <th class="px-4 py-2 text-left">State</th>
+            <th class="px-4 py-2 text-left">Repository</th>
+            <th class="px-4 py-2 text-left">Issue</th>
+            <th class="px-4 py-2 text-left">Turns</th>
+            <th class="px-4 py-2 text-left">Started</th>
+            <th class="px-4 py-2 text-left">Finished</th>
+            <th class="px-4 py-2"></th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100 text-sm">
+          <% @jobs.each do |job| %>
+            <tr>
+              <td class="px-4 py-3"><%= job_state_pill(job.state) %></td>
+              <td class="px-4 py-3 font-mono"><%= job.repository.slug %></td>
+              <td class="px-4 py-3">
+                <%= link_to "##{job.issue_number}", job_issue_url(job), target: "_blank", rel: "noopener", class: "text-blue-600 underline hover:no-underline" %>
+              </td>
+              <td class="px-4 py-3 text-gray-600"><%= job.agent_turns || "—" %></td>
+              <td class="px-4 py-3 text-gray-500"><%= job.started_at&.to_fs(:short) || "—" %></td>
+              <td class="px-4 py-3 text-gray-500"><%= job.finished_at&.to_fs(:short) || "—" %></td>
+              <td class="px-4 py-3 text-right">
+                <%= link_to "View", job_path(job), class: "text-blue-600 underline hover:no-underline" %>
+              </td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% else %>
+    <div class="bg-white border border-gray-200 rounded-lg p-6 text-sm text-gray-600">
+      No jobs yet. Add a repository, enable polling, label an issue
+      <code class="bg-gray-100 px-1 rounded">syrus</code>, and one will show up here.
+    </div>
+  <% end %>
 </div>

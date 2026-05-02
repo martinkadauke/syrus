@@ -50,5 +50,14 @@ RSpec.describe "Repositories", type: :request do
         delete repository_path(mine)
       }.to change(user.repositories, :count).by(-1)
     end
+
+    it "manual poll enqueues PollRepositoryJob with force: true" do
+      mine = Factories.repository(user: user, polling_enabled: false)
+      expect {
+        post poll_repository_path(mine)
+      }.to have_enqueued_job(PollRepositoryJob).with(mine.id, force: true)
+      expect(response).to redirect_to(repositories_path)
+      expect(flash[:notice]).to match(/Polling/)
+    end
   end
 end

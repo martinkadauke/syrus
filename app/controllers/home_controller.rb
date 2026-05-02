@@ -1,5 +1,5 @@
 class HomeController < ApplicationController
   def index
-    # Stage M5a placeholder — M5c replaces this with the real dashboard.
+    @jobs = Current.user.jobs.includes(:repository).order(created_at: :desc).limit(20)
   end
 end

@@ -1,9 +1,10 @@
 class PollRepositoryJob < ApplicationJob
   queue_as :default
 
-  def perform(repository_id)
+  def perform(repository_id, force: false)
     repository = Repository.find_by(id: repository_id)
-    return unless repository&.polling_enabled?
+    return unless repository
+    return unless force || repository.polling_enabled?
 
     issues = GithubClient.for(repository.user)
                          .issues_with_label(repository.slug, repository.trigger_label)
