@@ -12,7 +12,12 @@ class PollRebaseJob < ApplicationJob
   # shouldn't race itself or stack two rebase Runs at once.
   limits_concurrency to: 1, key: ->(job_id) { "rebase_poll:#{job_id}" }
 
-  def perform(job_id)
+  # `bypass_cache: true` is set by the on-demand "Check now" button on
+  # Job#show. The periodic poller (PollAllRebasesJob → PollRebaseJob)
+  # leaves it false so the conditional-GET / 304 cycle keeps it cheap;
+  # operator-initiated checks pay a fresh request to defeat GitHub's
+  # eventual-consistency lag on the `mergeable` field.
+  def perform(job_id, bypass_cache: false)
     @job = Job.find_by(id: job_id)
     return unless @job
     # Archived repos are explicitly out — the operator has retired
@@ -24,7 +29,7 @@ class PollRebaseJob < ApplicationJob
     return unless pr_number
 
     @client = GithubClient.for(@job.user)
-    pr = @client.pull_request(@job.repository.slug, pr_number)
+    pr = @client.pull_request(@job.repository.slug, pr_number, bypass_cache: bypass_cache)
 
     # Cache what GitHub told us so the show page doesn't have to call
     # back here on every render. Persist BEFORE any early returns so

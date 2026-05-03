@@ -98,11 +98,31 @@ class GithubClient
     raise
   end
 
-  def pull_request(repo_slug, pr_number)
-    track_rate_limits { @client.pull_request(repo_slug, pr_number) }
+  # `bypass_cache: true` reaches GitHub directly via a parallel
+  # Octokit client that has no faraday-http-cache middleware. Used
+  # by the on-demand "Check now" path: GitHub computes PR
+  # mergeability lazily, and the conditional-GET 304 cycle can
+  # serve stale `mergeable: true` for minutes after the value has
+  # actually flipped on GitHub's side. Forcing a fresh body costs
+  # one rate-limit token but is the only way to surface the new
+  # value reliably. Periodic pollers stay on the cached path.
+  def pull_request(repo_slug, pr_number, bypass_cache: false)
+    client = bypass_cache ? uncached_client : @client
+    track_rate_limits { client.pull_request(repo_slug, pr_number) }
   rescue Octokit::TooManyRequests => e
     Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug} PR ##{pr_number}: #{e.message}")
     raise
+  end
+
+  # Bare Octokit client — Octokit defaults only, NO faraday-http-cache.
+  # Memoized so we don't rebuild the Faraday stack on every call. Same
+  # token + user-agent as @client.
+  def uncached_client
+    @uncached_client ||= Octokit::Client.new(
+      access_token: @user.github_token,
+      user_agent: USER_AGENT,
+      auto_paginate: true
+    )
   end
 
   # PR conversation-tab comments. GitHub's `since` filter is honored

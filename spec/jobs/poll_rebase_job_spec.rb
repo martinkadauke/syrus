@@ -115,11 +115,22 @@ RSpec.describe PollRebaseJob do
     it "uses external_pr_number when pr_number is nil" do
       job.update!(pr_number: nil, external_pr_number: 99)
       pr = pr_resource(mergeable: false)
-      expect_any_instance_of(GithubClient).to receive(:pull_request).with("acme/widgets", 99).and_return(pr)
+      expect_any_instance_of(GithubClient).to receive(:pull_request)
+        .with("acme/widgets", 99, hash_including(bypass_cache: false))
+        .and_return(pr)
 
       expect {
         described_class.perform_now(job.id)
       }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+    end
+
+    it "passes bypass_cache through when called with bypass_cache: true" do
+      pr = pr_resource(mergeable: false)
+      expect_any_instance_of(GithubClient).to receive(:pull_request)
+        .with("acme/widgets", job.pr_number, hash_including(bypass_cache: true))
+        .and_return(pr)
+
+      described_class.perform_now(job.id, bypass_cache: true)
     end
 
     it "skips silently when neither pr_number nor external_pr_number is set" do

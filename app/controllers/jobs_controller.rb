@@ -100,7 +100,7 @@ class JobsController < ApplicationController
       return
     end
 
-    PollRebaseJob.perform_later(@job.id)
+    PollRebaseJob.perform_later(@job.id, bypass_cache: true)
     redirect_to job_path(@job), notice: "Checking mergeability now…"
   end
 

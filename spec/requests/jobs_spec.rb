@@ -450,11 +450,11 @@ RSpec.describe "Jobs", type: :request do
   describe "POST /jobs/:id/check_mergeability" do
     before { sign_in_as(user) }
 
-    it "enqueues PollRebaseJob when the Job has a PR" do
+    it "enqueues PollRebaseJob with bypass_cache: true when the Job has a PR" do
       job.update!(pr_number: 7)
       expect {
         post check_mergeability_job_path(job)
-      }.to have_enqueued_job(PollRebaseJob).with(job.id)
+      }.to have_enqueued_job(PollRebaseJob).with(job.id, bypass_cache: true)
       expect(response).to redirect_to(job_path(job))
       expect(flash[:notice]).to match(/Checking mergeability/)
     end
@@ -464,7 +464,7 @@ RSpec.describe "Jobs", type: :request do
                   external_pr_number: 99, finished_at: Time.current)
       expect {
         post check_mergeability_job_path(job)
-      }.to have_enqueued_job(PollRebaseJob).with(job.id)
+      }.to have_enqueued_job(PollRebaseJob).with(job.id, bypass_cache: true)
     end
 
     it "refuses when the Job has no PR" do
