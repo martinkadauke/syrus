@@ -90,22 +90,29 @@
         </div>
       </div>
 
-      <details <%= is_last ? "open" : "" %> class="group">
-        <summary class="px-4 py-2 text-xs uppercase tracking-wide text-gray-500 cursor-pointer select-none hover:bg-gray-50 flex items-center gap-2 [&::marker]:hidden [&::-webkit-details-marker]:hidden">
-          <span class="text-gray-400 group-open:rotate-90 transition-transform duration-150 inline-block">▶</span>
-          Transcript
-          <% unless run.job_logs.any? %>
-            <span class="normal-case text-gray-400 font-normal">(empty)</span>
-          <% end %>
-        </summary>
-        <div id="run_<%= run.id %>_logs" data-turbo-permanent class="bg-black text-gray-100 p-3 max-h-96 overflow-y-auto space-y-1">
-          <% if run.job_logs.any? %>
-            <%= render run.job_logs %>
-          <% else %>
-            <p class="font-mono text-xs text-gray-400">No transcript chunks yet.</p>
-          <% end %>
-        </div>
-      </details>
+      <%# Skip the transcript for steps that haven't started yet —
+          the agent hasn't been spawned, there's nothing to show,
+          and the empty "(empty)" placeholder + collapsible just
+          adds visual weight. Once the Step transitions to running
+          / succeeded / failed, the transcript renders normally. %>
+      <% unless step.queued? %>
+        <details <%= is_last ? "open" : "" %> class="group">
+          <summary class="px-4 py-2 text-xs uppercase tracking-wide text-gray-500 cursor-pointer select-none hover:bg-gray-50 flex items-center gap-2 [&::marker]:hidden [&::-webkit-details-marker]:hidden">
+            <span class="text-gray-400 group-open:rotate-90 transition-transform duration-150 inline-block">▶</span>
+            Transcript
+            <% unless run.job_logs.any? %>
+              <span class="normal-case text-gray-400 font-normal">(empty)</span>
+            <% end %>
+          </summary>
+          <div id="run_<%= run.id %>_logs" data-turbo-permanent class="bg-black text-gray-100 p-3 max-h-96 overflow-y-auto space-y-1">
+            <% if run.job_logs.any? %>
+              <%= render run.job_logs %>
+            <% else %>
+              <p class="font-mono text-xs text-gray-400">No transcript chunks yet.</p>
+            <% end %>
+          </div>
+        </details>
+      <% end %>
 
       <% if Current.user&.admin? && run.run_diagnostic %>
         <%= render "diagnostic", diagnostic: run.run_diagnostic %>

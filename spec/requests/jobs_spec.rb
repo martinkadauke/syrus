@@ -17,7 +17,12 @@ RSpec.describe "Jobs", type: :request do
 
       it "shows the job thread + each Run with its transcript and diff" do
         run = job.initial_run
+        # Bring the Step out of `queued` too — otherwise the new
+        # _step partial hides the transcript collapsible (queued
+        # steps haven't started, so there's nothing to show).
+        run.step.start!; run.step.save!
         run.start!; run.succeed!
+        run.step.succeed!; run.step.save!
         run.update!(agent_diff: "diff --git a/foo b/foo\n+bar", agent_turns: 3, agent_outcome: "success")
         JobLog.create!(run: run, sequence: 0, chunk: "hello transcript")
 
