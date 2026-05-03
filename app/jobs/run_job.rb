@@ -104,6 +104,11 @@ class RunJob < ApplicationJob
     log("cancelled mid-run")
   rescue StandardError => e
     log("FAIL: #{e.class}: #{e.message}")
+    # Snapshot exception + git state + filtered env + repo metadata
+    # *before* the workspace cleanup happens (in `ensure` below).
+    # CaptureRunDiagnostic swallows its own errors so a failure here
+    # never double-faults the rescue path.
+    CaptureRunDiagnostic.capture(@run, e, workspace: @workspace) if @run
     if @run&.may_fail?
       @run.fail!
       @run.save!

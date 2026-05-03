@@ -6,6 +6,7 @@ class Run < ApplicationRecord
   belongs_to :job
   has_many :job_logs, -> { order(:sequence) }, dependent: :destroy
   has_one :claude_session, dependent: :destroy
+  has_one :run_diagnostic, dependent: :destroy
 
   validates :trigger_kind, presence: true, inclusion: { in: TRIGGER_KINDS }
 

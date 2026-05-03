@@ -73,6 +73,10 @@
         </div>
       </details>
 
+      <% if Current.user&.admin? && run.run_diagnostic %>
+        <%= render "diagnostic", diagnostic: run.run_diagnostic %>
+      <% end %>
+
       <% if run.agent_diff.present? %>
         <details class="group">
           <summary class="px-4 py-2 text-xs uppercase tracking-wide text-gray-500 cursor-pointer select-none hover:bg-gray-50 flex items-center gap-2 [&::marker]:hidden [&::-webkit-details-marker]:hidden">

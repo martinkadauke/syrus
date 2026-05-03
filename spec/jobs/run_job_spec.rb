@@ -594,6 +594,28 @@ RSpec.describe RunJob do
     end
   end
 
+  describe "RunDiagnostic capture on failure" do
+    it "snapshots exception + git + env when a Run fails" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: true,
+                                    outcome: "error_during_execution", final_text: nil, session_id: nil)
+      }
+
+      expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentRunFailed)
+
+      diag = run.reload.run_diagnostic
+      expect(diag).to be_present
+      expect(diag.error_class).to eq("RunJob::AgentRunFailed")
+      expect(diag.repo_snapshot["run_trigger_kind"]).to eq("initial")
+      expect(diag.environment_snapshot).to have_key("ruby_version")
+    end
+
+    it "doesn't create a diagnostic on successful Runs" do
+      expect { described_class.perform_now(run.id) }.not_to raise_error
+      expect(run.reload.run_diagnostic).to be_nil
+    end
+  end
+
   describe "agent broke git state (orphan branch / detached HEAD)" do
     it "raises AgentBrokeGitState with a helpful message and stamps a distinct outcome" do
       RunJob.agent_runner = ->(workspace_path:, **_) {

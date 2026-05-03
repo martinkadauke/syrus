@@ -28,6 +28,9 @@ default: &default
   prune_claude_sessions:
     class: ClaudeSessionPruneJob
     schedule: every day at 3:00am
+  prune_run_diagnostics:
+    class: RunDiagnosticPruneJob
+    schedule: every day at 3:10am
 
 development:
   <<: *default

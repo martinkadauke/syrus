@@ -10,15 +10,15 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
-  create_table "app_settings", force: :cascade do |t|
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_173011) do
+  create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
     t.boolean "signups_open", default: false, null: false
     t.datetime "updated_at", null: false
   end
 
-  create_table "claude_sessions", force: :cascade do |t|
+  create_table "claude_sessions", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "run_id", null: false
     t.string "session_id", null: false
@@ -28,7 +28,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
     t.index ["run_id"], name: "index_claude_sessions_on_run_id", unique: true
   end
 
-  create_table "invitations", force: :cascade do |t|
+  create_table "invitations", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "accepted_at"
     t.datetime "created_at", null: false
     t.string "email_address", null: false
@@ -41,18 +41,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
     t.index ["token"], name: "index_invitations_on_token", unique: true
   end
 
-  create_table "job_logs", force: :cascade do |t|
+  create_table "job_logs", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.text "chunk", null: false
     t.datetime "created_at", null: false
     t.string "kind"
-    t.bigint "run_id", null: false
+    t.integer "run_id", null: false
     t.integer "sequence", null: false
     t.datetime "updated_at", null: false
     t.index ["run_id", "sequence"], name: "index_job_logs_on_run_id_and_sequence", unique: true
     t.index ["run_id"], name: "index_job_logs_on_run_id"
   end
 
-  create_table "jobs", force: :cascade do |t|
+  create_table "jobs", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.string "branch_name"
     t.string "closure_reason"
     t.datetime "created_at", null: false
@@ -82,7 +82,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
     t.index ["user_id"], name: "index_jobs_on_user_id"
   end
 
-  create_table "repositories", force: :cascade do |t|
+  create_table "repositories", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "archived_at"
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
@@ -100,7 +100,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
     t.index ["user_id"], name: "index_repositories_on_user_id"
   end
 
-  create_table "runs", force: :cascade do |t|
+  create_table "run_diagnostics", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.text "environment_snapshot"
+    t.text "error_backtrace"
+    t.string "error_class", null: false
+    t.text "error_message"
+    t.text "git_snapshot"
+    t.text "repo_snapshot"
+    t.integer "run_id", null: false
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_run_diagnostics_on_created_at"
+    t.index ["run_id"], name: "index_run_diagnostics_on_run_id", unique: true
+  end
+
+  create_table "runs", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.text "agent_diff"
     t.string "agent_outcome"
     t.text "agent_pr_body"
@@ -124,7 +138,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
   end
 
-  create_table "scheduled_tasks", force: :cascade do |t|
+  create_table "scheduled_tasks", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "archived_at"
     t.integer "consecutive_failure_count", default: 0, null: false
     t.datetime "created_at", null: false
@@ -147,7 +161,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
     t.index ["user_id"], name: "index_scheduled_tasks_on_user_id"
   end
 
-  create_table "sessions", force: :cascade do |t|
+  create_table "sessions", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.string "ip_address"
     t.datetime "updated_at", null: false
@@ -156,7 +170,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
     t.index ["user_id"], name: "index_sessions_on_user_id"
   end
 
-  create_table "users", force: :cascade do |t|
+  create_table "users", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.boolean "admin", default: false, null: false
     t.integer "agent_max_turns", default: 200, null: false
     t.string "claude_oauth_token"
@@ -180,6 +194,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_110000) do
   add_foreign_key "jobs", "scheduled_tasks"
   add_foreign_key "jobs", "users"
   add_foreign_key "repositories", "users"
+  add_foreign_key "run_diagnostics", "runs"
   add_foreign_key "runs", "jobs"
   add_foreign_key "scheduled_tasks", "repositories"
   add_foreign_key "scheduled_tasks", "users"

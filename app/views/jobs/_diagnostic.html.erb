@@ -1,0 +1,36 @@
+<details class="group">
+  <summary class="px-4 py-2 text-xs uppercase tracking-wide text-red-700 bg-red-50 cursor-pointer select-none hover:bg-red-100 flex items-center gap-2 [&::marker]:hidden [&::-webkit-details-marker]:hidden">
+    <span class="text-red-400 group-open:rotate-90 transition-transform duration-150 inline-block">▶</span>
+    Diagnostic
+    <span class="normal-case text-red-500 font-normal">(admin-only — captured at <%= relative_timestamp(diagnostic.created_at) %>; auto-purges after <%= RunDiagnostic::RETAIN_AFTER.inspect %>)</span>
+  </summary>
+  <div class="bg-gray-50 border-t border-gray-200 p-4 text-sm space-y-4">
+    <div>
+      <div class="text-xs uppercase text-gray-500 mb-1">Exception</div>
+      <div class="font-mono text-red-700"><%= diagnostic.error_class %></div>
+      <pre class="font-mono text-xs whitespace-pre-wrap mt-1 bg-white border border-gray-200 rounded p-2"><%= diagnostic.error_message %></pre>
+    </div>
+
+    <% if diagnostic.error_backtrace.present? %>
+      <details>
+        <summary class="text-xs uppercase text-gray-500 cursor-pointer">Backtrace</summary>
+        <pre class="font-mono text-xs whitespace-pre-wrap mt-1 bg-white border border-gray-200 rounded p-2 max-h-64 overflow-y-auto"><%= diagnostic.error_backtrace %></pre>
+      </details>
+    <% end %>
+
+    <details open>
+      <summary class="text-xs uppercase text-gray-500 cursor-pointer">Repository / Job context</summary>
+      <pre class="font-mono text-xs whitespace-pre-wrap mt-1 bg-white border border-gray-200 rounded p-2"><%= JSON.pretty_generate(diagnostic.repo_snapshot || {}) %></pre>
+    </details>
+
+    <details>
+      <summary class="text-xs uppercase text-gray-500 cursor-pointer">Git snapshot (worktree at time of failure)</summary>
+      <pre class="font-mono text-xs whitespace-pre-wrap mt-1 bg-white border border-gray-200 rounded p-2 max-h-96 overflow-y-auto"><%= JSON.pretty_generate(diagnostic.git_snapshot || {}) %></pre>
+    </details>
+
+    <details>
+      <summary class="text-xs uppercase text-gray-500 cursor-pointer">Environment (allowlisted; secrets stripped)</summary>
+      <pre class="font-mono text-xs whitespace-pre-wrap mt-1 bg-white border border-gray-200 rounded p-2 max-h-64 overflow-y-auto"><%= JSON.pretty_generate(diagnostic.environment_snapshot || {}) %></pre>
+    </details>
+  </div>
+</details>
