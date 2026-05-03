@@ -38,11 +38,13 @@ class ScheduledTaskFire
       scheduled_task: @task,
       issue_number: nil
     )
-    # Cron Jobs still use the legacy single-Run path until commit 7
-    # migrates Job's initial-run entry point too. Pre-rendered prompt
-    # gets carried through on Run.prompt; legacy RunJob.perform reads
-    # it directly.
-    job.runs.create!(trigger_kind: "initial", prompt: rendered_prompt)
+    # Job#after_create_commit only auto-instantiates the Initial
+    # workflow for issue Jobs. Cron Jobs need explicit instantiation
+    # here so the pre-rendered prompt rides through to the first
+    # Run; Steps::Implement skips its GitHub round-trip when
+    # run.prompt is already set.
+    workflow = Workflows::Initial.instantiate(job: job)
+    StepDispatcher.start_workflow(workflow, prompt: rendered_prompt)
 
     @task.record_fire!(at: @now)
     @task.mark_fired_one_shot! if @task.one_shot?

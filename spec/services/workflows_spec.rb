@@ -69,6 +69,14 @@ RSpec.describe Workflows do
     end
 
     it "rolls back the workflow + steps if any step creation fails" do
+      # Eager-eval the factory before stubbing — Job#after_create_commit
+      # calls Workflows::Initial.instantiate too, and that should be
+      # allowed to succeed normally; we only want the stub active for
+      # the explicit instantiate call below.
+      job
+      baseline_wf = Workflow.where(job: job).count
+      baseline_step = Step.count
+
       allow(Step).to receive(:create!).and_call_original
       allow(Step).to receive(:create!).with(hash_including(kind: "pr_open"))
                                       .and_raise(ActiveRecord::RecordInvalid.new(Step.new))
@@ -76,8 +84,10 @@ RSpec.describe Workflows do
       expect { Workflows::Initial.instantiate(job: job) }
         .to raise_error(ActiveRecord::RecordInvalid)
 
-      expect(Workflow.where(job: job)).to be_empty
-      expect(Step.where(kind: "implement")).to be_empty
+      # No new workflow / steps should have been persisted by the
+      # failing instantiate.
+      expect(Workflow.where(job: job).count).to eq(baseline_wf)
+      expect(Step.count).to eq(baseline_step)
     end
   end
 end

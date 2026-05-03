@@ -165,16 +165,15 @@ class Job < ApplicationRecord
 
   private
 
-  # Issue Jobs still create a legacy single-Run on after_create_commit
-  # for now. Migrating this entry point to instantiate Workflows::
-  # Initial is the goal of commit 7 (which also rewrites
-  # run_job_spec.rb to drain the multi-step chain). Until then,
-  # NEW issue Jobs go through the legacy RunJob.perform path; only
-  # follow-up triggers (pr_comment / ci_failure / rebase / replay /
-  # resume / manual / cron) and ScheduledTaskFire have moved to
-  # Workflows::*.
+  # Issue Jobs auto-instantiate Workflows::Initial on create. The
+  # workflow lays out the implement → summarize → pr_open chain;
+  # StepDispatcher.start_workflow creates the first Run, which
+  # auto-enqueues RunJob via Run's after_create_commit. Same
+  # observable behavior as the v0 single-Run flow, but each
+  # phase is now its own attemptable step.
   def create_initial_run
-    runs.create!(trigger_kind: "initial")
+    workflow = Workflows::Initial.instantiate(job: self)
+    StepDispatcher.start_workflow(workflow)
   end
 
   def issue_number_blank_for_cron

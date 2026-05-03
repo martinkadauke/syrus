@@ -28,7 +28,19 @@ class Step < ApplicationRecord
   belongs_to :workflow
   belongs_to :next_step, class_name: "Step", optional: true
   has_one :previous_step, class_name: "Step", foreign_key: :next_step_id
-  has_many :runs, -> { order(:created_at) }, dependent: :destroy
+  # `dependent: :nullify` (not :destroy) during the migration window
+  # — Run.job_id is still the canonical parent pointer, so Runs
+  # cascade-destroy from Job. When a Step is destroyed (e.g. via
+  # Workflow's cascade), null out Run.step_id first so the FK
+  # constraint passes; the Run itself survives until Job's own
+  # has_many :runs cascade reaches it. Without this we'd either
+  # get a FK violation (constraint blocks Step delete) or
+  # double-destroy each Run (which fires broadcasts_refreshes_to
+  # twice, and the second time run.job is nil, blowing up Turbo).
+  # When commit 10 drops Run.job_id and reparents Runs to Steps,
+  # flip to `dependent: :destroy` here and remove the dependent on
+  # Job.
+  has_many :runs, -> { order(:created_at) }, dependent: :nullify
 
   validates :kind, presence: true, inclusion: { in: KINDS }
   validates :position, presence: true, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
@@ -71,12 +83,29 @@ class Step < ApplicationRecord
   # callback just signals "I'm done; move along".
   after_update_commit :advance_next_step!, if: :saved_change_to_state_to_succeeded?
 
+  # When a Step fails, the linear chain can't advance: v1 has no
+  # intra-workflow retry, so the workflow itself is dead. Mark
+  # the Workflow failed (which fires its own cleanup callbacks).
+  # Cancelled steps don't trigger this — cancel_downstream! is a
+  # legitimate "skip the rest of the chain" pattern.
+  after_update_commit :fail_workflow!, if: :saved_change_to_state_to_failed?
+
   def saved_change_to_state_to_succeeded?
     saved_change_to_state? && state == "succeeded"
   end
 
+  def saved_change_to_state_to_failed?
+    saved_change_to_state? && state == "failed"
+  end
+
   def advance_next_step!
     StepDispatcher.advance_from(self)
+  end
+
+  def fail_workflow!
+    return unless workflow.may_fail?
+    workflow.fail!
+    workflow.save!
   end
 
   # The most recently created Run on this Step — i.e. the latest

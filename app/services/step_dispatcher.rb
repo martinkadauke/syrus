@@ -74,9 +74,24 @@ class StepDispatcher
     nil
   end
 
+  # Mergeability cached on the Job is now stale post-push (or a
+  # PR just opened); badge says "needs rebase" until
+  # PollAllRebasesJob's next 15-min tick. Schedule a focused
+  # PollRebaseJob with a short delay so GitHub has time to
+  # recompute, then the cache update broadcasts a refresh and the
+  # show page morphs the badge live.
+  MERGEABILITY_RECHECK_DELAY = 30.seconds
+
   def finish_workflow!
     return unless @workflow.may_succeed?
     @workflow.succeed!
     @workflow.save!
+    schedule_mergeability_recheck
+  end
+
+  def schedule_mergeability_recheck
+    job = @workflow.job
+    return unless job.pr_number.present? || job.external_pr_number.present?
+    PollRebaseJob.set(wait: MERGEABILITY_RECHECK_DELAY).perform_later(job.id)
   end
 end
