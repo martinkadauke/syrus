@@ -65,6 +65,26 @@ module JobsHelper
     "currently: #{step.kind} (workflow: #{wf.trigger_kind_humanized})"
   end
 
+  # Per-Workflow "current step" cell on the dashboard's Workflows
+  # tab. Active workflow shows the step it's executing; finished
+  # workflow shows the step it ended at and how many of N total
+  # ran (cancelled / skipped via cancel_downstream! count toward N
+  # but are reflected by an "of M" suffix when shorter).
+  def workflow_step_caption(workflow)
+    steps = workflow.steps.to_a
+    return "—" if steps.empty?
+    case workflow.state
+    when "queued"
+      "#{steps.first.kind} (1/#{steps.size})"
+    when "running"
+      cur = steps.find { |s| s.state == "running" } || steps.find { |s| s.state == "queued" } || steps.last
+      "#{cur.kind} (#{steps.index(cur) + 1}/#{steps.size})"
+    else
+      last_executed = steps.reverse.find { |s| %w[succeeded failed].include?(s.state) } || steps.last
+      "#{last_executed.kind} (#{steps.index(last_executed) + 1}/#{steps.size})"
+    end
+  end
+
   def job_pr_url(job)
     return nil unless job.pr_number
     "https://github.com/#{job.repository.slug}/pull/#{job.pr_number}"

@@ -31,6 +31,36 @@ RSpec.describe "Dashboard", type: :request do
       expect(response.body).to include("No jobs yet")
     end
 
+    describe "Workflows tab" do
+      it "renders the empty state when no workflows exist" do
+        get root_path(tab: "workflows")
+        expect(response.body).to include("No workflows yet")
+      end
+
+      it "lists workflows for the current user with their trigger and step caption" do
+        repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+        Factories.job(repository: repo, issue_number: 7)
+        # Job's after_create_commit instantiated a Workflows::Initial
+        # — implement → summarize → pr_open. Show that on the
+        # Workflows tab.
+        get root_path(tab: "workflows")
+        expect(response.body).to include("acme/widgets")
+        expect(response.body).to include("initial")          # trigger pill
+        expect(response.body).to include("implement")        # current step caption
+        expect(response.body).to include("(1/3)")            # step counter
+      end
+
+      it "scopes to the current user (no leakage)" do
+        mine = Factories.repository(user: user, owner: "acme", name: "widgets")
+        Factories.job(repository: mine, issue_number: 7)
+        theirs = Factories.repository(user: other, owner: "globex", name: "things")
+        Factories.job(repository: theirs, issue_number: 99)
+        get root_path(tab: "workflows")
+        expect(response.body).to include("acme/widgets")
+        expect(response.body).not_to include("globex/things")
+      end
+    end
+
     describe "filters" do
       let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
 

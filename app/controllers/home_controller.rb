@@ -3,7 +3,7 @@ class HomeController < ApplicationController
 
   def index
     @repositories = Current.user.repositories.order(:owner, :name)
-    @active_tab = params[:tab] == "runs" ? "runs" : "jobs"
+    @active_tab = params[:tab] == "workflows" ? "workflows" : "jobs"
     @page = [params[:page].to_i, 1].max
 
     # Eager-load workflows + their steps so current_step_caption(job)
@@ -25,9 +25,12 @@ class HomeController < ApplicationController
     @jobs_total = @jobs.count
     @jobs = @jobs.order(created_at: :desc).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
 
-    @runs = Run.joins(:job).where(jobs: { user_id: Current.user.id })
-               .includes(job: :repository)
-    @runs_total = @runs.count
-    @runs = @runs.order(created_at: :desc).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
+    # Workflows tab — every burst of work, newest first. Eager-load
+    # job→repository for the row, plus steps so the "currently"
+    # caption can name the active step without an extra query.
+    @workflows = Workflow.joins(:job).where(jobs: { user_id: Current.user.id })
+                         .includes(:steps, job: :repository)
+    @workflows_total = @workflows.count
+    @workflows = @workflows.order(created_at: :desc).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
   end
 end
