@@ -279,6 +279,61 @@ the failure context and iterates rather than shipping a red PR. Examples:
 
 Per-repo config picks which graders are required vs advisory.
 
+### Agent-authored test plans for visual graders
+
+Generalises the visual grader bullet above. Pre-configured screenshot
+routes catch *generic* breakage; agent-authored plans catch what the
+agent was actually trying to verify. The agent knows the intent of its
+own changes; the harness doesn't. Let the agent write the test it
+wants run.
+
+**Shape:**
+
+- New MCP tool: `submit_test_plan(steps: [...])`. Each step is a
+  small structured action the headless browser can execute —
+  `navigate(path)`, `click(selector)`, `fill(selector, value)`,
+  `expect_visible(selector)`, `screenshot(label)`, `assert_no_console_errors()`,
+  etc. Plain JSON; no scripting language to vet.
+- Calling `submit_test_plan` **ends the agent run** with an
+  "awaiting test results" outcome. Don't keep tokens / worker
+  threads tied up while the browser dances for minutes.
+- A `RunTestPlanJob` boots the app (per-repo `bin/grader-up`),
+  drives the steps with Playwright, captures screenshots and
+  console logs, records pass/fail per step.
+- When complete, dispatch a follow-up `Run` that hands the agent the
+  result: screenshots (multimodal), per-step verdicts, console errors.
+  Agent either fixes and resubmits, or calls `submit_summary` to
+  open the PR.
+
+**Resume vs new session for the follow-up:**
+
+Default to **resume** the agent's prior session (`--resume <session_id>`,
+infrastructure already in place per the existing JSONL-backed resume
+work). Reasoning: the agent wrote the plan; the agent knows the intent
+of its changes; the prompt cache makes resume cheap within TTL.
+
+Two bail-outs to a new session:
+
+1. **Cache cold** — prior session ended longer ago than the extended
+   prompt-cache TTL (~1h). Resume cost approaches new-session cost
+   anyway, so spend the budget on a fresh perspective.
+2. **Repeat failures** — same plan-and-resume loop has failed 2–3
+   times. The agent is patching symptoms; force a new session as a
+   "fresh eyes" reset. Same logic as the rebase attempt cap, scoped
+   to test-plan iteration.
+
+**Interactions:**
+
+- Stacks with the other graders. Test-plan failures and CI failures
+  both feed back to the agent in the same iterate-on-failure loop.
+- Per-repo opt-in. Repos without a frontend get nothing from this;
+  repos with one mark it required vs advisory like any other grader.
+- Vision-model second pass (from the visual-graders bullet) still
+  applies — same screenshots, evaluated against per-repo rubrics.
+- Token budget concerns: long screenshot batches can blow the
+  context window. Cap per-plan screenshot count and fall back to
+  text-only verdicts when over budget.
+
 ### Multi-layer rate limiting
 
 The single "one running `Job` per repo" rule from M3 isn't enough.
