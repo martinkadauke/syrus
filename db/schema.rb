@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_02_231135) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_001718) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
@@ -49,6 +49,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_02_231135) do
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
     t.integer "issue_number", null: false
+    t.string "last_ci_handled_sha"
     t.datetime "last_seen_comment_at"
     t.boolean "pr_mergeable"
     t.datetime "pr_mergeable_checked_at"

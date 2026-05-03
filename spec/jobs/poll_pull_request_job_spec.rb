@@ -25,15 +25,24 @@ RSpec.describe PollPullRequestJob do
     )
   end
 
-  def stub_pr(state: "open", merged: false, labels: [])
+  def stub_pr(state: "open", merged: false, labels: [], head_sha: "deadbeef0000000000000000000000000000beef")
     stub_request(:get, pr_url).with(query: hash_including({})).to_return(
       status: 200, headers: { "Content-Type" => "application/json" },
       body: {
         number: 7,
         state: state,
         merged: merged,
-        labels: labels.map { |n| { name: n } }
+        labels: labels.map { |n| { name: n } },
+        head: { sha: head_sha, ref: "syrus/issue-42-#{job.id}" }
       }.to_json
+    )
+  end
+
+  def stub_check_runs(sha, runs)
+    url = "https://api.github.com/repos/acme/widgets/commits/#{sha}/check-runs"
+    stub_request(:get, url).with(query: hash_including({})).to_return(
+      status: 200, headers: { "Content-Type" => "application/json" },
+      body: { total_count: runs.size, check_runs: runs }.to_json
     )
   end
 
@@ -94,6 +103,9 @@ RSpec.describe PollPullRequestJob do
     before do
       stub_pr
       stub_reviews([])
+      # CI branch fires too on every poll; default to "no checks" so
+      # only the pr_comment branch can do anything in these tests.
+      stub_check_runs("deadbeef0000000000000000000000000000beef", [])
     end
 
     it "creates a pr_comment Run, advances the watermark, composes the prompt" do
@@ -160,6 +172,100 @@ RSpec.describe PollPullRequestJob do
       expect {
         described_class.perform_now(job.id)
       }.not_to change { job.runs.count }
+    end
+  end
+
+  describe "ci_failure dispatch" do
+    let(:sha) { "abc1234567890000000000000000000000000000" }
+
+    before do
+      stub_pr(head_sha: sha)
+      stub_reviews([])
+      stub_issue_comments([])
+      stub_review_comments([])
+    end
+
+    it "creates a ci_failure Run with a prompt that names the failing checks" do
+      stub_check_runs(sha, [
+        { name: "test", status: "completed", conclusion: "failure",
+          html_url: "https://github.com/acme/widgets/runs/100",
+          output: { summary: "RSpec: 2 examples, 1 failure (greet_spec.rb:14)" } },
+        { name: "lint", status: "completed", conclusion: "success",
+          html_url: "https://github.com/acme/widgets/runs/101", output: { summary: "0 issues" } }
+      ])
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.runs.where(trigger_kind: "ci_failure").count }.by(1)
+
+      run = job.runs.where(trigger_kind: "ci_failure").last
+      expect(run.prompt).to include("acme/widgets#7")
+      expect(run.prompt).to include("test")
+      expect(run.prompt).to include("RSpec: 2 examples, 1 failure (greet_spec.rb:14)")
+      expect(run.prompt).not_to include("0 issues")    # successes are excluded
+      expect(job.reload.last_ci_handled_sha).to eq(sha)
+    end
+
+    it "is a no-op when all checks are passing" do
+      stub_check_runs(sha, [
+        { name: "test", status: "completed", conclusion: "success",
+          html_url: "u", output: { summary: "ok" } }
+      ])
+      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+    end
+
+    it "is a no-op when checks are still in_progress (don't act on partial state)" do
+      stub_check_runs(sha, [
+        { name: "test", status: "in_progress", conclusion: nil,
+          html_url: "u", output: { summary: nil } }
+      ])
+      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+    end
+
+    it "doesn't re-react to the same head SHA twice" do
+      stub_check_runs(sha, [
+        { name: "test", status: "completed", conclusion: "failure",
+          html_url: "u", output: { summary: "fail" } }
+      ])
+      job.update!(last_ci_handled_sha: sha)
+
+      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+    end
+
+    it "skips when an active ci_failure Run is already pending" do
+      Run.create!(job: job, trigger_kind: "ci_failure", state: "queued")
+      stub_check_runs(sha, [
+        { name: "test", status: "completed", conclusion: "failure",
+          html_url: "u", output: { summary: "fail" } }
+      ])
+      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+    end
+
+    it "respects the cap (3 ci_failure runs already)" do
+      3.times { Run.create!(job: job, trigger_kind: "ci_failure", state: "succeeded") }
+      stub_check_runs(sha, [
+        { name: "test", status: "completed", conclusion: "failure",
+          html_url: "u", output: { summary: "fail" } }
+      ])
+      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+    end
+
+    it "treats timed_out / action_required / cancelled as failures, ignores neutral / skipped" do
+      stub_check_runs(sha, [
+        { name: "build",  status: "completed", conclusion: "timed_out",       html_url: "u1", output: { summary: "timed out at 30m" } },
+        { name: "deploy", status: "completed", conclusion: "action_required", html_url: "u2", output: { summary: "approve required" } },
+        { name: "snyk",   status: "completed", conclusion: "neutral",         html_url: "u3", output: { summary: "no issues" } },
+        { name: "skipme", status: "completed", conclusion: "skipped",         html_url: "u4", output: { summary: nil } }
+      ])
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.runs.where(trigger_kind: "ci_failure").count }.by(1)
+
+      run = job.runs.where(trigger_kind: "ci_failure").last
+      expect(run.prompt).to include("build").and include("deploy")
+      expect(run.prompt).not_to include("snyk")    # neutral isn't a failure
+      expect(run.prompt).not_to include("skipme")
     end
   end
 
