@@ -280,7 +280,12 @@ class RunJob < ApplicationJob
   def compose_main_prompt
     return Prompts::Resume.new.to_s if @run.resume?
     issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
+    persist_issue_metadata(issue)
     Prompts::Initial.new(issue: issue).to_s
+  end
+
+  def persist_issue_metadata(issue)
+    @job.update!(issue_title: issue.title, issue_body: issue.body)
   end
 
   def persist_agent_metadata(result)
