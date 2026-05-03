@@ -69,6 +69,51 @@ RSpec.describe ReapStaleRunsJob do
       expect(r1.reload.state).to eq("failed")
       expect(r2.reload.state).to eq("failed")
     end
+
+    describe "fast path: SolidQueue::ProcessPrunedError (post-deploy zombies)" do
+      # SolidQueue tables aren't loaded in the test DB (single-database
+      # test setup), so we stub the helper that reads them. The
+      # behavior under test is the *decision* given a set of pruned
+      # Run ids — what SQ returns is exercised in production.
+      def stub_pruned(*run_ids)
+        allow_any_instance_of(described_class)
+          .to receive(:pruned_run_ids_from_solid_queue)
+          .and_return(run_ids.map(&:to_i))
+      end
+
+      it "reaps a running Run whose SQ::Job was failed with ProcessPrunedError, even if heartbeat is fresh" do
+        # Fresh heartbeat — heartbeat-stale path WOULD NOT reap. Only
+        # the SQ-pruned signal does.
+        run = running_run(heartbeat_age: 30.seconds)
+        stub_pruned(run.id)
+        described_class.perform_now
+        expect(run.reload.state).to eq("failed")
+        expect(run.agent_outcome).to eq("worker_died")
+      end
+
+      it "ignores SQ-pruned ids that don't correspond to a still-running Run (race-safe)" do
+        run = running_run(heartbeat_age: 30.seconds)
+        run.update_columns(state: "failed", finished_at: 1.minute.ago)
+        stub_pruned(run.id)
+        expect { described_class.perform_now }.not_to change { run.reload.state }
+      end
+
+      it "no-ops when SQ has no pruned RunJobs (the common case)" do
+        running = running_run(heartbeat_age: 30.seconds)
+        stub_pruned
+        described_class.perform_now
+        expect(running.reload.state).to eq("running")
+      end
+
+      it "still falls through to heartbeat-stale reaping after the SQ-pruned pass" do
+        sq_pruned = running_run(heartbeat_age: 30.seconds)
+        old = running_run(heartbeat_age: Run::STALE_HEARTBEAT_THRESHOLD + 1.minute)
+        stub_pruned(sq_pruned.id)
+        described_class.perform_now
+        expect(sq_pruned.reload.state).to eq("failed")  # via SQ signal
+        expect(old.reload.state).to eq("failed")        # via heartbeat-stale
+      end
+    end
   end
 
   describe "Run.stale scope" do
