@@ -9,16 +9,19 @@ class Run < ApplicationRecord
 
   validates :trigger_kind, presence: true, inclusion: { in: TRIGGER_KINDS }
 
-  STALE_HEARTBEAT_THRESHOLD = 2.minutes
+  # Backstop for genuine agent hangs (claude alive but making no
+  # progress). Rare in practice — claude almost always streams a chunk
+  # at least every few minutes. The reaper's PRIMARY signal is the
+  # SolidQueue claim being gone (worker died → claim released by SQ
+  # supervisor); this threshold only triggers when the claim is still
+  # alive but the agent itself stopped emitting transcript output.
+  # 30 min comfortably covers normal long-tool-call gaps (large file
+  # reads, broad greps, multi-file edits).
+  STALE_HEARTBEAT_THRESHOLD = 30.minutes
 
   scope :active, -> { where(state: %w[ queued running ]) }
   scope :terminal, -> { where(state: %w[ succeeded failed cancelled ]) }
   scope :ordered, -> { order(:created_at) }
-  scope :stale, -> {
-    t = STALE_HEARTBEAT_THRESHOLD.ago
-    where(state: "running")
-      .where("last_heartbeat_at < :t OR (last_heartbeat_at IS NULL AND started_at < :t)", t: t)
-  }
 
   aasm column: :state, whiny_transitions: false do
     state :queued, initial: true
