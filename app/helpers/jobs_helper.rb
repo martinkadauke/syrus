@@ -53,6 +53,18 @@ module JobsHelper
     job.current_run&.state || "pending"
   end
 
+  # Per-Job dashboard caption — when a workflow is in flight, show
+  # what step it's on and what kicked it off. e.g. "currently:
+  # implement (workflow: initial)". Returns nil for jobs with no
+  # active workflow so callers can omit the caption entirely.
+  def current_step_caption(job)
+    wf = job.workflows.where(state: %w[ queued running ]).order(:created_at).last
+    return nil unless wf
+    step = wf.current_step
+    return "currently: #{wf.trigger_kind_humanized}" unless step
+    "currently: #{step.kind} (workflow: #{wf.trigger_kind_humanized})"
+  end
+
   def job_pr_url(job)
     return nil unless job.pr_number
     "https://github.com/#{job.repository.slug}/pull/#{job.pr_number}"

@@ -1,0 +1,37 @@
+<%# Renders a single Workflow as a card with header (trigger pill, state
+    pill, run-of-N counter) and a vertical chain of its Steps. Each
+    Step is its own subsection with the kind, state, and inline
+    Run(s). Cancelled steps render dimmed since they were skipped via
+    cancel_downstream! (e.g. AutoRebase clean → cancels agent_rebase
+    + force_push). %>
+<% steps_array = workflow.steps.to_a %>
+<section class="border border-gray-200 rounded-lg overflow-hidden">
+  <header class="bg-gray-50 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="font-medium text-gray-900">Workflow <%= workflow_number %></span>
+      <%= trigger_pill(workflow.trigger_kind) %>
+      <%= state_pill(workflow.state) %>
+      <span class="text-xs text-gray-500">
+        <%= pluralize(steps_array.size, "step") %>
+      </span>
+    </div>
+    <div class="text-xs text-gray-500">
+      <% if workflow.started_at %>
+        <%= relative_timestamp(workflow.started_at) %>
+        <% if workflow.finished_at %>
+          → <%= relative_timestamp(workflow.finished_at) %>
+        <% end %>
+      <% else %>
+        not yet started
+      <% end %>
+    </div>
+  </header>
+
+  <div class="divide-y divide-gray-100">
+    <% steps_array.each_with_index do |step, idx| %>
+      <%= render "step",
+            step: step, step_number: idx + 1, total_steps: steps_array.size,
+            job: job %>
+    <% end %>
+  </div>
+</section>

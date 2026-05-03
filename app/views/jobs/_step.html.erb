@@ -1,0 +1,119 @@
+<%# One Step in a Workflow's chain. Header shows position
+    (1/3), kind, state, optional cancellation reason; body renders
+    each Run's transcript and diff inline. Mostly v1 has 1 Run per
+    Step (no intra-step retry yet), so this looks like a flat
+    Run-with-extra-context most of the time. %>
+<% runs_array = step.runs.to_a %>
+<% step_dim = step.cancelled? ? "opacity-60" : "" %>
+<div class="<%= step_dim %>">
+  <div class="px-4 py-2 bg-white flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-xs uppercase tracking-wide text-gray-500">
+        Step <%= step_number %>/<%= total_steps %>
+      </span>
+      <span class="font-mono text-sm text-gray-800"><%= step.kind %></span>
+      <%= state_pill(step.state) %>
+      <% if step.cancelled? %>
+        <span class="text-xs text-gray-500 italic">skipped</span>
+      <% end %>
+    </div>
+    <div class="text-xs text-gray-500">
+      <% if step.started_at %>
+        <%= relative_timestamp(step.started_at) %>
+        <% if step.finished_at %>
+          → <%= relative_timestamp(step.finished_at) %>
+        <% end %>
+      <% end %>
+    </div>
+  </div>
+
+  <% runs_array.each_with_index do |run, ridx| %>
+    <% is_last = ridx == runs_array.size - 1 %>
+    <div class="border-t border-gray-100">
+      <div class="px-4 py-2 bg-gray-50 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-xs text-gray-500">Run <%= run.id %></span>
+          <%= state_pill(run.state) %>
+          <% if run.queued? || run.running? %>
+            <%= button_to "Stop", stop_run_job_path(job, run_id: run.id), method: :post,
+                  class: "px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 cursor-pointer",
+                  form: { class: "inline", data: { turbo_confirm: "Stop this run?" } } %>
+          <% end %>
+          <% rl_log = run.job_logs.find { |l| l.kind == "rate_limited" } %>
+          <% if rl_log %>
+            <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700"
+                  title="<%= rl_log.chunk %>">rate-limited</span>
+          <% end %>
+          <% if (run.failed? || run.cancelled?) && run.claude_session %>
+            <%= button_to "Resume", resume_job_path(job, source_run_id: run.id), method: :post,
+                  class: "px-2 py-0.5 rounded text-xs font-medium bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 cursor-pointer",
+                  form: { class: "inline" } %>
+          <% end %>
+        </div>
+        <div class="text-xs text-gray-500">
+          <% if run.running? && run.started_at %>
+            <% avg = Run.average_duration_for(run.trigger_kind) %>
+            <span data-controller="run-timer"
+                  data-run-timer-started-at-value="<%= run.started_at.iso8601 %>"
+                  data-run-timer-estimated-seconds-value="<%= avg || 0 %>">
+              <span data-run-timer-target="elapsed">…</span>
+              <% if avg %>
+                · <span data-run-timer-target="remaining"></span>
+              <% end %>
+            </span>
+          <% elsif run.started_at %>
+            <%= relative_timestamp(run.started_at) %>
+            <% if run.finished_at %>
+              → <%= relative_timestamp(run.finished_at) %>
+            <% end %>
+          <% else %>
+            not yet started
+          <% end %>
+          <% if run.agent_turns %>
+            · turns=<%= run.agent_turns %>
+          <% end %>
+          <% if run.agent_outcome %>
+            · <span class="font-mono"><%= run.agent_outcome %></span>
+          <% end %>
+        </div>
+      </div>
+
+      <details <%= is_last ? "open" : "" %> class="group">
+        <summary class="px-4 py-2 text-xs uppercase tracking-wide text-gray-500 cursor-pointer select-none hover:bg-gray-50 flex items-center gap-2 [&::marker]:hidden [&::-webkit-details-marker]:hidden">
+          <span class="text-gray-400 group-open:rotate-90 transition-transform duration-150 inline-block">▶</span>
+          Transcript
+          <% unless run.job_logs.any? %>
+            <span class="normal-case text-gray-400 font-normal">(empty)</span>
+          <% end %>
+        </summary>
+        <div id="run_<%= run.id %>_logs" data-turbo-permanent class="bg-black text-gray-100 p-3 max-h-96 overflow-y-auto space-y-1">
+          <% if run.job_logs.any? %>
+            <%= render run.job_logs %>
+          <% else %>
+            <p class="font-mono text-xs text-gray-400">No transcript chunks yet.</p>
+          <% end %>
+        </div>
+      </details>
+
+      <% if Current.user&.admin? && run.run_diagnostic %>
+        <%= render "diagnostic", diagnostic: run.run_diagnostic %>
+      <% end %>
+
+      <% if run.agent_diff.present? %>
+        <details class="group">
+          <summary class="px-4 py-2 text-xs uppercase tracking-wide text-gray-500 cursor-pointer select-none hover:bg-gray-50 flex items-center gap-2 [&::marker]:hidden [&::-webkit-details-marker]:hidden">
+            <span class="text-gray-400 group-open:rotate-90 transition-transform duration-150 inline-block">▶</span>
+            Diff
+          </summary>
+          <pre class="bg-black text-gray-100 p-3 overflow-x-auto max-h-96 overflow-y-auto text-xs font-mono whitespace-pre"><%= run.agent_diff %></pre>
+        </details>
+      <% end %>
+    </div>
+  <% end %>
+
+  <% if runs_array.empty? && !step.cancelled? %>
+    <div class="px-4 py-2 text-xs text-gray-400 italic border-t border-gray-100">
+      no runs yet
+    </div>
+  <% end %>
+</div>

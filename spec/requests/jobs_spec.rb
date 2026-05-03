@@ -52,14 +52,14 @@ RSpec.describe "Jobs", type: :request do
         expect(response.body).not_to include("whitespace-pre-wrap")
       end
 
-      it "shows Summary and Runs tabs when a run has an agent_summary" do
+      it "shows Summary and Workflows tabs when a run has an agent_summary" do
         run = job.initial_run
         run.start!; run.succeed!; run.save!
         run.update!(agent_summary: "Added the greeting helper method to ApplicationHelper.")
 
         get job_path(job)
         expect(response.body).to include("Summary")
-        expect(response.body).to include("Runs (")
+        expect(response.body).to include("Workflows (")
         expect(response.body).to include("Added the greeting helper method to ApplicationHelper.")
       end
 

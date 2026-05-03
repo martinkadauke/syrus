@@ -6,7 +6,9 @@ class HomeController < ApplicationController
     @active_tab = params[:tab] == "runs" ? "runs" : "jobs"
     @page = [params[:page].to_i, 1].max
 
-    @jobs = Current.user.jobs.includes(:repository)
+    # Eager-load workflows + their steps so current_step_caption(job)
+    # doesn't N+1 against every row in the dashboard table.
+    @jobs = Current.user.jobs.includes(:repository, workflows: :steps)
     @jobs = @jobs.where(state: params[:state]) if params[:state].present?
     @jobs = @jobs.where(repository_id: params[:repository_id]) if params[:repository_id].present?
 
