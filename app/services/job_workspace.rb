@@ -102,9 +102,17 @@ class JobWorkspace
   # registered as checked out. The orphan sweep would skip it because
   # Run state is "running" (set by the killed attempt's `@run.start!`,
   # never reset). Force-clear our own path defensively before fetch.
+  #
+  # Skip the noisy `worktree remove` call when the path doesn't exist —
+  # that's the normal first-run case, and git's "fatal: '...' is not a
+  # working tree" stderr line gets streamed into the JobLog before we
+  # rescue it (GitRunner streams line-by-line). Prune still runs to
+  # clean any registrations whose dir is missing.
   def force_clear_own_worktree
-    @git.run("worktree", "remove", "--force", path.to_s, chdir: bare_clone_path.to_s) rescue nil
-    FileUtils.rm_rf(path) if File.exist?(path)
+    if File.exist?(path)
+      @git.run("worktree", "remove", "--force", path.to_s, chdir: bare_clone_path.to_s) rescue nil
+      FileUtils.rm_rf(path) if File.exist?(path)
+    end
     @git.run("worktree", "prune", chdir: bare_clone_path.to_s) rescue nil
   end
 
