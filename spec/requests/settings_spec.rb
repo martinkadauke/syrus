@@ -6,6 +6,7 @@ RSpec.describe "Settings", type: :request do
 
   describe "GET /settings" do
     it "requires authentication" do
+      admin  # force a User to exist; first-run setup redirects to new_user instead
       get settings_path
       expect(response).to redirect_to(new_session_path)
     end
@@ -47,6 +48,7 @@ RSpec.describe "Settings", type: :request do
 
   describe "GET /settings/edit" do
     it "requires authentication" do
+      admin  # force a User to exist; first-run setup redirects to new_user instead
       get edit_settings_path
       expect(response).to redirect_to(new_session_path)
     end

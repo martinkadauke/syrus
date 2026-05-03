@@ -4,6 +4,7 @@ RSpec.describe "Credentials", type: :request do
   let(:user) { Factories.user(claude_oauth_token: "sk-existing", github_token: "ghp_existing") }
 
   it "requires authentication" do
+    user  # force a User to exist; first-run setup redirects to new_user instead
     get edit_credentials_path
     expect(response).to redirect_to(new_session_path)
   end

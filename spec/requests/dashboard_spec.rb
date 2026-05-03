@@ -5,6 +5,7 @@ RSpec.describe "Dashboard", type: :request do
   let(:other) { Factories.user }
 
   it "requires authentication" do
+    user  # force a User to exist; first-run setup redirects to new_user instead
     get root_path
     expect(response).to redirect_to(new_session_path)
   end

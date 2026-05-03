@@ -5,6 +5,7 @@ RSpec.describe "Invitations", type: :request do
   let(:non_admin) { Factories.user }          # second user → not admin
 
   it "requires authentication" do
+    admin  # force a User to exist; first-run setup redirects to new_user instead
     get invitations_path
     expect(response).to redirect_to(new_session_path)
   end
