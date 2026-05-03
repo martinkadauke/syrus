@@ -185,5 +185,30 @@ module Steps
             "agent's branch has no common ancestor with #{base} — orphan/detached state. " \
             "Likely cause: agent ran `git checkout --orphan`, `git reset --hard <unrelated>`, or similar."
     end
+
+    # ---- Chain control ----
+
+    # Cancel every downstream step in the linear chain. Used by
+    # steps that have determined their successors have nothing to
+    # do (e.g. AutoRebase that succeeded cleanly leaves
+    # AgentRebase + ForcePush with no work). The dispatcher
+    # walks past cancelled steps when advancing, so cancelling
+    # downstream is the way to make a chain terminate early
+    # without hacky artifact flags.
+    #
+    # Idempotent — already-terminal steps are left alone. Walks
+    # the linear chain via next_step pointer; a v3 graph would
+    # need a graph-traversal version of this.
+    def cancel_downstream!(reason: nil)
+      cursor = step.next_step
+      while cursor
+        if cursor.may_cancel?
+          log("[#{step.kind}] cancelling downstream step ##{cursor.id} (#{cursor.kind})#{reason ? ': ' + reason : ''}")
+          cursor.cancel!
+          cursor.save!
+        end
+        cursor = cursor.next_step
+      end
+    end
   end
 end

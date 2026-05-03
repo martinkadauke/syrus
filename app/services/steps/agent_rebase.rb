@@ -1,15 +1,13 @@
 module Steps
   # Second step of Rebase workflow. Agentic: spawns claude with
   # Prompts::Rebase to resolve the conflicts that AutoRebase
-  # couldn't. Short-circuits to a no-op if the upstream auto_rebase
-  # step already cleanly rebased (nothing left to do).
+  # couldn't.
+  #
+  # Note: this handler ONLY runs when reached. AutoRebase calls
+  # cancel_downstream! on a clean rebase, so the dispatcher
+  # advances past this step in that case and we never get here.
   class AgentRebase < Base
     def call
-      if workflow.artifact("auto_rebase_succeeded")
-        log("agent_rebase: skipped — auto_rebase already succeeded")
-        return
-      end
-
       workspace.setup
       run.update!(prompt: compose_prompt) if run.prompt.blank?
 
@@ -21,7 +19,6 @@ module Steps
       raise StepFailed, "agent_rebase: agent didn't move HEAD (rebase aborted or no-op)" if pre_sha == post_sha
 
       log("agent_rebase: rebased #{pre_sha[0, 7]} → #{post_sha[0, 7]}")
-      workflow.set_artifact!("agent_rebase_succeeded", true)
       run.update!(head_sha: post_sha)
     end
 
