@@ -106,6 +106,12 @@ RSpec.describe RunJob do
       expect(JobWorkspace.data_root.join("worktrees", run.id.to_s)).not_to exist
     end
 
+    it "schedules a delayed PollRebaseJob so the mergeability badge refreshes after the push" do
+      expect {
+        described_class.perform_now(run.id)
+      }.to have_enqueued_job(PollRebaseJob).with(job.id)
+    end
+
     it "opens the PR with the title/body the agent submitted via the MCP sidecar (path 1)" do
       described_class.perform_now(run.id)
 

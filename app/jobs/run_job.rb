@@ -65,6 +65,8 @@ class RunJob < ApplicationJob
       open_pull_request_if_missing
     end
 
+    schedule_mergeability_recheck
+
     @run.succeed!
     @run.save!
     log(complete_message)
@@ -93,6 +95,18 @@ class RunJob < ApplicationJob
 
   def streaming_git(env: {})
     GitRunner.new(log_sink: ->(line) { log(line.chomp) }, env: env)
+  end
+
+  # We just pushed (or force-pushed). Mergeability cached on the Job
+  # is now stale: badge says "needs rebase" until PollAllRebasesJob's
+  # next 15-min tick. Schedule a focused PollRebaseJob with a short
+  # delay so GitHub has time to recompute, then the cache update
+  # broadcasts a refresh and the show page morphs the badge live.
+  MERGEABILITY_RECHECK_DELAY = 30.seconds
+
+  def schedule_mergeability_recheck
+    return unless @job.pr_number.present? || @job.external_pr_number.present?
+    PollRebaseJob.set(wait: MERGEABILITY_RECHECK_DELAY).perform_later(@job.id)
   end
 
   def run_agent_and_commit
