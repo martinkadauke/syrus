@@ -1,4 +1,11 @@
 <div class="space-y-6">
+  <%# Subscribe to two streams: the repository itself (so config
+      changes morph the header) and its per-repo "jobs" stream (so
+      newly-polled Jobs appear in the table and existing rows update
+      their state pills without a full reload). %>
+  <%= turbo_stream_from @repository %>
+  <%= turbo_stream_from @repository, "jobs" %>
+
   <%# Header %>
   <div class="flex items-start justify-between gap-4">
     <div>

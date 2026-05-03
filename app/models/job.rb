@@ -102,6 +102,10 @@ class Job < ApplicationRecord
   # any change too — new Jobs appear, state pills move, run counts
   # tick up — all without a manual reload.
   broadcasts_refreshes_to ->(job) { [ job.user, "jobs" ] }
+  # Same idea for the per-Repository show page — the jobs table
+  # there should pick up newly-polled Jobs (and state changes on
+  # existing ones) without a manual refresh.
+  broadcasts_refreshes_to ->(job) { [ job.repository, "jobs" ] }
 
   def close_with_reason!(reason)
     update!(closure_reason: reason)
