@@ -6,6 +6,7 @@ class Job < ApplicationRecord
   belongs_to :user
   belongs_to :repository
   belongs_to :scheduled_task, optional: true
+  has_many :workflows, -> { order(:created_at) }, dependent: :destroy
   has_many :runs, -> { order(:created_at) }, dependent: :destroy
   has_many :job_logs, through: :runs
 

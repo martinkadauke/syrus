@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_173011) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_201335) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
@@ -130,12 +130,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_173011) do
     t.text "prompt"
     t.datetime "started_at"
     t.string "state", default: "queued", null: false
+    t.integer "step_id"
     t.string "trigger_kind", null: false
     t.datetime "updated_at", null: false
     t.index ["job_id", "state"], name: "index_runs_on_job_id_and_state"
     t.index ["job_id"], name: "index_runs_on_job_id"
     t.index ["parent_session_id"], name: "index_runs_on_parent_session_id"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
+    t.index ["step_id"], name: "index_runs_on_step_id"
   end
 
   create_table "scheduled_tasks", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
@@ -170,6 +172,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_173011) do
     t.index ["user_id"], name: "index_sessions_on_user_id"
   end
 
+  create_table "steps", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "finished_at"
+    t.string "kind", null: false
+    t.bigint "next_step_id"
+    t.integer "position", default: 0, null: false
+    t.datetime "started_at"
+    t.string "state", default: "queued", null: false
+    t.datetime "updated_at", null: false
+    t.integer "workflow_id", null: false
+    t.index ["next_step_id"], name: "index_steps_on_next_step_id"
+    t.index ["workflow_id", "position"], name: "index_steps_on_workflow_id_and_position"
+    t.index ["workflow_id"], name: "index_steps_on_workflow_id"
+  end
+
   create_table "users", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.boolean "admin", default: false, null: false
     t.integer "agent_max_turns", default: 200, null: false
@@ -187,6 +204,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_173011) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  create_table "workflows", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.text "artifacts"
+    t.datetime "created_at", null: false
+    t.integer "failure_count", default: 0, null: false
+    t.datetime "finished_at"
+    t.integer "job_id", null: false
+    t.datetime "started_at"
+    t.string "state", default: "queued", null: false
+    t.string "trigger_kind", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_id", "created_at"], name: "index_workflows_on_job_id_and_created_at"
+    t.index ["job_id"], name: "index_workflows_on_job_id"
+  end
+
   add_foreign_key "claude_sessions", "runs"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "job_logs", "runs"
@@ -196,7 +227,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_173011) do
   add_foreign_key "repositories", "users"
   add_foreign_key "run_diagnostics", "runs"
   add_foreign_key "runs", "jobs"
+  add_foreign_key "runs", "steps"
   add_foreign_key "scheduled_tasks", "repositories"
   add_foreign_key "scheduled_tasks", "users"
   add_foreign_key "sessions", "users"
+  add_foreign_key "steps", "steps", column: "next_step_id"
+  add_foreign_key "steps", "workflows"
+  add_foreign_key "workflows", "jobs"
 end

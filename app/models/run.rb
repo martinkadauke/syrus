@@ -4,9 +4,21 @@ class Run < ApplicationRecord
   TRIGGER_KINDS = %w[ initial pr_comment ci_failure replay manual rebase resume ].freeze
 
   belongs_to :job
+  # Step is optional during the migration window: existing Runs
+  # (and the existing direct-create paths in Job#after_create_commit
+  # and the polling jobs) still link to Job. Once those code paths
+  # have moved to instantiate Workflows + Steps, a follow-up migration
+  # backfills runs.step_id on every existing Run and flips the
+  # belongs_to to required.
+  belongs_to :step, optional: true
   has_many :job_logs, -> { order(:sequence) }, dependent: :destroy
   has_one :claude_session, dependent: :destroy
   has_one :run_diagnostic, dependent: :destroy
+
+  # Convenience walk up to Workflow when step is set.
+  def workflow
+    step&.workflow
+  end
 
   validates :trigger_kind, presence: true, inclusion: { in: TRIGGER_KINDS }
 
