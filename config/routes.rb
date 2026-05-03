@@ -14,6 +14,7 @@ Rails.application.routes.draw do
       post :poll
       post :archive
       post :unarchive
+      post :retry_failed_jobs
     end
     resources :scheduled_tasks, only: %i[ new create ]
   end
