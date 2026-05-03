@@ -227,4 +227,98 @@ RSpec.describe AgentInvocation do
       expect(cmd).not_to include("--max-turns")
     end
   end
+
+  describe "agent env isolation (issue #104)" do
+    # Stash + restore process-wide ENV so each example sees the same
+    # baseline. ENV is global state; we set a worker-pod-like baseline,
+    # run the example, then restore. Avoids depending on the host's
+    # actual env for assertions.
+    let(:saved_env) { ENV.to_h }
+    let(:worker_baseline) do
+      {
+        # Worker-pod-like leakers we expect Syrus to STRIP:
+        "BUNDLE_GEMFILE"          => "/rails/Gemfile",
+        "BUNDLE_PATH"             => "/usr/local/bundle",
+        "BUNDLE_DEPLOYMENT"       => "1",
+        "BUNDLE_WITHOUT"          => "development:test",
+        "GEM_HOME"                => "/usr/local/bundle",
+        "GEM_PATH"                => "/usr/local/bundle",
+        "RAILS_ENV"               => "production",
+        "RAILS_MASTER_KEY"        => "should-never-leak",
+        "SYRUS_DATABASE_PASSWORD" => "also-should-never-leak",
+        # Allowlisted vars Syrus should FORWARD:
+        "HOME"                    => "/home/rails",
+        "PATH"                    => "/usr/local/bin:/usr/bin:/bin",
+        "LANG"                    => "C.UTF-8"
+      }
+    end
+
+    before do
+      ENV.replace(saved_env.merge(worker_baseline))
+    end
+    after { ENV.replace(saved_env) }
+
+    # Capture env + spawn opts so we can assert on them.
+    def with_capturing_popen
+      captured = { env: nil, opts: nil }
+      allow(Open3).to receive(:popen2e) do |env, *_args, **opts, &blk|
+        captured[:env] = env
+        captured[:opts] = opts
+        rd, wr = IO.pipe; wr.close
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        blk.call($stdin, rd, fake_wait)
+        rd.close
+      end
+      yield
+      captured
+    end
+
+    it "passes unsetenv_others: true so the worker env doesn't leak into the agent" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x")
+      result = with_capturing_popen { invocation.run }
+      expect(result[:opts][:unsetenv_others]).to be true
+    end
+
+    it "drops worker container's BUNDLE_*/RAILS_*/GEM_* vars from the child env" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x")
+      result = with_capturing_popen { invocation.run }
+      env = result[:env]
+      %w[BUNDLE_GEMFILE BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT
+         GEM_HOME GEM_PATH RAILS_ENV RAILS_MASTER_KEY SYRUS_DATABASE_PASSWORD].each do |k|
+        expect(env).not_to have_key(k), "expected #{k.inspect} to be stripped from agent env, got #{env.inspect}"
+      end
+    end
+
+    it "forwards CLAUDE_CODE_OAUTH_TOKEN" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "oat-secret")
+      result = with_capturing_popen { invocation.run }
+      expect(result[:env]["CLAUDE_CODE_OAUTH_TOKEN"]).to eq("oat-secret")
+    end
+
+    it "forwards a curated allowlist of basic shell vars" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x")
+      result = with_capturing_popen { invocation.run }
+      env = result[:env]
+      expect(env["HOME"]).to eq("/home/rails")
+      expect(env["PATH"]).to eq("/usr/local/bin:/usr/bin:/bin")
+      expect(env["LANG"]).to eq("C.UTF-8")
+    end
+
+    it "sets BUNDLE_GEMFILE to the worktree's Gemfile when one exists" do
+      Dir.mktmpdir do |dir|
+        File.write(File.join(dir, "Gemfile"), "source 'https://rubygems.org'\n")
+        invocation = described_class.new(dir, prompt: "P", oauth_token: "x")
+        result = with_capturing_popen { invocation.run }
+        expect(result[:env]["BUNDLE_GEMFILE"]).to eq(File.join(dir, "Gemfile"))
+      end
+    end
+
+    it "leaves BUNDLE_GEMFILE unset when the worktree has no Gemfile (non-Ruby project)" do
+      Dir.mktmpdir do |dir|
+        invocation = described_class.new(dir, prompt: "P", oauth_token: "x")
+        result = with_capturing_popen { invocation.run }
+        expect(result[:env]).not_to have_key("BUNDLE_GEMFILE")
+      end
+    end
+  end
 end

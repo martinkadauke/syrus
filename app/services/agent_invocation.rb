@@ -63,7 +63,7 @@ class AgentInvocation
   # isolated per-job worktree, never against the operator's checkout. Same
   # trust posture as letting a human dev pair on a branch.
   def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:, mcp_config: nil, resume_session_id: nil)
-    env = { "CLAUDE_CODE_OAUTH_TOKEN" => oauth_token }
+    env = agent_env(oauth_token: oauth_token, workspace_path: workspace_path)
     cmd = [ "claude", "--print" ]
     # `--mcp-config <configs...>` is variadic — claude keeps consuming
     # subsequent positional args as additional configs until it sees
@@ -87,7 +87,17 @@ class AgentInvocation
     metadata = { turns: nil, is_error: false, outcome: nil, final_text: nil, session_id: nil }
     timed_out = false
 
-    Open3.popen2e(env, *cmd, chdir: workspace_path) do |stdin, output, wait_thread|
+    # `unsetenv_others: true` means: child gets EXACTLY the env we
+    # pass (plus nothing inherited). Without it, Open3 *merges* env
+    # into the parent's environment, so the worker container's
+    # BUNDLE_GEMFILE / BUNDLE_PATH / RAILS_ENV / etc. all leak into
+    # the agent's claude subprocess. Then anything Bundler-aware the
+    # agent runs (`bundle exec`, `bundle install`, even
+    # `bin/rails ...`) targets Syrus's own /rails/Gemfile, not the
+    # target repo's worktree. See issue #104 + Run #107 for the
+    # incident this caused (agent "fixed" Syrus's Gemfile.lock,
+    # which then broke the worker pod's bundle until next deploy).
+    Open3.popen2e(env, *cmd, chdir: workspace_path, unsetenv_others: true) do |stdin, output, wait_thread|
       stdin.close
 
       killer = Thread.new do
@@ -113,6 +123,41 @@ class AgentInvocation
         session_id: metadata[:session_id]
       )
     end
+  end
+
+  # Env vars Syrus's worker forwards into the agent's claude
+  # subprocess. Allowlist (not denylist) so any env we haven't
+  # specifically considered — including secrets baked into the worker
+  # image — never leak across the boundary.
+  #
+  # Anything Bundler/Rails/Syrus-specific is intentionally absent. If
+  # the agent needs to drive Bundler in the worktree, it'll set up
+  # its own BUNDLE_GEMFILE pointing at the worktree's Gemfile.
+  AGENT_ENV_FORWARD = %w[
+    HOME
+    USER
+    LOGNAME
+    PATH
+    TERM
+    LANG
+    LC_ALL
+    LC_CTYPE
+    TZ
+    HOSTNAME
+    TMPDIR
+    SHELL
+  ].freeze
+
+  def agent_env(oauth_token:, workspace_path:)
+    forwarded = ENV.slice(*AGENT_ENV_FORWARD)
+    forwarded["CLAUDE_CODE_OAUTH_TOKEN"] = oauth_token
+    # If the worktree itself is a Bundler project (its own Gemfile),
+    # point BUNDLE_GEMFILE at it explicitly. Saves the agent from
+    # having to figure out where bundler should look. If the
+    # worktree isn't Ruby at all, leave it unset.
+    workspace_gemfile = File.join(workspace_path.to_s, "Gemfile")
+    forwarded["BUNDLE_GEMFILE"] = workspace_gemfile if File.exist?(workspace_gemfile)
+    forwarded
   end
 
   # Returns a hash of metadata updates if the line was a result event.
