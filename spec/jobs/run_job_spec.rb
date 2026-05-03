@@ -330,6 +330,19 @@ RSpec.describe RunJob do
       expect(run.state).to eq("failed")
       expect(run.agent_outcome).to eq("worker_died")
     end
+
+    it "cancelling a Run cascades to its Step + Workflow (operator Stop)" do
+      job
+      wf = job.workflows.last
+      step = wf.first_step
+      run = step.runs.first
+      run.update!(state: "running", started_at: 1.minute.ago)
+      run.cancel!
+      run.save!
+      expect(run.reload.state).to eq("cancelled")
+      expect(step.reload.state).to eq("cancelled")
+      expect(wf.reload.state).to eq("cancelled")
+    end
   end
 
   # ----- helpers --------------------------------------------------

@@ -64,6 +64,36 @@ class Run < ApplicationRecord
 
   after_create_commit :enqueue_run_job
 
+  # Operator-initiated stop: when a Run is cancelled mid-flight via
+  # the Stop button, the chain can't continue (v1 has no intra-step
+  # retry). Cascade the cancel up to the Step and Workflow so the
+  # whole burst goes terminal — workspace teardown then fires via
+  # Workflow's terminal-state callback.
+  #
+  # Does NOT fire when the Run was cancelled by RunJob's pre-flight
+  # guard against an already-terminal Workflow — that path's
+  # workflow.may_cancel? is false (workflow is already
+  # succeeded/failed/cancelled), so this is a no-op there.
+  after_update_commit :cascade_cancel_to_workflow!,
+                       if: :saved_change_to_state_to_cancelled?
+
+  def saved_change_to_state_to_cancelled?
+    saved_change_to_state? && state == "cancelled"
+  end
+
+  def cascade_cancel_to_workflow!
+    return unless step
+    if step.may_cancel?
+      step.cancel!
+      step.save!
+    end
+    wf = step.workflow
+    if wf.may_cancel?
+      wf.cancel!
+      wf.save!
+    end
+  end
+
   # State changes (queued → running → succeeded/failed/cancelled) and
   # field updates (agent_turns, agent_outcome, agent_diff) all need to
   # show up on the Job's show page without requiring the operator to
