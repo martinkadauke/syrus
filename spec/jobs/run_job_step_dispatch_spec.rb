@@ -41,29 +41,40 @@ RSpec.describe RunJob, "step-dispatch path" do
     expect(s_implement.state).to eq("succeeded")
   end
 
-  it "transitions Workflow to running on the first step's first Run" do
+  it "transitions Workflow to running and drives the chain through to succeeded in one perform" do
+    # With inline-chain dispatch, RunJob.perform doesn't bounce
+    # back through SQ between steps — it loops over the chain in
+    # one worker invocation. So the Workflow goes queued →
+    # running → succeeded inside the same perform_now call when
+    # every handler returns cleanly.
     run = StepDispatcher.start_workflow(workflow)
     expect(workflow.reload.state).to eq("queued")
     described_class.perform_now(run.id)
-    expect(workflow.reload.state).to eq("running")
+    expect(workflow.reload.state).to eq("succeeded")
   end
 
-  it "advances to the next step's Run after a step succeeds (via Step's after_update_commit)" do
+  it "advances through every Step in the chain in a single perform invocation" do
     StepDispatcher.start_workflow(workflow)
     described_class.perform_now(s_implement.runs.last.id)
 
-    # advance_from fired automatically; next step now has a queued Run
-    expect(s_summarize.runs.count).to eq(1)
-    expect(s_summarize.runs.last.state).to eq("queued")
+    # All three steps got their Runs created + succeeded in this
+    # one invocation — depth-first per Workflow.
+    expect(s_implement.reload.state).to eq("succeeded")
+    expect(s_summarize.reload.runs.count).to eq(1)
+    expect(s_summarize.runs.last.state).to eq("succeeded")
+    expect(s_pr_open.reload.runs.count).to eq(1)
+    expect(s_pr_open.runs.last.state).to eq("succeeded")
   end
 
-  it "succeeds the Workflow after the last step's Run succeeds" do
+  it "does NOT enqueue downstream Runs through SolidQueue (inline dispatch)" do
     StepDispatcher.start_workflow(workflow)
-    described_class.perform_now(s_implement.runs.last.id)
-    described_class.perform_now(s_summarize.runs.last.id)
-    described_class.perform_now(s_pr_open.runs.last.id)
-
-    expect(workflow.reload).to be_succeeded
+    # The first Run was enqueued by start_workflow's normal path.
+    # Reset the queue so we only see new enqueues from inline-chain
+    # dispatch (there should be none).
+    ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+    expect {
+      described_class.perform_now(s_implement.runs.last.id)
+    }.not_to have_enqueued_job(RunJob)
   end
 
   describe "failure handling" do

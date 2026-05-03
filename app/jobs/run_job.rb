@@ -31,8 +31,13 @@ class RunJob < ApplicationJob
   #   3. Bring Workflow + Step + Run all to `running`.
   #   4. Dispatch to the per-kind handler in Steps::*. Handlers do
   #      not manage state — they just do the work or raise.
-  #   5. On success: succeed Run + Step. Step's after_update_commit
-  #      fires StepDispatcher.advance_from to create the next Run.
+  #   5. On success: succeed Run + Step. Step.after_update_commit
+  #      fires StepDispatcher.advance_from synchronously, which
+  #      creates the next Step's Run inline (Run#enqueue_run_job
+  #      sees Thread.current[:syrus_in_run_job] and skips the
+  #      perform_later — the loop below picks the new Run up
+  #      directly so the worker drives the entire Workflow chain
+  #      depth-first instead of bouncing through SQ between steps).
   #   6. On failure: capture a diagnostic, fail Run + Step (which
   #      triggers Workflow.fail via Step's after_update_commit, so
   #      the workspace cleans up via Workflow's terminal-state
@@ -40,18 +45,28 @@ class RunJob < ApplicationJob
   def perform(run_id)
     @run = ::Run.find(run_id)
     Thread.current[:syrus_current_run] = @run
+    Thread.current[:syrus_in_run_job] = true
     return if @run.terminal?
 
     @step = @run.step
     @workflow = @step&.workflow
     @job = @run.job
 
-    perform_step
+    loop do
+      perform_step
+      next_run = next_inline_run
+      break unless next_run
+      @run = next_run
+      @step = @run.step
+      @handler = nil
+      Thread.current[:syrus_current_run] = @run
+    end
   rescue StandardError => e
     handle_failure(e)
     raise
   ensure
     Thread.current[:syrus_current_run] = nil
+    Thread.current[:syrus_in_run_job] = nil
   end
 
   private
@@ -143,6 +158,27 @@ class RunJob < ApplicationJob
     return nil unless @handler
     @handler.send(:workspace)
   rescue StandardError
+    nil
+  end
+
+  # After perform_step succeeds, Step.after_update_commit's
+  # advance_next_step! has already fired StepDispatcher.advance_from
+  # synchronously. The dispatcher either created a new Run on the
+  # next runnable Step (Run#enqueue_run_job suppressed via
+  # Thread.current[:syrus_in_run_job]) OR transitioned the Workflow
+  # to succeeded (chain end).
+  #
+  # Pick up the newly-created Run if any so the worker can process it
+  # in this same invocation. Returns nil when the chain is done — the
+  # outer loop breaks and SQ frees the worker for the next job.
+  def next_inline_run
+    return nil if @workflow.reload.terminal?
+    cursor = @step.next_step
+    while cursor
+      queued = cursor.runs.where(state: "queued").order(:created_at).last
+      return queued if queued
+      cursor = cursor.next_step
+    end
     nil
   end
 

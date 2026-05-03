@@ -148,6 +148,13 @@ class Run < ApplicationRecord
 
   def enqueue_run_job
     return if terminal?
+    # When a RunJob is currently driving the chain inline, the next
+    # Step's Run was just created here (by StepDispatcher) but should
+    # NOT bounce through SolidQueue — the in-flight RunJob will pick
+    # it up directly via its loop. Skipping the perform_later avoids
+    # a queue round-trip that would land at the back of FIFO and
+    # spread one Workflow across multiple worker pickups.
+    return if Thread.current[:syrus_in_run_job]
     RunJob.perform_later(id)
   end
 end
