@@ -41,6 +41,9 @@ class Run < ApplicationRecord
   # refresh. Broadcasting refreshes to the parent Job's stream means
   # "tell anyone watching this Job to morph itself".
   broadcasts_refreshes_to ->(run) { run.job }
+  # Also tell the dashboard's per-user "jobs" stream — Run state
+  # changes drive the Job's summary pill and the run-count column.
+  broadcasts_refreshes_to ->(run) { [ run.job.user, "jobs" ] }
 
   def self.average_duration_for(trigger_kind)
     completed = terminal.where(trigger_kind: trigger_kind)

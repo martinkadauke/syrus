@@ -46,6 +46,11 @@ class Job < ApplicationRecord
   # without disturbing user scroll or the live transcript (marked
   # data-turbo-permanent on the show page).
   broadcasts_refreshes
+  # And a parallel broadcast on the user's "jobs" stream so the
+  # dashboard (which lists every Job for the current user) morphs on
+  # any change too — new Jobs appear, state pills move, run counts
+  # tick up — all without a manual reload.
+  broadcasts_refreshes_to ->(job) { [ job.user, "jobs" ] }
 
   def close_with_reason!(reason)
     update!(closure_reason: reason)

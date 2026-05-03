@@ -1,4 +1,9 @@
 <div class="space-y-6">
+  <%# Subscribe to the per-user "jobs" stream so any Job/Run change
+      (new Job, state pill move, run count tick, mergeability flip)
+      morphs the dashboard live without a reload. %>
+  <%= turbo_stream_from Current.user, "jobs" %>
+
   <h1 class="font-bold text-3xl">Dashboard</h1>
 
   <% if @jobs.any? %>
