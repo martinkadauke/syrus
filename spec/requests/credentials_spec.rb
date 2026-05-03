@@ -33,5 +33,24 @@ RSpec.describe "Credentials", type: :request do
       expect(user.claude_oauth_token).to eq("sk-existing")
       expect(user.github_token).to eq("ghp_existing")
     end
+
+    it "updates agent_max_turns when provided" do
+      patch credentials_path, params: { user: { agent_max_turns: "500" } }
+      expect(response).to redirect_to(edit_credentials_path)
+      expect(user.reload.agent_max_turns).to eq(500)
+    end
+
+    it "rejects an out-of-range agent_max_turns" do
+      original = user.agent_max_turns
+      patch credentials_path, params: { user: { agent_max_turns: "9999" } }
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(user.reload.agent_max_turns).to eq(original)
+    end
+
+    it "leaves agent_max_turns unchanged when blank" do
+      original = user.agent_max_turns
+      patch credentials_path, params: { user: { agent_max_turns: "" } }
+      expect(user.reload.agent_max_turns).to eq(original)
+    end
   end
 end

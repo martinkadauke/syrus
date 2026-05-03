@@ -179,5 +179,52 @@ RSpec.describe AgentInvocation do
       invocation.run
       expect(cmd).not_to include("--resume")
     end
+
+    it "passes --max-turns <n> when max_turns is positive" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x", max_turns: 42)
+      cmd = []
+      allow(Open3).to receive(:popen2e) do |_env, *args, **_opts, &blk|
+        cmd.replace(args)
+        rd, wr = IO.pipe; wr.close
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        blk.call($stdin, rd, fake_wait)
+        rd.close
+      end
+
+      invocation.run
+      idx = cmd.index("--max-turns")
+      expect(idx).not_to be_nil
+      expect(cmd[idx + 1]).to eq("42")
+    end
+
+    it "omits --max-turns entirely when max_turns is 0 (operator opted out of the cap)" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x", max_turns: 0)
+      cmd = []
+      allow(Open3).to receive(:popen2e) do |_env, *args, **_opts, &blk|
+        cmd.replace(args)
+        rd, wr = IO.pipe; wr.close
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        blk.call($stdin, rd, fake_wait)
+        rd.close
+      end
+
+      invocation.run
+      expect(cmd).not_to include("--max-turns")
+    end
+
+    it "omits --max-turns when max_turns is nil" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x", max_turns: nil)
+      cmd = []
+      allow(Open3).to receive(:popen2e) do |_env, *args, **_opts, &blk|
+        cmd.replace(args)
+        rd, wr = IO.pipe; wr.close
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        blk.call($stdin, rd, fake_wait)
+        rd.close
+      end
+
+      invocation.run
+      expect(cmd).not_to include("--max-turns")
+    end
   end
 end

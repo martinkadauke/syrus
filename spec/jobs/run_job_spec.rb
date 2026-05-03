@@ -204,6 +204,21 @@ RSpec.describe RunJob do
       expect(run.reload.state).to eq("succeeded")
     end
 
+    it "passes the user's agent_max_turns through to the agent runner" do
+      user.update!(agent_max_turns: 750)
+      seen_max_turns = nil
+      RunJob.agent_runner = ->(workspace_path:, max_turns:, **_) {
+        seen_max_turns = max_turns
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi'\n")
+        Run.last.update!(agent_pr_title: "x", agent_pr_body: "y", agent_summary: "z")
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
+      }
+
+      described_class.perform_now(run.id)
+
+      expect(seen_max_turns).to eq(750)
+    end
+
     it "writes the per-run mcp.json tempfile and passes its path to AgentInvocation" do
       captured_path = nil
       captured_config = nil
@@ -392,6 +407,19 @@ RSpec.describe RunJob do
 
       expect(@pr_stub).not_to have_been_requested
       expect(job.reload.pr_number).to eq(123)  # unchanged
+    end
+
+    it "passes the user's agent_max_turns through on the rebase code path" do
+      user.update!(agent_max_turns: 333)
+      seen_max_turns = nil
+      RunJob.agent_runner = ->(workspace_path:, max_turns:, **_) {
+        seen_max_turns = max_turns
+        sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} commit --allow-empty -q -m 'rebased'")
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
+      }
+      rebase = Run.create!(job: job, trigger_kind: "rebase")
+      described_class.perform_now(rebase.id)
+      expect(seen_max_turns).to eq(333)
     end
 
     it "runs even when the Job is closed (rebase is independent of Job lifecycle)" do

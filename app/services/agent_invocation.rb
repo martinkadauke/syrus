@@ -3,7 +3,11 @@ require "open3"
 
 class AgentInvocation
   DEFAULT_TIMEOUT_SECONDS = 30.minutes.to_i
-  DEFAULT_MAX_TURNS = 50
+  # Fallback only for callers that don't pass max_turns. RunJob threads
+  # the per-user ceiling (User#agent_max_turns) through every invocation
+  # in production. Kept in sync with User::AGENT_MAX_TURNS_RANGE's
+  # production default so direct callers don't get a surprising cap.
+  DEFAULT_MAX_TURNS = 200
 
   # Outcome of one claude invocation. `turns` is parsed from the final
   # stream-json result event; `outcome` is the result event's subtype
@@ -73,9 +77,12 @@ class AgentInvocation
     cmd += [ "--resume", resume_session_id ] if resume_session_id
     cmd += [ "--output-format", "stream-json",
              "--verbose",
-             "--dangerously-skip-permissions",
-             "--max-turns", max_turns.to_s,
-             prompt ]
+             "--dangerously-skip-permissions" ]
+    # 0 (or nil) means "no cap" — omit --max-turns entirely. The
+    # process timeout (DEFAULT_TIMEOUT_SECONDS) still bounds runaway
+    # loops, so we're not unbounded on wall time even uncapped.
+    cmd += [ "--max-turns", max_turns.to_s ] if max_turns && max_turns.positive?
+    cmd += [ prompt ]
 
     metadata = { turns: nil, is_error: false, outcome: nil, final_text: nil, session_id: nil }
     timed_out = false

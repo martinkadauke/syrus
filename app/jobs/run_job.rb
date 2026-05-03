@@ -138,6 +138,7 @@ class RunJob < ApplicationJob
         oauth_token: @job.user.claude_oauth_token,
         log_sink: ->(chunk) { log(chunk) },
         runner: self.class.agent_runner,
+        max_turns: @job.user.agent_max_turns,
         mcp_config: mcp_config_path,
         resume_session_id: @run.parent_session_id
       ).run
@@ -198,6 +199,7 @@ class RunJob < ApplicationJob
         oauth_token: @job.user.claude_oauth_token,
         log_sink: ->(chunk) { log(chunk) },
         runner: self.class.agent_runner,
+        max_turns: @job.user.agent_max_turns,
         mcp_config: mcp_config_path,
         resume_session_id: @run.parent_session_id
       ).run

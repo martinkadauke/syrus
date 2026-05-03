@@ -10,6 +10,21 @@ class User < ApplicationRecord
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }
 
+  # Per-user ceiling on `claude --max-turns`. The agent is given this
+  # many tool-use turns before the run terminates with
+  # error_max_turns. The previous global default of 50 was too low for
+  # non-trivial issues — operators saw runs hit the cap mid-task. 200
+  # covers the long tail; runaway loops still terminate eventually.
+  #
+  # Special-case: 0 means "no cap" (don't pass `--max-turns` at all).
+  # AgentInvocation::DEFAULT_TIMEOUT_SECONDS still bounds the run, so a
+  # genuinely-stuck agent doesn't run forever even with no turn cap.
+  AGENT_MAX_TURNS_RANGE = (0..1000)
+
+  validates :agent_max_turns,
+            presence: true,
+            numericality: { only_integer: true, in: AGENT_MAX_TURNS_RANGE }
+
   before_create :promote_first_user_to_admin
 
   def admin?

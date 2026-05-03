@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_025816) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_025817) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
@@ -128,6 +128,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_025816) do
 
   create_table "users", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.boolean "admin", default: false, null: false
+    t.integer "agent_max_turns", default: 200, null: false
     t.string "claude_oauth_token"
     t.datetime "created_at", null: false
     t.string "email_address", null: false

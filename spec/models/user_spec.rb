@@ -44,4 +44,39 @@ RSpec.describe User do
       expect(user.email_address).to eq("mixed@example.com")
     end
   end
+
+  describe "agent_max_turns" do
+    it "defaults to 200 for new users" do
+      user = User.create!(attrs)
+      expect(user.agent_max_turns).to eq(200)
+    end
+
+    it "accepts a value within range" do
+      user = User.create!(attrs.merge(agent_max_turns: 500))
+      expect(user.reload.agent_max_turns).to eq(500)
+    end
+
+    it "accepts 0 as the special-case 'no cap' value" do
+      user = User.create!(attrs.merge(agent_max_turns: 0))
+      expect(user.reload.agent_max_turns).to eq(0)
+    end
+
+    it "rejects negative values" do
+      user = User.new(attrs.merge(agent_max_turns: -1))
+      expect(user).not_to be_valid
+      expect(user.errors[:agent_max_turns]).to be_present
+    end
+
+    it "rejects values above the range" do
+      user = User.new(attrs.merge(agent_max_turns: User::AGENT_MAX_TURNS_RANGE.last + 1))
+      expect(user).not_to be_valid
+      expect(user.errors[:agent_max_turns]).to be_present
+    end
+
+    it "rejects non-integer values" do
+      user = User.new(attrs.merge(agent_max_turns: 3.5))
+      expect(user).not_to be_valid
+      expect(user.errors[:agent_max_turns]).to be_present
+    end
+  end
 end
