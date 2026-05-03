@@ -69,4 +69,38 @@ module ApplicationHelper
   def colored_pill(label, classes: PILL_FALLBACK_CLASSES, extra: nil)
     tag.span(label, class: "#{PILL_BASE_CLASSES} #{classes} #{extra}".strip)
   end
+
+  # Background + hover + text classes shared between a SplitButton's
+  # primary action and its chevron toggle. Add a new theme by
+  # appending here; the partial reads via split_button_theme.
+  SPLIT_BUTTON_THEMES = {
+    "blue"    => "bg-blue-600 hover:bg-blue-500 text-white",
+    "red"     => "bg-red-600 hover:bg-red-500 text-white",
+    "amber"   => "bg-amber-600 hover:bg-amber-500 text-white",
+    "emerald" => "bg-emerald-600 hover:bg-emerald-500 text-white",
+    "gray"    => "bg-gray-200 hover:bg-gray-300 text-gray-800"
+  }.freeze
+
+  def split_button_theme(name)
+    SPLIT_BUTTON_THEMES[name.to_s] || SPLIT_BUTTON_THEMES["blue"]
+  end
+
+  # Render a split button — primary action with a chevron that
+  # opens a dropdown of related options. Wraps the partial so
+  # callers don't need to remember the path.
+  #
+  #   <%= split_button(
+  #         primary: { label: "Retry", path: run_again_job_path(@job) },
+  #         options: [
+  #           { label: "Retry from failed step", path: retry_step_job_path(@job, workflow_id: wf.id) },
+  #           { label: "Start over",             path: restart_job_path(@job), confirm: "Sure?" }
+  #         ],
+  #         theme: "blue",
+  #         disabled: false
+  #       ) %>
+  def split_button(primary:, options:, theme: "blue", disabled: false)
+    render "shared/split_button",
+           primary: primary, options: options,
+           theme: theme, disabled: disabled
+  end
 end

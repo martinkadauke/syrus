@@ -9,6 +9,10 @@
   </div>
 <% else %>
   <% workflows_array.reverse_each.with_index do |wf, idx| %>
-    <%= render "workflow", workflow: wf, workflow_number: workflows_array.size - idx, job: job %>
+    <%= render "workflow",
+          workflow: wf,
+          workflow_number: workflows_array.size - idx,
+          is_latest: idx == 0,
+          job: job %>
   <% end %>
 <% end %>

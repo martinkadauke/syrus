@@ -28,11 +28,6 @@
       <% if step.cancelled? %>
         <span class="text-xs text-gray-500 italic">skipped</span>
       <% end %>
-      <% if step.failed? && workflow&.retry_available? %>
-        <%= button_to "Retry from here", retry_step_job_path(job, workflow_id: workflow.id), method: :post,
-              class: "px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer",
-              form: { class: "inline" } %>
-      <% end %>
     </div>
     <div class="text-xs text-gray-500">
       <% if step.started_at %>
@@ -64,6 +59,15 @@
           <% if (run.failed? || run.cancelled?) && run.claude_session %>
             <%= button_to "Resume", resume_job_path(job, source_run_id: run.id), method: :post,
                   class: "px-2 py-0.5 rounded text-xs font-medium bg-fuchsia-100 text-fuchsia-700 hover:bg-fuchsia-200 cursor-pointer",
+                  form: { class: "inline" } %>
+          <% end %>
+          <%# Skip when total_steps == 1 — the workflow header's
+              "Retry from failed step" button does literally the
+              same thing in that case, so two side-by-side buttons
+              just clutter the UI. %>
+          <% if run.failed? && is_last && total_steps > 1 && workflow_is_latest && workflow&.retry_available? %>
+            <%= button_to "Retry from here", retry_step_job_path(job, workflow_id: workflow.id), method: :post,
+                  class: "px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer",
                   form: { class: "inline" } %>
           <% end %>
         </div>
