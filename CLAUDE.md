@@ -1,7 +1,7 @@
 # Syrus — agent guide
 
 A multi-user, cross-repo issue→PR automation harness. Owns the
-deterministic plumbing (worktrees, branches, PRs, cleanup) so the
+deterministic plumbing (clones, branches, PRs, cleanup) so the
 agent can focus on writing code. See `README.md` for the human pitch
 and `ROADMAP.md` for milestone planning.
 
@@ -60,12 +60,12 @@ kinds use the same Run pipeline and state machine.
 
 ### Per-Run pipeline (`app/jobs/run_job.rb`)
 
-1. **`JobWorkspace`** lazy-clones the repo into a shared bare cache at
-   `$SYRUS_DATA_ROOT/clones/<repo_id>`, then carves a `git worktree` at
-   `$SYRUS_DATA_ROOT/worktrees/<run_id>` on a fresh `syrus/issue-<N>-<job_id>`
-   branch (initial run) or the existing branch (follow-ups). Cleaned up
-   in `ensure`.
-2. **`AgentInvocation`** spawns `claude --print` in the worktree. Streams
+1. **`JobWorkspace`** does a fresh shallow clone (`--depth 50`) per Run at
+   `$SYRUS_DATA_ROOT/runs/<run_id>`. No shared state between concurrent Runs.
+   Always clones the default branch so it is a local ref for three-dot diff;
+   then creates a new branch (initial run) or fetches and checks out the
+   existing one (follow-ups). Cleaned up in `ensure`.
+2. **`AgentInvocation`** spawns `claude --print` in the clone. Streams
    `stream-json` events through `process_event`, captures `final_text`
    and metadata from the `result` event. Pluggable `runner:` for tests.
 3. **MCP sidecar** — `bin/syrus-mcp-sidecar`, spawned by `claude` over
@@ -138,7 +138,7 @@ preserve scroll position across morphs.
   RunJob → AgentInvocation for both regular and rebase runs.
 - **Three-dot diffs only** — `git diff <base>...HEAD`, never two-dot.
   Lesson learned the hard way (commit `67b2bf9`).
-- **Worktrees live outside the repo** — under `$SYRUS_DATA_ROOT` (default
+- **Clones live outside the repo** — under `$SYRUS_DATA_ROOT` (default
   `~/.syrus`). The agent's `chdir` MUST NOT be inside the operator's
   checkout. (Lesson from commit `ced3a65`.)
 - **Tests** — RSpec, no FactoryBot. Lightweight `Factories` module in
@@ -372,7 +372,7 @@ Required runtime env:
 ```
 app/jobs/run_job.rb                          # the orchestrator
 app/services/agent_invocation.rb             # claude subprocess + stream-json parser
-app/services/job_workspace.rb                # worktree lifecycle
+app/services/job_workspace.rb                # per-Run clone lifecycle
 app/services/git_runner.rb                   # streaming git wrapper
 app/services/syrus_mcp/sidecar.rb            # MCP::Server boot + SIGTERM trap
 app/services/syrus_mcp/submit_summary_tool.rb # the one MCP tool

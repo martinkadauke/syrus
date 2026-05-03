@@ -24,7 +24,7 @@
     </details>
 
     <details>
-      <summary class="text-xs uppercase text-gray-500 cursor-pointer">Git snapshot (worktree at time of failure)</summary>
+      <summary class="text-xs uppercase text-gray-500 cursor-pointer">Git snapshot (per-Run clone at time of failure)</summary>
       <pre class="font-mono text-xs whitespace-pre-wrap mt-1 bg-white border border-gray-200 rounded p-2 max-h-96 overflow-y-auto"><%= JSON.pretty_generate(diagnostic.git_snapshot || {}) %></pre>
     </details>
 

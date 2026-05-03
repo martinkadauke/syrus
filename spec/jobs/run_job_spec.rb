@@ -106,7 +106,7 @@ RSpec.describe RunJob do
 
     it "tears down the worktree" do
       described_class.perform_now(run.id)
-      expect(JobWorkspace.data_root.join("worktrees", run.id.to_s)).not_to exist
+      expect(JobWorkspace.data_root.join("runs", run.id.to_s)).not_to exist
     end
 
     it "schedules a delayed PollRebaseJob so the mergeability badge refreshes after the push" do
@@ -756,7 +756,7 @@ RSpec.describe RunJob do
 
       run.reload
       expect(run.state).to eq("failed")
-      expect(JobWorkspace.data_root.join("worktrees", run.id.to_s)).not_to exist
+      expect(JobWorkspace.data_root.join("runs", run.id.to_s)).not_to exist
     end
   end
 

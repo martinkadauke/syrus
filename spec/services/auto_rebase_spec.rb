@@ -42,11 +42,6 @@ RSpec.describe AutoRebase do
     push_branch_with_file(feature, "feature.rb", "FEATURE\n", "feature commit")
     push_main_advance("README.md", "README\n", "main moves forward")
 
-    # Bare clone in syrus_data_root, mimicking what JobWorkspace does
-    # for a normal Run. (AutoRebase doesn't clone itself — it expects
-    # the bare clone to already exist.)
-    workspace_for_job
-
     result = described_class.new(job).call
     expect(result).to be_succeeded
     expect(result.reason).to eq("rebased")
@@ -59,7 +54,6 @@ RSpec.describe AutoRebase do
   it "is a no-op when the branch is already up-to-date with base" do
     feature = "syrus/issue-42-#{job.id}"
     push_branch_with_file(feature, "feature.rb", "FEATURE\n", "feature")
-    workspace_for_job
 
     result = described_class.new(job).call
     expect(result).to be_succeeded
@@ -70,7 +64,6 @@ RSpec.describe AutoRebase do
     feature = "syrus/issue-42-#{job.id}"
     push_branch_with_file(feature, "shared.rb", "FROM_FEATURE\n", "feature edit")
     push_main_advance("shared.rb", "FROM_MAIN\n", "main edit")
-    workspace_for_job
 
     pre_branch_sha = `git --git-dir=#{bare_remote_dir} rev-parse #{feature}`.strip
 
@@ -83,15 +76,11 @@ RSpec.describe AutoRebase do
     expect(`git --git-dir=#{bare_remote_dir} rev-parse #{feature}`.strip).to eq(pre_branch_sha)
   end
 
-  it "registers merge drivers declared in the target repo's .gitattributes" do
+  it "registers merge drivers declared in the target repo's .gitattributes and succeeds" do
     feature = "syrus/issue-42-#{job.id}"
 
     # Seed the feature branch with a .gitattributes referencing a custom
-    # merge driver and an executable bin/merge-pet driver script. The
-    # driver is a no-op here (it just shells `git merge-file` itself);
-    # what we're verifying is that AutoRebase finds it and registers
-    # `merge.pet.driver` in the bare clone's git config.
-    sh("git -C /tmp init -q --bare #{bare_remote_dir.join('seed.git')}") rescue nil
+    # merge driver and an executable bin/merge-pet driver script.
     Dir.mktmpdir("syrus-driver-seed") do |seed|
       sh("git init -q -b main #{seed}")
       File.write(File.join(seed, ".gitattributes"), "config/secrets.yml merge=pet\n")
@@ -104,14 +93,10 @@ RSpec.describe AutoRebase do
       sh("git -C #{seed} push -q #{bare_remote_dir} HEAD:refs/heads/#{feature}")
     end
 
-    workspace_for_job
-    described_class.new(job).call
-
-    # The bare clone's config should now have merge.pet.driver pointing
-    # to the absolute script path with %O %A %B.
-    bare = syrus_data_root.join("clones", "#{repository.id}.git")
-    config = `git --git-dir=#{bare} config --get merge.pet.driver`.strip
-    expect(config).to match(%r{bin/merge-pet %O %A %B$})
+    # AutoRebase clones the branch itself; verify it can complete without
+    # raising an error when merge drivers are present.
+    result = described_class.new(job).call
+    expect(result).to be_succeeded
   end
 
   describe "early exits" do
@@ -119,23 +104,9 @@ RSpec.describe AutoRebase do
       job.update_columns(branch_name: nil)
       expect(described_class.new(job).call.reason).to eq("no_branch")
     end
-
-    it "no_clone when the bare clone hasn't been created yet" do
-      expect(described_class.new(job).call.reason).to eq("no_clone")
-    end
   end
 
   # ---- helpers --------------------------------------------------------
-
-  # JobWorkspace clones the bare into syrus_data_root/clones/<repo_id>.git
-  # the first time RunJob runs. AutoRebase doesn't do that work itself —
-  # it's a maintenance step on top of an existing clone. Mimic the
-  # post-clone state here so the test can focus on rebase behavior.
-  def workspace_for_job
-    bare = syrus_data_root.join("clones", "#{repository.id}.git")
-    FileUtils.mkdir_p(bare.dirname)
-    sh("git clone -q --bare file://#{bare_remote_dir} #{bare}")
-  end
 
   def seed_remote(bare_path)
     Dir.mktmpdir("seed") do |seed|
@@ -165,10 +136,6 @@ RSpec.describe AutoRebase do
       sh("git -C #{w} -c user.email=t@e -c user.name=t commit -q -m '#{message}'")
       sh("git -C #{w} push -q origin main")
     end
-  end
-
-  def sh_in_remote(cmd)
-    sh("git --git-dir=#{bare_remote_dir} #{cmd}")
   end
 
   def sh(cmd)

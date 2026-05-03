@@ -2,15 +2,12 @@ class RunJob < ApplicationJob
   queue_as :default
 
   # One Run at a time per Job. Per-Job (not per-repo) is the right
-  # granularity: each Run gets its own worktree under
-  # $SYRUS_DATA_ROOT/worktrees/<run_id>/ and works on its own branch
+  # granularity: each Run gets its own fresh clone under
+  # $SYRUS_DATA_ROOT/runs/<run_id>/ and works on its own branch
   # (one branch per Job), so two Runs on different Jobs in the same
   # repo never collide. The collision risk is *within* a Job — two
   # follow-ups racing on the same branch — which the per-Job key
-  # prevents. (Worth keeping an eye on: simultaneous initial Runs on
-  # different Jobs in a fresh repo race to create the bare clone.
-  # First-write-wins is a one-time thing per repo and recovers on
-  # retry; not worth a separate global lock unless it bites.)
+  # prevents.
   limits_concurrency to: 1, key: ->(run_id) {
     "job:#{::Run.where(id: run_id).pick(:job_id)}"
   }
@@ -286,13 +283,14 @@ class RunJob < ApplicationJob
   def push_branch_force
     git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
     push_url = @job.repository.authenticated_push_url(@job.user.github_token)
-    # Plain --force, not --force-with-lease: the worktree clones from
-    # the bare cache and doesn't carry a local-tracking ref for the
-    # remote branch, so --force-with-lease has no recorded "expected"
-    # value and rejects the push. We own the branch (`syrus/...` for
-    # internal Runs, the PR's head for external Runs we're rebasing
-    # on the operator's behalf) and Syrus is the only writer, so a
-    # bare --force is safe.
+    # Plain --force, not --force-with-lease: per-Run clones don't
+    # set up a local-tracking ref for the remote branch (we clone
+    # the default branch, then fetch + checkout our feature branch
+    # by ref), so --force-with-lease has no recorded "expected"
+    # value and would reject the push. We own the branch
+    # (`syrus/...` for internal Runs, the PR's head for external
+    # Runs we're rebasing on the operator's behalf) and Syrus is
+    # the only writer, so a bare --force is safe.
     git.run("push", "--force", push_url,
             "HEAD:refs/heads/#{@workspace.branch_name}",
             chdir: @workspace.path.to_s)

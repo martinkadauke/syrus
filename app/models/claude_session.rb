@@ -17,8 +17,8 @@ class ClaudeSession < ApplicationRecord
   # `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`
   # The "project" component is the absolute cwd with every "/"
   # replaced by "-". Verified empirically — there's no hashing.
-  # Example: cwd "/syrus-home/.syrus/worktrees/40" →
-  #          "-syrus-home-.syrus-worktrees-40"
+  # Example: cwd "/syrus-home/.syrus/runs/40" →
+  #          "-syrus-home-.syrus-runs-40"
   def self.canonical_path_for(home:, cwd:, session_id:)
     encoded = cwd.to_s.gsub("/", "-")
     File.join(home, ".claude", "projects", encoded, "#{session_id}.jsonl")

@@ -23,8 +23,8 @@ RSpec.describe ClaudeSession do
 
   describe ".canonical_path_for" do
     it "encodes the cwd by replacing every / with -" do
-      path = described_class.canonical_path_for(home: "/home/rails", cwd: "/syrus-home/.syrus/worktrees/40", session_id: "abc-123")
-      expect(path).to eq("/home/rails/.claude/projects/-syrus-home-.syrus-worktrees-40/abc-123.jsonl")
+      path = described_class.canonical_path_for(home: "/home/rails", cwd: "/syrus-home/.syrus/runs/40", session_id: "abc-123")
+      expect(path).to eq("/home/rails/.claude/projects/-syrus-home-.syrus-runs-40/abc-123.jsonl")
     end
 
     it "handles a trailing slash on cwd" do

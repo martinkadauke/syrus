@@ -38,7 +38,7 @@ class ReapStaleRunsJob < ApplicationJob
       begin
         JobWorkspace.new(run).cleanup
       rescue => e
-        Rails.logger.warn("[ReapStaleRunsJob] worktree cleanup failed for Run ##{run.id}: #{e.message}")
+        Rails.logger.warn("[ReapStaleRunsJob] workspace cleanup failed for Run ##{run.id}: #{e.message}")
       end
     end
   end

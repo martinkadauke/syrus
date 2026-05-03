@@ -386,10 +386,10 @@ Both pipelines share the front matter:
    arises is recovery from a crashed prior worker.
 3. AASM `start!`; record `started_at`.
 4. `JobWorkspace.setup(@run)`:
-   - Bare clone at `$SYRUS_DATA_ROOT/clones/<owner>/<name>.git`
-     (lazy-created on first Run for the repo).
-   - Worktree at `$SYRUS_DATA_ROOT/worktrees/<run_id>/`.
-   - Branch: existing for follow-up Runs; new for initial Runs.
+   - Fresh shallow clone (`--depth 50`) at `$SYRUS_DATA_ROOT/runs/<run_id>/`.
+     No shared state across concurrent Runs — each gets its own isolated clone.
+   - Always clones the default branch so it is a local ref for three-dot diff.
+   - Branch: fetches and checks out existing for follow-up Runs; creates new for initial Runs.
 5. Compose the prompt via the appropriate `Prompts::*` class
    (`Initial`, `PrFeedback`, `CiFailure`, `Rebase`, `Resume`, or
    the pre-rendered `ScheduledTask` body).
@@ -432,8 +432,7 @@ Both pipelines share the front matter:
 
 ### Cleanup and error handling
 
-- `ensure`: `JobWorkspace.cleanup` drops the worktree (the bare clone
-  stays cached for the next Run).
+- `ensure`: `JobWorkspace.cleanup` deletes the run directory (`rm -rf $SYRUS_DATA_ROOT/runs/<run_id>`).
 - On exception: AASM `fail!`; record `agent_outcome`; `Job#record_run_failure!`
   for non-rebase Runs (rebase failures don't bump `failure_count`).
 - On SIGTERM: Solid Queue's graceful-shutdown timeout lets the current
@@ -487,7 +486,7 @@ Core (the agent loop):
 
 | Service | Purpose |
 |---|---|
-| `JobWorkspace` | Bare-clone caching + worktree setup. Default root `~/.syrus` (override with `SYRUS_DATA_ROOT`). Worktrees never live inside `Rails.root` — protects the operator's checkout from agent chdir mishaps. |
+| `JobWorkspace` | Fresh per-Run clone at `$SYRUS_DATA_ROOT/runs/<run_id>/`. Default root `~/.syrus` (override with `SYRUS_DATA_ROOT`). Clones never live inside `Rails.root` — protects the operator's checkout from agent chdir mishaps. |
 | `AgentInvocation` | Spawns `claude-code` via `Open3.popen2e`, parses stream-json, threads stdout chunks into `JobLog`, returns a `Result` struct (turns, outcome, exit status, final text, session id). Wires the MCP sidecar. Enforces the 30-minute wall-clock timeout. |
 | `SyrusMcp::Sidecar` | In-process MCP server the agent talks to over stdio. Exposes `submit_summary`. See [MCP sidecar](#mcp-sidecar). |
 | `Prompts::*` | One class per Run kind: `Initial`, `PrFeedback`, `CiFailure`, `Rebase`, `Resume`, `ScheduledTask`, plus `PullRequestSummary` for `PrSummarizer` and `SubmitSummaryInstructions` mixed into prompts that should expose the MCP tool. |
@@ -619,8 +618,9 @@ broadcasts work between web and worker.
   and `syrus-worker` (`bin/jobs`). MySQL runs in its own pod.
 - Traefik ingress at `syrus.internal.green-acres.estate`.
 - Persistent volume mounted at `$SYRUS_DATA_ROOT` (default
-  `/home/rails/.syrus`) on worker pods, holding bare-clone caches and
-  active worktrees. Web pods don't need this volume.
+  `/home/rails/.syrus`) on worker pods, holding active per-Run clones
+  at `runs/<run_id>/` and AutoRebase clones at `auto-rebase/<job_id>/`.
+  Web pods don't need this volume.
 - Two clusters: staging (default kubeconfig) and production
   (`~/.kube/config-production`). Diagnostic recipes are in `CLAUDE.md`
   under "Debugging staging / production via kubectl".
@@ -631,7 +631,7 @@ broadcasts work between web and worker.
 
 These belong to `ROADMAP.md`; only their current status is recorded:
 
-- **Sandboxed Docker-per-Run isolation.** Today: bare-clone + worktree
+- **Sandboxed Docker-per-Run isolation.** Today: fresh per-Run clone
   on the worker filesystem; the agent is trusted not to escape.
 - **Public REST / MCP API.** The sidecar is internal-only; there's no
   external auth surface.
