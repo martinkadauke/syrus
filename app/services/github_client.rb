@@ -11,8 +11,56 @@ class GithubClient
     @client = Octokit::Client.new(
       access_token: user.github_token,
       user_agent: USER_AGENT,
-      auto_paginate: true
+      auto_paginate: true,
+      middleware: self.class.middleware_stack(user)
     )
+  end
+
+  # Faraday middleware stack with conditional-request caching layered
+  # on top of Octokit's defaults. ETag / Last-Modified / Cache-Control
+  # are respected: a cache hit becomes an If-None-Match request, and
+  # 304 Not Modified responses are served from cache without counting
+  # against the GH rate limit. Cache is namespaced per user to keep
+  # one user's authenticated view from leaking into another's.
+  def self.middleware_stack(user)
+    cache_store = UserScopedCache.new(user.id)
+    Faraday::RackBuilder.new do |builder|
+      # HTTP cache must run BEFORE RaiseError so 304s are converted back
+      # to cached 200s and never bubble up as exceptions.
+      builder.use Faraday::HttpCache,
+        store: cache_store,
+        shared_cache: false,
+        serializer: Marshal,
+        logger: Rails.logger
+      # Carry over Octokit's defaults verbatim: redirects, error
+      # raising, GH feed parser. None of them take args today.
+      Octokit::Default::MIDDLEWARE.handlers.each do |handler|
+        builder.use handler.klass
+      end
+      builder.adapter Octokit::Default::MIDDLEWARE.adapter.klass
+    end
+  end
+
+  # Wraps Rails.cache with a per-user key namespace so faraday-http-cache
+  # entries from one user can't be served to another. Implements the
+  # subset of the cache interface faraday-http-cache calls: read, write,
+  # delete.
+  class UserScopedCache
+    def initialize(user_id)
+      @prefix = "github_etag/u#{user_id}/".freeze
+    end
+
+    def read(key)
+      Rails.cache.read(@prefix + key.to_s)
+    end
+
+    def write(key, value, opts = {})
+      Rails.cache.write(@prefix + key.to_s, value, opts)
+    end
+
+    def delete(key)
+      Rails.cache.delete(@prefix + key.to_s)
+    end
   end
 
   # Returns Sawyer::Resource enumerable. Includes pull_request items —

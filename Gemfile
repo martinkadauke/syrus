@@ -25,6 +25,11 @@ gem "aasm"
 # GitHub API client [https://github.com/octokit/octokit.rb]
 gem "octokit", "~> 10.0"
 
+# Faraday middleware that does ETag/Cache-Control conditional requests.
+# Wired into GithubClient so 304 Not Modified responses are returned
+# from cache and don't count against the GH rate limit.
+gem "faraday-http-cache"
+
 # Model Context Protocol SDK — used for the per-run sidecar that lets
 # the agent submit PR copy back to Syrus during its run.
 gem "mcp"
