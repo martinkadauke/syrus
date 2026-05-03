@@ -139,6 +139,90 @@ private, the audience is future-you and the agent that picks it up.
 Make it a good time. If the issue body reads like something you'd
 actually post in a customer-facing tracker, you've under-reached.
 
+## Debugging staging / production via kubectl
+
+Two clusters: **staging** uses the default kubeconfig
+(`~/.kube/config`), **production** lives at
+`~/.kube/config-production`. Pick by passing `--kubeconfig` on every
+call (or `export KUBECONFIG=...`).
+
+```bash
+# Default cluster = staging.
+kubectl -n syrus-staging get pods
+# Production:
+kubectl --kubeconfig ~/.kube/config-production -n syrus-production get pods
+```
+
+**Pod label gotcha:** the pods are labelled `name=syrus-worker` /
+`name=syrus-web`, NOT `app=...`. The selector that works:
+
+```bash
+POD=$(kubectl --kubeconfig ~/.kube/config-production -n syrus-production \
+       get pods -l name=syrus-worker -o jsonpath='{.items[0].metadata.name}')
+```
+
+**Logs.** The container name is `syrus-worker` (with a `fix-perms`
+init container — `kubectl logs` complains about "defaulted to" if
+you don't pass `-c`). Worker logs are noisy with ActiveJob
+serialization; grep for the bits you need:
+
+```bash
+kubectl --kubeconfig ~/.kube/config-production -n syrus-production \
+  logs deployment/syrus-worker --tail=500 \
+  | grep -E "PollAllRebases|PollRebaseJob|preempted|RunJob|FAIL"
+```
+
+**Rails console / runner.** Don't try to inline complex Ruby into
+`bin/rails runner '...'` — kubectl's shell escaping mangles
+backslashes inside string literals (`\1` regex backrefs, `\"` escapes
+in dig calls, etc). Write the script to `/tmp/script.rb` locally,
+`kubectl cp` it in, `bin/rails runner /tmp/script.rb`:
+
+```bash
+POD=$(kubectl --kubeconfig ~/.kube/config-production -n syrus-production \
+       get pods -l name=syrus-worker -o jsonpath='{.items[0].metadata.name}')
+kubectl --kubeconfig ~/.kube/config-production -n syrus-production \
+  cp /tmp/diagnose.rb $POD:/tmp/diagnose.rb -c syrus-worker
+kubectl --kubeconfig ~/.kube/config-production -n syrus-production \
+  exec $POD -- bin/rails runner /tmp/diagnose.rb
+```
+
+**Useful diagnostic recipes** (run via the pattern above):
+
+- *Active / zombie Runs* — `Run.where(state: %w[queued running])`.
+  A "running" Run whose worker process is dead = zombie; the
+  ReapStaleRunsJob (PR #30 once merged) handles these automatically.
+- *Solid Queue history for a Run id* — `SolidQueue::Job.where(class_name: "RunJob")`
+  filtered by `j.arguments&.dig("arguments")&.first == run_id`.
+  Look for `j.failed_execution&.error&.dig("message")` for the death cause.
+- *Bare clone worktree state* — `git worktree list --porcelain`
+  inside `/syrus-home/.syrus/clones/<repo_id>.git`. Don't use
+  `--verbose` with `--porcelain` (mutually exclusive in git 2.39).
+  For real ground truth, walk `<bare>/worktrees/*` directly — list
+  hides corrupted-HEAD entries.
+- *Held semaphores (concurrency locks)* —
+  `SolidQueue::Semaphore.all` — keyed `RunJob/job:<id>` etc.
+  Stale locks past `expires_at` get released on next dispatcher tick.
+
+**Token redaction is on the DB-write path, not the read path.** If
+you query `JobLog.chunk` or `SolidQueue::FailedExecution.error` in
+the rails runner *before* a redaction-aware build is deployed, you
+will see plaintext tokens. **Never copy that output to chat.** When
+scrubbing, write a redaction script (regex
+`%r{(https://x-access-token:)[^@\s]+(@)}`) and run it in-process via
+`kubectl cp` + `bin/rails runner` — same pattern as diagnostics.
+
+**Deploys SIGKILL in-flight Runs.** Every `bin/deploy` rolling
+restart kills any active RunJob mid-perform after the K8s grace
+period (~30s). RunJob's `ensure` cleanup may not finish; orphan
+worktrees and zombie Runs can accumulate. The orphan-sweep on next
+setup (`5e325b0`) catches terminal Runs' worktrees, but Runs whose
+state is stuck in `running` need PR #30's reaper. If you see a
+"refusing to fetch into branch X checked out at /worktrees/N" error
+post-deploy, it's a stale registration — clean by walking
+`<bare>/.git/worktrees/*` and force-removing whose Run is
+terminal-or-zombie.
+
 ## Workflows
 
 Local dev:
