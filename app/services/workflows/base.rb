@@ -29,12 +29,21 @@ module Workflows
     end
 
     # Build the Workflow + Steps for the given job. Returns the
-    # persisted Workflow with its steps.
-    def self.instantiate(job:)
+    # persisted Workflow with its steps. `artifacts` seeds the
+    # workflow with structured input that downstream step handlers
+    # read — PrFeedback wants `pr_comments`, CiFailure wants
+    # `failed_checks` + `head_sha`. Handlers compose their prompts
+    # from these at run time, so the polling job (or controller)
+    # doesn't need to know prompt internals.
+    def self.instantiate(job:, artifacts: nil)
       raise "no steps declared for #{name}" if step_kinds.nil? || step_kinds.empty?
 
       Workflow.transaction do
-        wf = Workflow.create!(job: job, trigger_kind: trigger_kind)
+        wf = Workflow.create!(
+          job: job,
+          trigger_kind: trigger_kind,
+          artifacts: artifacts
+        )
         steps = step_kinds.each_with_index.map do |kind, position|
           Step.create!(workflow: wf, kind: kind, position: position)
         end

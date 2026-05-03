@@ -40,21 +40,15 @@ class PollRebaseJob < ApplicationJob
     return if pending_rebase?
     return if attempt_cap_reached?
 
-    # Most "unmergeable" PRs only need a plain rebase — no real
-    # conflicts, just a moved base. Try a deterministic rebase first
-    # (uses whatever merge drivers the target repo declares in its
-    # .gitattributes + bin/merge-* scripts; Syrus has no language-
-    # specific knowledge baked in). If clean, force-push and skip
-    # the agentic Run entirely. Only fall through to the agent when
-    # real conflicts remain.
-    auto = AutoRebase.new(@job).call
-    if auto.succeeded
-      Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} auto-rebased — #{auto}")
-      return
-    end
-
-    Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} is unmergeable (auto-rebase: #{auto}); enqueueing rebase Run")
-    @job.runs.create!(trigger_kind: "rebase")
+    # Instantiate a Rebase workflow. Its first step is
+    # Steps::AutoRebase, which runs the deterministic AutoRebase
+    # service; if that's clean, it calls cancel_downstream! on
+    # agent_rebase + force_push and the workflow short-circuits to
+    # succeeded. If conflicts remain, the chain advances to the
+    # agentic step, then force_push.
+    Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} unmergeable; instantiating Rebase workflow")
+    workflow = Workflows::Rebase.instantiate(job: @job)
+    StepDispatcher.start_workflow(workflow)
   end
 
   def persist_mergeable(value)
@@ -77,11 +71,11 @@ class PollRebaseJob < ApplicationJob
   end
 
   def pending_rebase?
-    @job.runs.where(trigger_kind: "rebase").active.exists?
+    @job.workflows.active.where(trigger_kind: "rebase").exists?
   end
 
   def attempt_cap_reached?
-    return false unless @job.runs.where(trigger_kind: "rebase").count >= REBASE_ATTEMPT_CAP
+    return false unless @job.workflows.where(trigger_kind: "rebase").count >= REBASE_ATTEMPT_CAP
     Rails.logger.info("[PollRebaseJob] job #{@job.id} hit rebase cap (#{REBASE_ATTEMPT_CAP}); skipping")
     true
   end

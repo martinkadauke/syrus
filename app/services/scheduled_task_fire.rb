@@ -38,6 +38,10 @@ class ScheduledTaskFire
       scheduled_task: @task,
       issue_number: nil
     )
+    # Cron Jobs still use the legacy single-Run path until commit 7
+    # migrates Job's initial-run entry point too. Pre-rendered prompt
+    # gets carried through on Run.prompt; legacy RunJob.perform reads
+    # it directly.
     job.runs.create!(trigger_kind: "initial", prompt: rendered_prompt)
 
     @task.record_fire!(at: @now)

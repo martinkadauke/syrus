@@ -313,17 +313,18 @@ RSpec.describe "Jobs", type: :request do
       r
     end
 
-    it "creates a resume Run carrying parent_session_id from the source's ClaudeSession" do
+    it "instantiates a Resume workflow carrying parent_session_id from the source's ClaudeSession" do
       ClaudeSession.create!(run: failed_run, session_id: "uuid-deadbeef", transcript_jsonl: "{}\n")
 
       expect {
         post resume_job_path(job, source_run_id: failed_run.id)
-      }.to change { job.runs.where(trigger_kind: "resume").count }.by(1)
+      }.to change { job.workflows.where(trigger_kind: "resume").count }.by(1)
 
-      r = job.runs.where(trigger_kind: "resume").last
-      expect(r.parent_session_id).to eq("uuid-deadbeef")
+      wf = job.workflows.where(trigger_kind: "resume").last
+      first_run = wf.first_step.runs.first
+      expect(first_run.parent_session_id).to eq("uuid-deadbeef")
       expect(response).to redirect_to(job_path(job))
-      expect(flash[:notice]).to match(/Resume Run enqueued/)
+      expect(flash[:notice]).to match(/Resume workflow enqueued/)
     end
 
     it "refuses when the source Run isn't failed/cancelled" do
@@ -332,14 +333,14 @@ RSpec.describe "Jobs", type: :request do
 
       expect {
         post resume_job_path(job, source_run_id: open_run.id)
-      }.not_to change { job.runs.where(trigger_kind: "resume").count }
+      }.not_to change { job.workflows.where(trigger_kind: "resume").count }
       expect(flash[:alert]).to match(/Only failed or cancelled/)
     end
 
     it "refuses when the source Run has no captured ClaudeSession" do
       expect {
         post resume_job_path(job, source_run_id: failed_run.id)
-      }.not_to change { job.runs.where(trigger_kind: "resume").count }
+      }.not_to change { job.workflows.where(trigger_kind: "resume").count }
       expect(flash[:alert]).to match(/No Claude session captured/)
     end
 
@@ -394,14 +395,14 @@ RSpec.describe "Jobs", type: :request do
   describe "POST /jobs/:id/rebase" do
     before { sign_in_as(user) }
 
-    it "enqueues a rebase Run when the Job has a PR and no rebase is in flight" do
+    it "instantiates a Rebase Workflow when the Job has a PR and no rebase is in flight" do
       job.update!(pr_number: 7, branch_name: "syrus/issue-42-1")
 
       expect {
         post rebase_job_path(job)
-      }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+      }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
       expect(response).to redirect_to(job_path(job))
-      expect(flash[:notice]).to match(/Rebase enqueued/)
+      expect(flash[:notice]).to match(/Rebase workflow enqueued/)
     end
 
     it "works on a closed (preempted) Job using external_pr_number" do
@@ -410,25 +411,25 @@ RSpec.describe "Jobs", type: :request do
 
       expect {
         post rebase_job_path(job)
-      }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+      }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
     end
 
     it "refuses when the Job has no PR at all" do
       job  # force creation + initial Run before the assertion
       expect {
         post rebase_job_path(job)
-      }.not_to change(Run, :count)
+      }.not_to change(Workflow, :count)
       expect(response).to redirect_to(job_path(job))
       expect(flash[:alert]).to match(/No PR/)
     end
 
-    it "refuses when a rebase Run is already in flight" do
+    it "refuses when a rebase Workflow is already in flight" do
       job.update!(pr_number: 7, branch_name: "syrus/issue-42-1")
-      job.runs.create!(trigger_kind: "rebase")  # active by default
+      Workflow.create!(job: job, trigger_kind: "rebase", state: "queued")
 
       expect {
         post rebase_job_path(job)
-      }.not_to change { job.runs.where(trigger_kind: "rebase").count }
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
       expect(flash[:alert]).to match(/already in progress/)
     end
 

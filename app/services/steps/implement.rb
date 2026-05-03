@@ -11,9 +11,16 @@ module Steps
   class Implement < Base
     def call
       workspace.setup
-      issue = fetch_issue
-      job.update!(issue_title: issue.title, issue_body: issue.body) if job.issue?
-      run.update!(prompt: Prompts::Implement.new(issue: issue).to_s) if run.prompt.blank?
+
+      # Cron Jobs arrive with a pre-rendered prompt (variables
+      # already expanded at fire time); skip the GitHub round-trip
+      # entirely. Issue Jobs need the issue body to compose
+      # Prompts::Implement.
+      if run.prompt.blank?
+        issue = fetch_issue
+        job.update!(issue_title: issue.title, issue_body: issue.body) if job.issue?
+        run.update!(prompt: Prompts::Implement.new(issue: issue).to_s)
+      end
 
       target_label = job.issue? ? "#{repository.slug}##{job.issue_number}" : "scheduled task ##{job.scheduled_task_id}"
       log("invoking agent for #{target_label} (workflow ##{workflow.id}, step ##{step.id} implement)")

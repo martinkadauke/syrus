@@ -60,14 +60,17 @@ class PollPullRequestJob < ApplicationJob
     enqueue_followup_run(new_comments)
   end
 
+  # Counts Workflows now (each PrFeedback workflow has multiple
+  # Runs — counting Runs would hit the cap after ~2 workflows). The
+  # cap is "max pr_comment bursts on this Job".
   def cap_reached?
-    return false unless @job.runs.where(trigger_kind: "pr_comment").count >= PR_COMMENT_FOLLOWUP_CAP
+    return false unless @job.workflows.where(trigger_kind: "pr_comment").count >= PR_COMMENT_FOLLOWUP_CAP
     Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit pr_comment cap (#{PR_COMMENT_FOLLOWUP_CAP}); skipping")
     true
   end
 
   def pending_followup?
-    @job.runs.where(trigger_kind: "pr_comment").active.exists?
+    @job.workflows.active.where(trigger_kind: "pr_comment").exists?
   end
 
   # We don't filter by author. Syrus runs under the operator's PAT today
@@ -83,12 +86,31 @@ class PollPullRequestJob < ApplicationJob
   end
 
   def enqueue_followup_run(new_comments)
-    issue = @job.issue? ? @client.fetch_issue(@slug, @job.issue_number) : @job.synthetic_issue
-    prompt = Prompts::PrFeedback.new(issue: issue, comments: new_comments).to_s
-    @job.runs.create!(trigger_kind: "pr_comment", prompt: prompt)
+    # Stash the comment payload on the workflow as a structured
+    # artifact; Steps::Respond reads it at run time and composes
+    # the Prompts::PrFeedback prompt itself. Polling job stays
+    # ignorant of prompt internals.
+    artifacts = {
+      "pr_comments" => new_comments.map { |c| serialize_comment(c) }
+    }
+    workflow = Workflows::PrFeedback.instantiate(job: @job, artifacts: artifacts)
+    StepDispatcher.start_workflow(workflow)
 
     latest = new_comments.map(&:created_at).max
     @job.update!(last_seen_comment_at: latest) if latest
+  end
+
+  # Octokit returns Sawyer::Resource objects; serialize to a plain
+  # hash that round-trips through Workflow.artifacts (JSON column).
+  def serialize_comment(c)
+    {
+      "author"     => c.user&.login,
+      "body"       => c.body,
+      "path"       => (c.respond_to?(:path) ? c.path : nil),
+      "line"       => (c.respond_to?(:line) ? c.line : nil),
+      "diff_hunk"  => (c.respond_to?(:diff_hunk) ? c.diff_hunk : nil),
+      "created_at" => c.created_at&.iso8601
+    }
   end
 
   # ----- ci_failure branch -----------------------------------------------
@@ -107,27 +129,23 @@ class PollPullRequestJob < ApplicationJob
   end
 
   def ci_failure_cap_reached?
-    return false unless @job.runs.where(trigger_kind: "ci_failure").count >= CI_FAILURE_CAP
+    return false unless @job.workflows.where(trigger_kind: "ci_failure").count >= CI_FAILURE_CAP
     Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit ci_failure cap (#{CI_FAILURE_CAP}); skipping")
     true
   end
 
   def pending_ci_failure_run?
-    @job.runs.where(trigger_kind: "ci_failure").active.exists?
+    @job.workflows.active.where(trigger_kind: "ci_failure").exists?
   end
 
   def enqueue_ci_failure_run(head_sha, failed_checks)
-    issue = @job.issue? ? @client.fetch_issue(@slug, @job.issue_number) : @job.synthetic_issue
-    prompt = Prompts::CiFailure.new(
-      issue: issue,
-      pr_number: @job.pr_number,
-      repo_slug: @slug,
-      branch_name: @job.branch_name,
-      head_sha: head_sha,
-      failed_checks: failed_checks
-    ).to_s
-    @job.runs.create!(trigger_kind: "ci_failure", prompt: prompt)
+    artifacts = {
+      "head_sha"      => head_sha,
+      "failed_checks" => failed_checks
+    }
+    workflow = Workflows::CiFailure.instantiate(job: @job, artifacts: artifacts)
+    StepDispatcher.start_workflow(workflow)
     @job.update!(last_ci_handled_sha: head_sha)
-    Rails.logger.info("[PollPullRequestJob] job #{@job.id}: enqueued ci_failure Run for #{head_sha[0..6]} (#{failed_checks.size} failing)")
+    Rails.logger.info("[PollPullRequestJob] job #{@job.id}: enqueued CiFailure workflow ##{workflow.id} for #{head_sha[0..6]} (#{failed_checks.size} failing)")
   end
 end

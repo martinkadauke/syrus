@@ -19,8 +19,9 @@ class JobsController < ApplicationController
       return
     end
 
-    @job.runs.create!(trigger_kind: "replay")
-    redirect_to job_path(@job), notice: "Run enqueued."
+    workflow = Workflows::Replay.instantiate(job: @job)
+    StepDispatcher.start_workflow(workflow)
+    redirect_to job_path(@job), notice: "Replay workflow enqueued."
   end
 
   # Hard reset — close this thread (no more polling, no more runs), then
@@ -81,8 +82,12 @@ class JobsController < ApplicationController
       return
     end
 
-    @job.runs.create!(trigger_kind: "resume", parent_session_id: session.session_id)
-    redirect_to job_path(@job), notice: "Resume Run enqueued."
+    workflow = Workflows::Resume.instantiate(job: @job)
+    # The first (and only) step of Resume is `manual` — pass the
+    # parent session id so AgentInvocation runs claude with
+    # `--resume <session>`.
+    StepDispatcher.start_workflow(workflow, parent_session_id: session.session_id)
+    redirect_to job_path(@job), notice: "Resume workflow enqueued."
   end
 
   # Manually trigger PollRebaseJob for this Job — same poller that
@@ -111,13 +116,14 @@ class JobsController < ApplicationController
       return
     end
 
-    if @job.runs.where(trigger_kind: "rebase").active.exists?
+    if @job.workflows.active.where(trigger_kind: "rebase").exists?
       redirect_to job_path(@job), alert: "A rebase is already in progress — wait for it to finish."
       return
     end
 
-    @job.runs.create!(trigger_kind: "rebase")
-    redirect_to job_path(@job), notice: "Rebase enqueued."
+    workflow = Workflows::Rebase.instantiate(job: @job)
+    StepDispatcher.start_workflow(workflow)
+    redirect_to job_path(@job), notice: "Rebase workflow enqueued."
   end
 
   # Stop a single active Run without closing the thread. Useful when

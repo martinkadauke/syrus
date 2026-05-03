@@ -94,23 +94,22 @@ RSpec.describe PollRebaseJob do
       expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
     end
 
-    it "skips when a rebase Run is already active on this Job" do
+    it "skips when a rebase Workflow is already active on this Job" do
       stub_pr(pr_resource(mergeable: false))
-      job.runs.create!(trigger_kind: "rebase")  # active by default (queued)
+      Workflow.create!(job: job, trigger_kind: "rebase", state: "queued")
       expect {
         described_class.perform_now(job.id)
-      }.not_to change { job.runs.where(trigger_kind: "rebase").count }
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
     end
 
     it "skips when the rebase attempt cap is hit" do
       stub_pr(pr_resource(mergeable: false))
       described_class::REBASE_ATTEMPT_CAP.times do
-        run = job.runs.create!(trigger_kind: "rebase")
-        run.fail!; run.save!
+        Workflow.create!(job: job, trigger_kind: "rebase", state: "failed")
       end
       expect {
         described_class.perform_now(job.id)
-      }.not_to change { job.runs.where(trigger_kind: "rebase").count }
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
     end
 
     it "uses external_pr_number when pr_number is nil" do

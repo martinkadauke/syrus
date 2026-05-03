@@ -108,7 +108,7 @@ RSpec.describe PollPullRequestJob do
       stub_check_runs("deadbeef0000000000000000000000000000beef", [])
     end
 
-    it "creates a pr_comment Run, advances the watermark, composes the prompt" do
+    it "instantiates a PrFeedback workflow, stashes comments as artifacts, advances the watermark" do
       stub_issue_comments([
         { id: 1, body: "Could you also handle empty strings?",
           user: { login: "reviewer" }, created_at: t1.iso8601 }
@@ -121,12 +121,15 @@ RSpec.describe PollPullRequestJob do
 
       expect {
         described_class.perform_now(job.id)
-      }.to change { job.runs.where(trigger_kind: "pr_comment").count }.by(1)
+      }.to change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
 
-      run = job.runs.where(trigger_kind: "pr_comment").last
-      expect(run.prompt).to include("Could you also handle empty strings?")
-      expect(run.prompt).to include("Breaks on nil")
-      expect(run.prompt).to include("lib/greet.rb:5")
+      wf = job.workflows.where(trigger_kind: "pr_comment").last
+      comments = wf.artifact("pr_comments")
+      expect(comments.size).to eq(2)
+      expect(comments.map { |c| c["body"] }).to contain_exactly(
+        "Could you also handle empty strings?", "Breaks on nil"
+      )
+      expect(comments.find { |c| c["path"] == "lib/greet.rb" }["line"]).to eq(5)
       expect(job.reload.last_seen_comment_at.utc).to be_within(1.second).of(t2)
     end
 
@@ -139,11 +142,11 @@ RSpec.describe PollPullRequestJob do
 
       expect {
         described_class.perform_now(job.id)
-      }.to change { job.runs.where(trigger_kind: "pr_comment").count }.by(1)
+      }.to change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
     end
 
-    it "respects the loop guard (5 pr_comment runs already)" do
-      5.times { Run.create!(job: job, trigger_kind: "pr_comment", state: "succeeded") }
+    it "respects the loop guard (5 pr_comment workflows already)" do
+      5.times { Workflow.create!(job: job, trigger_kind: "pr_comment", state: "succeeded") }
       stub_issue_comments([
         { id: 1, body: "more feedback", user: { login: "reviewer" }, created_at: t1.iso8601 }
       ])
@@ -151,11 +154,11 @@ RSpec.describe PollPullRequestJob do
 
       expect {
         described_class.perform_now(job.id)
-      }.not_to change { job.runs.count }
+      }.not_to change { job.workflows.where(trigger_kind: "pr_comment").count }
     end
 
-    it "skips when an active pr_comment Run is already pending" do
-      Run.create!(job: job, trigger_kind: "pr_comment", state: "queued")
+    it "skips when an active pr_comment Workflow is already pending" do
+      Workflow.create!(job: job, trigger_kind: "pr_comment", state: "queued")
       stub_issue_comments([
         { id: 1, body: "more feedback", user: { login: "reviewer" }, created_at: t1.iso8601 }
       ])
@@ -163,7 +166,7 @@ RSpec.describe PollPullRequestJob do
 
       expect {
         described_class.perform_now(job.id)
-      }.not_to change { job.runs.where(trigger_kind: "pr_comment").count }
+      }.not_to change { job.workflows.where(trigger_kind: "pr_comment").count }
     end
 
     it "is a no-op when there are no new comments" do
@@ -171,7 +174,7 @@ RSpec.describe PollPullRequestJob do
       stub_review_comments([])
       expect {
         described_class.perform_now(job.id)
-      }.not_to change { job.runs.count }
+      }.not_to change { job.workflows.count }
     end
   end
 
@@ -185,7 +188,7 @@ RSpec.describe PollPullRequestJob do
       stub_review_comments([])
     end
 
-    it "creates a ci_failure Run with a prompt that names the failing checks" do
+    it "instantiates a CiFailure workflow with failed_checks + head_sha as artifacts" do
       stub_check_runs(sha, [
         { name: "test", status: "completed", conclusion: "failure",
           html_url: "https://github.com/acme/widgets/runs/100",
@@ -196,13 +199,19 @@ RSpec.describe PollPullRequestJob do
 
       expect {
         described_class.perform_now(job.id)
-      }.to change { job.runs.where(trigger_kind: "ci_failure").count }.by(1)
+      }.to change { job.workflows.where(trigger_kind: "ci_failure").count }.by(1)
 
-      run = job.runs.where(trigger_kind: "ci_failure").last
-      expect(run.prompt).to include("acme/widgets#7")
-      expect(run.prompt).to include("test")
-      expect(run.prompt).to include("RSpec: 2 examples, 1 failure (greet_spec.rb:14)")
-      expect(run.prompt).not_to include("0 issues")    # successes are excluded
+      wf = job.workflows.where(trigger_kind: "ci_failure").last
+      failed = wf.artifact("failed_checks")
+      expect(failed.size).to eq(1)
+      # serialize_comment turns symbol-keyed hashes into string-keyed
+      # ones; failed_checks comes through as the GithubClient-shaped
+      # hash with symbol keys (we don't translate them — the Steps::
+      # AnalyzeAndFix handler reads them as-is). Tolerate both.
+      first = failed.first.to_h.transform_keys(&:to_s)
+      expect(first["name"]).to eq("test")
+      expect(first["conclusion"]).to eq("failure")
+      expect(wf.artifact("head_sha")).to eq(sha)
       expect(job.reload.last_ci_handled_sha).to eq(sha)
     end
 
@@ -211,7 +220,7 @@ RSpec.describe PollPullRequestJob do
         { name: "test", status: "completed", conclusion: "success",
           html_url: "u", output: { summary: "ok" } }
       ])
-      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+      expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
     it "is a no-op when checks are still in_progress (don't act on partial state)" do
@@ -219,7 +228,7 @@ RSpec.describe PollPullRequestJob do
         { name: "test", status: "in_progress", conclusion: nil,
           html_url: "u", output: { summary: nil } }
       ])
-      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+      expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
     it "doesn't re-react to the same head SHA twice" do
@@ -229,25 +238,25 @@ RSpec.describe PollPullRequestJob do
       ])
       job.update!(last_ci_handled_sha: sha)
 
-      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+      expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
-    it "skips when an active ci_failure Run is already pending" do
-      Run.create!(job: job, trigger_kind: "ci_failure", state: "queued")
+    it "skips when an active ci_failure Workflow is already pending" do
+      Workflow.create!(job: job, trigger_kind: "ci_failure", state: "queued")
       stub_check_runs(sha, [
         { name: "test", status: "completed", conclusion: "failure",
           html_url: "u", output: { summary: "fail" } }
       ])
-      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+      expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
-    it "respects the cap (3 ci_failure runs already)" do
-      3.times { Run.create!(job: job, trigger_kind: "ci_failure", state: "succeeded") }
+    it "respects the cap (3 ci_failure workflows already)" do
+      3.times { Workflow.create!(job: job, trigger_kind: "ci_failure", state: "succeeded") }
       stub_check_runs(sha, [
         { name: "test", status: "completed", conclusion: "failure",
           html_url: "u", output: { summary: "fail" } }
       ])
-      expect { described_class.perform_now(job.id) }.not_to change { job.runs.where(trigger_kind: "ci_failure").count }
+      expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
     it "treats timed_out / action_required / cancelled as failures, ignores neutral / skipped" do
@@ -260,12 +269,13 @@ RSpec.describe PollPullRequestJob do
 
       expect {
         described_class.perform_now(job.id)
-      }.to change { job.runs.where(trigger_kind: "ci_failure").count }.by(1)
+      }.to change { job.workflows.where(trigger_kind: "ci_failure").count }.by(1)
 
-      run = job.runs.where(trigger_kind: "ci_failure").last
-      expect(run.prompt).to include("build").and include("deploy")
-      expect(run.prompt).not_to include("snyk")    # neutral isn't a failure
-      expect(run.prompt).not_to include("skipme")
+      wf = job.workflows.where(trigger_kind: "ci_failure").last
+      names = wf.artifact("failed_checks").map { |c| (c["name"] || c[:name]) }
+      expect(names).to include("build", "deploy")
+      expect(names).not_to include("snyk")
+      expect(names).not_to include("skipme")
     end
   end
 
