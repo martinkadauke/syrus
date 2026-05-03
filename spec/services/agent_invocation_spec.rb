@@ -3,7 +3,7 @@ require "rails_helper"
 RSpec.describe AgentInvocation do
   def result_fixture(**overrides)
     defaults = { turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil }
-    AgentInvocation::Result.new(**defaults.merge(overrides))
+    AgentInvocation::Result.new(**defaults.merge(overrides), session_id: nil)
   end
 
   describe "#run" do
@@ -43,22 +43,22 @@ RSpec.describe AgentInvocation do
 
   describe AgentInvocation::Result do
     it "is success when not timed out, exit_status 0, and not is_error" do
-      r = described_class.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      r = described_class.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       expect(r).to be_success
     end
 
     it "is not success when timed_out" do
-      r = described_class.new(turns: 30, exit_status: nil, timed_out: true, is_error: false, outcome: nil, final_text: nil)
+      r = described_class.new(turns: 30, exit_status: nil, timed_out: true, is_error: false, outcome: nil, final_text: nil, session_id: nil)
       expect(r).not_to be_success
     end
 
     it "is not success when exit_status non-zero" do
-      r = described_class.new(turns: 1, exit_status: 1, timed_out: false, is_error: false, outcome: nil, final_text: nil)
+      r = described_class.new(turns: 1, exit_status: 1, timed_out: false, is_error: false, outcome: nil, final_text: nil, session_id: nil)
       expect(r).not_to be_success
     end
 
     it "is not success when is_error is true (e.g. error_max_turns)" do
-      r = described_class.new(turns: 50, exit_status: 0, timed_out: false, is_error: true, outcome: "error_max_turns", final_text: nil)
+      r = described_class.new(turns: 50, exit_status: 0, timed_out: false, is_error: true, outcome: "error_max_turns", final_text: nil, session_id: nil)
       expect(r).not_to be_success
     end
   end
@@ -99,6 +99,18 @@ RSpec.describe AgentInvocation do
       expect(lines).to be_empty
       expect(result).to be_nil
     end
+
+    it "captures session_id from the system/init event" do
+      event = { type: "system", subtype: "init", session_id: "abc-123-xyz", cwd: "/x" }.to_json
+      update = invocation.send(:process_event, event, ->(l) { lines << l })
+      expect(update).to eq(session_id: "abc-123-xyz")
+    end
+
+    it "ignores other system subtypes (only system/init carries the session_id we need)" do
+      event = { type: "system", subtype: "other", session_id: "xxx" }.to_json
+      update = invocation.send(:process_event, event, ->(l) { lines << l })
+      expect(update).to be_nil
+    end
   end
 
   describe "default_runner cmd line ordering" do
@@ -131,6 +143,41 @@ RSpec.describe AgentInvocation do
       expect(cmd[mcp_idx + 2]).to start_with("--"),
         "arg after mcp-config path must be another flag, not a positional — got #{cmd[mcp_idx + 2].inspect}"
       expect(prompt_idx).to eq(cmd.length - 1)  # prompt is the last positional
+    end
+
+    it "passes --resume <id> when resume_session_id is set" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x",
+                                       resume_session_id: "abc-123")
+      cmd = []
+      allow(Open3).to receive(:popen2e) do |_env, *args, **_opts, &blk|
+        cmd.replace(args)
+        rd, wr = IO.pipe; wr.close
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        blk.call($stdin, rd, fake_wait)
+        rd.close
+      end
+
+      invocation.run
+
+      idx = cmd.index("--resume")
+      expect(idx).not_to be_nil, "expected --resume in cmd: #{cmd.inspect}"
+      expect(cmd[idx + 1]).to eq("abc-123")
+      expect(cmd[idx + 2]).to start_with("--"), "arg after resume id must be another flag — got #{cmd[idx + 2].inspect}"
+    end
+
+    it "omits --resume when resume_session_id is nil (default)" do
+      invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x")
+      cmd = []
+      allow(Open3).to receive(:popen2e) do |_env, *args, **_opts, &blk|
+        cmd.replace(args)
+        rd, wr = IO.pipe; wr.close
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        blk.call($stdin, rd, fake_wait)
+        rd.close
+      end
+
+      invocation.run
+      expect(cmd).not_to include("--resume")
     end
   end
 end

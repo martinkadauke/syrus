@@ -99,12 +99,19 @@ else
 fi
 
 # --- rollout helpers -------------------------------------------------
+# Must exceed the worker's terminationGracePeriodSeconds (600s in
+# the K8s manifests) plus headroom for the new pod's startup. With
+# a long RunJob in flight, the old worker can drain for the full
+# grace period before the new pod becomes ready. 15m gives us ~5m
+# of headroom.
+ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-15m}"
+
 rollout() {
   local label="$1" kubeconfig="$2" namespace="$3"
   echo "→ ${label}: rollout restart in ${namespace}"
   KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${DEPLOYMENTS[@]}"
   for dep in "${DEPLOYMENTS[@]}"; do
-    KUBECONFIG="$kubeconfig" kubectl rollout status -n "$namespace" "$dep" --timeout=5m
+    KUBECONFIG="$kubeconfig" kubectl rollout status -n "$namespace" "$dep" --timeout="$ROLLOUT_TIMEOUT"
   done
   echo "✓ ${label} rolled to ${SHA}"
 }

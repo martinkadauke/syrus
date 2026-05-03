@@ -12,7 +12,7 @@ class AgentInvocation
   # final assistant text from the result event — useful for single-shot
   # callers (PR summarizer, etc.) that want the response without
   # re-aggregating the streamed assistant chunks.
-  Result = Data.define(:turns, :exit_status, :timed_out, :is_error, :outcome, :final_text) do
+  Result = Data.define(:turns, :exit_status, :timed_out, :is_error, :outcome, :final_text, :session_id) do
     def success? = !timed_out && exit_status == 0 && !is_error
   end
 
@@ -21,7 +21,8 @@ class AgentInvocation
                  runner: nil,
                  timeout: DEFAULT_TIMEOUT_SECONDS,
                  max_turns: DEFAULT_MAX_TURNS,
-                 mcp_config: nil)
+                 mcp_config: nil,
+                 resume_session_id: nil)
     @workspace_path = workspace_path.to_s
     @prompt = prompt
     @oauth_token = oauth_token
@@ -30,6 +31,7 @@ class AgentInvocation
     @timeout = timeout
     @max_turns = max_turns
     @mcp_config = mcp_config
+    @resume_session_id = resume_session_id
   end
 
   def run
@@ -40,7 +42,8 @@ class AgentInvocation
       log_sink: @log_sink,
       timeout: @timeout,
       max_turns: @max_turns,
-      mcp_config: @mcp_config
+      mcp_config: @mcp_config,
+      resume_session_id: @resume_session_id
     )
   end
 
@@ -55,7 +58,7 @@ class AgentInvocation
   # --dangerously-skip-permissions is intentional: the agent runs in an
   # isolated per-job worktree, never against the operator's checkout. Same
   # trust posture as letting a human dev pair on a branch.
-  def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:, mcp_config: nil)
+  def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:, mcp_config: nil, resume_session_id: nil)
     env = { "CLAUDE_CODE_OAUTH_TOKEN" => oauth_token }
     cmd = [ "claude", "--print" ]
     # `--mcp-config <configs...>` is variadic — claude keeps consuming
@@ -63,15 +66,18 @@ class AgentInvocation
     # another flag. If we put it last, the prompt gets eaten as a
     # second "config" and claude bails with ENAMETOOLONG. Slot it in
     # *before* another flag (here, --output-format) so the variadic
-    # terminates after one path.
+    # terminates after one path. Same rule applies to --resume even
+    # though it's a single-value flag — we keep it next to mcp-config
+    # for symmetry and to leave the prompt as the only trailing arg.
     cmd += [ "--mcp-config", mcp_config ] if mcp_config
+    cmd += [ "--resume", resume_session_id ] if resume_session_id
     cmd += [ "--output-format", "stream-json",
              "--verbose",
              "--dangerously-skip-permissions",
              "--max-turns", max_turns.to_s,
              prompt ]
 
-    metadata = { turns: nil, is_error: false, outcome: nil, final_text: nil }
+    metadata = { turns: nil, is_error: false, outcome: nil, final_text: nil, session_id: nil }
     timed_out = false
 
     Open3.popen2e(env, *cmd, chdir: workspace_path) do |stdin, output, wait_thread|
@@ -96,7 +102,8 @@ class AgentInvocation
         timed_out: timed_out,
         is_error: metadata[:is_error],
         outcome: metadata[:outcome],
-        final_text: metadata[:final_text]
+        final_text: metadata[:final_text],
+        session_id: metadata[:session_id]
       )
     end
   end
@@ -111,6 +118,12 @@ class AgentInvocation
       text = event.dig("message", "content")&.find { |c| c["type"] == "text" }&.dig("text")
       log_sink.call(text) if text
       nil
+    when "system"
+      # init carries the session_id we'll need to resume later. Other
+      # system subtypes are noise.
+      if event["subtype"] == "init" && event["session_id"]
+        { session_id: event["session_id"] }
+      end
     when "result"
       log_sink.call("[result] subtype=#{event['subtype']}, is_error=#{event['is_error']}, turns=#{event['num_turns']}, duration_ms=#{event['duration_ms']}")
       {

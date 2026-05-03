@@ -6,7 +6,7 @@ RSpec.describe PrSummarizer do
 
   def fake_runner_returning(text, **overrides)
     defaults = { turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success" }
-    ->(**_) { AgentInvocation::Result.new(**defaults.merge(overrides), final_text: text) }
+    ->(**_) { AgentInvocation::Result.new(**defaults.merge(overrides), final_text: text, session_id: nil) }
   end
 
   def call(runner:)
@@ -73,7 +73,7 @@ RSpec.describe PrSummarizer do
     it "returns failure when the agent timed out" do
       runner = ->(**_) {
         AgentInvocation::Result.new(turns: 1, exit_status: nil, timed_out: true,
-                                    is_error: false, outcome: nil, final_text: nil)
+                                    is_error: false, outcome: nil, final_text: nil, session_id: nil)
       }
       result = call(runner: runner)
       expect(result).not_to be_success
@@ -83,7 +83,7 @@ RSpec.describe PrSummarizer do
     it "returns failure when the agent reported is_error" do
       runner = ->(**_) {
         AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
-                                    is_error: true, outcome: "error_max_turns", final_text: nil)
+                                    is_error: true, outcome: "error_max_turns", final_text: nil, session_id: nil)
       }
       result = call(runner: runner)
       expect(result).not_to be_success
@@ -93,7 +93,7 @@ RSpec.describe PrSummarizer do
     it "returns failure when the agent exited non-zero" do
       runner = ->(**_) {
         AgentInvocation::Result.new(turns: 1, exit_status: 2, timed_out: false,
-                                    is_error: false, outcome: nil, final_text: nil)
+                                    is_error: false, outcome: nil, final_text: nil, session_id: nil)
       }
       result = call(runner: runner)
       expect(result).not_to be_success
@@ -120,7 +120,7 @@ RSpec.describe PrSummarizer do
       runner = ->(**kwargs) {
         seen.merge!(kwargs)
         AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: '{"title":"x","body":"y"}')
+                                    outcome: "success", final_text: '{"title":"x","body":"y"}', session_id: nil)
       }
       described_class.new(issue: issue, diff: diff, oauth_token: "oat-x", runner: runner).call
       expect(seen[:max_turns]).to eq(1)
@@ -131,7 +131,7 @@ RSpec.describe PrSummarizer do
       runner = ->(**kwargs) {
         seen_path = kwargs[:workspace_path]
         AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false,
-                                    outcome: "success", final_text: '{"title":"x","body":"y"}')
+                                    outcome: "success", final_text: '{"title":"x","body":"y"}', session_id: nil)
       }
       described_class.new(issue: issue, diff: diff, oauth_token: "oat-x", runner: runner).call
       expect(seen_path).to start_with(Dir.tmpdir)

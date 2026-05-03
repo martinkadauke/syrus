@@ -10,12 +10,22 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_001718) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_013211) do
   create_table "app_settings", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
     t.boolean "signups_open", default: false, null: false
     t.datetime "updated_at", null: false
+  end
+
+  create_table "claude_sessions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "run_id", null: false
+    t.string "session_id", null: false
+    t.text "transcript_jsonl", limit: 67108864
+    t.datetime "updated_at", null: false
+    t.index ["created_at"], name: "index_claude_sessions_on_created_at"
+    t.index ["run_id"], name: "index_claude_sessions_on_run_id", unique: true
   end
 
   create_table "invitations", force: :cascade do |t|
@@ -92,7 +102,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_001718) do
     t.datetime "finished_at"
     t.string "head_sha"
     t.integer "job_id", null: false
-    t.datetime "last_heartbeat_at", precision: nil
+    t.datetime "last_heartbeat_at"
+    t.string "parent_session_id"
     t.text "prompt"
     t.datetime "started_at"
     t.string "state", default: "queued", null: false
@@ -100,6 +111,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_001718) do
     t.datetime "updated_at", null: false
     t.index ["job_id", "state"], name: "index_runs_on_job_id_and_state"
     t.index ["job_id"], name: "index_runs_on_job_id"
+    t.index ["parent_session_id"], name: "index_runs_on_parent_session_id"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
   end
 
@@ -123,6 +135,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_001718) do
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 
+  add_foreign_key "claude_sessions", "runs"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "job_logs", "runs"
   add_foreign_key "jobs", "repositories"

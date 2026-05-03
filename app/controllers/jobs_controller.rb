@@ -59,6 +59,32 @@ class JobsController < ApplicationController
     redirect_to job_path(@job), notice: "Checking PR feedback now…"
   end
 
+  # Continue a failed/cancelled Run by reloading its claude session
+  # in a NEW Run. Carries `parent_session_id` so RunJob restores the
+  # JSONL to disk before invoking `claude --resume`. The new Run uses
+  # Prompts::Resume as its prompt — claude --print --resume still
+  # needs an arg, and silent re-invocation with the original prompt
+  # would confuse the model.
+  def resume
+    source_run = @job.runs.find_by(id: params[:source_run_id])
+    unless source_run
+      redirect_to job_path(@job), alert: "Source Run not found."
+      return
+    end
+    unless %w[failed cancelled].include?(source_run.state)
+      redirect_to job_path(@job), alert: "Only failed or cancelled Runs are resumable."
+      return
+    end
+    session = source_run.claude_session
+    unless session
+      redirect_to job_path(@job), alert: "No Claude session captured for that Run — try Replay instead."
+      return
+    end
+
+    @job.runs.create!(trigger_kind: "resume", parent_session_id: session.session_id)
+    redirect_to job_path(@job), notice: "Resume Run enqueued."
+  end
+
   # Manually trigger PollRebaseJob for this Job — same poller that
   # runs every 15min, just operator-initiated when they don't want
   # to wait. Persists pr_mergeable + checked_at on the Job (and

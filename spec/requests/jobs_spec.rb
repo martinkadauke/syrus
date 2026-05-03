@@ -194,6 +194,63 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
+  describe "POST /jobs/:id/resume" do
+    before { sign_in_as(user) }
+
+    let(:failed_run) do
+      r = job.initial_run
+      r.start!; r.fail!; r.save!
+      r
+    end
+
+    it "creates a resume Run carrying parent_session_id from the source's ClaudeSession" do
+      ClaudeSession.create!(run: failed_run, session_id: "uuid-deadbeef", transcript_jsonl: "{}\n")
+
+      expect {
+        post resume_job_path(job, source_run_id: failed_run.id)
+      }.to change { job.runs.where(trigger_kind: "resume").count }.by(1)
+
+      r = job.runs.where(trigger_kind: "resume").last
+      expect(r.parent_session_id).to eq("uuid-deadbeef")
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:notice]).to match(/Resume Run enqueued/)
+    end
+
+    it "refuses when the source Run isn't failed/cancelled" do
+      open_run = job.initial_run  # state=queued
+      ClaudeSession.create!(run: open_run, session_id: "x", transcript_jsonl: "x")
+
+      expect {
+        post resume_job_path(job, source_run_id: open_run.id)
+      }.not_to change { job.runs.where(trigger_kind: "resume").count }
+      expect(flash[:alert]).to match(/Only failed or cancelled/)
+    end
+
+    it "refuses when the source Run has no captured ClaudeSession" do
+      expect {
+        post resume_job_path(job, source_run_id: failed_run.id)
+      }.not_to change { job.runs.where(trigger_kind: "resume").count }
+      expect(flash[:alert]).to match(/No Claude session captured/)
+    end
+
+    it "refuses when the source_run_id doesn't belong to this Job" do
+      other_job = Factories.job(repository: repository, issue_number: 99)
+      stranger = other_job.initial_run
+      stranger.start!; stranger.fail!; stranger.save!
+      ClaudeSession.create!(run: stranger, session_id: "y", transcript_jsonl: "y")
+
+      post resume_job_path(job, source_run_id: stranger.id)
+      expect(flash[:alert]).to match(/not found/)
+    end
+
+    it "404s for another user's job" do
+      foreign_repo = Factories.repository(user: other)
+      foreign_job = Factories.job(repository: foreign_repo, issue_number: 1)
+      post resume_job_path(foreign_job, source_run_id: 1)
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "show page button visibility + confirmations" do
     before { sign_in_as(user) }
 

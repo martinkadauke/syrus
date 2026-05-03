@@ -64,6 +64,11 @@ class RunJob < ApplicationJob
     @job.update!(branch_name: @workspace.branch_name) if @job.branch_name != @workspace.branch_name
     abort_if_cancelled!
 
+    # Resume Runs need the prior session's JSONL on disk under the
+    # current worktree's project-encoded path before claude --resume
+    # can find it.
+    restore_claude_session if @run.resume?
+
     if @run.rebase?
       rebase_and_force_push
     else
@@ -121,7 +126,7 @@ class RunJob < ApplicationJob
   end
 
   def run_agent_and_commit
-    prompt = @run.prompt.presence || compose_initial_prompt
+    prompt = @run.prompt.presence || compose_main_prompt
     @run.update!(prompt: prompt) if @run.prompt.blank?
 
     log("invoking agent for #{@job.repository.slug}##{@job.issue_number} (run #{@run.id}, trigger=#{@run.trigger_kind})")
@@ -133,11 +138,13 @@ class RunJob < ApplicationJob
         oauth_token: @job.user.claude_oauth_token,
         log_sink: ->(chunk) { log(chunk) },
         runner: self.class.agent_runner,
-        mcp_config: mcp_config_path
+        mcp_config: mcp_config_path,
+        resume_session_id: @run.parent_session_id
       ).run
     end
 
     persist_agent_metadata(result)
+    persist_claude_session(result)
 
     raise AgentRunFailed, "agent timed out" if result.timed_out
     raise AgentRunFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
@@ -191,11 +198,13 @@ class RunJob < ApplicationJob
         oauth_token: @job.user.claude_oauth_token,
         log_sink: ->(chunk) { log(chunk) },
         runner: self.class.agent_runner,
-        mcp_config: mcp_config_path
+        mcp_config: mcp_config_path,
+        resume_session_id: @run.parent_session_id
       ).run
     end
 
     persist_agent_metadata(result)
+    persist_claude_session(result)
 
     raise AgentRunFailed, "agent timed out" if result.timed_out
     raise AgentRunFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
@@ -262,10 +271,14 @@ class RunJob < ApplicationJob
     end
   end
 
-  # Initial runs get the issue title + body via Prompts::Initial.
-  # Follow-up runs (pr_comment, ci_failure, ...) arrive with @run.prompt
-  # already composed by whatever job created them — we use it as-is.
-  def compose_initial_prompt
+  # Initial Runs get the issue title + body via Prompts::Initial.
+  # Resume Runs get a continuation nudge (Prompts::Resume) since
+  # claude --print --resume still needs a prompt argument and won't
+  # auto-continue silently. Follow-up Runs (pr_comment, ci_failure,
+  # replay, manual) arrive with @run.prompt already composed by
+  # whoever created them — we use it as-is via the caller's `||`.
+  def compose_main_prompt
+    return Prompts::Resume.new.to_s if @run.resume?
     issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
     Prompts::Initial.new(issue: issue).to_s
   end
@@ -275,6 +288,47 @@ class RunJob < ApplicationJob
     updates[:agent_turns] = result.turns if result.turns
     updates[:agent_outcome] = result.outcome if result.outcome
     @run.update!(updates) if updates.any?
+  end
+
+  # Capture the JSONL Claude Code wrote during the run so the same
+  # session can be resumed later from a different worker pod. Best-
+  # effort: if the file isn't there (worker died before claude wrote
+  # it, claude version that doesn't write JSONL, etc.), log and
+  # move on — Resume just won't be available for this Run.
+  def persist_claude_session(result)
+    return unless result.session_id
+    path = ClaudeSession.canonical_path_for(
+      home: ENV.fetch("HOME"),
+      cwd: @workspace.path,
+      session_id: result.session_id
+    )
+    unless File.exist?(path)
+      log("[claude_session] no JSONL at #{path} — Resume won't be available for this Run")
+      return
+    end
+    ClaudeSession.create!(run: @run, session_id: result.session_id, transcript_jsonl: File.read(path))
+    log("[claude_session] captured #{result.session_id} (#{File.size(path)} bytes)")
+  rescue StandardError => e
+    log("[claude_session] capture failed: #{e.class}: #{e.message}")
+  end
+
+  # Restore the prior Run's JSONL to the new worktree's project
+  # directory so claude --resume can find it. Path encoding matches
+  # claude-code: cwd "/x/y/z" → "-x-y-z".
+  def restore_claude_session
+    source = ClaudeSession.find_by(session_id: @run.parent_session_id)
+    unless source
+      log("[claude_session] parent_session_id #{@run.parent_session_id} not found — resuming may fail")
+      return
+    end
+    path = ClaudeSession.canonical_path_for(
+      home: ENV.fetch("HOME"),
+      cwd: @workspace.path,
+      session_id: source.session_id
+    )
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, source.transcript_jsonl)
+    log("[claude_session] restored #{source.session_id} to #{path}")
   end
 
   def commit_agent_changes

@@ -1,10 +1,11 @@
 class Run < ApplicationRecord
   include AASM
 
-  TRIGGER_KINDS = %w[ initial pr_comment ci_failure replay manual rebase ].freeze
+  TRIGGER_KINDS = %w[ initial pr_comment ci_failure replay manual rebase resume ].freeze
 
   belongs_to :job
   has_many :job_logs, -> { order(:sequence) }, dependent: :destroy
+  has_one :claude_session, dependent: :destroy
 
   validates :trigger_kind, presence: true, inclusion: { in: TRIGGER_KINDS }
 
@@ -71,6 +72,14 @@ class Run < ApplicationRecord
   # tree), force-push-with-lease, and skip the PR-opening step.
   def rebase?
     trigger_kind == "rebase"
+  end
+
+  # Resume Runs continue a Claude Code session whose worker died
+  # mid-flight. RunJob restores the prior session's JSONL to disk
+  # before invoking claude with --resume, and uses Prompts::Resume
+  # as the new prompt so claude knows what just happened.
+  def resume?
+    trigger_kind == "resume"
   end
 
   def terminal?

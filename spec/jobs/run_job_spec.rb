@@ -47,7 +47,7 @@ RSpec.describe RunJob do
         agent_pr_body:  "Adds a tiny greet helper used by the welcome page.",
         agent_summary:  "Implemented greet."
       )
-      AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+      AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
     }
 
     # Default summarizer stub: returns valid JSON so the fallback
@@ -56,7 +56,8 @@ RSpec.describe RunJob do
     PrSummarizer.runner = ->(**_) {
       AgentInvocation::Result.new(
         turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success",
-        final_text: '{"title":"Summarizer fallback title","body":"Summarizer fallback body."}'
+        final_text: '{"title":"Summarizer fallback title","body":"Summarizer fallback body."}',
+        session_id: nil
       )
     }
 
@@ -112,6 +113,39 @@ RSpec.describe RunJob do
       }.to have_enqueued_job(PollRebaseJob).with(job.id)
     end
 
+    it "captures the Claude session JSONL when the agent reports a session_id" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        # Simulate claude writing its JSONL to the canonical path.
+        path = ClaudeSession.canonical_path_for(home: ENV.fetch("HOME"), cwd: workspace_path, session_id: "smoke-uuid")
+        FileUtils.mkdir_p(File.dirname(path))
+        File.write(path, %({"type":"meta","sessionId":"smoke-uuid"}\n))
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
+        Run.last.update!(agent_pr_title: "x", agent_pr_body: "y", agent_summary: "z")
+        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: "smoke-uuid")
+      }
+
+      expect {
+        described_class.perform_now(run.id)
+      }.to change { ClaudeSession.count }.by(1)
+
+      session = ClaudeSession.find_by(session_id: "smoke-uuid")
+      expect(session.run_id).to eq(run.id)
+      expect(session.transcript_jsonl).to include("smoke-uuid")
+    end
+
+    it "doesn't fail the Run when the JSONL file isn't on disk" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
+        Run.last.update!(agent_pr_title: "x", agent_pr_body: "y", agent_summary: "z")
+        # session_id reported but no file on disk
+        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: "ghost-uuid")
+      }
+
+      expect { described_class.perform_now(run.id) }.not_to raise_error
+      expect(run.reload.state).to eq("succeeded")
+      expect(ClaudeSession.exists?(session_id: "ghost-uuid")).to be false
+    end
+
     it "opens the PR with the title/body the agent submitted via the MCP sidecar (path 1)" do
       described_class.perform_now(run.id)
 
@@ -132,7 +166,7 @@ RSpec.describe RunJob do
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
         # NOTE: deliberately skipping the Run.update! that would simulate
         # submit_summary — pretending the agent forgot the tool call.
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
 
       described_class.perform_now(run.id)
@@ -149,12 +183,13 @@ RSpec.describe RunJob do
     it "falls back to the templated title/body when both the agent and the summarizer fail (path 3)" do
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
-        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
       PrSummarizer.runner = ->(**_) {
         AgentInvocation::Result.new(
           turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success",
-          final_text: "definitely not JSON"
+          final_text: "definitely not JSON",
+          session_id: nil
         )
       }
 
@@ -175,7 +210,7 @@ RSpec.describe RunJob do
         captured_config = JSON.parse(File.read(mcp_config))   # read inside the Tempfile block
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi'\n")
         Run.last.update!(agent_pr_title: "x", agent_pr_body: "y", agent_summary: "z")
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
 
       described_class.perform_now(run.id)
@@ -185,6 +220,34 @@ RSpec.describe RunJob do
       expect(sidecar["type"]).to eq("stdio")
       expect(sidecar["command"]).to end_with("bin/syrus-mcp-sidecar")
       expect(sidecar["args"]).to eq([ "--run-id", run.id.to_s ])
+    end
+  end
+
+  describe "resume Run" do
+    it "restores the parent session's JSONL to the new worktree path before invoking claude" do
+      # Pre-seed a captured session on a prior failed Run.
+      prior_run = job.runs.create!(trigger_kind: "initial", state: "failed", started_at: 1.hour.ago, finished_at: 30.minutes.ago, prompt: "old")
+      prior_session = ClaudeSession.create!(run: prior_run, session_id: "resume-uuid", transcript_jsonl: %({"type":"old","sessionId":"resume-uuid"}\n))
+
+      restored_path = nil
+      restored_contents = nil
+      passed_resume_id = nil
+      RunJob.agent_runner = ->(workspace_path:, resume_session_id:, **_) {
+        # On invocation, the JSONL should already be at the canonical path.
+        restored_path = ClaudeSession.canonical_path_for(home: ENV.fetch("HOME"), cwd: workspace_path, session_id: "resume-uuid")
+        restored_contents = File.read(restored_path) if File.exist?(restored_path)
+        passed_resume_id = resume_session_id
+        File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hello'\n")
+        Run.last.update!(agent_pr_title: "x", agent_pr_body: "y", agent_summary: "z")
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: "resume-uuid")
+      }
+
+      resume_run = job.runs.create!(trigger_kind: "resume", parent_session_id: prior_session.session_id)
+      described_class.perform_now(resume_run.id)
+
+      expect(passed_resume_id).to eq("resume-uuid")
+      expect(restored_path).to be_present
+      expect(restored_contents).to include("resume-uuid")
     end
   end
 
@@ -200,7 +263,7 @@ RSpec.describe RunJob do
       followup = Run.create!(job: job, trigger_kind: "pr_comment")
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi there'\n")
-        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
       described_class.perform_now(followup.id)
 
@@ -239,7 +302,7 @@ RSpec.describe RunJob do
       replay = Run.create!(job: job, trigger_kind: "replay")
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi again'\n")
-        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
       described_class.perform_now(replay.id)
 
@@ -267,7 +330,7 @@ RSpec.describe RunJob do
       followup = Run.create!(job: job, trigger_kind: "pr_comment")
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "feature.rb"), "def greet = 'hi there'\n")
-        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
       described_class.perform_now(followup.id)
 
@@ -293,7 +356,7 @@ RSpec.describe RunJob do
         # Simulate a rebase by creating a new commit (changes HEAD sha)
         # without changing the working tree's diff against base.
         sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} commit --allow-empty -q -m 'rebased'")
-        AgentInvocation::Result.new(turns: 3, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 3, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
 
       rebase = Run.create!(job: job, trigger_kind: "rebase")
@@ -309,7 +372,7 @@ RSpec.describe RunJob do
     it "fails the Run when the agent doesn't move HEAD (rebase aborted or no-op)" do
       RunJob.agent_runner = ->(**_) {
         # Agent succeeded at the call but didn't actually rebase.
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
 
       rebase = Run.create!(job: job, trigger_kind: "rebase")
@@ -320,7 +383,7 @@ RSpec.describe RunJob do
     it "doesn't open a second PR" do
       RunJob.agent_runner = ->(workspace_path:, **_) {
         sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} commit --allow-empty -q -m 'rebased'")
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
       rebase = Run.create!(job: job, trigger_kind: "rebase")
       described_class.perform_now(rebase.id)
@@ -333,7 +396,7 @@ RSpec.describe RunJob do
       job.close_with_reason!("manual")
       RunJob.agent_runner = ->(workspace_path:, **_) {
         sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} commit --allow-empty -q -m 'rebased'")
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
       rebase = Run.create!(job: job, trigger_kind: "rebase")
       described_class.perform_now(rebase.id)
@@ -360,7 +423,7 @@ RSpec.describe RunJob do
   describe "agent produced no changes" do
     it "marks the Run failed; Job stays open (replay possible)" do
       RunJob.agent_runner = ->(**_) {
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
 
       expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentRunFailed, /no changes/)
@@ -380,7 +443,7 @@ RSpec.describe RunJob do
       RunJob.agent_runner = ->(workspace_path:, **_) {
         File.write(File.join(workspace_path, "partial.rb"), "# half-done")
         AgentInvocation::Result.new(turns: 50, exit_status: 0, timed_out: false,
-                                    is_error: true, outcome: "error_max_turns", final_text: nil)
+                                    is_error: true, outcome: "error_max_turns", final_text: nil, session_id: nil)
       }
 
       expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentRunFailed, /error_max_turns/)
@@ -396,7 +459,7 @@ RSpec.describe RunJob do
   describe "failure counting" do
     before do
       RunJob.agent_runner = ->(**_) {
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
     end
 
@@ -413,7 +476,7 @@ RSpec.describe RunJob do
     it "does not increment failure_count for rebase runs" do
       rebase = Run.create!(job: job, trigger_kind: "rebase")
       RunJob.agent_runner = ->(**_) {
-        AgentInvocation::Result.new(turns: 1, exit_status: 1, timed_out: false, is_error: false, outcome: nil, final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 1, timed_out: false, is_error: false, outcome: nil, final_text: nil, session_id: nil)
       }
       expect { described_class.perform_now(rebase.id) rescue nil }
         .not_to change { job.reload.failure_count }
@@ -427,7 +490,7 @@ RSpec.describe RunJob do
       agent_invoked = false
       RunJob.agent_runner = ->(**_) {
         agent_invoked = true
-        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
       }
 
       expect { described_class.perform_now(run.id) }.not_to raise_error

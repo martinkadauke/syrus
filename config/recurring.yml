@@ -18,10 +18,13 @@ default: &default
     schedule: every 5 minutes
   poll_rebases:
     class: PollAllRebasesJob
-    schedule: every 15 minutes
+    schedule: every 5 minutes
   reap_stale_runs:
     class: ReapStaleRunsJob
     schedule: every minute
+  prune_claude_sessions:
+    class: ClaudeSessionPruneJob
+    schedule: every day at 3:00am
 
 development:
   <<: *default
