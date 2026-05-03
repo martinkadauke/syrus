@@ -4,10 +4,18 @@
     Step (no intra-step retry yet), so this looks like a flat
     Run-with-extra-context most of the time. %>
 <% runs_array = step.runs.to_a %>
-<% step_dim = step.cancelled? ? "opacity-60" : "" %>
-<div class="<%= step_dim %>">
-  <div class="px-4 py-2 bg-white flex items-center justify-between">
+<% step_modifier = case step.state
+                   when "running"   then "ring-2 ring-blue-400 ring-inset"
+                   when "cancelled" then "opacity-60"
+                   else                  ""
+                   end %>
+<% header_bg = step.running? ? "bg-blue-50" : "bg-white" %>
+<div class="<%= step_modifier %>">
+  <div class="px-4 py-2 <%= header_bg %> flex items-center justify-between">
     <div class="flex items-center gap-3">
+      <% if step.running? %>
+        <span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" aria-hidden="true"></span>
+      <% end %>
       <span class="text-xs uppercase tracking-wide text-gray-500">
         Step <%= step_number %>/<%= total_steps %>
       </span>
