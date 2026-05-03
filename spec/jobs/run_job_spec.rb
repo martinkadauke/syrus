@@ -594,6 +594,33 @@ RSpec.describe RunJob do
     end
   end
 
+  describe "log resilience to blank chunks" do
+    # Drove Run #115 (Job #60) to fail at turn 38: agent was emitting
+    # diff content; one of the diff hunks contained a blank line; the
+    # streaming sink relayed "" to RunJob#log; JobLog's presence
+    # validation blew up. Whole Run lost despite the agent's actual
+    # work being correct.
+    it "skips persisting empty/whitespace chunks but still bumps the heartbeat" do
+      RunJob.agent_runner = ->(workspace_path:, log_sink:, **_) {
+        log_sink.call("real chunk one")
+        log_sink.call("")            # ← would have crashed pre-fix
+        log_sink.call("   \n\n  ")   # whitespace-only — same boat
+        log_sink.call("real chunk two")
+        File.write(File.join(workspace_path, "feature.rb"), "def x = 1\n")
+        Run.last.update!(agent_pr_title: "x", agent_pr_body: "y", agent_summary: "z")
+        AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
+      }
+
+      expect { described_class.perform_now(run.id) }.not_to raise_error
+
+      run.reload
+      expect(run.state).to eq("succeeded")
+      logs = run.job_logs.pluck(:chunk)
+      expect(logs).to include("real chunk one", "real chunk two")
+      expect(logs).not_to include("", "   \n\n  ")
+    end
+  end
+
   describe "RunDiagnostic capture on failure" do
     it "snapshots exception + git + env when a Run fails" do
       RunJob.agent_runner = ->(workspace_path:, **_) {

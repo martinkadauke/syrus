@@ -553,9 +553,27 @@ class RunJob < ApplicationJob
     end
   end
 
+  # Append a transcript chunk + bump the heartbeat. Resilient to blank
+  # input — incoming streams (claude's stream-json, git stdout/stderr,
+  # the agent's tool output) can legitimately produce empty lines
+  # (e.g. blank context lines in a `git diff` hunk, an assistant
+  # event with empty `text` content). JobLog enforces presence on
+  # `chunk`, so a naive `create!("")` would raise RecordInvalid and
+  # crash the whole Run after dozens of useful turns. Real-world
+  # incident: Run #115 (Job #60), agent was emitting a diff and
+  # blew up on a blank diff-hunk line at turn 38.
+  #
+  # Empty chunks still bump the heartbeat — the upstream stream is
+  # producing output, that's a sign of life — but they don't get
+  # persisted as JobLog rows.
   def log(chunk)
+    text = chunk.to_s
+    if text.strip.empty?
+      @run.update_column(:last_heartbeat_at, Time.current) if @run.running?
+      return
+    end
     next_seq = (@run.job_logs.maximum(:sequence) || -1) + 1
-    @run.job_logs.create!(chunk: chunk, sequence: next_seq)
+    @run.job_logs.create!(chunk: text, sequence: next_seq)
     @run.update_column(:last_heartbeat_at, Time.current) if @run.running?
   end
 end
