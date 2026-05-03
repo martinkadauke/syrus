@@ -9,6 +9,7 @@ class PollScheduledTasksJob < ApplicationJob
     now = Time.current
     ScheduledTask.alive
                  .where(state: "scheduled")
+                 .joins(:repository).merge(Repository.active)
                  .find_each do |task|
       next unless task.due?(now: now)
 

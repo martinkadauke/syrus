@@ -11,6 +11,7 @@ class PollPullRequestJob < ApplicationJob
   def perform(job_id)
     @job = Job.find_by(id: job_id)
     return unless @job&.open? && @job.pr_number.present?
+    return if @job.repository.archived?
 
     @client = GithubClient.for(@job.user)
     @slug = @job.repository.slug

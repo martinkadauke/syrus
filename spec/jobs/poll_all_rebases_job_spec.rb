@@ -19,4 +19,20 @@ RSpec.describe PollAllRebasesJob do
       .and have_enqueued_job(PollRebaseJob).with(closed_syr.id)
     expect(no_pr.pr_number).to be_nil  # sanity
   end
+
+  it "skips Jobs whose Repository is archived" do
+    archived_repo = Factories.repository
+    archived_repo.archive!
+    archived_job = Factories.job(repository: archived_repo, pr_number: 11, branch_name: "syrus/x")
+    active_job   = Factories.job(pr_number: 12, branch_name: "syrus/y")
+
+    expect {
+      described_class.perform_now
+    }.to have_enqueued_job(PollRebaseJob).exactly(1).times
+      .and have_enqueued_job(PollRebaseJob).with(active_job.id)
+    expect {
+      # Sanity: the archived Job did NOT get enqueued.
+      described_class.perform_now
+    }.not_to have_enqueued_job(PollRebaseJob).with(archived_job.id)
+  end
 end

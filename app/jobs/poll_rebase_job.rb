@@ -15,6 +15,10 @@ class PollRebaseJob < ApplicationJob
   def perform(job_id)
     @job = Job.find_by(id: job_id)
     return unless @job
+    # Archived repos are explicitly out — the operator has retired
+    # them; we shouldn't keep rebasing their stale PRs. Mirrors the
+    # archived-repo guard in PollRepositoryJob.
+    return if @job.repository.archived?
 
     pr_number = @job.pr_number || @job.external_pr_number
     return unless pr_number

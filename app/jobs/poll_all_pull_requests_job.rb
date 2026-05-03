@@ -5,7 +5,10 @@ class PollAllPullRequestsJob < ApplicationJob
   # PR through PollPullRequestJob, which does the actual comment fetching
   # and follow-up Run dispatch.
   def perform
-    Job.where(state: "open").where.not(pr_number: nil).find_each do |job|
+    Job.joins(:repository)
+       .merge(Repository.active)
+       .where(state: "open").where.not(pr_number: nil)
+       .find_each do |job|
       PollPullRequestJob.perform_later(job.id)
     end
   end
