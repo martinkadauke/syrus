@@ -263,6 +263,19 @@ the failure context and iterates rather than shipping a red PR. Examples:
   coverage thresholds.
 - **Custom graders** — arbitrary user-defined scripts or LLM prompts
   scoped per repo.
+- **Visual graders (web app screenshots)** — for repos that render a
+  web UI, the grader boots the app (via a per-repo `bin/grader-up`
+  script or a Docker compose stub), navigates through a small set of
+  configured pages/routes with a headless browser (Playwright /
+  Puppeteer), captures screenshots, and feeds them back to the agent
+  as multimodal input. Catches whole classes of regressions invisible
+  to unit tests: blank pages, layout breakage, console errors, broken
+  navigation, accessibility regressions. Same iterate-on-failure loop
+  as the other graders — the agent sees the screenshots that
+  triggered the failure verdict and tries again. Optional second pass:
+  a vision-capable model evaluates the screenshots against per-repo
+  rubrics ("looks broken", "matches the design system") rather than
+  pixel-diffing, so cosmetic changes don't trip false positives.
 
 Per-repo config picks which graders are required vs advisory.
 
