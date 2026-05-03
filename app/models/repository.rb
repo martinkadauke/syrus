@@ -5,6 +5,7 @@ class Repository < ApplicationRecord
 
   belongs_to :user
   has_many :jobs, dependent: :destroy
+  has_many :scheduled_tasks, dependent: :destroy
 
   validates :owner, presence: true, format: { with: GITHUB_NAME }
   validates :name, presence: true, format: { with: GITHUB_NAME }

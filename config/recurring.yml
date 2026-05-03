@@ -19,6 +19,9 @@ default: &default
   poll_rebases:
     class: PollAllRebasesJob
     schedule: every 5 minutes
+  poll_scheduled_tasks:
+    class: PollScheduledTasksJob
+    schedule: every minute
   reap_stale_runs:
     class: ReapStaleRunsJob
     schedule: every minute

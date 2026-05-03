@@ -434,6 +434,89 @@ RSpec.describe RunJob do
     end
   end
 
+  describe "cron Job (scheduled task)" do
+    let(:scheduled_task) do
+      ScheduledTask.create!(
+        user: user, repository: repository,
+        name: "Sweep dead code", prompt: "Look for dead code.",
+        kind: "cron", cron_expression: "0 9 * * 1", pr_pileup_policy: "skip"
+      )
+    end
+
+    def cron_job_with_pre_rendered_prompt(prompt: "rendered cron prompt")
+      job = Job.create!(
+        user: user, repository: repository,
+        kind: "cron", scheduled_task: scheduled_task, issue_number: nil
+      )
+      job.runs.create!(trigger_kind: "initial", prompt: prompt)
+      job
+    end
+
+    it "happy path: agent commits, branch + PR open against the syrus/scheduled-N-M branch" do
+      cron_job = cron_job_with_pre_rendered_prompt
+      cron_run = cron_job.runs.first
+
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        File.write(File.join(workspace_path, "audit.md"), "found stuff\n")
+        Run.last.update!(agent_pr_title: "Sweep audit", agent_pr_body: "Removed dead code.", agent_summary: "ok")
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
+      }
+
+      described_class.perform_now(cron_run.id)
+      cron_job.reload
+      cron_run.reload
+
+      expect(cron_run.state).to eq("succeeded")
+      expect(cron_job.branch_name).to start_with("syrus/scheduled-#{scheduled_task.id}-")
+      expect(cron_job.pr_number).to eq(123)
+
+      branches = `git --git-dir=#{bare_remote_dir} branch --list 'syrus/*'`.split("\n").map(&:strip)
+      expect(branches).to include(cron_job.branch_name)
+    end
+
+    it "no-changes path: Run succeeds, Job closes with reason 'no_changes', no PR opened, ScheduledTask gets a success" do
+      cron_job = cron_job_with_pre_rendered_prompt
+      cron_run = cron_job.runs.first
+
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        # Agent produces NO files on disk → no diff
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
+      }
+
+      expect { described_class.perform_now(cron_run.id) }.not_to raise_error
+
+      cron_job.reload
+      cron_run.reload
+      scheduled_task.reload
+
+      expect(cron_run.state).to eq("succeeded")
+      expect(cron_job.state).to eq("closed")
+      expect(cron_job.closure_reason).to eq("no_changes")
+      expect(cron_job.pr_number).to be_nil
+      expect(@pr_stub).not_to have_been_requested
+      expect(scheduled_task.last_successful_fire_at).to be_present
+      expect(scheduled_task.consecutive_failure_count).to eq(0)
+    end
+
+    it "agent failure: Job's failure_count climbs; eventually closes too_many_failures and records a failure on the ScheduledTask" do
+      cron_job = cron_job_with_pre_rendered_prompt
+      cron_run = cron_job.runs.first
+
+      RunJob.agent_runner = ->(**_) {
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false, is_error: true, outcome: "error_during_execution", final_text: nil, session_id: nil)
+      }
+      AppSetting.current.update!(max_job_failures: 1)
+
+      expect { described_class.perform_now(cron_run.id) }.to raise_error(RunJob::AgentRunFailed)
+
+      cron_job.reload
+      scheduled_task.reload
+      expect(cron_job.state).to eq("closed")
+      expect(cron_job.closure_reason).to eq("too_many_failures")
+      expect(scheduled_task.consecutive_failure_count).to eq(1)
+    end
+  end
+
   describe "pre-pickup cancellation" do
     it "returns early when the Run was cancelled before pickup" do
       run.cancel!

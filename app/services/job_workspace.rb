@@ -61,7 +61,11 @@ class JobWorkspace
   private
 
   def initial_branch_name
-    "syrus/issue-#{@job.issue_number}-#{@job.id}"
+    if @job.cron?
+      "syrus/scheduled-#{@job.scheduled_task_id}-#{@job.id}"
+    else
+      "syrus/issue-#{@job.issue_number}-#{@job.id}"
+    end
   end
 
   # Use the authenticated URL (token in the URL) for both clone and

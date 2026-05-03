@@ -55,6 +55,57 @@
     </div>
   </div>
 
+  <%# Scheduled tasks %>
+  <div>
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="font-semibold text-lg">Scheduled tasks</h2>
+      <%= link_to "New scheduled task",
+            new_repository_scheduled_task_path(@repository),
+            class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium" %>
+    </div>
+    <% repo_tasks = @repository.scheduled_tasks.where(archived_at: nil).order(:created_at) %>
+    <% if repo_tasks.any? %>
+      <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <table class="min-w-full divide-y divide-gray-200">
+          <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+            <tr>
+              <th class="px-4 py-2 text-left">Name</th>
+              <th class="px-4 py-2 text-left">Kind</th>
+              <th class="px-4 py-2 text-left">Schedule</th>
+              <th class="px-4 py-2 text-left">State</th>
+              <th class="px-4 py-2 text-left">Last fired</th>
+              <th class="px-4 py-2"></th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-100 text-sm">
+            <% repo_tasks.each do |task| %>
+              <tr>
+                <td class="px-4 py-3"><%= link_to task.name, scheduled_task_path(task), class: "text-blue-600 underline hover:no-underline" %></td>
+                <td class="px-4 py-3"><%= task.kind %></td>
+                <td class="px-4 py-3 font-mono text-xs">
+                  <% if task.cron? %>
+                    <%= task.smeared_cron_expression %>
+                  <% else %>
+                    <%= task.fire_at&.utc&.strftime("%Y-%m-%d %H:%M UTC") || "—" %>
+                  <% end %>
+                </td>
+                <td class="px-4 py-3"><%= scheduled_task_state_pill(task) %></td>
+                <td class="px-4 py-3 text-xs text-gray-600">
+                  <%= task.last_fired_at ? "#{time_ago_in_words(task.last_fired_at)} ago" : "never" %>
+                </td>
+                <td class="px-4 py-3 text-right">
+                  <%= link_to "Open", scheduled_task_path(task), class: "text-blue-600 underline hover:no-underline" %>
+                </td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+    <% else %>
+      <p class="text-sm text-gray-600">No scheduled tasks yet.</p>
+    <% end %>
+  </div>
+
   <%# Recent jobs %>
   <div>
     <h2 class="font-semibold text-lg mb-3">Recent jobs</h2>
@@ -76,10 +127,18 @@
               <tr>
                 <td class="px-4 py-3 text-gray-500">#<%= job.id %></td>
                 <td class="px-4 py-3">
-                  <%= link_to "##{job.issue_number}",
-                        "https://github.com/#{@repository.slug}/issues/#{job.issue_number}",
-                        target: "_blank", rel: "noopener",
-                        class: "text-blue-600 underline hover:no-underline" %>
+                  <% if job.cron? %>
+                    <span class="text-gray-500 text-xs">scheduled:
+                      <%= link_to (job.scheduled_task&.name || "##{job.scheduled_task_id}"),
+                            scheduled_task_path(job.scheduled_task_id),
+                            class: "text-blue-600 underline hover:no-underline" if job.scheduled_task %>
+                    </span>
+                  <% else %>
+                    <%= link_to "##{job.issue_number}",
+                          "https://github.com/#{@repository.slug}/issues/#{job.issue_number}",
+                          target: "_blank", rel: "noopener",
+                          class: "text-blue-600 underline hover:no-underline" %>
+                  <% end %>
                 </td>
                 <td class="px-4 py-3"><%= state_pill(job_summary_state(job)) %></td>
                 <td class="px-4 py-3 text-gray-500"><%= time_ago_in_words(job.updated_at) %> ago</td>

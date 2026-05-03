@@ -83,7 +83,7 @@ class PollPullRequestJob < ApplicationJob
   end
 
   def enqueue_followup_run(new_comments)
-    issue = @client.fetch_issue(@slug, @job.issue_number)
+    issue = @job.issue? ? @client.fetch_issue(@slug, @job.issue_number) : @job.synthetic_issue
     prompt = Prompts::PrFeedback.new(issue: issue, comments: new_comments).to_s
     @job.runs.create!(trigger_kind: "pr_comment", prompt: prompt)
 
@@ -117,7 +117,7 @@ class PollPullRequestJob < ApplicationJob
   end
 
   def enqueue_ci_failure_run(head_sha, failed_checks)
-    issue = @client.fetch_issue(@slug, @job.issue_number)
+    issue = @job.issue? ? @client.fetch_issue(@slug, @job.issue_number) : @job.synthetic_issue
     prompt = Prompts::CiFailure.new(
       issue: issue,
       pr_number: @job.pr_number,

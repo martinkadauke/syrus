@@ -15,6 +15,15 @@ Rails.application.routes.draw do
       post :archive
       post :unarchive
     end
+    resources :scheduled_tasks, only: %i[ new create ]
+  end
+
+  resources :scheduled_tasks, only: %i[ index show edit update destroy ] do
+    member do
+      post :pause
+      post :resume
+      post :fire_now    # manually fire an active task without waiting for cron
+    end
   end
   resources :invitations, only: %i[ index create destroy ]
   resource :settings, only: %i[ show edit update ]

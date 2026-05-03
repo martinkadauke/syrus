@@ -31,6 +31,18 @@ class GithubClient
     raise
   end
 
+  # Closes a PR without merging. Used by the scheduled-task
+  # pr_pileup_policy=replace path to retire the previous tick's PR
+  # before opening this tick's. Octokit's update_pull_request takes
+  # state: "closed" — same endpoint GitHub's web "Close pull request"
+  # button uses.
+  def close_pull_request(repo_slug, pr_number)
+    @client.update_pull_request(repo_slug, pr_number, state: "closed")
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited closing #{repo_slug}##{pr_number}: #{e.message}")
+    raise
+  end
+
   def fetch_issue(repo_slug, number)
     @client.issue(repo_slug, number)
   rescue Octokit::TooManyRequests => e

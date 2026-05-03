@@ -22,8 +22,11 @@ module JobsHelper
   }.freeze
 
   def state_pill(state, classes: nil)
-    style = STATE_STYLES[state.to_s] || "bg-gray-100 text-gray-700"
+    style = STATE_STYLES[state.to_s] || ApplicationHelper::PILL_FALLBACK_CLASSES
 
+    # Running gets a custom shell because of the inline spinner — it
+    # needs flex layout that the regular pill doesn't. All other
+    # states fall through to the shared colored_pill primitive.
     if state.to_s == "running"
       spinner = content_tag(:svg, xmlns: "http://www.w3.org/2000/svg", fill: "none", viewBox: "0 0 24 24", class: "animate-spin h-3 w-3") do
         content_tag(:circle, "", cx: "12", cy: "12", r: "10", stroke: "currentColor", "stroke-width" => "4", class: "opacity-25") +
@@ -33,13 +36,12 @@ module JobsHelper
         safe_join([ state.to_s, spinner ])
       end
     else
-      tag.span(state, class: "inline-block px-2 py-0.5 rounded text-xs font-medium #{style} #{classes}")
+      colored_pill(state, classes: style, extra: classes)
     end
   end
 
   def trigger_pill(trigger_kind)
-    style = TRIGGER_STYLES[trigger_kind.to_s] || "bg-gray-100 text-gray-700"
-    tag.span(trigger_kind, class: "inline-block px-2 py-0.5 rounded text-xs font-medium #{style}")
+    colored_pill(trigger_kind, classes: TRIGGER_STYLES[trigger_kind.to_s] || ApplicationHelper::PILL_FALLBACK_CLASSES)
   end
 
   # The most useful one-word summary for a Job in a list view:
@@ -62,7 +64,24 @@ module JobsHelper
   end
 
   def job_issue_url(job)
+    return nil if job.issue_number.blank?
     "https://github.com/#{job.repository.slug}/issues/#{job.issue_number}"
+  end
+
+  # Renders a per-Job source label — link to GitHub issue for issue
+  # Jobs, link to ScheduledTask for cron Jobs. Used in dashboard +
+  # job header so cron Jobs don't render a broken "#nil" link.
+  def job_source_label_html(job)
+    if job.cron?
+      task = job.scheduled_task
+      label = task ? "scheduled: #{task.name}" : "scheduled task ##{job.scheduled_task_id}"
+      target = task ? scheduled_task_path(task) : nil
+      target ? link_to(label, target, class: "text-blue-600 underline hover:no-underline") : label
+    else
+      link_to "##{job.issue_number}", job_issue_url(job),
+              target: "_blank", rel: "noopener",
+              class: "text-blue-600 underline hover:no-underline"
+    end
   end
 
   MERGEABILITY_STYLES = {
@@ -82,6 +101,6 @@ module JobsHelper
             when false then "needs rebase"
             else            "checking…"
     end
-    tag.span(label, class: "inline-block px-2 py-0.5 rounded text-xs font-medium #{MERGEABILITY_STYLES[label]}")
+    colored_pill(label, classes: MERGEABILITY_STYLES[label])
   end
 end

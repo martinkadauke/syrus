@@ -69,23 +69,36 @@ class RunJob < ApplicationJob
     # can find it.
     restore_claude_session if @run.resume?
 
+    no_changes = false
+
     if @run.rebase?
       rebase_and_force_push
     else
-      run_agent_and_commit
+      result = run_agent_and_commit
       abort_if_cancelled!
 
-      push_branch
-      abort_if_cancelled!
-
-      open_pull_request_if_missing
+      if result == :no_changes
+        # Cron Jobs only path: agent surveyed and found nothing to do.
+        # No commit, no push, no PR. The Run still succeeds (the cron
+        # tick fired and produced its expected outcome) and the parent
+        # Job closes immediately, which the scheduled-task tracker
+        # interprets as a successful no-op.
+        log("[scheduled] no changes — cron Job closing as no_changes")
+        no_changes = true
+      else
+        push_branch
+        abort_if_cancelled!
+        open_pull_request_if_missing
+      end
     end
 
-    schedule_mergeability_recheck
+    schedule_mergeability_recheck unless no_changes
 
     @run.succeed!
     @run.save!
     log(complete_message)
+
+    finalize_cron_job_no_changes if @job.cron? && no_changes
   rescue CancelledMidRun
     log("cancelled mid-run")
   rescue StandardError => e
@@ -129,7 +142,8 @@ class RunJob < ApplicationJob
     prompt = @run.prompt.presence || compose_main_prompt
     @run.update!(prompt: prompt) if @run.prompt.blank?
 
-    log("invoking agent for #{@job.repository.slug}##{@job.issue_number} (run #{@run.id}, trigger=#{@run.trigger_kind})")
+    target_label = @job.cron? ? "scheduled task ##{@job.scheduled_task_id}" : "#{@job.repository.slug}##{@job.issue_number}"
+    log("invoking agent for #{target_label} (run #{@run.id}, trigger=#{@run.trigger_kind})")
 
     result = with_mcp_config do |mcp_config_path|
       AgentInvocation.new(
@@ -154,9 +168,16 @@ class RunJob < ApplicationJob
     commit_agent_changes
     diff = capture_diff_against_default
 
-    raise AgentRunFailed, "agent produced no changes" if diff.blank?
+    if diff.blank?
+      # For cron Jobs "no diff" is the explicit happy path of an
+      # uneventful tick — the agent surveyed and decided there's
+      # nothing worth doing. Caller short-circuits push/PR steps.
+      return :no_changes if @job.cron?
+      raise AgentRunFailed, "agent produced no changes"
+    end
 
     @run.update!(agent_diff: diff, head_sha: head_sha)
+    :committed
   end
 
   # Writes a per-run mcp.json tempfile and yields its path to the
@@ -266,6 +287,8 @@ class RunJob < ApplicationJob
   def complete_message
     if @run.rebase?
       "rebase complete — branch force-pushed"
+    elsif @job.cron? && @job.pr_number.blank?
+      "scheduled run complete — no changes (cron tick recorded)"
     elsif @run.initial?
       "run complete — PR ##{@job.pr_number} opened"
     else
@@ -273,17 +296,27 @@ class RunJob < ApplicationJob
     end
   end
 
-  # Initial Runs get the issue title + body via Prompts::Initial.
-  # Resume Runs get a continuation nudge (Prompts::Resume) since
-  # claude --print --resume still needs a prompt argument and won't
-  # auto-continue silently. Follow-up Runs (pr_comment, ci_failure,
-  # replay, manual) arrive with @run.prompt already composed by
-  # whoever created them — we use it as-is via the caller's `||`.
+  # Initial Runs on issue Jobs get the issue title + body via
+  # Prompts::Initial. Cron Jobs arrive with @run.prompt already
+  # rendered by PollScheduledTasksJob (variables expanded at fire
+  # time). Resume Runs get a continuation nudge. Follow-up Runs
+  # (pr_comment, ci_failure, replay, manual) likewise arrive with
+  # @run.prompt already composed.
   def compose_main_prompt
     return Prompts::Resume.new.to_s if @run.resume?
+    raise ArgumentError, "cron Run reached compose_main_prompt with blank prompt" if @job.cron?
     issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
     persist_issue_metadata(issue)
     Prompts::Initial.new(issue: issue).to_s
+  end
+
+  # Bookkeeping after a successful cron Run that produced no diff.
+  # The Job has no PR to wait on, so close it immediately with a
+  # distinct closure_reason ("no_changes"). The Job#close transition
+  # callback handles propagating the success up to the parent
+  # ScheduledTask.
+  def finalize_cron_job_no_changes
+    @job.close_with_reason!("no_changes") if @job.may_close?
   end
 
   def persist_issue_metadata(issue)
@@ -354,7 +387,9 @@ class RunJob < ApplicationJob
   end
 
   def commit_message
-    if @run.initial?
+    if @job.cron?
+      "Syrus scheduled task: #{@job.scheduled_task&.name || "##{@job.scheduled_task_id}"}"
+    elsif @run.initial?
       "Syrus agent for #{@job.repository.slug}##{@job.issue_number}"
     else
       "Syrus #{@run.trigger_kind} for #{@job.repository.slug}##{@job.issue_number}"
@@ -420,15 +455,16 @@ class RunJob < ApplicationJob
     [ summary.title, compose_body(summary.body) ]
   end
 
-  # Asks claude to author a clean PR title + body from the issue + the
-  # diff we just produced. Returns a PrSummarizer::Result. We never let
-  # this fail the Run: any error path falls back to the templated title
-  # and body.
+  # Asks claude to author a clean PR title + body. For issue Jobs we
+  # pass the GitHub issue as context; for cron Jobs we pass a synthetic
+  # "issue" struct built from the ScheduledTask so PrSummarizer's
+  # prompt template still works without code changes. Never let
+  # failures bubble — any error path falls back to template_*.
   def summarize_for_pr
-    issue = GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
+    context = pr_summarizer_context
     log("[summarizer] composing PR title and body…")
     PrSummarizer.new(
-      issue: issue,
+      issue: context,
       diff: @run.agent_diff,
       oauth_token: @job.user.claude_oauth_token,
       log_sink: ->(chunk) { log("[summarizer] #{chunk}") }
@@ -438,23 +474,38 @@ class RunJob < ApplicationJob
     PrSummarizer::Result.new(title: nil, body: nil, error: "#{e.class}: #{e.message}")
   end
 
+  def pr_summarizer_context
+    @job.cron? ? @job.synthetic_issue : GithubClient.for(@job.user).fetch_issue(@job.repository.slug, @job.issue_number)
+  end
+
+  # Cron PRs don't close any issue (no `Closes #N`). The body still
+  # carries the LLM-disclosure footer.
   def compose_body(agent_body)
-    [
-      "Closes ##{@job.issue_number}",
-      "",
-      agent_body,
-      "",
-      "---",
-      "*Authored by an LLM (Run took #{@run.agent_turns || '?'} turn(s), trigger=#{@run.trigger_kind}). Review carefully.*"
-    ].join("\n")
+    parts = []
+    parts << "Closes ##{@job.issue_number}" if @job.issue?
+    parts << "" if @job.issue?
+    parts << agent_body
+    parts << ""
+    parts << "---"
+    parts << "*Authored by an LLM (Run took #{@run.agent_turns || '?'} turn(s), trigger=#{@run.trigger_kind}). Review carefully.*"
+    parts.join("\n")
   end
 
   def template_title
-    "[syrus] #{@job.repository.slug}##{@job.issue_number}"
+    if @job.cron?
+      "[syrus] scheduled: #{@job.scheduled_task&.name || "task ##{@job.scheduled_task_id}"}"
+    else
+      "[syrus] #{@job.repository.slug}##{@job.issue_number}"
+    end
   end
 
   def template_body
-    "Closes ##{@job.issue_number}\n\nOpened by Syrus from issue ##{@job.issue_number}. Run took #{@run.agent_turns || '?'} turn(s) (#{@run.trigger_kind}).\n\nReview the diff carefully — this PR was authored by an LLM."
+    if @job.cron?
+      task_name = @job.scheduled_task&.name || "##{@job.scheduled_task_id}"
+      "Opened by a Syrus scheduled task (`#{task_name}`). Run took #{@run.agent_turns || '?'} turn(s).\n\nReview the diff carefully — this PR was authored by an LLM."
+    else
+      "Closes ##{@job.issue_number}\n\nOpened by Syrus from issue ##{@job.issue_number}. Run took #{@run.agent_turns || '?'} turn(s) (#{@run.trigger_kind}).\n\nReview the diff carefully — this PR was authored by an LLM."
+    end
   end
 
   def log(chunk)

@@ -58,4 +58,15 @@ module ApplicationHelper
     relative = time > Time.current ? "in #{time_ago_in_words(time)}" : "#{time_ago_in_words(time)} ago"
     content_tag(:time, relative, datetime: time.iso8601, title: absolute)
   end
+
+  # Generic Tailwind-styled "small enum chip" used by every domain that
+  # surfaces a state, kind, or status in a list. Per-domain helpers
+  # (state_pill, trigger_pill, scheduled_task_state_pill, …) own the
+  # mapping from value → tailwind classes; this is the shared shell.
+  PILL_BASE_CLASSES = "inline-block px-2 py-0.5 rounded text-xs font-medium".freeze
+  PILL_FALLBACK_CLASSES = "bg-gray-100 text-gray-700".freeze
+
+  def colored_pill(label, classes: PILL_FALLBACK_CLASSES, extra: nil)
+    tag.span(label, class: "#{PILL_BASE_CLASSES} #{classes} #{extra}".strip)
+  end
 end
