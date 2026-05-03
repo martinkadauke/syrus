@@ -1,0 +1,11 @@
+# Custom merge driver for db/schema.rb. The version line at the top
+# (ActiveRecord::Schema[…].define(version: NNNN_NN_NN_NNNNNN)) always
+# conflicts when two PRs concurrently add migrations even though the
+# resolution is trivial (take the larger timestamp). bin/merge-ruby-schema
+# normalizes the version across base/ours/theirs before running git's
+# 3-way merge, so version-line conflicts disappear and only real body
+# conflicts surface. The driver itself is registered per-clone via
+# bin/setup (Git refuses to run merge drivers from .gitattributes
+# alone — registration in .git/config is required, by design, since
+# drivers execute arbitrary code).
+db/schema.rb merge=ruby_schema

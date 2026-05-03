@@ -15,6 +15,15 @@ FileUtils.chdir APP_ROOT do
   puts "== Installing dependencies =="
   system("bundle check") || system!("bundle install")
 
+  puts "\n== Registering git merge drivers =="
+  # Per-clone registration. Git intentionally requires the driver
+  # config to live in .git/config (not just .gitattributes) since the
+  # driver script executes arbitrary code on every 3-way merge of the
+  # matched paths. Idempotent — git config sets are no-ops on rerun
+  # if the value already matches.
+  system! "git config merge.ruby_schema.name 'Ruby schema.rb auto-resolve'"
+  system! "git config merge.ruby_schema.driver 'bin/merge-ruby-schema %O %A %B'"
+
   # puts "\n== Copying sample files =="
   # unless File.exist?("config/database.yml")
   #   FileUtils.cp "config/database.yml.sample", "config/database.yml"

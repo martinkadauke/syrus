@@ -1,0 +1,70 @@
+#!/usr/bin/env ruby
+# Custom Git merge driver for db/schema.rb.
+#
+# The schema dump's first line carries the latest-migration timestamp:
+#
+#   ActiveRecord::Schema[8.1].define(version: 2026_05_03_025817) do
+#
+# Two PRs that each add a migration concurrently always conflict on
+# that line — even though the resolution is trivial: take the larger
+# timestamp. This driver normalizes the version across base/ours/theirs
+# to max(...) BEFORE running git's standard 3-way merge, so the version
+# line stays out of the conflict and the body merges normally. Real
+# body conflicts (two PRs touching the same table column) still surface
+# for human review.
+#
+# Wire-up (per clone, one time — bin/setup does this for you):
+#
+#   git config merge.ruby_schema.name "Ruby schema.rb auto-resolve"
+#   git config merge.ruby_schema.driver "bin/merge-ruby-schema %O %A %B"
+#
+# Then commit a .gitattributes line:
+#
+#   db/schema.rb merge=ruby_schema
+#
+# Git invokes the driver with three paths and reads the resolved
+# content from %A (the "ours" path). Exit 0 = clean. Non-zero leaves
+# conflict markers for the operator to fix.
+
+VERSION_LINE = /^(ActiveRecord::Schema\[[^\]]+\]\.define\(version:\s+)(\d[\d_]*)(\)\s+do)\s*$/
+
+base_path, ours_path, theirs_path = ARGV
+abort "usage: #{$PROGRAM_NAME} <base> <ours> <theirs>" unless base_path && ours_path && theirs_path
+
+def version_for(content)
+  m = content.match(VERSION_LINE)
+  m && m[2]
+end
+
+def version_to_int(version)
+  return 0 unless version
+  version.delete("_").to_i
+end
+
+def replace_version(content, version)
+  return content unless version
+  content.sub(VERSION_LINE) { "#{$~[1]}#{version}#{$~[3]}\n" }
+end
+
+base_content   = File.read(base_path)
+ours_content   = File.read(ours_path)
+theirs_content = File.read(theirs_path)
+
+versions = [ version_for(base_content), version_for(ours_content), version_for(theirs_content) ]
+max_version = versions.compact.max_by { |v| version_to_int(v) }
+
+# If neither side has a version line at all, nothing to normalize —
+# just hand off the unmodified files to git merge-file.
+if max_version
+  File.write(base_path,   replace_version(base_content,   max_version))
+  File.write(ours_path,   replace_version(ours_content,   max_version))
+  File.write(theirs_path, replace_version(theirs_content, max_version))
+end
+
+# Hand off to git's built-in 3-way merge. Output overwrites ours_path,
+# which is what Git expects to read back as the merge result. Exit
+# code propagates: 0 for clean merge, positive count of conflicts for
+# anything we couldn't auto-resolve in the body.
+exec("git", "merge-file",
+     "-L", "ours", "-L", "base", "-L", "theirs",
+     ours_path, base_path, theirs_path)

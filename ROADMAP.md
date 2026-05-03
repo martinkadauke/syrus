@@ -387,6 +387,22 @@ can't resolve mechanically, dispatch a follow-up `Job` with the conflict
 context so the agent can fix it. Keeps long-lived PRs mergeable without
 manual intervention.
 
+### Offer infra-quality "free PRs" on repository onboarding
+
+When an operator registers a new repository, Syrus can detect common
+infrastructure smells and offer to fix each one as a one-shot PR — no
+issue needed. The first concrete instance: Rails apps without a
+custom merge driver for `db/schema.rb` get hit by a trivial-but-
+constant version-line conflict every time two PRs run concurrently.
+Syrus already solved this internally (`bin/merge-ruby-schema`,
+`.gitattributes`, `bin/setup` registration); offering to drop the
+same setup into a freshly-onboarded Rails repo as a single PR
+costs the operator one click and saves them the recurring rebase
+toil. Generalizes: similar "free PRs" for `.pre-commit-config.yaml`
+scaffolding, `.editorconfig`, GitHub Actions workflow templates,
+etc. Detection is shallow heuristics on the cloned repo's tree;
+the PR itself is a tiny static template.
+
 ### Properly formatted diff view
 
 Render the agent's `git diff` in the job UI as a real diff — syntax
