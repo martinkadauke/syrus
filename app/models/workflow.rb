@@ -32,17 +32,39 @@ class Workflow < ApplicationRecord
       transitions from: :queued, to: :running, after: -> { self.started_at ||= Time.current }
     end
 
+    # Each terminal transition stamps finished_at and triggers
+    # workspace cleanup. The workspace is per-Workflow (one shallow
+    # clone shared across the chain's Steps + Runs), so we tear it
+    # down exactly when the Workflow ends — not when each Run
+    # finishes (Runs come and go; the chain's Workflow owns the
+    # disk space).
     event :succeed do
-      transitions from: :running, to: :succeeded, after: -> { self.finished_at = Time.current }
+      transitions from: :running, to: :succeeded, after: -> {
+        self.finished_at = Time.current
+        cleanup_workspace!
+      }
     end
 
     event :fail do
-      transitions from: [ :queued, :running ], to: :failed, after: -> { self.finished_at = Time.current }
+      transitions from: [ :queued, :running ], to: :failed, after: -> {
+        self.finished_at = Time.current
+        cleanup_workspace!
+      }
     end
 
     event :cancel do
-      transitions from: [ :queued, :running ], to: :cancelled, after: -> { self.finished_at = Time.current }
+      transitions from: [ :queued, :running ], to: :cancelled, after: -> {
+        self.finished_at = Time.current
+        cleanup_workspace!
+      }
     end
+  end
+
+  # Best-effort workspace teardown. Errors are swallowed (logged at
+  # warn level by WorkflowWorkspace.cleanup_for) so a stuck file or
+  # missing path can't block a state transition.
+  def cleanup_workspace!
+    WorkflowWorkspace.cleanup_for(self)
   end
 
   # Read-or-default convenience for artifact access. Nil-safe
