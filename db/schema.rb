@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_021334) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_025816) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
@@ -22,7 +22,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_021334) do
     t.datetime "created_at", null: false
     t.bigint "run_id", null: false
     t.string "session_id", null: false
-    t.text "transcript_jsonl", size: :long
+    t.text "transcript_jsonl", limit: 67108864
     t.datetime "updated_at", null: false
     t.index ["created_at"], name: "index_claude_sessions_on_created_at"
     t.index ["run_id"], name: "index_claude_sessions_on_run_id", unique: true
