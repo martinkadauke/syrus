@@ -28,19 +28,11 @@ class Step < ApplicationRecord
   belongs_to :workflow
   belongs_to :next_step, class_name: "Step", optional: true
   has_one :previous_step, class_name: "Step", foreign_key: :next_step_id
-  # `dependent: :nullify` (not :destroy) during the migration window
-  # — Run.job_id is still the canonical parent pointer, so Runs
-  # cascade-destroy from Job. When a Step is destroyed (e.g. via
-  # Workflow's cascade), null out Run.step_id first so the FK
-  # constraint passes; the Run itself survives until Job's own
-  # has_many :runs cascade reaches it. Without this we'd either
-  # get a FK violation (constraint blocks Step delete) or
-  # double-destroy each Run (which fires broadcasts_refreshes_to
-  # twice, and the second time run.job is nil, blowing up Turbo).
-  # When commit 10 drops Run.job_id and reparents Runs to Steps,
-  # flip to `dependent: :destroy` here and remove the dependent on
-  # Job.
-  has_many :runs, -> { order(:created_at) }, dependent: :nullify
+  # Now that backfill (commit 8) has populated runs.step_id for
+  # every existing Run, Step is the canonical owner of Runs. Job's
+  # has_many :runs cascade was removed in the same change — the
+  # cascade path is Job → Workflow → Step → Run.
+  has_many :runs, -> { order(:created_at) }, dependent: :destroy
 
   validates :kind, presence: true, inclusion: { in: KINDS }
   validates :position, presence: true, numericality: { only_integer: true, greater_than_or_equal_to: 0 }

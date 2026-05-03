@@ -3,7 +3,8 @@ require "open3"
 class GitRunner
   # Redacts tokens out of any string that contains a
   # `https://x-access-token:TOKEN@github.com/...` URL — the form
-  # JobWorkspace + RunJob pass when they need authenticated git.
+  # WorkflowWorkspace + push/fetch helpers pass when they need
+  # authenticated git.
   # Applied to:
   #   - argv stored on GitError (so the exception message is clean
   #     when it bubbles into JobLog / Solid Queue's failed_executions)

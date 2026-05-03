@@ -7,7 +7,12 @@ class Job < ApplicationRecord
   belongs_to :repository
   belongs_to :scheduled_task, optional: true
   has_many :workflows, -> { order(:created_at) }, dependent: :destroy
-  has_many :runs, -> { order(:created_at) }, dependent: :destroy
+  # Runs hang off Steps now (Job → Workflow → Step → Run) — Job's
+  # direct has_many :runs is a convenience accessor, NOT a cascade
+  # parent. Cascade flows through workflows. Runs all carry job_id
+  # for the existing Run.belongs_to :job association used widely
+  # in views and queries.
+  has_many :runs, -> { order(:created_at) }
   has_many :job_logs, through: :runs
 
   validates :kind, presence: true, inclusion: { in: KINDS }

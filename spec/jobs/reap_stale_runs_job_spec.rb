@@ -55,9 +55,13 @@ RSpec.describe ReapStaleRunsJob do
       expect(run.reload.state).to eq("succeeded")
     end
 
-    it "handles worktree cleanup errors without aborting the job" do
+    it "handles workspace cleanup errors without aborting the job" do
+      # Workspace teardown happens via Workflow's terminal-state
+      # callback now (Step.fail → Workflow.fail → cleanup_workspace!)
+      # — but the same robustness applies: if cleanup raises, the
+      # reap should still leave the Run in `failed`.
       run = running_run(heartbeat_age: Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes)
-      allow_any_instance_of(JobWorkspace).to receive(:cleanup).and_raise(RuntimeError, "no such worktree")
+      allow(WorkflowWorkspace).to receive(:cleanup_for).and_raise(RuntimeError, "no such worktree")
       expect { described_class.perform_now }.not_to raise_error
       expect(run.reload.state).to eq("failed")
     end

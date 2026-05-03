@@ -69,10 +69,17 @@ class Run < ApplicationRecord
   # show up on the Job's show page without requiring the operator to
   # refresh. Broadcasting refreshes to the parent Job's stream means
   # "tell anyone watching this Job to morph itself".
-  broadcasts_refreshes_to ->(run) { run.job }
-  # Also tell the dashboard's per-user "jobs" stream — Run state
-  # changes drive the Job's summary pill and the run-count column.
-  broadcasts_refreshes_to ->(run) { [ run.job.user, "jobs" ] }
+  #
+  # The fallback `[ "dead_run", run.id ]` covers the cascade-destroy
+  # path: when the parent Job is destroyed, run.job returns nil, but
+  # turbo-rails' default `send(stream)` fallback would then try to
+  # send the lambda itself as a method name (TypeError). Returning
+  # a stable, non-nil stream identifier makes the broadcast a no-op
+  # in that case (no subscriber on that stream).
+  broadcasts_refreshes_to ->(run) { run.job || [ "dead_run", run.id ] }
+  broadcasts_refreshes_to ->(run) {
+    run.job ? [ run.job.user, "jobs" ] : [ "dead_run", run.id, "jobs" ]
+  }
 
   def self.average_duration_for(trigger_kind)
     completed = terminal.where(trigger_kind: trigger_kind)

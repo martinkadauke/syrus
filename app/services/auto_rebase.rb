@@ -66,7 +66,7 @@ class AutoRebase
   private
 
   def clone_path
-    @clone_path ||= JobWorkspace.data_root.join("auto-rebase", @job.id.to_s)
+    @clone_path ||= WorkflowWorkspace.data_root.join("auto-rebase", @job.id.to_s)
   end
 
   def authenticated_url

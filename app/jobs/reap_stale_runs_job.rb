@@ -86,10 +86,15 @@ class ReapStaleRunsJob < ApplicationJob
     run.fail!
     run.save!
 
-    begin
-      JobWorkspace.new(run).cleanup
-    rescue => e
-      Rails.logger.warn("[ReapStaleRunsJob] workspace cleanup failed for Run ##{run.id}: #{e.message}")
+    # Workflow's terminal-state callback handles workspace teardown
+    # on its own when Run.fail above triggers Step.fail (via Step's
+    # after_update_commit) which triggers Workflow.fail. The reaper
+    # only needs to make sure the Run+Step both transition.
+    if run.step && run.step.may_fail?
+      run.step.fail!
+      run.step.save!
     end
+  rescue StandardError => e
+    Rails.logger.warn("[ReapStaleRunsJob] reap failed for Run ##{run.id}: #{e.class}: #{e.message}")
   end
 end

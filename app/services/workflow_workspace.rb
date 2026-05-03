@@ -15,10 +15,6 @@ require "fileutils"
 # unique per Workflow id, so two concurrent Workflows on different
 # Jobs (or different Workflows on the same Job in sequence) never
 # share a path.
-#
-# Replaces the per-Run JobWorkspace for the new code path. Old code
-# (today's Job#after_create_commit + the polling jobs) still uses
-# JobWorkspace until commits 5 + 6 cut them over.
 class WorkflowWorkspace
   CLONE_DEPTH = 50
 
