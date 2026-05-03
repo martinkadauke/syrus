@@ -40,7 +40,7 @@ module Prompts
     end
 
     def to_s
-      [ preamble, interpolated_user_prompt, footer, SubmitSummaryInstructions::TEXT ].join("\n\n")
+      [ preamble, interpolated_user_prompt, footer, GitSafety::TEXT, SubmitSummaryInstructions::TEXT ].join("\n\n")
     end
 
     private

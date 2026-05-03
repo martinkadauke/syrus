@@ -594,6 +594,32 @@ RSpec.describe RunJob do
     end
   end
 
+  describe "agent broke git state (orphan branch / detached HEAD)" do
+    it "raises AgentBrokeGitState with a helpful message and stamps a distinct outcome" do
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        # Reproduce the orphan-branch failure mode the way the real
+        # incident did: agent runs `git checkout --orphan` then commits.
+        # No merge-base with main → diff capture would explode.
+        sh("git -c user.name=t -c user.email=t@e -C #{workspace_path} checkout --orphan oprhanbranch")
+        File.write(File.join(workspace_path, "newfile.rb"), "puts 'hi'\n")
+        AgentInvocation::Result.new(turns: 5, exit_status: 0, timed_out: false, is_error: false, outcome: "success", final_text: nil, session_id: nil)
+      }
+
+      expect { described_class.perform_now(run.id) }.to raise_error(RunJob::AgentBrokeGitState, /no common ancestor/)
+
+      run.reload
+      expect(run.state).to eq("failed")
+      expect(run.agent_outcome).to eq("git_state_corrupt")
+    end
+
+    it "lets normal Runs through when ancestry is intact" do
+      # Sanity check: the merge-base assertion doesn't false-positive
+      # on the happy path.
+      expect { described_class.perform_now(run.id) }.not_to raise_error
+      expect(run.reload.state).to eq("succeeded")
+    end
+  end
+
   describe "agent reported semantic error" do
     it "persists outcome on Run, marks Run failed, Job stays open" do
       RunJob.agent_runner = ->(workspace_path:, **_) {

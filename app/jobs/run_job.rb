@@ -168,6 +168,7 @@ class RunJob < ApplicationJob
     raise AgentRunFailed, "agent exited #{result.exit_status}" unless result.success?
 
     commit_agent_changes
+    assert_branch_history_intact
     diff = capture_diff_against_default
 
     if diff.blank?
@@ -180,6 +181,36 @@ class RunJob < ApplicationJob
 
     @run.update!(agent_diff: diff, head_sha: head_sha)
     :committed
+  end
+
+  # If the agent ran a destructive git op mid-flight (`git checkout
+  # --orphan`, `git switch --orphan`, `git reset --hard <unrelated>`,
+  # `rm -rf .git && git init`), HEAD ends up with no shared ancestor
+  # with `default_branch`. The pipeline then explodes downstream:
+  # `capture_diff_against_default` does `git diff base...HEAD`, which
+  # requires `merge-base(base, HEAD)` and fails with exit 128 ("bad
+  # revision") for orphan branches. Detect that here and surface a
+  # specific outcome so the operator can tell "agent broke git state"
+  # apart from real failures.
+  #
+  # Real-world incident: tkadauke/syrus#82 (Run 94). Agent hit a
+  # tooling error on `bin/rails db:schema:dump`, decided to "manually
+  # fix" the schema, ran something orphan-producing, kept committing.
+  # Diff capture failed with a context-free "exited 128"; the operator
+  # had no idea what happened.
+  class AgentBrokeGitState < AgentRunFailed; end
+
+  def assert_branch_history_intact
+    base = @job.repository.default_branch
+    GitRunner.new(log_sink: ->(line) { log(line.chomp) }).run(
+      "merge-base", base, "HEAD",
+      chdir: @workspace.path.to_s
+    )
+  rescue GitRunner::GitError
+    @run.update!(agent_outcome: "git_state_corrupt")
+    raise AgentBrokeGitState,
+          "agent's branch has no common ancestor with #{base} — orphan/detached state. " \
+          "Likely cause: agent ran `git checkout --orphan`, `git reset --hard <unrelated>`, or similar mid-run."
   end
 
   # Writes a per-run mcp.json tempfile and yields its path to the
@@ -410,7 +441,11 @@ class RunJob < ApplicationJob
   # gigantic when main moved forward.
   def capture_diff_against_default
     base = @job.repository.default_branch
-    GitRunner.new.run("diff", "#{base}...HEAD", chdir: @workspace.path.to_s)
+    # Use streaming_git so any error output (e.g. "fatal: bad
+    # revision 'main...HEAD'") lands in the JobLog live, not just
+    # in GitError.message after the fact. Otherwise the operator
+    # only sees the post-mortem error string.
+    streaming_git.run("diff", "#{base}...HEAD", chdir: @workspace.path.to_s)
   end
 
   def head_sha

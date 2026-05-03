@@ -27,7 +27,7 @@ module Prompts
         Address each piece of feedback. Make commits to the current branch.
       PROMPT
 
-      "#{body}\n\n#{SubmitSummaryInstructions::TEXT}"
+      [ body, GitSafety::TEXT, SubmitSummaryInstructions::TEXT ].join("\n\n")
     end
 
     private

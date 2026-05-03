@@ -12,7 +12,7 @@ module Prompts
     end
 
     def to_s
-      <<~PROMPT.strip
+      body = <<~PROMPT.strip
         This is a **rebase** run. The pull request `#{@repo_slug}##{@pr_number}` from branch
         `#{@branch_name}` onto `#{@base_branch}` is no longer mergeable — its branch has
         fallen behind base and conflicts with it.
@@ -37,6 +37,8 @@ module Prompts
         Syrus will force-push the rebased branch to origin once you finish — your
         only job is to leave the working tree on a clean rebased HEAD.
       PROMPT
+
+      [ body, GitSafety::TEXT ].join("\n\n")
     end
   end
 end

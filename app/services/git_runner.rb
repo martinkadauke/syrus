@@ -19,11 +19,28 @@ class GitRunner
   class GitError < StandardError
     attr_reader :command, :exit_status, :output
 
+    OUTPUT_TAIL_LIMIT = 1500   # chars; enough to surface git's "fatal: ..." line(s)
+
     def initialize(command, exit_status, output)
       @command = command.map { |a| GitRunner.redact(a) }
       @exit_status = exit_status
       @output = GitRunner.redact(output)
-      super("git #{@command.join(' ')} exited #{exit_status}")
+      super(build_message)
+    end
+
+    private
+
+    # Surface the last chunk of git's stdout+stderr in the message so
+    # `e.message` (what RunJob's rescue logs) actually tells you what
+    # went wrong, instead of "git diff main...HEAD exited 128" with no
+    # context. Tail rather than head — git's "fatal: ..." line is
+    # typically the last thing emitted.
+    def build_message
+      base = "git #{@command.join(' ')} exited #{@exit_status}"
+      tail = @output.to_s.strip
+      return base if tail.empty?
+      tail = "...#{tail.last(OUTPUT_TAIL_LIMIT)}" if tail.length > OUTPUT_TAIL_LIMIT
+      "#{base}\n#{tail}"
     end
   end
 

@@ -69,6 +69,30 @@ RSpec.describe GitRunner do
     end
   end
 
+  describe "GitError.message includes the captured output tail" do
+    it "appends the output tail so callers' rescue StandardError logs see what git said" do
+      err = GitRunner::GitError.new(
+        [ "diff", "main...HEAD" ], 128,
+        "fatal: ambiguous argument 'main...HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'"
+      )
+      expect(err.message).to include("git diff main...HEAD exited 128")
+      expect(err.message).to include("fatal: ambiguous argument 'main...HEAD'")
+    end
+
+    it "tails to a fixed limit so very large outputs don't blow up logging" do
+      huge = "x" * (GitRunner::GitError::OUTPUT_TAIL_LIMIT * 5)
+      err = GitRunner::GitError.new([ "diff" ], 128, huge)
+      tail = err.message.split("\n", 2).last
+      expect(tail.length).to be <= GitRunner::GitError::OUTPUT_TAIL_LIMIT + 5
+      expect(tail).to start_with("...")
+    end
+
+    it "skips the tail when output is empty" do
+      err = GitRunner::GitError.new([ "diff" ], 128, "")
+      expect(err.message).to eq("git diff exited 128")
+    end
+  end
+
   describe "streaming redaction" do
     it "redacts tokens that git echoes into stderr/stdout before they reach log_sink" do
       lines = []

@@ -10,7 +10,7 @@ module Prompts
   # carries through.
   class Resume
     def to_s
-      [ body, SubmitSummaryInstructions::TEXT ].join("\n\n")
+      [ body, GitSafety::TEXT, SubmitSummaryInstructions::TEXT ].join("\n\n")
     end
 
     private

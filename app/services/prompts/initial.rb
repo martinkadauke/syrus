@@ -11,6 +11,7 @@ module Prompts
 
     def to_s
       [ "#{@issue.title}\n\n#{@issue.body}".strip,
+        GitSafety::TEXT,
         SubmitSummaryInstructions::TEXT ].join("\n\n")
     end
   end
