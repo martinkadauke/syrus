@@ -16,11 +16,16 @@ class ClaudeSession < ApplicationRecord
   # Path Claude Code uses to store its session JSONL on disk:
   # `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`
   # The "project" component is the absolute cwd with every "/"
-  # replaced by "-". Verified empirically — there's no hashing.
-  # Example: cwd "/syrus-home/.syrus/runs/40" →
-  #          "-syrus-home-.syrus-runs-40"
+  # AND every "." replaced by "-". Verified empirically against a
+  # running production worker — claude-code encodes both characters
+  # to a single dash, so "/.syrus" becomes "--syrus" (double-dash
+  # from the slash + dot pair).
+  # Example: cwd "/syrus-home/.syrus/workflows/124" →
+  #          "-syrus-home--syrus-workflows-124"
+  PATH_ENCODE_PATTERN = %r{[/.]}.freeze
+
   def self.canonical_path_for(home:, cwd:, session_id:)
-    encoded = cwd.to_s.gsub("/", "-")
+    encoded = cwd.to_s.gsub(PATH_ENCODE_PATTERN, "-")
     File.join(home, ".claude", "projects", encoded, "#{session_id}.jsonl")
   end
 end
