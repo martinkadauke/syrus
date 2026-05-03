@@ -67,6 +67,10 @@ class Workflow < ApplicationRecord
     WorkflowWorkspace.cleanup_for(self)
   end
 
+  def terminal?
+    succeeded? || failed? || cancelled?
+  end
+
   # Read-or-default convenience for artifact access. Nil-safe
   # against a freshly-created Workflow whose `artifacts` column
   # hasn't been touched yet.

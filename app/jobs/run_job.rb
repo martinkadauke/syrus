@@ -27,6 +27,16 @@ class RunJob < ApplicationJob
     @job = @run.job
     Thread.current[:syrus_current_run] = @run
     return if @run.terminal?
+
+    # New code path: this Run belongs to a Step (Workflow → Step
+    # → Run), so dispatch to the per-kind handler. Legacy Runs
+    # (those linked to a Job directly with no step_id, created
+    # by code paths that haven't migrated yet) fall through to
+    # the existing monolithic logic below.
+    if @run.step
+      perform_step
+      return
+    end
     # Rebase Runs are independent of Job lifecycle — they exist to keep
     # an existing PR's branch mergeable, including for preempted (closed)
     # Jobs where the PR is external. Skip the closed-Job guard for them.
@@ -110,7 +120,18 @@ class RunJob < ApplicationJob
       @run.fail!
       @run.save!
     end
-    @job&.record_run_failure! unless @run&.rebase?
+    if @run&.step
+      # New code path: failure accounting is per-Workflow, not per-
+      # Job. The Workflow's record_run_failure! handles the cap +
+      # auto-fail. Job stays open so its other workflows are
+      # unaffected.
+      @run.step.fail! if @run.step.may_fail?
+      @run.step.save!
+      @run.step.workflow.record_run_failure!
+    else
+      # Legacy code path: per-Job failure cap (the v0 model).
+      @job&.record_run_failure! unless @run&.rebase?
+    end
     raise
   ensure
     Thread.current[:syrus_current_run] = nil
@@ -118,6 +139,76 @@ class RunJob < ApplicationJob
   end
 
   private
+
+  # New code path. The Run belongs to a Step; dispatch to the
+  # per-kind handler. State management:
+  #
+  #   1. Re-entrancy guard — if @run.running? on entry, the prior
+  #      worker died mid-perform (or this is a retry of an
+  #      already-claimed Run). Mark failed and exit. Replay UI
+  #      gives the operator a clean retry path.
+  #   2. Bring Workflow + Step + Run all to `running` state. The
+  #      Workflow only transitions queued → running on its first
+  #      step's first Run; subsequent transitions are no-ops.
+  #   3. Hand off to Steps.handler_for(step.kind).new(run).call.
+  #      Handlers raise StepFailed (or generic StandardError) on
+  #      irrecoverable failure — bubbles to the outer rescue.
+  #   4. On success: succeed Run + succeed Step. Step's
+  #      after_update_commit fires StepDispatcher.advance_from,
+  #      which creates the next Run in the chain (or, if no
+  #      runnable next step exists, transitions the Workflow to
+  #      succeeded).
+  def perform_step
+    step = @run.step
+    workflow = step.workflow
+
+    if workflow.state.in?(%w[ succeeded failed cancelled ])
+      log("workflow ##{workflow.id} already terminal (#{workflow.state}); abandoning run")
+      @run.cancel! if @run.may_cancel?
+      @run.save!
+      return
+    end
+
+    if step.terminal?
+      log("step ##{step.id} already terminal (#{step.state}); abandoning run")
+      @run.cancel! if @run.may_cancel?
+      @run.save!
+      return
+    end
+
+    if @run.running?
+      # Worker died mid-perform on a prior attempt (or SQ re-claimed
+      # us after a process prune). Same re-entrancy guard as the
+      # legacy path.
+      @run.agent_outcome = "worker_died"
+      @run.fail!
+      @run.save!
+      step.fail! if step.may_fail?
+      step.save!
+      workflow.record_run_failure!
+      log("run abandoned — worker died mid-execution; use Replay to retry")
+      return
+    end
+
+    workflow.start! if workflow.may_start?
+    workflow.save!
+    step.start! if step.may_start?
+    step.save!
+    @run.start!
+    @run.save!
+    @job.update!(started_at: Time.current) if @job.started_at.nil?
+
+    target = @job.cron? ? "scheduled task ##{@job.scheduled_task_id}" : "#{@job.repository.slug}##{@job.issue_number}"
+    log("starting #{workflow.trigger_kind} run #{@run.id} step #{step.kind} for #{target}")
+
+    Steps.handler_for(step.kind).new(@run).call
+
+    @run.succeed!
+    @run.save!
+    step.succeed!  # → triggers StepDispatcher.advance_from(step)
+    step.save!
+    log("step #{step.kind} done (workflow ##{workflow.id})")
+  end
 
   def abort_if_cancelled!
     raise CancelledMidRun if @run.reload.cancelled?

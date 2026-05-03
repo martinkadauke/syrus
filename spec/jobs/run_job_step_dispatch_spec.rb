@@ -1,0 +1,157 @@
+require "rails_helper"
+
+# RunJob's step-dispatch path. Stubs the handler so we don't shell
+# out to claude / git in these tests — the handler invocations
+# themselves are exercised by the dedicated handler specs (and
+# end-to-end via the existing run_job_spec for the legacy path).
+RSpec.describe RunJob, "step-dispatch path" do
+  let(:job)      { Factories.job(issue_number: 42) }
+  let!(:workflow) { Workflow.create!(job: job, trigger_kind: "initial") }
+  let!(:s_implement) { Step.create!(workflow: workflow, kind: "implement", position: 0) }
+  let!(:s_summarize) { Step.create!(workflow: workflow, kind: "summarize", position: 1) }
+  let!(:s_pr_open)   { Step.create!(workflow: workflow, kind: "pr_open",   position: 2) }
+
+  before do
+    s_implement.update!(next_step_id: s_summarize.id)
+    s_summarize.update!(next_step_id: s_pr_open.id)
+  end
+
+  # Replace each handler with a stub that just succeeds. Specific
+  # handlers are tested in their own files.
+  let(:noop_handler_class) do
+    Class.new(Steps::Base) do
+      def call; nil; end
+    end
+  end
+
+  before do
+    allow(Steps).to receive(:handler_for).and_return(noop_handler_class)
+  end
+
+  it "drives the first step's Run through Steps.handler_for and succeeds" do
+    run = StepDispatcher.start_workflow(workflow)
+    expect(run.step).to eq(s_implement)
+    expect(run.state).to eq("queued")
+
+    described_class.perform_now(run.id)
+
+    run.reload
+    s_implement.reload
+    expect(run.state).to eq("succeeded")
+    expect(s_implement.state).to eq("succeeded")
+  end
+
+  it "transitions Workflow to running on the first step's first Run" do
+    run = StepDispatcher.start_workflow(workflow)
+    expect(workflow.reload.state).to eq("queued")
+    described_class.perform_now(run.id)
+    expect(workflow.reload.state).to eq("running")
+  end
+
+  it "advances to the next step's Run after a step succeeds (via Step's after_update_commit)" do
+    StepDispatcher.start_workflow(workflow)
+    described_class.perform_now(s_implement.runs.last.id)
+
+    # advance_from fired automatically; next step now has a queued Run
+    expect(s_summarize.runs.count).to eq(1)
+    expect(s_summarize.runs.last.state).to eq("queued")
+  end
+
+  it "succeeds the Workflow after the last step's Run succeeds" do
+    StepDispatcher.start_workflow(workflow)
+    described_class.perform_now(s_implement.runs.last.id)
+    described_class.perform_now(s_summarize.runs.last.id)
+    described_class.perform_now(s_pr_open.runs.last.id)
+
+    expect(workflow.reload).to be_succeeded
+  end
+
+  describe "failure handling" do
+    let(:failing_handler_class) do
+      Class.new(Steps::Base) do
+        def call; raise Steps::Base::StepFailed, "agent broke"; end
+      end
+    end
+
+    before { allow(Steps).to receive(:handler_for).and_return(failing_handler_class) }
+
+    it "marks the Run + Step failed and increments the Workflow's failure_count" do
+      StepDispatcher.start_workflow(workflow)
+      run = s_implement.runs.last
+
+      expect { described_class.perform_now(run.id) }.to raise_error(Steps::Base::StepFailed)
+
+      run.reload
+      s_implement.reload
+      workflow.reload
+      expect(run.state).to eq("failed")
+      expect(s_implement.state).to eq("failed")
+      expect(workflow.failure_count).to eq(1)
+    end
+
+    it "does NOT increment Job.failure_count (per-Workflow accounting now)" do
+      StepDispatcher.start_workflow(workflow)
+      expect {
+        described_class.perform_now(s_implement.runs.last.id)
+      }.to raise_error(Steps::Base::StepFailed)
+      expect(job.reload.failure_count).to eq(0)
+    end
+
+    it "auto-fails the Workflow when failure_count crosses AppSetting.max_job_failures" do
+      cap = AppSetting.max_job_failures
+
+      cap.times do |i|
+        # Fresh queued step+run for each retry attempt
+        if i > 0
+          fresh_step = Step.create!(workflow: workflow, kind: "manual", position: 100 + i)
+          run = fresh_step.runs.create!(job: job, trigger_kind: "initial")
+        else
+          StepDispatcher.start_workflow(workflow)
+          run = s_implement.runs.last
+        end
+        described_class.perform_now(run.id) rescue nil
+      end
+
+      expect(workflow.reload).to be_failed
+    end
+
+    it "captures a RunDiagnostic on step failure" do
+      StepDispatcher.start_workflow(workflow)
+      run = s_implement.runs.last
+      expect {
+        described_class.perform_now(run.id)
+      }.to raise_error(Steps::Base::StepFailed)
+      diag = run.reload.run_diagnostic
+      expect(diag).to be_present
+      expect(diag.error_class).to eq("Steps::Base::StepFailed")
+      expect(diag.error_message).to include("agent broke")
+    end
+  end
+
+  describe "guards" do
+    it "abandons the Run as cancelled if the Workflow is already terminal" do
+      workflow.update!(state: "succeeded")
+      StepDispatcher.start_workflow(workflow)
+      run = s_implement.runs.last
+      described_class.perform_now(run.id)
+      expect(run.reload.state).to eq("cancelled")
+    end
+
+    it "abandons the Run as cancelled if the Step is already terminal" do
+      StepDispatcher.start_workflow(workflow)
+      s_implement.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      run = s_implement.runs.last
+      described_class.perform_now(run.id)
+      expect(run.reload.state).to eq("cancelled")
+    end
+
+    it "fails the Run with worker_died on re-entrancy (run already running)" do
+      StepDispatcher.start_workflow(workflow)
+      run = s_implement.runs.last
+      run.update!(state: "running", started_at: 1.hour.ago)
+      described_class.perform_now(run.id)
+      expect(run.reload.state).to eq("failed")
+      expect(run.agent_outcome).to eq("worker_died")
+    end
+  end
+end

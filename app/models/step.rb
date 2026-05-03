@@ -61,6 +61,10 @@ class Step < ApplicationRecord
     AGENTIC_KINDS.include?(kind)
   end
 
+  def terminal?
+    succeeded? || failed? || cancelled?
+  end
+
   # When a Step succeeds, hand off to the dispatcher to start the
   # next one (if any). Linear chain — `next_step` is at most one.
   # The dispatcher is what creates the Run on the next Step; this
