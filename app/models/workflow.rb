@@ -45,10 +45,15 @@ class Workflow < ApplicationRecord
       }
     end
 
+    # Workspace cleanup is INTENTIONALLY deferred on failure so the
+    # operator can use "Retry from failed step" without losing the
+    # prior succeeded steps' local-only state (e.g. implement's
+    # commit before summarize fails). WorkflowWorkspacePruneJob
+    # eventually cleans up via cleanup_workspace! if no retry
+    # arrives within the retention window.
     event :fail do
       transitions from: [ :queued, :running ], to: :failed, after: -> {
         self.finished_at = Time.current
-        cleanup_workspace!
       }
     end
 
@@ -56,6 +61,15 @@ class Workflow < ApplicationRecord
       transitions from: [ :queued, :running ], to: :cancelled, after: -> {
         self.finished_at = Time.current
         cleanup_workspace!
+      }
+    end
+
+    # Operator-initiated reopen via "Retry from failed step." Lets
+    # the failed Step (and a fresh Run on it) pick up where the
+    # workflow left off, reusing the still-on-disk workspace.
+    event :reopen do
+      transitions from: :failed, to: :running, after: -> {
+        self.finished_at = nil
       }
     end
   end
@@ -69,6 +83,16 @@ class Workflow < ApplicationRecord
 
   def terminal?
     succeeded? || failed? || cancelled?
+  end
+
+  # Failed workflows whose disk workspace is still around — the
+  # "Retry from failed step" UI gates on this. Once
+  # WorkflowWorkspace.cleanup_for has run (either via the
+  # succeed/cancel callback above OR via WorkflowWorkspacePruneJob's
+  # daily sweep), retry is no longer possible because committed-but-
+  # unpushed work from prior succeeded steps is gone.
+  def retry_available?
+    failed? && cleaned_up_at.nil?
   end
 
   # Read-or-default convenience for artifact access. Nil-safe

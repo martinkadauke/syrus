@@ -15,15 +15,22 @@
         <%= pluralize(steps_array.size, "step") %>
       </span>
     </div>
-    <div class="text-xs text-gray-500">
-      <% if workflow.started_at %>
-        <%= relative_timestamp(workflow.started_at) %>
-        <% if workflow.finished_at %>
-          → <%= relative_timestamp(workflow.finished_at) %>
-        <% end %>
-      <% else %>
-        not yet started
+    <div class="flex items-center gap-3">
+      <% if workflow.retry_available? %>
+        <%= button_to "Retry from failed step", retry_step_job_path(job, workflow_id: workflow.id), method: :post,
+              class: "px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer",
+              form: { class: "inline" } %>
       <% end %>
+      <div class="text-xs text-gray-500">
+        <% if workflow.started_at %>
+          <%= relative_timestamp(workflow.started_at) %>
+          <% if workflow.finished_at %>
+            → <%= relative_timestamp(workflow.finished_at) %>
+          <% end %>
+        <% else %>
+          not yet started
+        <% end %>
+      </div>
     </div>
   </header>
 
@@ -31,7 +38,7 @@
     <% steps_array.each_with_index do |step, idx| %>
       <%= render "step",
             step: step, step_number: idx + 1, total_steps: steps_array.size,
-            job: job %>
+            workflow: workflow, job: job %>
     <% end %>
   </div>
 </section>

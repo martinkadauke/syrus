@@ -31,6 +31,9 @@ default: &default
   prune_run_diagnostics:
     class: RunDiagnosticPruneJob
     schedule: every day at 3:10am
+  prune_workflow_workspaces:
+    class: WorkflowWorkspacePruneJob
+    schedule: every day at 3:20am
 
 development:
   <<: *default

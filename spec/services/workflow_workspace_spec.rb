@@ -134,13 +134,27 @@ RSpec.describe WorkflowWorkspace do
       expect(ws.path).not_to exist
     end
 
-    it "tears the workspace down on Workflow.fail!" do
+    it "does NOT tear the workspace down on Workflow.fail! (deferred for Retry-from-failed-step)" do
       ws = described_class.new(workflow)
       ws.setup
       workflow.start!
       workflow.fail!
       workflow.save!
+      # Workspace stays on disk so the operator can use
+      # JobsController#retry_step. cleaned_up_at stays nil.
+      expect(ws.path).to exist
+      expect(workflow.reload.cleaned_up_at).to be_nil
+    end
+
+    it "WorkflowWorkspacePruneJob eventually cleans up failed workflows past retention" do
+      ws = described_class.new(workflow)
+      ws.setup
+      workflow.start!
+      workflow.fail!
+      workflow.update!(finished_at: (WorkflowWorkspacePruneJob::RETAIN_AFTER_TERMINAL + 1.day).ago)
+      WorkflowWorkspacePruneJob.perform_now
       expect(ws.path).not_to exist
+      expect(workflow.reload.cleaned_up_at).to be_present
     end
 
     it "tears the workspace down on Workflow.cancel!" do

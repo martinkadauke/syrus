@@ -39,6 +39,7 @@ Rails.application.routes.draw do
       post :check_mergeability  # ask GitHub for the latest mergeable status now
       post :resume         # continue a failed Run via claude --resume
       post :stop_run       # cancel a single active Run without closing the thread
+      post :retry_step     # re-run the failed step in a failed Workflow (keeps the existing workspace)
     end
   end
 

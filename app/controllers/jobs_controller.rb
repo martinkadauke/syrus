@@ -146,6 +146,54 @@ class JobsController < ApplicationController
     redirect_to job_path(@job), notice: "Run stopped."
   end
 
+  # Retry the failed step in a failed Workflow without losing the
+  # prior succeeded steps' state. Reopens Workflow + Step, creates
+  # a new Run on the failed Step. The inline-chain dispatch in
+  # RunJob.perform takes the new Run from there. Workspace is NOT
+  # re-cloned — we trust the on-disk state (this is precisely why
+  # the workspace cleanup was deferred on Workflow.fail).
+  #
+  # Refused when:
+  #   - the Workflow isn't `failed`
+  #   - WorkflowWorkspace.cleanup_for has already run (operator
+  #     should use Replay instead — local-only commits are gone)
+  #   - no failed Step found (one-failed-step-per-workflow holds in
+  #     v1; defensive guard for unexpected states)
+  def retry_step
+    workflow = @job.workflows.find_by(id: params[:workflow_id])
+    unless workflow
+      redirect_to job_path(@job), alert: "Workflow not found."
+      return
+    end
+    unless workflow.failed?
+      redirect_to job_path(@job), alert: "Workflow is not in a failed state."
+      return
+    end
+    unless workflow.retry_available?
+      redirect_to job_path(@job), alert: "Workspace already cleaned up — use Replay to start over."
+      return
+    end
+
+    failed_step = workflow.steps.where(state: "failed").order(:position).first
+    unless failed_step
+      redirect_to job_path(@job), alert: "No failed step to retry."
+      return
+    end
+
+    workflow.reopen!
+    workflow.save!
+    failed_step.reopen!
+    failed_step.save!
+
+    failed_step.runs.create!(
+      job: @job,
+      trigger_kind: workflow.trigger_kind
+    )
+
+    redirect_to job_path(@job),
+                notice: "Retrying #{failed_step.kind} for workflow ##{workflow.id}…"
+  end
+
   # Undo a close. The next poll cycle may immediately re-close the
   # Job if the underlying reason still applies (e.g. syrus-stop label
   # still on the PR, PR merged on GitHub) — that's intentional. Local

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_220000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_03_230000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
@@ -206,6 +206,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_220000) do
 
   create_table "workflows", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.text "artifacts"
+    t.datetime "cleaned_up_at"
     t.datetime "created_at", null: false
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
@@ -214,6 +215,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_220000) do
     t.string "state", default: "queued", null: false
     t.string "trigger_kind", null: false
     t.datetime "updated_at", null: false
+    t.index ["cleaned_up_at"], name: "index_workflows_on_cleaned_up_at"
     t.index ["job_id", "created_at"], name: "index_workflows_on_job_id_and_created_at"
     t.index ["job_id"], name: "index_workflows_on_job_id"
   end

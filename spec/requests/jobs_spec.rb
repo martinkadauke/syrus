@@ -247,6 +247,62 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
+  describe "POST /jobs/:id/retry_step" do
+    before { sign_in_as(user) }
+
+    let(:workflow) { job.workflows.last }
+    let(:failed_step) {
+      workflow.steps.find_by(kind: "summarize").tap do |s|
+        # Create a failed Run on the step + transition both to failed.
+        run = s.runs.create!(job: job, trigger_kind: "initial",
+                             state: "failed", started_at: 1.minute.ago,
+                             finished_at: Time.current,
+                             agent_outcome: "error_max_turns")
+        s.update!(state: "failed", started_at: 1.minute.ago, finished_at: Time.current)
+      end
+    }
+
+    before do
+      # Bring the workflow into a failed state with the second step
+      # failed. Bypass AASM (state already includes "failed" terminal).
+      workflow.update!(state: "failed", started_at: 1.minute.ago, finished_at: Time.current)
+      failed_step
+    end
+
+    it "reopens the Workflow + Step and creates a fresh Run on the failed step" do
+      expect {
+        post retry_step_job_path(job, workflow_id: workflow.id)
+      }.to change { failed_step.runs.count }.by(1)
+
+      expect(workflow.reload.state).to eq("running")
+      expect(failed_step.reload.state).to eq("queued")
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:notice]).to match(/Retrying summarize/)
+    end
+
+    it "refuses when the workflow's workspace was already cleaned up" do
+      workflow.update_columns(cleaned_up_at: Time.current)
+      expect {
+        post retry_step_job_path(job, workflow_id: workflow.id)
+      }.not_to change(Run, :count)
+      expect(flash[:alert]).to match(/already cleaned up/i)
+    end
+
+    it "refuses when the workflow isn't failed" do
+      workflow.update!(state: "running", finished_at: nil)
+      post retry_step_job_path(job, workflow_id: workflow.id)
+      expect(flash[:alert]).to match(/not in a failed state/i)
+    end
+
+    it "404s for another user's job" do
+      foreign_repo = Factories.repository(user: other)
+      foreign_job  = Factories.job(repository: foreign_repo, issue_number: 1)
+      foreign_wf   = foreign_job.workflows.last
+      post retry_step_job_path(foreign_job, workflow_id: foreign_wf.id)
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   describe "POST /jobs/:id/poll_feedback" do
     before { sign_in_as(user) }
 

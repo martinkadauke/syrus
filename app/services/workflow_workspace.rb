@@ -30,10 +30,16 @@ class WorkflowWorkspace
 
   # Class-level cleanup so the Workflow's AASM terminal-transition
   # callback can fire it without instantiating the full workspace.
-  # Best-effort: if the path is gone or unreadable, swallow.
+  # Best-effort: if the path is gone or unreadable, swallow. Stamps
+  # `cleaned_up_at` on the Workflow so the UI ("Retry from failed
+  # step" button) and WorkflowWorkspacePruneJob can tell the
+  # workspace is no longer on disk. Stamped even when the dir was
+  # already gone — the state we care about is "not on disk", not
+  # "we did the rm_rf."
   def self.cleanup_for(workflow)
     p = path_for(workflow)
     FileUtils.rm_rf(p.to_s) if File.exist?(p.to_s)
+    workflow.update_columns(cleaned_up_at: Time.current) if workflow.persisted?
   rescue StandardError => e
     Rails.logger.warn("[WorkflowWorkspace] cleanup failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
   end
