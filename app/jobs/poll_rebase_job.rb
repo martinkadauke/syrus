@@ -40,7 +40,20 @@ class PollRebaseJob < ApplicationJob
     return if pending_rebase?
     return if attempt_cap_reached?
 
-    Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} is unmergeable; enqueueing rebase Run")
+    # Most "unmergeable" PRs only need a plain rebase — no real
+    # conflicts, just a moved base. Try a deterministic rebase first
+    # (uses whatever merge drivers the target repo declares in its
+    # .gitattributes + bin/merge-* scripts; Syrus has no language-
+    # specific knowledge baked in). If clean, force-push and skip
+    # the agentic Run entirely. Only fall through to the agent when
+    # real conflicts remain.
+    auto = AutoRebase.new(@job).call
+    if auto.succeeded
+      Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} auto-rebased — #{auto}")
+      return
+    end
+
+    Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} is unmergeable (auto-rebase: #{auto}); enqueueing rebase Run")
     @job.runs.create!(trigger_kind: "rebase")
   end
 

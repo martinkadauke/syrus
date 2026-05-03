@@ -291,9 +291,14 @@ RSpec.describe RunJob do
       expect(job.pr_number).to eq(123)  # unchanged — no new PR
       expect(@pr_stub).not_to have_been_requested  # no new POST /pulls
 
-      # The branch should now have two syrus commits.
-      log = `git --git-dir=#{bare_remote_dir} log --format='%s' #{job.branch_name}`.split("\n")
-      expect(log.grep(/Syrus/).count).to eq(2)
+      # The branch should now have two commits Syrus pushed (initial +
+      # follow-up) on top of the seed/default-branch commit. Don't
+      # assert on commit messages — those are now agent-authored
+      # (via agent_pr_title) when available, falling back to a Syrus
+      # template — and the format isn't load-bearing for this test.
+      base = `git --git-dir=#{bare_remote_dir} rev-parse #{job.repository.default_branch}`.strip
+      branch_commits = `git --git-dir=#{bare_remote_dir} rev-list #{base}..#{job.branch_name}`.split("\n")
+      expect(branch_commits.size).to eq(2)
     end
 
     it "opens the PR on a replay Run when the initial Run never reached push" do
