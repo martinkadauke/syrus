@@ -36,6 +36,7 @@ class JobWorkspace
     ensure_bare_clone
     sweep_orphan_worktrees       # before fetch — orphan worktrees lock branches
     force_clear_own_worktree      # before fetch — handles RunJob retries
+    force_clear_worktrees_on_my_branch  # zombie-Run worktree using this Job's branch
     fetch_origin
     FileUtils.mkdir_p(path.dirname)
 
@@ -130,19 +131,7 @@ class JobWorkspace
   # Cheap to run on every setup — bounded by the number of worktrees
   # for one repo, which is bounded by concurrent Runs.
   def sweep_orphan_worktrees
-    list = @git.run("worktree", "list", "--porcelain", chdir: bare_clone_path.to_s) rescue ""
-    current = nil
-    worktrees = []
-    list.each_line do |l|
-      if l.start_with?("worktree ")
-        current = { path: l.sub("worktree ", "").chomp }
-        worktrees << current
-      elsif current && l.start_with?("branch ")
-        current[:branch] = l.sub("branch ", "").chomp
-      end
-    end
-
-    worktrees.each do |w|
+    registered_worktrees.each do |w|
       # Worktree directory names are pure integer run IDs (per
       # JobWorkspace#initialize: `data_root/worktrees/<run_id>`).
       # Bare clone path basename is `<repo_id>.git`. Filtering on
@@ -155,13 +144,64 @@ class JobWorkspace
       orphan = run.nil? || %w[succeeded failed cancelled].include?(run.state)
       next unless orphan
 
-      @git.run("worktree", "remove", "--force", w[:path], chdir: bare_clone_path.to_s) rescue nil
-      FileUtils.rm_rf(w[:path]) if File.exist?(w[:path])
+      remove_worktree_at(w[:path])
     end
 
     # Catch any registrations whose directory disappeared without
     # going through git worktree remove.
     @git.run("worktree", "prune", chdir: bare_clone_path.to_s) rescue nil
+  end
+
+  # Force-remove any worktree currently checked out on this Run's
+  # target branch, EXCEPT our own. The orphan sweep above doesn't
+  # cover this: a previous Run on the same Job whose worker died but
+  # whose state hasn't been reaped yet (still "running") will keep
+  # its worktree registered, and that worktree's branch ref is what
+  # blocks `worktree add` for us.
+  #
+  # Per-Job concurrency means there can never be a *legitimate*
+  # concurrent worktree on the same branch — RunJob is keyed on
+  # `job:#{job_id}` so two Runs never overlap. Anything we find here
+  # belongs to a dead Run; safe to force-remove.
+  #
+  # Real-world trigger: the Job's PR is merged on origin and the
+  # branch is deleted there. Our `fetch_origin --prune` then deletes
+  # the local ref refs/heads/<branch>, but the dead Run's worktree
+  # still has it registered. `branch_exists?` returns false → we try
+  # `worktree add -b` (new branch) → git refuses because the name is
+  # registered in another worktree. Fatal. Sweeping here breaks the
+  # tie before we even get to fetch.
+  def force_clear_worktrees_on_my_branch
+    target = "refs/heads/#{@branch_name}"
+    registered_worktrees.each do |w|
+      next unless w[:branch] == target
+      next if w[:path] == path.to_s   # our own; force_clear_own_worktree handles
+      remove_worktree_at(w[:path])
+    end
+    @git.run("worktree", "prune", chdir: bare_clone_path.to_s) rescue nil
+  end
+
+  # Parse `git worktree list --porcelain`. Returns an array of
+  # `{ path:, branch: }` hashes. Bare clone shows up too (with no
+  # branch); callers filter by basename or by branch as needed.
+  def registered_worktrees
+    list = @git.run("worktree", "list", "--porcelain", chdir: bare_clone_path.to_s) rescue ""
+    current = nil
+    worktrees = []
+    list.each_line do |l|
+      if l.start_with?("worktree ")
+        current = { path: l.sub("worktree ", "").chomp }
+        worktrees << current
+      elsif current && l.start_with?("branch ")
+        current[:branch] = l.sub("branch ", "").chomp
+      end
+    end
+    worktrees
+  end
+
+  def remove_worktree_at(wt_path)
+    @git.run("worktree", "remove", "--force", wt_path, chdir: bare_clone_path.to_s) rescue nil
+    FileUtils.rm_rf(wt_path) if File.exist?(wt_path)
   end
 
   # `git branch --list <name>` returns 0 with empty output when the

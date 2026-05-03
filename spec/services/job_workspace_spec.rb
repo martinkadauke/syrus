@@ -184,6 +184,38 @@ RSpec.describe JobWorkspace do
       expect(head_branch).to eq("syrus/issue-7-#{job.id}")  # branch is created fresh from default
       followup_workspace.cleanup
     end
+
+    it "force-clears a zombie Run's worktree that's still using this Job's branch (PR-merged-and-deleted-on-origin scenario)" do
+      # Initial Run sets up a worktree on syrus/issue-7-N, then dies
+      # mid-execution: Run state stuck at "running", worktree still on
+      # disk, branch still registered to that worktree. Meanwhile the
+      # PR was merged on GitHub and the branch deleted. Our fetch with
+      # --prune in the next Run would (in the wild) delete the local
+      # ref but leave the worktree registration pointing at it; the
+      # subsequent `worktree add` fails with "already checked out".
+      # The new force_clear_worktrees_on_my_branch step prevents this
+      # by removing the zombie worktree before we touch fetch.
+      initial = job.initial_run
+      ws1 = described_class.new(initial)
+      ws1.setup
+
+      # Don't cleanup — simulate the zombie state. Mark the Run as
+      # still "running" (which is what an in-flight Run looks like).
+      initial.update_columns(state: "running", started_at: 1.minute.ago, last_heartbeat_at: 1.minute.ago)
+
+      job.update!(branch_name: "syrus/issue-7-#{job.id}")
+      replay = Run.create!(job: job, trigger_kind: "replay")
+
+      ws2 = described_class.new(replay)
+      expect { ws2.setup }.not_to raise_error
+      expect(ws2.path).to exist
+      head_branch = `git -C #{ws2.path} rev-parse --abbrev-ref HEAD`.strip
+      expect(head_branch).to eq("syrus/issue-7-#{job.id}")
+
+      # The zombie worktree is gone.
+      expect(ws1.path).not_to exist
+      ws2.cleanup
+    end
   end
 
   def seed_remote(bare_path)
