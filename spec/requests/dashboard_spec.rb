@@ -46,7 +46,7 @@ RSpec.describe "Dashboard", type: :request do
         get root_path(tab: "workflows")
         expect(response.body).to include("acme/widgets")
         expect(response.body).to include("initial")          # trigger pill
-        expect(response.body).to include("implement")        # current step caption
+        expect(response.body).to include("Implement")        # human-readable step kind label
         expect(response.body).to include("(1/3)")            # step counter
       end
 

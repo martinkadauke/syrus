@@ -11,6 +11,29 @@ module JobsHelper
     "pending"   => "bg-gray-100 text-gray-700"
   }.freeze
 
+  # Human-readable label per Step.kind. Keep these short — they
+  # render in dashboard cells and in Job#show step headers next to
+  # other compact metadata. Falls back to humanizing the kind for
+  # any kind not yet enumerated here, so a new step type doesn't
+  # blank out the UI.
+  STEP_KIND_LABELS = {
+    "implement"       => "Implement",
+    "summarize"       => "Summarize",
+    "pr_open"         => "Open PR",
+    "respond"         => "Address feedback",
+    "summarize_amend" => "Summarize",
+    "push"            => "Push",
+    "analyze_and_fix" => "Fix CI failures",
+    "auto_rebase"     => "Auto-rebase",
+    "agent_rebase"    => "Agent rebase",
+    "force_push"      => "Force-push",
+    "manual"          => "Manual"
+  }.freeze
+
+  def step_kind_label(kind)
+    STEP_KIND_LABELS[kind.to_s] || kind.to_s.humanize
+  end
+
   TRIGGER_STYLES = {
     "initial"     => "bg-purple-100 text-purple-700",
     "pr_comment"  => "bg-cyan-100 text-cyan-700",
@@ -55,14 +78,14 @@ module JobsHelper
 
   # Per-Job dashboard caption — when a workflow is in flight, show
   # what step it's on and what kicked it off. e.g. "currently:
-  # implement (workflow: initial)". Returns nil for jobs with no
+  # Implement (workflow: initial)". Returns nil for jobs with no
   # active workflow so callers can omit the caption entirely.
   def current_step_caption(job)
     wf = job.workflows.where(state: %w[ queued running ]).order(:created_at).last
     return nil unless wf
     step = wf.current_step
     return "currently: #{wf.trigger_kind_humanized}" unless step
-    "currently: #{step.kind} (workflow: #{wf.trigger_kind_humanized})"
+    "currently: #{step_kind_label(step.kind)} (workflow: #{wf.trigger_kind_humanized})"
   end
 
   # Per-Workflow "current step" cell on the dashboard's Workflows
@@ -75,13 +98,13 @@ module JobsHelper
     return "—" if steps.empty?
     case workflow.state
     when "queued"
-      "#{steps.first.kind} (1/#{steps.size})"
+      "#{step_kind_label(steps.first.kind)} (1/#{steps.size})"
     when "running"
       cur = steps.find { |s| s.state == "running" } || steps.find { |s| s.state == "queued" } || steps.last
-      "#{cur.kind} (#{steps.index(cur) + 1}/#{steps.size})"
+      "#{step_kind_label(cur.kind)} (#{steps.index(cur) + 1}/#{steps.size})"
     else
       last_executed = steps.reverse.find { |s| %w[succeeded failed].include?(s.state) } || steps.last
-      "#{last_executed.kind} (#{steps.index(last_executed) + 1}/#{steps.size})"
+      "#{step_kind_label(last_executed.kind)} (#{steps.index(last_executed) + 1}/#{steps.size})"
     end
   end
 
