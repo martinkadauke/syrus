@@ -12,7 +12,11 @@
         Step <%= step_number %>/<%= total_steps %>
       </span>
       <span class="font-mono text-sm text-gray-800"><%= step.kind %></span>
-      <%= state_pill(step.state) %>
+      <%# State pill omitted on purpose — in v1 a Step has at most
+          one Run, so step.state mirrors run.state and the inner
+          Run row already shows the same pill. The "skipped"
+          marker stays because cancelled Steps have no Run to
+          carry that signal. %>
       <% if step.cancelled? %>
         <span class="text-xs text-gray-500 italic">skipped</span>
       <% end %>
