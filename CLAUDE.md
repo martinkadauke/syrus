@@ -103,6 +103,37 @@ preserve scroll position across morphs.
   via `RunJob.agent_runner` and `PrSummarizer.runner` test seams; never
   shell out to real `claude` from tests.
 
+## Tests are not optional
+
+**Every PR must include tests for the behavior it changes. PRs without
+tests will not be merged.** This applies to every kind of change —
+new features, bug fixes, refactors, plumbing, "trivial" tweaks. If
+the change is too small to justify a test, the change is too small
+to need a PR; fold it into something testable.
+
+What "with tests" means here:
+
+- **New behavior** → a spec that fails without your change and passes
+  with it. If you can't write one, the behavior isn't well-defined yet.
+- **Bug fix** → a regression spec that reproduces the bug. The fix
+  without the spec is half a fix; nothing stops it from regressing.
+- **Refactor** → existing specs must still pass, AND if the refactor
+  touches an under-tested area, add the missing coverage as part of
+  the same PR. "I didn't change behavior" is not a free pass.
+- **Anything touching the agent loop, RunJob, AgentInvocation, MCP,
+  or the polling jobs** → exercise it with the existing test seams
+  (`RunJob.agent_runner`, `PrSummarizer.runner`, WebMock for Octokit,
+  stubbed AgentInvocation Result). These seams exist precisely so
+  every code path can be tested without shelling out to real claude
+  or hitting real GitHub.
+
+If the test would require infrastructure that doesn't exist in the
+test environment (e.g. SolidQueue tables aren't loaded in test —
+test runs single-database), stub the boundary and say so in a
+comment. Don't skip the test.
+
+The full suite runs in ~10s. There is no excuse.
+
 ## Testing on the deployed instance
 
 Syrus runs on the homelab K3s cluster and polls **`tkadauke/syrus-test`**
