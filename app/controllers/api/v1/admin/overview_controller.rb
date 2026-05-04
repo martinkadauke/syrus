@@ -89,8 +89,15 @@ module Api
           ::SolidQueue::RecurringTask.find_each do |task|
             last = ::SolidQueue::RecurringExecution.where(task_key: task.key)
                                                    .order(run_at: :desc).first
-            age = last ? (Time.current - last.run_at) : Float::INFINITY
-            overdue << { key: task.key, age_seconds: age.to_i } if age > 10.minutes
+            if last.nil?
+              # Never fired — overdue by definition. Don't compute
+              # age (Float::INFINITY would blow up `.to_i` with a
+              # FloatDomainError, taking the whole overview down).
+              overdue << { key: task.key, age_seconds: nil, never_run: true }
+            else
+              age = Time.current - last.run_at
+              overdue << { key: task.key, age_seconds: age.to_i } if age > 10.minutes
+            end
           end
           { overdue: overdue }
         rescue ActiveRecord::StatementInvalid,

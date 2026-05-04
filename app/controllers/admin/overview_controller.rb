@@ -49,18 +49,22 @@ module Admin
                                             .count
       end
 
+      # "Overdue" = haven't fired in 5min for sub-minute schedules,
+      # 30min for the daily ones. Coarse heuristic: 10min since the
+      # last fire (or never-fired flag). We don't parse cron here —
+      # just flag tasks that haven't run recently. Tunable as we
+      # learn what's noisy.
       @recurring_overdue = []
       with_queue_tables do
         SolidQueue::RecurringTask.find_each do |task|
           last = SolidQueue::RecurringExecution.where(task_key: task.key)
                                                .order(run_at: :desc).first
-          age = last ? (Time.current - last.run_at) : Float::INFINITY
-          # "Overdue" = haven't fired in 5min for sub-minute schedules,
-          # 30min for the daily ones. Coarse heuristic: 10min over the
-          # task's claimed interval. We don't parse cron here — just
-          # flag tasks that haven't run in the last 10 minutes (or
-          # never at all). Tunable as we learn what's noisy.
-          @recurring_overdue << { key: task.key, age_seconds: age } if age > 10.minutes
+          if last.nil?
+            @recurring_overdue << { key: task.key, age_seconds: nil, never_run: true }
+          else
+            age = Time.current - last.run_at
+            @recurring_overdue << { key: task.key, age_seconds: age.to_i } if age > 10.minutes
+          end
         end
       end
 
