@@ -30,7 +30,6 @@ module Admin
   # calls, deadlocks).
   class OverviewController < BaseController
     POLL_INTERVAL_SECONDS = 30
-    ADMIN_STUCK_THRESHOLD = 5.minutes
 
     def show
       @poll_interval = POLL_INTERVAL_SECONDS
@@ -90,44 +89,12 @@ module Admin
                                             .count
       @capture_rate = @capture_total.zero? ? nil : (@capture_with_session.to_f / @capture_total)
 
-      # Stuck-things watchlist. Two heartbeat thresholds:
-      # ADMIN_STUCK_THRESHOLD = "concerning" (warn); reaper's
-      # STALE_HEARTBEAT_THRESHOLD = "alarm" (means the reaper
-      # itself isn't running — queue starvation or dead worker).
-      # Both checks treat last_heartbeat_at IS NULL the same as
-      # very-old, since a Run that's been running but never logged
-      # anything is at least as suspicious as one with a stale
-      # heartbeat.
-      @stuck = []
-
-      stuck_cutoff = ADMIN_STUCK_THRESHOLD.ago
-      reaper_cutoff = Run::STALE_HEARTBEAT_THRESHOLD.ago
-      Run.where(state: "running")
-         .where("(last_heartbeat_at IS NOT NULL AND last_heartbeat_at < :t) OR (last_heartbeat_at IS NULL AND started_at < :t)", t: stuck_cutoff)
-         .find_each do |r|
-        last_signal = r.last_heartbeat_at || r.started_at
-        age_min = ((Time.current - last_signal) / 60).to_i
-        # Past the reaper's threshold while still running ⇒ the
-        # reaper isn't running. Escalate.
-        severity = (last_signal && last_signal < reaper_cutoff) ? :alarm : :warn
-        kind = severity == :alarm ? :reaper_starved : :stale_heartbeat
-        detail = if severity == :alarm
-          "Run ##{r.id} silent for #{age_min}m — past reaper threshold, but still `running`. ReapStaleRunsJob may be starved."
-        else
-          "Run ##{r.id} silent for #{age_min}m"
-        end
-        @stuck << { kind: kind, severity: severity,
-                    run_id: r.id, job_id: r.job_id, detail: detail }
-      end
-
-      Workflow.where(state: "failed")
-              .where(cleaned_up_at: nil)
-              .where("finished_at < ?", (WorkflowWorkspacePruneJob::RETAIN_AFTER_TERMINAL - 1.day).ago)
-              .find_each do |wf|
-        @stuck << { kind: :nearly_pruned, severity: :warn,
-                    workflow_id: wf.id, job_id: wf.job_id,
-                    detail: "Workflow ##{wf.id} (#{wf.trigger_kind}) failed #{((Time.current - wf.finished_at) / 86400).to_i}d ago — about to be pruned" }
-      end
+      # Stuck-things watchlist — see Admin::StuckItems for the
+      # definition. Inline list below the tile is the at-a-glance
+      # view; the dedicated /admin/stuck page (admin#stuck) shows
+      # the same items with richer per-item context + drill-down
+      # links.
+      @stuck = StuckItems.all
     end
 
     private

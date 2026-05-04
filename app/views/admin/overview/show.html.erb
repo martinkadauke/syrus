@@ -80,29 +80,33 @@
             status: @capture_rate >= 0.95 ? :ok : (@capture_rate >= 0.80 ? :warn : :alarm) %>
     <% end %>
 
-    <% any_alarm = @stuck.any? { |s| s[:severity] == :alarm } %>
+    <% any_alarm = @stuck.any? { |s| s.severity == :alarm } %>
     <%= render "tile",
           title: "Stuck things",
           value: @stuck.size,
           context: @stuck.any? ? (any_alarm ? "includes alarm-level" : "concerning, not yet dead") : "nothing flagged",
-          status: any_alarm ? :alarm : (@stuck.any? ? :warn : :ok) %>
+          status: any_alarm ? :alarm : (@stuck.any? ? :warn : :ok),
+          link: admin_stuck_path %>
   </div>
 
   <% if @stuck.any? %>
     <% border_class = any_alarm ? "border-red-200" : "border-amber-200" %>
     <% header_bg    = any_alarm ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-700" %>
     <div class="bg-white border <%= border_class %> rounded-lg overflow-hidden">
-      <div class="px-4 py-2 <%= header_bg %> text-xs uppercase font-medium">Stuck things</div>
+      <div class="px-4 py-2 <%= header_bg %> text-xs uppercase font-medium flex items-center justify-between">
+        <span>Stuck things</span>
+        <%= link_to "Open full list →", admin_stuck_path, class: "text-blue-600 hover:underline normal-case text-xs" %>
+      </div>
       <ul class="divide-y divide-gray-100">
         <% @stuck.each do |item| %>
-          <% sev_class = item[:severity] == :alarm ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700" %>
+          <% sev_class = item.severity == :alarm ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700" %>
           <li class="px-4 py-2 text-sm flex items-center justify-between gap-3">
             <span class="flex items-center gap-2">
-              <span class="<%= sev_class %> font-mono text-xs px-1.5 py-0.5 rounded"><%= item[:kind] %></span>
-              <span class="text-gray-700"><%= item[:detail] %></span>
+              <span class="<%= sev_class %> font-mono text-xs px-1.5 py-0.5 rounded"><%= item.kind %></span>
+              <span class="text-gray-700"><%= item.detail %></span>
             </span>
-            <% if item[:job_id] %>
-              <%= link_to "View job", job_path(item[:job_id]), class: "text-blue-600 underline hover:no-underline text-xs flex-shrink-0" %>
+            <% if item.job %>
+              <%= link_to "View job", job_path(item.job), class: "text-blue-600 underline hover:no-underline text-xs flex-shrink-0" %>
             <% end %>
           </li>
         <% end %>

@@ -58,6 +58,10 @@ Rails.application.routes.draw do
     get  "queue",                  to: "queue#index", as: :queue_root
     get  "queue/:tab",             to: "queue#show",            as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
     post "queue/reap_stale_runs",  to: "queue#reap_stale_runs", as: :reap_stale_runs
+
+    # Stuck-things watchlist — Run heartbeat stale or Workflow
+    # nearing prune. See Admin::StuckItems for the definition.
+    get "stuck", to: "stuck#index", as: :stuck
   end
 
   root "home#index"
