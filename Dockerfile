@@ -103,6 +103,49 @@ CMD ["./bin/thrust", "./bin/rails", "server"]
 
 
 # ============================================================================
+# Runtime cache stage — pre-compiled language runtimes for the worker.
+#
+# Ruby and Python install via mise compile from source (~5 min/Ruby, ~3 min
+# for Python, on amd64 native; longer under qemu). Putting them in their
+# own stage with ONLY the version-pin ARGs as inputs means BuildKit caches
+# this layer based purely on those pins — adding a CLI tool to worker-dev
+# below doesn't bust this cache. Compile once per version bump; never on
+# incidental Dockerfile churn.
+#
+# Cross-builder cache sharing (e.g. CI on fresh runners) needs `--cache-from
+# type=registry,ref=ghcr.io/tkadauke/syrus:cache` plus a matching `--cache-to`.
+# The Dockerfile structure is what makes that effective.
+# ============================================================================
+FROM docker.io/library/debian:bookworm-slim AS runtime-cache
+
+ARG MISE_RUBIES="3.2 3.3"
+ARG MISE_NODES="lts lts-1"
+ARG MISE_PYTHONS="3.11"
+
+ENV MISE_DATA_DIR=/opt/mise \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+      ca-certificates curl \
+      build-essential pkg-config \
+      libffi-dev libssl-dev libyaml-dev \
+      libxml2-dev libxslt-dev \
+      zlib1g-dev libreadline-dev && \
+    rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+RUN curl -fsSL https://mise.jdx.dev/install.sh | \
+      MISE_INSTALL_PATH=/usr/local/bin/mise sh
+
+# One mise install per language family. Compile order doesn't matter for
+# caching; the layer hashes once per ARG-value combination.
+RUN /usr/local/bin/mise install $(for v in $MISE_RUBIES;  do echo ruby@$v;   done) && \
+    /usr/local/bin/mise install $(for v in $MISE_NODES;   do echo node@$v;   done) && \
+    /usr/local/bin/mise install $(for v in $MISE_PYTHONS; do echo python@$v; done) && \
+    rm -rf /opt/mise/cache /opt/mise/tmp
+
+
+# ============================================================================
 # Worker dev stage — generalist tooling so the in-pod claude-code agent can
 # verify its changes against arbitrary external repos (run tests, build
 # assets, etc). Companion to greenacres#16; only the worker pod uses this
@@ -116,7 +159,9 @@ USER root
 
 # Native build deps + DB clients (no servers) + CLI tooling. Each tool
 # justified in greenacres#16 / syrus#114; ripgrep+fd in particular speed
-# up the agent dramatically when exploring code.
+# up the agent dramatically when exploring code. The lib*-dev deps are
+# kept here too (not just runtime-cache) so on-demand `mise install`
+# of a non-default version inside the worker pod still has them.
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
       build-essential pkg-config \
@@ -128,26 +173,22 @@ RUN apt-get update -qq && \
       python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# mise — multi-language version manager. The agent runs `mise install`
-# inside each worktree to provision the Ruby / Node / Python versions
-# that worktree's .tool-versions / mise.toml declares.
-RUN curl -fsSL https://mise.jdx.dev/install.sh | \
-      MISE_INSTALL_PATH=/usr/local/bin/mise sh
+# Pull pre-compiled runtimes + the mise binary from the runtime-cache
+# stage. This is the layer that previously ran `mise install ...` and
+# took ~13 min cold; now it's a fast COPY of artifacts that were
+# compiled once and stay cached.
+COPY --from=runtime-cache /opt/mise /opt/mise
+COPY --from=runtime-cache /usr/local/bin/mise /usr/local/bin/mise
+RUN chown -R 1000:1000 /opt/mise
 
 # Package managers that don't ship with their default runtime.
 # --break-system-packages is required on Debian's PEP-668-protected python.
 RUN npm install -g yarn pnpm && npm cache clean --force && \
     pip3 install --break-system-packages poetry uv
 
-# Pre-install default runtimes to /opt/mise. greenacres `seed-mise` init
-# container copies these onto the worker PVC at $HOME/.local/share/mise
-# on first boot so the agent doesn't pay cold-install latency for the
-# common cases. Repos with non-default versions install on-demand.
-ENV MISE_DATA_DIR=/opt/mise
-RUN mkdir -p /opt/mise && chown -R 1000:1000 /opt/mise
 USER 1000:1000
-ENV PATH="/opt/mise/shims:${PATH}"
-RUN mise install ruby@3.2 ruby@3.3 node@lts node@lts-1 python@3.11
+ENV PATH="/opt/mise/shims:${PATH}" \
+    MISE_DATA_DIR=/opt/mise
 
 # No CMD override — inherits `app`'s thrust+rails server. The worker pod's
 # Deployment overrides command to `bin/jobs` per greenacres#16.
