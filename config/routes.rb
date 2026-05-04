@@ -14,6 +14,12 @@ Rails.application.routes.draw do
     namespace :v1 do
       namespace :admin do
         resources :jobs, only: %i[ show ]
+
+        # Transcripts (mirror Admin::TranscriptsController; A in
+        # docs/plans/admin-diagnostics.md). Paginated event stream
+        # via ?page= + ?per=, plus a raw-JSONL pass-through.
+        get "runs/:run_id/transcript",     to: "transcripts#show"
+        get "runs/:run_id/transcript/raw", to: "transcripts#raw"
       end
     end
   end
