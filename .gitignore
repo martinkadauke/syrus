@@ -39,3 +39,4 @@ config/credentials/*.key
 
 /app/assets/builds/*
 !/app/assets/builds/.keep
+.claude/scheduled_tasks.lock
