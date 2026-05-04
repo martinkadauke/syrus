@@ -135,6 +135,9 @@
   <% runs = @job.runs.to_a %>
   <% workflows = @job.workflows.includes(steps: { runs: :job_logs }).to_a %>
   <% summary_run = runs.select { |r| r.agent_summary.present? }.last %>
+  <% timeline_events = Jobs::Timeline.for(@job) %>
+
+  <%= render "timeline", events: timeline_events %>
 
   <% if summary_run %>
     <div data-controller="tabs">
