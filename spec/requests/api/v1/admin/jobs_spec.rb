@@ -88,4 +88,59 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(parse_body.dig("error", "code")).to eq("not_found")
     end
   end
+
+  describe "GET /api/v1/admin/jobs (compact list with filters)" do
+    let!(:repo_a) { Factories.repository(user: admin, owner: "acme", name: "widgets") }
+    let!(:repo_b) { Factories.repository(user: admin, owner: "acme", name: "thingies") }
+
+    let!(:job_124) { Factories.job(user: admin, repository: repo_a, issue_number: 124, pr_number: 144) }
+    let!(:job_125) { Factories.job(user: admin, repository: repo_a, issue_number: 125, pr_number: 146) }
+    let!(:job_b)   { Factories.job(user: admin, repository: repo_b, issue_number: 124) }  # diff repo, same issue#
+
+    it "filters by pr_number" do
+      get "/api/v1/admin/jobs", params: { pr_number: 144 }, headers: auth(admin_token)
+      expect(response).to be_successful
+      ids = parse_body["jobs"].map { |j| j["id"] }
+      expect(ids).to contain_exactly(job_124.id)
+    end
+
+    it "filters by issue_number across repos (caller likely wants to narrow with ?repo=)" do
+      get "/api/v1/admin/jobs", params: { issue_number: 124 }, headers: auth(admin_token)
+      ids = parse_body["jobs"].map { |j| j["id"] }
+      expect(ids).to contain_exactly(job_124.id, job_b.id)
+    end
+
+    it "narrows by repo slug" do
+      get "/api/v1/admin/jobs", params: { issue_number: 124, repo: "acme/widgets" }, headers: auth(admin_token)
+      ids = parse_body["jobs"].map { |j| j["id"] }
+      expect(ids).to contain_exactly(job_124.id)
+    end
+
+    it "filters by state" do
+      job_124.close!
+      job_124.save!
+      get "/api/v1/admin/jobs", params: { state: "open" }, headers: auth(admin_token)
+      ids = parse_body["jobs"].map { |j| j["id"] }
+      expect(ids).to include(job_125.id, job_b.id)
+      expect(ids).not_to include(job_124.id)
+    end
+
+    it "returns a compact shape — repository slug, issue/pr/branch, no nested workflows" do
+      get "/api/v1/admin/jobs", params: { pr_number: 144 }, headers: auth(admin_token)
+      row = parse_body["jobs"].first
+      expect(row).to include("id", "state", "kind", "repository", "issue_number", "pr_number", "branch_name")
+      expect(row["repository"]).to eq("acme/widgets")
+      expect(row).not_to have_key("workflows")
+    end
+
+    it "401s without a token" do
+      get "/api/v1/admin/jobs"
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "403s for non-admin users" do
+      get "/api/v1/admin/jobs", headers: auth(non_admin_token)
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end

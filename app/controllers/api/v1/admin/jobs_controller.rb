@@ -8,12 +8,46 @@ module Api
       #
       # GET /api/v1/admin/jobs/:id → JSON
       class JobsController < BaseController
+        # Compact list. Filter via `?pr_number=`, `?issue_number=`,
+        # `?repo=owner/name`, `?state=`. No filters → most-recently
+        # updated 50. Always includes the Job ID so callers can drill
+        # into `/api/v1/admin/jobs/:id` for the full nested state.
+        def index
+          scope = Job.includes(:repository).order(updated_at: :desc)
+          scope = scope.where(pr_number: params[:pr_number])       if params[:pr_number].present?
+          scope = scope.where(issue_number: params[:issue_number]) if params[:issue_number].present?
+          scope = scope.where(state: params[:state])               if params[:state].present?
+          if params[:repo].present?
+            owner, name = params[:repo].split("/", 2)
+            scope = scope.joins(:repository).where(repositories: { owner: owner, name: name })
+          end
+          jobs = scope.limit(50)
+          render json: {
+            count: jobs.size,
+            jobs:  jobs.map { |j| serialize_compact(j) }
+          }
+        end
+
         def show
           job = Job.includes(workflows: { steps: :runs }).find(params[:id])
           render json: serialize(job)
         end
 
         private
+
+        def serialize_compact(job)
+          {
+            id:             job.id,
+            state:          job.state,
+            kind:           job.kind,
+            repository:     job.repository.slug,
+            issue_number:   job.issue_number,
+            pr_number:      job.pr_number,
+            branch_name:    job.branch_name,
+            created_at:     job.created_at,
+            updated_at:     job.updated_at
+          }
+        end
 
         def serialize(job)
           {

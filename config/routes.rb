@@ -13,7 +13,13 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       namespace :admin do
-        resources :jobs, only: %i[ show ]
+        # `#show` returns the deep-nested Job state (workflows + steps
+        # + runs + diagnostics + claude_session metadata). `#index`
+        # is a compact list — supports `?pr_number=`, `?issue_number=`,
+        # `?repo=owner/name`, `?state=` to find a Job from external
+        # references (a GH PR url, an issue link, etc.) so the agent
+        # doesn't have to know the Syrus internal Job ID up front.
+        resources :jobs, only: %i[ show index ]
 
         # Transcripts (mirror Admin::TranscriptsController; A in
         # docs/plans/admin-diagnostics.md). Paginated event stream
