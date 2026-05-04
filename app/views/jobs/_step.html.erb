@@ -70,6 +70,10 @@
                   class: "px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 cursor-pointer",
                   form: { class: "inline" } %>
           <% end %>
+          <% if Current.user&.admin? && run.claude_session %>
+            <%= link_to "Transcript", admin_run_transcript_path(run.id),
+                  class: "px-2 py-0.5 rounded text-xs font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200" %>
+          <% end %>
         </div>
         <div class="text-xs text-gray-500">
           <% if run.running? && run.started_at %>

@@ -1,0 +1,81 @@
+<div class="space-y-6">
+  <div>
+    <div class="text-xs uppercase text-gray-500 mb-1">
+      <%= link_to "← back to job ##{@run.job_id}", job_path(@run.job), class: "underline hover:no-underline" %>
+    </div>
+    <h1 class="font-bold text-2xl">
+      Run #<%= @run.id %> · transcript
+      <% if @run.step %>
+        <span class="text-gray-500 font-normal text-base">
+          (<%= step_kind_label(@run.step.kind) %> · workflow <%= @run.step.workflow.trigger_kind_humanized %>)
+        </span>
+      <% end %>
+    </h1>
+    <p class="mt-1 text-sm text-gray-500">
+      Session <span class="font-mono"><%= @summary.session_id %></span> ·
+      <%= @summary.model %> ·
+      <%= number_to_human_size(@session.transcript_jsonl.bytesize) %> ·
+      <%= link_to "Download JSONL", admin_run_transcript_download_path(@run.id),
+            class: "text-blue-600 underline hover:no-underline" %>
+    </p>
+  </div>
+
+  <%# Summary tile %>
+  <div class="bg-white border border-gray-200 rounded-lg p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+    <div>
+      <div class="text-xs uppercase text-gray-500">Turns</div>
+      <div class="text-gray-900 font-medium"><%= @summary.total_turns || "—" %></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500">Tool calls</div>
+      <div class="text-gray-900 font-medium"><%= @summary.total_tool_calls %></div>
+    </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500">Cost</div>
+      <div class="text-gray-900 font-medium">
+        <%= @summary.total_cost_usd ? "$#{format('%.4f', @summary.total_cost_usd)}" : "—" %>
+      </div>
+    </div>
+    <div>
+      <div class="text-xs uppercase text-gray-500">Exit reason</div>
+      <div class="text-gray-900 font-mono text-xs"><%= @summary.exit_reason || "—" %></div>
+    </div>
+
+    <div class="col-span-2 md:col-span-4 border-t border-gray-100 pt-3">
+      <div class="text-xs uppercase text-gray-500 mb-1">Tool call breakdown</div>
+      <% if @summary.tool_call_counts.any? %>
+        <div class="flex flex-wrap gap-2">
+          <% @summary.tool_call_counts.sort_by { |_, c| -c }.each do |name, count| %>
+            <% mcp = name.to_s.start_with?("mcp__") %>
+            <span class="<%= mcp ? "bg-fuchsia-100 text-fuchsia-700" : "bg-gray-100 text-gray-700" %> inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono">
+              <%= name %><span class="text-gray-500">×<%= count %></span>
+            </span>
+          <% end %>
+        </div>
+      <% else %>
+        <span class="text-gray-400 italic text-xs">no tool calls</span>
+      <% end %>
+    </div>
+
+    <% if @summary.available_tools_at_init.any? %>
+      <details class="col-span-2 md:col-span-4 border-t border-gray-100 pt-3">
+        <summary class="text-xs uppercase text-gray-500 cursor-pointer">
+          Tools available at session init (<%= @summary.available_tools_at_init.size %>)
+        </summary>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          <% @summary.available_tools_at_init.each do |t| %>
+            <% mcp = t.to_s.start_with?("mcp__") %>
+            <span class="<%= mcp ? "bg-fuchsia-50 text-fuchsia-700" : "bg-gray-50 text-gray-600" %> px-1.5 py-0.5 rounded text-xs font-mono"><%= t %></span>
+          <% end %>
+        </div>
+      </details>
+    <% end %>
+  </div>
+
+  <%# Event stream %>
+  <div class="space-y-3">
+    <% @transcript.events.each_with_index do |ev, idx| %>
+      <%= render "event", event: ev, index: idx %>
+    <% end %>
+  </div>
+</div>

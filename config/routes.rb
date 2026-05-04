@@ -43,6 +43,14 @@ Rails.application.routes.draw do
     end
   end
 
+  namespace :admin do
+    # Per-Run claude transcript viewer — renders the captured
+    # ClaudeSession.transcript_jsonl as a structured event stream.
+    # See docs/plans/admin-diagnostics.md for context.
+    get  "runs/:run_id/transcript",          to: "transcripts#show",     as: :run_transcript
+    get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
+  end
+
   root "home#index"
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.
