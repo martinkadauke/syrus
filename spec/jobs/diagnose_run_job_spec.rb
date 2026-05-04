@@ -130,7 +130,7 @@ RSpec.describe DiagnoseRunJob do
         snapshot = run.run_health_snapshots.last
         expect(snapshot).to be_persisted
         # worktree_exists is false (step present but dir absent) or nil (no step).
-        expect([false, nil]).to include(snapshot.worktree_exists)
+        expect([ false, nil ]).to include(snapshot.worktree_exists)
       end
 
       it "marks health_status critical when worktree dir is gone but run has a workflow" do
@@ -196,7 +196,7 @@ RSpec.describe DiagnoseRunJob do
       s = RunHealthSnapshot.new(run: run, run_state: "running", **attrs)
 
       job = build_job
-      [job.send(:compute_health_status, s, run), job.send(:compute_hint, s, run)]
+      [ job.send(:compute_health_status, s, run), job.send(:compute_hint, s, run) ]
     end
 
     it "is healthy when heartbeat is fresh and SQ claimed" do

@@ -118,10 +118,10 @@ module Admin
 
     def boolean_repr(filter_key)
       param = case filter_key
-              when :admin            then admin_param
-              when :has_github_token then has_github_token_param
-              when :has_claude_token then has_claude_token_param
-              end
+      when :admin            then admin_param
+      when :has_github_token then has_github_token_param
+      when :has_claude_token then has_claude_token_param
+      end
       param ? "yes" : "no"
     end
   end

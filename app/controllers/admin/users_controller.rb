@@ -9,7 +9,7 @@ module Admin
       @user = User.find(params[:id])
       @recent_jobs = @user.jobs.order(created_at: :desc).limit(10)
       # Recent Runs aren't on User directly — go through Jobs.
-      @recent_runs = Run.joins(job: { }).where(jobs: { user_id: @user.id })
+      @recent_runs = Run.joins(job: {}).where(jobs: { user_id: @user.id })
                         .order(created_at: :desc).limit(10)
       # AdminAction entries the user authored (only meaningful when
       # admin? — but we surface anyway, will be empty for non-admins).

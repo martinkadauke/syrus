@@ -4,7 +4,7 @@ class HomeController < ApplicationController
   def index
     @repositories = Current.user.repositories.order(:owner, :name)
     @active_tab = params[:tab] == "workflows" ? "workflows" : "jobs"
-    @page = [params[:page].to_i, 1].max
+    @page = [ params[:page].to_i, 1 ].max
 
     # Eager-load workflows + their steps so current_step_caption(job)
     # doesn't N+1 against every row in the dashboard table.

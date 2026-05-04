@@ -31,7 +31,7 @@ module Prompts
       "too_many_failures" => "failed",
       "cancelled"         => "cancelled",
       "replaced_by_scheduled_task" => "replaced",
-      "no_changes"        => "no_changes",
+      "no_changes"        => "no_changes"
     }.freeze
 
     def initialize(scheduled_task:, fired_at: Time.current)

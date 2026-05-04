@@ -21,7 +21,7 @@ module ApplicationHelper
     "A good reputation is more valuable than money.",
     "While we stop to think, we often miss our opportunity.",
     "Speech is the mirror of the soul.",
-    "The eyes are not responsible when the mind does the seeing.",
+    "The eyes are not responsible when the mind does the seeing."
   ].freeze
 
   SYRUS_WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/Publilius_Syrus".freeze

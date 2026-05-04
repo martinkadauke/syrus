@@ -366,7 +366,7 @@ class JobsController < ApplicationController
 
   def load_job
     @job = Current.user.jobs
-                  .includes(:repository, runs: [:job_logs, :run_health_snapshots])
+                  .includes(:repository, runs: [ :job_logs, :run_health_snapshots ])
                   .find(params[:id])
   end
 

@@ -186,11 +186,11 @@ module JobsHelper
 
     css = if age_seconds < DiagnoseRunJob::WARNING_HEARTBEAT.to_i
             "text-green-600"
-          elsif age_seconds < DiagnoseRunJob::CRITICAL_HEARTBEAT.to_i
+    elsif age_seconds < DiagnoseRunJob::CRITICAL_HEARTBEAT.to_i
             "text-amber-600"
-          else
+    else
             "text-red-600 font-medium"
-          end
+    end
 
     content_tag(:span, label, class: css)
   end
@@ -200,13 +200,13 @@ module JobsHelper
     return content_tag(:span, "—", class: "text-gray-400") if sq_job_state.nil?
 
     css = case sq_job_state
-          when "claimed"  then "text-green-600"
-          when "ready"    then "text-blue-600"
-          when "finished" then "text-gray-500"
-          when "failed"   then "text-red-600 font-medium"
-          when "missing"  then "text-amber-600"
-          else                 "text-gray-600"
-          end
+    when "claimed"  then "text-green-600"
+    when "ready"    then "text-blue-600"
+    when "finished" then "text-gray-500"
+    when "failed"   then "text-red-600 font-medium"
+    when "missing"  then "text-amber-600"
+    else                 "text-gray-600"
+    end
 
     content_tag(:span, sq_job_state, class: "font-mono #{css}")
   end
@@ -224,9 +224,9 @@ module JobsHelper
   def mergeable_pill(job)
     return nil unless job.pr_number.present? || job.external_pr_number.present?
     label = case job.pr_mergeable
-            when true  then "mergeable"
-            when false then "needs rebase"
-            else            "checking…"
+    when true  then "mergeable"
+    when false then "needs rebase"
+    else            "checking…"
     end
     colored_pill(label, classes: MERGEABILITY_STYLES[label])
   end

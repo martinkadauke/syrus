@@ -157,7 +157,7 @@ RSpec.describe "Repositories", type: :request do
         expect(response).to have_http_status(:ok)
         body = JSON.parse(response.body)
         expect(body["user"]).to eq("john")
-        expect(body["orgs"]).to eq(["org-a"])
+        expect(body["orgs"]).to eq([ "org-a" ])
       end
 
       it "returns no_token error when user has no github token" do

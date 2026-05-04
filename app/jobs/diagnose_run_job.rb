@@ -124,7 +124,7 @@ class DiagnoseRunJob < ApplicationJob
   # Returns [true, info_string] | [false, nil] | [nil, nil] (unavailable).
   # Linux-only; degrades gracefully on other platforms.
   def check_claude_process(workspace_path)
-    return [nil, nil] unless File.directory?("/proc")
+    return [ nil, nil ] unless File.directory?("/proc")
 
     Dir.glob("/proc/[0-9]*/cwd").each do |cwd_link|
       cwd = File.readlink(cwd_link) rescue next
@@ -135,12 +135,12 @@ class DiagnoseRunJob < ApplicationJob
       next unless exe.to_s.include?("claude")
 
       cmdline = File.read("/proc/#{pid}/cmdline").gsub("\0", " ").strip rescue nil
-      return [true, "PID #{pid}: #{cmdline&.first(200)}"]
+      return [ true, "PID #{pid}: #{cmdline&.first(200)}" ]
     end
 
-    [false, nil]
+    [ false, nil ]
   rescue StandardError => e
-    [nil, "(#{e.class}: #{e.message})"]
+    [ nil, "(#{e.class}: #{e.message})" ]
   end
 
   # ── Assessment ───────────────────────────────────────────────────────────

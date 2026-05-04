@@ -38,7 +38,7 @@ RSpec.describe "Repository issues browser", type: :request do
 
     describe "GET /repositories/:id/issues" do
       it "renders open issues from GitHub" do
-        issues = [fake_issue(number: 7, title: "A bug"), fake_issue(number: 3, title: "Another bug")]
+        issues = [ fake_issue(number: 7, title: "A bug"), fake_issue(number: 3, title: "Another bug") ]
         stub_github_client(instance_double(GithubClient, list_all_issues: issues))
 
         get issues_repository_path(repo)
@@ -78,8 +78,8 @@ RSpec.describe "Repository issues browser", type: :request do
       end
 
       it "shows a 'Delegated' badge on issues that already have the trigger label" do
-        labeled = fake_issue(number: 5, title: "Already delegated", labels: ["syrus"])
-        stub_github_client(instance_double(GithubClient, list_all_issues: [labeled]))
+        labeled = fake_issue(number: 5, title: "Already delegated", labels: [ "syrus" ])
+        stub_github_client(instance_double(GithubClient, list_all_issues: [ labeled ]))
 
         get issues_repository_path(repo)
         expect(response.body).to include("Delegated")
@@ -88,7 +88,7 @@ RSpec.describe "Repository issues browser", type: :request do
 
       it "shows a Delegate button on issues without the trigger label" do
         unlabeled = fake_issue(number: 9, title: "Needs work")
-        stub_github_client(instance_double(GithubClient, list_all_issues: [unlabeled]))
+        stub_github_client(instance_double(GithubClient, list_all_issues: [ unlabeled ]))
 
         get issues_repository_path(repo)
         expect(response.body).to include("Delegate")

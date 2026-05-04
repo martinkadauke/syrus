@@ -640,7 +640,7 @@ RSpec.describe "Jobs", type: :request do
     context "when the job has a branch with commits" do
       it "shows the commit selector and file tree" do
         commit_sha     = "deadbeef12345678"
-        merge_base_sha = stub_compare(ahead_commits: [commit_sha])
+        merge_base_sha = stub_compare(ahead_commits: [ commit_sha ])
         stub_tree(commit_sha)
         user.update!(github_token: "ghp_test_token")
 
@@ -653,7 +653,7 @@ RSpec.describe "Jobs", type: :request do
 
       it "uses the ?ref param to select a specific commit" do
         commit_sha     = "deadbeef12345678"
-        stub_compare(ahead_commits: [commit_sha])
+        stub_compare(ahead_commits: [ commit_sha ])
         stub_tree(commit_sha)
         user.update!(github_token: "ghp_test_token")
 
@@ -664,7 +664,7 @@ RSpec.describe "Jobs", type: :request do
 
       it "loads and displays file content with syntax-highlight markup when ?path is given" do
         commit_sha = "deadbeef12345678"
-        stub_compare(ahead_commits: [commit_sha])
+        stub_compare(ahead_commits: [ commit_sha ])
         stub_tree(commit_sha)
         stub_file_content(commit_sha, "app/models/user.rb", "class User; end\n")
         user.update!(github_token: "ghp_test_token")

@@ -58,13 +58,13 @@ module SyrusMcp
         )
         SyrusMcp.write_log(run, "[mcp] submit_summary received: #{title.inspect}")
 
-        MCP::Tool::Response.new([{ type: "text", text: "Saved." }])
+        MCP::Tool::Response.new([ { type: "text", text: "Saved." } ])
       end
 
       private
 
       def invalid(reason)
-        MCP::Tool::Response.new([{ type: "text", text: "Error: #{reason}" }], error: true)
+        MCP::Tool::Response.new([ { type: "text", text: "Error: #{reason}" } ], error: true)
       end
     end
   end

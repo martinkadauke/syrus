@@ -265,7 +265,7 @@ class GithubClient
   end
 
   def add_label_to_issue(repo_slug, issue_number, label)
-    track_rate_limits { @client.add_labels_to_an_issue(repo_slug, issue_number, [label]) }
+    track_rate_limits { @client.add_labels_to_an_issue(repo_slug, issue_number, [ label ]) }
   rescue Octokit::TooManyRequests => e
     Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited adding label on #{repo_slug}##{issue_number}: #{e.message}")
     raise

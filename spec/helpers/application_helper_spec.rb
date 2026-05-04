@@ -86,5 +86,4 @@ RSpec.describe ApplicationHelper, type: :helper do
       expect(node.text).to match(/\Ain /)
     end
   end
-
 end
