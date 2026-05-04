@@ -57,9 +57,18 @@ class Workflow < ApplicationRecord
       }
     end
 
+    # Cascading cancel: when the operator cancels a workflow, every
+    # active Step (queued/running) and every active Run on those Steps
+    # also moves to `cancelled`. Without the cascade, downstream
+    # Steps that were waiting for an upstream succeed (which now
+    # never comes) sit in `queued` forever — visible to the operator
+    # as a Job that "still has queued work" despite the workflow
+    # being marked cancelled. There is no dispatcher path that
+    # would advance them otherwise.
     event :cancel do
       transitions from: [ :queued, :running ], to: :cancelled, after: -> {
         self.finished_at = Time.current
+        cancel_active_descendants!
         cleanup_workspace!
       }
     end
@@ -86,6 +95,26 @@ class Workflow < ApplicationRecord
       log_workspace_event("[workspace] cleanup complete")
     else
       log_workspace_event("[workspace] cleanup incomplete — directory may still be on disk; prune job will retry")
+    end
+  end
+
+  # Cancel every still-active Step + Run under this Workflow. Called
+  # from the `cancel` event's after-callback above. Cancels Runs first
+  # so that the Step's terminal transition observes Runs already
+  # cancelled — keeps the per-Run audit trail honest. Idempotent:
+  # already-terminal records are skipped (may_cancel? returns false).
+  def cancel_active_descendants!
+    steps.active.find_each do |step|
+      step.runs.active.find_each do |run|
+        if run.may_cancel?
+          run.cancel!
+          run.save!
+        end
+      end
+      if step.may_cancel?
+        step.cancel!
+        step.save!
+      end
     end
   end
 

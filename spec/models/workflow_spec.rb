@@ -56,6 +56,40 @@ RSpec.describe Workflow do
     end
   end
 
+  describe "#cancel cascades to active descendants" do
+    let(:wf) { described_class.create!(job: job, trigger_kind: "ci_failure") }
+
+    it "cancels every still-queued Step and any active Runs on them" do
+      done_step    = Step.create!(workflow: wf, kind: "prepare",         position: 0, state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+      stuck_step_1 = Step.create!(workflow: wf, kind: "summarize_amend", position: 1)  # queued
+      stuck_step_2 = Step.create!(workflow: wf, kind: "push",            position: 2)  # queued
+
+      done_run     = Run.create!(job: job, step: done_step, trigger_kind: "ci_failure", state: "succeeded")
+      stuck_run    = Run.create!(job: job, step: stuck_step_1, trigger_kind: "ci_failure")  # queued
+
+      wf.start!
+      wf.cancel!
+      wf.save!
+
+      expect(wf).to be_cancelled
+      expect(stuck_step_1.reload.state).to eq("cancelled")
+      expect(stuck_step_2.reload.state).to eq("cancelled")
+      expect(stuck_run.reload.state).to    eq("cancelled")
+
+      # Already-terminal records are left alone.
+      expect(done_step.reload.state).to eq("succeeded")
+      expect(done_run.reload.state).to  eq("succeeded")
+    end
+
+    it "is idempotent — cancelling again does not crash on already-cancelled descendants" do
+      step = Step.create!(workflow: wf, kind: "summarize_amend", position: 0, state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      wf.start!
+      wf.cancel!
+      wf.save!
+      expect(step.reload.state).to eq("cancelled")
+    end
+  end
+
   describe "artifacts" do
     let(:wf) { described_class.create!(job: job, trigger_kind: "initial") }
 
