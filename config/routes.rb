@@ -20,6 +20,18 @@ Rails.application.routes.draw do
         # via ?page= + ?per=, plus a raw-JSONL pass-through.
         get "runs/:run_id/transcript",     to: "transcripts#show"
         get "runs/:run_id/transcript/raw", to: "transcripts#raw"
+
+        # Queue introspection (mirror Admin::QueueController; B).
+        get  "queue/active",              to: "queue#active"
+        get  "queue/pending",             to: "queue#pending"
+        get  "queue/failed",              to: "queue#failed"
+        get  "queue/recurring",           to: "queue#recurring"
+        get  "queue/workers",             to: "queue#workers"
+        post "queue/reap_stale_runs",     to: "queue#reap_stale_runs"
+
+        # Overview + stuck list (mirror F).
+        get "overview", to: "overview#show"
+        get "stuck",    to: "overview#stuck"
       end
     end
   end
