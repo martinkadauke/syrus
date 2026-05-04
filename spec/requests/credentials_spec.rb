@@ -54,4 +54,47 @@ RSpec.describe "Credentials", type: :request do
       expect(user.reload.agent_max_turns).to eq(original)
     end
   end
+
+  describe "API token (admin only)" do
+    context "as admin" do
+      let(:admin) { Factories.user }
+      before { sign_in_as(admin) }
+
+      it "rotate_api_token issues a fresh token and shows it once via flash" do
+        post rotate_api_token_credentials_path
+        expect(response).to redirect_to(edit_credentials_path)
+        get edit_credentials_path
+        # Plaintext appears in the body once (the flash-reveal block)
+        expect(response.body).to match(/syrus_[A-Za-z0-9_-]{30,}/)
+        # Persisted (deterministic-encrypted) so we can re-look-up
+        expect(admin.reload.api_token).to start_with("syrus_")
+      end
+
+      it "revoke_api_token clears the column" do
+        admin.generate_api_token!
+        delete revoke_api_token_credentials_path
+        expect(response).to redirect_to(edit_credentials_path)
+        expect(admin.reload.api_token).to be_nil
+      end
+    end
+
+    context "as non-admin" do
+      let(:admin) { Factories.user }       # first user → admin
+      let(:non_admin) { admin; Factories.user }
+      before { sign_in_as(non_admin) }
+
+      it "blocks rotate_api_token" do
+        post rotate_api_token_credentials_path
+        expect(response).to redirect_to(edit_credentials_path)
+        expect(flash[:alert]).to match(/admin/i)
+        expect(non_admin.reload.api_token).to be_nil
+      end
+
+      it "blocks revoke_api_token" do
+        non_admin  # eager-eval before stubbing
+        delete revoke_api_token_credentials_path
+        expect(flash[:alert]).to match(/admin/i)
+      end
+    end
+  end
 end

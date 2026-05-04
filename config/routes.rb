@@ -3,7 +3,19 @@ Rails.application.routes.draw do
   resources :passwords, param: :token
   resources :users, only: %i[ new create ]
 
-  resource :credentials, only: %i[ edit update ]
+  resource :credentials, only: %i[ edit update ] do
+    post :rotate_api_token
+    delete :revoke_api_token
+  end
+
+  # Admin REST API. Token-based auth (per-user), JSON only.
+  # See docs/plans/admin-diagnostics.md for the endpoint plan.
+  namespace :api do
+    namespace :v1 do
+      namespace :admin do
+      end
+    end
+  end
   resources :repositories do
     collection do
       get :owners

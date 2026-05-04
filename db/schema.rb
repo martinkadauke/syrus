@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_03_230000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
@@ -190,6 +190,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_230000) do
   create_table "users", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.boolean "admin", default: false, null: false
     t.integer "agent_max_turns", default: 200, null: false
+    t.string "api_token"
     t.string "claude_oauth_token"
     t.datetime "created_at", null: false
     t.string "email_address", null: false
@@ -201,6 +202,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_03_230000) do
     t.string "github_token"
     t.string "password_digest", null: false
     t.datetime "updated_at", null: false
+    t.index ["api_token"], name: "index_users_on_api_token", unique: true
     t.index ["email_address"], name: "index_users_on_email_address", unique: true
   end
 

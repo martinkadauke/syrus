@@ -7,6 +7,10 @@ class User < ApplicationRecord
 
   encrypts :claude_oauth_token
   encrypts :github_token
+  # `deterministic: true` so we can WHERE on the encrypted column
+  # for the API auth lookup. Same plaintext always encrypts to the
+  # same ciphertext under deterministic mode.
+  encrypts :api_token, deterministic: true
 
   normalizes :email_address, with: ->(e) { e.strip.downcase }
 
@@ -29,6 +33,23 @@ class User < ApplicationRecord
 
   def admin?
     admin
+  end
+
+  # Generate (and persist) a fresh API token. Returns the
+  # plaintext token so the caller can show it to the operator
+  # ONCE — it's stored deterministic-encrypted, so the operator
+  # who doesn't write it down has to rotate. Crypt-quality random:
+  # 32 bytes of urlsafe base64 (~43 chars).
+  API_TOKEN_PREFIX = "syrus_".freeze
+
+  def generate_api_token!
+    token = API_TOKEN_PREFIX + SecureRandom.urlsafe_base64(32)
+    update!(api_token: token)
+    token
+  end
+
+  def revoke_api_token!
+    update!(api_token: nil)
   end
 
   private
