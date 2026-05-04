@@ -1,6 +1,12 @@
 ---
 name: syrus-debug
 description: Debug Syrus production via the /api/v1/admin REST API. Use when the operator asks about stuck Jobs, failed Runs, queue starvation, MCP / claude-session issues, or any "what's going on with X" question that would otherwise need kubectl exec + Rails runner.
+allowed-tools:
+  - Bash(curl:*)
+  - Bash(jq:*)
+  - Bash(cat:*)
+  - Bash(date:*)
+  - Bash(echo:*)
 ---
 
 # Syrus debug skill
