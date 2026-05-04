@@ -38,6 +38,20 @@ Pattern: read the operator's question, pick the entry point, dig
 from there. Don't run mutations without explicit operator
 authorization.
 
+### "Find the Syrus Job ID for this PR / issue"
+
+You usually know the GitHub PR or issue number, not the Syrus Job ID.
+Look it up:
+
+```bash
+curl -s -H "Authorization: Bearer $SYRUS_TOKEN" \
+  "$SYRUS_BASE/api/v1/admin/jobs?pr_number=144&repo=tkadauke/syrus" | jq .
+```
+
+Filters: `pr_number`, `issue_number`, `repo=owner/name`, `state`.
+Returns a compact list (id, repo slug, issue/pr/branch, timestamps).
+Pick the id from there and drill into the full state below.
+
 ### "Job N seems stuck / failed / weird"
 
 ```bash
@@ -129,6 +143,7 @@ in-flight Runs.
 |---|---|
 | `GET /api/v1/admin/overview` | Tile rollup: active/queued/failed counts, workers, recurring, GH rate limits, capture rate, stuck items |
 | `GET /api/v1/admin/stuck` | Full stuck-items list (warn + alarm) |
+| `GET /api/v1/admin/jobs` | Compact list. Filters: `pr_number`, `issue_number`, `repo=owner/name`, `state`. Use to map a GH PR/issue back to a Syrus Job ID |
 | `GET /api/v1/admin/jobs/:id` | Job + workflows + steps + runs + diagnostics + claude_session metadata, all in one |
 | `GET /api/v1/admin/runs/:run_id/transcript[?page=N&per=K]` | Parsed transcript: summary + paginated events |
 | `GET /api/v1/admin/runs/:run_id/transcript/raw` | Raw JSONL bytes |
