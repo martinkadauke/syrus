@@ -6,7 +6,17 @@ class ApplicationController < ActionController::Base
   # Changes to the importmap will invalidate the etag for HTML responses
   stale_when_importmap_changes
 
+  before_action :compute_system_alerts
+
   private
+
+  # Populate the layout's alert banner area. Computed every request
+  # rather than cached — alert sources are cheap (column reads) and
+  # we want the banner to disappear the moment the operator fixes
+  # the underlying problem (e.g. updates their GH token).
+  def compute_system_alerts
+    @system_alerts = SystemAlerts.active_for(user: Current.user)
+  end
 
   def require_admin
     return if Current.user&.admin?

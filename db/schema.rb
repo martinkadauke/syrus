@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_04_130000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_04_140000) do
   create_table "admin_actions", force: :cascade do |t|
     t.string "action", null: false
     t.datetime "created_at", null: false
@@ -253,6 +253,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_130000) do
     t.string "claude_oauth_token"
     t.datetime "created_at", null: false
     t.string "email_address", null: false
+    t.datetime "gh_api_blocked_at"
+    t.text "gh_api_blocked_reason"
     t.integer "gh_rate_limit_limit"
     t.datetime "gh_rate_limit_observed_at"
     t.integer "gh_rate_limit_remaining"

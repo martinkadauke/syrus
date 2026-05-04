@@ -63,6 +63,14 @@
     </header>
 
     <main class="container mx-auto mt-10 px-5 pb-16">
+      <%# Persistent system alerts (GH API blocked, polling paused, etc).
+          Sourced from SystemAlerts.active_for; rendered via the
+          reusable shared/_alert_banner partial so any future alert
+          slots in without changing this layout. %>
+      <% Array(@system_alerts).each do |alert| %>
+        <div class="mb-5"><%= render "shared/alert_banner", alert: alert %></div>
+      <% end %>
+
       <% if alert = flash[:alert] %>
         <p class="py-2 px-3 bg-red-50 mb-5 text-red-500 font-medium rounded-lg inline-block" id="alert" data-controller="flash"><%= alert %></p>
       <% end %>

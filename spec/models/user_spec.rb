@@ -79,4 +79,47 @@ RSpec.describe User do
       expect(user.errors[:agent_max_turns]).to be_present
     end
   end
+
+  describe "GH API blocked flag" do
+    let(:user) { Factories.user }
+
+    it "is not blocked by default" do
+      expect(user).not_to be_gh_api_blocked
+    end
+
+    it "mark_gh_api_blocked! sets timestamp + reason" do
+      user.mark_gh_api_blocked!("Resource not accessible")
+      expect(user).to be_gh_api_blocked
+      expect(user.gh_api_blocked_reason).to eq("Resource not accessible")
+    end
+
+    it "is idempotent for the same reason — doesn't rewrite the row" do
+      user.mark_gh_api_blocked!("same reason")
+      first_at = user.gh_api_blocked_at
+      sleep 0.01
+      user.mark_gh_api_blocked!("same reason")
+      expect(user.reload.gh_api_blocked_at).to be_within(0.001).of(first_at)
+    end
+
+    it "updates the timestamp when the reason changes" do
+      user.mark_gh_api_blocked!("first reason")
+      first_at = user.gh_api_blocked_at
+      sleep 0.01
+      user.mark_gh_api_blocked!("second reason")
+      expect(user.reload.gh_api_blocked_reason).to eq("second reason")
+      expect(user.gh_api_blocked_at).to be > first_at
+    end
+
+    it "clear_gh_api_blocked! resets timestamp + reason when blocked" do
+      user.mark_gh_api_blocked!("anything")
+      user.clear_gh_api_blocked!
+      expect(user).not_to be_gh_api_blocked
+      expect(user.reload.gh_api_blocked_reason).to be_nil
+    end
+
+    it "truncates very long reasons to fit the column" do
+      user.mark_gh_api_blocked!("x" * 1000)
+      expect(user.reload.gh_api_blocked_reason.length).to be <= 500
+    end
+  end
 end

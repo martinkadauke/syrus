@@ -17,6 +17,11 @@ class PollPullRequestJob < ApplicationJob
     @slug = @job.repository.slug
     @pr = @client.pull_request(@slug, @job.pr_number)
 
+    # Reaching this point means the user's GH token is at least
+    # readable for pull_request — clear any stale "API blocked"
+    # banner. Per-branch errors below mark it again if needed.
+    @job.user.clear_gh_api_blocked!
+
     return close_with("pr_merged") if @pr.merged
     return close_with("pr_closed") if @pr.state == "closed"
     return close_with("syrus_stop") if has_label?(@pr, "syrus-stop")
@@ -24,6 +29,12 @@ class PollPullRequestJob < ApplicationJob
 
     react_to_pr_comments
     react_to_ci_failures
+  rescue Octokit::Forbidden, Octokit::Unauthorized => e
+    # The pull_request fetch itself failed on permissions — record
+    # for the banner, then re-raise so SolidQueue's failed_executions
+    # table reflects the actual error class for later diagnostics.
+    @job&.user&.mark_gh_api_blocked!(strip_docs_url(e.message))
+    raise
   end
 
   private
@@ -127,6 +138,26 @@ class PollPullRequestJob < ApplicationJob
     return if failed.empty?
 
     enqueue_ci_failure_run(head_sha, failed)
+  rescue Octokit::Forbidden, Octokit::Unauthorized => e
+    # Check-runs requires `Checks: read` (fine-grained) or `repo`
+    # (classic). PR-comment polling above doesn't, so we treat
+    # check-runs as best-effort: record the failure on the user
+    # for the banner, log, and let the rest of the poll proceed.
+    # Pre-existing pr_comment Runs that already enqueued this poll
+    # shouldn't all die because CI scope is missing.
+    reason = strip_docs_url(e.message)
+    @job.user.mark_gh_api_blocked!("check-runs: #{reason}")
+    Rails.logger.warn("[PollPullRequestJob] job #{@job.id}: ci_failure path disabled — #{reason[0, 160]}")
+  end
+
+  # Octokit error messages are shaped:
+  #   "GET https://...: 403 - <real message> // See: <docs_url>"
+  # We want the operator-facing slice (everything before the
+  # ` // See:` documentation pointer) but split-on-`//` would
+  # eat the URL's own protocol prefix. Anchor on " // " (with
+  # spaces) to preserve the URL.
+  def strip_docs_url(message)
+    message.to_s.split(/ \/\/ /, 2).first.to_s.strip
   end
 
   def ci_failure_cap_reached?

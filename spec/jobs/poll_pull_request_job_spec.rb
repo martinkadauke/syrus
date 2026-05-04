@@ -298,4 +298,59 @@ RSpec.describe PollPullRequestJob do
       }.not_to change { bare.runs.count }
     end
   end
+
+  describe "graceful degradation on GitHub API permission errors" do
+    let(:check_runs_url) { "https://api.github.com/repos/acme/widgets/commits/deadbeef0000000000000000000000000000beef/check-runs" }
+
+    before do
+      stub_pr
+      stub_reviews
+    end
+
+    it "records the user as gh_api_blocked when check-runs returns 403, and still processes new comments" do
+      stub_request(:get, check_runs_url).with(query: hash_including({})).to_return(
+        status: 403,
+        headers: { "Content-Type" => "application/json" },
+        body: { message: "Resource not accessible by personal access token", documentation_url: "https://docs.github.com" }.to_json
+      )
+
+      stub_issue_comments([
+        { id: 1, body: "please fix the typo", user: { login: "reviewer" }, created_at: 1.minute.ago.iso8601 }
+      ])
+      stub_review_comments
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { user.reload.gh_api_blocked_at }.from(nil)
+       .and change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
+
+      expect(user.reload.gh_api_blocked_reason).to include("check-runs")
+      expect(user.reload.gh_api_blocked_reason).to include("Resource not accessible")
+    end
+
+    it "clears gh_api_blocked when the next poll's pull_request fetch succeeds" do
+      user.mark_gh_api_blocked!("stale earlier failure")
+      stub_request(:get, check_runs_url).with(query: hash_including({})).to_return(
+        status: 200, headers: { "Content-Type" => "application/json" },
+        body: { total_count: 0, check_runs: [] }.to_json
+      )
+      stub_issue_comments
+      stub_review_comments
+
+      expect { described_class.perform_now(job.id) }
+        .to change { user.reload.gh_api_blocked_at }.to(nil)
+    end
+
+    it "raises on a 403 from the pull_request fetch itself (whole poll is dead, banner explains)" do
+      stub_request(:get, pr_url).with(query: hash_including({})).to_return(
+        status: 403,
+        headers: { "Content-Type" => "application/json" },
+        body: { message: "Resource not accessible by personal access token", documentation_url: "https://docs.github.com" }.to_json
+      )
+
+      expect { described_class.perform_now(job.id) }
+        .to raise_error(Octokit::Forbidden)
+      expect(user.reload).to be_gh_api_blocked
+    end
+  end
 end

@@ -53,6 +53,27 @@ class User < ApplicationRecord
     update!(api_token: nil)
   end
 
+  # Toggle for the dashboard banner. Set when a GitHub API call
+  # returns a permission-class error (403 "Resource not accessible
+  # by personal access token", 401, etc.) — so the operator sees a
+  # banner pointing at /credentials and polling jobs know to
+  # degrade specific endpoints rather than crash. `reason` is the
+  # short error string verbatim from Octokit, displayed in the
+  # banner so the operator can match against GH docs.
+  def mark_gh_api_blocked!(reason)
+    return if gh_api_blocked_at && gh_api_blocked_reason == reason  # idempotent — don't bump timestamps for the same recurring error
+    update_columns(gh_api_blocked_at: Time.current, gh_api_blocked_reason: reason.to_s[0, 500])
+  end
+
+  def clear_gh_api_blocked!
+    return unless gh_api_blocked_at
+    update_columns(gh_api_blocked_at: nil, gh_api_blocked_reason: nil)
+  end
+
+  def gh_api_blocked?
+    gh_api_blocked_at.present?
+  end
+
   private
 
   def promote_first_user_to_admin
