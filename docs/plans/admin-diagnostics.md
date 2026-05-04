@@ -256,3 +256,103 @@ logic.
 Admin gating: existing `Current.user&.admin?` check (already
 used by RunDiagnostic in `_step.html.erb`). New routes scoped to
 admins via a `before_action :require_admin`.
+
+---
+
+## REST API + Claude skill (so the agent can self-debug)
+
+The whole point of these tools is to shortcut investigation. The
+human in the loop benefits from the UI; **Claude (running in the
+operator's terminal) benefits from a structured API + a skill
+that documents how to use it.** The kubectl-cp + Rails-runner loop
+that was painful for me-the-human is also painful for Claude —
+it has to write the script, copy it in, exec it, parse the
+output. A versioned JSON API replaces all of that with a single
+`curl`.
+
+### Shape
+
+- New namespace: `/api/v1/admin/*`. Same `require_admin` gate
+  as the HTML admin views, but with an additional auth path
+  (token-based, per-user) so the API can be called from outside
+  a browser session. Token lives on `User#api_token` (encrypted,
+  rotatable from /credentials).
+- Response shape: `application/json` always; errors as
+  `{ "error": { "code": "...", "message": "..." } }` with proper
+  HTTP status. No HTML in the API.
+- Versioned at v1. Breaking changes get a v2; no rolling
+  changes within v1.
+- Auth via `Authorization: Bearer <token>` header.
+
+### Endpoints (v1)
+
+Mirroring the admin UI, but JSON-shaped for programmatic use:
+
+**Transcripts (A)**
+- `GET /api/v1/admin/runs/:run_id/transcript` →
+  `{ summary: {...}, events: [...] }` (paginated for large
+  sessions via `?page=N&per=50`)
+- `GET /api/v1/admin/runs/:run_id/transcript/raw` → raw JSONL,
+  same as the download endpoint
+
+**Queue (B)**
+- `GET /api/v1/admin/queue/active` → currently-claimed SQ jobs
+- `GET /api/v1/admin/queue/pending` → queued, not yet claimed
+- `GET /api/v1/admin/queue/failed?since=ISO8601` → recent failures
+- `GET /api/v1/admin/queue/recurring` → schedule + last-fired-at
+- `GET /api/v1/admin/queue/workers` → process list + heartbeats
+- `POST /api/v1/admin/queue/reap_stale_runs` → trigger
+  `ReapStaleRunsJob.perform_now`
+
+**Overview (F)**
+- `GET /api/v1/admin/overview` → all the tiles' data in one shot
+- `GET /api/v1/admin/stuck` → the watchlist (G)
+
+**Job introspection (general)**
+- `GET /api/v1/admin/jobs/:id` → Job + Workflows + Steps + Runs
+  + diagnostics + claude_session metadata, all in one shot.
+  Replaces the "dump full state" Rails runner pattern from
+  every recent investigation.
+- `GET /api/v1/admin/runs/:id/diagnostic` → RunDiagnostic JSON
+
+**Workflow control**
+- `POST /api/v1/admin/workflows/:id/retry_step` → mirror of the
+  existing JobsController#retry_step
+- `POST /api/v1/admin/workflows/:id/cleanup_workspace` →
+  trigger `WorkflowWorkspace.cleanup_for(workflow)` early
+  (handy when the operator wants to free disk before the daily
+  prune)
+
+### Claude skill
+
+Lives at `~/.claude/skills/syrus-debug/SKILL.md` (per-user) or in
+the project's `claude-skills/` directory if we want it
+checked-in. The skill documents:
+
+- Auth setup (where to put the API token; one-line `curl` template)
+- Decision tree per investigation type:
+  - "Job seems stuck" → check `/admin/jobs/:id`, then
+    `/admin/queue/workers` + `/admin/queue/recurring`
+  - "Run failed with max_turns" → fetch transcript, look at
+    `summary.tool_call_counts` and `summary.mcp_tool_called?`
+  - "Mergeability not updating" → fetch the Job + check
+    `pr_mergeable_checked_at`, then `/admin/queue/failed` for
+    PollRebaseJob errors
+- A short list of "if you see X, look at Y" patterns drawn from
+  this doc's "Patterns we kept hitting" table
+- Safe-to-call vs careful-with endpoints (POST mutations are
+  the ones that need explicit user authorization)
+
+The skill's load-on-demand model means Claude reads it only when
+debugging Syrus, so it doesn't inflate the per-session context.
+The skill itself can `curl` the API directly; no special Claude
+tooling required.
+
+### Build order amendment
+
+After A / B / F land their UI, expose the same data through the
+v1 API in one batch. The HTML controllers and the API
+controllers share the same data assembly methods (extract a
+small `Diagnostics::*` namespace of plain Ruby objects that
+returns hashes, then both controllers serialize). Skill ships
+with the API.
