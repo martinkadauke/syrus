@@ -116,30 +116,49 @@ RSpec.describe Steps::Base do
   end
 
   describe "#with_mcp_config" do
-    # AgentInvocation strips Bundler env before launching claude; claude
-    # passes its env (minus BUNDLE_PATH etc.) through to MCP server
-    # children. Without forwarding the worker's bundler config, the
-    # sidecar's Rails boot can't find Syrus's gems and claude marks
-    # the server as `failed` in its system/init event.
+    # AgentInvocation strips env before launching claude (allowlist of
+    # OS-level vars only — no RAILS_ENV, no DB credentials, no Bundler
+    # config). claude doesn't restore any of that when spawning MCP
+    # server children, so the sidecar inherits a near-empty env. Without
+    # forwarding the worker's Rails+Bundler config, the sidecar's
+    # Rails boot crashes (defaults to development, can't load gems
+    # WITHOUT'd at install time) and claude marks the server `failed`
+    # in its system/init event.
     around do |ex|
-      saved = ENV.to_h.slice("BUNDLE_PATH", "BUNDLE_DEPLOYMENT", "BUNDLE_WITHOUT")
-      ENV["BUNDLE_PATH"]       = "/usr/local/bundle"
-      ENV["BUNDLE_DEPLOYMENT"] = "1"
-      ENV["BUNDLE_WITHOUT"]    = "development:test"
+      stash = {
+        "RAILS_ENV"               => "production",
+        "RAILS_MASTER_KEY"        => "deadbeef",
+        "SECRET_KEY_BASE"         => "secretsecret",
+        "RAILS_LOG_TO_STDOUT"     => "1",
+        "DB_HOST"                 => "syrus-mysql",
+        "SYRUS_DATABASE_PASSWORD" => "swordfish",
+        "BUNDLE_PATH"             => "/usr/local/bundle",
+        "BUNDLE_DEPLOYMENT"       => "1",
+        "BUNDLE_WITHOUT"          => "development:test",
+        "TZ"                      => "America/New_York"
+      }
+      saved = ENV.to_h.slice(*stash.keys)
+      stash.each { |k, v| ENV[k] = v }
       ex.run
     ensure
-      %w[ BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT ].each { |k| ENV.delete(k) }
+      stash.keys.each { |k| ENV.delete(k) }
       saved.each { |k, v| ENV[k] = v }
     end
 
-    it "writes mcp.json with worker's BUNDLE_* env forwarded to the sidecar" do
+    it "forwards RAILS_*, DB_*, BUNDLE_*, TZ from worker env into mcp.json" do
       handler.with_mcp_config do |path|
         config = JSON.parse(File.read(path))
         env    = config.dig("mcpServers", "syrus-mcp-sidecar", "env")
         expect(env).to include(
-          "BUNDLE_PATH"       => "/usr/local/bundle",
-          "BUNDLE_DEPLOYMENT" => "1",
-          "BUNDLE_WITHOUT"    => "development:test"
+          "RAILS_ENV"               => "production",
+          "RAILS_MASTER_KEY"        => "deadbeef",
+          "SECRET_KEY_BASE"         => "secretsecret",
+          "DB_HOST"                 => "syrus-mysql",
+          "SYRUS_DATABASE_PASSWORD" => "swordfish",
+          "BUNDLE_PATH"             => "/usr/local/bundle",
+          "BUNDLE_DEPLOYMENT"       => "1",
+          "BUNDLE_WITHOUT"          => "development:test",
+          "TZ"                      => "America/New_York"
         )
       end
     end
@@ -157,7 +176,7 @@ RSpec.describe Steps::Base do
 
   describe "#sidecar_env" do
     it "omits keys not present in the worker's ENV (don't pass empty strings to claude)" do
-      %w[ BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT ].each { |k| ENV.delete(k) }
+      Steps::Base::SIDECAR_ENV_FORWARD.each { |k| ENV.delete(k) }
       expect(handler.sidecar_env).to eq({})
     end
   end

@@ -145,12 +145,31 @@ module Steps
       end
     end
 
+    # Env vars the sidecar needs to boot Syrus's Rails app and reach
+    # MySQL. claude is launched with `unsetenv_others: true` and a
+    # narrow allowlist (so the agent's claude doesn't accidentally
+    # see Syrus-internal credentials or use Syrus's bundle); claude
+    # then doesn't put any of those back when spawning MCP server
+    # children. Without this forwarding, the sidecar inherits a
+    # near-empty env, Rails defaults to `development` (which loads
+    # gems not installed in the prod-WITHOUT bundle), and the boot
+    # crashes before claude completes the MCP handshake — hence
+    # `mcp_servers: [{name: syrus-mcp-sidecar, status: failed}]`.
+    SIDECAR_ENV_FORWARD = %w[
+      RAILS_ENV
+      RAILS_MASTER_KEY
+      SECRET_KEY_BASE
+      RAILS_LOG_TO_STDOUT
+      DB_HOST
+      SYRUS_DATABASE_PASSWORD
+      BUNDLE_PATH
+      BUNDLE_DEPLOYMENT
+      BUNDLE_WITHOUT
+      TZ
+    ].freeze
+
     def sidecar_env
-      forwarded = {}
-      %w[ BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT ].each do |k|
-        forwarded[k] = ENV[k] if ENV[k]
-      end
-      forwarded
+      ENV.slice(*SIDECAR_ENV_FORWARD).compact
     end
 
     # Resume threading. v1 contract: `--resume` only crosses Step
