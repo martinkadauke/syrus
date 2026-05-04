@@ -32,6 +32,11 @@ Rails.application.routes.draw do
         # Overview + stuck list (mirror F).
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
+
+        # Workflow control — the same mutations the HTML admin UI
+        # exposes, but available programmatically.
+        post "workflows/:id/retry_step",        to: "workflows#retry_step"
+        post "workflows/:id/cleanup_workspace", to: "workflows#cleanup_workspace"
       end
     end
   end
