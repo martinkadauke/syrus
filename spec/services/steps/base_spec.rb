@@ -13,7 +13,7 @@ RSpec.describe Steps::Base do
   let(:handler_class) do
     Class.new(described_class) do
       def call; nil; end
-      public :log, :parent_session_id   # expose for tests
+      public :log, :parent_session_id, :with_mcp_config, :sidecar_env   # expose for tests
     end
   end
   let(:handler) { handler_class.new(run) }
@@ -112,6 +112,53 @@ RSpec.describe Steps::Base do
                         parent_session_id: "S-explicit")
       h = handler_class.new(run)
       expect(h.parent_session_id).to eq("S-explicit")
+    end
+  end
+
+  describe "#with_mcp_config" do
+    # AgentInvocation strips Bundler env before launching claude; claude
+    # passes its env (minus BUNDLE_PATH etc.) through to MCP server
+    # children. Without forwarding the worker's bundler config, the
+    # sidecar's Rails boot can't find Syrus's gems and claude marks
+    # the server as `failed` in its system/init event.
+    around do |ex|
+      saved = ENV.to_h.slice("BUNDLE_PATH", "BUNDLE_DEPLOYMENT", "BUNDLE_WITHOUT")
+      ENV["BUNDLE_PATH"]       = "/usr/local/bundle"
+      ENV["BUNDLE_DEPLOYMENT"] = "1"
+      ENV["BUNDLE_WITHOUT"]    = "development:test"
+      ex.run
+    ensure
+      %w[ BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT ].each { |k| ENV.delete(k) }
+      saved.each { |k, v| ENV[k] = v }
+    end
+
+    it "writes mcp.json with worker's BUNDLE_* env forwarded to the sidecar" do
+      handler.with_mcp_config do |path|
+        config = JSON.parse(File.read(path))
+        env    = config.dig("mcpServers", "syrus-mcp-sidecar", "env")
+        expect(env).to include(
+          "BUNDLE_PATH"       => "/usr/local/bundle",
+          "BUNDLE_DEPLOYMENT" => "1",
+          "BUNDLE_WITHOUT"    => "development:test"
+        )
+      end
+    end
+
+    it "uses syrus-mcp-sidecar as both the config key and command basename" do
+      handler.with_mcp_config do |path|
+        config = JSON.parse(File.read(path))
+        servers = config["mcpServers"]
+        expect(servers.keys).to eq([ "syrus-mcp-sidecar" ])
+        expect(servers["syrus-mcp-sidecar"]["command"]).to end_with("/syrus-mcp-sidecar")
+        expect(servers["syrus-mcp-sidecar"]["alwaysLoad"]).to be(true)
+      end
+    end
+  end
+
+  describe "#sidecar_env" do
+    it "omits keys not present in the worker's ENV (don't pass empty strings to claude)" do
+      %w[ BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT ].each { |k| ENV.delete(k) }
+      expect(handler.sidecar_env).to eq({})
     end
   end
 end

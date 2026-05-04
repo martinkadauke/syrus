@@ -5,6 +5,22 @@
 # Boots full Rails so the sidecar can read/write the Run via
 # ActiveRecord and append to JobLog. Same boot path as bin/jobs.
 
+# Force Bundler to use Syrus's own Gemfile, no matter what the
+# spawning process inherited. AgentInvocation sets BUNDLE_GEMFILE
+# to the target repo's Gemfile when the workspace is a Bundler
+# project (so the agent's `bundle exec ...` targets the right
+# bundle); claude inherits that env and passes it through to its
+# MCP server children — including this sidecar. Without this
+# override, `require_relative "../config/environment"` boots
+# Bundler.setup against the target repo's Gemfile.lock, which
+# either crashes outright or loads the wrong gems and breaks the
+# Run.find lookup that follows. Manifests as
+# `mcp_servers: [{name: syrus-mcp-sidecar, status: failed}]` in
+# claude's system/init event, and the agent's call to
+# `mcp__syrus-mcp-sidecar__submit_summary` failing with
+# "No such tool available" because the server never registered.
+ENV["BUNDLE_GEMFILE"] = File.expand_path("../Gemfile", __dir__)
+
 require_relative "../config/environment"
 
 run_id_index = ARGV.index("--run-id")

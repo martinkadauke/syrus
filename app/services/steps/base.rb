@@ -123,7 +123,19 @@ module Steps
               type: "stdio",
               command: Rails.root.join("bin/syrus-mcp-sidecar").to_s,
               args: [ "--run-id", run.id.to_s ],
-              env: {},
+              # Forward the worker's Bundler env to the sidecar.
+              # AgentInvocation strips Bundler vars before launching
+              # claude (so the agent doesn't accidentally use
+              # Syrus's bundle when working in the target repo);
+              # claude in turn doesn't restore them when spawning
+              # MCP server children. Without these forwarded back,
+              # the sidecar's Rails boot can't find Syrus's gems
+              # (BUNDLE_PATH points to /usr/local/bundle in the
+              # prod image; nil in dev where the default works).
+              # The binstub force-sets BUNDLE_GEMFILE itself; we
+              # supply BUNDLE_PATH and friends here so deployment
+              # / without rules carry over.
+              env: sidecar_env,
               alwaysLoad: true
             }
           }
@@ -131,6 +143,14 @@ module Steps
         f.flush
         yield f.path
       end
+    end
+
+    def sidecar_env
+      forwarded = {}
+      %w[ BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT ].each do |k|
+        forwarded[k] = ENV[k] if ENV[k]
+      end
+      forwarded
     end
 
     # Resume threading. v1 contract: `--resume` only crosses Step
