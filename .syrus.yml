@@ -1,0 +1,15 @@
+# Syrus's own .syrus.yml — picked up by Steps::Prepare in any
+# workflow run against this repo (Initial / Replay / PrFeedback /
+# CiFailure). The agent skips the dependency-install dance that
+# tripped earlier runs (Job 166: ~25 turns spent figuring out how
+# to make `bin/rspec` work because gems weren't installed).
+
+prepare:
+  # The agent's env strips BUNDLE_PATH (per Steps::Prepare's
+  # PREP_ENV_FORWARD allowlist), but bundler defaults to a global
+  # location otherwise. Pin install location to the workspace's
+  # `vendor/bundle/` via a workspace-local `.bundle/config` so
+  # `bin/rspec`, `bundle exec rails test`, etc. all resolve gems
+  # the agent just installed.
+  - bundle config set --local path vendor/bundle
+  - bundle install --jobs 4

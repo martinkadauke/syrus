@@ -19,6 +19,18 @@ module Steps
   class Prepare < Base
     PER_COMMAND_TIMEOUT = 10.minutes.to_i
 
+    # Mirror of AgentInvocation::AGENT_ENV_FORWARD. Prep commands
+    # run with EXACTLY this env (unsetenv_others: true) so the
+    # worker pod's BUNDLE_PATH=/usr/local/bundle, BUNDLE_DEPLOYMENT=1,
+    # BUNDLE_WITHOUT="development:test", RAILS_ENV=production, etc.
+    # don't leak into a `bundle install` that's supposed to install
+    # the target repo's gems (incl. test gems) into the workspace.
+    # Same posture the agent gets — predictable, repo-independent.
+    PREP_ENV_FORWARD = %w[
+      HOME USER LOGNAME PATH TERM LANG LC_ALL LC_CTYPE TZ HOSTNAME TMPDIR SHELL
+      MISE_DATA_DIR
+    ].freeze
+
     def call
       workspace.setup
       plan = RepoPrepPlan.for(workspace.path)
@@ -42,13 +54,17 @@ module Steps
     private
 
     # `bash -c` so quoting / pipelines / && in commands work.
-    # cwd = workspace path. Streams stdout+stderr (popen2e merges
-    # them) into JobLog one line at a time so the operator can
-    # watch the install live. Hard timeout via a watcher thread
-    # that SIGTERMs the process tree if it exceeds the budget.
+    # cwd = workspace path. Env scrubbed via PREP_ENV_FORWARD +
+    # unsetenv_others. Streams stdout+stderr (popen2e merges them)
+    # into JobLog one line at a time so the operator can watch the
+    # install live. Hard timeout via a watcher thread that SIGTERMs
+    # the process tree if it exceeds the budget.
     def run_shell(cmd)
       timed_out = false
-      Open3.popen2e("bash", "-c", cmd, chdir: workspace.path.to_s) do |stdin, output, wait_thread|
+      env = ENV.slice(*PREP_ENV_FORWARD)
+      Open3.popen2e(env, "bash", "-c", cmd,
+                    chdir: workspace.path.to_s,
+                    unsetenv_others: true) do |stdin, output, wait_thread|
         stdin.close
         killer = Thread.new do
           sleep PER_COMMAND_TIMEOUT
