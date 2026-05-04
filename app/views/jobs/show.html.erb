@@ -167,8 +167,10 @@
     <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.11.1/highlight.min.js"></script>
   <% end %>
 
-  <% if summary_run %>
-
+  <%# Tabs render unconditionally — Summary, Workflows, and Source
+      are always-present panes. The Summary panel below handles the
+      empty-state ("No summary yet") so the tabs don't disappear on a
+      Job with no completed Runs yet. %>
   <div data-controller="tabs">
     <div class="flex border-b border-gray-200">
       <button type="button" data-tabs-target="tab" data-action="click->tabs#switch" data-tab-id="summary"
@@ -218,16 +220,6 @@
       </turbo-frame>
     </div>
   </div>
-
-  <% else %>
-    <% if @job.issue_body.present? %>
-      <pre class="text-sm text-gray-500 whitespace-pre-wrap break-words max-w-prose font-mono"><%= @job.issue_body %></pre>
-    <% end %>
-
-    <div class="space-y-6">
-      <%= render "workflows", workflows: workflows, job: @job %>
-    </div>
-  <% end %>
 
   <div class="text-sm">
     <%= link_to "← Back to dashboard", root_path, class: "text-gray-700 underline hover:no-underline" %>

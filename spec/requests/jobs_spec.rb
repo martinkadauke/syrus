@@ -131,7 +131,7 @@ RSpec.describe "Jobs", type: :request do
       job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
       post run_again_job_path(job), params: { replay_context: "Please fix the failing tests in spec/models/user_spec.rb." }
 
-      workflow = job.workflows.where(trigger_kind: "replay").last
+      workflow = job.workflows.where(trigger_kind: "retry").last
       expect(workflow.artifacts["replay_context"]).to eq("Please fix the failing tests in spec/models/user_spec.rb.")
     end
 
@@ -139,7 +139,7 @@ RSpec.describe "Jobs", type: :request do
       job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
       post run_again_job_path(job), params: { replay_context: "  " }
 
-      workflow = job.workflows.where(trigger_kind: "replay").last
+      workflow = job.workflows.where(trigger_kind: "retry").last
       expect(workflow.artifacts).to be_nil
     end
 
