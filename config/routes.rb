@@ -98,6 +98,14 @@ Rails.application.routes.draw do
     # Stuck-things watchlist — Run heartbeat stale or Workflow
     # nearing prune. See Admin::StuckItems for the definition.
     get "stuck", to: "stuck#index", as: :stuck
+
+    # Operator console — kill switches + audit log (L).
+    get  "console",                    to: "console#show",              as: :console
+    post "console/pause_polling",      to: "console#pause_polling",     as: :pause_polling
+    post "console/unpause_polling",    to: "console#unpause_polling",   as: :unpause_polling
+    post "console/pause_runs",         to: "console#pause_runs",        as: :pause_runs
+    post "console/unpause_runs",       to: "console#unpause_runs",      as: :unpause_runs
+    post "console/clear_github_cache", to: "console#clear_github_cache", as: :clear_github_cache
   end
 
   root "home#index"

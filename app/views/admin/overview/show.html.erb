@@ -7,12 +7,28 @@
 
   <div class="flex items-center justify-between">
     <h1 class="font-bold text-2xl">Admin overview</h1>
-    <div class="text-xs text-gray-500 flex items-center gap-2">
+    <div class="text-xs text-gray-500 flex items-center gap-3">
+      <%= link_to "Console", admin_console_path, class: "text-blue-600 underline hover:no-underline" %>
+      <span class="text-gray-300">·</span>
       <span>Auto-refresh every <%= @poll_interval %>s</span>
       <span class="text-gray-300">·</span>
       <a href="#" data-action="click->auto-refresh#refreshNow" class="text-blue-600 underline hover:no-underline">Refresh now</a>
     </div>
   </div>
+
+  <% settings = AppSetting.current %>
+  <% if settings.polling_paused || settings.runs_paused %>
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800 flex items-center justify-between">
+      <span>
+        <strong>Pause active.</strong>
+        <% paused_bits = [] %>
+        <% paused_bits << "polling" if settings.polling_paused %>
+        <% paused_bits << "RunJobs" if settings.runs_paused %>
+        <%= paused_bits.to_sentence %> currently paused via the operator console.
+      </span>
+      <%= link_to "Manage →", admin_console_path, class: "text-amber-700 underline hover:no-underline" %>
+    </div>
+  <% end %>
 
   <%# Tile grid %>
   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
