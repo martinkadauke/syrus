@@ -8,6 +8,8 @@
   <div class="flex items-center justify-between">
     <h1 class="font-bold text-2xl">Admin overview</h1>
     <div class="text-xs text-gray-500 flex items-center gap-3">
+      <%= link_to "Users", admin_users_path, class: "text-blue-600 underline hover:no-underline" %>
+      <span class="text-gray-300">·</span>
       <%= link_to "Console", admin_console_path, class: "text-blue-600 underline hover:no-underline" %>
       <span class="text-gray-300">·</span>
       <span>Auto-refresh every <%= @poll_interval %>s</span>
@@ -80,7 +82,8 @@
           title: "GitHub rate limits",
           value: @gh_low_users.size,
           context: @gh_low_users.any? ? "low: #{@gh_low_users.map(&:email_address).join(', ')}" : "all users healthy",
-          status: @gh_low_users.any? ? :warn : :ok %>
+          status: @gh_low_users.any? ? :warn : :ok,
+          link: admin_users_path(gh_rate: "low") %>
 
     <% if @capture_rate.nil? %>
       <%= render "tile",

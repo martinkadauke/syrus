@@ -33,6 +33,9 @@ Rails.application.routes.draw do
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
 
+        # User directory (mirror Admin::UsersController).
+        resources :users, only: %i[ index show ]
+
         # Workflow control — the same mutations the HTML admin UI
         # exposes, but available programmatically.
         post "workflows/:id/retry_step",        to: "workflows#retry_step"
@@ -98,6 +101,14 @@ Rails.application.routes.draw do
     # Stuck-things watchlist — Run heartbeat stale or Workflow
     # nearing prune. See Admin::StuckItems for the definition.
     get "stuck", to: "stuck#index", as: :stuck
+
+    # User directory — filterable list + per-user detail page.
+    # Drilled into from the GH rate-limits tile on /admin (with
+    # `?gh_rate=low`); also supports `?admin=true|false`,
+    # `?email=substr`, `?has_github_token=true|false`,
+    # `?has_claude_token=true|false`. Filter logic lives in
+    # Admin::UsersFilter so the API mirror reuses it.
+    resources :users, only: %i[ index show ]
 
     # Operator console — kill switches + audit log (L).
     get  "console",                    to: "console#show",              as: :console

@@ -1,0 +1,158 @@
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="font-bold text-2xl"><%= @user.email_address %></h1>
+      <div class="text-xs text-gray-500 mt-1">
+        Created <%= @user.created_at.strftime("%Y-%m-%d") %>
+        <% if @user.admin? %>
+          <span class="ml-2 px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700">admin</span>
+        <% end %>
+      </div>
+    </div>
+    <%= link_to "← Back to users", admin_users_path, class: "text-sm text-blue-600 hover:underline" %>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <%# Tokens & settings %>
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+      <h2 class="font-semibold text-sm uppercase text-gray-500 mb-3">Tokens & settings</h2>
+      <dl class="text-sm space-y-2">
+        <div class="flex justify-between">
+          <dt class="text-gray-600">GitHub token</dt>
+          <dd><%= @user.github_token.present? ? "✓ set" : "—" %></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-gray-600">Claude OAuth token</dt>
+          <dd><%= @user.claude_oauth_token.present? ? "✓ set" : "—" %></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-gray-600">API token</dt>
+          <dd><%= @user.api_token.present? ? "✓ set" : "—" %></dd>
+        </div>
+        <div class="flex justify-between">
+          <dt class="text-gray-600">Agent max turns</dt>
+          <dd><%= @user.agent_max_turns %></dd>
+        </div>
+      </dl>
+    </div>
+
+    <%# GitHub rate limits %>
+    <div class="bg-white border border-gray-200 rounded-lg p-4">
+      <h2 class="font-semibold text-sm uppercase text-gray-500 mb-3">GitHub rate limit</h2>
+      <% if @user.gh_rate_limit_remaining.nil? %>
+        <div class="text-sm text-gray-500">No GH rate-limit data observed yet.</div>
+      <% else %>
+        <% pct = @user.gh_rate_limit_limit.to_i > 0 ? @user.gh_rate_limit_remaining.to_f / @user.gh_rate_limit_limit : nil %>
+        <dl class="text-sm space-y-2">
+          <div class="flex justify-between">
+            <dt class="text-gray-600">Remaining</dt>
+            <dd class="<%= pct && pct < 0.10 ? 'text-red-600 font-semibold' : '' %>">
+              <%= @user.gh_rate_limit_remaining %> / <%= @user.gh_rate_limit_limit %>
+              <% if pct %>(<%= (pct * 100).round %>%)<% end %>
+            </dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-600">Resource</dt>
+            <dd><%= @user.gh_rate_limit_resource || "—" %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-600">Resets at</dt>
+            <dd><%= @user.gh_rate_limit_reset_at&.strftime("%Y-%m-%d %H:%M %Z") || "—" %></dd>
+          </div>
+          <div class="flex justify-between">
+            <dt class="text-gray-600">Observed at</dt>
+            <dd><%= @user.gh_rate_limit_observed_at&.strftime("%Y-%m-%d %H:%M %Z") || "—" %></dd>
+          </div>
+        </dl>
+      <% end %>
+    </div>
+  </div>
+
+  <%# Recent jobs %>
+  <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div class="px-4 py-2 border-b border-gray-200 text-sm font-semibold text-gray-700">Recent jobs (10)</div>
+    <% if @recent_jobs.empty? %>
+      <div class="px-4 py-6 text-center text-gray-500 text-sm">No jobs yet.</div>
+    <% else %>
+      <table class="min-w-full divide-y divide-gray-200 text-sm">
+        <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+          <tr>
+            <th class="px-4 py-2 text-left">Job</th>
+            <th class="px-4 py-2 text-left">State</th>
+            <th class="px-4 py-2 text-left">Kind</th>
+            <th class="px-4 py-2 text-left">Created</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <% @recent_jobs.each do |job| %>
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-2"><%= link_to "##{job.id}", job_path(job), class: "text-blue-600 hover:underline" %></td>
+              <td class="px-4 py-2"><%= job.state %></td>
+              <td class="px-4 py-2"><%= job.kind %></td>
+              <td class="px-4 py-2 text-gray-500"><%= job.created_at.strftime("%Y-%m-%d %H:%M") %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </div>
+
+  <%# Recent runs %>
+  <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div class="px-4 py-2 border-b border-gray-200 text-sm font-semibold text-gray-700">Recent runs (10)</div>
+    <% if @recent_runs.empty? %>
+      <div class="px-4 py-6 text-center text-gray-500 text-sm">No runs yet.</div>
+    <% else %>
+      <table class="min-w-full divide-y divide-gray-200 text-sm">
+        <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+          <tr>
+            <th class="px-4 py-2 text-left">Run</th>
+            <th class="px-4 py-2 text-left">State</th>
+            <th class="px-4 py-2 text-left">Trigger</th>
+            <th class="px-4 py-2 text-left">Started</th>
+            <th class="px-4 py-2 text-left">Finished</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <% @recent_runs.each do |run| %>
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-2">
+                <%= link_to "##{run.id}", job_path(run.job_id, anchor: "run-#{run.id}"), class: "text-blue-600 hover:underline" %>
+              </td>
+              <td class="px-4 py-2"><%= run.state %></td>
+              <td class="px-4 py-2"><%= run.trigger_kind %></td>
+              <td class="px-4 py-2 text-gray-500"><%= run.started_at&.strftime("%H:%M:%S") || "—" %></td>
+              <td class="px-4 py-2 text-gray-500"><%= run.finished_at&.strftime("%H:%M:%S") || "—" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    <% end %>
+  </div>
+
+  <%# Admin actions authored — only meaningful for admins, but
+      shown unconditionally; non-admins will just have an empty list. %>
+  <% if @recent_admin_actions.any? %>
+    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+      <div class="px-4 py-2 border-b border-gray-200 text-sm font-semibold text-gray-700">Recent admin actions (10)</div>
+      <table class="min-w-full divide-y divide-gray-200 text-sm">
+        <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+          <tr>
+            <th class="px-4 py-2 text-left">Action</th>
+            <th class="px-4 py-2 text-left">When</th>
+            <th class="px-4 py-2 text-left">Params</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+          <% @recent_admin_actions.each do |action| %>
+            <tr class="hover:bg-gray-50">
+              <td class="px-4 py-2 font-mono text-xs"><%= action.action %></td>
+              <td class="px-4 py-2 text-gray-500"><%= action.performed_at.strftime("%Y-%m-%d %H:%M") %></td>
+              <td class="px-4 py-2 text-gray-500 font-mono text-xs"><%= action.params.presence || "—" %></td>
+            </tr>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
+  <% end %>
+</div>

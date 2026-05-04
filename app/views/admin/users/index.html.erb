@@ -1,0 +1,94 @@
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="font-bold text-2xl">Users</h1>
+    <span class="text-sm text-gray-500"><%= @users.size %> matching</span>
+  </div>
+
+  <%# Filter strip — GET form, query params drive Admin::UsersFilter.
+      A second click on an applied filter drops it (the link below
+      points at the current params minus that key). %>
+  <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
+    <%= form_with url: admin_users_path, method: :get, local: true, class: "flex flex-wrap items-end gap-3" do |f| %>
+      <div>
+        <label class="block text-xs uppercase text-gray-500 mb-1">Email contains</label>
+        <%= f.text_field :email, value: params[:email], class: "border border-gray-300 rounded px-2 py-1 text-sm" %>
+      </div>
+
+      <div>
+        <label class="block text-xs uppercase text-gray-500 mb-1">Admin</label>
+        <%= f.select :admin, [ [ "—", "" ], [ "Yes", "true" ], [ "No", "false" ] ],
+              { selected: params[:admin] }, class: "border border-gray-300 rounded px-2 py-1 text-sm" %>
+      </div>
+
+      <div>
+        <label class="block text-xs uppercase text-gray-500 mb-1">GitHub token</label>
+        <%= f.select :has_github_token, [ [ "—", "" ], [ "Set", "true" ], [ "Missing", "false" ] ],
+              { selected: params[:has_github_token] }, class: "border border-gray-300 rounded px-2 py-1 text-sm" %>
+      </div>
+
+      <div>
+        <label class="block text-xs uppercase text-gray-500 mb-1">Claude token</label>
+        <%= f.select :has_claude_token, [ [ "—", "" ], [ "Set", "true" ], [ "Missing", "false" ] ],
+              { selected: params[:has_claude_token] }, class: "border border-gray-300 rounded px-2 py-1 text-sm" %>
+      </div>
+
+      <div>
+        <label class="block text-xs uppercase text-gray-500 mb-1">GH rate</label>
+        <%= f.select :gh_rate, [ [ "—", "" ], [ "Low (< 10%)", "low" ], [ "Exhausted", "exhausted" ] ],
+              { selected: params[:gh_rate] }, class: "border border-gray-300 rounded px-2 py-1 text-sm" %>
+      </div>
+
+      <div class="flex gap-2">
+        <%= f.submit "Apply", class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium cursor-pointer" %>
+        <% if @filter.any? %>
+          <%= link_to "Clear", admin_users_path, class: "rounded-md px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-sm font-medium" %>
+        <% end %>
+      </div>
+    <% end %>
+  </div>
+
+  <%# Result table %>
+  <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200 text-sm">
+      <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+        <tr>
+          <th class="px-4 py-2 text-left">Email</th>
+          <th class="px-4 py-2 text-left">Admin</th>
+          <th class="px-4 py-2 text-left">GH token</th>
+          <th class="px-4 py-2 text-left">Claude token</th>
+          <th class="px-4 py-2 text-left">Max turns</th>
+          <th class="px-4 py-2 text-left">GH rate</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <% if @users.empty? %>
+          <tr><td colspan="6" class="px-4 py-6 text-center text-gray-500">No users match these filters.</td></tr>
+        <% end %>
+        <% @users.each do |user| %>
+          <% pct = if user.gh_rate_limit_limit.to_i > 0
+                    user.gh_rate_limit_remaining.to_f / user.gh_rate_limit_limit
+                  end %>
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-2">
+              <%= link_to user.email_address, admin_user_path(user), class: "text-blue-600 hover:underline" %>
+            </td>
+            <td class="px-4 py-2"><%= user.admin? ? "yes" : "—" %></td>
+            <td class="px-4 py-2"><%= user.github_token.present? ? "✓" : "—" %></td>
+            <td class="px-4 py-2"><%= user.claude_oauth_token.present? ? "✓" : "—" %></td>
+            <td class="px-4 py-2"><%= user.agent_max_turns %></td>
+            <td class="px-4 py-2">
+              <% if pct.nil? %>
+                <span class="text-gray-400">—</span>
+              <% else %>
+                <span class="<%= pct < 0.10 ? 'text-red-600 font-semibold' : (pct < 0.30 ? 'text-amber-700' : 'text-gray-700') %>">
+                  <%= user.gh_rate_limit_remaining %> / <%= user.gh_rate_limit_limit %>
+                  (<%= (pct * 100).round %>%)
+                </span>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+</div>

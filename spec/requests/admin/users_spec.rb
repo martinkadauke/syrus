@@ -1,0 +1,70 @@
+require "rails_helper"
+
+RSpec.describe "Admin users", type: :request do
+  let!(:admin) { Factories.user }   # first-user auto-promotes — materialize early
+  let(:non_admin) { Factories.user }
+
+  describe "GET /admin/users" do
+    it "blocks non-admins" do
+      sign_in_as(non_admin)
+      get "/admin/users"
+      expect(response).to redirect_to(root_path)
+    end
+
+    it "lists users for admins" do
+      sign_in_as(admin)
+      Factories.user(email_address: "low@example.com",
+                     gh_rate_limit_remaining: 5, gh_rate_limit_limit: 5000)
+      get "/admin/users"
+      expect(response).to be_successful
+      expect(response.body).to include(admin.email_address)
+      expect(response.body).to include("low@example.com")
+    end
+
+    it "honors ?gh_rate=low filter" do
+      sign_in_as(admin)
+      ok_user  = Factories.user(email_address: "ok@example.com",
+                                 gh_rate_limit_remaining: 4500, gh_rate_limit_limit: 5000)
+      low_user = Factories.user(email_address: "low@example.com",
+                                 gh_rate_limit_remaining: 5, gh_rate_limit_limit: 5000)
+      get "/admin/users", params: { gh_rate: "low" }
+      expect(response.body).to include(low_user.email_address)
+      expect(response.body).not_to include(ok_user.email_address)
+    end
+
+    it "shows the empty-state row when filters don't match anything" do
+      sign_in_as(admin)
+      get "/admin/users", params: { email: "absolutely-no-match-#{SecureRandom.hex(4)}" }
+      expect(response.body).to include("No users match these filters")
+    end
+  end
+
+  describe "GET /admin/users/:id" do
+    it "renders user detail with token presence indicators (no plaintext)" do
+      sign_in_as(admin)
+      target = Factories.user(email_address: "target@example.com",
+                              github_token: "ghp_secretvalue",
+                              claude_oauth_token: "co_secretvalue")
+      get "/admin/users/#{target.id}"
+      expect(response).to be_successful
+      expect(response.body).to include("target@example.com")
+      expect(response.body).to include("set")        # token presence indicator
+      expect(response.body).not_to include("ghp_secretvalue")
+      expect(response.body).not_to include("co_secretvalue")
+    end
+
+    it "404s on unknown id" do
+      sign_in_as(admin)
+      get "/admin/users/999999"
+      expect(response).to have_http_status(:not_found).or have_http_status(:internal_server_error)
+    end
+  end
+
+  describe "the GH rate-limits tile on /admin" do
+    it "links to /admin/users?gh_rate=low" do
+      sign_in_as(admin)
+      get "/admin"
+      expect(response.body).to include(admin_users_path(gh_rate: "low"))
+    end
+  end
+end

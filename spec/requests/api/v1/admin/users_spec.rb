@@ -1,0 +1,70 @@
+require "rails_helper"
+
+RSpec.describe "API: /api/v1/admin/users", type: :request do
+  # Materialize admin (and its token) before any other user creation
+  # so the first-user-is-admin promotion lands on us.
+  let!(:admin) { Factories.user }
+  let!(:admin_token) { admin.generate_api_token! }
+  def auth = { "Authorization" => "Bearer #{admin_token}" }
+  def parse_body = JSON.parse(response.body)
+
+  describe "GET /api/v1/admin/users" do
+    it "401s without a token" do
+      get "/api/v1/admin/users"
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns the user list with a row per user (no plaintext tokens)" do
+      Factories.user(email_address: "alice@example.com", github_token: "ghp_secret")
+      get "/api/v1/admin/users", headers: auth
+      expect(response).to be_successful, "expected success, got #{response.status}: #{response.body}"
+      body = parse_body
+      expect(body["users"]).to be_an(Array)
+      alice = body["users"].find { |u| u["email_address"] == "alice@example.com" }
+      expect(alice).to include("has_github_token" => true)
+      expect(response.body).not_to include("ghp_secret")
+    end
+
+    it "applies the same filters as the HTML view" do
+      Factories.user(email_address: "ok@example.com",
+                      gh_rate_limit_remaining: 4500, gh_rate_limit_limit: 5000)
+      Factories.user(email_address: "low@example.com",
+                      gh_rate_limit_remaining: 5, gh_rate_limit_limit: 5000)
+
+      get "/api/v1/admin/users", params: { gh_rate: "low" }, headers: auth
+      emails = parse_body["users"].map { |u| u["email_address"] }
+      expect(emails).to include("low@example.com")
+      expect(emails).not_to include("ok@example.com")
+    end
+
+    it "echoes the active filters back" do
+      get "/api/v1/admin/users", params: { gh_rate: "low", admin: "true" }, headers: auth
+      expect(parse_body["filters"]).to eq("gh_rate" => "low", "admin" => "yes")
+    end
+  end
+
+  describe "GET /api/v1/admin/users/:id" do
+    it "returns the user detail payload" do
+      target = Factories.user(email_address: "target@example.com",
+                               gh_rate_limit_remaining: 100, gh_rate_limit_limit: 5000,
+                               gh_rate_limit_resource: "core")
+      get "/api/v1/admin/users/#{target.id}", headers: auth
+      expect(response).to be_successful
+      body = parse_body
+      expect(body).to include(
+        "email_address" => "target@example.com",
+        "admin"         => false
+      )
+      expect(body["github_rate_limit"]).to include(
+        "remaining" => 100, "limit" => 5000, "resource" => "core"
+      )
+      expect(body["recent_jobs"]).to eq([])
+      expect(body["recent_runs"]).to eq([])
+    end
+
+    it "404s with a JSON error on unknown id" do
+      get "/api/v1/admin/users/999999", headers: auth
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+end
