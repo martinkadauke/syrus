@@ -119,7 +119,11 @@ CMD ["./bin/thrust", "./bin/rails", "server"]
 FROM docker.io/library/debian:bookworm-slim AS runtime-cache
 
 ARG MISE_RUBIES="3.2 3.3"
-ARG MISE_NODES="lts lts-1"
+# Use explicit majors instead of "lts lts-1" — mise's Node plugin only
+# resolves `lts` (current) and named codenames (lts-iron, lts-jod, …),
+# not `lts-1`. Pinning by major (24, 22) gives us current LTS + Syrus's
+# own NODE_MAJOR=22 pin, both stable across upstream LTS rotations.
+ARG MISE_NODES="24 22"
 ARG MISE_PYTHONS="3.11"
 
 ENV MISE_DATA_DIR=/opt/mise \
