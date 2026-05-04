@@ -19,6 +19,15 @@ module Steps
   class Prepare < Base
     PER_COMMAND_TIMEOUT = 10.minutes.to_i
 
+    # Buffering for streamed prep output. `bundle install` and friends
+    # spit hundreds of lines per second; one JobLog row + one Turbo
+    # broadcast per line was both DB-heavy and laggy in the UI.
+    # Coalesce until either threshold trips, then flush as a single
+    # multi-line chunk. Final flush in `ensure` covers the trailing
+    # partial buffer.
+    LOG_FLUSH_BYTES    = 16 * 1024
+    LOG_FLUSH_INTERVAL = 1.0
+
     # Mirror of AgentInvocation::AGENT_ENV_FORWARD. Prep commands
     # run with EXACTLY this env (unsetenv_others: true) so the
     # worker pod's BUNDLE_PATH=/usr/local/bundle, BUNDLE_DEPLOYMENT=1,
@@ -71,7 +80,9 @@ module Steps
           timed_out = true
           kill_tree(wait_thread.pid)
         end
-        output.each_line { |line| log(line.chomp, kind: "system") }
+
+        stream_buffered(output)
+
         killer.kill
         status = wait_thread.value
         if timed_out
@@ -80,6 +91,48 @@ module Steps
           raise StepFailed, "prepare command failed (exit #{status.exitstatus}): #{cmd}"
         end
       end
+    end
+
+    # Read `io` until EOF, batching writes into JobLog. Flush triggers:
+    # buffer crosses LOG_FLUSH_BYTES, OR LOG_FLUSH_INTERVAL has elapsed
+    # since the last flush — whichever comes first. The IO.select
+    # timeout shrinks toward zero as the deadline approaches, so a
+    # single line that arrives 5ms after a flush still makes it out
+    # within ~1s even if no more data follows.
+    def stream_buffered(io)
+      buffer = +""
+      last_flush = Time.current
+
+      flush = -> do
+        next if buffer.empty?
+        log(buffer.chomp, kind: "system")
+        buffer.clear
+        last_flush = Time.current
+      end
+
+      loop do
+        timeout = LOG_FLUSH_INTERVAL - (Time.current - last_flush)
+        timeout = 0 if timeout < 0
+        ready, = IO.select([ io ], nil, nil, timeout)
+
+        unless ready
+          flush.call
+          last_flush = Time.current
+          next
+        end
+
+        begin
+          buffer << io.read_nonblock(16 * 1024)
+        rescue IO::WaitReadable
+          next
+        rescue EOFError
+          break
+        end
+
+        flush.call if buffer.bytesize >= LOG_FLUSH_BYTES
+      end
+    ensure
+      flush&.call
     end
 
     def kill_tree(pid)
