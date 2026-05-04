@@ -1,18 +1,27 @@
 #!/usr/bin/env bash
-# Build the current HEAD as a linux/amd64 image, push to GHCR with
-# both :<sha> and :latest tags, and rollout-restart staging +
-# production K3s deployments. Reads the GHCR token from $GHCR_TOKEN
-# or ~/.config/syrus/ghcr-token (chmod 600). Never prints it.
+# Build the current HEAD as two linux/amd64 images — `syrus` (web pod,
+# Dockerfile target=app) and `syrus-worker-dev` (worker pod, target=
+# worker-dev with mise + multi-language tooling) — push both to GHCR
+# with :<sha> and :latest tags, and rollout-restart staging +
+# production K3s deployments. Uses a shared registry-backed buildx
+# cache so the runtime-cache stage's compiled Rubies persist across
+# builders. Reads the GHCR token from $GHCR_TOKEN or
+# ~/.config/syrus/ghcr-token (chmod 600). Never prints it.
 #
 # Usage:
 #   bin/deploy                      # both clusters (default)
 #   bin/deploy --staging             # staging only
 #   bin/deploy --production          # production only
-#   bin/deploy --skip-build           # assume :<sha> already pushed
+#   bin/deploy --skip-build           # assume both :<sha> already pushed
 #                                       (just rollout restart)
 set -euo pipefail
 
 REGISTRY="ghcr.io/tkadauke/syrus"
+WORKER_DEV_REGISTRY="ghcr.io/tkadauke/syrus-worker-dev"
+# Shared cache ref. `mode=max` writes ALL stage layers to this tag, so
+# subsequent builds (even on fresh runners) pull pre-compiled Ruby/
+# Python from the runtime-cache stage instead of recompiling.
+CACHE_REF="${REGISTRY}:cache"
 GHCR_USER="tkadauke"
 TOKEN_FILE="${HOME}/.config/syrus/ghcr-token"
 
@@ -78,24 +87,46 @@ MSG
 fi
 
 # --- build + push ----------------------------------------------------
+# Two images, one Dockerfile: `app` (web pod) and `worker-dev` (worker
+# pod, with mise + multi-language tooling so the in-pod claude-code
+# agent can verify its changes — Dockerfile target).
+#
+# Cache: --cache-to writes max-mode (all stage layers including the
+# runtime-cache stage with its compiled Rubies) to ${CACHE_REF}. The
+# worker-dev build runs LAST so its cache push captures everything;
+# `mode=max` index references survive across rebuilds and let fresh
+# CI runners pull pre-compiled runtimes instead of recompiling.
 if [ "$SKIP_BUILD" = false ]; then
-  echo "→ ${REGISTRY}:${SHA} build (linux/amd64 via colima/Rosetta)"
-  docker buildx use colima >/dev/null 2>&1 || true
-  docker build --platform linux/amd64 \
-    --build-arg "GIT_SHA=${SHA}" \
-    -t "${REGISTRY}:${SHA}" \
-    -t "${REGISTRY}:latest" \
-    .
-
   echo "→ ${REGISTRY} login"
   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
 
-  echo "→ ${REGISTRY}:${SHA} push"
-  docker push "${REGISTRY}:${SHA}"
-  echo "→ ${REGISTRY}:latest push"
-  docker push "${REGISTRY}:latest"
+  docker buildx use colima >/dev/null 2>&1 || true
+
+  echo "→ ${REGISTRY}:${SHA} build+push (linux/amd64, target=app)"
+  docker buildx build \
+    --platform linux/amd64 \
+    --target app \
+    --build-arg "GIT_SHA=${SHA}" \
+    --cache-from "type=registry,ref=${CACHE_REF}" \
+    --cache-to "type=registry,ref=${CACHE_REF},mode=max" \
+    -t "${REGISTRY}:${SHA}" \
+    -t "${REGISTRY}:latest" \
+    --push \
+    .
+
+  echo "→ ${WORKER_DEV_REGISTRY}:${SHA} build+push (linux/amd64, target=worker-dev)"
+  docker buildx build \
+    --platform linux/amd64 \
+    --target worker-dev \
+    --build-arg "GIT_SHA=${SHA}" \
+    --cache-from "type=registry,ref=${CACHE_REF}" \
+    --cache-to "type=registry,ref=${CACHE_REF},mode=max" \
+    -t "${WORKER_DEV_REGISTRY}:${SHA}" \
+    -t "${WORKER_DEV_REGISTRY}:latest" \
+    --push \
+    .
 else
-  echo "→ skipping build/push (--skip-build); rolling existing ${REGISTRY}:${SHA}"
+  echo "→ skipping build/push (--skip-build); rolling existing ${REGISTRY}:${SHA} + ${WORKER_DEV_REGISTRY}:${SHA}"
 fi
 
 # --- rollout helpers -------------------------------------------------
