@@ -52,14 +52,14 @@ module Steps
     # Resilient to blank input — see RunJob#log for the same
     # contract; RecordInvalid on empty chunks would crash a step
     # mid-stream.
-    def log(chunk)
+    def log(chunk, kind: nil)
       text = chunk.to_s
       if text.strip.empty?
         run.update_column(:last_heartbeat_at, Time.current) if run.running?
         return
       end
       next_seq = (run.job_logs.maximum(:sequence) || -1) + 1
-      run.job_logs.create!(chunk: text, sequence: next_seq)
+      run.job_logs.create!(chunk: text, sequence: next_seq, kind: kind)
       run.update_column(:last_heartbeat_at, Time.current) if run.running?
     end
 
@@ -76,7 +76,7 @@ module Steps
           workspace.path,
           prompt: prompt,
           oauth_token: job.user.claude_oauth_token,
-          log_sink: ->(chunk) { log(chunk) },
+          log_sink: ->(chunk, **opts) { log(chunk, **opts) },
           runner: RunJob.agent_runner,
           max_turns: max_turns || job.user.agent_max_turns,
           mcp_config: mcp_config_path,
@@ -174,7 +174,7 @@ module Steps
     end
 
     def streaming_git(env: {})
-      GitRunner.new(log_sink: ->(line) { log(line.chomp) }, env: env)
+      GitRunner.new(log_sink: ->(line) { log(line.chomp, kind: "system") }, env: env)
     end
 
     # Defensive check: the agent didn't run a `git checkout

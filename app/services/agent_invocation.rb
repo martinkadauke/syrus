@@ -161,14 +161,53 @@ class AgentInvocation
   end
 
   # Returns a hash of metadata updates if the line was a result event.
-  # Streams readable text into log_sink for assistant events; falls back
-  # to passing non-JSON lines through verbatim.
+  # Streams claude's output into log_sink with a `kind:` label so the
+  # UI can filter by row type:
+  #
+  #   "assistant_text" — agent's narrative
+  #   "tool_call"      — abbreviated tool_use ("● Bash(rg foo)")
+  #   "tool_result"    — abbreviated tool_result ("  ⎿ output…")
+  #   "system"         — meta lines (the [result] event)
+  #
+  # Logging tool_call + tool_result events alongside assistant_text
+  # is critical for heartbeat reliability: a step doing 99 Bash
+  # calls in a row used to look silent (only assistant text bumped
+  # the heartbeat) and could trip the reaper. With this branch
+  # logging every meaningful event, every turn moves the
+  # heartbeat. Default UI hides tool_call/tool_result rows behind
+  # a toggle; the data is always there.
   def process_event(line, log_sink)
     event = JSON.parse(line.strip)
     case event["type"]
     when "assistant"
-      text = event.dig("message", "content")&.find { |c| c["type"] == "text" }&.dig("text")
-      log_sink.call(text) if text
+      content = event.dig("message", "content") || []
+      content.each do |block|
+        case block["type"]
+        when "text"
+          log_sink.call(block["text"], kind: "assistant_text") if block["text"].present?
+        when "tool_use"
+          log_sink.call(
+            AgentEventAbbreviator.tool_use(block["name"], block["input"]),
+            kind: "tool_call"
+          )
+        end
+      end
+      nil
+    when "user"
+      # User events in the JSONL include tool_result blocks (the
+      # response to a previous tool_use). Surface those as
+      # abbreviated lines so the operator sees the agent's
+      # actions interleaved with their results.
+      content = event.dig("message", "content")
+      if content.is_a?(Array)
+        content.each do |block|
+          next unless block["type"] == "tool_result"
+          log_sink.call(
+            AgentEventAbbreviator.tool_result(block["content"], error: block["is_error"] == true),
+            kind: "tool_result"
+          )
+        end
+      end
       nil
     when "system"
       # init carries the session_id we'll need to resume later. Other
@@ -177,7 +216,10 @@ class AgentInvocation
         { session_id: event["session_id"] }
       end
     when "result"
-      log_sink.call("[result] subtype=#{event['subtype']}, is_error=#{event['is_error']}, turns=#{event['num_turns']}, duration_ms=#{event['duration_ms']}")
+      log_sink.call(
+        "[result] subtype=#{event['subtype']}, is_error=#{event['is_error']}, turns=#{event['num_turns']}, duration_ms=#{event['duration_ms']}",
+        kind: "system"
+      )
       {
         turns: event["num_turns"],
         is_error: event["is_error"],

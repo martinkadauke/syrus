@@ -1,5 +1,23 @@
-<% if job_log.kind == "rate_limited" %>
-  <div id="<%= dom_id(job_log) %>" class="font-mono text-xs text-amber-400 whitespace-pre-wrap"><%= job_log.chunk %></div>
-<% else %>
-  <div id="<%= dom_id(job_log) %>" class="font-mono text-xs text-gray-100 whitespace-pre-wrap"><%= job_log.chunk %></div>
-<% end %>
+<%# Per-row styling by JobLog#kind. Tagging the row with
+    data-log-kind lets the transcript-toggle Stimulus controller
+    hide whole categories (tool_call + tool_result are off by
+    default; toggle reveals them).
+
+    Kinds:
+      assistant_text — agent's narrative (default style)
+      tool_call      — abbreviated tool_use ("● Bash(rg foo)")
+      tool_result    — abbreviated tool_result ("  ⎿ output")
+      system         — milestone lines ([result], step start, etc)
+      rate_limited   — Octokit rate-limit hit (existing kind)
+      nil            — legacy un-tagged rows
+%>
+<% color = case job_log.kind
+           when "rate_limited"   then "text-amber-400"
+           when "tool_call"      then "text-cyan-300"
+           when "tool_result"    then "text-gray-400"
+           when "system"         then "text-purple-300"
+           else                       "text-gray-100"
+           end %>
+<div id="<%= dom_id(job_log) %>"
+     data-log-kind="<%= job_log.kind %>"
+     class="font-mono text-xs <%= color %> whitespace-pre-wrap"><%= job_log.chunk %></div>
