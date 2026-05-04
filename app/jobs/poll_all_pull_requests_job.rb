@@ -5,6 +5,7 @@ class PollAllPullRequestsJob < ApplicationJob
   # PR through PollPullRequestJob, which does the actual comment fetching
   # and follow-up Run dispatch.
   def perform
+    return if AppSetting.polling_paused?
     Job.joins(:repository)
        .merge(Repository.active)
        .where(state: "open").where.not(pr_number: nil)

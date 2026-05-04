@@ -10,10 +10,23 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_04_020000) do
+  create_table "admin_actions", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    t.string "action", null: false
+    t.datetime "created_at", null: false
+    t.text "params"
+    t.datetime "performed_at", null: false
+    t.datetime "updated_at", null: false
+    t.bigint "user_id", null: false
+    t.index ["performed_at"], name: "index_admin_actions_on_performed_at"
+    t.index ["user_id"], name: "index_admin_actions_on_user_id"
+  end
+
   create_table "app_settings", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "max_job_failures", default: 3, null: false
+    t.boolean "polling_paused", default: false, null: false
+    t.boolean "runs_paused", default: false, null: false
     t.boolean "signups_open", default: false, null: false
     t.datetime "updated_at", null: false
   end
@@ -222,6 +235,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_04_000000) do
     t.index ["job_id"], name: "index_workflows_on_job_id"
   end
 
+  add_foreign_key "admin_actions", "users"
   add_foreign_key "claude_sessions", "runs"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "job_logs", "runs"

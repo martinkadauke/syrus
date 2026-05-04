@@ -49,7 +49,22 @@ class RunJob < ApplicationJob
   #      triggers Workflow.fail via Step's after_update_commit, so
   #      the workspace cleans up via Workflow's terminal-state
   #      callback).
+  # When the operator console pauses runs, fresh perform-attempts
+  # re-enqueue themselves with a delay rather than starting work.
+  # The Run stays in `queued` (or whatever state it was in); the
+  # next attempt rechecks. When unpaused, work proceeds. Cost
+  # while paused: 1 re-enqueue per Run per RUNS_PAUSED_RETRY_DELAY,
+  # which is fine for a kill-switch state that's typically minutes,
+  # not days.
+  RUNS_PAUSED_RETRY_DELAY = 30.seconds
+
   def perform(run_id)
+    if AppSetting.runs_paused?
+      Rails.logger.info("[RunJob] runs paused — deferring Run ##{run_id} by #{RUNS_PAUSED_RETRY_DELAY}")
+      self.class.set(wait: RUNS_PAUSED_RETRY_DELAY).perform_later(run_id)
+      return
+    end
+
     @run = ::Run.find(run_id)
     Thread.current[:syrus_current_run] = @run
     Thread.current[:syrus_in_run_job] = true

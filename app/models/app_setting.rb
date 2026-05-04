@@ -11,4 +11,16 @@ class AppSetting < ApplicationRecord
   def self.max_job_failures
     current.max_job_failures
   end
+
+  # Operator-console kill switches. Polling jobs and RunJob check
+  # these and short-circuit / re-enqueue when set. Used to halt
+  # the system safely during incident response without hard-killing
+  # workers.
+  def self.polling_paused?
+    current.polling_paused
+  end
+
+  def self.runs_paused?
+    current.runs_paused
+  end
 end

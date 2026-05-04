@@ -6,6 +6,7 @@ class PollScheduledTasksJob < ApplicationJob
   # arrived to ScheduledTaskFire (which applies the pr_pileup_policy,
   # spawns the cron Job, and stamps last_fired_at).
   def perform
+    return if AppSetting.polling_paused?
     now = Time.current
     ScheduledTask.alive
                  .where(state: "scheduled")
