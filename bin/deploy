@@ -144,7 +144,62 @@ rollout() {
   for dep in "${DEPLOYMENTS[@]}"; do
     KUBECONFIG="$kubeconfig" kubectl rollout status -n "$namespace" "$dep" --timeout="$ROLLOUT_TIMEOUT"
   done
+  verify_sha "$label" "$kubeconfig" "$namespace"
   echo "✓ ${label} rolled to ${SHA}"
+}
+
+# `kubectl rollout status` returning 0 does NOT mean the new pods
+# actually run the SHA we pushed. Two ways it lies:
+#
+#  (a) The "rollout-restart" annotation never made it through to a
+#      new ReplicaSet — Flux's periodic kustomize re-apply strips
+#      annotations not present in source, undoing the restart if
+#      the timing aligns. Status sees no progress to report and
+#      returns immediately. Pods stay on whatever they were.
+#
+#  (b) The deployment uses `image: ghcr.io/.../syrus` (no tag, so
+#      :latest), with `imagePullPolicy: Always`. After a restart,
+#      kubelet pulls :latest — but the old pods may already be
+#      running an older :latest digest. If the new ReplicaSet's
+#      pods come up Ready before kubelet realizes :latest moved,
+#      status is happy.  (Less common; the image-pull check usually
+#      catches this in practice.)
+#
+# Cross-check by reading $GIT_SHA from a running container in each
+# deployment. The Dockerfile bakes GIT_SHA into both `app` and
+# `worker-dev` images, so this is a reliable witness of what's
+# actually running.
+verify_sha() {
+  local label="$1" kubeconfig="$2" namespace="$3"
+  local mismatch=0
+  for dep in "${DEPLOYMENTS[@]}"; do
+    local container="${dep#deployment/}"
+    local actual
+    actual="$(KUBECONFIG="$kubeconfig" kubectl exec -n "$namespace" "$dep" -c "$container" -- printenv GIT_SHA 2>/dev/null || true)"
+    actual="${actual//[$'\r\n']}"
+    if [ "$actual" != "$SHA" ]; then
+      echo "✗ ${label}/${dep}: pods running '${actual:-<empty>}' but expected ${SHA}" >&2
+      mismatch=1
+    fi
+  done
+  if [ "$mismatch" = 1 ]; then
+    cat >&2 <<MSG
+
+The ${label} rollout reported success but at least one deployment is
+still serving an older image. Common causes:
+
+  - Flux reconciled mid-rollout and stripped the rollout-restart
+    annotation. Check 'kubectl -n flux-system get kustomization apps'
+    and consider 'flux suspend kustomization apps' before deploys, or
+    pin image tags in the manifest source instead of using :latest.
+
+  - A new pod failed init (db migration crash, missing secret) and
+    was kept un-Ready while old pods stayed alive. Check 'kubectl get
+    pods -n ${namespace}' for Init:Error / CrashLoopBackOff.
+
+MSG
+    exit 1
+  fi
 }
 
 # --- restart -----------------------------------------------------------
