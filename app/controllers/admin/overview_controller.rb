@@ -5,13 +5,32 @@ module Admin
   # See docs/plans/admin-diagnostics.md (F).
   #
   # The page polls itself every POLL_INTERVAL_SECONDS via the
-  # split-button-style Stimulus controller (turbo-morph visit, so
+  # auto-refresh Stimulus controller (turbo-morph visit, so
   # expanded details + scroll position survive). Polling beats
   # broadcasting here because we want a stable refresh rhythm,
   # not a per-row event storm — see the rationale in the queue
   # inspector commit.
+  #
+  # Heartbeat thresholds — two-tier on purpose:
+  #   ADMIN_STUCK_THRESHOLD     — concerning but not yet dead
+  #     (~5 min). Anything past this and still `running` shows
+  #     up as :warn in the watchlist.
+  #   Run::STALE_HEARTBEAT_THRESHOLD (30 min) — the reaper's cap.
+  #     Anything past THIS and still `running` means the reaper
+  #     itself isn't running; promotes to :alarm so the operator
+  #     can investigate (queue starvation, dead worker, etc.).
+  #
+  # last_heartbeat_at is bumped by RunJob#log and Steps::Base#log
+  # on every transcript chunk written (and on blank chunks too —
+  # the chunk doesn't get a JobLog row but the heartbeat still
+  # moves). Sources of those log calls: claude's streamed
+  # assistant text, git stdout via streaming_git, milestone log
+  # statements from step handlers. Heartbeat only goes silent
+  # during truly opaque waits (long agent thinking, hung tool
+  # calls, deadlocks).
   class OverviewController < BaseController
     POLL_INTERVAL_SECONDS = 30
+    ADMIN_STUCK_THRESHOLD = 5.minutes
 
     def show
       @poll_interval = POLL_INTERVAL_SECONDS
@@ -71,21 +90,42 @@ module Admin
                                             .count
       @capture_rate = @capture_total.zero? ? nil : (@capture_with_session.to_f / @capture_total)
 
-      # Stuck-things watchlist — anything that should self-heal but
-      # hasn't. Keep this list bounded; if it grows past a screen,
-      # break out into the dedicated /admin/stuck view (G).
+      # Stuck-things watchlist. Two heartbeat thresholds:
+      # ADMIN_STUCK_THRESHOLD = "concerning" (warn); reaper's
+      # STALE_HEARTBEAT_THRESHOLD = "alarm" (means the reaper
+      # itself isn't running — queue starvation or dead worker).
+      # Both checks treat last_heartbeat_at IS NULL the same as
+      # very-old, since a Run that's been running but never logged
+      # anything is at least as suspicious as one with a stale
+      # heartbeat.
       @stuck = []
+
+      stuck_cutoff = ADMIN_STUCK_THRESHOLD.ago
+      reaper_cutoff = Run::STALE_HEARTBEAT_THRESHOLD.ago
       Run.where(state: "running")
-         .where("last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?", Run::STALE_HEARTBEAT_THRESHOLD.ago)
+         .where("(last_heartbeat_at IS NOT NULL AND last_heartbeat_at < :t) OR (last_heartbeat_at IS NULL AND started_at < :t)", t: stuck_cutoff)
          .find_each do |r|
-        @stuck << { kind: :stale_heartbeat, run_id: r.id, job_id: r.job_id,
-                    detail: "Run ##{r.id} heartbeat age: #{((Time.current - r.last_heartbeat_at) / 60).to_i}m" }
+        last_signal = r.last_heartbeat_at || r.started_at
+        age_min = ((Time.current - last_signal) / 60).to_i
+        # Past the reaper's threshold while still running ⇒ the
+        # reaper isn't running. Escalate.
+        severity = (last_signal && last_signal < reaper_cutoff) ? :alarm : :warn
+        kind = severity == :alarm ? :reaper_starved : :stale_heartbeat
+        detail = if severity == :alarm
+          "Run ##{r.id} silent for #{age_min}m — past reaper threshold, but still `running`. ReapStaleRunsJob may be starved."
+        else
+          "Run ##{r.id} silent for #{age_min}m"
+        end
+        @stuck << { kind: kind, severity: severity,
+                    run_id: r.id, job_id: r.job_id, detail: detail }
       end
+
       Workflow.where(state: "failed")
               .where(cleaned_up_at: nil)
               .where("finished_at < ?", (WorkflowWorkspacePruneJob::RETAIN_AFTER_TERMINAL - 1.day).ago)
               .find_each do |wf|
-        @stuck << { kind: :nearly_pruned, workflow_id: wf.id, job_id: wf.job_id,
+        @stuck << { kind: :nearly_pruned, severity: :warn,
+                    workflow_id: wf.id, job_id: wf.job_id,
                     detail: "Workflow ##{wf.id} (#{wf.trigger_kind}) failed #{((Time.current - wf.finished_at) / 86400).to_i}d ago — about to be pruned" }
       end
     end

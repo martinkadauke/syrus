@@ -48,17 +48,60 @@ RSpec.describe "Admin overview", type: :request do
       expect(response.body).to include('href="/admin/queue/failed"')
     end
 
-    it "surfaces stuck-Run heartbeats in the watchlist" do
+    it "flags a Run silent past ADMIN_STUCK_THRESHOLD as :warn (stale_heartbeat)" do
       sign_in_as(admin)
       job = Factories.job(user: admin)
       run = job.initial_run
+      # Past the admin warn threshold (5 min) but inside the
+      # reaper threshold (30 min) — so it's "concerning" but the
+      # reaper would still get it.
       run.update_columns(state: "running",
-                         started_at: 1.hour.ago,
-                         last_heartbeat_at: 1.hour.ago)
+                         started_at: 10.minutes.ago,
+                         last_heartbeat_at: 10.minutes.ago)
 
       get "/admin"
       expect(response.body).to include("stale_heartbeat")
       expect(response.body).to include("Run ##{run.id}")
+    end
+
+    it "escalates to :alarm (reaper_starved) when a Run is silent past the reaper threshold" do
+      sign_in_as(admin)
+      job = Factories.job(user: admin)
+      run = job.initial_run
+      # Past the reaper's STALE_HEARTBEAT_THRESHOLD (30 min) yet
+      # still `running` ⇒ the reaper isn't reaping ⇒ alarm.
+      run.update_columns(state: "running",
+                         started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
+                         last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago)
+
+      get "/admin"
+      expect(response.body).to include("reaper_starved")
+      expect(response.body).to match(/ReapStaleRunsJob may be starved/)
+    end
+
+    it "treats a never-logged Run (last_heartbeat_at IS NULL) the same as stale" do
+      sign_in_as(admin)
+      job = Factories.job(user: admin)
+      run = job.initial_run
+      run.update_columns(state: "running",
+                         started_at: 10.minutes.ago,
+                         last_heartbeat_at: nil)
+
+      get "/admin"
+      expect(response.body).to include("stale_heartbeat")
+    end
+
+    it "doesn't flag a Run with a fresh heartbeat" do
+      sign_in_as(admin)
+      job = Factories.job(user: admin)
+      run = job.initial_run
+      run.update_columns(state: "running",
+                         started_at: 30.seconds.ago,
+                         last_heartbeat_at: 30.seconds.ago)
+
+      get "/admin"
+      expect(response.body).not_to include("stale_heartbeat")
+      expect(response.body).not_to include("reaper_starved")
     end
   end
 end
