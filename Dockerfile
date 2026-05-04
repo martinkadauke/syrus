@@ -182,7 +182,8 @@ RUN apt-get update -qq && \
       libffi-dev libssl-dev libyaml-dev \
       libxml2-dev libxslt-dev \
       zlib1g-dev libreadline-dev \
-      sqlite3 postgresql-client \
+      default-libmysqlclient-dev libpq-dev libsqlite3-dev \
+      sqlite3 postgresql-client default-mysql-client \
       wget openssh-client jq ripgrep fd-find less vim \
       python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists /var/cache/apt/archives
