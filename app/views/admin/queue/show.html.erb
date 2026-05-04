@@ -1,0 +1,29 @@
+<div class="space-y-6">
+  <div class="flex items-center justify-between">
+    <h1 class="font-bold text-2xl">SolidQueue inspector</h1>
+    <%= button_to "Reap stale runs now", admin_reap_stale_runs_path, method: :post,
+          class: "rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium cursor-pointer",
+          form: { class: "inline" } %>
+  </div>
+
+  <%# Tabs %>
+  <div class="border-b border-gray-200">
+    <nav class="-mb-px flex gap-6 text-sm font-medium">
+      <% %w[active pending failed recurring workers].each do |tab| %>
+        <%= link_to tab.titleize, admin_queue_path(tab),
+              class: "pb-3 border-b-2 #{@tab == tab ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}" %>
+      <% end %>
+    </nav>
+  </div>
+
+  <% if @queue_unreachable %>
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+      <strong>Queue tables unreachable from this connection.</strong>
+      Likely a single-database dev/test setup — SolidQueue's tables live in a
+      separate DB in production. Query failed with:
+      <pre class="mt-2 text-xs font-mono"><%= @queue_unreachable %></pre>
+    </div>
+  <% else %>
+    <%= render "tab_#{@tab}" %>
+  <% end %>
+</div>

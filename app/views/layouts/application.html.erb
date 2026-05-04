@@ -35,6 +35,12 @@
               <%= link_to "Repositories", repositories_path, class: "text-gray-700 hover:text-blue-600" %>
               <%= link_to "Scheduled tasks", scheduled_tasks_path, class: "text-gray-700 hover:text-blue-600" %>
               <%= link_to "Settings", settings_path, class: "text-gray-700 hover:text-blue-600" %>
+              <% if Current.user.admin? %>
+                <%# Admin diagnostics — see docs/plans/admin-diagnostics.md.
+                    Lands on the queue inspector for now; once F (system
+                    overview) ships, route this to /admin instead. %>
+                <%= link_to "Admin", admin_queue_path("active"), class: "text-blue-600 hover:text-blue-700 font-medium" %>
+              <% end %>
             </div>
           <% end %>
         </div>

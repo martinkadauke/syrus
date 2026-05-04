@@ -49,6 +49,11 @@ Rails.application.routes.draw do
     # See docs/plans/admin-diagnostics.md for context.
     get  "runs/:run_id/transcript",          to: "transcripts#show",     as: :run_transcript
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
+
+    # SolidQueue inspector — see docs/plans/admin-diagnostics.md (B).
+    get  "queue",                  to: "queue#index", as: :queue_root
+    get  "queue/:tab",             to: "queue#show",            as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
+    post "queue/reap_stale_runs",  to: "queue#reap_stale_runs", as: :reap_stale_runs
   end
 
   root "home#index"

@@ -1,0 +1,47 @@
+<%# Live SolidQueue worker processes. Stale heartbeat = the worker
+    is dead from the supervisor's POV; jobs claimed by it become
+    candidates for ProcessPrunedError on the next prune. %>
+<% if @workers.any? %>
+  <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="min-w-full divide-y divide-gray-200 text-sm">
+      <thead class="bg-gray-50 text-xs uppercase text-gray-500">
+        <tr>
+          <th class="px-4 py-2 text-left">PID</th>
+          <th class="px-4 py-2 text-left">Hostname</th>
+          <th class="px-4 py-2 text-left">Queues</th>
+          <th class="px-4 py-2 text-left">Threads</th>
+          <th class="px-4 py-2 text-left">Last heartbeat</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-gray-100">
+        <% @workers.each do |w| %>
+          <% stale = w.last_heartbeat_at.nil? || w.last_heartbeat_at < 2.minutes.ago %>
+          <tr class="<%= stale ? 'bg-red-50' : '' %>">
+            <td class="px-4 py-2 font-mono text-xs"><%= w.pid %></td>
+            <td class="px-4 py-2 font-mono text-xs"><%= w.hostname %></td>
+            <td class="px-4 py-2 font-mono text-xs"><%= w.metadata.dig("queues") %></td>
+            <td class="px-4 py-2 font-mono text-xs"><%= w.metadata.dig("thread_pool_size") %></td>
+            <td class="px-4 py-2 text-xs <%= stale ? 'text-red-700 font-medium' : 'text-gray-500' %>">
+              <%= relative_timestamp(w.last_heartbeat_at) %>
+              <% if stale %><span class="ml-1 italic">(stale)</span><% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  </div>
+<% else %>
+  <div class="bg-white border border-gray-200 rounded-lg p-6 text-sm text-gray-500">
+    No workers registered. (If this is the production queue, no
+    bin/jobs process is running.)
+  </div>
+<% end %>
+
+<details class="text-xs">
+  <summary class="text-gray-500 cursor-pointer mt-3">All processes (workers, dispatchers, supervisors)</summary>
+  <ul class="mt-2 font-mono">
+    <% @processes_all.each do |p| %>
+      <li>[<%= p.kind %>] pid <%= p.pid %> @ <%= p.hostname %> · last heartbeat <%= relative_timestamp(p.last_heartbeat_at) %></li>
+    <% end %>
+  </ul>
+</details>
