@@ -43,6 +43,13 @@ ENV RAILS_ENV="production" \
     LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
     RAILS_LOG_TO_STDOUT="1"
 
+# rails user lives in `base` (not just in `app`) so other stages
+# downstream of base — `worker-deps` and `worker-dev` — can also
+# switch to it without re-running useradd. The build stage stays
+# root for gem install.
+RUN groupadd --system --gid 1000 rails && \
+    useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash
+
 # Throw-away build stage to reduce size of final image
 FROM base AS build
 
@@ -76,9 +83,7 @@ RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 # Final stage for app image
 FROM base AS app
 
-# Run and own only the runtime files as a non-root user for security
-RUN groupadd --system --gid 1000 rails && \
-    useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash
+# rails user already created in `base`; just switch to it.
 USER 1000:1000
 
 # Copy built artifacts: gems, application
@@ -150,14 +155,19 @@ RUN /usr/local/bin/mise install $(for v in $MISE_RUBIES;  do echo ruby@$v;   don
 
 
 # ============================================================================
-# Worker dev stage — generalist tooling so the in-pod claude-code agent can
-# verify its changes against arbitrary external repos (run tests, build
-# assets, etc). Companion to greenacres#16; only the worker pod uses this
-# variant. Web pod stays on the lean `app` stage.
+# Worker deps stage — generalist tooling so the in-pod claude-code agent
+# can verify its changes against arbitrary external repos (run tests,
+# build assets, etc). Companion to greenacres#16; only the worker pod
+# uses this variant. Web pod stays on the lean `app` stage.
 #
-# Build:  docker build --target worker-dev -t syrus-worker-dev .
+# Critically, this stage is `FROM base`, NOT `FROM app`. The heavy apt
+# install + mise copy + npm/pip install layers live ABOVE the rails-code
+# COPY (which happens later in `worker-dev`). Result: changing Rails
+# code only invalidates the rails-copy layer in `worker-dev`, not the
+# heavy stuff here. Cache-from across builds works against this stage's
+# stable hash regardless of commit-to-commit code churn.
 # ============================================================================
-FROM app AS worker-dev
+FROM base AS worker-deps
 
 USER root
 
@@ -190,9 +200,33 @@ RUN chown -R 1000:1000 /opt/mise
 RUN npm install -g yarn pnpm && npm cache clean --force && \
     pip3 install --break-system-packages poetry uv
 
-USER 1000:1000
 ENV PATH="/opt/mise/shims:${PATH}" \
     MISE_DATA_DIR=/opt/mise
 
-# No CMD override — inherits `app`'s thrust+rails server. The worker pod's
-# Deployment overrides command to `bin/jobs` per greenacres#16.
+# ============================================================================
+# Worker dev stage — `worker-deps` plus the same rails code + bundle
+# the `app` stage gets. Mirrors app's COPY-from-build + GIT_SHA + entry
+# wiring; intentionally parallel to `app` so the two diverge only on
+# the worker tooling (above) and not on runtime contract.
+# ============================================================================
+FROM worker-deps AS worker-dev
+
+USER 1000:1000
+
+COPY --chown=rails:rails --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
+COPY --chown=rails:rails --from=build /rails /rails
+
+# Bake the git SHA the image was built from. .git/ is excluded via
+# .dockerignore so the running container can't compute it itself —
+# bin/deploy passes --build-arg GIT_SHA=$(git rev-parse --short HEAD).
+# Placed late so re-baking the SHA doesn't bust the asset/gem cache.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
+ENTRYPOINT ["/rails/bin/docker-entrypoint"]
+
+EXPOSE 80
+
+# Inherits app's posture (thrust+rails server) by default; the worker
+# pod's Deployment overrides command to `bin/jobs` per greenacres#16.
+CMD ["./bin/thrust", "./bin/rails", "server"]
