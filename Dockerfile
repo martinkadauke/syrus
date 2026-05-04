@@ -74,7 +74,7 @@ RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
 
 # Final stage for app image
-FROM base
+FROM base AS app
 
 # Run and own only the runtime files as a non-root user for security
 RUN groupadd --system --gid 1000 rails && \
@@ -98,3 +98,56 @@ ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 # Start server via Thruster by default, this can be overwritten at runtime
 EXPOSE 80
 CMD ["./bin/thrust", "./bin/rails", "server"]
+
+
+
+
+# ============================================================================
+# Worker dev stage — generalist tooling so the in-pod claude-code agent can
+# verify its changes against arbitrary external repos (run tests, build
+# assets, etc). Companion to greenacres#16; only the worker pod uses this
+# variant. Web pod stays on the lean `app` stage.
+#
+# Build:  docker build --target worker-dev -t syrus-worker-dev .
+# ============================================================================
+FROM app AS worker-dev
+
+USER root
+
+# Native build deps + DB clients (no servers) + CLI tooling. Each tool
+# justified in greenacres#16 / syrus#114; ripgrep+fd in particular speed
+# up the agent dramatically when exploring code.
+RUN apt-get update -qq && \
+    apt-get install --no-install-recommends -y \
+      build-essential pkg-config \
+      libffi-dev libssl-dev libyaml-dev \
+      libxml2-dev libxslt-dev \
+      zlib1g-dev libreadline-dev \
+      sqlite3 postgresql-client \
+      wget openssh-client jq ripgrep fd-find less vim \
+      python3 python3-pip python3-venv \
+    && rm -rf /var/lib/apt/lists /var/cache/apt/archives
+
+# mise — multi-language version manager. The agent runs `mise install`
+# inside each worktree to provision the Ruby / Node / Python versions
+# that worktree's .tool-versions / mise.toml declares.
+RUN curl -fsSL https://mise.jdx.dev/install.sh | \
+      MISE_INSTALL_PATH=/usr/local/bin/mise sh
+
+# Package managers that don't ship with their default runtime.
+# --break-system-packages is required on Debian's PEP-668-protected python.
+RUN npm install -g yarn pnpm && npm cache clean --force && \
+    pip3 install --break-system-packages poetry uv
+
+# Pre-install default runtimes to /opt/mise. greenacres `seed-mise` init
+# container copies these onto the worker PVC at $HOME/.local/share/mise
+# on first boot so the agent doesn't pay cold-install latency for the
+# common cases. Repos with non-default versions install on-demand.
+ENV MISE_DATA_DIR=/opt/mise
+RUN mkdir -p /opt/mise && chown -R 1000:1000 /opt/mise
+USER 1000:1000
+ENV PATH="/opt/mise/shims:${PATH}"
+RUN mise install ruby@3.2 ruby@3.3 node@lts node@lts-1 python@3.11
+
+# No CMD override — inherits `app`'s thrust+rails server. The worker pod's
+# Deployment overrides command to `bin/jobs` per greenacres#16.
