@@ -95,7 +95,14 @@ module Steps
     end
 
     # Per-Run mcp.json tempfile so claude knows how to reach our
-    # sidecar. Same shape as RunJob's existing #with_mcp_config.
+    # sidecar. `alwaysLoad: true` (claude-code v2.1.121+) skips
+    # tool-search deferral and keeps `mcp__syrus__submit_summary`
+    # in the agent's active tool list at all times — including on
+    # `--resume`d sessions, where claude was otherwise routing MCP
+    # tools through the deferred catalog and the resumed agent
+    # couldn't find them. (Smoking gun: Run #181's transcript,
+    # where the summarize agent's first action was a ToolSearch
+    # for `AskUserQuestion` because submit_summary wasn't visible.)
     def with_mcp_config
       Tempfile.create([ "syrus-mcp-#{run.id}-", ".json" ]) do |f|
         f.write({
@@ -104,7 +111,8 @@ module Steps
               type: "stdio",
               command: Rails.root.join("bin/syrus-mcp-sidecar").to_s,
               args: [ "--run-id", run.id.to_s ],
-              env: {}
+              env: {},
+              alwaysLoad: true
             }
           }
         }.to_json)
