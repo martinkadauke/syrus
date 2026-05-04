@@ -44,9 +44,13 @@ Rails.application.routes.draw do
   end
 
   namespace :admin do
+    # System overview — landing page for the admin area.
+    # See docs/plans/admin-diagnostics.md (F).
+    root to: "overview#show"
+
     # Per-Run claude transcript viewer — renders the captured
     # ClaudeSession.transcript_jsonl as a structured event stream.
-    # See docs/plans/admin-diagnostics.md for context.
+    # See docs/plans/admin-diagnostics.md (A).
     get  "runs/:run_id/transcript",          to: "transcripts#show",     as: :run_transcript
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 

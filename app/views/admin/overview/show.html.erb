@@ -1,0 +1,108 @@
+<%# Auto-refresh on a timer — see auto_refresh_controller.js.
+    The morph-mode layout (turbo_refreshes_with method: :morph)
+    keeps expanded details + scroll position across the visit. %>
+<div class="space-y-6"
+     data-controller="auto-refresh"
+     data-auto-refresh-interval-value="<%= @poll_interval %>">
+
+  <div class="flex items-center justify-between">
+    <h1 class="font-bold text-2xl">Admin overview</h1>
+    <div class="text-xs text-gray-500 flex items-center gap-2">
+      <span>Auto-refresh every <%= @poll_interval %>s</span>
+      <span class="text-gray-300">·</span>
+      <a href="#" data-action="click->auto-refresh#refreshNow" class="text-blue-600 underline hover:no-underline">Refresh now</a>
+    </div>
+  </div>
+
+  <%# Tile grid %>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <%= render "tile",
+          title: "Active runs",
+          value: @active_runs_total,
+          context: @active_runs_by_trigger.map { |k, v| "#{v} #{k}" }.join(" · ").presence || "all idle",
+          status: @active_runs_total > 0 ? :info : :idle,
+          link: admin_queue_path("active") %>
+
+    <%= render "tile",
+          title: "Queued runs",
+          value: @queued_runs_total,
+          context: @queued_runs_total > 0 ? "waiting for a worker thread" : "queue empty",
+          status: @queued_runs_total > 10 ? :warn : (@queued_runs_total > 0 ? :info : :idle),
+          link: admin_queue_path("pending") %>
+
+    <% if @workers_unreachable %>
+      <%= render "tile",
+            title: "Workers",
+            value: "?",
+            context: "queue tables unreachable from web pod",
+            status: :warn,
+            link: admin_queue_path("workers") %>
+    <% else %>
+      <%= render "tile",
+            title: "Workers",
+            value: @workers_total,
+            context: @workers_stale > 0 ? "#{@workers_stale} stale heartbeat(s)" : "all healthy",
+            status: @workers_stale > 0 ? :alarm : (@workers_total.zero? ? :alarm : :ok),
+            link: admin_queue_path("workers") %>
+    <% end %>
+
+    <%= render "tile",
+          title: "Recurring jobs",
+          value: @recurring_overdue.size,
+          context: @recurring_overdue.any? ? "overdue: #{@recurring_overdue.map { |t| t[:key] }.join(', ')}" : "all firing on schedule",
+          status: @recurring_overdue.any? ? :alarm : :ok,
+          link: admin_queue_path("recurring") %>
+
+    <%= render "tile",
+          title: "Failed runs (24h)",
+          value: @recent_failures_24h,
+          context: @recent_failures_by_kind.map { |k, v| "#{v} #{k}" }.join(" · ").presence || "no failures",
+          status: @recent_failures_24h > 5 ? :alarm : (@recent_failures_24h > 0 ? :warn : :ok),
+          link: admin_queue_path("failed") %>
+
+    <%= render "tile",
+          title: "GitHub rate limits",
+          value: @gh_low_users.size,
+          context: @gh_low_users.any? ? "low: #{@gh_low_users.map(&:email_address).join(', ')}" : "all users healthy",
+          status: @gh_low_users.any? ? :warn : :ok %>
+
+    <% if @capture_rate.nil? %>
+      <%= render "tile",
+            title: "Claude session capture",
+            value: "—",
+            context: "no agentic runs in last 24h",
+            status: :idle %>
+    <% else %>
+      <%= render "tile",
+            title: "Claude session capture",
+            value: "#{(@capture_rate * 100).round}%",
+            context: "#{@capture_with_session} of #{@capture_total} agentic runs (24h)",
+            status: @capture_rate >= 0.95 ? :ok : (@capture_rate >= 0.80 ? :warn : :alarm) %>
+    <% end %>
+
+    <%= render "tile",
+          title: "Stuck things",
+          value: @stuck.size,
+          context: @stuck.any? ? "needs attention" : "nothing flagged",
+          status: @stuck.any? ? :alarm : :ok %>
+  </div>
+
+  <% if @stuck.any? %>
+    <div class="bg-white border border-red-200 rounded-lg overflow-hidden">
+      <div class="px-4 py-2 bg-red-50 text-xs uppercase text-red-700 font-medium">Stuck things</div>
+      <ul class="divide-y divide-red-100">
+        <% @stuck.each do |item| %>
+          <li class="px-4 py-2 text-sm flex items-center justify-between">
+            <span>
+              <span class="font-mono text-xs text-red-700"><%= item[:kind] %></span>
+              <span class="ml-2 text-gray-700"><%= item[:detail] %></span>
+            </span>
+            <% if item[:job_id] %>
+              <%= link_to "View job", job_path(item[:job_id]), class: "text-blue-600 underline hover:no-underline text-xs" %>
+            <% end %>
+          </li>
+        <% end %>
+      </ul>
+    </div>
+  <% end %>
+</div>
