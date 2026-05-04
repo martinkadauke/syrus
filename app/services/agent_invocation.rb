@@ -212,8 +212,19 @@ class AgentInvocation
     when "system"
       # init carries the session_id we'll need to resume later. Other
       # system subtypes are noise.
-      if event["subtype"] == "init" && event["session_id"]
-        { session_id: event["session_id"] }
+      if event["subtype"] == "init"
+        # Log MCP server registration state so failed runs (esp.
+        # `--resume`d ones) can be diagnosed: status=pending or
+        # missing-from-list = the tool won't be callable. Logged
+        # unconditionally so the post-mortem doesn't depend on
+        # remembering to enable a debug flag.
+        if event["mcp_servers"]
+          log_sink.call(
+            "[mcp_servers] #{event['mcp_servers'].map { |s| "#{s['name']}=#{s['status']}" }.join(', ')}",
+            kind: "system"
+          )
+        end
+        { session_id: event["session_id"] } if event["session_id"]
       end
     when "result"
       log_sink.call(
