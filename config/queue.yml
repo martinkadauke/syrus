@@ -3,9 +3,22 @@ default: &default
     - polling_interval: 1
       batch_size: 500
   workers:
-    - queues: "*"
+    # Long-running RunJobs (agent invocations, ~5-10 min each)
+    # get their own worker so they can't starve maintenance and
+    # broadcast work. JOB_CONCURRENCY caps the simultaneous agent
+    # invocations system-wide.
+    - queues: "runs"
+      threads: <%= ENV.fetch("JOB_CONCURRENCY", 3) %>
+      processes: 1
+      polling_interval: 0.1
+    # Everything else — recurring reapers / pollers, Turbo
+    # broadcasts, prune jobs. All short-lived; sharing a small
+    # thread pool is fine. Critically, this worker is independent
+    # of the RunJob worker, so a saturated agent pool can't make
+    # the UI feel frozen by holding back broadcast deliveries.
+    - queues: "default"
       threads: 3
-      processes: <%= ENV.fetch("JOB_CONCURRENCY", 1) %>
+      processes: 1
       polling_interval: 0.1
 
 development:

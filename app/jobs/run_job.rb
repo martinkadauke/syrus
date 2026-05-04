@@ -1,5 +1,12 @@
 class RunJob < ApplicationJob
-  queue_as :default
+  # Dedicated `runs` queue with its own SQ worker — see
+  # config/queue.yml. RunJobs are minutes-long agent invocations;
+  # putting them on the shared `default` queue starves Turbo
+  # broadcasts and the recurring reaper/pollers, which makes the
+  # UI feel frozen during heavy load and (in the worst case)
+  # leaves zombie Runs stuck "running" because ReapStaleRunsJob
+  # can't get a thread. Splitting queues keeps short jobs fast.
+  queue_as :runs
 
   # One Run at a time per Job. Per-Job (not per-repo) is the right
   # granularity: the Workflow's per-Workflow workspace at
