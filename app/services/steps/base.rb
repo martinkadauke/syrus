@@ -103,11 +103,23 @@ module Steps
     # couldn't find them. (Smoking gun: Run #181's transcript,
     # where the summarize agent's first action was a ToolSearch
     # for `AskUserQuestion` because submit_summary wasn't visible.)
+    # Server key MUST match the binary basename (`syrus-mcp-sidecar`).
+    # claude-code derives the MCP-tool prefix differently between
+    # fresh and `--resume`d invocations: fresh uses the config
+    # key, resume uses the binary basename. If those differ, the
+    # resumed agent invokes a tool name that doesn't exist —
+    # exactly Run 206's failure: implement saw the tool as
+    # `mcp__syrus__submit_summary` (config key "syrus"), summarize
+    # tried to call `mcp__syrus-mcp-sidecar__submit_summary`
+    # (binary basename) and got "no such tool available." Aligning
+    # the names sidesteps the underlying claude-code quirk;
+    # SyrusMcp::Sidecar also reports the same name via serverInfo
+    # so all three sources agree.
     def with_mcp_config
       Tempfile.create([ "syrus-mcp-#{run.id}-", ".json" ]) do |f|
         f.write({
           mcpServers: {
-            syrus: {
+            "syrus-mcp-sidecar" => {
               type: "stdio",
               command: Rails.root.join("bin/syrus-mcp-sidecar").to_s,
               args: [ "--run-id", run.id.to_s ],

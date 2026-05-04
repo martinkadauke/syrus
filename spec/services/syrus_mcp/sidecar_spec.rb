@@ -10,7 +10,7 @@ RSpec.describe SyrusMcp::Sidecar do
 
   def server_for(run)
     MCP::Server.new(
-      name: "syrus",
+      name: "syrus-mcp-sidecar",
       tools: [ SyrusMcp::SubmitSummaryTool ],
       server_context: { run: run }
     )
@@ -25,7 +25,7 @@ RSpec.describe SyrusMcp::Sidecar do
   describe "MCP handshake" do
     it "responds to `initialize` with serverInfo and a negotiated protocol version" do
       response = jsonrpc(server_for(run), "initialize", params: { protocolVersion: "2025-06-18", clientInfo: { name: "test", version: "1" } })
-      expect(response[:result][:serverInfo]).to include(name: "syrus")
+      expect(response[:result][:serverInfo]).to include(name: "syrus-mcp-sidecar")
       expect(response[:result][:protocolVersion]).to be_a(String)
     end
 

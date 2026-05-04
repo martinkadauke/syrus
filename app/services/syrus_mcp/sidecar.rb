@@ -11,8 +11,14 @@ module SyrusMcp
     end
 
     def run
+      # Server name MUST match the --mcp-config key and the binary
+      # basename ("syrus-mcp-sidecar"). claude-code derives MCP tool
+      # prefixes inconsistently between fresh sessions (uses config key)
+      # and --resume'd sessions (uses binary basename); aligning all three
+      # name sources sidesteps the underlying quirk. See
+      # Steps::Base#with_mcp_config for the full story.
       server = MCP::Server.new(
-        name: "syrus",
+        name: "syrus-mcp-sidecar",
         tools: [SubmitSummaryTool],
         server_context: { run: @run }
       )
