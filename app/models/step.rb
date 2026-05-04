@@ -3,6 +3,7 @@ class Step < ApplicationRecord
 
   # The full v1 set. Each kind has a Steps::<Camelized> handler.
   KINDS = %w[
+    prepare
     implement
     summarize
     pr_open

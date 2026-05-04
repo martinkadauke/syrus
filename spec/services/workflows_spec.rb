@@ -30,26 +30,27 @@ RSpec.describe Workflows do
       expect(wf.trigger_kind).to eq("initial")
       expect(wf.state).to eq("queued")
       expect(wf.steps.pluck(:kind, :position)).to eq([
-        [ "implement", 0 ], [ "summarize", 1 ], [ "pr_open", 2 ]
+        [ "prepare", 0 ], [ "implement", 1 ], [ "summarize", 2 ], [ "pr_open", 3 ]
       ])
     end
 
     it "wires next_step_id top-down (linear chain)" do
       wf = Workflows::Initial.instantiate(job: job)
-      a, b, c = wf.steps.order(:position)
+      a, b, c, d = wf.steps.order(:position)
       expect(a.next_step).to eq(b)
       expect(b.next_step).to eq(c)
-      expect(c.next_step).to be_nil
+      expect(c.next_step).to eq(d)
+      expect(d.next_step).to be_nil
     end
 
     it "instantiates PrFeedback with respond → summarize_amend → push" do
       wf = Workflows::PrFeedback.instantiate(job: job)
-      expect(wf.steps.pluck(:kind)).to eq(%w[ respond summarize_amend push ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ prepare respond summarize_amend push ])
     end
 
     it "instantiates CiFailure with analyze_and_fix → summarize_amend → push" do
       wf = Workflows::CiFailure.instantiate(job: job)
-      expect(wf.steps.pluck(:kind)).to eq(%w[ analyze_and_fix summarize_amend push ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ prepare analyze_and_fix summarize_amend push ])
     end
 
     it "instantiates Rebase with auto_rebase → agent_rebase → force_push" do

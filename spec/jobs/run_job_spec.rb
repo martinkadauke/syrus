@@ -58,7 +58,10 @@ RSpec.describe RunJob do
       expect(wf.trigger_kind).to eq("initial")
       expect(wf.state).to eq("succeeded")
       expect(wf.steps.pluck(:kind, :state)).to eq([
-        [ "implement", "succeeded" ], [ "summarize", "succeeded" ], [ "pr_open", "succeeded" ]
+        [ "prepare",   "succeeded" ],
+        [ "implement", "succeeded" ],
+        [ "summarize", "succeeded" ],
+        [ "pr_open",   "succeeded" ]
       ])
       expect(wf.artifact("pr_title")).to eq("Add greeting helper")
       expect(job.pr_number).to eq(123)
@@ -137,7 +140,10 @@ RSpec.describe RunJob do
 
       expect(wf.state).to eq("succeeded")
       expect(wf.steps.pluck(:kind, :state)).to eq([
-        [ "respond", "succeeded" ], [ "summarize_amend", "succeeded" ], [ "push", "succeeded" ]
+        [ "prepare",         "succeeded" ],
+        [ "respond",         "succeeded" ],
+        [ "summarize_amend", "succeeded" ],
+        [ "push",            "succeeded" ]
       ])
       # No new PR — same Job's existing one
       expect(@pr_stub).not_to have_been_requested
@@ -209,8 +215,8 @@ RSpec.describe RunJob do
 
       wf = job.workflows.last
       expect(wf.state).to eq("failed")
-      first_run = wf.steps.first.runs.first
-      expect(first_run.state).to eq("failed")
+      implement_run = wf.steps.find_by(kind: "implement").runs.first
+      expect(implement_run.state).to eq("failed")
     end
   end
 
@@ -227,8 +233,9 @@ RSpec.describe RunJob do
       wf = job.workflows.last
       expect(wf.state).to eq("failed")
       expect(wf.failure_count).to eq(1)
-      expect(wf.steps.first.state).to eq("failed")
-      expect(wf.steps.first.runs.first.agent_outcome).to eq("error_max_turns")
+      implement = wf.steps.find_by(kind: "implement")
+      expect(implement.state).to eq("failed")
+      expect(implement.runs.first.agent_outcome).to eq("error_max_turns")
       expect(@pr_stub).not_to have_been_requested
     end
   end
@@ -254,7 +261,7 @@ RSpec.describe RunJob do
       }
       job; drain_workflow!(job)
 
-      run = job.workflows.last.steps.first.runs.first
+      run = job.workflows.last.steps.find_by(kind: "implement").runs.first
       expect(run.state).to eq("failed")
       expect(run.agent_outcome).to eq("git_state_corrupt")
     end
@@ -268,7 +275,7 @@ RSpec.describe RunJob do
       }
       job; drain_workflow!(job)
 
-      run = job.workflows.last.steps.first.runs.first
+      run = job.workflows.last.steps.find_by(kind: "implement").runs.first
       diag = run.run_diagnostic
       expect(diag).to be_present
       expect(diag.error_class).to match(/AgentRunFailed|StepFailed/)
@@ -287,7 +294,7 @@ RSpec.describe RunJob do
       }
       job; drain_workflow!(job)
 
-      run = job.workflows.last.steps.first.runs.first
+      run = job.workflows.last.steps.find_by(kind: "implement").runs.first
       logs = run.job_logs.pluck(:chunk)
       expect(logs).to include("real chunk")
       expect(logs).not_to include("", "   \n\n  ")

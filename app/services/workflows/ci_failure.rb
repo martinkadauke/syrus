@@ -8,7 +8,7 @@ module Workflows
   # implement phase here is "look at the failing checks, find the
   # root cause, fix the code or the test".
   class CiFailure < Base
-    steps :analyze_and_fix, :summarize_amend, :push
+    steps :prepare, :analyze_and_fix, :summarize_amend, :push
 
     def self.trigger_kind = "ci_failure"
   end

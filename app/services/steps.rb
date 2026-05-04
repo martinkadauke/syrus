@@ -3,6 +3,7 @@ module Steps
   # callers don't need to know the individual class names; they
   # ask `Steps.handler_for("implement").new(run).call`.
   REGISTRY = {
+    "prepare"         => :Prepare,
     "implement"       => :Implement,
     "summarize"       => :Summarize,
     "pr_open"         => :PrOpen,

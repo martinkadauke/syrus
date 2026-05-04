@@ -17,6 +17,7 @@ module JobsHelper
   # any kind not yet enumerated here, so a new step type doesn't
   # blank out the UI.
   STEP_KIND_LABELS = {
+    "prepare"         => "Prepare workspace",
     "implement"       => "Implement",
     "summarize"       => "Summarize",
     "pr_open"         => "Open PR",

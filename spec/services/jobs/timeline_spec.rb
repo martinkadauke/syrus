@@ -9,11 +9,11 @@ RSpec.describe Jobs::Timeline do
 
   describe ".for" do
     it "returns chronologically-sorted events derived from workflow + step + run timestamps" do
-      # job factory created an Initial workflow with implement / summarize / pr_open
-      # steps + the first step's queued initial Run.
+      # job factory created an Initial workflow with prepare / implement /
+      # summarize / pr_open steps + the first step's queued initial Run.
       wf = job.workflows.last
-      implement, summarize, pr_open = wf.steps.order(:position).to_a
-      run = wf.first_step.runs.first
+      implement = wf.steps.find_by(kind: "implement")
+      run = implement.runs.first || implement.runs.create!(job: job, trigger_kind: wf.trigger_kind)
 
       # Timestamps must increase monotonically so the sort is deterministic.
       base = Time.zone.local(2026, 5, 4, 12, 0, 0)
@@ -51,8 +51,8 @@ RSpec.describe Jobs::Timeline do
 
     it "kinds reflect terminal state (success/failure/cancel)" do
       wf = job.workflows.last
-      step = wf.first_step
-      run  = step.runs.first
+      step = wf.steps.find_by(kind: "implement")
+      run  = step.runs.first || step.runs.create!(job: job, trigger_kind: wf.trigger_kind)
 
       run.update_columns(state: "failed",
                          started_at: 1.minute.ago, finished_at: Time.current,

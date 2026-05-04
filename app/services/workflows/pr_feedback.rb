@@ -11,7 +11,7 @@ module Workflows
   # --resumes respond and produces the *commit message for the
   # amendment* (not a fresh PR title). push is non-agentic.
   class PrFeedback < Base
-    steps :respond, :summarize_amend, :push
+    steps :prepare, :respond, :summarize_amend, :push
 
     def self.trigger_kind = "pr_comment"
   end

@@ -40,12 +40,17 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
     before { sign_in_as(admin); admin_token }
 
     it "dumps job + repository + workflows + steps + runs in one shot" do
-      run = job.initial_run
-      run.update!(state: "succeeded", agent_outcome: "success", agent_turns: 7,
-                  agent_diff: "diff --git ...", finished_at: Time.current)
-      run.step.update!(state: "succeeded", finished_at: Time.current)
-      run.step.workflow.update!(state: "succeeded", finished_at: Time.current,
-                                cleaned_up_at: Time.current)
+      # Initial workflow chain is prepare → implement → … . Set up
+      # the implement step with a succeeded Run + ClaudeSession so
+      # the assertions below match real production-shape data.
+      wf = job.workflows.last
+      implement = wf.steps.find_by(kind: "implement")
+      run = implement.runs.create!(job: job, trigger_kind: "initial",
+                                   state: "succeeded", agent_outcome: "success",
+                                   agent_turns: 7, agent_diff: "diff --git ...",
+                                   started_at: 1.minute.ago, finished_at: Time.current)
+      implement.update!(state: "succeeded", finished_at: Time.current)
+      wf.update!(state: "succeeded", finished_at: Time.current, cleaned_up_at: Time.current)
       ClaudeSession.create!(run: run, session_id: "abc-123",
                             transcript_jsonl: "{\"a\":1}\n{\"b\":2}\n")
 
@@ -62,8 +67,10 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(wf["cleaned_up_at"]).to be_present
       expect(wf["retry_available"]).to be false  # cleaned up
 
-      step = wf["steps"].first
-      expect(step["kind"]).to eq("implement")
+      # First step in Initial workflow is now `prepare` (added in
+      # the prep-step commit). Find implement explicitly to match
+      # the Run we set up above.
+      step = wf["steps"].find { |s| s["kind"] == "implement" }
       expect(step["state"]).to eq("succeeded")
 
       run_payload = step["runs"].first

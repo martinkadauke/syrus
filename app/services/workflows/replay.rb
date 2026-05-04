@@ -5,7 +5,7 @@ module Workflows
   # the existing branch instead of branching from default; pr_open
   # short-circuits if the Job already has a PR number.
   class Replay < Base
-    steps :implement, :summarize, :pr_open
+    steps :prepare, :implement, :summarize, :pr_open
 
     def self.trigger_kind = "replay"
   end
