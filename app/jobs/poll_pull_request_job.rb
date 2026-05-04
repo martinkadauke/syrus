@@ -8,7 +8,15 @@ class PollPullRequestJob < ApplicationJob
   # the watermark or stack two pr_comment Runs at once.
   limits_concurrency to: 1, key: ->(job_id, *) { "pr_poll:#{job_id}" }
 
-  def perform(job_id)
+  # `manual: true` is set by JobsController#poll_feedback (operator
+  # clicked the "Check for PR feedback" button). The pr_comment /
+  # ci_failure caps are runaway-loop defenses for the autonomous
+  # 5-minute poller; the operator clicking the button is an
+  # explicit override of that defense, so we skip the cap checks
+  # in that path. Without this, the button silently no-ops on Jobs
+  # that have already burned through their pr_comment quota.
+  def perform(job_id, manual: false)
+    @manual = manual
     @job = Job.find_by(id: job_id)
     return unless @job&.open? && @job.pr_number.present?
     return if @job.repository.archived?
@@ -76,6 +84,7 @@ class PollPullRequestJob < ApplicationJob
   # Runs — counting Runs would hit the cap after ~2 workflows). The
   # cap is "max pr_comment bursts on this Job".
   def cap_reached?
+    return false if @manual  # operator-initiated polls bypass autopoll defenses
     return false unless @job.workflows.where(trigger_kind: "pr_comment").count >= PR_COMMENT_FOLLOWUP_CAP
     Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit pr_comment cap (#{PR_COMMENT_FOLLOWUP_CAP}); skipping")
     true
@@ -161,6 +170,7 @@ class PollPullRequestJob < ApplicationJob
   end
 
   def ci_failure_cap_reached?
+    return false if @manual  # operator-initiated polls bypass autopoll defenses
     return false unless @job.workflows.where(trigger_kind: "ci_failure").count >= CI_FAILURE_CAP
     Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit ci_failure cap (#{CI_FAILURE_CAP}); skipping")
     true

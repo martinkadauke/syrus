@@ -336,11 +336,11 @@ RSpec.describe "Jobs", type: :request do
   describe "POST /jobs/:id/poll_feedback" do
     before { sign_in_as(user) }
 
-    it "enqueues PollPullRequestJob for an open Job with a PR" do
+    it "enqueues PollPullRequestJob for an open Job with a PR (with manual: true to bypass cap)" do
       job.update!(pr_number: 42)
       expect {
         post poll_feedback_job_path(job)
-      }.to have_enqueued_job(PollPullRequestJob).with(job.id)
+      }.to have_enqueued_job(PollPullRequestJob).with(job.id, manual: true)
       expect(response).to redirect_to(job_path(job))
     end
 

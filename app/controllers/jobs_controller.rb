@@ -102,7 +102,12 @@ class JobsController < ApplicationController
       return
     end
 
-    PollPullRequestJob.perform_later(@job.id)
+    # `manual: true` — bypass the pr_comment / ci_failure cap that
+    # exists to defend the autonomous 5-minute poller against
+    # runaway loops. The operator clicking the button is an explicit
+    # override; without this, the click is a silent no-op once a Job
+    # has burned through PR_COMMENT_FOLLOWUP_CAP rounds.
+    PollPullRequestJob.perform_later(@job.id, manual: true)
     redirect_to job_path(@job), notice: "Checking PR feedback now…"
   end
 
