@@ -38,10 +38,14 @@ module SystemAlerts
                "CI-failure detection are degraded until this is fixed; " \
                "the banner clears automatically on the next successful API call.",
       action_steps: [
-        "Open https://github.com/settings/tokens (classic) or the fine-grained tokens page.",
-        "Either: classic PAT with the <code>repo</code> scope, " \
-          "or: fine-grained PAT with <code>Pull requests: read</code> AND <code>Checks: read</code>.",
-        "Paste the new token into <a class=\"underline\" href=\"/credentials/edit\">Settings → Credentials</a> and save."
+        "Generate a <strong>classic</strong> PAT at " \
+          "<a class=\"underline\" href=\"https://github.com/settings/tokens\">github.com/settings/tokens</a> " \
+          "with the <code>repo</code> scope (which covers the entire Syrus surface — clone, push, PRs, comments, check-runs).",
+        "Fine-grained PATs <em>do not work</em> for the full surface today: GitHub doesn't expose a <code>Checks: read</code> permission " \
+          "for fine-grained tokens, so CI-failure detection silently breaks. If you want fine-grained anyway, accept that the " \
+          "<code>check-runs</code> path will keep showing this banner.",
+        "Paste the new token into <a class=\"underline\" href=\"/credentials/edit\">Settings → Credentials</a> and save. " \
+          "The banner clears on the next successful API call."
       ],
       cta: { text: "Update token", path: "/credentials/edit" }
     )
