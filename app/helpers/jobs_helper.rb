@@ -34,6 +34,25 @@ module JobsHelper
     STEP_KIND_LABELS[kind.to_s] || kind.to_s.humanize
   end
 
+  # Human-readable label per Workflow.trigger_kind. Used as the
+  # workflow card title on Job#show, replacing the previous bare
+  # "Workflow N" header that didn't say what the workflow was
+  # actually doing. Falls back to humanizing the trigger kind so
+  # an unknown kind doesn't blank the UI.
+  WORKFLOW_LABELS = {
+    "initial"    => "Initial implementation",
+    "pr_comment" => "PR feedback",
+    "ci_failure" => "CI failure",
+    "rebase"     => "Rebase",
+    "replay"     => "Replay",
+    "manual"     => "Manual",
+    "resume"     => "Resume"
+  }.freeze
+
+  def workflow_label(trigger_kind)
+    WORKFLOW_LABELS[trigger_kind.to_s] || trigger_kind.to_s.humanize
+  end
+
   TRIGGER_STYLES = {
     "initial"     => "bg-purple-100 text-purple-700",
     "pr_comment"  => "bg-cyan-100 text-cyan-700",

@@ -432,6 +432,10 @@ RSpec.describe "Jobs", type: :request do
     end
 
     it "puts a turbo_confirm on Start over" do
+      # The retry split-button is hidden while a Run is in flight,
+      # so finish the initial Run first — Start over only appears
+      # in the dropdown when the Job has no active Run.
+      job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
       get job_path(job)
       expect(response.body).to match(/data-turbo-confirm=.*abandons the existing branch/)
     end

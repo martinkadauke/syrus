@@ -8,12 +8,12 @@
 <section class="border border-gray-200 rounded-lg overflow-hidden">
   <header class="bg-gray-50 px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <span class="font-medium text-gray-900">Workflow <%= workflow_number %></span>
-      <%= trigger_pill(workflow.trigger_kind) %>
+      <span class="font-medium text-gray-900"><%= workflow_label(workflow.trigger_kind) %></span>
       <%= state_pill(workflow.state) %>
       <span class="text-xs text-gray-500">
         <%= pluralize(steps_array.size, "step") %>
       </span>
+      <span class="text-xs text-gray-400">workflow #<%= workflow_number %></span>
     </div>
     <div class="flex items-center gap-3">
       <% if is_latest && workflow.retry_available? %>

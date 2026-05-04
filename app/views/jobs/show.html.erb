@@ -46,11 +46,18 @@
            path: restart_job_path(@job),
            confirm: "This abandons the existing branch and PR (#{@job.pr_number ? "##{@job.pr_number}" : "none yet"}) and opens a new one. Continue?"
          } %>
-      <%= split_button(
-            theme: "blue",
-            disabled: !(@job.open? && !@job.any_active_run?),
-            primary: { label: "Retry", path: run_again_job_path(@job) },
-            options: retry_options) %>
+      <%# Hidden entirely while a Run is in flight — retrying or
+          starting over while the agent's still going would just
+          stack work behind the per-Job concurrency lock. The
+          Cancel & close button is the right tool when an active
+          Run needs to make way. %>
+      <% unless @job.any_active_run? %>
+        <%= split_button(
+              theme: "blue",
+              disabled: !@job.open?,
+              primary: { label: "Retry", path: run_again_job_path(@job) },
+              options: retry_options) %>
+      <% end %>
 
       <% if @job.open? %>
         <%= button_to "Cancel & close", cancel_job_path(@job), method: :post,
