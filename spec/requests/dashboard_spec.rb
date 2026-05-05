@@ -253,5 +253,30 @@ RSpec.describe "Dashboard", type: :request do
         expect(response.body).not_to include("exhausted")
       end
     end
+
+    describe "archived repositories" do
+      let(:active_repo)   { Factories.repository(user: user, owner: "acme", name: "active-thing") }
+      let(:archived_repo) { Factories.repository(user: user, owner: "acme", name: "archived-thing").tap(&:archive!) }
+      let!(:active_job)   { Factories.job(repository: active_repo,   issue_number: 1) }
+      let!(:archived_job) { Factories.job(repository: archived_repo, issue_number: 2) }
+
+      it "hides jobs from archived repositories" do
+        get root_path
+        expect(response.body).to     include("active-thing")
+        expect(response.body).not_to include("archived-thing")
+      end
+
+      it "hides workflows from archived repositories" do
+        get root_path(tab: "workflows")
+        expect(response.body).to     include("active-thing")
+        expect(response.body).not_to include("archived-thing")
+      end
+
+      it "drops archived repos from the repository filter dropdown" do
+        get root_path
+        expect(response.body).to     include(active_repo.slug)
+        expect(response.body).not_to include("acme/archived-thing")
+      end
+    end
   end
 end

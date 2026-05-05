@@ -2,13 +2,22 @@ class HomeController < ApplicationController
   PER_PAGE = 25
 
   def index
-    @repositories = Current.user.repositories.order(:owner, :name)
-    @active_tab = params[:tab] == "workflows" ? "workflows" : "jobs"
-    @page = [ params[:page].to_i, 1 ].max
+    # Dashboard hides archived repositories and everything that
+    # belonged to them. Archiving is the operator's "I'm done with
+    # this for now" gesture; surfacing the archived repo's stale
+    # jobs and workflows back on the dashboard would defeat the
+    # whole point. The /repositories index keeps a separate
+    # "Archived" section for the cases where the operator does
+    # want to look back at them.
+    active_repo_ids = Current.user.repositories.active.pluck(:id)
+    @repositories   = Current.user.repositories.active.order(:owner, :name)
+    @active_tab     = params[:tab] == "workflows" ? "workflows" : "jobs"
+    @page           = [ params[:page].to_i, 1 ].max
 
     # Eager-load workflows + their steps so current_step_caption(job)
     # doesn't N+1 against every row in the dashboard table.
-    @jobs = Current.user.jobs.includes(:repository, workflows: :steps)
+    @jobs = Current.user.jobs.where(repository_id: active_repo_ids)
+                             .includes(:repository, workflows: :steps)
     @jobs = @jobs.where(state: params[:state]) if params[:state].present?
     @jobs = @jobs.where(repository_id: params[:repository_id]) if params[:repository_id].present?
 
@@ -28,7 +37,8 @@ class HomeController < ApplicationController
     # Workflows tab — every burst of work, newest first. Eager-load
     # job→repository for the row, plus steps so the "currently"
     # caption can name the active step without an extra query.
-    @workflows = Workflow.joins(:job).where(jobs: { user_id: Current.user.id })
+    @workflows = Workflow.joins(:job)
+                         .where(jobs: { user_id: Current.user.id, repository_id: active_repo_ids })
                          .includes(:steps, job: :repository)
     @workflows_total = @workflows.count
     @workflows = @workflows.order(created_at: :desc).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
