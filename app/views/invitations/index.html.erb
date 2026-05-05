@@ -1,12 +1,13 @@
-<%= render "settings/nav" %>
-
 <div class="space-y-8">
-  <div>
-    <h1 class="font-bold text-3xl">Invitations</h1>
-    <p class="mt-2 text-sm text-gray-600">
-      Generate a one-time signup link. Default expiry is 7 days.
-      Invitations always work, even when open signups are disabled.
-    </p>
+  <div class="flex items-start justify-between">
+    <div>
+      <h1 class="font-bold text-3xl">Invitations</h1>
+      <p class="mt-2 text-sm text-gray-600">
+        Generate a one-time signup link. Default expiry is 7 days.
+        Invitations always work, even when open signups are disabled.
+      </p>
+    </div>
+    <%= link_to "← Admin overview", admin_root_path, class: "text-sm text-blue-600 hover:underline" %>
   </div>
 
   <div class="bg-white border border-gray-200 rounded-lg p-6">

@@ -36,13 +36,13 @@ RSpec.describe "Settings", type: :request do
         expect(response).to redirect_to(edit_credentials_path)
       end
 
-      it "shows the per-user sections + Invitations in the in-page nav (App settings is admin-area-only)" do
+      it "shows only the per-user sections in the in-page nav (Invitations + App settings are admin-area-only)" do
         get settings_path
         follow_redirect!
         expect(response.body).to include("My credentials")
         expect(response.body).to include("Templates")
-        expect(response.body).to include("Invitations")
-        expect(response.body).not_to match(/<a[^>]*>App settings/)  # not in the settings sub-nav anymore
+        expect(response.body).not_to match(/<a[^>]*>Invitations/)  # moved to admin area
+        expect(response.body).not_to match(/<a[^>]*>App settings/) # moved to admin area
       end
     end
   end
