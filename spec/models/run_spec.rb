@@ -123,6 +123,30 @@ RSpec.describe Run do
       expect(Run.average_duration_for("initial")).to eq(10)
       expect(Run.average_duration_for("pr_comment")).to eq(100)
     end
+
+    # Production 500 reproducer (2026-05-04): a terminal Run with
+    # started_at set but finished_at nil (e.g. crash path that didn't
+    # transition cleanly) used to slip through `where.not(a: nil, b: nil)`
+    # — that compiles to `NOT (a IS NULL AND b IS NULL)`, only excluding
+    # rows where BOTH are nil. The block then did `nil - Time` and the
+    # whole jobs/show page 500'd.
+    it "ignores terminal runs with finished_at unset (crash recovery survivor)" do
+      ok = Factories.run
+      ok.update_columns(state: "succeeded", started_at: 100.seconds.ago, finished_at: 70.seconds.ago)  # 30s
+      crashed = Factories.run
+      crashed.update_columns(state: "failed", started_at: 200.seconds.ago, finished_at: nil)
+      expect { Run.average_duration_for("initial") }.not_to raise_error
+      expect(Run.average_duration_for("initial")).to eq(30)
+    end
+
+    it "ignores terminal runs with started_at unset" do
+      ok = Factories.run
+      ok.update_columns(state: "succeeded", started_at: 100.seconds.ago, finished_at: 60.seconds.ago)  # 40s
+      weird = Factories.run
+      weird.update_columns(state: "failed", started_at: nil, finished_at: 1.second.ago)
+      expect { Run.average_duration_for("initial") }.not_to raise_error
+      expect(Run.average_duration_for("initial")).to eq(40)
+    end
   end
 
   describe "auto-enqueue RunJob on commit" do
