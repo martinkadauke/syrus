@@ -96,6 +96,31 @@ fi
 # worker-dev build runs LAST so its cache push captures everything;
 # `mode=max` index references survive across rebuilds and let fresh
 # CI runners pull pre-compiled runtimes instead of recompiling.
+# `verify_pushed` confirms a `<repo>:<tag>` manifest is actually
+# present in GHCR after a build. `docker buildx build --push` has
+# been seen to "succeed" without producing a manifest at the tag
+# (transient registry hiccup, buildx driver edge case, etc.); the
+# only reliable signal is asking the registry directly. Without
+# this, the deploy script reports success and the next rollout
+# either reuses the old :latest digest (silent regression — what
+# bit us today) or kubelet ImagePullBackOffs on the SHA tag.
+verify_pushed() {
+  local repo="$1" tag="$2"
+  local b64; b64=$(printf '%s' "$GHCR_TOKEN" | base64)
+  local code
+  code=$(curl -sS -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer ${b64}" \
+           -H "Accept: application/vnd.oci.image.index.v1+json" \
+           -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+           -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+           -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+           "https://ghcr.io/v2/${repo#ghcr.io/}/manifests/${tag}")
+  if [ "$code" != "200" ]; then
+    echo "✗ ${repo}:${tag} not in registry (HTTP ${code}) — buildx --push didn't actually push" >&2
+    return 1
+  fi
+}
+
 if [ "$SKIP_BUILD" = false ]; then
   echo "→ ${REGISTRY} login"
   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
@@ -113,6 +138,8 @@ if [ "$SKIP_BUILD" = false ]; then
     -t "${REGISTRY}:latest" \
     --push \
     .
+  verify_pushed "${REGISTRY}" "${SHA}"
+  verify_pushed "${REGISTRY}" "latest"
 
   echo "→ ${WORKER_DEV_REGISTRY}:${SHA} build+push (linux/amd64, target=worker-dev)"
   docker buildx build \
@@ -125,8 +152,12 @@ if [ "$SKIP_BUILD" = false ]; then
     -t "${WORKER_DEV_REGISTRY}:latest" \
     --push \
     .
+  verify_pushed "${WORKER_DEV_REGISTRY}" "${SHA}"
+  verify_pushed "${WORKER_DEV_REGISTRY}" "latest"
 else
-  echo "→ skipping build/push (--skip-build); rolling existing ${REGISTRY}:${SHA} + ${WORKER_DEV_REGISTRY}:${SHA}"
+  echo "→ skipping build/push (--skip-build); verifying existing tags in registry"
+  verify_pushed "${REGISTRY}"            "${SHA}"
+  verify_pushed "${WORKER_DEV_REGISTRY}" "${SHA}"
 fi
 
 # --- rollout helpers -------------------------------------------------
@@ -139,13 +170,49 @@ ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-15m}"
 
 rollout() {
   local label="$1" kubeconfig="$2" namespace="$3"
+  flux_kustomization_window "$kubeconfig" suspend "$label"
+  trap "flux_kustomization_window '$kubeconfig' resume '$label' || true" EXIT INT TERM
   echo "→ ${label}: rollout restart in ${namespace}"
   KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${DEPLOYMENTS[@]}"
   for dep in "${DEPLOYMENTS[@]}"; do
     KUBECONFIG="$kubeconfig" kubectl rollout status -n "$namespace" "$dep" --timeout="$ROLLOUT_TIMEOUT"
   done
   verify_sha "$label" "$kubeconfig" "$namespace"
+  flux_kustomization_window "$kubeconfig" resume "$label"
+  trap - EXIT INT TERM
   echo "✓ ${label} rolled to ${SHA}"
+}
+
+# Flux's apps Kustomization reconciles every 10min and re-applies
+# the manifest from Git. That re-apply strips annotations not in
+# source — including the `kubectl.kubernetes.io/restartedAt` one
+# `kubectl rollout restart` adds. If Flux fires mid-rollout, the
+# new ReplicaSet's pod template hash collapses back to the old
+# one and K8s stops replacing pods — which is exactly what bit
+# us today: 2 web replicas, only 1 got rotated, the second
+# stayed on the old image for hours. Suspending the Kustomization
+# for the duration of the rollout keeps Flux out of the way.
+# Tolerate failures (e.g. cluster without Flux installed) — log
+# and continue rather than block the deploy.
+FLUX_NAMESPACE="${FLUX_NAMESPACE:-flux-system}"
+FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-apps}"
+flux_kustomization_window() {
+  local kubeconfig="$1" mode="$2" label="$3"
+  local suspend_value
+  case "$mode" in
+    suspend) suspend_value=true  ;;
+    resume)  suspend_value=false ;;
+    *) echo "flux_kustomization_window: unknown mode $mode" >&2; return 1 ;;
+  esac
+  if ! KUBECONFIG="$kubeconfig" kubectl -n "$FLUX_NAMESPACE" \
+         get kustomization "$FLUX_KUSTOMIZATION" >/dev/null 2>&1; then
+    echo "→ ${label}: flux kustomization '${FLUX_KUSTOMIZATION}' not found in '${FLUX_NAMESPACE}' — proceeding without suspend"
+    return 0
+  fi
+  echo "→ ${label}: flux ${mode} kustomization/${FLUX_KUSTOMIZATION}"
+  KUBECONFIG="$kubeconfig" kubectl -n "$FLUX_NAMESPACE" \
+    patch kustomization "$FLUX_KUSTOMIZATION" \
+    --type merge -p "{\"spec\":{\"suspend\":${suspend_value}}}" >/dev/null
 }
 
 # `kubectl rollout status` returning 0 does NOT mean the new pods
@@ -186,16 +253,23 @@ verify_sha() {
     cat >&2 <<MSG
 
 The ${label} rollout reported success but at least one deployment is
-still serving an older image. Common causes:
-
-  - Flux reconciled mid-rollout and stripped the rollout-restart
-    annotation. Check 'kubectl -n flux-system get kustomization apps'
-    and consider 'flux suspend kustomization apps' before deploys, or
-    pin image tags in the manifest source instead of using :latest.
+still serving an older image. Now that bin/deploy suspends Flux for
+the rollout window and verifies images landed in the registry before
+restart, the surviving causes are:
 
   - A new pod failed init (db migration crash, missing secret) and
     was kept un-Ready while old pods stayed alive. Check 'kubectl get
     pods -n ${namespace}' for Init:Error / CrashLoopBackOff.
+
+  - The deployment manifest references the wrong image repo (e.g.
+    'ghcr.io/tkadauke/syrus' for the worker pod when it should be
+    'ghcr.io/tkadauke/syrus-worker-dev'). Both pods then pull
+    :latest from the same repo, which won't match either build.
+    Check the deployment yaml in greenacres.
+
+  - kubelet is using a cached image digest from before the push.
+    Delete the affected pod manually to force a fresh pull:
+    'kubectl delete pod -n ${namespace} <pod-name>'.
 
 MSG
     exit 1
