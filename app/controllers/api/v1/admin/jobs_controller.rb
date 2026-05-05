@@ -117,8 +117,12 @@ module Api
             job_log_count: run.job_logs.size,
             claude_session: run.claude_session && {
               session_id: run.claude_session.session_id,
-              transcript_bytes: run.claude_session.transcript_jsonl.bytesize,
-              transcript_lines: run.claude_session.transcript_jsonl.count("\n")
+              # transcript_jsonl is dropped on Run success (commit
+              # 804cdf5) — keep the metadata visible but flag the
+              # body as pruned instead of pretending size 0.
+              transcript_pruned: run.claude_session.transcript_jsonl.nil?,
+              transcript_bytes:  run.claude_session.transcript_jsonl&.bytesize,
+              transcript_lines:  run.claude_session.transcript_jsonl&.count("\n")
             },
             run_diagnostic: run.run_diagnostic && {
               error_class: run.run_diagnostic.error_class,

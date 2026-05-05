@@ -80,6 +80,28 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(run_payload["agent_diff_bytes"]).to be > 0
       expect(run_payload["claude_session"]["session_id"]).to eq("abc-123")
       expect(run_payload["claude_session"]["transcript_lines"]).to eq(2)
+      expect(run_payload["claude_session"]["transcript_pruned"]).to be false
+    end
+
+    it "tolerates a ClaudeSession whose transcript was pruned post-success (issue surfaced by Job 80)" do
+      job_with = Factories.job(user: admin)
+      run = job_with.initial_run
+      run.update!(state: "succeeded")
+      ClaudeSession.create!(run: run, session_id: "pruned-1", transcript_jsonl: nil)
+
+      get "/api/v1/admin/jobs/#{job_with.id}", headers: auth(admin_token)
+      expect(response).to be_successful
+
+      run_payload = parse_body["workflows"]
+        .flat_map { |wf| wf["steps"] }
+        .flat_map { |s| s["runs"] }
+        .find { |r| r.dig("claude_session", "session_id") == "pruned-1" }
+      expect(run_payload["claude_session"]).to include(
+        "session_id"        => "pruned-1",
+        "transcript_pruned" => true,
+        "transcript_bytes"  => nil,
+        "transcript_lines"  => nil
+      )
     end
 
     it "404s for an unknown job id with the structured error envelope" do
