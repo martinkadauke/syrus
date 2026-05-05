@@ -2,13 +2,15 @@ class HomeController < ApplicationController
   PER_PAGE = 25
 
   def index
-    # Filter via subquery on Repository — that triggers Repository's
-    # default_scope (archived excluded). We can't lean on
-    # `Job.joins(:repository)` because Job's `belongs_to :repository`
-    # explicitly unscopes (admin paths need to read archived parent
-    # repos), so the join wouldn't apply the default scope.
-    active_repo_ids = Current.user.repositories.select(:id)
-    @repositories   = Current.user.repositories.order(:owner, :name)
+    # Dashboard hides archived repositories and everything that
+    # belonged to them. Archiving is the operator's "I'm done with
+    # this for now" gesture; surfacing the archived repo's stale
+    # jobs and workflows back on the dashboard would defeat the
+    # whole point. The /repositories index keeps a separate
+    # "Archived" section for the cases where the operator does
+    # want to look back at them.
+    active_repo_ids = Current.user.repositories.active.pluck(:id)
+    @repositories   = Current.user.repositories.active.order(:owner, :name)
     @active_tab     = params[:tab] == "workflows" ? "workflows" : "jobs"
     @page           = [ params[:page].to_i, 1 ].max
 

@@ -4,12 +4,9 @@ class RepositoriesController < ApplicationController
   PER_PAGE = 20
 
   def index
-    # Use `with_archived` to opt out of Repository's default_scope —
-    # this index legitimately needs to render BOTH the active and
-    # archived sections side by side.
-    repos = Current.user.repositories.with_archived.order(:owner, :name)
-    @active_repositories   = repos.where(archived_at: nil)
-    @archived_repositories = repos.where.not(archived_at: nil)
+    repos = Current.user.repositories.order(:owner, :name)
+    @active_repositories   = repos.active
+    @archived_repositories = repos.archived
   end
 
   def show
@@ -189,10 +186,7 @@ class RepositoriesController < ApplicationController
   private
 
   def load_repository
-    # `with_archived` so #unarchive, #destroy, and the show page on
-    # an archived repo all resolve. Without it Repository's
-    # default_scope would 404 anything archived.
-    @repository = Current.user.repositories.with_archived.find(params[:id])
+    @repository = Current.user.repositories.find(params[:id])
   end
 
   def load_github_issues

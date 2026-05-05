@@ -4,11 +4,7 @@ class Job < ApplicationRecord
   KINDS = %w[ issue cron adhoc ].freeze
 
   belongs_to :user
-  # `unscope(where: :archived_at)` so reaching from a Job to its
-  # Repository resolves even when the repo has been archived. Admin
-  # / transcript surfaces legitimately need to render history for
-  # archived repos; without this they'd 404.
-  belongs_to :repository, -> { unscope(where: :archived_at) }
+  belongs_to :repository
   belongs_to :scheduled_task, optional: true
   has_many :workflows, -> { order(:created_at) }, dependent: :destroy
   # Runs hang off Steps now (Job → Workflow → Step → Run) — Job's
