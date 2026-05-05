@@ -13,8 +13,28 @@ class Repository < ApplicationRecord
   validates :trigger_label, presence: true
   validates :owner, uniqueness: { scope: [ :user_id, :name ], case_sensitive: false }
 
-  scope :active,   -> { where(archived_at: nil) }
-  scope :archived, -> { where.not(archived_at: nil) }
+  # Default scope hides archived repos from every Repository.all /
+  # User#repositories / Job.joins(:repository) call. The trade-off
+  # (admin paths need to opt out) was discussed and accepted. Two
+  # opt-out mechanisms:
+  #
+  #   - `Repository.archived`        — only archived (unscope first
+  #                                    so the default doesn't fight
+  #                                    the where clause)
+  #   - `Repository.with_archived`   — both states; for admin /
+  #                                    diagnostic surfaces that need
+  #                                    to see the full population.
+  #
+  # `belongs_to :repository` declarations on associated models
+  # (Job, ScheduledTask, Workflow→job→repository) are scoped to
+  # `-> { unscoped }` so reaching from a Job back to its repo
+  # resolves regardless of archive state — otherwise admin pages
+  # for jobs whose repo got archived would 404.
+  default_scope { where(archived_at: nil) }
+
+  scope :active,        -> { where(archived_at: nil) }
+  scope :archived,      -> { unscope(where: :archived_at).where.not(archived_at: nil) }
+  scope :with_archived, -> { unscope(where: :archived_at) }
 
   def archived?
     archived_at.present?

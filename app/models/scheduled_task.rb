@@ -7,7 +7,9 @@ class ScheduledTask < ApplicationRecord
   MIN_CRON_INTERVAL = 1.hour
 
   belongs_to :user
-  belongs_to :repository
+  # See Job#repository for why this opts out of Repository's
+  # default scope.
+  belongs_to :repository, -> { unscope(where: :archived_at) }
   belongs_to :cron_template, optional: true
   has_many :jobs, dependent: :nullify
 
