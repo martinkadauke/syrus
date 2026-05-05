@@ -2,9 +2,10 @@
     Locals:
       alert — a SystemAlerts::Alert
     The HTML rendering is severity-driven: alarm = red, warn =
-    amber, info = blue. action_steps content is treated as HTML
-    (so callers can embed links and <code> hints); set responsibly
-    — only the alert source can write here, never user input. %>
+    amber, info = blue. Both `message` and each `action_steps`
+    string are rendered as HTML so callers can embed <code>, <a>,
+    <strong>, etc. — alert sources MUST escape any untrusted
+    content (e.g. verbatim API errors) before wrapping in tags. %>
 <% palette = case alert.severity
              when :alarm then "border-red-300 bg-red-50 text-red-900"
              when :warn  then "border-amber-300 bg-amber-50 text-amber-900"
@@ -22,7 +23,7 @@
     <div class="text-2xl leading-none mt-0.5"><%= icon %></div>
     <div class="flex-1">
       <h3 class="font-semibold"><%= alert.title %></h3>
-      <p class="mt-1 text-sm"><%= alert.message %></p>
+      <p class="mt-1 text-sm"><%= alert.message.html_safe %></p>
       <% if alert.action_steps.any? %>
         <ol class="mt-3 ml-5 list-decimal text-sm space-y-1">
           <% alert.action_steps.each do |step| %>

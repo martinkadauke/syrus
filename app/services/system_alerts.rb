@@ -29,12 +29,17 @@ module SystemAlerts
   end
 
   def self.github_token_blocked(user)
+    # The `gh_api_blocked_reason` is verbatim text from GitHub's API
+    # response (Octokit error message). Treat as untrusted — escape
+    # before wrapping in <code> so anything weird in the body can't
+    # break the page.
+    reason = ERB::Util.html_escape(user.gh_api_blocked_reason.to_s)
     Alert.new(
       id: "github_token_scope:#{user.id}",
       severity: :alarm,
       title: "GitHub API access is blocked for this account.",
       message: "Syrus tried to read GitHub on your behalf and got back: " \
-               "#{user.gh_api_blocked_reason}. PR-feedback polling and " \
+               "<code>#{reason}</code>. PR-feedback polling and " \
                "CI-failure detection are degraded until this is fixed; " \
                "the banner clears automatically on the next successful API call.",
       action_steps: [
