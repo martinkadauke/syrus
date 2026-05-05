@@ -58,9 +58,14 @@
       <% end %>
       <%= link_to "Edit", edit_repository_path(@repository),
             class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium" %>
-      <%= button_to "Remove", repository_path(@repository), method: :delete,
-            class: "rounded-md px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium cursor-pointer",
-            form: { class: "inline", data: { turbo_confirm: "Remove #{@repository.slug} and all its jobs?" } } %>
+      <%# Archive is the soft-stop action — flips polling off and
+          surfaces the repo under "Archived" on the index. Reversible.
+          Hard delete still lives on the index page next to the
+          archive controls there for the rare "actually wipe this"
+          case. %>
+      <%= button_to "Archive", archive_repository_path(@repository), method: :post,
+            class: "rounded-md px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-sm font-medium cursor-pointer",
+            form: { class: "inline", data: { turbo_confirm: "Archive #{@repository.slug}? Polling stops; jobs and history are kept." } } %>
     </div>
   </div>
 
