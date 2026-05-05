@@ -145,8 +145,10 @@ RSpec.describe PollPullRequestJob do
       }.to change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
     end
 
-    it "respects the loop guard (5 pr_comment workflows already)" do
-      5.times { Workflow.create!(job: job, trigger_kind: "pr_comment", state: "succeeded") }
+    it "has no lifetime cap on pr_comment workflows — watermark is the safety" do
+      # Many succeeded pr_comment workflows already; the watermark is
+      # the only thing keeping the same comment from triggering more.
+      10.times { Workflow.create!(job: job, trigger_kind: "pr_comment", state: "succeeded") }
       stub_issue_comments([
         { id: 1, body: "more feedback", user: { login: "reviewer" }, created_at: t1.iso8601 }
       ])
@@ -154,18 +156,6 @@ RSpec.describe PollPullRequestJob do
 
       expect {
         described_class.perform_now(job.id)
-      }.not_to change { job.workflows.where(trigger_kind: "pr_comment").count }
-    end
-
-    it "manual: true bypasses the pr_comment cap (operator override)" do
-      5.times { Workflow.create!(job: job, trigger_kind: "pr_comment", state: "succeeded") }
-      stub_issue_comments([
-        { id: 1, body: "more feedback", user: { login: "reviewer" }, created_at: t1.iso8601 }
-      ])
-      stub_review_comments([])
-
-      expect {
-        described_class.perform_now(job.id, manual: true)
       }.to change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
     end
 
@@ -262,13 +252,24 @@ RSpec.describe PollPullRequestJob do
       expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
     end
 
-    it "respects the cap (3 ci_failure workflows already)" do
-      3.times { Workflow.create!(job: job, trigger_kind: "ci_failure", state: "succeeded") }
+    it "respects the cap (3 ci_failure workflows in the last 24h)" do
+      3.times { Workflow.create!(job: job, trigger_kind: "ci_failure", state: "succeeded", created_at: 30.minutes.ago) }
       stub_check_runs(sha, [
         { name: "test", status: "completed", conclusion: "failure",
           html_url: "u", output: { summary: "fail" } }
       ])
       expect { described_class.perform_now(job.id) }.not_to change { job.workflows.where(trigger_kind: "ci_failure").count }
+    end
+
+    it "ignores ci_failure workflows older than the rolling window (cap recovers)" do
+      # 3 stale workflows from way back — should not count toward the cap
+      3.times { Workflow.create!(job: job, trigger_kind: "ci_failure", state: "succeeded", created_at: 2.days.ago) }
+      stub_check_runs(sha, [
+        { name: "test", status: "completed", conclusion: "failure",
+          html_url: "u", output: { summary: "fail" } }
+      ])
+      expect { described_class.perform_now(job.id) }
+        .to change { job.workflows.where(trigger_kind: "ci_failure").count }.by(1)
     end
 
     it "manual: true bypasses the ci_failure cap (operator override)" do

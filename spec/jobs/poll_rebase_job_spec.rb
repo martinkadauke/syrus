@@ -169,4 +169,50 @@ RSpec.describe PollRebaseJob do
       expect { described_class.perform_now(job.id) }.not_to change(Run, :count)
     end
   end
+
+  describe "per-repo concurrent-rebase cap" do
+    # Defends the schema.rb-conflict scenario: many PRs become
+    # unmergeable in the same poll cycle, autopoll mustn't fan out
+    # one rebase workflow per Job in lockstep.
+    it "skips when CONCURRENT_REBASES_PER_REPO active rebases exist on the same repo" do
+      stub_pr(pr_resource(mergeable: false))
+
+      PollRebaseJob::CONCURRENT_REBASES_PER_REPO.times do |i|
+        sibling = Factories.job(user: user, repository: repository, issue_number: 100 + i, pr_number: 200 + i)
+        Workflow.create!(job: sibling, trigger_kind: "rebase", state: "queued")
+      end
+
+      expect { described_class.perform_now(job.id) }
+        .not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "fires when cross-repo active rebases don't reach the per-repo cap" do
+      stub_pr(pr_resource(mergeable: false))
+
+      # Same number of active rebases, but on a DIFFERENT repo —
+      # shouldn't gate this Job's rebase.
+      other_repo = Factories.repository(user: user, owner: "acme", name: "other-thing", default_branch: "main")
+      PollRebaseJob::CONCURRENT_REBASES_PER_REPO.times do |i|
+        sibling = Factories.job(user: user, repository: other_repo, issue_number: 200 + i, pr_number: 300 + i)
+        Workflow.create!(job: sibling, trigger_kind: "rebase", state: "queued")
+      end
+
+      expect { described_class.perform_now(job.id) }
+        .to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+    end
+
+    it "ignores already-terminal rebases in the count" do
+      stub_pr(pr_resource(mergeable: false))
+
+      # Many succeeded/failed rebases — shouldn't gate.
+      10.times do |i|
+        sibling = Factories.job(user: user, repository: repository, issue_number: 300 + i, pr_number: 400 + i)
+        Workflow.create!(job: sibling, trigger_kind: "rebase", state: %w[ succeeded failed cancelled ].sample,
+                         started_at: 1.hour.ago, finished_at: 30.minutes.ago)
+      end
+
+      expect { described_class.perform_now(job.id) }
+        .to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+    end
+  end
 end

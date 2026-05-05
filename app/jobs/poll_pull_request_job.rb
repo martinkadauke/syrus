@@ -1,7 +1,14 @@
 class PollPullRequestJob < ApplicationJob
   queue_as :default
 
-  PR_COMMENT_FOLLOWUP_CAP = 5
+  # Max ci_failure workflows on a Job in any rolling 24h window. CI
+  # failures CAN runaway loop (agent's fix introduces new failures →
+  # push → CI runs on new sha → another ci_failure workflow → repeat),
+  # since each successful agent push advances head_sha and resets the
+  # `last_ci_handled_sha` watermark. The 24h window means a long-quiet
+  # Job recovers a fresh budget naturally; lifetime caps prevented
+  # recovery forever, which was wrong.
+  CI_FAILURE_WINDOW = 24.hours
   CI_FAILURE_CAP = 3
 
   # One concurrent poll per Job — same Job's poll fanout shouldn't race
@@ -70,24 +77,20 @@ class PollPullRequestJob < ApplicationJob
 
   # ----- pr_comment branch ------------------------------------------------
 
+  # No cap here: `last_seen_comment_at` is a strict watermark that
+  # advances past every comment a workflow has reacted to, so repeated
+  # polls of a quiet PR enqueue zero workflows. Syrus has no bot
+  # identity yet — it pushes commits, doesn't comment — so there's no
+  # self-loop the way ci_failure has. The operator can fold 50 rounds
+  # of feedback into 50 follow-up workflows; the watermark guarantees
+  # each comment is processed exactly once.
   def react_to_pr_comments
-    return if cap_reached?
     return if pending_followup?
 
     new_comments = fetch_new_comments
     return if new_comments.empty?
 
     enqueue_followup_run(new_comments)
-  end
-
-  # Counts Workflows now (each PrFeedback workflow has multiple
-  # Runs — counting Runs would hit the cap after ~2 workflows). The
-  # cap is "max pr_comment bursts on this Job".
-  def cap_reached?
-    return false if @manual  # operator-initiated polls bypass autopoll defenses
-    return false unless @job.workflows.where(trigger_kind: "pr_comment").count >= PR_COMMENT_FOLLOWUP_CAP
-    Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit pr_comment cap (#{PR_COMMENT_FOLLOWUP_CAP}); skipping")
-    true
   end
 
   def pending_followup?
@@ -169,10 +172,17 @@ class PollPullRequestJob < ApplicationJob
     message.to_s.split(/ \/\/ /, 2).first.to_s.strip
   end
 
+  # Rolling-window cap: max CI_FAILURE_CAP ci_failure workflows in
+  # the last CI_FAILURE_WINDOW. Lifetime caps left long-running Jobs
+  # permanently locked out after burning through their budget; a
+  # rolling window lets a Job recover after the loop quiets down.
   def ci_failure_cap_reached?
     return false if @manual  # operator-initiated polls bypass autopoll defenses
-    return false unless @job.workflows.where(trigger_kind: "ci_failure").count >= CI_FAILURE_CAP
-    Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit ci_failure cap (#{CI_FAILURE_CAP}); skipping")
+    recent = @job.workflows.where(trigger_kind: "ci_failure")
+                           .where("created_at >= ?", CI_FAILURE_WINDOW.ago)
+                           .count
+    return false unless recent >= CI_FAILURE_CAP
+    Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit ci_failure cap (#{CI_FAILURE_CAP} in #{CI_FAILURE_WINDOW.inspect}); skipping")
     true
   end
 

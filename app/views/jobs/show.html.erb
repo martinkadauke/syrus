@@ -23,10 +23,19 @@
               class: "rounded-md px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-medium cursor-pointer",
               form: { class: "inline" } %>
       <% end %>
-      <% if @job.pr_mergeable == false && !@job.runs.where(trigger_kind: "rebase").active.exists? %>
+      <%# "Rebase now" is always available when there's a PR and no
+          rebase already in flight — sometimes the operator wants to
+          pull in unrelated upstream changes (e.g. they pushed a bug
+          fix on main and want this PR's agent to see it) regardless
+          of whether GitHub thinks the branch is mergeable. The
+          underlying controller bypasses the autonomous-poller's
+          consecutive-failure cap, and the per-repo rebase cap (which
+          only applies to autonomous polling) doesn't gate this path. %>
+      <% if @job.pr_number.present? && !@job.workflows.active.where(trigger_kind: "rebase").exists? %>
         <%= button_to "Rebase now", rebase_job_path(@job), method: :post,
               class: "rounded-md px-3 py-1.5 bg-teal-600 hover:bg-teal-500 text-white text-sm font-medium cursor-pointer",
-              form: { class: "inline" } %>
+              form: { class: "inline" },
+              title: @job.pr_mergeable == false ? "Branch is unmergeable — auto-resolve" : "Force rebase onto base (e.g. to pull in upstream changes)" %>
       <% end %>
       <%# Consolidated retry actions. Primary = Retry (soft replay
           on the existing branch). Dropdown holds variants: retry

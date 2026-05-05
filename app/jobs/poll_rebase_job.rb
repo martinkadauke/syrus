@@ -10,6 +10,16 @@ class PollRebaseJob < ApplicationJob
   # cleanly many times should never be blocked).
   REBASE_ATTEMPT_CAP = 5
 
+  # Concurrent-rebase cap per repository on the AUTONOMOUS poller
+  # path. Pathological case: someone merges a schema.rb timestamp
+  # change to main, every other open Job's PR becomes unmergeable
+  # in the same poll cycle, and the auto-rebase loop instantiates
+  # one Rebase workflow per Job — O(n) workflows hitting the same
+  # workspace pool simultaneously. Bound that fan-out here. Manual
+  # rebases via JobsController#rebase bypass this cap (operator
+  # explicitly asked for it).
+  CONCURRENT_REBASES_PER_REPO = 3
+
   # One concurrent poll per Job — the same Job's rebase poll
   # shouldn't race itself or stack two rebase Runs at once.
   limits_concurrency to: 1, key: ->(job_id) { "rebase_poll:#{job_id}" }
@@ -50,6 +60,7 @@ class PollRebaseJob < ApplicationJob
     return unless we_control_head?(pr)    # head from a fork → can't push
     return if pending_rebase?
     return if attempt_cap_reached?
+    return if repo_rebase_concurrency_reached?
 
     # Instantiate a Rebase workflow. Its first step is
     # Steps::AutoRebase, which runs the deterministic AutoRebase
@@ -94,6 +105,21 @@ class PollRebaseJob < ApplicationJob
     end
     return false if consecutive < REBASE_ATTEMPT_CAP
     Rails.logger.info("[PollRebaseJob] job #{@job.id} hit rebase cap (#{REBASE_ATTEMPT_CAP} consecutive failures); skipping")
+    true
+  end
+
+  # Counts CURRENTLY ACTIVE (queued/running) Rebase workflows across
+  # every Job in this Job's repository. Defends the fan-out case
+  # described in the constant — autonomous polling doesn't open the
+  # floodgates when many PRs become unmergeable at once.
+  def repo_rebase_concurrency_reached?
+    active = Workflow.active
+                     .where(trigger_kind: "rebase")
+                     .joins(:job)
+                     .where(jobs: { repository_id: @job.repository_id })
+                     .count
+    return false if active < CONCURRENT_REBASES_PER_REPO
+    Rails.logger.info("[PollRebaseJob] job #{@job.id} repo #{@job.repository.slug} at concurrent-rebase cap (#{active}/#{CONCURRENT_REBASES_PER_REPO}); deferring")
     true
   end
 end

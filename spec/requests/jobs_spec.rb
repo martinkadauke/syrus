@@ -761,11 +761,11 @@ RSpec.describe "Jobs", type: :request do
   describe "show page mergeability badge + Rebase button" do
     before { sign_in_as(user) }
 
-    it "shows 'mergeable' when pr_mergeable is true" do
+    it "shows 'mergeable' when pr_mergeable is true (Rebase button still available — operator may want to pull in upstream changes)" do
       job.update!(pr_number: 7, pr_mergeable: true, pr_mergeable_checked_at: 2.minutes.ago)
       get job_path(job)
       expect(response.body).to include("mergeable")
-      expect(response.body).not_to include("Rebase now")
+      expect(response.body).to include("Rebase now")
     end
 
     it "shows 'needs rebase' + Rebase button when pr_mergeable is false" do
@@ -775,16 +775,16 @@ RSpec.describe "Jobs", type: :request do
       expect(response.body).to include("Rebase now")
     end
 
-    it "shows 'checking…' when pr_mergeable is nil but a PR exists" do
+    it "shows 'checking…' when pr_mergeable is nil — Rebase button still available" do
       job.update!(pr_number: 7, pr_mergeable: nil)
       get job_path(job)
       expect(response.body).to include("checking…")
-      expect(response.body).not_to include("Rebase now")
+      expect(response.body).to include("Rebase now")
     end
 
-    it "hides the Rebase button while a rebase Run is already active (avoid stacking)" do
+    it "hides the Rebase button while an active rebase Workflow exists (avoid stacking)" do
       job.update!(pr_number: 7, pr_mergeable: false, pr_mergeable_checked_at: 1.minute.ago)
-      job.runs.create!(trigger_kind: "rebase")
+      Workflow.create!(job: job, trigger_kind: "rebase", state: "queued")
 
       get job_path(job)
       expect(response.body).to include("needs rebase")
