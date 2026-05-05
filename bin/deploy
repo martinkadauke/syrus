@@ -170,16 +170,14 @@ ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-15m}"
 
 rollout() {
   local label="$1" kubeconfig="$2" namespace="$3"
-  flux_kustomization_window "$kubeconfig" suspend "$label"
-  trap "flux_kustomization_window '$kubeconfig' resume '$label' || true" EXIT INT TERM
+  flux_suspend_with_watchdog "$kubeconfig" "$label"
   echo "→ ${label}: rollout restart in ${namespace}"
   KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${DEPLOYMENTS[@]}"
   for dep in "${DEPLOYMENTS[@]}"; do
     KUBECONFIG="$kubeconfig" kubectl rollout status -n "$namespace" "$dep" --timeout="$ROLLOUT_TIMEOUT"
   done
   verify_sha "$label" "$kubeconfig" "$namespace"
-  flux_kustomization_window "$kubeconfig" resume "$label"
-  trap - EXIT INT TERM
+  flux_resume_now "$kubeconfig" "$label"
   echo "✓ ${label} rolled to ${SHA}"
 }
 
@@ -187,32 +185,141 @@ rollout() {
 # the manifest from Git. That re-apply strips annotations not in
 # source — including the `kubectl.kubernetes.io/restartedAt` one
 # `kubectl rollout restart` adds. If Flux fires mid-rollout, the
-# new ReplicaSet's pod template hash collapses back to the old
-# one and K8s stops replacing pods — which is exactly what bit
-# us today: 2 web replicas, only 1 got rotated, the second
-# stayed on the old image for hours. Suspending the Kustomization
-# for the duration of the rollout keeps Flux out of the way.
-# Tolerate failures (e.g. cluster without Flux installed) — log
-# and continue rather than block the deploy.
+# new ReplicaSet's pod template hash collapses back to the old one
+# and K8s stops replacing pods — which is exactly what bit us
+# today: 2 web replicas, only 1 got rotated, the second stayed on
+# the old image for hours.
+#
+# Strategy: suspend the Kustomization for the duration of the
+# rollout, then resume on success. We DON'T rely on a bash trap
+# alone — if the deploy script crashes, the laptop reboots, or the
+# operator closes the terminal, the trap doesn't fire and Flux
+# stays suspended forever. Instead, on suspend we also enqueue a
+# server-side watchdog Job that re-enables Flux after a TTL. The
+# script's own resume path normally fires earlier and makes the
+# watchdog's resume a no-op; the watchdog is only load-bearing on
+# the crash path.
 FLUX_NAMESPACE="${FLUX_NAMESPACE:-flux-system}"
 FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-apps}"
-flux_kustomization_window() {
-  local kubeconfig="$1" mode="$2" label="$3"
-  local suspend_value
-  case "$mode" in
-    suspend) suspend_value=true  ;;
-    resume)  suspend_value=false ;;
-    *) echo "flux_kustomization_window: unknown mode $mode" >&2; return 1 ;;
-  esac
-  if ! KUBECONFIG="$kubeconfig" kubectl -n "$FLUX_NAMESPACE" \
-         get kustomization "$FLUX_KUSTOMIZATION" >/dev/null 2>&1; then
+FLUX_SUSPEND_TTL="${FLUX_SUSPEND_TTL:-1200}"  # seconds — generous deploy budget
+
+flux_kustomization_exists() {
+  local kubeconfig="$1"
+  KUBECONFIG="$kubeconfig" kubectl -n "$FLUX_NAMESPACE" \
+    get kustomization "$FLUX_KUSTOMIZATION" >/dev/null 2>&1
+}
+
+flux_suspend_with_watchdog() {
+  local kubeconfig="$1" label="$2"
+  if ! flux_kustomization_exists "$kubeconfig"; then
     echo "→ ${label}: flux kustomization '${FLUX_KUSTOMIZATION}' not found in '${FLUX_NAMESPACE}' — proceeding without suspend"
     return 0
   fi
-  echo "→ ${label}: flux ${mode} kustomization/${FLUX_KUSTOMIZATION}"
+  ensure_watchdog_rbac "$kubeconfig"
+  echo "→ ${label}: suspending flux kustomization/${FLUX_KUSTOMIZATION} (auto-resume in ${FLUX_SUSPEND_TTL}s if I crash)"
   KUBECONFIG="$kubeconfig" kubectl -n "$FLUX_NAMESPACE" \
     patch kustomization "$FLUX_KUSTOMIZATION" \
-    --type merge -p "{\"spec\":{\"suspend\":${suspend_value}}}" >/dev/null
+    --type merge -p '{"spec":{"suspend":true}}' >/dev/null
+  schedule_resume_watchdog "$kubeconfig"
+}
+
+flux_resume_now() {
+  local kubeconfig="$1" label="$2"
+  if ! flux_kustomization_exists "$kubeconfig"; then
+    return 0
+  fi
+  echo "→ ${label}: resuming flux kustomization/${FLUX_KUSTOMIZATION}"
+  KUBECONFIG="$kubeconfig" kubectl -n "$FLUX_NAMESPACE" \
+    patch kustomization "$FLUX_KUSTOMIZATION" \
+    --type merge -p '{"spec":{"suspend":false}}' >/dev/null
+}
+
+# RBAC for the watchdog Job: a ServiceAccount in flux-system with
+# get/patch on kustomizations. Idempotent — re-applies are no-ops
+# after the first run. Lives permanently (no cleanup); the only
+# cost is one SA + Role + RoleBinding object per cluster.
+ensure_watchdog_rbac() {
+  local kubeconfig="$1"
+  KUBECONFIG="$kubeconfig" kubectl apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: syrus-deploy-watchdog
+  namespace: ${FLUX_NAMESPACE}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: syrus-deploy-watchdog
+  namespace: ${FLUX_NAMESPACE}
+rules:
+  - apiGroups: ["kustomize.toolkit.fluxcd.io"]
+    resources: ["kustomizations"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: syrus-deploy-watchdog
+  namespace: ${FLUX_NAMESPACE}
+subjects:
+  - kind: ServiceAccount
+    name: syrus-deploy-watchdog
+    namespace: ${FLUX_NAMESPACE}
+roleRef:
+  kind: Role
+  name: syrus-deploy-watchdog
+  apiGroup: rbac.authorization.k8s.io
+EOF
+}
+
+# Submit a one-shot Job that sleeps `FLUX_SUSPEND_TTL` seconds and
+# then patches the Kustomization back to suspend=false. If the deploy
+# script's normal resume path fires first, the patch is a no-op
+# (already false). If the script crashes, the laptop reboots, or
+# the terminal gets closed, the watchdog still runs in the cluster
+# and Flux comes back online without operator intervention.
+schedule_resume_watchdog() {
+  local kubeconfig="$1"
+  local job_name="syrus-flux-resume-$(date +%s)-$$"
+  KUBECONFIG="$kubeconfig" kubectl apply -f - >/dev/null <<EOF
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ${job_name}
+  namespace: ${FLUX_NAMESPACE}
+  labels:
+    app: syrus-deploy-watchdog
+spec:
+  ttlSecondsAfterFinished: 60
+  activeDeadlineSeconds: $((FLUX_SUSPEND_TTL + 120))
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: syrus-deploy-watchdog
+    spec:
+      serviceAccountName: syrus-deploy-watchdog
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: resume
+          image: bitnami/kubectl:1.31
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              sleep ${FLUX_SUSPEND_TTL}
+              kubectl -n ${FLUX_NAMESPACE} patch kustomization ${FLUX_KUSTOMIZATION} --type merge -p '{"spec":{"suspend":false}}'
+              echo "watchdog resumed kustomization/${FLUX_KUSTOMIZATION}"
+EOF
 }
 
 # `kubectl rollout status` returning 0 does NOT mean the new pods
