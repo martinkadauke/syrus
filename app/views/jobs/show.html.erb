@@ -1,5 +1,11 @@
 <div class="space-y-6">
-  <div class="flex items-center justify-between">
+  <%# Title block on top, action row below — at every viewport.
+      The actions had been side-by-side on the right of the title
+      (`flex items-center justify-between`), which jammed on mobile
+      (long titles wrap, buttons clip off-screen) and crowded the
+      header on desktop too. Stacking is uniformly cleaner and
+      lets the action row wrap naturally with `flex-wrap`. %>
+  <div class="space-y-3">
     <div>
       <h1 class="font-bold text-2xl">
         <span class="font-mono"><%= @job.repository.slug %></span>
@@ -16,7 +22,7 @@
         <%= pluralize(@job.runs.size, "run") %>
       </p>
     </div>
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <%= state_pill(job_summary_state(@job)) %>
       <% if @job.open? && @job.pr_number.present? %>
         <%= button_to "Check for PR feedback", poll_feedback_job_path(@job), method: :post,
