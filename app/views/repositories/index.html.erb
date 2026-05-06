@@ -11,8 +11,6 @@
         <thead class="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
             <th class="px-4 py-2 text-left">Repository</th>
-            <th class="px-4 py-2 text-left">Default branch</th>
-            <th class="px-4 py-2 text-left">Trigger label</th>
             <th class="px-4 py-2 text-left">Polling</th>
             <th class="px-4 py-2 text-left">Last poll</th>
             <th class="px-4 py-2"></th>
@@ -21,11 +19,19 @@
         <tbody class="divide-y divide-gray-100 text-sm">
           <% @active_repositories.each do |repo| %>
             <tr>
-              <td class="px-4 py-3 font-mono">
-                <%= link_to repo.slug, repository_path(repo), class: "text-blue-600 underline hover:no-underline" %>
+              <%# Branch + trigger label moved underneath the slug as a
+                  small muted line — frees the next two columns up for
+                  the actions cell to actually fit on narrow viewports. %>
+              <td class="px-4 py-3">
+                <div class="font-mono">
+                  <%= link_to repo.slug, repository_path(repo), class: "text-blue-600 underline hover:no-underline" %>
+                </div>
+                <div class="text-xs text-gray-500 mt-0.5">
+                  <span class="font-mono"><%= repo.default_branch %></span>
+                  <span class="text-gray-300 mx-1">·</span>
+                  label <code class="bg-gray-100 px-1 rounded"><%= repo.trigger_label %></code>
+                </div>
               </td>
-              <td class="px-4 py-3"><%= repo.default_branch %></td>
-              <td class="px-4 py-3"><%= repo.trigger_label %></td>
               <td class="px-4 py-3">
                 <% if repo.polling_enabled? %>
                   <span class="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">enabled</span>
