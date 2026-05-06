@@ -11,8 +11,8 @@
         <thead class="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
             <th class="px-4 py-2 text-left">Repository</th>
-            <th class="px-4 py-2 text-left">Polling</th>
-            <th class="px-4 py-2 text-left">Last poll</th>
+            <th class="hidden sm:table-cell px-4 py-2 text-left">Polling</th>
+            <th class="hidden sm:table-cell px-4 py-2 text-left">Last poll</th>
             <th class="px-4 py-2"></th>
           </tr>
         </thead>
@@ -32,14 +32,14 @@
                   label <code class="bg-gray-100 px-1 rounded"><%= repo.trigger_label %></code>
                 </div>
               </td>
-              <td class="px-4 py-3">
+              <td class="hidden sm:table-cell px-4 py-3">
                 <% if repo.polling_enabled? %>
                   <span class="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">enabled</span>
                 <% else %>
                   <span class="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">paused</span>
                 <% end %>
               </td>
-              <td class="px-4 py-3 text-sm">
+              <td class="hidden sm:table-cell px-4 py-3 text-sm">
                 <% if repo.last_poll_status == "failed" %>
                   <span class="text-red-600 font-medium">failed</span>
                   <span class="text-gray-500 text-xs"><%= relative_timestamp(repo.last_poll_started_at) %></span>
