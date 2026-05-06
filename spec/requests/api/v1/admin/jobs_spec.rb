@@ -104,6 +104,39 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       )
     end
 
+    it "swaps in an error envelope when a single Run's serializer raises (others still render)" do
+      job_with = Factories.job(user: admin)
+      good_run = job_with.initial_run
+      good_run.update!(state: "succeeded", agent_turns: 5)
+
+      # Force serialize_run to blow up by stubbing one specific Run
+      # to raise on a leaf attribute access.
+      allow_any_instance_of(Run).to receive(:agent_diff).and_wrap_original do |original, *args|
+        if original.receiver.id == good_run.id
+          raise "boom — simulated bad row"
+        else
+          original.call(*args)
+        end
+      end
+
+      get "/api/v1/admin/jobs/#{job_with.id}", headers: auth(admin_token)
+      expect(response).to be_successful, "expected 200, got #{response.status}: #{response.body[0,400]}"
+
+      run_payload = parse_body["workflows"]
+        .flat_map { |wf| wf["steps"] }
+        .flat_map { |s| s["runs"] }
+        .find { |r| r["id"] == good_run.id }
+      expect(run_payload).to include(
+        "id"                 => good_run.id,
+        "error_serializing"  => /boom — simulated bad row/
+      )
+      # Sibling fields don't appear (the whole hash was replaced
+      # by the error envelope), but the Job + Workflows + Steps
+      # surrounding it still render.
+      expect(parse_body["state"]).to be_present
+      expect(parse_body["workflows"].first["state"]).to be_present
+    end
+
     it "404s for an unknown job id with the structured error envelope" do
       get "/api/v1/admin/jobs/99999", headers: auth(admin_token)
       expect(response).to have_http_status(:not_found)

@@ -9,26 +9,6 @@ single-PR effort.
 
 ## Open
 
-### Resilience: serializer must tolerate post-success-pruned ClaudeSession
-
-**Triggered**: `GET /api/v1/admin/jobs/80` returned 500
-(`NoMethodError: undefined method 'bytesize' for nil:NilClass` at
-`jobs_controller.rb:120`). After commit `804cdf5` ("Drop
-ClaudeSession transcript_jsonl immediately on Run success") the
-`claude_session.transcript_jsonl` column is nilable on every
-succeeded Run. The `serialize_run` block guards the
-`run.claude_session && {...}` outer branch but the inner
-`transcript_jsonl.bytesize` and `.count("\n")` blow up when the
-record exists but its blob is gone.
-
-**Fix**: nil-safe the two stat fields; surface a
-`transcript_pruned: true/false` flag instead of pretending size 0.
-
-**Broader principle**: a single bad row should never 500 the whole
-nested-Job dump. Wrap each per-Run / per-Workflow serializer in a
-rescue that emits an `error_serializing: "..."` field for that
-record only, so the operator at least sees the rest of the Job.
-
 ### List filters on `/api/v1/admin/jobs` are minimal
 
 Today's filters: `pr_number`, `issue_number`, `repo`, `state`. Things
@@ -68,4 +48,16 @@ encrypted columns), what we DON'T (transcripts, diffs, prompts).
 
 ## Resolved
 
-_Empty for now._
+### Serializer resilience for `/api/v1/admin/jobs/:id`
+
+Triggered by `Job 80` returning 500 because `serialize_run` called
+`.bytesize` on a transcript that was pruned post-success
+(`804cdf5`). Two-part fix:
+
+1. Nil-safe the transcript fields directly + flag pruned bodies via
+   `transcript_pruned: true/false` instead of pretending size 0
+   (commit `c5e9027`).
+2. Wrap each per-record serializer (`serialize`, `serialize_workflow`,
+   `serialize_step`, `serialize_run`) in a `rescue => e` that swaps
+   in `{ id: ..., error_serializing: "Class: message" }` and logs
+   the error. One bad row no longer 500s the whole nested dump.

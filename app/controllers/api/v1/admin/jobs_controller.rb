@@ -70,6 +70,8 @@ module Api
             finished_at: job.finished_at,
             workflows: job.workflows.order(:created_at).map { |wf| serialize_workflow(wf) }
           }
+        rescue => e
+          per_record_error(job, e)
         end
 
         def serialize_workflow(wf)
@@ -85,6 +87,8 @@ module Api
             finished_at: wf.finished_at,
             steps: wf.steps.order(:position).map { |s| serialize_step(s) }
           }
+        rescue => e
+          per_record_error(wf, e)
         end
 
         def serialize_step(step)
@@ -97,6 +101,8 @@ module Api
             finished_at: step.finished_at,
             runs: step.runs.order(:created_at).map { |r| serialize_run(r) }
           }
+        rescue => e
+          per_record_error(step, e)
         end
 
         def serialize_run(run)
@@ -130,6 +136,22 @@ module Api
               created_at: run.run_diagnostic.created_at
             }
           }
+        rescue => e
+          per_record_error(run, e)
+        end
+
+        # Single-record fallback. Logs the failure so the bug isn't
+        # silently swallowed, then returns a thin envelope that lets
+        # the rest of the nested dump still render. The operator
+        # sees `error_serializing: "Foo: bar"` in place of that one
+        # record's payload — enough to know which row blew up —
+        # while the surrounding investigation continues.
+        def per_record_error(record, error)
+          Rails.logger.warn(
+            "[admin/jobs] serializer failed for #{record.class}##{record.id}: " \
+            "#{error.class}: #{error.message}"
+          )
+          { id: record.id, error_serializing: "#{error.class}: #{error.message}" }
         end
       end
     end
