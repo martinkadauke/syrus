@@ -22,11 +22,10 @@
               form: { class: "inline" } %>
       <% end %>
       <div class="text-xs text-gray-500">
-        <% if workflow.started_at %>
+        <% if workflow.started_at && workflow.finished_at %>
+          <%= duration_caption(workflow.started_at, workflow.finished_at) %>
+        <% elsif workflow.started_at %>
           <%= relative_timestamp(workflow.started_at) %>
-          <% if workflow.finished_at %>
-            → <%= relative_timestamp(workflow.finished_at) %>
-          <% end %>
         <% else %>
           not yet started
         <% end %>

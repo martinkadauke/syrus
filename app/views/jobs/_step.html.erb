@@ -30,11 +30,10 @@
       <% end %>
     </div>
     <div class="text-xs text-gray-500">
-      <% if step.started_at %>
+      <% if step.started_at && step.finished_at %>
+        <%= duration_caption(step.started_at, step.finished_at) %>
+      <% elsif step.started_at %>
         <%= relative_timestamp(step.started_at) %>
-        <% if step.finished_at %>
-          → <%= relative_timestamp(step.finished_at) %>
-        <% end %>
       <% end %>
     </div>
   </div>
@@ -92,11 +91,10 @@
             <% if run.last_heartbeat_at %>
               · heartbeat <%= relative_timestamp(run.last_heartbeat_at) %>
             <% end %>
+          <% elsif run.started_at && run.finished_at %>
+            <%= duration_caption(run.started_at, run.finished_at) %>
           <% elsif run.started_at %>
             <%= relative_timestamp(run.started_at) %>
-            <% if run.finished_at %>
-              → <%= relative_timestamp(run.finished_at) %>
-            <% end %>
           <% else %>
             not yet started
           <% end %>

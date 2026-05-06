@@ -59,6 +59,27 @@ module ApplicationHelper
     content_tag(:time, relative, datetime: time.iso8601, title: absolute, data: { controller: "relative-time" })
   end
 
+  # "3 minutes" — used in place of the noisy "X ago → Y ago" pattern
+  # for completed work (workflow / step / run that has both a
+  # started_at and a finished_at). The hover-title carries the
+  # absolute start/end window so the operator can still see exact
+  # times when they need them.
+  def duration_caption(started_at, finished_at)
+    return nil if started_at.nil? || finished_at.nil?
+    span = (finished_at - started_at).to_i
+    label = if span < 60
+              "#{span} #{'second'.pluralize(span)}"
+            else
+              # ActiveSupport's distance_of_time_in_words returns "less
+              # than a minute", "about 3 hours", "1 day", etc. — same
+              # English-language scale time_ago_in_words uses, so the
+              # caption sits naturally next to relative_timestamp output.
+              distance_of_time_in_words(started_at, finished_at)
+            end
+    title = "#{started_at.strftime('%-I:%M:%S %p')} → #{finished_at.strftime('%-I:%M:%S %p')}"
+    content_tag(:span, label, title: title)
+  end
+
   # Generic Tailwind-styled "small enum chip" used by every domain that
   # surfaces a state, kind, or status in a list. Per-domain helpers
   # (state_pill, trigger_pill, scheduled_task_state_pill, …) own the

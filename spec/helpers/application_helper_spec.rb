@@ -86,4 +86,35 @@ RSpec.describe ApplicationHelper, type: :helper do
       expect(node.text).to match(/\Ain /)
     end
   end
+
+  describe "#duration_caption" do
+    it "returns nil when either timestamp is missing" do
+      t = Time.current
+      expect(helper.duration_caption(nil, t)).to be_nil
+      expect(helper.duration_caption(t, nil)).to be_nil
+      expect(helper.duration_caption(nil, nil)).to be_nil
+    end
+
+    it "shows seconds for sub-minute spans" do
+      started  = Time.parse("2026-05-06 10:00:00")
+      finished = started + 7.seconds
+      html     = helper.duration_caption(started, finished)
+      expect(html).to include("7 seconds")
+    end
+
+    it "shows the English-language scale for longer spans" do
+      started  = Time.parse("2026-05-06 10:00:00")
+      finished = started + 3.minutes
+      html     = helper.duration_caption(started, finished)
+      expect(html).to match(/3 minutes/)
+      expect(html).not_to include("ago")
+    end
+
+    it "carries the absolute start→end window in the title attribute" do
+      started  = Time.parse("2026-05-06 10:00:00")
+      finished = started + 30.seconds
+      node     = Nokogiri::HTML.fragment(helper.duration_caption(started, finished)).at("span")
+      expect(node["title"]).to include("→")
+    end
+  end
 end
