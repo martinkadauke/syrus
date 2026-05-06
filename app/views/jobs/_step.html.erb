@@ -101,7 +101,11 @@
           <% if run.agent_turns %>
             · turns=<%= run.agent_turns %>
           <% end %>
-          <% if run.agent_outcome %>
+          <%# Skip the agent_outcome chip when it just echoes the state
+              pill (the typical "success" / "succeeded" pair). Anything
+              else — `max_turns`, `error`, future `no_changes` etc. —
+              is genuinely additional info and stays visible. %>
+          <% if run.agent_outcome.present? && run.agent_outcome != "success" %>
             · <span class="font-mono"><%= run.agent_outcome %></span>
           <% end %>
         </div>
