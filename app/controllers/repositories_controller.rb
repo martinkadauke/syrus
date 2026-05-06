@@ -12,8 +12,11 @@ class RepositoriesController < ApplicationController
   def show
     @tab = params.fetch(:tab, "overview").presence_in(%w[overview github_issues]) || "overview"
     @page = [ params.fetch(:page, 1).to_i, 1 ].max
+    # Eager-load workflows+steps so the mirrored dashboard layout's
+    # `current_step_caption(job)` and `job_source_label_html(job)`
+    # helpers don't N+1 against every row.
     @jobs = @repository.jobs
-      .includes(:runs)
+      .includes(:runs, :scheduled_task, workflows: :steps)
       .order(updated_at: :desc)
       .limit(PER_PAGE)
       .offset((@page - 1) * PER_PAGE)

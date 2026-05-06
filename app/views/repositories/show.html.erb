@@ -151,51 +151,65 @@
     <div>
       <h2 class="font-semibold text-lg mb-3">Recent jobs</h2>
       <% if @jobs.any? %>
+        <%# Layout mirrors the main dashboard's Recent jobs table:
+            state pill (+ priority) on the left; the issue/source
+            cell carries the title, PR link, and step caption; runs
+            count + last activity collapse into a small mobile-only
+            summary line below. The Repository column is dropped
+            entirely (we're already on the repo's page) and the
+            "Last activity" header reads `Last` instead of the
+            dashboard's `Started` since this view orders by
+            updated_at. %>
         <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
           <table class="min-w-full divide-y divide-gray-200">
             <thead class="bg-gray-50 text-xs uppercase text-gray-500">
               <tr>
-                <th class="px-4 py-2 text-left">Job</th>
+                <th class="px-4 py-2 text-left">State</th>
                 <th class="px-4 py-2 text-left">Issue</th>
-                <th class="px-4 py-2 text-left">Status</th>
-                <th class="px-4 py-2 text-left">Last activity</th>
-                <th class="px-4 py-2 text-left">PR</th>
-                <th class="px-4 py-2"></th>
+                <th class="hidden sm:table-cell px-4 py-2 text-left">Runs</th>
+                <th class="hidden sm:table-cell px-4 py-2 text-left">Last</th>
+                <th class="hidden sm:table-cell px-4 py-2"></th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 text-sm">
               <% @jobs.each do |job| %>
                 <tr>
-                  <td class="px-4 py-3 text-gray-500">#<%= job.id %></td>
-                  <td class="px-4 py-3">
-                    <% if job.cron? %>
-                      <span class="text-gray-500 text-xs">scheduled:
-                        <%= link_to (job.scheduled_task&.name || "##{job.scheduled_task_id}"),
-                              scheduled_task_path(job.scheduled_task_id),
-                              class: "text-blue-600 underline hover:no-underline" if job.scheduled_task %>
-                      </span>
-                    <% elsif job.adhoc? %>
-                      <span class="text-gray-500 text-xs">ad hoc</span>
-                    <% else %>
-                      <%= link_to "##{job.issue_number}",
-                            "https://github.com/#{@repository.slug}/issues/#{job.issue_number}",
-                            target: "_blank", rel: "noopener",
-                            class: "text-blue-600 underline hover:no-underline" %>
+                  <td class="px-4 py-3 align-top">
+                    <%= state_pill(job_summary_state(job)) %>
+                    <% if job.priority != "medium" %>
+                      <%= priority_pill(job.priority) %>
                     <% end %>
                   </td>
-                  <td class="px-4 py-3"><%= state_pill(job_summary_state(job)) %></td>
-                  <td class="px-4 py-3 text-gray-500"><%= time_ago_in_words(job.updated_at) %> ago</td>
                   <td class="px-4 py-3">
+                    <%= job_source_label_html(job) %>
+                    <% if job.issue_title.present? %>
+                      <%= link_to job.issue_title, job_path(job), class: "ml-1 text-gray-700 hover:underline" %>
+                    <% end %>
                     <% if job.pr_number %>
-                      <%= link_to "##{job.pr_number}",
-                            "https://github.com/#{@repository.slug}/pull/#{job.pr_number}",
-                            target: "_blank", rel: "noopener",
-                            class: "text-blue-600 underline hover:no-underline" %>
-                    <% else %>
-                      <span class="text-gray-400">—</span>
+                      <span class="ml-1 text-xs text-indigo-700">
+                        →
+                        <%= link_to "PR ##{job.pr_number}", job_pr_url(job), target: "_blank", rel: "noopener", class: "underline hover:no-underline" %>
+                      </span>
                     <% end %>
+                    <% if job.external_pr_number %>
+                      <span class="ml-1 text-xs text-violet-700">
+                        ↪
+                        <%= link_to "PR ##{job.external_pr_number}", external_pr_url(job), target: "_blank", rel: "noopener", class: "underline hover:no-underline" %>
+                      </span>
+                    <% end %>
+                    <% caption = current_step_caption(job) %>
+                    <% if caption %>
+                      <div class="text-xs text-gray-500 italic mt-0.5"><%= caption %></div>
+                    <% end %>
+                    <div class="sm:hidden text-xs text-gray-400 mt-1 flex items-center gap-1.5">
+                      <span><%= pluralize(job.runs.size, "run") %></span>
+                      <span>·</span>
+                      <span><%= time_ago_in_words(job.updated_at) %> ago</span>
+                    </div>
                   </td>
-                  <td class="px-4 py-3 text-right">
+                  <td class="hidden sm:table-cell px-4 py-3 text-gray-600"><%= job.runs.size %></td>
+                  <td class="hidden sm:table-cell px-4 py-3 text-gray-500"><%= time_ago_in_words(job.updated_at) %> ago</td>
+                  <td class="hidden sm:table-cell px-4 py-3 text-right">
                     <%= link_to "View", job_path(job), class: "text-blue-600 underline hover:no-underline" %>
                   </td>
                 </tr>
