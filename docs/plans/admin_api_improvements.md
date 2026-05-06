@@ -9,16 +9,52 @@ single-PR effort.
 
 ## Open
 
-### Sensitive-data clarification
-
-Currently `agent_diff_bytes` is exposed but not the diff itself; the
-transcript JSONL is exposed in full via `/runs/:id/transcript/raw`.
-That's the right policy for the operator (they wrote the agent's
-prompt, they own the output). But document the boundary in this
-file as it stabilizes — what we DO redact (the GH token, the
-encrypted columns), what we DON'T (transcripts, diffs, prompts).
 
 ## Resolved
+
+### Sensitive-data boundary in admin API responses
+
+What the admin API redacts vs returns verbatim:
+
+**NEVER returned in any response (or response body):**
+- `User#github_token`, `User#claude_oauth_token`, `User#api_token`
+  (deterministic-encrypted in the column; not exposed via the
+  serializers).
+- `User#password_digest`.
+- `RAILS_MASTER_KEY`, `SECRET_KEY_BASE`, DB credentials — runtime
+  env, not in any model.
+- The `https://x-access-token:<token>@github.com/...` push URLs
+  that would otherwise appear in git output: `GitRunner` redacts
+  the token to `[REDACTED]` (regex `AUTH_URL_PATTERN`) before the
+  text reaches its `log_sink`, so the token never makes it into a
+  JobLog row in the first place. Raw log dumps from
+  `/api/v1/admin/jobs/:id` are safe to share.
+
+**Returned in full to admin tokens (intentional):**
+- `Run#agent_diff` (via `/transcript/raw`-equivalent paths) and
+  `Run#agent_summary` / `agent_pr_title` / `agent_pr_body` — the
+  operator owns the output of their own agents.
+- `ClaudeSession#transcript_jsonl` — the operator's own claude
+  conversation, including the prompts they sent and the agent's
+  reasoning. Required for transcript inspection via the UI/API to
+  serve any debugging purpose at all.
+- `RunDiagnostic#error_message`, `JobLog#chunk` — plaintext stack
+  traces, agent stdout. Token-redaction (above) is the only filter.
+- `User#email_address`, `gh_rate_limit_*` — surfaced to admins for
+  cross-user investigation.
+
+**Auth posture:**
+- API tokens are `User#api_token`, deterministic-encrypted, prefixed
+  `syrus_`. Auth via `Authorization: Bearer <token>`.
+- Every `/api/v1/admin/*` endpoint requires the bearer token AND
+  `User#admin?` — non-admin tokens get 403 with a structured error.
+
+If a future audit asks "could a user access another user's data via
+the API?" — the answer should be "only if they're an admin." The
+admin tier is single-tenant by design (the operator runs Syrus for
+themselves, the team if any is small and trusted). If multi-tenant
+admin segmentation ever becomes a goal, that's a much bigger
+project than what fits in this file.
 
 ### `GET /api/v1/admin/runs` (cross-Job Run lookup)
 
