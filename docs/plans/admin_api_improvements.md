@@ -9,15 +9,6 @@ single-PR effort.
 
 ## Open
 
-### No "bulk" run lookup
-
-When you want runs across a date range / state / trigger_kind without
-walking each Job's response, you have to loop by Job id. Add
-`GET /api/v1/admin/runs?state=failed&since=...&trigger_kind=...`
-that returns compact run rows (id, job_id, state, started/finished,
-last error class). Mirrors the queue's `/api/v1/admin/queue/failed`
-shape but for the Run domain.
-
 ### Sensitive-data clarification
 
 Currently `agent_diff_bytes` is exposed but not the diff itself; the
@@ -28,6 +19,15 @@ file as it stabilizes — what we DO redact (the GH token, the
 encrypted columns), what we DON'T (transcripts, diffs, prompts).
 
 ## Resolved
+
+### `GET /api/v1/admin/runs` (cross-Job Run lookup)
+
+Compact list mirroring the JobsController#index shape but for Runs.
+Filters: `?state`, `?trigger_kind`, `?job_id`, `?since` (ISO8601);
+pagination via `?page` + `?per` (default 50, max 100). Each row
+carries job_id + step_kind + workflow_state + agent_outcome +
+error_class so the operator can scan "what failed" without follow-up
+calls. Bad `?since` values degrade to wide-window rather than 400'ing.
 
 ### `GET /api/v1/admin/workflows/:id` (single-workflow detail)
 

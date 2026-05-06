@@ -21,6 +21,14 @@ Rails.application.routes.draw do
         # doesn't have to know the Syrus internal Job ID up front.
         resources :jobs, only: %i[ show index ]
 
+        # Compact list of Runs for cross-Job investigations
+        # ("show me everything that failed in the last hour"
+        # without walking each Job's response). Filters via
+        # ?state, ?since, ?trigger_kind, ?job_id; default ordering
+        # is most-recently-finished first. Pagination via ?page +
+        # ?per (max 100).
+        get "runs", to: "runs#index"
+
         # Transcripts (mirror Admin::TranscriptsController; A in
         # docs/plans/admin-diagnostics.md). Paginated event stream
         # via ?page= + ?per=, plus a raw-JSONL pass-through.
