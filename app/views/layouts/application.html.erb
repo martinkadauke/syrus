@@ -35,19 +35,39 @@
               <%# Repositories is the only top-level nav link. Scheduled
                   tasks live under their repository (the repo show page
                   has the per-repo list). Templates and Settings live
-                  in the user-menu dropdown on the right. %>
-              <%= link_to "Repositories", repositories_path, class: "text-gray-700 hover:text-blue-600" %>
+                  in the user-menu dropdown on the right.
+                  Mobile: shortened to "Repos" to save space. %>
+              <%= link_to repositories_path, class: "text-gray-700 hover:text-blue-600" do %>
+                <span class="sm:hidden">Repos</span>
+                <span class="hidden sm:inline">Repositories</span>
+              <% end %>
             </div>
           <% end %>
         </div>
 
         <div class="flex items-center gap-4 text-sm">
           <% if Current.user %>
-            <%# User menu — collapses what was four header items
-                (Settings / Admin / email / admin pill / Sign out)
-                into one dropdown. Reuses split_button_controller's
-                outside-click + Escape close behavior. %>
-            <div class="relative" data-controller="split-button">
+            <%# Mobile: a profile icon that goes straight to Settings.
+                The dropdown menu costs too much horizontal real
+                estate at narrow viewports, and Settings is the
+                landing page operators are most likely to want
+                anyway (Sign out, Admin are reachable via Settings's
+                in-page nav and the admin overview link). The admin
+                pill stays so admins still see their badge. %>
+            <%= link_to settings_path, class: "sm:hidden flex items-center gap-1.5 text-gray-700 hover:text-blue-600",
+                  title: "Settings (signed in as #{Current.user.email_address})" do %>
+              <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"/>
+              </svg>
+              <% if Current.user.admin? %>
+                <span class="px-1 py-0.5 rounded text-xs bg-blue-100 text-blue-700">admin</span>
+              <% end %>
+            <% end %>
+
+            <%# Desktop: full email + dropdown. Hidden below sm
+                breakpoint so the mobile profile icon above is the
+                only user-menu surface there. %>
+            <div class="relative hidden sm:block" data-controller="split-button">
               <button type="button" data-action="click->split-button#toggle"
                       class="flex items-center gap-2 text-gray-700 hover:text-blue-600 cursor-pointer">
                 <span><%= Current.user.email_address %></span>
