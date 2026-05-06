@@ -6,9 +6,29 @@ module Api
       # WorkflowWorkspace.cleanup_for path that today only runs on
       # the daily prune job's schedule.
       #
+      #   GET  /api/v1/admin/workflows/:id
       #   POST /api/v1/admin/workflows/:id/retry_step
       #   POST /api/v1/admin/workflows/:id/cleanup_workspace
       class WorkflowsController < BaseController
+        # Single workflow's nested state (steps + runs + diagnostics
+        # + claude_session metadata). Same per-record-resilience as
+        # JobsController — a single bad row doesn't 500 the whole
+        # response. Job envelope is included so the caller can drill
+        # back up if needed.
+        def show
+          workflow = Workflow.includes(steps: :runs).find(params[:id])
+          job = workflow.job
+          render json: ::Admin::JobStateSerializer.workflow(workflow).merge(
+            job: {
+              id: job.id,
+              state: job.state,
+              repository: job.repository.slug,
+              issue_number: job.issue_number,
+              pr_number: job.pr_number
+            }
+          )
+        end
+
         # Reopens the workflow + the failed step, creates a fresh
         # Run on the failed step, lets the inline-chain dispatch
         # take it from there. Same semantics as the HTML

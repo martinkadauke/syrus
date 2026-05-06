@@ -77,4 +77,38 @@ RSpec.describe "API: /api/v1/admin/workflows/:id/*", type: :request do
       expect(response).to have_http_status(:unauthorized)
     end
   end
+
+  describe "GET /workflows/:id" do
+    it "returns the workflow's nested state without sibling workflows from the same Job" do
+      original = workflow  # materialize before adding the sibling
+      sibling = Workflow.create!(job: job, trigger_kind: "rebase", state: "succeeded",
+                                  finished_at: Time.current)
+
+      get "/api/v1/admin/workflows/#{original.id}", headers: auth
+      expect(response).to be_successful
+
+      body = parse_body
+      expect(body).to include("id" => original.id, "trigger_kind" => "initial")
+      expect(body["steps"]).to be_an(Array)
+      expect(body["steps"].size).to be > 0
+      # Sibling workflow on the same Job is NOT here — that's the
+      # whole point of this endpoint vs /api/v1/admin/jobs/:id.
+      expect(body).not_to have_key("workflows")
+      expect(body["job"]).to include(
+        "id"           => job.id,
+        "repository"   => job.repository.slug,
+        "issue_number" => job.issue_number
+      )
+    end
+
+    it "404s for an unknown workflow id" do
+      get "/api/v1/admin/workflows/999999", headers: auth
+      expect(response).to have_http_status(:not_found)
+    end
+
+    it "401s without a token" do
+      get "/api/v1/admin/workflows/#{workflow.id}"
+      expect(response).to have_http_status(:unauthorized)
+    end
+  end
 end

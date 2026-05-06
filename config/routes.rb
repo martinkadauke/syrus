@@ -43,7 +43,11 @@ Rails.application.routes.draw do
         resources :users, only: %i[ index show ]
 
         # Workflow control — the same mutations the HTML admin UI
-        # exposes, but available programmatically.
+        # exposes, but available programmatically. The :show action
+        # returns one Workflow's full state (steps + runs +
+        # diagnostics) without dragging in every sibling workflow
+        # the way `/api/v1/admin/jobs/:id` does.
+        get  "workflows/:id",                   to: "workflows#show"
         post "workflows/:id/retry_step",        to: "workflows#retry_step"
         post "workflows/:id/cleanup_workspace", to: "workflows#cleanup_workspace"
       end

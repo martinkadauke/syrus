@@ -9,14 +9,6 @@ single-PR effort.
 
 ## Open
 
-### No way to fetch a single Workflow's full state directly
-
-`GET /api/v1/admin/jobs/:id` returns ALL workflows on the Job, which
-is fine for small jobs but heavy for long-lived ones (job 80 has 17
-workflows). Add `GET /api/v1/admin/workflows/:id` returning that
-one workflow with its steps + runs nested. Avoids dumping kilobytes
-of unrelated history when investigating one specific failure.
-
 ### No "bulk" run lookup
 
 When you want runs across a date range / state / trigger_kind without
@@ -36,6 +28,15 @@ file as it stabilizes — what we DO redact (the GH token, the
 encrypted columns), what we DON'T (transcripts, diffs, prompts).
 
 ## Resolved
+
+### `GET /api/v1/admin/workflows/:id` (single-workflow detail)
+
+`GET /api/v1/admin/jobs/:id` returns every Workflow on a Job, which
+is heavy for long-lived Jobs (today's Job 80 has 17). The new
+endpoint returns one Workflow's nested state (steps + runs +
+diagnostics + claude_session metadata) plus a thin Job envelope so
+the caller can drill back up. Reuses `Admin::JobStateSerializer`
+(extracted from JobsController) — same per-record-resilience.
 
 ### List filters on `/api/v1/admin/jobs`
 

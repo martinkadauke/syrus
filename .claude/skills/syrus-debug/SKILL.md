@@ -145,6 +145,7 @@ in-flight Runs.
 | `GET /api/v1/admin/stuck` | Full stuck-items list (warn + alarm) |
 | `GET /api/v1/admin/jobs` | Compact list. Filters: `pr_number`, `issue_number`, `repo=owner/name`, `state`. Use to map a GH PR/issue back to a Syrus Job ID |
 | `GET /api/v1/admin/jobs/:id` | Job + workflows + steps + runs + diagnostics + claude_session metadata, all in one |
+| `GET /api/v1/admin/workflows/:id` | One workflow's steps + runs + diagnostics, no sibling workflows. Use when investigating a specific failure on a long-lived Job. |
 | `GET /api/v1/admin/runs/:run_id/transcript[?page=N&per=K]` | Parsed transcript: summary + paginated events |
 | `GET /api/v1/admin/runs/:run_id/transcript/raw` | Raw JSONL bytes |
 | `GET /api/v1/admin/queue/active` | SolidQueue jobs currently claimed |

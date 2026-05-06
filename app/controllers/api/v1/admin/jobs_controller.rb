@@ -92,6 +92,9 @@ module Api
           }
         end
 
+        # Job-specific serializer. The Workflow → Step → Run subtree
+        # comes from the shared `Admin::JobStateSerializer`, which is
+        # also used by `Api::V1::Admin::WorkflowsController#show`.
         def serialize(job)
           {
             id: job.id,
@@ -111,90 +114,10 @@ module Api
             scheduled_task_id: job.scheduled_task_id,
             started_at: job.started_at,
             finished_at: job.finished_at,
-            workflows: job.workflows.order(:created_at).map { |wf| serialize_workflow(wf) }
+            workflows: job.workflows.order(:created_at).map { |wf| ::Admin::JobStateSerializer.workflow(wf) }
           }
         rescue => e
-          per_record_error(job, e)
-        end
-
-        def serialize_workflow(wf)
-          {
-            id: wf.id,
-            trigger_kind: wf.trigger_kind,
-            state: wf.state,
-            failure_count: wf.failure_count,
-            artifacts: wf.artifacts,
-            cleaned_up_at: wf.cleaned_up_at,
-            retry_available: wf.retry_available?,
-            started_at: wf.started_at,
-            finished_at: wf.finished_at,
-            steps: wf.steps.order(:position).map { |s| serialize_step(s) }
-          }
-        rescue => e
-          per_record_error(wf, e)
-        end
-
-        def serialize_step(step)
-          {
-            id: step.id,
-            kind: step.kind,
-            position: step.position,
-            state: step.state,
-            started_at: step.started_at,
-            finished_at: step.finished_at,
-            runs: step.runs.order(:created_at).map { |r| serialize_run(r) }
-          }
-        rescue => e
-          per_record_error(step, e)
-        end
-
-        def serialize_run(run)
-          {
-            id: run.id,
-            state: run.state,
-            trigger_kind: run.trigger_kind,
-            agent_outcome: run.agent_outcome,
-            agent_turns: run.agent_turns,
-            agent_pr_title: run.agent_pr_title,
-            parent_session_id: run.parent_session_id,
-            head_sha: run.head_sha,
-            started_at: run.started_at,
-            last_heartbeat_at: run.last_heartbeat_at,
-            finished_at: run.finished_at,
-            agent_diff_present: run.agent_diff.present?,
-            agent_diff_bytes: run.agent_diff&.bytesize || 0,
-            job_log_count: run.job_logs.size,
-            claude_session: run.claude_session && {
-              session_id: run.claude_session.session_id,
-              # transcript_jsonl is dropped on Run success (commit
-              # 804cdf5) — keep the metadata visible but flag the
-              # body as pruned instead of pretending size 0.
-              transcript_pruned: run.claude_session.transcript_jsonl.nil?,
-              transcript_bytes:  run.claude_session.transcript_jsonl&.bytesize,
-              transcript_lines:  run.claude_session.transcript_jsonl&.count("\n")
-            },
-            run_diagnostic: run.run_diagnostic && {
-              error_class: run.run_diagnostic.error_class,
-              error_message: run.run_diagnostic.error_message,
-              created_at: run.run_diagnostic.created_at
-            }
-          }
-        rescue => e
-          per_record_error(run, e)
-        end
-
-        # Single-record fallback. Logs the failure so the bug isn't
-        # silently swallowed, then returns a thin envelope that lets
-        # the rest of the nested dump still render. The operator
-        # sees `error_serializing: "Foo: bar"` in place of that one
-        # record's payload — enough to know which row blew up —
-        # while the surrounding investigation continues.
-        def per_record_error(record, error)
-          Rails.logger.warn(
-            "[admin/jobs] serializer failed for #{record.class}##{record.id}: " \
-            "#{error.class}: #{error.message}"
-          )
-          { id: record.id, error_serializing: "#{error.class}: #{error.message}" }
+          ::Admin::JobStateSerializer.per_record_error(job, e)
         end
       end
     end
