@@ -1,7 +1,7 @@
 <div class="space-y-6">
   <div class="flex items-center justify-between">
     <h1 class="font-bold text-3xl">Repositories</h1>
-    <%= link_to "Add repository", new_repository_path,
+    <%= link_to "Add", new_repository_path,
           class: "rounded-md px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium" %>
   </div>
 
@@ -76,9 +76,11 @@
           <tbody class="divide-y divide-gray-100 text-sm">
             <% @archived_repositories.each do |repo| %>
               <tr>
-                <td class="px-4 py-3 font-mono text-gray-500"><%= repo.slug %></td>
-                <td class="px-4 py-3 text-gray-500">archived <%= relative_timestamp(repo.archived_at) %></td>
-                <td class="px-4 py-3 text-right space-x-3">
+                <td class="px-4 py-3 text-gray-500">
+                  <div class="font-mono"><%= repo.slug %></div>
+                  <div class="text-xs text-gray-400 mt-0.5">archived <%= relative_timestamp(repo.archived_at) %></div>
+                </td>
+                <td class="px-4 py-3 text-right space-x-3 whitespace-nowrap">
                   <%= button_to "Unarchive", unarchive_repository_path(repo), method: :post,
                         class: "text-blue-600 underline hover:no-underline cursor-pointer",
                         form: { class: "inline" } %>
