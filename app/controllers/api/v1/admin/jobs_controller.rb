@@ -8,10 +8,19 @@ module Api
       #
       # GET /api/v1/admin/jobs/:id → JSON
       class JobsController < BaseController
-        # Compact list. Filter via `?pr_number=`, `?issue_number=`,
-        # `?repo=owner/name`, `?state=`. No filters → most-recently
-        # updated 50. Always includes the Job ID so callers can drill
-        # into `/api/v1/admin/jobs/:id` for the full nested state.
+        # Compact list. Filter via:
+        #   ?pr_number=N
+        #   ?issue_number=N
+        #   ?repo=owner/name
+        #   ?state=open|closed
+        #   ?user=substring         — match User#email_address
+        #   ?failed_in_last_24h=true — Jobs whose latest workflow ended `failed`
+        #                              within the last 24h. "What just broke?"
+        #   ?has_active_workflow=true — Jobs with a queued/running workflow.
+        #                               "What's still in flight?"
+        # No filters → most-recently updated 50. Always includes the
+        # Job ID so callers can drill into `/api/v1/admin/jobs/:id`
+        # for the full nested state.
         def index
           scope = Job.includes(:repository).order(updated_at: :desc)
           scope = scope.where(pr_number: params[:pr_number])       if params[:pr_number].present?
@@ -20,6 +29,15 @@ module Api
           if params[:repo].present?
             owner, name = params[:repo].split("/", 2)
             scope = scope.joins(:repository).where(repositories: { owner: owner, name: name })
+          end
+          if params[:user].present?
+            scope = scope.joins(:user).where("users.email_address LIKE ?", "%#{params[:user]}%")
+          end
+          if truthy?(params[:has_active_workflow])
+            scope = scope.where(id: Workflow.active.select(:job_id))
+          end
+          if truthy?(params[:failed_in_last_24h])
+            scope = scope.where(id: failed_recently_job_ids(24.hours.ago))
           end
           jobs = scope.limit(50)
           render json: {
@@ -34,6 +52,31 @@ module Api
         end
 
         private
+
+        # `?has_active_workflow=true` etc. — accept the canonical
+        # truthy strings and ignore the rest (don't raise on a typo).
+        def truthy?(value)
+          %w[ true 1 yes ].include?(value.to_s.downcase)
+        end
+
+        # Job IDs whose MOST RECENTLY CREATED workflow ended in
+        # `failed` within `cutoff`. We can't just `joins(:workflows)
+        # .where(workflows: { state: "failed" })` — that matches if
+        # ANY workflow failed, including ones the operator already
+        # retried successfully. The "what just broke?" question
+        # cares about whether the *latest* attempt is currently
+        # broken. Subquery + DISTINCT ON-style in Rails (window
+        # function) keeps it to one Workflow per Job.
+        def failed_recently_job_ids(cutoff)
+          # Latest Workflow per Job in the window. Use a subquery to
+          # rank workflows by created_at DESC within their job, then
+          # filter to rank=1 + state=failed + finished within cutoff.
+          ranked = Workflow.select("job_id, state, finished_at,
+                                    ROW_NUMBER() OVER (PARTITION BY job_id ORDER BY created_at DESC) AS rn")
+          Workflow.from("(#{ranked.to_sql}) wfs")
+                  .where("wfs.rn = 1 AND wfs.state = 'failed' AND wfs.finished_at >= ?", cutoff)
+                  .pluck("wfs.job_id")
+        end
 
         def serialize_compact(job)
           {

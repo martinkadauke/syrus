@@ -9,17 +9,6 @@ single-PR effort.
 
 ## Open
 
-### List filters on `/api/v1/admin/jobs` are minimal
-
-Today's filters: `pr_number`, `issue_number`, `repo`, `state`. Things
-that have come up more than once and would be nice:
-
-- `?failed_in_last_24h=true` — jobs whose latest workflow ended in
-  `failed` recently. Common "what just broke" question.
-- `?has_active_workflow=true` — jobs with a queued/running workflow.
-- `?user=email-substring` — admin needs to scope investigations to
-  one user's work without learning their numeric id.
-
 ### No way to fetch a single Workflow's full state directly
 
 `GET /api/v1/admin/jobs/:id` returns ALL workflows on the Job, which
@@ -47,6 +36,16 @@ file as it stabilizes — what we DO redact (the GH token, the
 encrypted columns), what we DON'T (transcripts, diffs, prompts).
 
 ## Resolved
+
+### List filters on `/api/v1/admin/jobs`
+
+Three new filters: `?failed_in_last_24h=true` (Jobs whose LATEST
+workflow ended `failed` within 24h — careful not to re-surface fixed
+work), `?has_active_workflow=true` (Jobs with queued/running
+workflows), `?user=substring` (User#email_address LIKE matching).
+The "latest workflow" filter uses a `ROW_NUMBER() OVER (PARTITION BY
+job_id ORDER BY created_at DESC)` window function so a Job that
+failed but was successfully retried doesn't show up.
 
 ### Serializer resilience for `/api/v1/admin/jobs/:id`
 

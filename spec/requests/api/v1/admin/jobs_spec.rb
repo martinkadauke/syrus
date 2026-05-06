@@ -197,5 +197,76 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       get "/api/v1/admin/jobs", headers: auth(non_admin_token)
       expect(response).to have_http_status(:forbidden)
     end
+
+    describe "?user= filter (email substring)" do
+      let!(:other_user) { Factories.user(email_address: "ophelia@example.com") }
+      let!(:other_job) do
+        repo = Factories.repository(user: other_user, owner: "globex", name: "stuff")
+        Factories.job(user: other_user, repository: repo, issue_number: 50)
+      end
+
+      it "narrows to Jobs whose user's email matches the substring" do
+        get "/api/v1/admin/jobs", params: { user: "ophelia" }, headers: auth(admin_token)
+        ids = parse_body["jobs"].map { |j| j["id"] }
+        expect(ids).to contain_exactly(other_job.id)
+      end
+    end
+
+    describe "?has_active_workflow=true" do
+      it "narrows to Jobs with a queued or running workflow" do
+        # job_124 has the auto-created Initial workflow from Factories.job;
+        # mark it terminal so we can tell which Jobs surface.
+        job_124.workflows.update_all(state: "succeeded", finished_at: Time.current)
+
+        Workflow.create!(job: job_125, trigger_kind: "rebase", state: "running")
+
+        get "/api/v1/admin/jobs", params: { has_active_workflow: "true" }, headers: auth(admin_token)
+        ids = parse_body["jobs"].map { |j| j["id"] }
+        expect(ids).to include(job_125.id)
+        expect(ids).not_to include(job_124.id)
+      end
+    end
+
+    describe "?failed_in_last_24h=true" do
+      # Each Job auto-creates an `initial` workflow via after_create_commit;
+      # to make the "latest workflow" what we set up here, force the
+      # `retry` workflow to be the most recent for that job.
+      def add_retry_workflow(job, state:, finished_at:, age_offset: 1.minute)
+        # `created_at: 1.minute.from_now` (or any future time) guarantees
+        # this workflow is later than the auto-Initial that fired during
+        # Factories.job, regardless of test wallclock.
+        Workflow.create!(job: job, trigger_kind: "retry",
+                         state: state, finished_at: finished_at,
+                         created_at: age_offset.from_now)
+      end
+
+      it "narrows to Jobs whose LATEST workflow failed within the window" do
+        add_retry_workflow(job_124, state: "failed",    finished_at: 30.minutes.ago)
+        add_retry_workflow(job_125, state: "succeeded", finished_at: 30.minutes.ago)
+
+        get "/api/v1/admin/jobs", params: { failed_in_last_24h: "true" }, headers: auth(admin_token)
+        ids = parse_body["jobs"].map { |j| j["id"] }
+        expect(ids).to include(job_124.id)
+        expect(ids).not_to include(job_125.id)
+      end
+
+      it "ignores Jobs whose LATEST workflow succeeded even if an earlier one failed (don't re-surface fixed work)" do
+        add_retry_workflow(job_124, state: "failed",    finished_at: 90.minutes.ago, age_offset: 1.minute)
+        add_retry_workflow(job_124, state: "succeeded", finished_at: 30.minutes.ago, age_offset: 2.minutes)  # newer
+
+        get "/api/v1/admin/jobs", params: { failed_in_last_24h: "true" }, headers: auth(admin_token)
+        ids = parse_body["jobs"].map { |j| j["id"] }
+        expect(ids).not_to include(job_124.id)
+      end
+
+      it "ignores Jobs whose latest failed workflow is older than the window" do
+        Workflow.create!(job: job_124, trigger_kind: "retry",
+                          state: "failed", finished_at: 2.days.ago, created_at: 2.days.ago)
+
+        get "/api/v1/admin/jobs", params: { failed_in_last_24h: "true" }, headers: auth(admin_token)
+        ids = parse_body["jobs"].map { |j| j["id"] }
+        expect(ids).not_to include(job_124.id)
+      end
+    end
   end
 end
