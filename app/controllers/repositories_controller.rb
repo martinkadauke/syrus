@@ -1,5 +1,5 @@
 class RepositoriesController < ApplicationController
-  before_action :load_repository, only: %i[ show edit update destroy poll archive unarchive retry_failed_jobs issues comment_issue close_issue delegate_issue ]
+  before_action :load_repository, only: %i[ show edit update poll archive unarchive retry_failed_jobs issues comment_issue close_issue delegate_issue ]
 
   PER_PAGE = 20
 
@@ -95,11 +95,6 @@ class RepositoriesController < ApplicationController
     else
       render :edit, status: :unprocessable_entity
     end
-  end
-
-  def destroy
-    @repository.destroy
-    redirect_to repositories_path, notice: "Repository removed."
   end
 
   def poll

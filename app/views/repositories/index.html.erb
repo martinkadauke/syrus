@@ -51,9 +51,8 @@
                   <span class="text-gray-400">—</span>
                 <% end %>
               </td>
-              <%# Same stack-on-mobile / row-on-desktop treatment as
-                  the archived table — four actions in one cell will
-                  clip off the right edge on narrow viewports otherwise. %>
+              <%# Stack-on-mobile / row-on-desktop so the action cluster
+                  doesn't clip off the right edge on narrow viewports. %>
               <td class="px-4 py-3 text-right">
                 <div class="flex flex-col items-end gap-1 sm:flex-row sm:gap-3">
                   <%= button_to "Poll now", poll_repository_path(repo), method: :post,
@@ -63,9 +62,6 @@
                   <%= button_to "Archive", archive_repository_path(repo), method: :post,
                         class: "text-amber-700 underline hover:no-underline cursor-pointer",
                         form: { class: "inline", data: { turbo_confirm: "Archive #{repo.slug}? Polling stops; existing jobs are unaffected." } } %>
-                  <%= button_to "Remove", repository_path(repo), method: :delete,
-                        class: "text-red-600 underline hover:no-underline cursor-pointer",
-                        form: { class: "inline", data: { turbo_confirm: "Remove #{repo.slug}? This deletes all jobs for this repo." } } %>
                 </div>
               </td>
             </tr>
@@ -96,14 +92,9 @@
                     return to a horizontal row at the `sm` breakpoint
                     where the table has room. %>
                 <td class="px-4 py-3 text-right">
-                  <div class="flex flex-col items-end gap-1 sm:flex-row sm:gap-3">
-                    <%= button_to "Unarchive", unarchive_repository_path(repo), method: :post,
-                          class: "text-blue-600 underline hover:no-underline cursor-pointer",
-                          form: { class: "inline" } %>
-                    <%= button_to "Remove", repository_path(repo), method: :delete,
-                          class: "text-red-600 underline hover:no-underline cursor-pointer",
-                          form: { class: "inline", data: { turbo_confirm: "Remove #{repo.slug}? This deletes all jobs for this repo." } } %>
-                  </div>
+                  <%= button_to "Unarchive", unarchive_repository_path(repo), method: :post,
+                        class: "text-blue-600 underline hover:no-underline cursor-pointer",
+                        form: { class: "inline" } %>
                 </td>
               </tr>
             <% end %>

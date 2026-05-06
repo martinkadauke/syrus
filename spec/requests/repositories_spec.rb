@@ -38,18 +38,20 @@ RSpec.describe "Repositories", type: :request do
       expect(response.body).to include("can")  # error messages present
     end
 
-    it "scopes edit/update/destroy to the current user's repos" do
+    it "scopes edit/update to the current user's repos" do
       foreign = Factories.repository(user: other, owner: "globex", name: "things")
 
       get edit_repository_path(foreign)
       expect(response).to have_http_status(:not_found).or redirect_to(repositories_path)
     end
 
-    it "destroys" do
+    it "has no destroy route — Archive is the only retire path" do
       mine = Factories.repository(user: user)
+      # DELETE /repositories/:id is no longer routable (resources
+      # uses except: [:destroy]); the request 404s and the row stays.
       expect {
-        delete repository_path(mine)
-      }.to change(user.repositories, :count).by(-1)
+        delete "/repositories/#{mine.id}" rescue nil
+      }.not_to change(user.repositories, :count)
     end
 
     it "manual poll enqueues PollRepositoryJob with force: true" do

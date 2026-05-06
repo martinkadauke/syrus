@@ -61,7 +61,7 @@ Rails.application.routes.draw do
       end
     end
   end
-  resources :repositories do
+  resources :repositories, except: [ :destroy ] do
     collection do
       get :owners
       get :repos
