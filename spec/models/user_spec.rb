@@ -24,10 +24,11 @@ RSpec.describe User do
   end
 
   describe "encrypted credentials" do
-    it "round-trips claude_oauth_token and github_token" do
-      user = User.create!(attrs.merge(claude_oauth_token: "oat-abc", github_token: "ghp_xyz"))
+    it "round-trips claude_oauth_token, codex_api_key, and github_token" do
+      user = User.create!(attrs.merge(claude_oauth_token: "oat-abc", codex_api_key: "sk-codex", github_token: "ghp_xyz"))
       reloaded = User.find(user.id)
       expect(reloaded.claude_oauth_token).to eq("oat-abc")
+      expect(reloaded.codex_api_key).to eq("sk-codex")
       expect(reloaded.github_token).to eq("ghp_xyz")
     end
 
@@ -35,6 +36,23 @@ RSpec.describe User do
       user = User.create!(attrs.merge(claude_oauth_token: "oat-secret"))
       raw = User.connection.select_value("SELECT claude_oauth_token FROM users WHERE id = #{user.id}")
       expect(raw).not_to include("oat-secret")
+    end
+  end
+
+  describe "agent_provider" do
+    it "defaults to claude" do
+      expect(User.create!(attrs).agent_provider).to eq("claude")
+    end
+
+    it "accepts codex" do
+      user = User.create!(attrs.merge(agent_provider: "codex"))
+      expect(user.agent_provider).to eq("codex")
+    end
+
+    it "rejects unknown providers" do
+      user = User.new(attrs.merge(agent_provider: "oracle"))
+      expect(user).not_to be_valid
+      expect(user.errors[:agent_provider]).to be_present
     end
   end
 

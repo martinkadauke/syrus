@@ -1,7 +1,7 @@
 require "rails_helper"
 
 RSpec.describe "Credentials", type: :request do
-  let(:user) { Factories.user(claude_oauth_token: "sk-existing", github_token: "ghp_existing") }
+  let(:user) { Factories.user(claude_oauth_token: "sk-existing", codex_api_key: "sk-codex-existing", github_token: "ghp_existing") }
 
   it "requires authentication" do
     user  # force a User to exist; first-run setup redirects to new_user instead
@@ -16,23 +16,32 @@ RSpec.describe "Credentials", type: :request do
       get edit_credentials_path
       expect(response).to be_successful
       expect(response.body).not_to include("sk-existing")
+      expect(response.body).not_to include("sk-codex-existing")
       expect(response.body).not_to include("ghp_existing")
       expect(response.body).to include("Currently set")
     end
 
     it "updates only non-blank fields (write-only)" do
-      patch credentials_path, params: { user: { claude_oauth_token: "sk-new", github_token: "" } }
+      patch credentials_path, params: { user: { claude_oauth_token: "sk-new", codex_api_key: "", github_token: "" } }
       expect(response).to redirect_to(edit_credentials_path)
       user.reload
       expect(user.claude_oauth_token).to eq("sk-new")
+      expect(user.codex_api_key).to eq("sk-codex-existing")
       expect(user.github_token).to eq("ghp_existing")
     end
 
     it "leaves both unchanged when both fields are blank" do
-      patch credentials_path, params: { user: { claude_oauth_token: "", github_token: "" } }
+      patch credentials_path, params: { user: { claude_oauth_token: "", codex_api_key: "", github_token: "" } }
       user.reload
       expect(user.claude_oauth_token).to eq("sk-existing")
+      expect(user.codex_api_key).to eq("sk-codex-existing")
       expect(user.github_token).to eq("ghp_existing")
+    end
+
+    it "updates the agent provider" do
+      patch credentials_path, params: { user: { agent_provider: "codex" } }
+      expect(response).to redirect_to(edit_credentials_path)
+      expect(user.reload.agent_provider).to eq("codex")
     end
 
     it "updates agent_max_turns when provided" do

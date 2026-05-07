@@ -139,7 +139,7 @@ class JobsController < ApplicationController
       return
     end
 
-    workflow = Workflows::Resume.instantiate(job: @job)
+    workflow = Workflows::Resume.instantiate(job: @job, agent_provider: session.provider)
     # The first (and only) step of Resume is `manual` — pass the
     # parent session id so AgentInvocation runs claude with
     # `--resume <session>`.
@@ -244,7 +244,8 @@ class JobsController < ApplicationController
 
     failed_step.runs.create!(
       job: @job,
-      trigger_kind: workflow.trigger_kind
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: workflow.agent_provider
     )
 
     redirect_to job_path(@job),

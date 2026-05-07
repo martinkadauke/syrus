@@ -13,7 +13,9 @@ RSpec.describe Steps::Base do
   let(:handler_class) do
     Class.new(described_class) do
       def call; nil; end
-      public :log, :parent_session_id, :with_mcp_config, :sidecar_env, :buffered_log_sink
+      public :log, :parent_session_id, :with_mcp_config, :sidecar_env, :buffered_log_sink,
+             :agent_provider, :invoke_codex, :codex_mcp_server, :codex_resume_transcript_for,
+             :capture_agent_session
     end
   end
   let(:handler) { handler_class.new(run) }
@@ -178,6 +180,80 @@ RSpec.describe Steps::Base do
     it "omits keys not present in the worker's ENV (don't pass empty strings to claude)" do
       Steps::Base::SIDECAR_ENV_FORWARD.each { |k| ENV.delete(k) }
       expect(handler.sidecar_env).to eq({})
+    end
+  end
+
+  describe "#agent_provider" do
+    it "prefers the Run provider" do
+      workflow.update!(agent_provider: "claude")
+      run.update!(agent_provider: "codex")
+      expect(handler.agent_provider).to eq("codex")
+    end
+  end
+
+  describe "#codex_mcp_server" do
+    it "builds the sidecar config CodexInvocation writes into config.toml" do
+      config = handler.codex_mcp_server
+      expect(config[:command]).to end_with("/bin/syrus-mcp-sidecar")
+      expect(config[:args]).to eq([ "--run-id", run.id.to_s ])
+      expect(config[:env]).to eq(handler.sidecar_env)
+    end
+  end
+
+  describe "#invoke_codex" do
+    around do |ex|
+      old_runner = RunJob.agent_runner
+      ex.run
+    ensure
+      RunJob.agent_runner = old_runner
+    end
+
+    it "passes a captured Codex transcript for resume restoration" do
+      job.user.update!(codex_api_key: "sk-test")
+      run.update!(agent_provider: "codex", parent_session_id: "codex-thread")
+      source_run = Run.create!(job: job, step: step, trigger_kind: "initial",
+                               state: "failed",
+                               started_at: 1.minute.ago,
+                               finished_at: Time.current)
+      ClaudeSession.create!(run: source_run,
+                            provider: "codex",
+                            session_id: "codex-thread",
+                            transcript_jsonl: "{\"type\":\"session_meta\"}\n")
+      received = nil
+      RunJob.agent_runner = ->(**kwargs) {
+        received = kwargs
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
+                                    is_error: false, outcome: "success",
+                                    final_text: nil, session_id: "new-thread")
+      }
+
+      handler.invoke_codex(prompt: "resume", log_sink: ->(*, **) { })
+
+      expect(received[:resume_session_id]).to eq("codex-thread")
+      expect(received[:resume_transcript_jsonl]).to include("session_meta")
+    end
+  end
+
+  describe "#capture_agent_session" do
+    it "stores a codex transcript from the invocation result" do
+      run.update!(agent_provider: "codex")
+      result = AgentInvocation::Result.new(
+        turns: 1,
+        exit_status: 0,
+        timed_out: false,
+        is_error: false,
+        outcome: "success",
+        final_text: nil,
+        session_id: "codex-thread",
+        transcript_jsonl: "{\"type\":\"session_meta\"}\n"
+      )
+
+      handler.capture_agent_session(result)
+
+      session = run.reload.claude_session
+      expect(session.provider).to eq("codex")
+      expect(session.session_id).to eq("codex-thread")
+      expect(session.transcript_jsonl).to include("session_meta")
     end
   end
 

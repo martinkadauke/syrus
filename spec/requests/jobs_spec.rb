@@ -310,6 +310,14 @@ RSpec.describe "Jobs", type: :request do
       expect(flash[:notice]).to match(/Retrying summarize/)
     end
 
+    it "preserves the workflow agent provider on the retry Run" do
+      workflow.update!(agent_provider: "codex")
+
+      post retry_step_job_path(job, workflow_id: workflow.id)
+
+      expect(failed_step.runs.order(:created_at).last.agent_provider).to eq("codex")
+    end
+
     it "refuses when the workflow's workspace was already cleaned up" do
       workflow.update_columns(cleaned_up_at: Time.current)
       expect {

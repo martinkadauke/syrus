@@ -99,40 +99,74 @@ module Steps
       [ sink, flush ]
     end
 
-    # ---- Agentic helpers (used by claude-spawning handlers) ----
+    # ---- Agentic helpers (used by agent-spawning handlers) ----
 
-    # Drive an AgentInvocation in this Workflow's workspace,
+    # Drive the configured agent provider in this Workflow's workspace,
     # threading `--resume` from the upstream step's session when
     # one is available. Streams transcript chunks into JobLog,
-    # captures the new session JSONL on success, raises StepFailed
+    # captures the new session transcript on success, raises StepFailed
     # on any of the non-success outcomes.
     def run_agent(prompt:, max_turns: nil)
-      with_mcp_config do |mcp_config_path|
-        sink, flush = buffered_log_sink
-        begin
-          result = AgentInvocation.new(
-            workspace.path,
-            prompt: prompt,
-            oauth_token: job.user.claude_oauth_token,
-            log_sink: sink,
-            runner: RunJob.agent_runner,
-            max_turns: max_turns || job.user.agent_max_turns,
-            mcp_config: mcp_config_path,
-            resume_session_id: parent_session_id
-          ).run
-        ensure
-          flush.call
-        end
-
-        persist_agent_metadata(result)
-        capture_claude_session(result)
-
-        raise StepFailed, "agent timed out"                                 if result.timed_out
-        raise StepFailed, "agent reported #{result.outcome || 'error'}"      if result.is_error
-        raise StepFailed, "agent exited #{result.exit_status}"               unless result.success?
-
-        result
+      sink, flush = buffered_log_sink
+      begin
+        result = invoke_agent_provider(prompt: prompt, log_sink: sink, max_turns: max_turns)
+      ensure
+        flush.call
       end
+
+      persist_agent_metadata(result)
+      capture_agent_session(result)
+
+      raise StepFailed, "agent timed out"                            if result.timed_out
+      raise StepFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
+      raise StepFailed, "agent exited #{result.exit_status}"          unless result.success?
+
+      result
+    end
+
+    def invoke_agent_provider(prompt:, log_sink:, max_turns:)
+      case agent_provider
+      when "codex"
+        invoke_codex(prompt: prompt, log_sink: log_sink)
+      else
+        invoke_claude(prompt: prompt, log_sink: log_sink, max_turns: max_turns)
+      end
+    end
+
+    def invoke_claude(prompt:, log_sink:, max_turns:)
+      with_mcp_config do |mcp_config_path|
+        AgentInvocation.new(
+          workspace.path,
+          prompt: prompt,
+          oauth_token: job.user.claude_oauth_token,
+          log_sink: log_sink,
+          runner: RunJob.agent_runner,
+          max_turns: max_turns || job.user.agent_max_turns,
+          mcp_config: mcp_config_path,
+          resume_session_id: parent_session_id
+        ).run
+      end
+    end
+
+    def invoke_codex(prompt:, log_sink:)
+      raise StepFailed, "Codex API key is not configured" if job.user.codex_api_key.blank?
+
+      resume_session_id = parent_session_id
+      CodexInvocation.new(
+        workspace.path,
+        prompt: prompt,
+        api_key: job.user.codex_api_key,
+        log_sink: log_sink,
+        runner: RunJob.agent_runner,
+        codex_home: WorkflowWorkspace.agent_home_for(workflow, "codex"),
+        mcp_server: codex_mcp_server,
+        resume_session_id: resume_session_id,
+        resume_transcript_jsonl: codex_resume_transcript_for(resume_session_id)
+      ).run
+    end
+
+    def agent_provider
+      run.agent_provider.presence || workflow.agent_provider.presence || job.user.agent_provider
     end
 
     # Per-Run mcp.json tempfile so claude knows how to reach our
@@ -222,26 +256,61 @@ module Steps
       run.parent_session_id.presence || step.upstream_session_id
     end
 
-    # Capture the claude session JSONL from disk into ClaudeSession
-    # for cross-pod survival (Resume Run / cross-Workflow Resume).
-    # Best-effort — skip if claude didn't emit a session_id, skip
-    # if the JSONL isn't where we expected. Same logic + error
-    # handling as RunJob#persist_claude_session.
-    def capture_claude_session(result)
+    def codex_mcp_server
+      {
+        command: Rails.root.join("bin/syrus-mcp-sidecar").to_s,
+        args: [ "--run-id", run.id.to_s ],
+        env: sidecar_env
+      }
+    end
+
+    def codex_resume_transcript_for(session_id)
+      return nil if session_id.blank?
+
+      ClaudeSession.joins(:run)
+                   .where(session_id: session_id, provider: "codex", runs: { job_id: job.id })
+                   .where.not(transcript_jsonl: nil)
+                   .order(created_at: :desc)
+                   .first&.transcript_jsonl
+    end
+
+    # Capture the agent session JSONL into ClaudeSession. The table/model
+    # name is still historical; provider marks which CLI produced it.
+    def capture_agent_session(result)
       return unless result.session_id
-      path = ClaudeSession.canonical_path_for(
-        home: ENV.fetch("HOME"),
-        cwd: workspace.path,
-        session_id: result.session_id
-      )
-      unless File.exist?(path)
-        log("[claude_session] no JSONL at #{path} — Resume won't be available for this Run")
+
+      transcript = result.transcript_jsonl
+      if transcript.blank? && result.transcript_path.present? && File.exist?(result.transcript_path)
+        transcript = File.read(result.transcript_path)
+      end
+
+      if transcript.blank? && agent_provider == "claude"
+        path = ClaudeSession.canonical_path_for(
+          home: ENV.fetch("HOME"),
+          cwd: workspace.path,
+          session_id: result.session_id
+        )
+        if File.exist?(path)
+          transcript = File.read(path)
+        else
+          log("[agent_session] no JSONL at #{path} — Resume won't be available for this Run")
+        end
+      end
+
+      if transcript.blank?
+        log("[agent_session] no transcript captured for #{agent_provider} session #{result.session_id}")
         return
       end
-      ClaudeSession.create!(run: run, session_id: result.session_id, transcript_jsonl: File.read(path))
-      log("[claude_session] captured #{result.session_id} (#{File.size(path)} bytes)")
+
+      ClaudeSession.create!(
+        run: run,
+        provider: agent_provider,
+        session_id: result.session_id,
+        transcript_jsonl: transcript
+      )
+      log("[agent_session] captured #{agent_provider} #{result.session_id} (#{transcript.bytesize} bytes)")
     rescue StandardError => e
-      log("[claude_session] capture failed: #{e.class}: #{e.message}")
+      log("[agent_session] capture failed: #{e.class}: #{e.message}")
     end
 
     def persist_agent_metadata(result)
