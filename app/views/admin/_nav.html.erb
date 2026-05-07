@@ -13,15 +13,17 @@
     this partial. %>
 <div class="flex items-center gap-3">
   <div class="hidden sm:flex text-xs text-gray-500 items-center gap-3">
-    <%= link_to "Overview",     admin_root_path,    class: "text-blue-600 underline hover:no-underline" %>
+    <%= link_to "Overview",     admin_root_path,           class: "text-blue-600 underline hover:no-underline" %>
     <span class="text-gray-300">·</span>
-    <%= link_to "Users",        admin_users_path,   class: "text-blue-600 underline hover:no-underline" %>
+    <%= link_to "Users",        admin_users_path,          class: "text-blue-600 underline hover:no-underline" %>
     <span class="text-gray-300">·</span>
-    <%= link_to "Console",      admin_console_path, class: "text-blue-600 underline hover:no-underline" %>
+    <%= link_to "Queue",        admin_queue_path("active"), class: "text-blue-600 underline hover:no-underline" %>
     <span class="text-gray-300">·</span>
-    <%= link_to "App settings", edit_settings_path, class: "text-blue-600 underline hover:no-underline" %>
+    <%= link_to "Console",      admin_console_path,        class: "text-blue-600 underline hover:no-underline" %>
     <span class="text-gray-300">·</span>
-    <%= link_to "Invitations",  invitations_path,   class: "text-blue-600 underline hover:no-underline" %>
+    <%= link_to "App settings", edit_settings_path,        class: "text-blue-600 underline hover:no-underline" %>
+    <span class="text-gray-300">·</span>
+    <%= link_to "Invitations",  invitations_path,          class: "text-blue-600 underline hover:no-underline" %>
   </div>
 
   <div class="sm:hidden relative" data-controller="split-button">
@@ -33,11 +35,12 @@
       </svg>
     </button>
     <div data-split-button-target="menu" class="hidden absolute right-0 mt-2 w-56 bg-white border border-gray-200 rounded-md shadow-lg py-1 z-10 text-sm">
-      <%= link_to "Overview",     admin_root_path,    class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
-      <%= link_to "Users",        admin_users_path,   class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
-      <%= link_to "Console",      admin_console_path, class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
-      <%= link_to "App settings", edit_settings_path, class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
-      <%= link_to "Invitations",  invitations_path,   class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
+      <%= link_to "Overview",     admin_root_path,            class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
+      <%= link_to "Users",        admin_users_path,           class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
+      <%= link_to "Queue",        admin_queue_path("active"), class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
+      <%= link_to "Console",      admin_console_path,         class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
+      <%= link_to "App settings", edit_settings_path,         class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
+      <%= link_to "Invitations",  invitations_path,           class: "block px-4 py-2 text-gray-700 hover:bg-gray-50" %>
     </div>
   </div>
 </div>
