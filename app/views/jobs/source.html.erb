@@ -54,8 +54,15 @@
         On desktop both stay visible side-by-side as before. -%>
     <div class="flex border border-gray-200 rounded-lg overflow-hidden" style="height: 600px;">
 
-      <%# File tree sidebar — hidden on mobile when a file is open. -%>
-      <div class="<%= 'hidden sm:block ' if @file_content %>w-full sm:w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 py-1">
+      <%# File tree sidebar — hidden on mobile when a file is open.
+          The source-tree Stimulus controller layers on top of the
+          server-rendered tree to remember which directories the
+          operator collapsed across Turbo morphs (without it, every
+          re-render of an active Job's Source tab snaps every dir
+          back to `<details open>`). -%>
+      <div class="<%= 'hidden sm:block ' if @file_content %>w-full sm:w-64 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50 py-1"
+           data-controller="source-tree"
+           data-source-tree-job-id-value="<%= @job.id %>">
         <% if @tree_items.empty? %>
           <p class="px-3 py-4 text-xs text-gray-400">No files found.</p>
         <% else %>
@@ -63,7 +70,8 @@
                 tree:          @file_tree,
                 job:           @job,
                 ref:           @selected_ref,
-                selected_path: @selected_path %>
+                selected_path: @selected_path,
+                parent_path:   "" %>
         <% end %>
       </div>
 
