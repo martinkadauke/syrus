@@ -39,7 +39,7 @@ class CredentialsController < ApplicationController
 
   def credentials_params
     params.expect(user: [ :agent_provider, :claude_oauth_token, :codex_auth_mode,
-                          :codex_api_key, :codex_access_token, :github_token,
+                          :codex_api_key, :codex_auth_json, :github_token,
                           :agent_max_turns, :scheduling_paused ])
   end
 end

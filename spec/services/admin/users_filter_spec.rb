@@ -11,7 +11,7 @@ RSpec.describe Admin::UsersFilter do
   let!(:codex_login_user) do
     Factories.user(email_address: "dana@example.com",
                    codex_auth_mode: "chatgpt_login",
-                   codex_access_token: "access_x")
+                   codex_auth_json: Factories.codex_auth_json(access_token: "access_x"))
   end
   let!(:rate_low_user)  { Factories.user(email_address: "lila@example.com",
                                           gh_rate_limit_remaining: 50, gh_rate_limit_limit: 5000) }

@@ -27,12 +27,12 @@ RSpec.describe User do
     it "round-trips claude_oauth_token, codex credentials, and github_token" do
       user = User.create!(attrs.merge(claude_oauth_token: "oat-abc",
                                       codex_api_key: "sk-codex",
-                                      codex_access_token: "codex-access",
+                                      codex_auth_json: Factories.codex_auth_json(access_token: "codex-access"),
                                       github_token: "ghp_xyz"))
       reloaded = User.find(user.id)
       expect(reloaded.claude_oauth_token).to eq("oat-abc")
       expect(reloaded.codex_api_key).to eq("sk-codex")
-      expect(reloaded.codex_access_token).to eq("codex-access")
+      expect(reloaded.codex_auth_json).to include("codex-access")
       expect(reloaded.github_token).to eq("ghp_xyz")
     end
 

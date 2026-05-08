@@ -140,6 +140,7 @@ RSpec.describe CodexInvocation do
         captured, = capture_popen(invocation)
 
         config = File.read(File.join(home, "config.toml"))
+        expect(config).to include('cli_auth_credentials_store = "file"')
         expect(config).to include('[mcp_servers.syrus-mcp-sidecar]')
         expect(config).to include('command = "/app/bin/syrus-mcp-sidecar"')
         expect(config).to include('args = ["--run-id", "12"]')

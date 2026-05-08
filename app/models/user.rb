@@ -11,7 +11,7 @@ class User < ApplicationRecord
 
   encrypts :claude_oauth_token
   encrypts :codex_api_key
-  encrypts :codex_access_token
+  encrypts :codex_auth_json
   encrypts :github_token
   # `deterministic: true` so we can WHERE on the encrypted column
   # for the API auth lookup. Same plaintext always encrypts to the

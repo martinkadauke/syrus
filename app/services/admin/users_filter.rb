@@ -97,8 +97,8 @@ module Admin
 
     def filter_has_codex_token(relation)
       return relation if has_codex_token_param.nil?
-      has_codex_token_param ? relation.where("codex_api_key IS NOT NULL OR codex_access_token IS NOT NULL")
-                            : relation.where(codex_api_key: nil, codex_access_token: nil)
+      has_codex_token_param ? relation.where("codex_api_key IS NOT NULL OR codex_auth_json IS NOT NULL")
+                            : relation.where(codex_api_key: nil, codex_auth_json: nil)
     end
 
     # 10%-of-cap threshold matches the "GitHub rate limits" tile on

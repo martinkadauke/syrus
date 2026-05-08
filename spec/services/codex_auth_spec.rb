@@ -2,7 +2,8 @@ require "rails_helper"
 require "tmpdir"
 
 RSpec.describe CodexAuth do
-  let(:user) { Factories.user(codex_api_key: "sk-test", codex_access_token: "access-token") }
+  let(:auth_json) { Factories.codex_auth_json(access_token: "access-token") }
+  let(:user) { Factories.user(codex_api_key: "sk-test", codex_auth_json: auth_json) }
 
   describe "#prepare!" do
     it "returns the API key and does not run login in api_key mode" do
@@ -27,7 +28,7 @@ RSpec.describe CodexAuth do
       }.to raise_error(CodexAuth::Error, /API key/)
     end
 
-    it "logs CODEX_HOME in with the access token in chatgpt_login mode" do
+    it "writes auth.json into CODEX_HOME in chatgpt_login mode" do
       user.update!(codex_auth_mode: "chatgpt_login")
       received = nil
       Dir.mktmpdir do |home|
@@ -40,46 +41,59 @@ RSpec.describe CodexAuth do
         result = auth.prepare!
 
         expect(result.api_key).to be_nil
-        expect(received).to eq(codex_home: home, access_token: "access-token")
+        expected_json = JSON.pretty_generate(JSON.parse(auth_json)) + "\n"
+        expect(received).to eq(codex_home: home, auth_json: expected_json)
         expect(File.directory?(home)).to be(true)
       end
     end
 
-    it "requires an access token in chatgpt_login mode" do
-      user.update!(codex_auth_mode: "chatgpt_login", codex_access_token: nil)
+    it "requires auth.json in chatgpt_login mode" do
+      user.update!(codex_auth_mode: "chatgpt_login", codex_auth_json: nil)
 
       expect {
         described_class.new(user: user, codex_home: "/tmp/codex-home").prepare!
-      }.to raise_error(CodexAuth::Error, /access token/)
+      }.to raise_error(CodexAuth::Error, /auth\.json/)
+    end
+
+    it "rejects invalid auth.json" do
+      user.update!(codex_auth_mode: "chatgpt_login", codex_auth_json: "{")
+
+      expect {
+        described_class.new(user: user, codex_home: "/tmp/codex-home").prepare!
+      }.to raise_error(CodexAuth::Error, /not valid JSON/)
+    end
+
+    it "requires ChatGPT tokens in auth.json" do
+      user.update!(codex_auth_mode: "chatgpt_login", codex_auth_json: JSON.generate("tokens" => {}))
+
+      expect {
+        described_class.new(user: user, codex_home: "/tmp/codex-home").prepare!
+      }.to raise_error(CodexAuth::Error, /tokens\.id_token/)
     end
   end
 
   describe "default runner" do
-    it "runs codex login with the token on stdin, not argv or env" do
+    it "writes auth.json with owner-only permissions" do
       user.update!(codex_auth_mode: "chatgpt_login")
-      captured = nil
-      allow(Open3).to receive(:capture2e) do |env, *cmd, **opts|
-        captured = { env: env, cmd: cmd, opts: opts }
-        [ "ok", instance_double(Process::Status, success?: true) ]
+      Dir.mktmpdir do |home|
+        described_class.new(user: user, codex_home: home).prepare!
+
+        auth_path = File.join(home, "auth.json")
+        expect(JSON.parse(File.read(auth_path))["tokens"]["access_token"]).to eq("access-token")
+        expect(File.stat(auth_path).mode & 0o777).to eq(0o600)
       end
-
-      described_class.new(user: user, codex_home: "/tmp/codex-home").prepare!
-
-      expect(captured[:cmd]).to eq(%w[codex login --with-access-token])
-      expect(captured[:opts]).to include(stdin_data: "access-token\n", unsetenv_others: true)
-      expect(captured[:env]).to include("CODEX_HOME" => "/tmp/codex-home")
-      expect(captured[:env].values).not_to include("access-token")
-      expect(captured[:cmd]).not_to include("access-token")
     end
 
-    it "redacts the access token from login failure messages" do
+    it "persists refreshed auth.json from CODEX_HOME back to the user" do
       user.update!(codex_auth_mode: "chatgpt_login")
-      allow(Open3).to receive(:capture2e)
-        .and_return([ "bad access-token", instance_double(Process::Status, success?: false) ])
+      refreshed = Factories.codex_auth_json(access_token: "new-access-token")
 
-      expect {
-        described_class.new(user: user, codex_home: "/tmp/codex-home").prepare!
-      }.to raise_error(CodexAuth::Error, /bad \[redacted\]/)
+      Dir.mktmpdir do |home|
+        File.write(File.join(home, "auth.json"), refreshed)
+        described_class.new(user: user, codex_home: home).persist_updated_auth_json
+
+        expect(user.reload.codex_auth_json).to eq(JSON.pretty_generate(JSON.parse(refreshed)) + "\n")
+      end
     end
   end
 end

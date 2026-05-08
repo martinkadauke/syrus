@@ -122,6 +122,7 @@ class CodexInvocation
 
   def codex_config_toml(mcp_server)
     lines = [
+      'cli_auth_credentials_store = "file"',
       'approval_policy = "never"',
       "",
       "[mcp_servers.syrus-mcp-sidecar]",

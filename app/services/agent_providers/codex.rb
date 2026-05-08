@@ -4,19 +4,24 @@ module AgentProviders
 
     def run(prompt:, log_sink:, max_turns: nil)
       codex_home = WorkflowWorkspace.agent_home_for(workflow, provider)
-      auth = CodexAuth.new(user: job.user, codex_home: codex_home).prepare!
+      codex_auth = CodexAuth.new(user: job.user, codex_home: codex_home)
+      auth = codex_auth.prepare!
 
-      CodexInvocation.new(
-        workspace.path,
-        prompt: prompt,
-        api_key: auth.api_key,
-        log_sink: log_sink,
-        runner: RunJob.agent_runner,
-        codex_home: codex_home,
-        mcp_server: mcp_server,
-        resume_session_id: parent_session_id,
-        resume_transcript_jsonl: resume_transcript_jsonl
-      ).run
+      begin
+        CodexInvocation.new(
+          workspace.path,
+          prompt: prompt,
+          api_key: auth.api_key,
+          log_sink: log_sink,
+          runner: RunJob.agent_runner,
+          codex_home: codex_home,
+          mcp_server: mcp_server,
+          resume_session_id: parent_session_id,
+          resume_transcript_jsonl: resume_transcript_jsonl
+        ).run
+      ensure
+        codex_auth.persist_updated_auth_json
+      end
     end
 
     private

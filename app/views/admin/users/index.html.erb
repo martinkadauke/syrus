@@ -92,7 +92,7 @@
             <td class="px-4 py-2"><%= user.claude_oauth_token.present? ? "✓" : "—" %></td>
             <td class="px-4 py-2">
               <%= user.codex_auth_mode %>
-              <%= (user.codex_api_key.present? || user.codex_access_token.present?) ? "✓" : "—" %>
+              <%= (user.codex_api_key.present? || user.codex_auth_json.present?) ? "✓" : "—" %>
             </td>
             <td class="px-4 py-2"><%= user.agent_max_turns %></td>
             <td class="px-4 py-2">

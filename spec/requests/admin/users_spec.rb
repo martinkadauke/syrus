@@ -37,7 +37,7 @@ RSpec.describe "Admin users", type: :request do
       codex_user = Factories.user(email_address: "codex@example.com", codex_api_key: "sk_test")
       codex_login_user = Factories.user(email_address: "codex-login@example.com",
                                         codex_auth_mode: "chatgpt_login",
-                                        codex_access_token: "access_test")
+                                        codex_auth_json: Factories.codex_auth_json(access_token: "access_test"))
       other_user = Factories.user(email_address: "plain@example.com")
 
       get "/admin/users", params: { has_codex_token: "true" }
@@ -63,7 +63,7 @@ RSpec.describe "Admin users", type: :request do
                               agent_provider: "codex",
                               codex_auth_mode: "chatgpt_login",
                               codex_api_key: "sk_codex_secretvalue",
-                              codex_access_token: "codex_access_secretvalue")
+                              codex_auth_json: Factories.codex_auth_json(access_token: "codex_access_secretvalue"))
       get "/admin/users/#{target.id}"
       expect(response).to be_successful
       expect(response.body).to include("target@example.com")

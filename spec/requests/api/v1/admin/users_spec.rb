@@ -19,7 +19,7 @@ RSpec.describe "API: /api/v1/admin/users", type: :request do
                      agent_provider: "codex",
                      codex_auth_mode: "chatgpt_login",
                      codex_api_key: "sk_codex_secret",
-                     codex_access_token: "codex_access_secret")
+                     codex_auth_json: Factories.codex_auth_json(access_token: "codex_access_secret"))
       get "/api/v1/admin/users", headers: auth
       expect(response).to be_successful, "expected success, got #{response.status}: #{response.body}"
       body = parse_body
@@ -31,7 +31,7 @@ RSpec.describe "API: /api/v1/admin/users", type: :request do
         "has_github_token" => true,
         "has_codex_token" => true,
         "has_codex_api_key" => true,
-        "has_codex_access_token" => true
+        "has_codex_auth_json" => true
       )
       expect(response.body).not_to include("ghp_secret")
       expect(response.body).not_to include("sk_codex_secret")

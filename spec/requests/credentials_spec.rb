@@ -4,7 +4,7 @@ RSpec.describe "Credentials", type: :request do
   let(:user) do
     Factories.user(claude_oauth_token: "sk-existing",
                    codex_api_key: "sk-codex-existing",
-                   codex_access_token: "codex-access-existing",
+                   codex_auth_json: Factories.codex_auth_json(access_token: "codex-access-existing"),
                    github_token: "ghp_existing")
   end
 
@@ -32,7 +32,7 @@ RSpec.describe "Credentials", type: :request do
         user: {
           claude_oauth_token: "sk-new",
           codex_api_key: "",
-          codex_access_token: "",
+          codex_auth_json: "",
           github_token: ""
         }
       }
@@ -40,16 +40,16 @@ RSpec.describe "Credentials", type: :request do
       user.reload
       expect(user.claude_oauth_token).to eq("sk-new")
       expect(user.codex_api_key).to eq("sk-codex-existing")
-      expect(user.codex_access_token).to eq("codex-access-existing")
+      expect(user.codex_auth_json).to include("codex-access-existing")
       expect(user.github_token).to eq("ghp_existing")
     end
 
     it "leaves both unchanged when both fields are blank" do
-      patch credentials_path, params: { user: { claude_oauth_token: "", codex_api_key: "", codex_access_token: "", github_token: "" } }
+      patch credentials_path, params: { user: { claude_oauth_token: "", codex_api_key: "", codex_auth_json: "", github_token: "" } }
       user.reload
       expect(user.claude_oauth_token).to eq("sk-existing")
       expect(user.codex_api_key).to eq("sk-codex-existing")
-      expect(user.codex_access_token).to eq("codex-access-existing")
+      expect(user.codex_auth_json).to include("codex-access-existing")
       expect(user.github_token).to eq("ghp_existing")
     end
 
@@ -59,12 +59,13 @@ RSpec.describe "Credentials", type: :request do
       expect(user.reload.agent_provider).to eq("codex")
     end
 
-    it "updates Codex auth mode and access token" do
-      patch credentials_path, params: { user: { codex_auth_mode: "chatgpt_login", codex_access_token: "new-access" } }
+    it "updates Codex auth mode and auth.json" do
+      auth_json = Factories.codex_auth_json(access_token: "new-access")
+      patch credentials_path, params: { user: { codex_auth_mode: "chatgpt_login", codex_auth_json: auth_json } }
       expect(response).to redirect_to(edit_credentials_path)
       user.reload
       expect(user.codex_auth_mode).to eq("chatgpt_login")
-      expect(user.codex_access_token).to eq("new-access")
+      expect(user.codex_auth_json).to eq(auth_json)
     end
 
     it "updates agent_max_turns when provided" do

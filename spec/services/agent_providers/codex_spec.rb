@@ -68,13 +68,14 @@ RSpec.describe AgentProviders::Codex do
       )
     end
 
-    it "logs in with ChatGPT access token and invokes Codex without CODEX_API_KEY" do
-      user.update!(codex_auth_mode: "chatgpt_login", codex_access_token: "access-token")
-      allow(Open3).to receive(:capture2e)
-        .and_return([ "ok", instance_double(Process::Status, success?: true) ])
+    it "writes ChatGPT auth.json and invokes Codex without CODEX_API_KEY" do
+      user.update!(codex_auth_mode: "chatgpt_login",
+                   codex_auth_json: Factories.codex_auth_json(access_token: "access-token"))
       received = nil
       RunJob.agent_runner = ->(**kwargs) {
         received = kwargs
+        File.write(File.join(kwargs.fetch(:codex_home), "auth.json"),
+                   Factories.codex_auth_json(access_token: "refreshed-token"))
         AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
                                     is_error: false, outcome: "success",
                                     final_text: nil, session_id: "new-thread")
@@ -84,12 +85,9 @@ RSpec.describe AgentProviders::Codex do
 
       expect(result).to be_success
       expect(received[:api_key]).to be_nil
-      expect(Open3).to have_received(:capture2e).with(
-        hash_including("CODEX_HOME" => WorkflowWorkspace.agent_home_for(workflow, "codex").to_s),
-        "codex", "login", "--with-access-token",
-        stdin_data: "access-token\n",
-        unsetenv_others: true
-      )
+      auth_path = File.join(WorkflowWorkspace.agent_home_for(workflow, "codex"), "auth.json")
+      expect(JSON.parse(File.read(auth_path))["tokens"]["access_token"]).to eq("refreshed-token")
+      expect(user.reload.codex_auth_json).to include("refreshed-token")
     end
   end
 end
