@@ -17,6 +17,8 @@ require "fileutils"
 # share a path.
 class WorkflowWorkspace
   CLONE_DEPTH = 50
+  GIT_AUTHOR_NAME = "Syrus".freeze
+  GIT_AUTHOR_EMAIL = "syrus@noreply.invalid".freeze
 
   attr_reader :path, :branch_name
 
@@ -110,6 +112,7 @@ class WorkflowWorkspace
     else
       clone_and_checkout
     end
+    configure_git_author
   end
 
   def cleanup
@@ -188,5 +191,10 @@ class WorkflowWorkspace
       nil
     end
     @git.run("clean", "-fd", chdir: path.to_s)
+  end
+
+  def configure_git_author
+    @git.run("config", "--local", "user.name", GIT_AUTHOR_NAME, chdir: path.to_s)
+    @git.run("config", "--local", "user.email", GIT_AUTHOR_EMAIL, chdir: path.to_s)
   end
 end

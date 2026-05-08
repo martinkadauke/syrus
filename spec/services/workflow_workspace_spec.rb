@@ -54,6 +54,17 @@ RSpec.describe WorkflowWorkspace do
         expect(`git -C #{ws.path} log --oneline | wc -l`.strip.to_i).to be >= 1
       end
 
+      it "configures a repository-local Git author for agent commits" do
+        ws = described_class.new(workflow)
+        ws.setup
+
+        name = `git -C #{ws.path} config --local user.name`.strip
+        email = `git -C #{ws.path} config --local user.email`.strip
+
+        expect(name).to eq("Syrus")
+        expect(email).to eq("syrus@noreply.invalid")
+      end
+
       it "checks out an existing branch when one is on origin (follow-up workflow on the same Job)" do
         first_workflow_dir = Pathname.new(@data_root).join("workflows", "_setup")
         sh("git clone -q file://#{bare_remote_dir} #{first_workflow_dir}")
