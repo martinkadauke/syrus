@@ -35,8 +35,8 @@ RSpec.describe Workflows do
       ])
     end
 
-    it "records the user's current agent provider on the workflow" do
-      job.user.update!(agent_provider: "codex", codex_api_key: "sk-test")
+    it "records the job's current agent provider on the workflow" do
+      job.update!(agent_provider: "codex")
       wf = Workflows::Initial.instantiate(job: job)
       expect(wf.agent_provider).to eq("codex")
     end

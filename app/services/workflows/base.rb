@@ -42,7 +42,7 @@ module Workflows
         wf = Workflow.create!(
           job: job,
           trigger_kind: trigger_kind,
-          agent_provider: agent_provider || job.user.agent_provider,
+          agent_provider: agent_provider || job.agent_provider || job.user.agent_provider,
           artifacts: artifacts
         )
         steps = step_kinds.each_with_index.map do |kind, position|

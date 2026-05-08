@@ -123,6 +123,10 @@ class Workflow < ApplicationRecord
     succeeded? || failed? || cancelled?
   end
 
+  def retry_as_new_workflow_available?
+    succeeded? || failed?
+  end
+
   # Failed workflows whose disk workspace is still around — the
   # "Retry from failed step" UI gates on this. Once
   # WorkflowWorkspace.cleanup_for has run (either via the

@@ -77,6 +77,67 @@ RSpec.describe User do
     end
   end
 
+  describe "#configured_agent_providers" do
+    it "includes Claude when a Claude token is set" do
+      user = User.create!(attrs.merge(claude_oauth_token: "oat-test"))
+
+      expect(user.configured_agent_providers).to eq([ "claude" ])
+    end
+
+    it "includes Codex when API key auth is selected and an API key is set" do
+      user = User.create!(attrs.merge(codex_auth_mode: "api_key", codex_api_key: "sk-test"))
+
+      expect(user.configured_agent_providers).to eq([ "codex" ])
+    end
+
+    it "includes Codex when ChatGPT login auth is selected and auth.json is set" do
+      user = User.create!(
+        attrs.merge(
+          codex_auth_mode: "chatgpt_login",
+          codex_auth_json: Factories.codex_auth_json(access_token: "access-test")
+        )
+      )
+
+      expect(user.configured_agent_providers).to eq([ "codex" ])
+    end
+
+    it "requires credentials for the active Codex auth mode" do
+      user = User.create!(
+        attrs.merge(
+          codex_auth_mode: "chatgpt_login",
+          codex_api_key: "sk-unused-for-chatgpt-login"
+        )
+      )
+
+      expect(user.configured_agent_providers).to be_empty
+    end
+
+    it "returns every configured provider in registry order" do
+      user = User.create!(
+        attrs.merge(
+          claude_oauth_token: "oat-test",
+          codex_auth_mode: "api_key",
+          codex_api_key: "sk-test"
+        )
+      )
+
+      expect(user.configured_agent_providers).to eq(%w[ claude codex ])
+    end
+
+    it "returns configured providers other than the user's default provider" do
+      user = User.create!(
+        attrs.merge(
+          agent_provider: "claude",
+          claude_oauth_token: "oat-test",
+          codex_auth_mode: "api_key",
+          codex_api_key: "sk-test"
+        )
+      )
+
+      expect(user.alternate_configured_agent_providers).to eq([ "codex" ])
+    end
+  end
+
   describe "email normalization" do
     it "downcases and strips whitespace" do
       user = User.create!(attrs.merge(email_address: "  Mixed@Example.com  "))

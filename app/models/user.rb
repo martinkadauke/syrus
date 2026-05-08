@@ -43,6 +43,25 @@ class User < ApplicationRecord
     admin
   end
 
+  def configured_agent_providers
+    AGENT_PROVIDERS.select { |provider| agent_provider_configured?(provider) }
+  end
+
+  def alternate_configured_agent_providers
+    configured_agent_providers - [ agent_provider ]
+  end
+
+  def agent_provider_configured?(provider)
+    case provider.to_s
+    when "claude"
+      claude_oauth_token.present?
+    when "codex"
+      codex_configured?
+    else
+      false
+    end
+  end
+
   # Generate (and persist) a fresh API token. Returns the
   # plaintext token so the caller can show it to the operator
   # ONCE — it's stored deterministic-encrypted, so the operator
@@ -82,6 +101,17 @@ class User < ApplicationRecord
   end
 
   private
+
+  def codex_configured?
+    case codex_auth_mode
+    when "api_key"
+      codex_api_key.present?
+    when "chatgpt_login"
+      codex_auth_json.present?
+    else
+      false
+    end
+  end
 
   def promote_first_user_to_admin
     self.admin = true if User.count.zero?
