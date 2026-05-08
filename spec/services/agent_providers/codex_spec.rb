@@ -90,4 +90,57 @@ RSpec.describe AgentProviders::Codex do
       expect(user.reload.codex_auth_json).to include("refreshed-token")
     end
   end
+
+  describe "#run_once" do
+    it "invokes Codex in a tmpdir without MCP or resume state" do
+      received = nil
+      RunJob.agent_runner = ->(**kwargs) {
+        received = kwargs
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
+                                    is_error: false, outcome: "success",
+                                    final_text: '{"title":"x","body":"y"}',
+                                    session_id: nil)
+      }
+
+      result = adapter.run_once(prompt: "summarize",
+                                log_sink: ->(*, **) { },
+                                timeout: 9,
+                                max_turns: 1)
+
+      expect(result).to be_success
+      expect(received[:workspace_path]).to start_with(Dir.tmpdir)
+      expect(received).to include(
+        prompt: "summarize",
+        api_key: "sk-test",
+        timeout: 9,
+        mcp_server: nil,
+        resume_session_id: nil,
+        resume_transcript_jsonl: nil
+      )
+    end
+  end
+
+  describe "#record_result!" do
+    it "persists generic metadata and delegates transcript capture" do
+      messages = []
+      result = AgentInvocation::Result.new(
+        turns: 1,
+        exit_status: 0,
+        timed_out: false,
+        is_error: false,
+        outcome: "success",
+        final_text: nil,
+        session_id: "codex-thread",
+        transcript_jsonl: "{\"type\":\"session_meta\"}\n"
+      )
+
+      adapter.record_result!(result, log: ->(message) { messages << message })
+
+      expect(run.reload.agent_turns).to eq(1)
+      expect(run.agent_outcome).to eq("success")
+      expect(run.claude_session.provider).to eq("codex")
+      expect(run.claude_session.session_id).to eq("codex-thread")
+      expect(messages.join("\n")).to include("captured codex codex-thread")
+    end
+  end
 end

@@ -2,29 +2,30 @@ module AgentProviders
   class Codex < Base
     def self.provider = "codex"
 
-    def run(prompt:, log_sink:, max_turns: nil)
+    private
+
+    def invoke(workspace_path:, prompt:, log_sink:, timeout:, mcp:, resume_session_id:, **_ignored)
       codex_home = WorkflowWorkspace.agent_home_for(workflow, provider)
       codex_auth = CodexAuth.new(user: job.user, codex_home: codex_home)
       auth = codex_auth.prepare!
 
       begin
         CodexInvocation.new(
-          workspace.path,
+          workspace_path,
           prompt: prompt,
           api_key: auth.api_key,
           log_sink: log_sink,
           runner: RunJob.agent_runner,
+          timeout: timeout,
           codex_home: codex_home,
-          mcp_server: mcp_server,
-          resume_session_id: parent_session_id,
-          resume_transcript_jsonl: resume_transcript_jsonl
+          mcp_server: (mcp ? mcp_server : nil),
+          resume_session_id: resume_session_id,
+          resume_transcript_jsonl: resume_transcript_jsonl(resume_session_id)
         ).run
       ensure
         codex_auth.persist_updated_auth_json
       end
     end
-
-    private
 
     def mcp_server
       {
@@ -34,14 +35,8 @@ module AgentProviders
       }
     end
 
-    def resume_transcript_jsonl
-      return nil if parent_session_id.blank?
-
-      ClaudeSession.joins(:run)
-                   .where(session_id: parent_session_id, provider: provider, runs: { job_id: job.id })
-                   .where.not(transcript_jsonl: nil)
-                   .order(created_at: :desc)
-                   .first&.transcript_jsonl
+    def resume_transcript_jsonl(session_id)
+      AgentProviders::SessionStore.transcript_for(provider: provider, session_id: session_id, job: job)
     end
   end
 end

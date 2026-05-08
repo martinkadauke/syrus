@@ -137,4 +137,25 @@ RSpec.describe PrSummarizer do
       expect(seen_path).to start_with(Dir.tmpdir)
     end
   end
+
+  describe "provider adapter wiring" do
+    it "uses the provider's one-shot invocation when an agent adapter is supplied" do
+      seen = {}
+      agent = double("agent")
+      allow(agent).to receive(:run_once) do |**kwargs|
+        seen.merge!(kwargs)
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
+                                    is_error: false, outcome: "success",
+                                    final_text: '{"title":"x","body":"y"}',
+                                    session_id: nil)
+      end
+
+      result = described_class.new(issue: issue, diff: diff, agent: agent).call
+
+      expect(result).to be_success
+      expect(seen[:prompt]).to include("Add greeting helper")
+      expect(seen[:timeout]).to eq(described_class::DEFAULT_TIMEOUT_SECONDS)
+      expect(seen[:max_turns]).to eq(1)
+    end
+  end
 end

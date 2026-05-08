@@ -14,7 +14,7 @@ RSpec.describe Steps::Base do
     Class.new(described_class) do
       def call; nil; end
       public :log, :parent_session_id, :buffered_log_sink, :agent_provider,
-             :agent_adapter, :capture_agent_session
+             :agent_adapter
     end
   end
   let(:handler) { handler_class.new(run) }
@@ -128,29 +128,6 @@ RSpec.describe Steps::Base do
     it "builds the adapter for the resolved provider" do
       run.update!(agent_provider: "codex")
       expect(handler.agent_adapter).to be_a(AgentProviders::Codex)
-    end
-  end
-
-  describe "#capture_agent_session" do
-    it "stores a codex transcript from the invocation result" do
-      run.update!(agent_provider: "codex")
-      result = AgentInvocation::Result.new(
-        turns: 1,
-        exit_status: 0,
-        timed_out: false,
-        is_error: false,
-        outcome: "success",
-        final_text: nil,
-        session_id: "codex-thread",
-        transcript_jsonl: "{\"type\":\"session_meta\"}\n"
-      )
-
-      handler.capture_agent_session(result)
-
-      session = run.reload.claude_session
-      expect(session.provider).to eq("codex")
-      expect(session.session_id).to eq("codex-thread")
-      expect(session.transcript_jsonl).to include("session_meta")
     end
   end
 

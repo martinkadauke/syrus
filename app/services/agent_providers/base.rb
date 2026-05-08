@@ -1,3 +1,5 @@
+require "tmpdir"
+
 module AgentProviders
   class Base
     SessionCapture = Data.define(:provider, :session_id, :transcript_jsonl, :missing_message)
@@ -36,7 +38,39 @@ module AgentProviders
     end
 
     def run(prompt:, log_sink:, max_turns: nil)
-      raise NotImplementedError, "#{self.class.name} must implement #run"
+      invoke(
+        workspace_path: workspace.path,
+        prompt: prompt,
+        log_sink: log_sink,
+        timeout: invocation_timeout,
+        max_turns: max_turns || default_max_turns,
+        mcp: true,
+        resume_session_id: parent_session_id
+      )
+    end
+
+    def run_once(prompt:, log_sink:, timeout:, max_turns:)
+      Dir.mktmpdir("syrus-agent-once") do |tmpdir|
+        invoke(
+          workspace_path: tmpdir,
+          prompt: prompt,
+          log_sink: log_sink,
+          timeout: timeout,
+          max_turns: max_turns,
+          mcp: false,
+          resume_session_id: nil
+        )
+      end
+    end
+
+    def record_result!(result, log:)
+      updates = {}
+      updates[:agent_turns] = result.turns if result.turns
+      updates[:agent_outcome] = result.outcome if result.outcome
+      @run.update!(updates) if updates.any?
+
+      SessionStore.new(run: @run, log: log).capture!(session_capture(result))
+      result
     end
 
     def session_capture(result)
@@ -53,6 +87,18 @@ module AgentProviders
     private
 
     attr_reader :workspace, :parent_session_id, :workflow, :job
+
+    def invoke(workspace_path:, prompt:, log_sink:, timeout:, max_turns:, mcp:, resume_session_id:)
+      raise NotImplementedError, "#{self.class.name} must implement #invoke"
+    end
+
+    def invocation_timeout
+      AgentInvocation::DEFAULT_TIMEOUT_SECONDS
+    end
+
+    def default_max_turns
+      job.user.agent_max_turns
+    end
 
     def transcript_from_result(result)
       return result.transcript_jsonl if result.transcript_jsonl.present?

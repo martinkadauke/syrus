@@ -74,6 +74,35 @@ RSpec.describe AgentProviders::Claude do
     end
   end
 
+  describe "#run_once" do
+    it "uses a tmpdir without MCP or resume state" do
+      received = nil
+      RunJob.agent_runner = ->(**kwargs) {
+        received = kwargs
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
+                                    is_error: false, outcome: "success",
+                                    final_text: '{"title":"x","body":"y"}',
+                                    session_id: nil)
+      }
+
+      result = adapter.run_once(prompt: "summarize",
+                                log_sink: ->(*, **) { },
+                                timeout: 9,
+                                max_turns: 1)
+
+      expect(result).to be_success
+      expect(received[:workspace_path]).to start_with(Dir.tmpdir)
+      expect(received).to include(
+        prompt: "summarize",
+        oauth_token: "oat-test",
+        timeout: 9,
+        max_turns: 1,
+        mcp_config: nil,
+        resume_session_id: nil
+      )
+    end
+  end
+
   describe "#session_capture" do
     it "reads Claude's canonical JSONL path when the invocation result did not include transcript data" do
       Dir.mktmpdir do |home|

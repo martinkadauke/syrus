@@ -6,21 +6,6 @@ module AgentProviders
 
     def self.provider = "claude"
 
-    def run(prompt:, log_sink:, max_turns: nil)
-      with_mcp_config do |mcp_config_path|
-        AgentInvocation.new(
-          workspace.path,
-          prompt: prompt,
-          oauth_token: job.user.claude_oauth_token,
-          log_sink: log_sink,
-          runner: RunJob.agent_runner,
-          max_turns: max_turns || job.user.agent_max_turns,
-          mcp_config: mcp_config_path,
-          resume_session_id: parent_session_id
-        ).run
-      end
-    end
-
     def session_capture(result)
       capture = super
       return nil unless capture
@@ -67,6 +52,42 @@ module AgentProviders
         transcript_jsonl: nil,
         missing_message: "[agent_session] invalid Claude session id - Resume won't be available for this Run"
       )
+    end
+
+    def invoke(workspace_path:, prompt:, log_sink:, timeout:, max_turns:, mcp:, resume_session_id:)
+      if mcp
+        with_mcp_config do |mcp_config_path|
+          invoke_claude(workspace_path: workspace_path,
+                        prompt: prompt,
+                        log_sink: log_sink,
+                        timeout: timeout,
+                        max_turns: max_turns,
+                        mcp_config: mcp_config_path,
+                        resume_session_id: resume_session_id)
+        end
+      else
+        invoke_claude(workspace_path: workspace_path,
+                      prompt: prompt,
+                      log_sink: log_sink,
+                      timeout: timeout,
+                      max_turns: max_turns,
+                      mcp_config: nil,
+                      resume_session_id: resume_session_id)
+      end
+    end
+
+    def invoke_claude(workspace_path:, prompt:, log_sink:, timeout:, max_turns:, mcp_config:, resume_session_id:)
+      AgentInvocation.new(
+        workspace_path,
+        prompt: prompt,
+        oauth_token: job.user.claude_oauth_token,
+        log_sink: log_sink,
+        runner: RunJob.agent_runner,
+        timeout: timeout,
+        max_turns: max_turns,
+        mcp_config: mcp_config,
+        resume_session_id: resume_session_id
+      ).run
     end
 
     # Per-Run mcp.json tempfile so claude knows how to reach our

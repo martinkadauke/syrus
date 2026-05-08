@@ -39,4 +39,37 @@ RSpec.describe Steps::PrOpen do
     expect(body).to include("*Authored by Codex (trigger=retry). Review carefully.*")
     expect(body).not_to include("Run took")
   end
+
+  context "when falling back to the second-shot summarizer" do
+    let(:user) { Factories.user(agent_provider: "codex", codex_api_key: "sk-test") }
+    let(:workflow_provider) { "codex" }
+
+    it "passes the active provider adapter instead of Claude credentials" do
+      Run.create!(
+        job: job,
+        step: implement_step,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: "codex",
+        agent_diff: "diff --git a/feature.rb b/feature.rb\n+def x = 1\n"
+      )
+      pr_open_run = Run.create!(
+        job: job,
+        step: pr_open_step,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: "codex"
+      )
+      handler = described_class.new(pr_open_run)
+      allow(handler).to receive(:pr_summarizer_context)
+        .and_return(Struct.new(:title, :body).new("Issue", "Body"))
+
+      expect(PrSummarizer).to receive(:new) do |kwargs|
+        expect(kwargs[:agent]).to be_a(AgentProviders::Codex)
+        expect(kwargs).not_to have_key(:oauth_token)
+        double(call: PrSummarizer::Result.new(title: "Fallback title", body: "Fallback body", error: nil))
+      end
+
+      expect(handler.send(:pr_title_and_body_from_summarizer))
+        .to eq([ "Fallback title", "Fallback body" ])
+    end
+  end
 end

@@ -17,7 +17,7 @@ class Step < ApplicationRecord
     manual
   ].freeze
 
-  # Step kinds that spawn a claude subprocess. Non-agentic steps
+  # Step kinds that spawn an agent subprocess. Non-agentic steps
   # (pr_open, push, auto_rebase, force_push) just run service code
   # — Steps::PrOpen calls PullRequestOpener, Steps::Push runs `git
   # push`, etc. — and never invoke an agent.

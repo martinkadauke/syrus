@@ -1,11 +1,9 @@
 require "json"
 require "tmpdir"
 
-# Single-shot claude call that authors a PR title + body from the issue
-# and the agent's diff. Reuses AgentInvocation for the subprocess +
-# stream-json parsing, but pinned to max_turns: 1 (no tool exploration —
-# just one assistant text response) and rooted in a tmpdir so it has no
-# filesystem context to wander into.
+# Single-shot agent call that authors a PR title + body from the issue
+# and the agent's diff. The provider invocation is pinned to one turn
+# and rooted in a tmpdir so it has no filesystem context to wander into.
 class PrSummarizer
   DEFAULT_TIMEOUT_SECONDS = 2.minutes.to_i
 
@@ -13,19 +11,19 @@ class PrSummarizer
     def success? = error.nil?
   end
 
-  # Test seam — let specs swap in a fake summarizer runner without
-  # exec'ing claude. Same shape as AgentInvocation.agent_runner.
+  # Legacy Claude test seam — provider-backed callers pass an agent adapter.
   class << self
     attr_accessor :runner
   end
 
-  def initialize(issue:, diff:, oauth_token:,
-                 log_sink: ->(_) { },
+  def initialize(issue:, diff:, oauth_token: nil, agent: nil,
+                 log_sink: ->(*, **) { },
                  runner: nil,
                  timeout: DEFAULT_TIMEOUT_SECONDS)
     @issue = issue
     @diff = diff
     @oauth_token = oauth_token
+    @agent = agent
     @log_sink = log_sink
     @runner = runner || self.class.runner
     @timeout = timeout
@@ -34,8 +32,34 @@ class PrSummarizer
   def call
     prompt = Prompts::PullRequestSummary.new(issue: @issue, diff: @diff).to_s
 
+    result = invoke_agent(prompt)
+
+    return failure("timed out after #{@timeout}s") if result.timed_out
+    return failure("agent reported #{result.outcome || 'error'}") if result.is_error
+    return failure("agent exited #{result.exit_status}") unless result.success?
+    return failure("empty response") if result.final_text.blank?
+
+    parse(result.final_text)
+  rescue StandardError => e
+    failure("#{e.class}: #{e.message}")
+  end
+
+  private
+
+  def invoke_agent(prompt)
+    if @agent
+      @agent.run_once(prompt: prompt,
+                      log_sink: @log_sink,
+                      timeout: @timeout,
+                      max_turns: 1)
+    else
+      invoke_legacy_claude(prompt)
+    end
+  end
+
+  def invoke_legacy_claude(prompt)
     Dir.mktmpdir("syrus-summarize") do |tmpdir|
-      result = AgentInvocation.new(
+      AgentInvocation.new(
         tmpdir,
         prompt: prompt,
         oauth_token: @oauth_token,
@@ -44,19 +68,8 @@ class PrSummarizer
         timeout: @timeout,
         max_turns: 1
       ).run
-
-      return failure("timed out after #{@timeout}s") if result.timed_out
-      return failure("agent reported #{result.outcome || 'error'}") if result.is_error
-      return failure("agent exited #{result.exit_status}") unless result.success?
-      return failure("empty response") if result.final_text.blank?
-
-      parse(result.final_text)
     end
-  rescue StandardError => e
-    failure("#{e.class}: #{e.message}")
   end
-
-  private
 
   def parse(raw)
     text = raw.strip

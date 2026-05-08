@@ -49,7 +49,7 @@ class CodexInvocation
                      resume_transcript_jsonl: nil)
     codex_home = codex_home.presence || File.join(Dir.home, ".codex")
     FileUtils.mkdir_p(codex_home)
-    write_config(codex_home, mcp_server) if mcp_server
+    write_config(codex_home, mcp_server)
     restore_resume_transcript(codex_home, resume_session_id, resume_transcript_jsonl)
 
     env = codex_env(api_key: api_key, codex_home: codex_home)
@@ -123,7 +123,12 @@ class CodexInvocation
   def codex_config_toml(mcp_server)
     lines = [
       'cli_auth_credentials_store = "file"',
-      'approval_policy = "never"',
+      'approval_policy = "never"'
+    ]
+
+    return lines.join("\n") + "\n" unless mcp_server
+
+    lines += [
       "",
       "[mcp_servers.syrus-mcp-sidecar]",
       "command = #{toml_string(mcp_server.fetch(:command))}",

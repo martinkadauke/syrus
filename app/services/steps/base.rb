@@ -112,8 +112,7 @@ module Steps
         flush.call
       end
 
-      persist_agent_metadata(result)
-      capture_agent_session(result)
+      agent_adapter.record_result!(result, log: ->(message) { log(message) })
 
       raise StepFailed, "agent timed out"                            if result.timed_out
       raise StepFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
@@ -143,36 +142,6 @@ module Steps
     # comment + diff) without dragging hours-old conversation in.
     def parent_session_id
       run.parent_session_id.presence || step.upstream_session_id
-    end
-
-    # Capture the agent session JSONL into ClaudeSession. The table/model
-    # name is still historical; provider marks which CLI produced it.
-    def capture_agent_session(result)
-      capture = agent_adapter.session_capture(result)
-      return unless capture
-
-      if capture.transcript_jsonl.blank?
-        log(capture.missing_message) if capture.missing_message.present?
-        log("[agent_session] no transcript captured for #{capture.provider} session #{capture.session_id}")
-        return
-      end
-
-      ClaudeSession.create!(
-        run: run,
-        provider: capture.provider,
-        session_id: capture.session_id,
-        transcript_jsonl: capture.transcript_jsonl
-      )
-      log("[agent_session] captured #{capture.provider} #{capture.session_id} (#{capture.transcript_jsonl.bytesize} bytes)")
-    rescue StandardError => e
-      log("[agent_session] capture failed: #{e.class}: #{e.message}")
-    end
-
-    def persist_agent_metadata(result)
-      updates = {}
-      updates[:agent_turns] = result.turns if result.turns
-      updates[:agent_outcome] = result.outcome if result.outcome
-      run.update!(updates) if updates.any?
     end
 
     # ---- Workspace + git helpers ----

@@ -25,7 +25,7 @@ RSpec.describe Step do
   end
 
   describe "#agentic?" do
-    it "is true for kinds that spawn claude" do
+    it "is true for kinds that spawn an agent" do
       %w[ implement summarize respond summarize_amend analyze_and_fix agent_rebase manual ].each do |k|
         expect(build_step(kind: k).agentic?).to be(true), "expected #{k} to be agentic"
       end

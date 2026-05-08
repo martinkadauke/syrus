@@ -91,7 +91,8 @@ Key steps:
   Per-command timeout: 10 minutes. Succeeds with "nothing to do" if the
   repo has no setup commands — chain shape stays uniform.
 - **`implement`** / **`respond`** / **`analyze_and_fix`** — Agentic steps:
-  invoke `AgentInvocation`, which spawns `claude --print` with `stream-json`.
+  invoke the Workflow's configured `AgentProviders::*` adapter. Claude uses
+  `AgentInvocation`/`claude --print`; Codex uses `CodexInvocation`/`codex exec`.
   Pluggable `runner:` for tests.
 - **`summarize`** / **`summarize_amend`** — Short agentic step that
   `--resume`s the prior session and asks the agent to call `submit_summary`.

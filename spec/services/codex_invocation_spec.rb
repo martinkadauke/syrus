@@ -153,6 +153,21 @@ RSpec.describe CodexInvocation do
       end
     end
 
+    it "overwrites stale MCP config when no sidecar is requested" do
+      Dir.mktmpdir do |home|
+        File.write(File.join(home, "config.toml"), "[mcp_servers.syrus-mcp-sidecar]\ncommand = \"stale\"\n")
+        invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test", codex_home: home)
+
+        capture_popen(invocation)
+
+        config = File.read(File.join(home, "config.toml"))
+        expect(config).to include('cli_auth_credentials_store = "file"')
+        expect(config).to include('approval_policy = "never"')
+        expect(config).not_to include("[mcp_servers.syrus-mcp-sidecar]")
+        expect(config).not_to include("stale")
+      end
+    end
+
     it "parses JSONL events into the common AgentInvocation::Result shape" do
       Dir.mktmpdir do |home|
         invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test", codex_home: home)

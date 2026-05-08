@@ -41,9 +41,8 @@ module Steps
     #
     #   1. workflow.artifacts (preferred — agent-authored via
     #      submit_summary in the summarize step)
-    #   2. PrSummarizer second-shot (single-shot claude call against
-    #      the diff; safety net if summarize didn't produce
-    #      artifacts somehow)
+    #   2. PrSummarizer second-shot through the Workflow's agent
+    #      provider (safety net if summarize didn't produce artifacts)
     #   3. templated default (last resort)
     def pr_title_and_body
       title, body = pr_title_and_body_from_artifacts
@@ -67,8 +66,8 @@ module Steps
       summary = PrSummarizer.new(
         issue: issue,
         diff: run.agent_diff || workflow.steps.where(kind: "implement").last&.latest_run&.agent_diff,
-        oauth_token: job.user.claude_oauth_token,
-        log_sink: ->(chunk) { log("[summarizer] #{chunk}") }
+        agent: agent_adapter,
+        log_sink: ->(chunk, kind: nil) { log("[summarizer] #{chunk}", kind: kind) }
       ).call
       return [ nil, nil ] unless summary.success?
       log("[pr_open] using summarizer-authored title: #{summary.title.inspect}")
