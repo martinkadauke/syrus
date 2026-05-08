@@ -59,6 +59,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
 
       expect(body["id"]).to eq(job.id)
       expect(body["state"]).to eq("open")
+      expect(body["agent_provider"]).to eq(job.agent_provider)
       expect(body["repository"]["slug"]).to eq(job.repository.slug)
 
       wf = body["workflows"].first
@@ -183,8 +184,9 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
     it "returns a compact shape — repository slug, issue/pr/branch, no nested workflows" do
       get "/api/v1/admin/jobs", params: { pr_number: 144 }, headers: auth(admin_token)
       row = parse_body["jobs"].first
-      expect(row).to include("id", "state", "kind", "repository", "issue_number", "pr_number", "branch_name")
+      expect(row).to include("id", "state", "kind", "agent_provider", "repository", "issue_number", "pr_number", "branch_name")
       expect(row["repository"]).to eq("acme/widgets")
+      expect(row["agent_provider"]).to eq(job_124.agent_provider)
       expect(row).not_to have_key("workflows")
     end
 

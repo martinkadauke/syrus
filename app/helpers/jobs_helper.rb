@@ -93,12 +93,31 @@ module JobsHelper
     "low"    => "bg-slate-100 text-slate-500"
   }.freeze
 
+  AGENT_PROVIDER_LABELS = {
+    "claude" => "Claude Code",
+    "codex"  => "Codex"
+  }.freeze
+
+  AGENT_PROVIDER_STYLES = {
+    "claude" => "bg-indigo-100 text-indigo-700",
+    "codex"  => "bg-emerald-100 text-emerald-700"
+  }.freeze
+
   def priority_pill(priority)
     colored_pill(priority, classes: PRIORITY_STYLES[priority.to_s] || ApplicationHelper::PILL_FALLBACK_CLASSES)
   end
 
-  def job_agent_pill(_job)
-    colored_pill("Claude Code", classes: "bg-indigo-100 text-indigo-700", extra: "whitespace-nowrap")
+  def job_agent_pill(job)
+    provider = job_agent_provider(job)
+    label = AGENT_PROVIDER_LABELS[provider] || "Syrus"
+    classes = AGENT_PROVIDER_STYLES[provider] || ApplicationHelper::PILL_FALLBACK_CLASSES
+    colored_pill(label, classes: classes, extra: "whitespace-nowrap")
+  end
+
+  def job_agent_provider(job)
+    job.agent_provider.presence ||
+      job.workflows.reorder(created_at: :desc).limit(1).pick(:agent_provider) ||
+      job.runs.reorder(created_at: :desc).limit(1).pick(:agent_provider)
   end
 
   # The most useful one-word summary for a Job in a list view:

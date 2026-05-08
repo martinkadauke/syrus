@@ -45,10 +45,13 @@ RSpec.describe "Jobs", type: :request do
       end
 
       it "shows the selected agent as a pill next to the title" do
+        job.update!(agent_provider: "codex")
+
         get job_path(job)
 
-        expect(response.body).to include("Claude Code")
-        expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*Claude Code/m)
+        expect(response.body).to include("Codex")
+        expect(response.body).not_to include("Claude Code")
+        expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*Codex/m)
       end
 
       it "renders issue_body when present (no summary → plain block)" do
