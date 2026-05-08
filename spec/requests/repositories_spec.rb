@@ -137,6 +137,24 @@ RSpec.describe "Repositories", type: :request do
         expect(flash[:notice]).to match(/2 failed jobs/)
       end
 
+      it "uses the current user's preferred agent and persists it on each retried Job" do
+        failed_a = Factories.job(repository: repo, issue_number: 1)
+        failed_b = Factories.job(repository: repo, issue_number: 2)
+        fail_latest_run!(failed_a)
+        fail_latest_run!(failed_b)
+        user.update!(agent_provider: "codex", codex_auth_mode: "api_key", codex_api_key: "sk-test")
+
+        post retry_failed_jobs_repository_path(repo)
+
+        [ failed_a, failed_b ].each do |failed_job|
+          retry_workflow = failed_job.reload.workflows.where(trigger_kind: "retry").last
+          expect(failed_job.agent_provider).to eq("codex")
+          expect(retry_workflow.agent_provider).to eq("codex")
+          expect(retry_workflow.first_step.runs.last.agent_provider).to eq("codex")
+        end
+        expect(flash[:notice]).to match(/with Codex/)
+      end
+
       it "returns an alert when no Jobs need retrying" do
         Factories.job(repository: repo, issue_number: 1)  # has only a queued initial run
         post retry_failed_jobs_repository_path(repo)

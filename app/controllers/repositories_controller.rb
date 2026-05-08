@@ -127,13 +127,15 @@ class RepositoriesController < ApplicationController
       return
     end
 
+    agent_provider = Current.user.agent_provider
     eligible.each do |job|
-      workflow = Workflows::Retry.instantiate(job: job)
+      job.switch_agent_provider!(agent_provider)
+      workflow = Workflows::Retry.instantiate(job: job, agent_provider: agent_provider)
       StepDispatcher.start_workflow(workflow)
     end
 
     redirect_to repository_path(@repository),
-                notice: "Retry enqueued for #{helpers.pluralize(eligible.size, 'failed job')}."
+                notice: "Retry enqueued for #{helpers.pluralize(eligible.size, 'failed job')} with #{agent_provider.titleize}."
   end
 
   def unarchive
