@@ -202,6 +202,8 @@ RSpec.describe RunJob do
     before do
       job; drain_workflow!(job)
       WebMock.reset_executed_requests!
+      allow_any_instance_of(GithubClient).to receive(:pull_request)
+        .and_return(Struct.new(:merged).new(false))
     end
 
     it "auto_rebase clean → cancels downstream → workflow succeeds" do

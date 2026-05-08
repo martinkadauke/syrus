@@ -9,6 +9,12 @@ module Steps
   # On conflict, lets the chain proceed to AgentRebase.
   class AutoRebase < Base
     def call
+      if pull_request_merged?
+        log("auto_rebase: pull request already merged; stopping rebase workflow")
+        cancel_downstream!(reason: "pull request already merged")
+        return
+      end
+
       log("auto_rebase: attempting deterministic rebase (workflow ##{workflow.id})")
       result = ::AutoRebase.new(job).call
 
@@ -19,6 +25,16 @@ module Steps
         workflow.set_artifact!("auto_rebase_reason", result.reason)
         log("auto_rebase: #{result.reason} — falling through to agent_rebase")
       end
+    end
+
+    private
+
+    def pull_request_merged?
+      pr_number = job.pr_number || job.external_pr_number
+      return false if pr_number.blank?
+
+      pr = GithubClient.for(job.user).pull_request(repository.slug, pr_number, bypass_cache: true)
+      pr.merged == true
     end
   end
 end
