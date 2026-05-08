@@ -22,7 +22,7 @@ class CodexInvocation
     @log_sink = log_sink
     @runner = runner || method(:default_runner)
     @timeout = timeout
-    @codex_home = codex_home
+    @codex_home = codex_home&.to_s
     @mcp_server = mcp_server
     @resume_session_id = resume_session_id
     @resume_transcript_jsonl = resume_transcript_jsonl

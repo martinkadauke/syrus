@@ -58,7 +58,7 @@ RSpec.describe AgentProviders::Codex do
         workspace_path: "/tmp/worktree",
         prompt: "resume",
         api_key: "sk-test",
-        codex_home: WorkflowWorkspace.agent_home_for(workflow, "codex"),
+        codex_home: WorkflowWorkspace.agent_home_for(workflow, "codex").to_s,
         resume_session_id: "codex-thread"
       )
       expect(received[:resume_transcript_jsonl]).to include("session_meta")

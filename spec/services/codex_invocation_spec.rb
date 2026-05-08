@@ -67,9 +67,10 @@ RSpec.describe CodexInvocation do
 
     it "runs codex exec with permission checks disabled" do
       Dir.mktmpdir do |home|
-        invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test", codex_home: home)
+        invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test", codex_home: Pathname.new(home))
         captured, = capture_popen(invocation)
 
+        expect(captured[:env]["CODEX_HOME"]).to eq(home)
         expect(captured[:cmd]).to include("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--json")
         expect(captured[:cmd]).to include("--cd", "/tmp/wkt")
       end
