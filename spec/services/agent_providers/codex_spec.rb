@@ -1,4 +1,5 @@
 require "rails_helper"
+require "tmpdir"
 
 RSpec.describe AgentProviders::Codex do
   let(:user) { Factories.user(codex_api_key: "sk-test") }
@@ -14,9 +15,14 @@ RSpec.describe AgentProviders::Codex do
 
   around do |ex|
     old_runner = RunJob.agent_runner
+    old_data_root = ENV["SYRUS_DATA_ROOT"]
+    data_root = Dir.mktmpdir("syrus-codex-provider")
+    ENV["SYRUS_DATA_ROOT"] = data_root
     ex.run
   ensure
     RunJob.agent_runner = old_runner
+    ENV["SYRUS_DATA_ROOT"] = old_data_root
+    FileUtils.rm_rf(data_root) if data_root
   end
 
   describe "#run" do
@@ -59,6 +65,30 @@ RSpec.describe AgentProviders::Codex do
       expect(received[:mcp_server]).to include(
         command: a_string_ending_with("/bin/syrus-mcp-sidecar"),
         args: [ "--run-id", run.id.to_s ]
+      )
+    end
+
+    it "logs in with ChatGPT access token and invokes Codex without CODEX_API_KEY" do
+      user.update!(codex_auth_mode: "chatgpt_login", codex_access_token: "access-token")
+      allow(Open3).to receive(:capture2e)
+        .and_return([ "ok", instance_double(Process::Status, success?: true) ])
+      received = nil
+      RunJob.agent_runner = ->(**kwargs) {
+        received = kwargs
+        AgentInvocation::Result.new(turns: 1, exit_status: 0, timed_out: false,
+                                    is_error: false, outcome: "success",
+                                    final_text: nil, session_id: "new-thread")
+      }
+
+      result = adapter(parent_session_id: nil).run(prompt: "do it", log_sink: ->(*, **) { })
+
+      expect(result).to be_success
+      expect(received[:api_key]).to be_nil
+      expect(Open3).to have_received(:capture2e).with(
+        hash_including("CODEX_HOME" => WorkflowWorkspace.agent_home_for(workflow, "codex").to_s),
+        "codex", "login", "--with-access-token",
+        stdin_data: "access-token\n",
+        unsetenv_others: true
       )
     end
   end

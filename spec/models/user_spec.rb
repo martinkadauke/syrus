@@ -24,11 +24,15 @@ RSpec.describe User do
   end
 
   describe "encrypted credentials" do
-    it "round-trips claude_oauth_token, codex_api_key, and github_token" do
-      user = User.create!(attrs.merge(claude_oauth_token: "oat-abc", codex_api_key: "sk-codex", github_token: "ghp_xyz"))
+    it "round-trips claude_oauth_token, codex credentials, and github_token" do
+      user = User.create!(attrs.merge(claude_oauth_token: "oat-abc",
+                                      codex_api_key: "sk-codex",
+                                      codex_access_token: "codex-access",
+                                      github_token: "ghp_xyz"))
       reloaded = User.find(user.id)
       expect(reloaded.claude_oauth_token).to eq("oat-abc")
       expect(reloaded.codex_api_key).to eq("sk-codex")
+      expect(reloaded.codex_access_token).to eq("codex-access")
       expect(reloaded.github_token).to eq("ghp_xyz")
     end
 
@@ -53,6 +57,23 @@ RSpec.describe User do
       user = User.new(attrs.merge(agent_provider: "oracle"))
       expect(user).not_to be_valid
       expect(user.errors[:agent_provider]).to be_present
+    end
+  end
+
+  describe "codex_auth_mode" do
+    it "defaults to api_key" do
+      expect(User.create!(attrs).codex_auth_mode).to eq("api_key")
+    end
+
+    it "accepts chatgpt_login" do
+      user = User.create!(attrs.merge(codex_auth_mode: "chatgpt_login"))
+      expect(user.codex_auth_mode).to eq("chatgpt_login")
+    end
+
+    it "rejects unknown modes" do
+      user = User.new(attrs.merge(codex_auth_mode: "browser_cookie"))
+      expect(user).not_to be_valid
+      expect(user.errors[:codex_auth_mode]).to be_present
     end
   end
 

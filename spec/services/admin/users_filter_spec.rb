@@ -8,6 +8,11 @@ RSpec.describe Admin::UsersFilter do
   let!(:gh_token_user)  { Factories.user(email_address: "alice@example.com", github_token: "ghp_x") }
   let!(:claude_user)    { Factories.user(email_address: "bob@example.com", claude_oauth_token: "co_x") }
   let!(:codex_user)     { Factories.user(email_address: "cora@example.com", codex_api_key: "sk_x") }
+  let!(:codex_login_user) do
+    Factories.user(email_address: "dana@example.com",
+                   codex_auth_mode: "chatgpt_login",
+                   codex_access_token: "access_x")
+  end
   let!(:rate_low_user)  { Factories.user(email_address: "lila@example.com",
                                           gh_rate_limit_remaining: 50, gh_rate_limit_limit: 5000) }
   let!(:rate_ok_user)   { Factories.user(email_address: "rita@example.com",
@@ -60,8 +65,14 @@ RSpec.describe Admin::UsersFilter do
   end
 
   describe "has_codex_token filter" do
-    it "true → only users with a Codex API key" do
-      expect(described_class.new(has_codex_token: "true").scope).to contain_exactly(codex_user)
+    it "true → only users with any Codex credential" do
+      expect(described_class.new(has_codex_token: "true").scope)
+        .to contain_exactly(codex_user, codex_login_user)
+    end
+
+    it "false → only users without any Codex credential" do
+      result = described_class.new(has_codex_token: "false").scope
+      expect(result).not_to include(codex_user, codex_login_user)
     end
   end
 

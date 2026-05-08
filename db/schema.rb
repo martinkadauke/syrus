@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_07_183000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_08_000000) do
   create_table "admin_actions", force: :cascade do |t|
     t.string "action", null: false
     t.datetime "created_at", null: false
@@ -254,7 +254,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_07_183000) do
     t.integer "agent_max_turns", default: 200, null: false
     t.string "agent_provider", default: "claude", null: false
     t.string "api_token"
+    t.string "codex_access_token"
     t.string "claude_oauth_token"
+    t.string "codex_auth_mode", default: "api_key", null: false
     t.string "codex_api_key"
     t.datetime "created_at", null: false
     t.string "email_address", null: false

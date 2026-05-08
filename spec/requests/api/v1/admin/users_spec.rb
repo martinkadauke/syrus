@@ -16,7 +16,10 @@ RSpec.describe "API: /api/v1/admin/users", type: :request do
 
     it "returns the user list with a row per user (no plaintext tokens)" do
       Factories.user(email_address: "alice@example.com", github_token: "ghp_secret",
-                     agent_provider: "codex", codex_api_key: "sk_codex_secret")
+                     agent_provider: "codex",
+                     codex_auth_mode: "chatgpt_login",
+                     codex_api_key: "sk_codex_secret",
+                     codex_access_token: "codex_access_secret")
       get "/api/v1/admin/users", headers: auth
       expect(response).to be_successful, "expected success, got #{response.status}: #{response.body}"
       body = parse_body
@@ -24,11 +27,15 @@ RSpec.describe "API: /api/v1/admin/users", type: :request do
       alice = body["users"].find { |u| u["email_address"] == "alice@example.com" }
       expect(alice).to include(
         "agent_provider" => "codex",
+        "codex_auth_mode" => "chatgpt_login",
         "has_github_token" => true,
-        "has_codex_token" => true
+        "has_codex_token" => true,
+        "has_codex_api_key" => true,
+        "has_codex_access_token" => true
       )
       expect(response.body).not_to include("ghp_secret")
       expect(response.body).not_to include("sk_codex_secret")
+      expect(response.body).not_to include("codex_access_secret")
     end
 
     it "applies the same filters as the HTML view" do

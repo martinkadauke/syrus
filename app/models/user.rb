@@ -7,9 +7,11 @@ class User < ApplicationRecord
   has_many :invitations, foreign_key: :invited_by_id, dependent: :nullify
 
   AGENT_PROVIDERS = %w[ claude codex ].freeze
+  CODEX_AUTH_MODES = %w[ api_key chatgpt_login ].freeze
 
   encrypts :claude_oauth_token
   encrypts :codex_api_key
+  encrypts :codex_access_token
   encrypts :github_token
   # `deterministic: true` so we can WHERE on the encrypted column
   # for the API auth lookup. Same plaintext always encrypts to the
@@ -33,6 +35,7 @@ class User < ApplicationRecord
             presence: true,
             numericality: { only_integer: true, in: AGENT_MAX_TURNS_RANGE }
   validates :agent_provider, presence: true, inclusion: { in: AGENT_PROVIDERS }
+  validates :codex_auth_mode, presence: true, inclusion: { in: CODEX_AUTH_MODES }
 
   before_create :promote_first_user_to_admin
 

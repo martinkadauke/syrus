@@ -3,15 +3,16 @@ module AgentProviders
     def self.provider = "codex"
 
     def run(prompt:, log_sink:, max_turns: nil)
-      raise ConfigurationError, "Codex API key is not configured" if job.user.codex_api_key.blank?
+      codex_home = WorkflowWorkspace.agent_home_for(workflow, provider)
+      auth = CodexAuth.new(user: job.user, codex_home: codex_home).prepare!
 
       CodexInvocation.new(
         workspace.path,
         prompt: prompt,
-        api_key: job.user.codex_api_key,
+        api_key: auth.api_key,
         log_sink: log_sink,
         runner: RunJob.agent_runner,
-        codex_home: WorkflowWorkspace.agent_home_for(workflow, provider),
+        codex_home: codex_home,
         mcp_server: mcp_server,
         resume_session_id: parent_session_id,
         resume_transcript_jsonl: resume_transcript_jsonl

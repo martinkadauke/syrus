@@ -4,6 +4,9 @@ require "open3"
 
 class CodexInvocation
   DEFAULT_TIMEOUT_SECONDS = AgentInvocation::DEFAULT_TIMEOUT_SECONDS
+  CODEX_ENV_FORWARD = %w[
+    HOME USER LOGNAME PATH TERM LANG LC_ALL LC_CTYPE TZ HOSTNAME TMPDIR SHELL
+  ].freeze
 
   def initialize(workspace_path, prompt:, api_key: nil,
                  log_sink: ->(*, **) { },
@@ -40,10 +43,6 @@ class CodexInvocation
   end
 
   private
-
-  CODEX_ENV_FORWARD = %w[
-    HOME USER LOGNAME PATH TERM LANG LC_ALL LC_CTYPE TZ HOSTNAME TMPDIR SHELL
-  ].freeze
 
   def default_runner(workspace_path:, prompt:, api_key:, log_sink:, timeout:,
                      codex_home:, mcp_server: nil, resume_session_id: nil,

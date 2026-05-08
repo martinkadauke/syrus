@@ -34,9 +34,12 @@ module Api
             email_address:     user.email_address,
             admin:             user.admin?,
             agent_provider:    user.agent_provider,
+            codex_auth_mode:   user.codex_auth_mode,
             has_github_token:  user.github_token.present?,
             has_claude_token:  user.claude_oauth_token.present?,
-            has_codex_token:   user.codex_api_key.present?,
+            has_codex_token:   user.codex_api_key.present? || user.codex_access_token.present?,
+            has_codex_api_key: user.codex_api_key.present?,
+            has_codex_access_token: user.codex_access_token.present?,
             agent_max_turns:   user.agent_max_turns,
             github_rate_limit: github_rate_limit_payload(user),
             created_at:        user.created_at
