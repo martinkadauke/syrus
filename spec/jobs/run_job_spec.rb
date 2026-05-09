@@ -30,6 +30,10 @@ RSpec.describe RunJob do
       status: 201, headers: { "Content-Type" => "application/json" },
       body: { number: 123, html_url: "https://github.com/acme/widgets/pull/123" }.to_json
     )
+    stub_request(:get, "https://api.github.com/repos/acme/widgets/pulls/123").with(query: hash_including({})).to_return(
+      status: 200, headers: { "Content-Type" => "application/json" },
+      body: { number: 123, state: "open", merged: false }.to_json
+    )
 
     RunJob.agent_runner = method(:default_agent_runner)
     PrSummarizer.runner = method(:default_pr_summarizer_runner)

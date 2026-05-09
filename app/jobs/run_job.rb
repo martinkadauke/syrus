@@ -128,6 +128,11 @@ class RunJob < ApplicationJob
       return
     end
 
+    if workflow_starting? && (merged_pr = merged_pull_request)
+      succeed_workflow_for_merged_pull_request!(merged_pr)
+      return
+    end
+
     @workflow.start! if @workflow.may_start?
     @workflow.save!
     @step.start! if @step.may_start?
@@ -204,6 +209,65 @@ class RunJob < ApplicationJob
       cursor = cursor.next_step
     end
     nil
+  end
+
+  def workflow_starting?
+    @workflow.queued? && @step.id == @workflow.first_step&.id
+  end
+
+  def merged_pull_request
+    pr_number = @job.pr_number.presence || @job.external_pr_number.presence
+    return nil if pr_number.blank?
+
+    pr = GithubClient.for(@job.user).pull_request(@job.repository.slug, pr_number, bypass_cache: true)
+    return nil unless pr.merged == true
+
+    {
+      number: pr_number,
+      closure_reason: @job.pr_number.present? ? "pr_merged" : "external_pr_merged"
+    }
+  end
+
+  def succeed_workflow_for_merged_pull_request!(merged_pr)
+    @workflow.start! if @workflow.may_start?
+    @workflow.save!
+    @step.start! if @step.may_start?
+    @step.save!
+    @run.start! if @run.may_start?
+    @run.save!
+    @job.update!(started_at: Time.current) if @job.started_at.nil?
+
+    log("pull request already merged (PR ##{merged_pr[:number]}); " \
+        "marking workflow ##{@workflow.id} succeeded and closing job")
+    cancel_downstream_steps!(reason: "pull request already merged")
+
+    @run.succeed!
+    @run.save!
+    @step.succeed!
+    @step.save!
+
+    # Step's after_update_commit normally finishes the workflow via
+    # StepDispatcher. Keep this explicit as a backstop for callers
+    # that execute inside a transaction where after_commit is delayed.
+    @workflow.reload
+    if @workflow.may_succeed?
+      @workflow.succeed!
+      @workflow.save!
+    end
+
+    @job.reload.cancel_active_runs_and_close!(merged_pr[:closure_reason]) if @job.open?
+  end
+
+  def cancel_downstream_steps!(reason:)
+    cursor = @step.next_step
+    while cursor
+      if cursor.may_cancel?
+        log("[#{@step.kind}] cancelling downstream step ##{cursor.id} (#{cursor.kind}): #{reason}")
+        cursor.cancel!
+        cursor.save!
+      end
+      cursor = cursor.next_step
+    end
   end
 
   # Append a transcript chunk + bump the heartbeat. Resilient to blank
