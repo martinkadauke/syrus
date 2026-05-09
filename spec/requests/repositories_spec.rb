@@ -26,10 +26,26 @@ RSpec.describe "Repositories", type: :request do
       expect {
         post repositories_path, params: { repository: {
           owner: "acme", name: "widgets", default_branch: "main",
-          trigger_label: "syrus", polling_enabled: "1"
+          trigger_label: "syrus", polling_enabled: "1", agent_provider: "codex"
         } }
       }.to change(user.repositories, :count).by(1)
       expect(response).to redirect_to(repositories_path)
+      expect(user.repositories.last.agent_provider).to eq("codex")
+    end
+
+    it "updates the repository default agent and shows it on the index" do
+      mine = Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      patch repository_path(mine), params: { repository: {
+        owner: "acme", name: "widgets", default_branch: "main",
+        trigger_label: "syrus", polling_enabled: "1", agent_provider: "codex"
+      } }
+
+      expect(response).to redirect_to(repositories_path)
+      expect(mine.reload.agent_provider).to eq("codex")
+
+      follow_redirect!
+      expect(response.body).to include("agent Codex")
     end
 
     it "re-renders new on validation failure" do
@@ -224,6 +240,13 @@ RSpec.describe "Repositories", type: :request do
         get repository_path(mine)
         expect(response).to have_http_status(:ok)
         expect(response.body).to include("acme/widgets")
+      end
+
+      it "shows the repository default agent on the show page" do
+        mine = Factories.repository(user: user, agent_provider: "codex")
+        get repository_path(mine)
+        expect(response.body).to include("Agent:")
+        expect(response.body).to include("Codex")
       end
 
       it "shows only jobs belonging to this repository" do

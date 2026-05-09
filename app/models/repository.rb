@@ -11,7 +11,10 @@ class Repository < ApplicationRecord
   validates :name, presence: true, format: { with: GITHUB_NAME }
   validates :default_branch, presence: true
   validates :trigger_label, presence: true
+  validates :agent_provider, inclusion: { in: User::AGENT_PROVIDERS }, allow_nil: true
   validates :owner, uniqueness: { scope: [ :user_id, :name ], case_sensitive: false }
+
+  before_validation :normalize_agent_provider
 
   scope :active,   -> { where(archived_at: nil) }
   scope :archived, -> { where.not(archived_at: nil) }
@@ -36,6 +39,10 @@ class Repository < ApplicationRecord
     "#{owner}/#{name}"
   end
 
+  def effective_agent_provider
+    agent_provider.presence || user.agent_provider
+  end
+
   # Anonymous URL — safe to bake into a saved clone's remote.
   def remote_url
     "https://github.com/#{owner}/#{name}.git"
@@ -45,5 +52,11 @@ class Repository < ApplicationRecord
   # never lives on disk inside .git/config.
   def authenticated_push_url(token)
     "https://x-access-token:#{token}@github.com/#{owner}/#{name}.git"
+  end
+
+  private
+
+  def normalize_agent_provider
+    self.agent_provider = nil if agent_provider.blank?
   end
 end

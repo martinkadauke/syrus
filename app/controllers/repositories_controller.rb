@@ -201,6 +201,6 @@ class RepositoriesController < ApplicationController
   end
 
   def repository_params
-    params.expect(repository: [ :owner, :name, :default_branch, :trigger_label, :polling_enabled ])
+    params.expect(repository: [ :owner, :name, :default_branch, :trigger_label, :polling_enabled, :agent_provider ])
   end
 end

@@ -35,6 +35,14 @@
             <span class="inline-block px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700">admin</span>
           <% end %>
         </span>
+        <span>
+          Agent:
+          <% if @repository.agent_provider.present? %>
+            <%= @repository.agent_provider.titleize %>
+          <% else %>
+            user default (<%= @repository.effective_agent_provider.titleize %>)
+          <% end %>
+        </span>
         <% repo_user = @repository.user %>
         <% if repo_user.gh_rate_limit_observed_at %>
           <span>

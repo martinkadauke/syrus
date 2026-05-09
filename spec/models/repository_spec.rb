@@ -9,6 +9,25 @@ RSpec.describe Repository do
     expect(repo.default_branch).to eq("main")
     expect(repo.polling_enabled).to be true
     expect(repo.trigger_label).to eq("syrus")
+    expect(repo.agent_provider).to be_nil
+  end
+
+  it "allows a repository-level default agent override" do
+    repo = Repository.create!(user: owner, owner: "acme", name: "widgets", agent_provider: "codex")
+    expect(repo.agent_provider).to eq("codex")
+  end
+
+  it "normalizes blank agent_provider to user-default fallback" do
+    owner.update!(agent_provider: "codex", codex_api_key: "sk-test")
+    repo = Repository.create!(user: owner, owner: "acme", name: "widgets", agent_provider: "")
+    expect(repo.agent_provider).to be_nil
+    expect(repo.effective_agent_provider).to eq("codex")
+  end
+
+  it "rejects unknown repository agent providers" do
+    repo = Repository.new(user: owner, owner: "acme", name: "widgets", agent_provider: "oracle")
+    expect(repo).not_to be_valid
+    expect(repo.errors[:agent_provider]).to be_present
   end
 
   it "rejects malformed owner/name strings" do

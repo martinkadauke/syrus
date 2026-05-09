@@ -30,6 +30,8 @@
                   <span class="font-mono"><%= repo.default_branch %></span>
                   <span class="text-gray-300 mx-1">·</span>
                   label <code class="bg-gray-100 px-1 rounded"><%= repo.trigger_label %></code>
+                  <span class="text-gray-300 mx-1">·</span>
+                  agent <%= repo.agent_provider.present? ? repo.agent_provider.titleize : "default" %>
                 </div>
               </td>
               <td class="hidden sm:table-cell px-4 py-3">
