@@ -2,7 +2,7 @@ module Admin
   # Single-page system overview — "is anything wrong?" answered
   # at a glance. Tile-shaped: each tile reports a metric with a
   # color cue and links into the deeper view that explains it.
-  # See docs/plans/admin-diagnostics.md (F).
+  # See docs/plans/complete/admin-diagnostics.md (F).
   #
   # The page polls itself every POLL_INTERVAL_SECONDS via the
   # auto-refresh Stimulus controller (turbo-morph visit, so

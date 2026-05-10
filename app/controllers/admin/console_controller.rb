@@ -4,7 +4,7 @@ module Admin
   # the-fact accountability, then redirects back to the console
   # so the operator sees the new state immediately.
   #
-  # See docs/plans/admin-diagnostics.md (L).
+  # See docs/plans/complete/admin-diagnostics.md (L).
   class ConsoleController < BaseController
     def show
       @settings = AppSetting.current

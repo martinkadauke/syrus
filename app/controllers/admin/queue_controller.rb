@@ -2,7 +2,7 @@ module Admin
   # Admin queue inspector. Surfaces SolidQueue's tables so the
   # operator can spot starvation, pruned-worker zombies, stuck
   # recurring jobs, and ailing workers without dropping into a
-  # Rails console. See docs/plans/admin-diagnostics.md (B).
+  # Rails console. See docs/plans/complete/admin-diagnostics.md (B).
   #
   # All queries are wrapped in a SolidQueue-tables-reachable guard
   # because dev/test runs single-database (no separate queue DB);

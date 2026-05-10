@@ -9,7 +9,7 @@ Rails.application.routes.draw do
   end
 
   # Admin REST API. Token-based auth (per-user), JSON only.
-  # See docs/plans/admin-diagnostics.md for the endpoint plan.
+  # See docs/plans/complete/admin-diagnostics.md for the endpoint plan.
   namespace :api do
     namespace :v1 do
       namespace :admin do
@@ -30,7 +30,7 @@ Rails.application.routes.draw do
         get "runs", to: "runs#index"
 
         # Transcripts (mirror Admin::TranscriptsController; A in
-        # docs/plans/admin-diagnostics.md). Paginated event stream
+        # docs/plans/complete/admin-diagnostics.md). Paginated event stream
         # via ?page= + ?per=, plus a raw-JSONL pass-through.
         get "runs/:run_id/transcript",     to: "transcripts#show"
         get "runs/:run_id/transcript/raw", to: "transcripts#raw"
@@ -110,16 +110,16 @@ Rails.application.routes.draw do
 
   namespace :admin do
     # System overview — landing page for the admin area.
-    # See docs/plans/admin-diagnostics.md (F).
+    # See docs/plans/complete/admin-diagnostics.md (F).
     root to: "overview#show"
 
     # Per-Run claude transcript viewer — renders the captured
     # ClaudeSession.transcript_jsonl as a structured event stream.
-    # See docs/plans/admin-diagnostics.md (A).
+    # See docs/plans/complete/admin-diagnostics.md (A).
     get  "runs/:run_id/transcript",          to: "transcripts#show",     as: :run_transcript
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 
-    # SolidQueue inspector — see docs/plans/admin-diagnostics.md (B).
+    # SolidQueue inspector — see docs/plans/complete/admin-diagnostics.md (B).
     get  "queue",                  to: "queue#index", as: :queue_root
     get  "queue/:tab",             to: "queue#show",            as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
     post "queue/reap_stale_runs",  to: "queue#reap_stale_runs", as: :reap_stale_runs
