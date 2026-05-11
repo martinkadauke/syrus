@@ -40,6 +40,6 @@
       "note": "session_id is emitted by the Claude agent process and is rejected unless it matches SESSION_ID_PATTERN before path construction."
     }
   ],
-  "updated": "2026-05-08 05:23:00 +0000",
+  "updated": "2026-05-11 20:21:00 +0000",
   "brakeman_version": "8.0.4"
 }
