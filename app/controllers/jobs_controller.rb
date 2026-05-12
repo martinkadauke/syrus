@@ -2,6 +2,7 @@ class JobsController < ApplicationController
   before_action :load_job, except: %i[ new create ]
 
   def show
+    @dependency_target_options = dependency_target_options
   end
 
   def new
@@ -488,10 +489,57 @@ class JobsController < ApplicationController
   end
 
   def find_dependency_target
-    if params[:dependency_job_id].present?
+    if params[:dependency_target].present?
+      find_dependency_target_from_select(params[:dependency_target])
+    elsif params[:dependency_job_id].present?
       Current.user.jobs.find_by(id: params[:dependency_job_id])
     elsif params[:dependency_issue_number].present?
       @job.repository.jobs.where(issue_number: params[:dependency_issue_number]).order(:created_at).last
+    end
+  end
+
+  def find_dependency_target_from_select(value)
+    type, first, second = value.to_s.split(":", 3)
+
+    case type
+    when "job"
+      Current.user.jobs.find_by(id: first)
+    when "issue"
+      repository = Current.user.repositories.find_by(id: first)
+      repository&.jobs&.where(kind: "issue", issue_number: second)&.where.not(id: @job.id)&.order(created_at: :desc, id: :desc)&.first
+    end
+  end
+
+  def dependency_target_options
+    jobs = Current.user.jobs
+                       .includes(:repository)
+                       .where.not(id: @job.id)
+                       .order(created_at: :desc, id: :desc)
+
+    seen_issues = {}
+    current_issue_key = @job.issue? && @job.issue_number.present? ? [ @job.repository_id, @job.issue_number ] : nil
+    jobs.each_with_object([]) do |job, options|
+      if job.issue? && job.issue_number.present?
+        issue_key = [ job.repository_id, job.issue_number ]
+        next if issue_key == current_issue_key
+        next if seen_issues[issue_key]
+
+        seen_issues[issue_key] = true
+        options << [ dependency_target_label(job), "issue:#{job.repository_id}:#{job.issue_number}" ]
+      else
+        options << [ dependency_target_label(job), "job:#{job.id}" ]
+      end
+    end
+  end
+
+  def dependency_target_label(job)
+    if job.issue? && job.issue_number.present?
+      title = job.issue_title.to_s.strip
+      title = " — #{title}" if title.present?
+      "#{job.repository.slug} ##{job.issue_number}#{title} (Job ##{job.id})"
+    else
+      title = job.issue_title.to_s.strip.presence || job.kind.titleize
+      "#{job.repository.slug} Job ##{job.id} — #{title}"
     end
   end
 
