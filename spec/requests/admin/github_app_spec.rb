@@ -15,6 +15,11 @@ RSpec.describe "Admin GitHub App registration", type: :request do
     expect(response.body).to include("&quot;issues&quot;:&quot;write&quot;")
     expect(response.body).to include("&quot;pull_requests&quot;:&quot;write&quot;")
     expect(response.body).to include("&quot;metadata&quot;:&quot;read&quot;")
+
+    form = Nokogiri::HTML(response.body).at_css("form[action^='https://github.com/settings/apps/new']")
+    expect(form["target"]).to eq("_blank")
+    expect(form["rel"]).to eq("noopener")
+    expect(form.at_css("input[type='submit']")["formtarget"]).to eq("_blank")
   end
 
   it "exchanges the manifest code and persists encrypted credentials" do
