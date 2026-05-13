@@ -1,4 +1,6 @@
 class ReapStaleRunsJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   # Two reaping signals, in order of confidence/speed:

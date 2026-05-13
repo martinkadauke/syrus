@@ -1,4 +1,6 @@
 class PollAllRepositoriesJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   def perform

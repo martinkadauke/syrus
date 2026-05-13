@@ -1,4 +1,6 @@
 class SyncAgentSkillsJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   def perform

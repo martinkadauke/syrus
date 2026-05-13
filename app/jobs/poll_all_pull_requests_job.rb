@@ -1,4 +1,6 @@
 class PollAllPullRequestsJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   # Fan-out for the PR feedback loop — fires each open thread that has a

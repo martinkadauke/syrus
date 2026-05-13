@@ -1,4 +1,6 @@
 class ClaudeSessionPruneJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   # Daily housekeeping.

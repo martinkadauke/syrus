@@ -1,4 +1,6 @@
 class RunDiagnosticPruneJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   # Daily sweep of stale RunDiagnostic rows. Each one carries an

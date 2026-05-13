@@ -1,4 +1,6 @@
 class WorkflowWorkspacePruneJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   # Succeeded/cancelled workflows: their AASM callbacks should have

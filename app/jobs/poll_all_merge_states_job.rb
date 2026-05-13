@@ -1,4 +1,6 @@
 class PollAllMergeStatesJob < ApplicationJob
+  include SkipIfPending
+
   queue_as :default
 
   # Fan-out for the unified rebase + auto-merge loop. Iterates every
