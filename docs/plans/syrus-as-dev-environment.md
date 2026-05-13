@@ -1,5 +1,11 @@
 # Syrus → contained dev environment
 
+_Status check 2026-05-13: partially implemented. Job dependencies are
+first-class and block workflow dispatch when unresolved. The broader
+M1/M3-M8 vision here remains future work, including persistent per-repo
+chat, configurable pipeline steps, adversarial review, preview
+environments, scaffolding, continuous deploy, and team roles._
+
 The current Syrus is "issue → PR automation harness." The next
 Syrus is "the place where a small team (or a solo operator) builds
 and runs an entire app, with agents as first-class collaborators."

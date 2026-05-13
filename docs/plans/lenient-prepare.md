@@ -4,6 +4,11 @@ _Captured 2026-05-11. Design only; implementation should land as one
 follow-up issue, with an optional per-issue-label follow-up if the
 repository-level setting proves useful._
 
+_Status check 2026-05-13: not implemented as lenient prepare. Related
+controls exist (`prepare_enabled`, `jobs.skip_prepare`, and the
+`syrus-skip-prepare` label), but there is no `strict_prepare` setting or
+warning-level prepare failure state._
+
 ## Context
 
 `prepare` currently runs before the agentic implementation step for

@@ -2,6 +2,11 @@
 
 _Captured 2026-05-04. Picks up after a survey of constants in `app/`._
 
+_Status check 2026-05-13: largely not implemented. A small number of
+settings already exist (`AppSetting`, `Repository`, and `User` have
+some knobs), but the broad site-wide / per-repository / per-user /
+recurring-settings migration described here is still future work._
+
 The codebase has accumulated a layer of `CONSTANT = value` declarations
 that act as policy decisions in disguise. Some of them are operational
 tuning (fine to stay constant), but many are knobs that an operator

@@ -3,6 +3,11 @@
 _Captured 2026-05-12. Implementation should land across 4 PRs (see
 "Build order"); the GitHub Actions removal is the last one._
 
+_Status check 2026-05-13: not implemented. The existing GitHub Actions
+workflow and `ci_failure` workflow path are still present; there is no
+`grade` Step, loop primitive, iteration model, or `.syrus.yml` grader
+schema yet._
+
 ## Context
 
 `.github/workflows/ci.yml` is currently blocked by a GitHub Actions

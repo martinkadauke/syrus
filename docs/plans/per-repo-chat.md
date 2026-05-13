@@ -7,6 +7,10 @@ own MCP sidecar, and produces proposals that become Syrus Jobs.
 The "sessions become a unified pipeline entry-point" half of M1
 (option (c)) stays out of scope here._
 
+_Status check 2026-05-13: plan only. No `ChatSession`,
+`ChatTurnJob`, chat MCP sidecar, proposal models, or chat UI are present
+in the application yet._
+
 ## Context
 
 Today's Syrus is one-shot: every conversation with the agent is

@@ -4,6 +4,11 @@ _Captured 2026-05-11 from the chat conversation that produced PR
 `website/skeleton-and-plan`. Lives here as the canonical plan;
 implementation is fanned out to individual `syrus`-tagged issues._
 
+_Status check 2026-05-13: partially implemented. The `website/` content
+skeleton exists, but the Astro/Starlight build configuration, package
+scripts, preview workflow, and GitHub Pages deployment plumbing are not
+present._
+
 ## Why this exists
 
 When Syrus goes public, it needs a web presence: a home page that
