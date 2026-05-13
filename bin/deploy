@@ -202,6 +202,7 @@ rollout() {
 FLUX_NAMESPACE="${FLUX_NAMESPACE:-flux-system}"
 FLUX_KUSTOMIZATION="${FLUX_KUSTOMIZATION:-apps}"
 FLUX_SUSPEND_TTL="${FLUX_SUSPEND_TTL:-1200}"  # seconds — generous deploy budget
+FLUX_WATCHDOG_IMAGE="${FLUX_WATCHDOG_IMAGE:-alpine/k8s:1.31.13}"
 
 flux_kustomization_exists() {
   local kubeconfig="$1"
@@ -308,7 +309,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: resume
-          image: bitnami/kubectl:1.31
+          image: ${FLUX_WATCHDOG_IMAGE}
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
