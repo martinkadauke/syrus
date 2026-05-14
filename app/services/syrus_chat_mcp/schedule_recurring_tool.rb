@@ -30,15 +30,17 @@ module SyrusChatMcp
         return SyrusChatMcp.invalid("label is required") if label.empty?
         return SyrusChatMcp.invalid("prompt is required") if prompt.empty?
 
-        preview = RecurringTask.new(
+        preview = ScheduledTask.new(
           user: chat_session.user,
           repository: chat_session.repository,
+          kind: "cron",
+          name: label,
           cron_expression: cron_expression,
-          label: label,
           prompt: prompt
         )
         return SyrusChatMcp.invalid(preview.errors.full_messages.to_sentence) unless preview.valid?
 
+        next_fire_at = preview.next_fire_at(from: Time.current)
         action = ChatPendingAction.create!(
           chat_session: chat_session,
           user: chat_session.user,
@@ -48,13 +50,13 @@ module SyrusChatMcp
             "cron_expression" => cron_expression,
             "label" => label,
             "prompt" => prompt,
-            "next_fire_at" => preview.next_fire_at.iso8601
+            "next_fire_at" => next_fire_at&.iso8601
           }
         )
 
         SyrusChatMcp.success(
           pending_confirmation_id: action.id,
-          next_fire_at: preview.next_fire_at.iso8601
+          next_fire_at: next_fire_at&.iso8601
         )
       rescue ActiveRecord::RecordInvalid => e
         SyrusChatMcp.invalid(e.record.errors.full_messages.to_sentence)

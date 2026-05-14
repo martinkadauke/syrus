@@ -133,18 +133,19 @@ RSpec.describe ChatPendingAction do
     )
   end
 
-  it "confirms a schedule_recurring action into a RecurringTask" do
+  it "confirms a schedule_recurring action into a ScheduledTask" do
     action = pending_action
 
     expect {
       action.confirm!(user: user)
-    }.to change { RecurringTask.count }.by(1)
+    }.to change { ScheduledTask.count }.by(1)
 
-    task = RecurringTask.last
+    task = ScheduledTask.last
     expect(task).to have_attributes(
       user: user,
       repository: repository,
-      label: "Daily review",
+      kind: "cron",
+      name: "Daily review",
       prompt: "Review the project.",
       cron_expression: "0 9 * * *"
     )
@@ -152,10 +153,10 @@ RSpec.describe ChatPendingAction do
     expect(action.result).to eq(task)
   end
 
-  it "does not create the RecurringTask before confirmation" do
+  it "does not create the ScheduledTask before confirmation" do
     pending_action
 
-    expect(RecurringTask.count).to eq(0)
+    expect(ScheduledTask.count).to eq(0)
   end
 
   it "rejects mismatched repository and chat session" do

@@ -5,19 +5,20 @@
         <%= link_to @repository.slug, repository_path(@repository), class: "font-mono hover:underline" %>
       </h1>
     </div>
-    <%= link_to "Open chat",
-          repository_chats_path(@repository),
-          class: "rounded-md px-3 py-1.5 bg-blue-600 text-white text-sm font-medium hover:bg-blue-700" %>
   </div>
 
-  <%= render "repositories/tabs", repository: @repository, active: :recurring_tasks %>
+  <%= render "repositories/tabs", repository: @repository, active: :scheduled_tasks do %>
+    <%= link_to "New scheduled task",
+          new_repository_scheduled_task_path(@repository),
+          class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium" %>
+  <% end %>
 
-  <% if @recurring_tasks.any? %>
+  <% if @scheduled_tasks.any? %>
     <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
       <table class="min-w-full divide-y divide-gray-200 text-sm">
         <thead class="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
           <tr>
-            <th class="px-4 py-3">Label</th>
+            <th class="px-4 py-3">Name</th>
             <th class="px-4 py-3">Cron</th>
             <th class="px-4 py-3">Next Fire</th>
             <th class="px-4 py-3">State</th>
@@ -25,31 +26,44 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-100">
-          <% @recurring_tasks.each do |task| %>
+          <% @scheduled_tasks.each do |task| %>
+            <% active = task.active? %>
+            <% next_fire = task.next_fire_at %>
             <tr>
               <td class="px-4 py-3">
-                <div class="font-medium text-gray-900"><%= task.label %></div>
+                <div class="font-medium text-gray-900"><%= task.name %></div>
                 <div class="mt-1 max-w-xl truncate text-xs text-gray-500"><%= task.prompt %></div>
               </td>
               <td class="px-4 py-3 font-mono text-xs text-gray-700"><%= task.cron_expression %></td>
-              <td class="px-4 py-3 text-gray-700"><%= l(task.next_fire_at, format: :short) %></td>
+              <td class="px-4 py-3 text-gray-700">
+                <%= next_fire ? l(next_fire, format: :short) : "—" %>
+              </td>
               <td class="px-4 py-3">
-                <span class="rounded px-2 py-0.5 text-xs font-medium <%= task.enabled? ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-600" %>">
-                  <%= task.enabled? ? "Enabled" : "Disabled" %>
+                <%
+                  state_class = case task.state
+                                when "scheduled"   then "bg-green-100 text-green-700"
+                                when "paused"      then "bg-gray-100 text-gray-600"
+                                when "auto_paused" then "bg-amber-100 text-amber-700"
+                                when "fired"       then "bg-blue-100 text-blue-700"
+                                else "bg-gray-100 text-gray-600"
+                                end
+                %>
+                <span class="rounded px-2 py-0.5 text-xs font-medium <%= state_class %>">
+                  <%= task.state.humanize %>
                 </span>
               </td>
               <td class="px-4 py-3">
                 <div class="flex justify-end gap-2">
-                  <%= button_to(task.enabled? ? "Disable" : "Enable",
-                        repository_recurring_task_path(@repository, task),
+                  <%= button_to(active ? "Disable" : "Enable",
+                        repository_scheduled_task_path(@repository, task),
                         method: :patch,
-                        params: { enabled: (!task.enabled?).to_s },
+                        params: { enabled: (!active).to_s },
                         class: "rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50") %>
                   <%= button_to "Delete",
-                        repository_recurring_task_path(@repository, task),
+                        repository_scheduled_task_path(@repository, task),
                         method: :delete,
                         class: "rounded border border-red-200 px-3 py-1 text-sm text-red-700 hover:bg-red-50",
-                        form: { data: { turbo_confirm: "Delete this recurring task?" } } %>
+                        form: { data: { turbo_confirm: "Delete this scheduled task?" } } %>
                 </div>
               </td>
             </tr>
@@ -59,7 +73,7 @@
     </div>
   <% else %>
     <div class="rounded-lg border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-500">
-      No recurring tasks for this repository.
+      No scheduled tasks for this repository.
     </div>
   <% end %>
 </div>

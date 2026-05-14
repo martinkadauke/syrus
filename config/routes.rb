@@ -102,7 +102,7 @@ Rails.application.routes.draw do
         post :file_bulk
       end
     end
-    resources :recurring_tasks, only: %i[ index update destroy ], controller: "repositories/recurring_tasks"
+    resources :scheduled_tasks, only: %i[ index update destroy ], controller: "repositories/scheduled_tasks"
     resources :scheduled_tasks, only: %i[ new create ]
   end
 

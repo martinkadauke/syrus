@@ -26,7 +26,7 @@ RSpec.describe "Repository chat pending actions", type: :request do
 
     expect {
       post repository_chat_pending_action_confirm_path(repo, action)
-    }.to change { RecurringTask.count }.by(1)
+    }.to change { ScheduledTask.count }.by(1)
 
     expect(response).to redirect_to(repository_chats_path(repo))
     expect(action.reload).to be_confirmed

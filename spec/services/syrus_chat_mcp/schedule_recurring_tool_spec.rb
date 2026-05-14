@@ -26,7 +26,7 @@ RSpec.describe SyrusChatMcp::ScheduleRecurringTool do
     JSON.parse(response.fetch(:result).fetch(:content).first.fetch(:text), symbolize_names: true)
   end
 
-  it "creates a pending confirmation instead of a RecurringTask" do
+  it "creates a pending confirmation instead of a ScheduledTask" do
     response = call_tool(
       cron_expression: "0 9 * * *",
       label: "Daily review",
@@ -48,7 +48,7 @@ RSpec.describe SyrusChatMcp::ScheduleRecurringTool do
       "label" => "Daily review",
       "prompt" => "Review the repository."
     )
-    expect(RecurringTask.count).to eq(0)
+    expect(ScheduledTask.count).to eq(0)
   end
 
   it "returns a tool error for an invalid cron expression" do
@@ -59,7 +59,7 @@ RSpec.describe SyrusChatMcp::ScheduleRecurringTool do
     )
 
     expect(response[:result][:isError]).to be(true)
-    expect(response[:result][:content].first[:text]).to match(/Cron expression/)
+    expect(response[:result][:content].first[:text]).to match(/cron|Cron/i)
     expect(ChatPendingAction.count).to eq(0)
   end
 end

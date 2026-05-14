@@ -115,11 +115,12 @@ class ChatPendingAction < ApplicationRecord
       workflow = Workflows::Rebase.instantiate(job: job)
       StepDispatcher.start_workflow(workflow)
     else
-      RecurringTask.create!(
+      ScheduledTask.create!(
         user: user,
         repository: repository,
+        kind: "cron",
+        name: payload.fetch("label"),
         cron_expression: payload.fetch("cron_expression"),
-        label: payload.fetch("label"),
         prompt: payload.fetch("prompt")
       )
     end

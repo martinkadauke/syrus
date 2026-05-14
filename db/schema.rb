@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_13_200000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_14_000000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -347,21 +347,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_13_200000) do
     t.index ["operator_question_id"], name: "index_operator_responses_on_operator_question_id"
   end
 
-  create_table "recurring_tasks", force: :cascade do |t|
-    t.datetime "created_at", null: false
-    t.string "cron_expression", null: false
-    t.boolean "enabled", default: true, null: false
-    t.string "label", null: false
-    t.datetime "next_fire_at", null: false
-    t.text "prompt", null: false
-    t.integer "repository_id", null: false
-    t.datetime "updated_at", null: false
-    t.integer "user_id", null: false
-    t.index ["enabled", "next_fire_at"], name: "index_recurring_tasks_on_enabled_and_next_fire_at"
-    t.index ["repository_id"], name: "index_recurring_tasks_on_repository_id"
-    t.index ["user_id"], name: "index_recurring_tasks_on_user_id"
-  end
-
   create_table "repositories", force: :cascade do |t|
     t.string "agent_provider"
     t.string "allow_operator_chat", default: "disabled", null: false
@@ -646,8 +631,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_13_200000) do
   add_foreign_key "operator_questions", "runs"
   add_foreign_key "operator_questions", "workflows"
   add_foreign_key "operator_responses", "operator_questions"
-  add_foreign_key "recurring_tasks", "repositories"
-  add_foreign_key "recurring_tasks", "users"
   add_foreign_key "repositories", "installations"
   add_foreign_key "repositories", "users"
   add_foreign_key "repository_documents", "repositories"
