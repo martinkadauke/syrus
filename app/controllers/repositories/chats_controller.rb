@@ -93,9 +93,12 @@ class Repositories::ChatsController < ApplicationController
   end
 
   def confirm_pending_action
-    result = @pending_action.confirm!(user: Current.user)
-    if result
-      notice = result.respond_to?(:label) ? "Recurring task scheduled: #{result.label}." : "Pending action confirmed."
+    if @pending_action.confirm!(user: Current.user)
+      record = @pending_action.result
+      notice = case record
+               when ScheduledTask then "Scheduled task created: #{record.name}."
+               else "Pending action confirmed."
+               end
       redirect_to repository_chats_path(@repository), notice: notice
     else
       redirect_to repository_chats_path(@repository), alert: "Pending action is no longer active."
@@ -108,14 +111,16 @@ class Repositories::ChatsController < ApplicationController
   end
 
   def destroy_pending_action
-    result = if @pending_action.action_type == "schedule_recurring"
-      @pending_action.cancel!(user: Current.user)
-    else
+    rejection = @pending_action.action_type != "schedule_recurring"
+    result = if rejection
       @pending_action.reject!
+    else
+      @pending_action.cancel!(user: Current.user)
     end
 
     if result
-      redirect_to repository_chats_path(@repository), notice: "Pending action cancelled."
+      notice = rejection ? "Pending action rejected." : "Pending action cancelled."
+      redirect_to repository_chats_path(@repository), notice: notice
     else
       redirect_to repository_chats_path(@repository), alert: "Pending action is no longer active."
     end

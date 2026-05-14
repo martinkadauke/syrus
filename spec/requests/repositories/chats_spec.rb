@@ -199,8 +199,8 @@ RSpec.describe "Repository chats", type: :request do
       expect(response.body).to include("Pending actions")
       expect(response.body).to include("Cancel Job")
       expect(response.body).to include("Job ##{job.id}")
-      expect(response.body).to include(repository_chat_pending_action_confirm_path(repo, chat, action))
-      expect(response.body).to include(repository_chat_pending_action_path(repo, chat, action))
+      expect(response.body).to include(repository_chat_pending_action_confirm_path(repo, action))
+      expect(response.body).to include(repository_chat_pending_action_path(repo, action))
     end
   end
 
@@ -213,7 +213,7 @@ RSpec.describe "Repository chats", type: :request do
         payload: { "job_id" => job.id }
       )
 
-      post repository_chat_pending_action_confirm_path(repo, chat, action)
+      post repository_chat_pending_action_confirm_path(repo, action)
 
       expect(response).to redirect_to(repository_chats_path(repo))
       expect(flash[:notice]).to eq("Pending action confirmed.")
@@ -229,7 +229,7 @@ RSpec.describe "Repository chats", type: :request do
         payload: { "job_id" => job.id }
       )
 
-      delete repository_chat_pending_action_path(repo, chat, action)
+      delete repository_chat_pending_action_path(repo, action)
 
       expect(response).to redirect_to(repository_chats_path(repo))
       expect(flash[:notice]).to eq("Pending action rejected.")
@@ -246,7 +246,7 @@ RSpec.describe "Repository chats", type: :request do
       )
       action.reject!
 
-      post repository_chat_pending_action_confirm_path(repo, chat, action)
+      post repository_chat_pending_action_confirm_path(repo, action)
 
       expect(response).to redirect_to(repository_chats_path(repo))
       expect(flash[:alert]).to eq("Pending action is no longer active.")

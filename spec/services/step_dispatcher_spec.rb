@@ -207,9 +207,9 @@ RSpec.describe StepDispatcher do
   end
 
   describe "Step#after_update_commit fail integration" do
-    it "fires StepDispatcher.handle_failed_step when a step transitions to failed" do
+    it "fires StepDispatcher.fail_from when a step transitions to failed" do
       s1.start!; s1.save!
-      expect(described_class).to receive(:handle_failed_step).with(s1)
+      expect(described_class).to receive(:fail_from).with(s1)
       s1.fail!; s1.save!
     end
   end

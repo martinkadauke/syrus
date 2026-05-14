@@ -49,7 +49,7 @@
 
   <% if @pending_actions.any? %>
     <section class="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-      <h2 class="text-sm font-semibold text-amber-900">Pending confirmations</h2>
+      <h2 class="text-sm font-semibold text-amber-900">Pending actions</h2>
       <% @pending_actions.each do |action| %>
         <% payload = action.payload || {} %>
         <div class="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-200 bg-white px-3 py-2 text-sm">

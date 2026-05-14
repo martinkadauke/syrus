@@ -76,12 +76,14 @@ RSpec.describe IngestIssueImagesJob do
   end
 
   it "deduplicates by source URL" do
-    existing = job.job_attachments.create!(
+    existing = job.job_attachments.build(
       attachment_type: :uploaded_file,
       source_url: image_url,
       content_type: "image/png",
       byte_size: 7
     )
+    existing.file.attach(io: StringIO.new("dedup"), filename: "dedup.png", content_type: "image/png")
+    existing.save!
 
     expect {
       described_class.perform_now(job.id)

@@ -69,7 +69,10 @@ class IngestIssueImagesJob < ApplicationJob
 
       file.write(body)
       file.rewind
-      attachment = job.job_attachments.create!(
+      # `file_required_for_upload` validates that the file is attached
+      # before save — build + attach + save so the validation passes
+      # in one pass instead of trying to create-then-attach.
+      attachment = job.job_attachments.build(
         attachment_type: :uploaded_file,
         source_url: url,
         content_type: content_type,
@@ -80,6 +83,7 @@ class IngestIssueImagesJob < ApplicationJob
         filename: filename_for(url, content_type),
         content_type: content_type
       )
+      attachment.save!
     end
   rescue ActiveRecord::RecordNotUnique
     # Another worker attached the same source between the existence

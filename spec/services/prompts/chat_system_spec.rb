@@ -64,7 +64,7 @@ RSpec.describe Prompts::ChatSystem do
 
     out = described_class.new(repository: repo).to_s
 
-    pinned = out[/Pinned context for this repository:\n(?<body>.*?)\n\nYour environment:/m, :body]
+    pinned = out[/Pinned context for this repository:\n(?<body>.*?)\n\nYour environment:/m, :body].rstrip
     expect(pinned.length).to be <= 2.kilobytes + 10
     expect(pinned).to end_with("...")
   end

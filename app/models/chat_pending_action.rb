@@ -30,13 +30,16 @@ class ChatPendingAction < ApplicationRecord
   validate :repository_matches_chat_session
   validate :user_matches_chat_session
 
+  # Returns true on successful confirmation, false when the action is
+  # no longer pending. The thing that was created (if any) is available
+  # as `action.result` after this returns — callers should consult that
+  # rather than the boolean to drive UI messaging.
   def confirm!(user: nil)
     raise ActiveRecord::RecordNotFound, "pending action belongs to another user" if user && self.user != user
 
     with_lock do
       return false unless pending?
 
-      record = nil
       ApplicationRecord.transaction do
         record = apply!
         updates = { state: "confirmed", confirmed_at: Time.current }
@@ -44,7 +47,7 @@ class ChatPendingAction < ApplicationRecord
         update!(updates)
       end
 
-      record || true
+      true
     end
   end
 
@@ -80,6 +83,11 @@ class ChatPendingAction < ApplicationRecord
     action.presence || action_type
   end
 
+  # Each branch returns an AR record to stash on `action.result`
+  # (polymorphic), or nil when the action is purely a mutation of
+  # existing state. Anything else would blow up the polymorphic
+  # assignment (which calls AR methods like `has_query_constraints?`
+  # on the assigned object).
   def apply!
     case action_key
     when "add_repo_note"
@@ -90,8 +98,10 @@ class ChatPendingAction < ApplicationRecord
     when "remove_repo_note"
       note = chat_session.repository.repository_notes.active.find(payload.fetch("id"))
       note.remove!
+      nil
     when "cancel_job"
       action_job.cancel_active_runs_and_close!("cancelled")
+      nil
     when "retry_job"
       job = action_job
       raise ArgumentError, "Thread is closed — use Start over to begin a new one." if job.closed?
@@ -103,6 +113,7 @@ class ChatPendingAction < ApplicationRecord
       job.sync_skip_prepare_from_source!
       workflow = Workflows::Retry.instantiate(job: job)
       StepDispatcher.start_workflow(workflow)
+      nil
     when "rebase_job"
       job = action_job
       unless job.pr_number.present? || job.external_pr_number.present?
@@ -114,6 +125,7 @@ class ChatPendingAction < ApplicationRecord
 
       workflow = Workflows::Rebase.instantiate(job: job)
       StepDispatcher.start_workflow(workflow)
+      nil
     else
       ScheduledTask.create!(
         user: user,
