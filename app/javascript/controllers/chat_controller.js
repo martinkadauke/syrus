@@ -27,6 +27,21 @@ export default class extends Controller {
     this.syncWhiteboardPlaceholder()
   }
 
+  textareaTargetConnected() {
+    this.autoGrow()
+  }
+
+  autoGrow() {
+    if (!this.hasTextareaTarget) return
+
+    const ta = this.textareaTarget
+    // Reset to auto so the next read of scrollHeight reflects current
+    // content rather than the previously-set height; the CSS max-h on
+    // the element caps growth, after which the textarea scrolls.
+    ta.style.height = "auto"
+    ta.style.height = `${ta.scrollHeight}px`
+  }
+
   scroll() {
     this.wasNearBottom = this.isNearBottom()
     if (this.wasNearBottom) this.hideNewMessagesPill()
