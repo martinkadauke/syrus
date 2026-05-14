@@ -19,52 +19,80 @@
               target: "_blank", rel: "noopener",
               class: "font-mono hover:underline" %>
       </h1>
-      <div class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
-        <span>Branch: <span class="font-mono"><%= @repository.default_branch %></span></span>
-        <span>
-          <% if @repository.polling_enabled? %>
-            <span class="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">polling enabled</span>
-          <% else %>
-            <span class="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">polling paused</span>
-          <% end %>
-          · label: <code class="bg-gray-100 px-1 rounded"><%= @repository.trigger_label %></code>
-        </span>
-        <span>
-          Owner: <%= @repository.user.email_address %>
-          <% if @repository.user.admin? %>
-            <span class="inline-block px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700">admin</span>
-          <% end %>
-        </span>
-        <span>
-          Agent:
-          <% if @repository.agent_provider.present? %>
-            <%= @repository.agent_provider.titleize %>
-          <% else %>
-            user default (<%= @repository.effective_agent_provider.titleize %>)
-          <% end %>
-        </span>
-        <span>
-          Operator chat: <%= @repository.allow_operator_chat.to_s.tr("_", " ").titleize %>
-        </span>
-        <% repo_user = @repository.user %>
-        <% if repo_user.gh_rate_limit_observed_at %>
-          <span>
-            GitHub quota:
-            <strong><%= number_with_delimiter(repo_user.gh_rate_limit_remaining) %></strong> /
-            <%= number_with_delimiter(repo_user.gh_rate_limit_limit) %>
-            (<%= repo_user.gh_rate_limit_resource || "core" %>)
-          </span>
-        <% end %>
-        <span>Added: <%= @repository.created_at.to_fs(:long) %></span>
-        <span>
-          <% if @repository.app_credential_active? %>
-            <span class="text-emerald-700 font-medium">✓ Syrus App installed (via <%= @repository.installation.account_login %>)</span>
-          <% else %>
-            <span class="text-amber-800 font-medium">PAT fallback</span>
-          <% end %>
-        </span>
-      </div>
     </div>
+  </div>
+
+  <%# Tabs %>
+  <%= render "repositories/tabs", repository: @repository, active: @tab.to_sym do %>
+    <%= button_to "Triage open issues",
+          repository_chat_triage_path(@repository),
+          method: :post,
+          params: { target: "issues" },
+          class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
+          form: { class: "inline" } %>
+    <%= button_to "Triage open PRs",
+          repository_chat_triage_path(@repository),
+          method: :post,
+          params: { target: "prs" },
+          class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
+          form: { class: "inline" } %>
+  <% end %>
+
+  <% if @tab == "overview" %>
+    <%# Repo metadata — lives at the top of the Overview body rather
+        than the page header. Keeps the tab-nav vertical position
+        stable across tab switches (otherwise the metadata vanishing
+        on non-Overview tabs would pull the tab strip upward). %>
+    <div class="flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
+      <span>Branch: <span class="font-mono"><%= @repository.default_branch %></span></span>
+      <span>
+        <% if @repository.polling_enabled? %>
+          <span class="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">polling enabled</span>
+        <% else %>
+          <span class="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 text-gray-600">polling paused</span>
+        <% end %>
+        · label: <code class="bg-gray-100 px-1 rounded"><%= @repository.trigger_label %></code>
+      </span>
+      <span>
+        Owner: <%= @repository.user.email_address %>
+        <% if @repository.user.admin? %>
+          <span class="inline-block px-1.5 py-0.5 rounded text-xs bg-purple-100 text-purple-700">admin</span>
+        <% end %>
+      </span>
+      <span>
+        Agent:
+        <% if @repository.agent_provider.present? %>
+          <%= @repository.agent_provider.titleize %>
+        <% else %>
+          user default (<%= @repository.effective_agent_provider.titleize %>)
+        <% end %>
+      </span>
+      <span>
+        Operator chat: <%= @repository.allow_operator_chat.to_s.tr("_", " ").titleize %>
+      </span>
+      <% repo_user = @repository.user %>
+      <% if repo_user.gh_rate_limit_observed_at %>
+        <span>
+          GitHub quota:
+          <strong><%= number_with_delimiter(repo_user.gh_rate_limit_remaining) %></strong> /
+          <%= number_with_delimiter(repo_user.gh_rate_limit_limit) %>
+          (<%= repo_user.gh_rate_limit_resource || "core" %>)
+        </span>
+      <% end %>
+      <span>Added: <%= @repository.created_at.to_fs(:long) %></span>
+      <span>
+        <% if @repository.app_credential_active? %>
+          <span class="text-emerald-700 font-medium">✓ Syrus App installed (via <%= @repository.installation.account_login %>)</span>
+        <% else %>
+          <span class="text-amber-800 font-medium">PAT fallback</span>
+        <% end %>
+      </span>
+    </div>
+
+    <%# Primary repo actions (moved out of the global header so they
+        only show on the Overview tab — keeps GitHub Issues / Chats /
+        Proposals / Recurring Tasks visually focused on their own
+        content). %>
     <div class="flex flex-wrap items-center gap-2">
       <%= link_to "New job",
             new_job_path(repository_id: @repository.id),
@@ -95,54 +123,36 @@
             class: "rounded-md px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-sm font-medium cursor-pointer",
             form: { class: "inline", data: { turbo_confirm: "Archive #{@repository.slug}? Polling stops; jobs and history are kept." } } %>
     </div>
-  </div>
 
-  <% unless @repository.app_credential_active? %>
-    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-      <% if AppSetting.github_app_registered? %>
-        <div class="font-semibold">This repository is using personal-token fallback.</div>
-        <p class="mt-1">
-          Syrus can read and write through the operator PAT, but App mode gives this repo bot attribution,
-          independent rate limits, and normal PR approval behavior.
-          <% if @repository.installation&.removed_at.present? %>
-            Its previous installation was removed.
+    <% unless @repository.app_credential_active? %>
+      <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <% if AppSetting.github_app_registered? %>
+          <div class="font-semibold">This repository is using personal-token fallback.</div>
+          <p class="mt-1">
+            Syrus can read and write through the operator PAT, but App mode gives this repo bot attribution,
+            independent rate limits, and normal PR approval behavior.
+            <% if @repository.installation&.removed_at.present? %>
+              Its previous installation was removed.
+            <% end %>
+          </p>
+          <% if (install_url = github_app_install_url_for(@repository)) %>
+            <%= link_to "Install Syrus App on this repository", install_url,
+                  target: "_blank", rel: "noopener",
+                  class: "inline-block mt-3 rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium" %>
+          <% else %>
+            <p class="mt-2 text-xs">GitHub numeric IDs are missing; edit this repository and select it from the GitHub-backed picker to generate a one-click install link.</p>
           <% end %>
-        </p>
-        <% if (install_url = github_app_install_url_for(@repository)) %>
-          <%= link_to "Install Syrus App on this repository", install_url,
-                target: "_blank", rel: "noopener",
-                class: "inline-block mt-3 rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium" %>
         <% else %>
-          <p class="mt-2 text-xs">GitHub numeric IDs are missing; edit this repository and select it from the GitHub-backed picker to generate a one-click install link.</p>
+          <div class="font-semibold">Syrus App is not registered.</div>
+          <p class="mt-1">This repository is using personal-token fallback until an admin registers the GitHub App and installs it here.</p>
+          <% if Current.user.admin? %>
+            <%= link_to "Register Syrus App", admin_github_app_register_path,
+                  class: "inline-block mt-3 rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium" %>
+          <% end %>
         <% end %>
-      <% else %>
-        <div class="font-semibold">Syrus App is not registered.</div>
-        <p class="mt-1">This repository is using personal-token fallback until an admin registers the GitHub App and installs it here.</p>
-        <% if Current.user.admin? %>
-          <%= link_to "Register Syrus App", admin_github_app_register_path,
-                class: "inline-block mt-3 rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium" %>
-        <% end %>
-      <% end %>
-    </div>
-  <% end %>
+      </div>
+    <% end %>
 
-  <%# Tabs %>
-  <%= render "repositories/tabs", repository: @repository, active: @tab.to_sym do %>
-    <%= button_to "Triage open issues",
-          repository_chat_triage_path(@repository),
-          method: :post,
-          params: { target: "issues" },
-          class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
-          form: { class: "inline" } %>
-    <%= button_to "Triage open PRs",
-          repository_chat_triage_path(@repository),
-          method: :post,
-          params: { target: "prs" },
-          class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
-          form: { class: "inline" } %>
-  <% end %>
-
-  <% if @tab == "overview" %>
     <%# Quick counts %>
     <div class="grid grid-cols-3 gap-4">
       <div class="bg-white border border-gray-200 rounded-lg p-4 text-center">
@@ -356,6 +366,44 @@
     </div>
   <% else %>
     <%# GitHub Issues tab %>
+    <%# Context strip — same visual weight as the Overview tab's
+        metadata row so the tab nav doesn't jump when switching
+        between Overview and GitHub Issues. Surfaces the bits that
+        are actually relevant when triaging issues: label, state
+        filter, count, GitHub quota, and a link out to the live
+        repo on GitHub. %>
+    <div class="flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
+      <span>
+        Trigger label: <code class="bg-gray-100 px-1 rounded"><%= @repository.trigger_label %></code>
+      </span>
+      <span>
+        Showing:
+        <span class="inline-block px-2 py-0.5 rounded text-xs <%= @state == 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-700' %>">
+          <%= @state %>
+        </span>
+      </span>
+      <% if @issues %>
+        <span>
+          <strong><%= @issues.size %></strong> <%= "issue".pluralize(@issues.size) %>
+        </span>
+      <% end %>
+      <% repo_user = @repository.user %>
+      <% if repo_user.gh_rate_limit_observed_at %>
+        <span>
+          GitHub quota:
+          <strong><%= number_with_delimiter(repo_user.gh_rate_limit_remaining) %></strong> /
+          <%= number_with_delimiter(repo_user.gh_rate_limit_limit) %>
+          (<%= repo_user.gh_rate_limit_resource || "core" %>)
+        </span>
+      <% end %>
+      <span>
+        <%= link_to "View on GitHub →",
+              "https://github.com/#{@repository.slug}/issues",
+              target: "_blank", rel: "noopener",
+              class: "text-blue-600 hover:underline" %>
+      </span>
+    </div>
+
     <div>
       <div class="flex items-center justify-between mb-3">
         <div class="flex gap-1">

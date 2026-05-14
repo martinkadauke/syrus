@@ -2,21 +2,10 @@
      class="flex flex-wrap items-start justify-between gap-3">
   <div>
     <h1 class="font-bold text-3xl">
-      Chat — Repository
       <%= link_to repository.slug,
             repository_path(repository),
             class: "font-mono hover:underline" %>
     </h1>
-    <% input_tokens = chat_session&.cumulative_input_tokens.to_i %>
-    <% output_tokens = chat_session&.cumulative_output_tokens.to_i %>
-    <% input_label = number_with_precision(input_tokens / 1000.0, precision: 1, strip_insignificant_zeros: true) %>
-    <% output_label = number_with_precision(output_tokens / 1000.0, precision: 1, strip_insignificant_zeros: true) %>
-    <% cost = chat_session&.cumulative_cost || 0 %>
-    <p class="mt-2 text-sm text-gray-600">
-      Tokens:
-      <%= input_label %>k in /
-      <%= output_label %>k out · <%= number_to_currency(cost, precision: 4) %>
-    </p>
   </div>
   <% if local_assigns.fetch(:chat_available, true) %>
     <div class="flex flex-wrap gap-2">

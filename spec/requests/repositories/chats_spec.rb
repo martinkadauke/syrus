@@ -13,7 +13,7 @@ RSpec.describe "Repository chats", type: :request do
       }.not_to change(ChatSession, :count)
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Chat — Repository")
+      expect(response.body).to include(repo.slug)
       expect(response.body).to include("Start a chat with this repository.")
       expect(response.body).to include("Tokens:")
       expect(response.body).to include('data-controller="chat chat-layout chat-side-panel"')

@@ -16,6 +16,23 @@
 
   <%= render "repositories/tabs", repository: @repository, active: :chats %>
 
+  <%# Tokens / cost subtitle for the active chat session, moved out
+      of the page header so the tab nav sits at the same vertical
+      position as the other repo tabs. TODO: ChatSession#broadcast_header
+      still re-renders the header partial above the tabs, so live
+      token updates after a turn won't reflect here until the
+      broadcast is split into header + tokens streams. %>
+  <% input_tokens  = @chat_session&.cumulative_input_tokens.to_i %>
+  <% output_tokens = @chat_session&.cumulative_output_tokens.to_i %>
+  <% input_label   = number_with_precision(input_tokens / 1000.0, precision: 1, strip_insignificant_zeros: true) %>
+  <% output_label  = number_with_precision(output_tokens / 1000.0, precision: 1, strip_insignificant_zeros: true) %>
+  <% cost          = @chat_session&.cumulative_cost || 0 %>
+  <p class="text-sm text-gray-600">
+    Tokens:
+    <%= input_label %>k in /
+    <%= output_label %>k out · <%= number_to_currency(cost, precision: 4) %>
+  </p>
+
   <% if @pending_actions.any? %>
     <section class="space-y-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
       <h2 class="text-sm font-semibold text-amber-900">Pending confirmations</h2>
