@@ -42,14 +42,6 @@ class ChatSession < ApplicationRecord
     update!(updates) if updates.any?
   end
 
-  private
-
-  def cumulative_usage_previously_changed?
-    saved_change_to_cumulative_input_tokens? ||
-      saved_change_to_cumulative_output_tokens? ||
-      saved_change_to_cumulative_cost_usd?
-  end
-
   def broadcast_header
     broadcast_replace_later_to(
       "chat_session_#{id}_header",
@@ -57,5 +49,27 @@ class ChatSession < ApplicationRecord
       partial: "repositories/chats/header",
       locals: { repository: repository, chat_session: self }
     )
+  end
+
+  # Re-render the compose form so its `disabled` state matches the
+  # latest value of `turn_in_flight?`. Called from ChatMessage's
+  # after_create_commit (any new message can flip the value: a fresh
+  # user message starts the turn, a non-user message ends it) and from
+  # the Stop action so the operator's click is acknowledged in the UI.
+  def broadcast_controls
+    broadcast_replace_later_to(
+      "chat_session_#{id}_controls",
+      target: "chat_session_#{id}_controls",
+      partial: "repositories/chats/compose",
+      locals: { repository: repository, chat_session: self, turn_in_flight: turn_in_flight? }
+    )
+  end
+
+  private
+
+  def cumulative_usage_previously_changed?
+    saved_change_to_cumulative_input_tokens? ||
+      saved_change_to_cumulative_output_tokens? ||
+      saved_change_to_cumulative_cost_usd?
   end
 end

@@ -44,4 +44,27 @@ RSpec.describe ChatMessage do
     expect(message).not_to be_valid
     expect(message.errors[:content]).to be_present
   end
+
+  # Regression: before this fix the compose form was rendered once
+  # (server-side, with turn_in_flight: true) and never refreshed when
+  # the turn ended, leaving the Send button disabled until the operator
+  # reloaded the page. Every new ChatMessage row now re-broadcasts the
+  # compose partial so its `disabled` state tracks `turn_in_flight?`.
+  describe "after_create_commit :broadcast_controls_update" do
+    it "calls broadcast_controls on the chat session when a message is created" do
+      expect(session).to receive(:broadcast_controls)
+      described_class.create!(chat_session: session, role: "user", content: { "text" => "Hi" })
+    end
+
+    it "flips turn_in_flight? to false once a non-user message follows the latest user message" do
+      session
+      described_class.create!(chat_session: session, role: "user", content: { "text" => "What's up?" })
+
+      expect(session.turn_in_flight?).to be true
+
+      described_class.create!(chat_session: session, role: "assistant", content: { "text" => "Hello." })
+
+      expect(session.reload.turn_in_flight?).to be false
+    end
+  end
 end

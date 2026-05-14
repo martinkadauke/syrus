@@ -78,7 +78,7 @@ class Repositories::ChatsController < ApplicationController
 
   def stop
     @chat_session.update!(stop_requested_at: Time.current)
-    broadcast_controls_update
+    @chat_session.broadcast_controls
     redirect_to repository_chats_path(@repository), notice: "Stop requested."
   end
 
@@ -156,19 +156,6 @@ class Repositories::ChatsController < ApplicationController
     CHAT_TEMPLATES.fetch(template_key).new(repository: @repository).to_s.strip
   rescue KeyError
     ""
-  end
-
-  def broadcast_controls_update
-    Turbo::StreamsChannel.broadcast_replace_later_to(
-      "chat_session_#{@chat_session.id}_controls",
-      target: "chat_session_#{@chat_session.id}_controls",
-      partial: "repositories/chats/compose",
-      locals: {
-        repository: @repository,
-        chat_session: @chat_session,
-        turn_in_flight: @chat_session.turn_in_flight?
-      }
-    )
   end
 
   def chat_template

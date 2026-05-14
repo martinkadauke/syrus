@@ -8,6 +8,7 @@ class ChatMessage < ApplicationRecord
   belongs_to :proposal, class_name: "ChatProposal", optional: true
 
   after_create_commit :broadcast_to_chat
+  after_create_commit :broadcast_controls_update
 
   validates :role, presence: true, inclusion: { in: ROLES }
   validate :content_is_present
@@ -70,5 +71,12 @@ class ChatMessage < ApplicationRecord
       partial: "repositories/chats/message",
       locals: { message: self, repository: chat_session.repository }
     )
+  end
+
+  # Any new message can flip `turn_in_flight?`: a user message starts a
+  # turn, a non-user message ends it. Re-render the compose partial so
+  # its disabled state matches.
+  def broadcast_controls_update
+    chat_session.broadcast_controls
   end
 end
