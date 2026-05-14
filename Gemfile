@@ -38,6 +38,12 @@ gem "mcp"
 gem "docx"
 gem "pdf-reader"
 
+# CommonMark / GitHub-style markdown renderer for chat messages.
+# Used by repositories/chats/_message.html.erb to render user + assistant
+# text content. unsafe rendering is off by default so raw HTML in chat
+# is escaped.
+gem "commonmarker"
+
 # Use Active Model has_secure_password [https://guides.rubyonrails.org/active_model_basics.html#securepassword]
 gem "bcrypt", "~> 3.1.7"
 

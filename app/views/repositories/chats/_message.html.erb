@@ -5,13 +5,13 @@
   <% case message.role
      when "user" %>
     <div class="flex justify-end">
-      <div class="max-w-[min(42rem,85%)] rounded-lg bg-blue-600 px-4 py-2 text-sm text-white whitespace-pre-wrap break-words"><%= text %></div>
+      <div class="chat-prose chat-prose-invert max-w-[min(42rem,85%)] rounded-lg bg-blue-600 px-4 py-2 text-white"><%= render_markdown(text) %></div>
     </div>
   <% when "assistant" %>
     <div class="max-w-3xl rounded-lg border border-gray-200 bg-white px-4 py-3">
       <div class="mb-1 text-xs uppercase text-gray-500">assistant</div>
-      <div class="prose prose-sm max-w-none text-gray-800">
-        <%= simple_format(h(text)) %>
+      <div class="chat-prose text-gray-800">
+        <%= render_markdown(text) %>
       </div>
     </div>
   <% when "tool_use" %>
