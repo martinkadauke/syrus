@@ -46,16 +46,19 @@ RSpec.describe Whiteboard do
     expect { chat_session.destroy }.to change { described_class.where(id: whiteboard.id).count }.by(-1)
   end
 
-  it "broadcasts the scene on the chat session whiteboard stream" do
+  it "broadcasts a replace stream that updates the chat page's broadcast target" do
     whiteboard = described_class.create!(
       chat_session: chat_session,
       scene_json: { "elements" => [ { "id" => "box-1" } ] },
       version: 3
     )
 
-    expect(Turbo::StreamsChannel).to receive(:broadcast_stream_to).with(
+    expect(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to).with(
       "chat_session_#{chat_session.id}_whiteboard",
-      content: { "elements" => [ { "id" => "box-1" } ], "version" => 3 }.to_json
+      hash_including(
+        target: "chat_session_#{chat_session.id}_whiteboard_broadcast",
+        partial: "repositories/chats/whiteboard_broadcast"
+      )
     )
 
     whiteboard.broadcast_scene

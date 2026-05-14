@@ -46,13 +46,12 @@ module SyrusChatMcp
       chat_session.whiteboard || chat_session.create_whiteboard!(scene_json: { "elements" => [] })
     end
 
-    def shape_element(type:, x:, y:, width:, height:, label: nil, color: nil)
+    def shape_element(type:, x:, y:, width:, height:, color: nil, **)
       base_element(type: type, x: x, y: y, width: width, height: height).merge(
         "backgroundColor" => color.presence || DEFAULT_COLOR,
         "strokeColor" => DEFAULT_STROKE,
-        "label" => label.to_s.presence,
         "boundElements" => []
-      ).compact
+      )
     end
 
     def text_element(content:, x:, y:, font_size: nil)
@@ -66,6 +65,31 @@ module SyrusChatMcp
         "textAlign" => "left",
         "verticalAlign" => "top",
         "baseline" => font_size
+      )
+    end
+
+    # Labels in Excalidraw are not a field on the container shape —
+    # they're a separate `text` element bound via `containerId` (and a
+    # matching entry in the container's `boundElements` array).
+    # Caller pushes both elements onto the scene and sets the
+    # container's `boundElements`.
+    def bound_label_element(container:, text:, font_size: 20)
+      label = text.to_s
+      width = [ label.length * font_size * 0.6, font_size * 2 ].max.round(2)
+      height = (font_size * 1.25).round(2)
+      x = container.fetch("x").to_f + (container.fetch("width").to_f - width) / 2.0
+      y = container.fetch("y").to_f + (container.fetch("height").to_f - height) / 2.0
+
+      base_element(type: "text", x: x, y: y, width: width, height: height).merge(
+        "text" => label,
+        "originalText" => label,
+        "fontSize" => font_size,
+        "fontFamily" => 1,
+        "textAlign" => "center",
+        "verticalAlign" => "middle",
+        "baseline" => font_size,
+        "lineHeight" => 1.25,
+        "containerId" => container.fetch("id")
       )
     end
 
@@ -162,6 +186,12 @@ module SyrusChatMcp
     def base_element(type:, x:, y:, width:, height:, id: ExcalidrawId.generate)
       now = (Time.current.to_f * 1000).to_i
 
+      # Visual-style defaults (opacity / strokeWidth / strokeStyle /
+      # roughness / fillStyle) must be present on the wire — Excalidraw's
+      # `updateScene` (the broadcast-apply path) takes elements as-is
+      # without normalizing, and missing values render invisible.
+      # `initialData` does normalize, which is why reloads worked but
+      # live agent draws came in transparent.
       {
         "id" => id,
         "type" => type,
@@ -170,6 +200,11 @@ module SyrusChatMcp
         "width" => width,
         "height" => height,
         "angle" => 0,
+        "strokeWidth" => 2,
+        "strokeStyle" => "solid",
+        "fillStyle" => "solid",
+        "roughness" => 1,
+        "opacity" => 100,
         "seed" => SecureRandom.random_number(1 << 31),
         "version" => 1,
         "versionNonce" => SecureRandom.random_number(1 << 31),

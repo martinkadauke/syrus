@@ -36,9 +36,14 @@ RSpec.describe "SyrusChatMcp canvas tools" do
   end
 
   def expect_canvas_broadcast
+    # Each canvas mutation also writes a tool_use ChatMessage, which
+    # itself broadcasts a controls partial replace. Set up a permissive
+    # allow so the controls broadcast passes through and the strict
+    # expect below still asserts the whiteboard broadcast specifically.
+    allow(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to)
     expect(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to).with(
       "chat_session_#{chat_session.id}_whiteboard",
-      hash_including(target: "chat_session_#{chat_session.id}_whiteboard")
+      hash_including(target: "chat_session_#{chat_session.id}_whiteboard_broadcast")
     )
   end
 
@@ -66,12 +71,24 @@ RSpec.describe "SyrusChatMcp canvas tools" do
 
     id = payload(response).fetch(:id)
     whiteboard = chat_session.reload.whiteboard
-    element = whiteboard.elements.first
+    shape, label = whiteboard.elements
     expect(response[:result][:isError]).to be_falsey
     expect(id).to match(/\A[0-9A-Z_a-z-]{21}\z/)
     expect(whiteboard.version).to eq(1)
     expect(whiteboard.last_edited_at).to be_present
-    expect(element).to include("id" => id, "type" => "sticky", "label" => "Plan", "backgroundColor" => "#fef08a")
+    expect(shape).to include("id" => id, "type" => "sticky", "backgroundColor" => "#fef08a")
+    expect(shape).not_to have_key("label")
+    # Labels are a paired text element bound via containerId; the
+    # container's boundElements references it back so Excalidraw
+    # treats the pair as one logical shape.
+    expect(shape.fetch("boundElements")).to include("id" => label.fetch("id"), "type" => "text")
+    expect(label).to include(
+      "type" => "text",
+      "text" => "Plan",
+      "containerId" => id,
+      "textAlign" => "center",
+      "verticalAlign" => "middle"
+    )
     expect(chat_session.messages.last).to have_attributes(role: "tool_use", tool_name: "draw_shape")
   end
 

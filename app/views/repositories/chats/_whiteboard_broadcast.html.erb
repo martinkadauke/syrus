@@ -1,0 +1,11 @@
+<%# Small invisible element that the whiteboard JS controller watches
+    via `data-whiteboard-target="broadcast"`. The id matches what
+    `Whiteboard#broadcast_scene` replaces via Turbo Stream, so each
+    server-side mutation arrives client-side as a fresh data-version
+    + data-elements-json the JS reads in `broadcastTargetConnected`.
+    Always rendered (even before a Whiteboard row exists) so the
+    first agent draw has a target to replace. %>
+<div id="chat_session_<%= chat_session.id %>_whiteboard_broadcast"
+     data-whiteboard-target="broadcast"
+     data-version="<%= whiteboard&.version || 0 %>"
+     data-elements-json="<%= json_escape((whiteboard&.elements || []).to_json) %>"></div>

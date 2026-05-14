@@ -201,11 +201,10 @@
            data-chat-side-panel-target="whiteboardPanel">
         <div class="h-full w-full"
              data-whiteboard-target="mount"></div>
-        <% if @chat_session&.whiteboard %>
-          <div id="chat_session_<%= @chat_session.id %>_whiteboard_broadcast"
-               data-whiteboard-target="broadcast"
-               data-version="<%= @chat_session.whiteboard.version %>"
-               data-elements-json="<%= json_escape(@chat_session.whiteboard.elements.to_json) %>"></div>
+        <% if @chat_session %>
+          <%= render "repositories/chats/whiteboard_broadcast",
+                chat_session: @chat_session,
+                whiteboard: @chat_session.whiteboard %>
         <% end %>
       </div>
 

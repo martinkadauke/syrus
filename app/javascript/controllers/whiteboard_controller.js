@@ -79,6 +79,9 @@ export default class extends Controller {
 
     const payload = await this.fetchScene()
     this.version = payload.version
+    // Seed the echo-signature so Excalidraw's initial onChange after
+    // mount (with the same initial elements) doesn't trigger a save.
+    this.appliedSignature = this.signatureFor(payload.scene_json.elements)
 
     this.root = createRoot(this.mountTarget)
     this.root.render(
@@ -118,10 +121,33 @@ export default class extends Controller {
   changed(elements, _appState) {
     if (this.remoteUpdateInProgress) return
 
-    this.pendingElements = elements
+    // Always dispatch — listeners (e.g. chat#whiteboardChanged) need
+    // to react to the latest Excalidraw state for the placeholder
+    // overlay.
     this.dispatch("change", { detail: { elements } })
+
+    // Excalidraw fires onChange asynchronously after updateScene, with
+    // the elements we just pushed. The `remoteUpdateInProgress` flag
+    // is reset on the next microtask, so by the time the echo arrives
+    // it doesn't get suppressed and our save handler turns around and
+    // PATCHes the (now stale) state back at the server — which 409s,
+    // then the conflict recovery retries with the stale state and
+    // clobbers whatever the agent broadcast in the meantime. Skip the
+    // save when the incoming elements match what we just applied.
+    const signature = this.signatureFor(elements)
+    if (signature && signature === this.appliedSignature) return
+
+    this.pendingElements = elements
     this.clearPendingSave()
     this.saveTimer = window.setTimeout(() => this.savePending(), DEBOUNCE_MS)
+  }
+
+  signatureFor(elements) {
+    if (!Array.isArray(elements)) return null
+    return elements
+      .map((element) => `${element?.id || ""}:${element?.version ?? 0}`)
+      .sort()
+      .join(",")
   }
 
   clearPendingSave() {
@@ -185,6 +211,7 @@ export default class extends Controller {
     this.remoteUpdateInProgress = true
     this.excalidrawAPI.updateScene({ elements })
     this.version = version
+    this.appliedSignature = this.signatureFor(elements)
     queueMicrotask(() => {
       this.remoteUpdateInProgress = false
     })

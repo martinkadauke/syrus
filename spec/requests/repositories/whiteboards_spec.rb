@@ -54,9 +54,12 @@ RSpec.describe "Repository whiteboards", type: :request do
     it "creates a missing whiteboard, updates matching versions, and broadcasts the new state" do
       elements = [ { "id" => "box-1", "type" => "rectangle", "x" => 12 } ]
 
-      expect(Turbo::StreamsChannel).to receive(:broadcast_stream_to).with(
+      expect(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to).with(
         "chat_session_#{chat.id}_whiteboard",
-        content: { "elements" => elements, "version" => 1 }.to_json
+        hash_including(
+          target: "chat_session_#{chat.id}_whiteboard_broadcast",
+          partial: "repositories/chats/whiteboard_broadcast"
+        )
       )
 
       expect {
@@ -79,7 +82,7 @@ RSpec.describe "Repository whiteboards", type: :request do
         version: 14
       )
       elements = [ { "id" => "new", "type" => "ellipse" } ]
-      allow(Turbo::StreamsChannel).to receive(:broadcast_stream_to)
+      allow(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to)
 
       patch repository_chat_whiteboard_path(repo, chat),
             params: { elements: elements, expected_version: 14 },
@@ -94,7 +97,7 @@ RSpec.describe "Repository whiteboards", type: :request do
     it "rejects updates beyond the element limit" do
       elements = Array.new(Whiteboard::MAX_ELEMENTS + 1) { |index| element("shape-#{index}") }
 
-      expect(Turbo::StreamsChannel).not_to receive(:broadcast_stream_to)
+      expect(Turbo::StreamsChannel).not_to receive(:broadcast_replace_later_to)
 
       expect {
         patch repository_chat_whiteboard_path(repo, chat),
@@ -112,7 +115,7 @@ RSpec.describe "Repository whiteboards", type: :request do
         version: 3
       )
 
-      expect(Turbo::StreamsChannel).not_to receive(:broadcast_stream_to)
+      expect(Turbo::StreamsChannel).not_to receive(:broadcast_replace_later_to)
 
       patch repository_chat_whiteboard_path(repo, chat),
             params: { elements: [ { "id" => "stale" } ], expected_version: 2 },

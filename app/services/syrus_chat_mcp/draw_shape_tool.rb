@@ -36,8 +36,17 @@ module SyrusChatMcp
 
         result = Canvas.mutate(server_context.fetch(:chat_session), tool_name, args) do |elements|
           Canvas.ensure_can_append_element!(elements)
-          element = Canvas.shape_element(**args.symbolize_keys)
+          element = Canvas.shape_element(**args.symbolize_keys.except(:label))
           elements << element
+
+          label_text = args["label"].to_s.strip
+          if label_text.present?
+            Canvas.ensure_can_append_element!(elements)
+            label = Canvas.bound_label_element(container: element, text: label_text)
+            element["boundElements"] = (element["boundElements"] || []) + [ { "id" => label.fetch("id"), "type" => "text" } ]
+            elements << label
+          end
+
           { id: element.fetch("id") }
         end
 
