@@ -129,7 +129,6 @@ class HomeController < ApplicationController
     end
   end
 
-<<<<<<< HEAD
   def smart_folder_from_params
     return if params[:smart_folder_id].blank?
 
@@ -151,7 +150,8 @@ class HomeController < ApplicationController
     (@builtin_smart_folders + @user_smart_folders).to_h do |folder|
       [ folder.id, Jobs::Filter.new(folder.filter).apply(base_scope).count ]
     end
-=======
+  end
+
   def bulk_apply_tag(jobs)
     tag = find_or_create_bulk_tag
     return unless tag
@@ -183,20 +183,5 @@ class HomeController < ApplicationController
     end
 
     Current.user.tags.find_or_create_by!(name: name) { |tag| tag.color = "gray" }
-  end
-
-  def latest_workflow_job_ids(state)
-    Workflow.where(state: state)
-            .where(<<~SQL.squish)
-              workflows.id = (
-                SELECT latest_workflows.id
-                FROM workflows latest_workflows
-                WHERE latest_workflows.job_id = workflows.job_id
-                ORDER BY latest_workflows.created_at DESC, latest_workflows.id DESC
-                LIMIT 1
-              )
-            SQL
-            .select(:job_id)
->>>>>>> b40110a (Add per-user tags for organizing jobs)
   end
 end
