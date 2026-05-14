@@ -17,7 +17,7 @@ RSpec.describe "Repository whiteboards", type: :request do
       }.not_to change(Whiteboard, :count)
 
       expect(response).to have_http_status(:ok)
-      expect(parse_body).to eq("elements" => [], "version" => 0)
+      expect(parse_body).to eq("scene_json" => { "elements" => [] }, "version" => 0)
     end
 
     it "returns the current whiteboard state" do
@@ -30,7 +30,7 @@ RSpec.describe "Repository whiteboards", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(parse_body).to eq(
-        "elements" => [ { "id" => "rect-1", "type" => "rectangle" } ],
+        "scene_json" => { "elements" => [ { "id" => "rect-1", "type" => "rectangle" } ] },
         "version" => 7
       )
     end
@@ -67,7 +67,7 @@ RSpec.describe "Repository whiteboards", type: :request do
 
       whiteboard = chat.reload.whiteboard
       expect(response).to have_http_status(:ok)
-      expect(parse_body).to eq("elements" => elements, "version" => 1)
+      expect(parse_body).to eq("scene_json" => { "elements" => elements }, "version" => 1)
       expect(whiteboard.scene_json).to eq("elements" => elements)
       expect(whiteboard.version).to eq(1)
       expect(whiteboard.last_edited_at).to be_present
@@ -86,7 +86,7 @@ RSpec.describe "Repository whiteboards", type: :request do
             as: :json
 
       expect(response).to have_http_status(:ok)
-      expect(parse_body).to eq("elements" => elements, "version" => 15)
+      expect(parse_body).to eq("scene_json" => { "elements" => elements }, "version" => 15)
       expect(whiteboard.reload.scene_json).to eq("elements" => elements)
       expect(whiteboard.version).to eq(15)
     end
@@ -119,7 +119,7 @@ RSpec.describe "Repository whiteboards", type: :request do
             as: :json
 
       expect(response).to have_http_status(:conflict)
-      expect(parse_body).to eq("elements" => [ { "id" => "current" } ], "version" => 3)
+      expect(parse_body).to eq("scene_json" => { "elements" => [ { "id" => "current" } ] }, "version" => 3)
       expect(whiteboard.reload.scene_json).to eq("elements" => [ { "id" => "current" } ])
       expect(whiteboard.version).to eq(3)
     end

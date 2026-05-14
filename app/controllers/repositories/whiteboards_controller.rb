@@ -42,12 +42,30 @@ class Repositories::WhiteboardsController < ApplicationController
     end
   end
 
+  # Frontend (app/javascript/controllers/whiteboard_controller.js) reads
+  # `payload.scene_json.elements` for both repo- and chat-scoped
+  # whiteboards. The flat `{ elements, version }` shape that
+  # `Whiteboard#current_state` returns predates that, so wrap it here
+  # to keep the response surface uniform.
   def whiteboard_payload
-    return @chat_session.whiteboard&.current_state || Whiteboard.default_state if chat_whiteboard_request?
+    if chat_whiteboard_request?
+      whiteboard = @chat_session.whiteboard
+      return {
+        scene_json: { elements: whiteboard&.elements || [] },
+        version: whiteboard&.version || 0
+      }
+    end
 
     {
       scene_json: { elements: @repository_whiteboard.elements },
       version: @repository_whiteboard.version
+    }
+  end
+
+  def chat_whiteboard_state_payload(whiteboard)
+    {
+      scene_json: { elements: whiteboard.elements },
+      version: whiteboard.version
     }
   end
 
@@ -73,7 +91,7 @@ class Repositories::WhiteboardsController < ApplicationController
         status = :conflict
       end
 
-      state = whiteboard.current_state
+      state = chat_whiteboard_state_payload(whiteboard)
     end
 
     render json: state, status: status
