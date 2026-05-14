@@ -410,5 +410,58 @@ RSpec.describe GithubClient do
       expect(user.gh_rate_limit_remaining).to eq(0)
       expect(JobLog.where(kind: "rate_limited").count).to eq(0)
     end
+
+    # Regression: every GH API call used to UPDATE the user row, racing
+    # background pollers against the request-thread credentials update
+    # and tripping innodb_lock_wait_timeout in prod. The persister now
+    # coalesces — skip the write when the remaining count hasn't moved
+    # and we updated recently. Calling the method directly avoids
+    # faraday-http-cache returning the first response on retry.
+    describe "#persist_rate_limit_headers! coalescing" do
+      let(:headers_with) do
+        ->(remaining) do
+          {
+            "x-ratelimit-remaining" => remaining.to_s,
+            "x-ratelimit-limit" => "5000",
+            "x-ratelimit-reset" => reset_epoch.to_s,
+            "x-ratelimit-resource" => "core"
+          }
+        end
+      end
+
+      it "skips the row write when the remaining count is unchanged and observed_at is recent" do
+        client.send(:persist_rate_limit_headers!, headers_with.call(4221))
+        user.reload
+        first_observed_at = user.gh_rate_limit_observed_at
+
+        travel 1.second do
+          client.send(:persist_rate_limit_headers!, headers_with.call(4221))
+        end
+
+        expect(user.reload.gh_rate_limit_observed_at).to eq(first_observed_at)
+      end
+
+      it "writes again when the remaining count moves even within the coalesce window" do
+        client.send(:persist_rate_limit_headers!, headers_with.call(4221))
+
+        travel 1.second do
+          client.send(:persist_rate_limit_headers!, headers_with.call(4200))
+        end
+
+        expect(user.reload.gh_rate_limit_remaining).to eq(4200)
+      end
+
+      it "writes again after the coalesce window even when remaining is unchanged" do
+        client.send(:persist_rate_limit_headers!, headers_with.call(4221))
+        user.reload
+        first_observed_at = user.gh_rate_limit_observed_at
+
+        travel (described_class::RATE_LIMIT_PERSIST_COALESCE + 1.second) do
+          client.send(:persist_rate_limit_headers!, headers_with.call(4221))
+        end
+
+        expect(user.reload.gh_rate_limit_observed_at).to be > first_observed_at
+      end
+    end
   end
 end

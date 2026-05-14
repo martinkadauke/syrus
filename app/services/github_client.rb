@@ -551,12 +551,30 @@ class GithubClient
     installation_auth? ? "i#{@installation.id}" : "u#{@user.id}"
   end
 
+  RATE_LIMIT_PERSIST_COALESCE = 30.seconds
+
   def persist_rate_limit_headers!(headers)
     return unless headers && @user
     remaining = headers["x-ratelimit-remaining"]
     return unless remaining
+
+    remaining_i = remaining.to_i
+    # Each GitHub API call triggers this writer through the Faraday
+    # middleware, so multiple concurrent pollers race on the user row.
+    # That contention used to bleed into the credentials-update path
+    # in the request thread: the operator's UPDATE waited behind a
+    # train of background writers and hit `innodb_lock_wait_timeout`.
+    # Skip the write when the value hasn't moved AND we updated
+    # recently — collapses "every API call" into "at most one row
+    # update every 30s per user".
+    if @user.gh_rate_limit_observed_at &&
+       @user.gh_rate_limit_observed_at > RATE_LIMIT_PERSIST_COALESCE.ago &&
+       @user.gh_rate_limit_remaining == remaining_i
+      return
+    end
+
     @user.update_columns(
-      gh_rate_limit_remaining:  remaining.to_i,
+      gh_rate_limit_remaining:  remaining_i,
       gh_rate_limit_limit:      headers["x-ratelimit-limit"].to_i,
       gh_rate_limit_reset_at:   Time.at(headers["x-ratelimit-reset"].to_i),
       gh_rate_limit_resource:   headers["x-ratelimit-resource"],
