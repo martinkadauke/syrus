@@ -1,4 +1,9 @@
-<% chat_available = Current.user.agent_provider != "codex" && Current.user.claude_oauth_token.present? %>
+<%# Chat is Claude-only at the implementation level (sidecar binary,
+    stream parser, etc.), but the user's *default* agent_provider for
+    Job runs is a separate setting — chat works for anyone who has a
+    Claude OAuth token configured, regardless of whether their default
+    provider is claude or codex. %>
+<% chat_available = Current.user.claude_oauth_token.present? %>
 
 <div class="space-y-6"
      data-controller="<%= chat_available ? "chat chat-layout chat-side-panel" : "chat" %>"
@@ -102,21 +107,12 @@
     <%= turbo_stream_from "chat_session_#{@chat_session.id}_whiteboard" %>
   <% end %>
 
-  <% if Current.user.agent_provider == "codex" %>
-    <div class="bg-white border border-amber-200 rounded-lg p-6 text-sm text-amber-900">
-      <div class="font-semibold">Chat requires Claude.</div>
-      <p class="mt-1">
-        v1 is Claude-only — see the per-repo chat plan for context.
-        Switch your agent provider to Claude in
-        <%= link_to "Credentials", edit_credentials_path, class: "text-amber-900 underline hover:no-underline" %>
-        to enable per-repo chat.
-      </p>
-    </div>
-  <% elsif Current.user.claude_oauth_token.blank? %>
+  <% if Current.user.claude_oauth_token.blank? %>
     <div class="bg-white border border-amber-200 rounded-lg p-6 text-sm text-amber-900">
       <div class="font-semibold">Claude credentials are required.</div>
       <p class="mt-1">
-        Per-repo chat uses Claude in v1. Add a Claude OAuth token in
+        Per-repo chat uses Claude regardless of your default agent
+        provider for Jobs. Add a Claude OAuth token in
         <%= link_to "Credentials", edit_credentials_path, class: "text-amber-900 underline hover:no-underline" %>
         to enable per-repo chat.
       </p>

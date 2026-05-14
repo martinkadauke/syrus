@@ -31,7 +31,11 @@ RSpec.describe "Repository chats", type: :request do
       expect(response.body).not_to include(repository_whiteboard_path(repo))
     end
 
-    it "renders the Claude-only provider notice for Codex users" do
+    it "still renders the chat for users whose default provider is Codex but who have a Claude token" do
+      # Chat is Claude-only at the implementation level, but the
+      # user's *default* provider for Jobs is independent — having
+      # codex as the default doesn't disable chat as long as a
+      # Claude OAuth token is configured.
       user.update!(
         agent_provider: "codex",
         codex_auth_mode: "api_key",
@@ -41,12 +45,10 @@ RSpec.describe "Repository chats", type: :request do
       get repository_chats_path(repo)
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Chat requires Claude.")
-      expect(response.body).to include("v1 is Claude-only")
-      expect(response.body).to include(edit_credentials_path)
-      expect(response.body).not_to include("Start a chat with this repository.")
-      expect(response.body).not_to include("New chat")
-      expect(response.body).not_to include("name=\"chat_message[text]\"")
+      expect(response.body).to include("Start a chat with this repository.")
+      expect(response.body).to include("New chat")
+      expect(response.body).to include('name="chat_message[text]"')
+      expect(response.body).not_to include("Chat requires Claude.")
     end
 
     it "renders the Claude credential onboarding notice when the token is missing" do
