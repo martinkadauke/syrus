@@ -4,6 +4,11 @@ class Whiteboard < ApplicationRecord
 
   belongs_to :chat_session
 
+  # MySQL 8 doesn't allow defaults on JSON columns, so we seed an
+  # empty scene on initialize. Existing rows keep whatever they had
+  # serialized previously.
+  after_initialize :seed_empty_scene_json, if: :new_record?
+
   validates :version, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validate :scene_json_has_elements_array
   validate :scene_json_within_element_limit
@@ -58,6 +63,10 @@ class Whiteboard < ApplicationRecord
   end
 
   private
+
+  def seed_empty_scene_json
+    self.scene_json ||= { "elements" => [] }
+  end
 
   def scene_json_has_elements_array
     unless scene_json.is_a?(Hash)
