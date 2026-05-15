@@ -7,4 +7,6 @@
         class: "pb-3 border-b-2 #{controller_name == 'credentials' ? 'border-blue-600 text-blue-600 font-medium' : 'border-transparent text-gray-600 hover:text-gray-900'}" %>
   <%= link_to "Templates", cron_templates_path,
         class: "pb-3 border-b-2 #{controller_name == 'cron_templates' ? 'border-blue-600 text-blue-600 font-medium' : 'border-transparent text-gray-600 hover:text-gray-900'}" %>
+  <%= link_to "Tags", tags_path,
+        class: "pb-3 border-b-2 #{controller_name == 'tags' ? 'border-blue-600 text-blue-600 font-medium' : 'border-transparent text-gray-600 hover:text-gray-900'}" %>
 </nav>

@@ -16,6 +16,18 @@ RSpec.describe "Tags", type: :request do
     expect(response.body).not_to include("theirs")
   end
 
+  it "renders the per-user settings nav with Tags as the active tab" do
+    get tags_path
+
+    document = Nokogiri::HTML(response.body)
+    nav_links = document.css("nav a").map { |a| [ a.text.strip, a["href"] ] }
+    expect(nav_links).to include([ "My credentials", edit_credentials_path ])
+    expect(nav_links).to include([ "Templates", cron_templates_path ])
+    expect(nav_links).to include([ "Tags", tags_path ])
+    active = document.css("nav a").find { |a| a.text.strip == "Tags" }
+    expect(active["class"]).to include("border-blue-600")
+  end
+
   it "creates a tag" do
     expect {
       post tags_path, params: { tag: { name: "epic:attachments", color: "indigo" } }
