@@ -3,10 +3,13 @@
 <% proposal_tool = tool_name.to_s.include?("proposal") || tool_name.to_s.include?("propose_issue") %>
 <% payload = content_hash.presence || { "content" => message.content } %>
 
-<details <%= "open" if proposal_tool %> class="rounded-md border border-emerald-200 bg-emerald-50 text-xs">
-  <summary class="flex cursor-pointer items-center gap-2 px-3 py-2 select-none">
-    <span class="rounded bg-emerald-100 px-1.5 py-0.5 font-mono uppercase text-emerald-800">result</span>
-    <span class="font-mono text-gray-800"><%= tool_name %></span>
+<%# Structured/canvas tool_result card. Same treatment as
+    tool_use_card: a compact line by default, the emerald body only
+    materializes when expanded so the chat surface stays quiet. %>
+<details <%= "open" if proposal_tool %> class="chat-message group/tool text-xs open:rounded-md open:border open:border-emerald-200 open:bg-emerald-50">
+  <summary class="flex cursor-pointer items-baseline gap-2 py-0.5 select-none text-sm text-gray-700 hover:text-gray-900 group-open/tool:px-3 group-open/tool:py-2">
+    <span class="text-gray-400 group-open/tool:rotate-90 transition-transform">▸</span>
+    <span class="font-mono font-medium text-gray-900"><%= tool_name %></span>
     <% if message.proposal %>
       <span class="text-gray-500">→</span>
       <%= link_to "Proposal ##{message.proposal.id} created (#{message.proposal.state})",

@@ -15,9 +15,23 @@
       </div>
     </div>
   <% when "tool_use" %>
-    <%= render "repositories/chats/tool_use_card", message: message, repository: repository %>
+    <% if ChatMessageGrouper.abbreviated_tool_use?(message) %>
+      <%# Live broadcast path. Renders one collapsed tool-call line. The
+          chat controller's mutation observer merges adjacent same-tool
+          appends and pulls the matching tool_result into the body. %>
+      <%= render "repositories/chats/tool_call_group",
+            group: ChatMessageGrouper.single_call_group(message),
+            repository: repository %>
+    <% else %>
+      <%= render "repositories/chats/tool_use_card", message: message, repository: repository %>
+    <% end %>
   <% when "tool_result" %>
-    <%= render "repositories/chats/tool_result_card", message: message, repository: repository %>
+    <% if ChatMessageGrouper.abbreviated_tool_result?(message) %>
+      <%# Hidden in the default view; JS pairs into the preceding call. %>
+      <%= render "repositories/chats/tool_call_live_result", message: message, repository: repository %>
+    <% else %>
+      <%= render "repositories/chats/tool_result_card", message: message, repository: repository %>
+    <% end %>
   <% when "system" %>
     <p class="text-center text-sm italic text-gray-500"><%= text %></p>
   <% end %>

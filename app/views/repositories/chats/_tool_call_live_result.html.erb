@@ -1,0 +1,14 @@
+<%# Compact, hidden-by-default tool-result element appended to the
+    live chat stream. It does NOT render as its own visible row — the
+    chat controller's mutation observer picks it up after append and
+    moves its inner result body into the preceding tool_call group's
+    expand area. Visible only as the content of the previous tool
+    call's expanded body. %>
+<% text = message.content.is_a?(Hash) ? message.content["text"].to_s : message.content.to_s %>
+<% body = text.sub(/\A\s*⎿\s*/, "") %>
+<div class="hidden chat-message"
+     data-chat-target="message"
+     data-tool-call-result="true"
+     data-message-id="<%= message.id %>">
+  <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-gray-600"><%= body %></pre>
+</div>

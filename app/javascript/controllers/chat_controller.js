@@ -112,11 +112,122 @@ export default class extends Controller {
     // case — the change happened above the viewport, not below.
     if (this.loadingOlder) return
 
+    this.mergeLiveToolCalls()
+    this.pairLiveToolResults()
+
     if (this.wasNearBottom || this.isNearBottom()) {
       this.scrollToBottom()
     } else {
       this.showNewMessagesPill()
     }
+  }
+
+  // Server-side, ChatMessageGrouper folds consecutive same-name
+  // tool_use messages into one collapsed group. Live appends arrive
+  // one at a time, so do the same fold client-side: if the newly
+  // appended group has the same data-tool-name as the previous tool
+  // call group, merge its detail + body cells into the previous one
+  // and drop the new wrapper.
+  mergeLiveToolCalls() {
+    if (!this.hasStreamTarget) return
+    if (typeof this.streamTarget.querySelectorAll !== "function") return
+
+    const newGroups = this.streamTarget.querySelectorAll('details[data-tool-call="true"]:not([data-tool-call-merged])')
+    newGroups.forEach(group => {
+      // The element appended to streamTarget is the outer
+      // _message.html.erb wrapper; the details element is one level
+      // down. On initial render the details is the top-level child,
+      // and we never want to merge across those — guard by requiring
+      // a carrier wrapper.
+      const carrier = group.parentElement
+      if (!carrier || carrier.parentElement !== this.streamTarget) {
+        group.setAttribute("data-tool-call-merged", "true")
+        return
+      }
+
+      // Walk back, skipping hidden tool-result carriers from prior
+      // pairing — they don't break grouping continuity. Stop at the
+      // first carrier that actually contains a tool-call details (or
+      // an unrelated message, which means merge fails).
+      let candidate = carrier.previousElementSibling
+      let prevGroup = null
+      while (candidate) {
+        if (candidate.classList?.contains("hidden") &&
+            candidate.querySelector?.('[data-tool-call-result="true"]')) {
+          candidate = candidate.previousElementSibling
+          continue
+        }
+        prevGroup = candidate.matches?.('details[data-tool-call="true"]')
+          ? candidate
+          : candidate.querySelector?.(':scope > details[data-tool-call="true"]')
+        break
+      }
+      if (!prevGroup || prevGroup.dataset.toolName !== group.dataset.toolName) {
+        group.setAttribute("data-tool-call-merged", "true")
+        return
+      }
+
+      const newDetail = group.querySelector('[data-tool-detail]')?.textContent?.trim() || ""
+      if (newDetail) {
+        const prevDetail = prevGroup.querySelector('[data-tool-detail]')
+        if (prevDetail) {
+          const existing = prevDetail.textContent.trim()
+          prevDetail.textContent = existing ? `${existing}, ${newDetail}` : newDetail
+        }
+      }
+
+      const prevBody = prevGroup.querySelector('[data-tool-call-body]')
+      const newBody = group.querySelector('[data-tool-call-body]')
+      if (prevBody && newBody) {
+        while (newBody.firstChild) prevBody.appendChild(newBody.firstChild)
+      }
+
+      const prevCount = prevGroup.querySelector('[data-tool-call-count]')
+      if (prevCount) {
+        const next = parseInt(prevCount.textContent.trim() || "1", 10) + 1
+        prevCount.textContent = String(next)
+        prevCount.classList.remove("hidden")
+      }
+
+      group.setAttribute("data-tool-call-merged", "true")
+      carrier.remove()
+    })
+  }
+
+  // Server-side, ChatMessageGrouper folds each tool_result into the
+  // preceding tool_use group's expand body. Live appends arrive as
+  // separate messages, so do the same fold client-side: find each
+  // newly-appended result marker and move its body into the previous
+  // tool-call group's body, then hide the result wrapper. Idempotent
+  // via the `data-tool-result-paired` marker.
+  pairLiveToolResults() {
+    if (!this.hasStreamTarget) return
+    if (typeof this.streamTarget.querySelectorAll !== "function") return
+
+    const results = this.streamTarget.querySelectorAll('[data-tool-call-result="true"]:not([data-tool-result-paired])')
+    results.forEach(result => {
+      const wrapper = result.closest('.chat-message')
+      const outer = wrapper && wrapper.parentElement === this.streamTarget ? wrapper : wrapper?.parentElement
+      const carrier = outer || wrapper
+      if (!carrier) return
+
+      let prev = carrier.previousElementSibling
+      let body = null
+      while (prev && !(body = prev.querySelector('[data-tool-call-body]'))) {
+        prev = prev.previousElementSibling
+      }
+      if (!body) return
+
+      const content = result.querySelector('pre')
+      if (!content) return
+
+      const cell = document.createElement('div')
+      cell.appendChild(content.cloneNode(true))
+      body.appendChild(cell)
+
+      result.setAttribute('data-tool-result-paired', 'true')
+      carrier.classList.add('hidden')
+    })
   }
 
   scrollToBottom() {

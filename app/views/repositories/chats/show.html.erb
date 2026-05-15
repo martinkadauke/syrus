@@ -249,10 +249,13 @@
              data-chat-target="stream"
              data-action="scroll->chat#scroll">
           <% if @messages.any? %>
-            <%= render partial: "repositories/chats/message",
-                  collection: @messages,
-                  as: :message,
-                  locals: { repository: @repository } %>
+            <% ChatMessageGrouper.group(@messages).each do |item| %>
+              <% if item[:type] == :tool_group %>
+                <%= render "repositories/chats/tool_call_group", group: item, repository: @repository %>
+              <% else %>
+                <%= render "repositories/chats/message", message: item[:message], repository: @repository %>
+              <% end %>
+            <% end %>
           <% else %>
             <div class="h-full flex items-center justify-center text-sm text-gray-500">
               Start a chat with this repository.

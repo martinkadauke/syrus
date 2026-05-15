@@ -120,6 +120,42 @@ RSpec.describe "Repository chats", type: :request do
       expect(response.body).to include("Stop")
     end
 
+    describe "tool-call grouping on initial render" do
+      it "collapses consecutive same-name abbreviated tool_use messages into one row with the details joined" do
+        chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
+        chat.messages.create!(role: "tool_use",    content: { "text" => "● Read(a.py)" })
+        chat.messages.create!(role: "tool_result", content: { "text" => "  ⎿ first" })
+        chat.messages.create!(role: "tool_use",    content: { "text" => "● Read(b.py)" })
+        chat.messages.create!(role: "tool_result", content: { "text" => "  ⎿ second" })
+
+        get repository_chats_path(repo)
+
+        document = Nokogiri::HTML(response.body)
+        groups = document.css('details[data-tool-call="true"]')
+        expect(groups.size).to eq(1)
+        summary = groups.first.at_css("summary").text
+        expect(summary).to include("Read")
+        expect(summary).to include("a.py, b.py")
+      end
+
+      it "hides standalone abbreviated tool_result rows in the default view" do
+        chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
+        chat.messages.create!(role: "tool_use",    content: { "text" => "● Read(a.py)" })
+        chat.messages.create!(role: "tool_result", content: { "text" => "  ⎿ contents" })
+
+        get repository_chats_path(repo)
+
+        document = Nokogiri::HTML(response.body)
+        # No live-result wrapper (those are the JS-paired hidden ones)
+        expect(document.css('[data-tool-call-result]').size).to eq(0)
+        # No standalone tool_result_card box either.
+        expect(response.body).not_to include('bg-emerald-50')
+        # Result text is still in the DOM, but inside the expand body.
+        body = document.at_css('details[data-tool-call="true"] [data-tool-call-body]')
+        expect(body.text).to include("contents")
+      end
+    end
+
     describe "message pagination on initial load" do
       it "renders only the latest 30 messages and reports more older are available" do
         chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
