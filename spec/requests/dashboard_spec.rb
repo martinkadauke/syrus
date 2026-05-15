@@ -115,6 +115,20 @@ RSpec.describe "Dashboard", type: :request do
       expect(option_values).to eq([""] + expected)
     end
 
+    it "excludes closed jobs from the inbox even when they have a failed latest run" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      open_failed = Factories.job(repository: repo, issue_number: 1)
+      open_failed.initial_run.update!(state: "failed", finished_at: Time.current)
+      closed_failed = Factories.job(repository: repo, issue_number: 2)
+      closed_failed.initial_run.update!(state: "failed", finished_at: Time.current)
+      closed_failed.close!; closed_failed.save!
+
+      get root_path, params: { attention: "inbox" }
+
+      expect(response.body).to include("#1")
+      expect(response.body).not_to include("#2")
+    end
+
     it "filters jobs by attention=just_failed when picked from the dropdown" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       failing = Factories.job(repository: repo, issue_number: 1)
