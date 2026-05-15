@@ -16,7 +16,7 @@ RSpec.describe "Repository chats", type: :request do
       expect(response.body).to include(repo.slug)
       expect(response.body).to include("Start a chat with this repository.")
       expect(response.body).to include("Tokens:")
-      expect(response.body).to include('data-controller="chat chat-layout chat-side-panel"')
+      expect(response.body).to include('data-controller="chat-layout chat chat-side-panel"')
       expect(response.body).to include("data-chat-layout-storage-key-value=\"syrus.user.#{user.id}.repository.#{repo.id}.chat_split\"")
       expect(response.body).to include('data-chat-layout-whiteboard-enabled-value="false"')
       expect(response.body).to include("data-chat-side-panel-repository-id-value=\"#{repo.id}\"")

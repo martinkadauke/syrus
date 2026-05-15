@@ -11,7 +11,16 @@ export default class extends Controller {
   connect() {
     this.wasNearBottom = true
     this.loadingOlder = false
-    this.scrollToBottom()
+    // Defer the initial scroll one frame so any layout work the
+    // sibling controllers do during their own connect — chat-layout
+    // reparents this pane into a slot, which resets scrollTop — has
+    // settled before we anchor to the bottom. Fall back to a sync
+    // call in the JS unit test env where rAF is undefined.
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => this.scrollToBottom())
+    } else {
+      this.scrollToBottom()
+    }
     this.updateCompose()
     this.syncWhiteboardPlaceholder()
     if (this.hasStreamTarget) {

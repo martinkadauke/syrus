@@ -6,7 +6,12 @@
 <% chat_available = Current.user.claude_oauth_token.present? %>
 
 <div class="space-y-6"
-     data-controller="<%= chat_available ? "chat chat-layout chat-side-panel" : "chat" %>"
+     <%# Stimulus connects controllers in the order they appear. chat-layout
+         reparents the chat pane (via appendChild) into its slot during
+         connect, which resets the stream's scrollTop. Listing chat-layout
+         first lets that reparent happen before chat-controller calls
+         scrollToBottom, so the initial scroll sticks. %>
+     data-controller="<%= chat_available ? "chat-layout chat chat-side-panel" : "chat" %>"
      data-chat-layout-storage-key-value="syrus.user.<%= Current.user.id %>.repository.<%= @repository.id %>.chat_split"
      <% if @chat_session %>
        data-chat-layout-canvas-storage-key-value="syrus.chat.canvas.<%= @chat_session.id %>"
@@ -226,14 +231,18 @@
     <section class="flex min-h-[32rem] min-w-0 flex-col gap-3 sm:h-full"
              data-chat-layout-target="chatPane">
       <%# Messages box owns both the scrolling list and a slim tokens
-          readout. The readout overlays the bottom of the message
-          area only while the operator hovers the chat — keeps the
-          chat surface clean by default and gives the messages full
+          readout. The readout overlays the TOP of the message area
+          only while the operator hovers the chat — keeps the chat
+          surface clean by default and gives the messages full
           vertical space, with the cost ticker one mouse-over away.
+          The bottom of the chat is reserved for the (frequently
+          present) "New messages" pill and the user's natural reading
+          position; the top is where their eye lands when entering
+          the pane, so it's the right place for an at-a-glance ticker.
           pointer-events-none so it doesn't block clicks underneath.
           TODO: live-update wiring needs ChatSession#broadcast_header
-          to also broadcast this footer (currently only re-renders on
-          full page load). %>
+          to also broadcast this overlay (currently only re-renders
+          on full page load). %>
       <div class="group relative min-h-0 flex-1 bg-white border border-gray-200 rounded-lg flex flex-col overflow-hidden">
         <div id="<%= @chat_session ? "chat_session_#{@chat_session.id}_messages" : "new_chat_messages" %>"
              class="flex-1 min-h-0 overflow-y-auto p-4 space-y-4"
@@ -250,7 +259,7 @@
             </div>
           <% end %>
         </div>
-        <p class="pointer-events-none absolute bottom-0 left-0 right-0 border-t border-gray-100 bg-white/95 backdrop-blur-sm px-4 py-1.5 text-xs text-gray-500 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+        <p class="pointer-events-none absolute top-0 left-0 right-0 border-b border-gray-100 bg-white/95 backdrop-blur-sm px-4 py-1.5 text-xs text-gray-500 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
           Tokens:
           <%= input_label %>k in /
           <%= output_label %>k out · <%= number_to_currency(cost, precision: 4) %>
