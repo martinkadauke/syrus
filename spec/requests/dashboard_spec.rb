@@ -76,7 +76,7 @@ RSpec.describe "Dashboard", type: :request do
       expect(pin["data-turbo-method"]).to eq("post")
     end
 
-    it "shows pinned jobs for the current user sorted by pinned time" do
+    it "shows pinned jobs for the current user sorted by pinned time via the pinned smart folder" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       older = Factories.job(repository: repo, issue_number: 1)
       newer = Factories.job(repository: repo, issue_number: 2)
@@ -88,7 +88,9 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_pin(user: user, job: newer).update!(created_at: 1.hour.ago)
       Factories.job_pin(user: other, job: others_pin)
 
-      get root_path, params: { view: "pinned" }
+      SmartFolder.ensure_builtins!
+      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+      get root_path, params: { smart_folder_id: pinned_folder.id }
 
       document = Nokogiri::HTML(response.body)
       rows = document.css("tbody tr").map(&:text)
@@ -101,7 +103,7 @@ RSpec.describe "Dashboard", type: :request do
       expect(document.at_css("a[href='#{job_pin_path(newer)}'][aria-label='Unpin job']")["data-turbo-method"]).to eq("delete")
     end
 
-    it "keeps normal filters available in the pinned view" do
+    it "keeps normal filters available in the pinned smart folder view" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       open_job = Factories.job(repository: repo, issue_number: 1)
       closed_job = Factories.job(repository: repo, issue_number: 2)
@@ -109,12 +111,14 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_pin(user: user, job: open_job)
       Factories.job_pin(user: user, job: closed_job)
 
-      get root_path, params: { view: "pinned", state: "closed" }
+      SmartFolder.ensure_builtins!
+      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+      get root_path, params: { smart_folder_id: pinned_folder.id, state: "closed" }
 
       expect(response.body).not_to include("#1")
       expect(response.body).to include("#2")
-      expect(response.body).to include('name="view"')
-      expect(response.body).to include('value="pinned"')
+      expect(response.body).to include('name="smart_folder_id"')
+      expect(response.body).to include(%(value="#{pinned_folder.id}"))
     end
 
     it "shows up to three tag chips with overflow in job rows" do
@@ -675,13 +679,6 @@ RSpec.describe "Dashboard", type: :request do
         result = run_filter_memory_controller(search: "")
 
         expect(result["events"]).to eq([ [ "replace", "/?pr=has_pr" ] ])
-        expect(result["stored"]).to eq("pr=has_pr")
-      end
-
-      it "does not redirect away from non-filter dashboard views" do
-        result = run_filter_memory_controller(search: "?view=pinned")
-
-        expect(result["events"]).to eq([])
         expect(result["stored"]).to eq("pr=has_pr")
       end
 

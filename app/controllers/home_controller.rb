@@ -14,7 +14,6 @@ class HomeController < ApplicationController
     @tags           = Current.user.tags.ordered
     @configured_agent_providers = Current.user.configured_agent_providers
     @active_tab     = params[:tab] == "workflows" ? "workflows" : "jobs"
-    @pinned_view    = @active_tab == "jobs" && params[:view] == "pinned"
     @page           = [ params[:page].to_i, 1 ].max
     SmartFolder.ensure_builtins!
     @builtin_smart_folders = SmartFolder.builtins
@@ -25,18 +24,17 @@ class HomeController < ApplicationController
     # and runs for the per-row cost rollup.
     @jobs = Current.user.jobs.where(repository_id: active_repo_ids)
                              .includes(:repository, :runs, workflows: :steps)
-    if @pinned_view
-      @jobs = @jobs.joins(:job_pins).where(job_pins: { user_id: Current.user.id })
-    end
 
     @job_filter_params = job_filter_params
-    @job_filter = Jobs::Filter.new(@job_filter_params)
+    @job_filter = Jobs::Filter.new(@job_filter_params, user: Current.user)
     @jobs = @job_filter.apply(@jobs)
     @smart_folder_counts = smart_folder_counts(Current.user.jobs.where(repository_id: active_repo_ids))
 
     @jobs_total = @jobs.count
     @jobs = @jobs.includes(:tags)
-    @jobs = if @pinned_view
+    @jobs = if @job_filter.pinned?
+      # apply_attention(pinned) already joined job_pins; ordering by
+      # the pin's created_at puts the most recently pinned jobs first.
       @jobs.order("job_pins.created_at DESC", created_at: :desc)
     else
       @jobs.order(created_at: :desc)
@@ -137,11 +135,14 @@ class HomeController < ApplicationController
   end
 
   def job_filter_params
+    base = params.permit(:state, :repository_id, :pr, :age, :attention).to_h.compact_blank
+    base["tag_ids"] = tag_filter_ids if params[:tag_ids].present?
+
     if @active_smart_folder
-      @active_smart_folder.filter
+      # The smart folder's filter is the floor; the operator can layer
+      # additional URL filters on top (e.g. filter by state within a folder).
+      @active_smart_folder.filter.merge(base)
     else
-      base = params.permit(:state, :repository_id, :pr, :age, :attention).to_h
-      base["tag_ids"] = tag_filter_ids if params[:tag_ids].present?
       base
     end
   end

@@ -1,5 +1,6 @@
 class SmartFolder < ApplicationRecord
   BUILTIN_DEFINITIONS = [
+    { key: "pinned", name: "Pinned", filter: { "attention" => "pinned" } },
     { key: "inbox", name: "Inbox", filter: { "attention" => "inbox" } },
     { key: "just_failed", name: "Just failed", filter: { "attention" => "just_failed" } },
     { key: "in_review", name: "In review", filter: { "attention" => "in_review" } },

@@ -34,9 +34,7 @@
   <div class="border-b border-gray-200">
     <nav class="-mb-px flex gap-6">
       <%= link_to "Jobs", root_path,
-            class: "pb-3 text-sm font-medium border-b-2 #{@active_tab == 'jobs' && !@pinned_view ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}" %>
-      <%= link_to "Pinned", root_path(view: "pinned"),
-            class: "pb-3 text-sm font-medium border-b-2 #{@pinned_view ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}" %>
+            class: "pb-3 text-sm font-medium border-b-2 #{@active_tab == 'jobs' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}" %>
       <%= link_to "Workflows", root_path(tab: "workflows"),
             class: "pb-3 text-sm font-medium border-b-2 #{@active_tab == 'workflows' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}" %>
     </nav>
@@ -84,7 +82,7 @@
         <%= form_with url: root_path, method: :get,
               data: { controller: "auto-submit filter-memory" },
               class: "flex flex-wrap items-center gap-3" do |f| %>
-          <%= f.hidden_field :view, value: "pinned" if @pinned_view %>
+          <%= f.hidden_field :smart_folder_id, value: @active_smart_folder.id if @active_smart_folder %>
           <% select_classes = "text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" %>
 
           <%= f.select :state,
@@ -118,7 +116,8 @@
                 class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
           <% if @job_filter.active? %>
-            <%= link_to "Clear", (@pinned_view ? root_path(view: "pinned") : root_path), class: "text-sm text-gray-500 hover:text-gray-700 underline",
+            <%= link_to "Clear", (@active_smart_folder ? root_path(smart_folder_id: @active_smart_folder.id) : root_path),
+                  class: "text-sm text-gray-500 hover:text-gray-700 underline",
                   data: { action: "click->filter-memory#clear" } %>
           <% end %>
         <% end %>
@@ -306,8 +305,6 @@
       <div class="bg-white border border-gray-200 rounded-lg p-6 text-sm text-gray-600">
         <% if @job_filter.active? %>
           No jobs match the current filters.
-        <% elsif @pinned_view %>
-          No pinned jobs yet.
         <% else %>
           No jobs yet. Add a repository, enable polling, label an issue
           <code class="bg-gray-100 px-1 rounded">syrus</code>, and one will show up here.

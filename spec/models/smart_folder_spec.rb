@@ -2,9 +2,10 @@ require "rails_helper"
 
 RSpec.describe SmartFolder do
   it "creates the built-in folders as system-owned rows" do
-    expect { described_class.ensure_builtins! }.to change(described_class, :count).by(6)
+    expect { described_class.ensure_builtins! }.to change(described_class, :count).by(7)
 
     expect(described_class.builtins.pluck(:name)).to eq([
+      "Pinned",
       "Inbox",
       "Just failed",
       "In review",

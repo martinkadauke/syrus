@@ -1308,18 +1308,22 @@ RSpec.describe "Jobs", type: :request do
       before { sign_in_as(user) }
 
       it "pins and unpins one of the current user's jobs" do
+        SmartFolder.ensure_builtins!
+        pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+        pinned_url = root_url(smart_folder_id: pinned_folder.id)
+
         expect {
-          post job_pin_path(job), headers: { "HTTP_REFERER" => root_url(view: "pinned") }
+          post job_pin_path(job), headers: { "HTTP_REFERER" => pinned_url }
         }.to change { user.job_pins.where(job: job).count }.by(1)
 
-        expect(response).to redirect_to(root_url(view: "pinned"))
+        expect(response).to redirect_to(pinned_url)
         expect(flash[:notice]).to eq("Job pinned.")
 
         expect {
-          delete job_pin_path(job), headers: { "HTTP_REFERER" => root_url(view: "pinned") }
+          delete job_pin_path(job), headers: { "HTTP_REFERER" => pinned_url }
         }.to change { user.job_pins.where(job: job).count }.by(-1)
 
-        expect(response).to redirect_to(root_url(view: "pinned"))
+        expect(response).to redirect_to(pinned_url)
         expect(flash[:notice]).to eq("Job unpinned.")
       end
 

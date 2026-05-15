@@ -2,9 +2,13 @@ module Jobs
   class Filter
     PARAM_KEYS = %w[ state repository_id pr age attention tag_ids ].freeze
 
-    attr_reader :params
+    attr_reader :params, :user
 
-    def initialize(params)
+    # `user:` is required for any filter that needs operator context —
+    # currently the `pinned` attention filter, which joins job_pins
+    # for the requesting user. Callers that don't pass a user can
+    # still use the user-agnostic filters (state, repo, etc.).
+    def initialize(params, user: nil)
       sliced = params.to_h.slice(*PARAM_KEYS)
       # tag_ids is multi-valued; preserve it as an array of strings and
       # drop empty entries so callers can pass raw form values.
@@ -13,6 +17,11 @@ module Jobs
         sliced["tag_ids"] = ids.presence
       end
       @params = sliced.compact_blank
+      @user = user
+    end
+
+    def pinned?
+      params["attention"] == "pinned"
     end
 
     def apply(relation)
@@ -75,6 +84,10 @@ module Jobs
 
     def apply_attention(relation)
       case params["attention"]
+      when "pinned"
+        return relation unless user
+
+        relation.joins(:job_pins).where(job_pins: { user_id: user.id })
       when "inbox"
         relation.where(id: awaiting_operator_job_ids)
                 .or(relation.where(id: unread_feedback_job_ids))
