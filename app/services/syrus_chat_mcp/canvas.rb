@@ -30,13 +30,13 @@ module SyrusChatMcp
         whiteboard.version += 1
         whiteboard.last_edited_at = Time.current
         whiteboard.save!
-
-        chat_session.messages.create!(
-          role: "tool_use",
-          tool_name: tool_name,
-          content: args
-        )
       end
+
+      # We deliberately do NOT persist a parallel structured tool_use
+      # row here. The agent's stream-json log_sink already creates an
+      # abbreviated tool_use ("● draw_shape(rectangle)") for every MCP
+      # invocation. Persisting a second row was duplicate bookkeeping
+      # that produced two entries per draw_shape in the chat UI.
 
       whiteboard.broadcast_scene
       result.merge(version: whiteboard.version)

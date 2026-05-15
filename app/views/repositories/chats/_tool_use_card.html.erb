@@ -6,7 +6,7 @@
     compact line (matching the abbreviated-tool style); the amber
     treatment only appears once expanded, so the chat surface stays
     quiet by default. %>
-<details <%= "open" if message.tool_use_default_open? %> class="chat-message group/tool text-xs open:rounded-md open:border open:border-amber-200 open:bg-amber-50">
+<details <%= "open" if message.proposal_tool_use? %> class="chat-message group/tool text-xs open:rounded-md open:border open:border-amber-200 open:bg-amber-50">
   <summary class="flex cursor-pointer items-baseline gap-2 py-0.5 select-none text-sm text-gray-700 hover:text-gray-900 group-open/tool:px-3 group-open/tool:py-2">
     <span class="text-gray-400 group-open/tool:rotate-90 transition-transform">▸</span>
     <span class="font-mono font-medium text-gray-900"><%= tool_name %></span>

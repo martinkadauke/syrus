@@ -17,7 +17,10 @@ export default class extends Controller {
     // settled before we anchor to the bottom. Fall back to a sync
     // call in the JS unit test env where rAF is undefined.
     if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => this.scrollToBottom())
+      requestAnimationFrame(() => {
+        this.scrollToBottom()
+        this.fillViewportWithHistory()
+      })
     } else {
       this.scrollToBottom()
     }
@@ -27,6 +30,30 @@ export default class extends Controller {
       this.observer = new MutationObserver(() => this.messagesChanged())
       this.observer.observe(this.streamTarget, { childList: true })
     }
+  }
+
+  // Compact grouped messages can render so densely that the latest
+  // page doesn't fill the chat pane — leaving nothing to scroll
+  // *up* into, which means infinite-scroll-up never triggers. Pull
+  // older pages on first paint until the stream is scrollable (or
+  // there are no more older messages). Capped to a few iterations
+  // to keep an empty-result loop from running away.
+  async fillViewportWithHistory() {
+    if (!this.hasStreamTarget) return
+    if (typeof fetch !== "function") return
+
+    const MAX_FILLS = 10
+    for (let i = 0; i < MAX_FILLS; i++) {
+      if (!this.hasMoreOlderValue) break
+      if (this.streamTarget.scrollHeight > this.streamTarget.clientHeight + 50) break
+
+      const before = this.streamTarget.scrollHeight
+      await this.loadOlderMessages()
+      // If the call was a no-op (no messages found, fetch failed,
+      // etc.) stop — otherwise we'd burn the cap on identical noops.
+      if (this.streamTarget.scrollHeight === before) break
+    }
+    this.scrollToBottom()
   }
 
   disconnect() {

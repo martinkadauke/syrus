@@ -36,10 +36,12 @@ module AgentEventAbbreviator
     return name.to_s.split("__", 3).last if name.to_s.start_with?("mcp__")
     name.to_s
   end
-  private_class_method :tool_label
 
   # Per-tool one-line summary of the input. Picks the field that
-  # the human reading the transcript actually wants to see.
+  # the human reading the transcript actually wants to see. Used
+  # both by tool_use (to format the abbreviated string for JobLog)
+  # and by the chat presentation layer (to derive the summary
+  # detail off a structured ChatMessage at render time).
   def tool_detail(name, input)
     case name.to_s
     when "Bash"           then first_line(input["command"].to_s)
@@ -64,7 +66,6 @@ module AgentEventAbbreviator
       first_line(input.to_json)
     end
   end
-  private_class_method :tool_detail
 
   def result_body(content)
     case content
@@ -87,7 +88,28 @@ module AgentEventAbbreviator
       first_line(content.to_s)
     end
   end
-  private_class_method :result_body
+
+  # Same as result_body but preserves newlines — chat presentation
+  # wants the multi-line content rendered inside the expand body,
+  # whereas JobLog wants the first line for its one-line audit row.
+  def full_result_body(content)
+    case content
+    when String
+      content
+    when Array
+      content.filter_map do |c|
+        next unless c.is_a?(Hash)
+        case c["type"]
+        when "text"           then c["text"]
+        when "tool_reference" then "→ #{c['tool_name']}"
+        end
+      end.join("\n")
+    when nil
+      "(empty)"
+    else
+      content.to_s
+    end
+  end
 
   def first_line(s)
     s.to_s.lines.first.to_s.strip

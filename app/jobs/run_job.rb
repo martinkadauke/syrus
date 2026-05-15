@@ -306,7 +306,7 @@ class RunJob < ApplicationJob
   # mid-stream. Empty chunks still bump the heartbeat (upstream is
   # producing output → sign of life), they just don't get persisted
   # as a row. Same contract as Steps::Base#log.
-  def log(chunk, kind: nil)
+  def log(chunk, kind: nil, **)
     text = chunk.to_s
     if text.strip.empty?
       @run.update_column(:last_heartbeat_at, Time.current) if @run.running?

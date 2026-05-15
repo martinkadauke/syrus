@@ -93,15 +93,35 @@ class ChatTurnJob < ApplicationJob
     ENV.slice(*SIDECAR_ENV_FORWARD).compact.merge("SYRUS_CHAT_SESSION_ID" => @chat.id.to_s)
   end
 
-  def record_agent_event(chunk, kind: nil)
-    role = case kind.to_s
-    when "assistant_text" then "assistant"
-    when "tool_call" then "tool_use"
-    when "tool_result" then "tool_result"
-    else "system"
+  def record_agent_event(chunk, kind: nil, tool_name: nil, tool_input: nil,
+                         tool_result_content: nil, tool_result_error: nil,
+                         tool_use_id: nil, **)
+    case kind.to_s
+    when "tool_call"
+      # Persist the structured tool invocation. Abbreviation is the
+      # presentation layer's job (see ChatMessageGrouper + the chat
+      # view); storing the raw input keeps the data tier honest and
+      # lets the view evolve without DB churn.
+      @chat.messages.create!(
+        role: "tool_use",
+        tool_name: tool_name,
+        content: { "input" => tool_input || {} }
+      )
+    when "tool_result"
+      @chat.messages.create!(
+        role: "tool_result",
+        tool_name: tool_name,
+        content: {
+          "result" => tool_result_content,
+          "is_error" => tool_result_error,
+          "tool_use_id" => tool_use_id
+        }.compact
+      )
+    when "assistant_text"
+      create_message!("assistant", text: chunk.to_s)
+    else
+      create_message!("system", text: chunk.to_s)
     end
-
-    create_message!(role, text: chunk.to_s)
   end
 
   def stop_requested?

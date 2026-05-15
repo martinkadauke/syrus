@@ -4,11 +4,11 @@
     moves its inner result body into the preceding tool_call group's
     expand area. Visible only as the content of the previous tool
     call's expanded body. %>
-<% text = message.content.is_a?(Hash) ? message.content["text"].to_s : message.content.to_s %>
-<% body = text.sub(/\A\s*⎿\s*/, "") %>
+<% rc = message.content %>
+<% body = rc.is_a?(Hash) ? AgentEventAbbreviator.full_result_body(rc["result"]) : rc.to_s %>
 <div class="hidden chat-message"
      data-chat-target="message"
      data-tool-call-result="true"
      data-message-id="<%= message.id %>">
-  <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-gray-600"><%= body %></pre>
+  <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-xs text-gray-600 <%= 'text-red-600' if rc.is_a?(Hash) && rc['is_error'] %>"><%= body %></pre>
 </div>

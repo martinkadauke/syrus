@@ -1,37 +1,31 @@
 module ChatMessageGrouper
-  ABBREV_USE_PREFIX = "● ".freeze
-  ABBREV_RESULT_PREFIX = "  ⎿ ".freeze
-  ABBREV_USE_PATTERN = /\A●\s+(\S+?)(?:\((.*)\))?\s*\z/m.freeze
-
   module_function
 
-  # Wrap a single abbreviated tool_use message in the same shape the
-  # initial-render grouper produces, so a Turbo Stream append of one
-  # message can reuse the tool_call_group partial.
+  # Wrap a single tool_use message in the same shape the initial-render
+  # grouper produces, so a Turbo Stream append of one message can
+  # reuse the tool_call_group partial.
   def single_call_group(message)
-    tool, detail = parse_tool_signature(message)
+    tool, detail = tool_signature(message)
     { type: :tool_group, tool: tool, calls: [ { message: message, detail: detail } ] }
   end
 
   # Walks a chronological array of ChatMessage records and returns a
   # flat list of "items" for the chat view. Most messages pass through
   # as `{ type: :message, message: <ChatMessage> }`; consecutive
-  # abbreviated tool_use messages of the same tool name collapse into
-  # `{ type: :tool_group, tool: "Read", calls: [...] }` where each
-  # call carries its own use message and (optionally) the result that
-  # immediately followed it. Abbreviated tool_result messages don't
-  # appear as standalone items — they're attached to the preceding
-  # tool_use call's `:result`. Structured/canvas tool_use messages
-  # (those without the "● <Tool>(…)" abbreviation marker) still pass
-  # through individually so their proposal/whiteboard cards keep
-  # working.
+  # tool_use messages of the same tool_name collapse into a single
+  # `{ type: :tool_group, tool: "Read", calls: [...] }`. Each call
+  # carries its own use message and (optionally) the result that
+  # immediately followed it. tool_result messages don't appear as
+  # standalone items — they're attached to the preceding tool_use
+  # call's `:result`. tool_use messages that carry a proposal stay
+  # as passthroughs so the proposal card keeps its dedicated layout.
   def group(messages)
     items = []
     current_group = nil
 
     messages.each do |message|
-      if abbreviated_tool_use?(message)
-        tool, detail = parse_tool_signature(message)
+      if groupable_tool_use?(message)
+        tool, detail = tool_signature(message)
         call = { message: message, detail: detail }
 
         if current_group && current_group[:tool] == tool
@@ -40,7 +34,7 @@ module ChatMessageGrouper
           current_group = { type: :tool_group, tool: tool, calls: [ call ] }
           items << current_group
         end
-      elsif abbreviated_tool_result?(message)
+      elsif groupable_tool_result?(message)
         if current_group && current_group[:calls].any? && current_group[:calls].last[:result].nil?
           current_group[:calls].last[:result] = message
         else
@@ -56,27 +50,25 @@ module ChatMessageGrouper
     items
   end
 
-  def abbreviated_tool_use?(message)
-    message.role == "tool_use" && abbreviated_text(message)&.start_with?(ABBREV_USE_PREFIX)
+  def groupable_tool_use?(message)
+    message.role == "tool_use" && message.tool_name.present? && message.proposal_id.blank?
   end
 
-  def abbreviated_tool_result?(message)
-    message.role == "tool_result" && abbreviated_text(message)&.start_with?(ABBREV_RESULT_PREFIX)
+  def groupable_tool_result?(message)
+    message.role == "tool_result" && message.proposal_id.blank?
   end
 
-  def parse_tool_signature(message)
-    text = abbreviated_text(message).to_s
-    if (match = text.match(ABBREV_USE_PATTERN))
-      [ match[1], match[2].to_s ]
-    else
-      [ message.tool_name.presence || "tool", text.sub(ABBREV_USE_PREFIX, "") ]
-    end
-  end
-
-  def abbreviated_text(message)
-    return nil unless message.content.is_a?(Hash)
-
-    text = message.content["text"]
-    text if text.is_a?(String)
+  # Returns [display_tool_name, primary_detail] for a tool_use
+  # message. The detail is computed by AgentEventAbbreviator at
+  # render time off the raw tool name and content["input"], and the
+  # display name is the abbreviator's human-readable label (which
+  # strips the "mcp__<server>__" prefix MCP tools come over as).
+  def tool_signature(message)
+    raw_name = message.tool_name.to_s
+    input = message.content.is_a?(Hash) ? message.content["input"] : nil
+    [
+      AgentEventAbbreviator.tool_label(raw_name),
+      AgentEventAbbreviator.tool_detail(raw_name, input || {}).to_s
+    ]
   end
 end

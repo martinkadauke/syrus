@@ -57,7 +57,7 @@ module Steps
     # Resilient to blank input — see RunJob#log for the same
     # contract; RecordInvalid on empty chunks would crash a step
     # mid-stream.
-    def log(chunk, kind: nil)
+    def log(chunk, kind: nil, **)
       text = chunk.to_s
       if text.strip.empty?
         run.update_column(:last_heartbeat_at, Time.current) if run.running?

@@ -230,7 +230,9 @@ class AgentInvocation
         when "tool_use"
           log_sink.call(
             AgentEventAbbreviator.tool_use(block["name"], block["input"]),
-            kind: "tool_call"
+            kind: "tool_call",
+            tool_name: block["name"],
+            tool_input: block["input"]
           )
         end
       end
@@ -246,7 +248,10 @@ class AgentInvocation
           next unless block["type"] == "tool_result"
           log_sink.call(
             AgentEventAbbreviator.tool_result(block["content"], error: block["is_error"] == true),
-            kind: "tool_result"
+            kind: "tool_result",
+            tool_result_content: block["content"],
+            tool_result_error: block["is_error"] == true,
+            tool_use_id: block["tool_use_id"]
           )
         end
       end

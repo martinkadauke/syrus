@@ -64,7 +64,7 @@ RSpec.describe "SyrusChatMcp canvas tools" do
     expect(chat_session.messages).to be_empty
   end
 
-  it "draw_shape appends a server-id shape, increments the version, broadcasts, and logs tool use" do
+  it "draw_shape appends a server-id shape, increments the version, and broadcasts" do
     expect_canvas_broadcast
 
     response = draw_shape(type: "sticky", label: "Plan", color: "#fef08a")
@@ -89,10 +89,9 @@ RSpec.describe "SyrusChatMcp canvas tools" do
       "textAlign" => "center",
       "verticalAlign" => "middle"
     )
-    expect(chat_session.messages.last).to have_attributes(role: "tool_use", tool_name: "draw_shape")
   end
 
-  it "draw_text appends a text element and logs the structured args" do
+  it "draw_text appends a text element" do
     expect_canvas_broadcast
 
     response = call_tool("draw_text", content: "Hello", x: 3, y: 4, font_size: 24)
@@ -100,7 +99,6 @@ RSpec.describe "SyrusChatMcp canvas tools" do
     element = chat_session.reload.whiteboard.elements.first
     expect(response[:result][:isError]).to be_falsey
     expect(element).to include("type" => "text", "text" => "Hello", "fontSize" => 24)
-    expect(chat_session.messages.last.content).to include("content" => "Hello", "font_size" => 24)
   end
 
   it "draw_arrow binds both arrow endpoints and both endpoint shapes" do
@@ -144,7 +142,7 @@ RSpec.describe "SyrusChatMcp canvas tools" do
     expect(arrow["points"].last).to eq([ 250.0, 40.0 ])
   end
 
-  it "delete_element removes the element and logs the mutation" do
+  it "delete_element removes the element" do
     id = payload(draw_shape).fetch(:id)
     expect_canvas_broadcast
 
@@ -152,7 +150,6 @@ RSpec.describe "SyrusChatMcp canvas tools" do
 
     expect(response[:result][:isError]).to be_falsey
     expect(chat_session.reload.whiteboard.elements).to be_empty
-    expect(chat_session.messages.last).to have_attributes(role: "tool_use", tool_name: "delete_element")
   end
 
   it "clear_canvas empties the scene" do
@@ -176,7 +173,6 @@ RSpec.describe "SyrusChatMcp canvas tools" do
 
     expect(response[:result][:isError]).to be_falsey
     expect(chat_session.reload.whiteboard.elements).to eq(replacement)
-    expect(chat_session.messages.last).to have_attributes(role: "tool_use", tool_name: "update_scene")
   end
 
   it "rejects append tools when the whiteboard is at the element limit" do

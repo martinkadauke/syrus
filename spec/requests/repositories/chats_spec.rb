@@ -121,12 +121,12 @@ RSpec.describe "Repository chats", type: :request do
     end
 
     describe "tool-call grouping on initial render" do
-      it "collapses consecutive same-name abbreviated tool_use messages into one row with the details joined" do
+      it "collapses consecutive same-name tool_use messages into one row with the details joined" do
         chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
-        chat.messages.create!(role: "tool_use",    content: { "text" => "● Read(a.py)" })
-        chat.messages.create!(role: "tool_result", content: { "text" => "  ⎿ first" })
-        chat.messages.create!(role: "tool_use",    content: { "text" => "● Read(b.py)" })
-        chat.messages.create!(role: "tool_result", content: { "text" => "  ⎿ second" })
+        chat.messages.create!(role: "tool_use", tool_name: "Read", content: { "input" => { "file_path" => "a.py" } })
+        chat.messages.create!(role: "tool_result", tool_name: "Read", content: { "result" => [ { "type" => "text", "text" => "first" } ] })
+        chat.messages.create!(role: "tool_use", tool_name: "Read", content: { "input" => { "file_path" => "b.py" } })
+        chat.messages.create!(role: "tool_result", tool_name: "Read", content: { "result" => [ { "type" => "text", "text" => "second" } ] })
 
         get repository_chats_path(repo)
 
@@ -138,10 +138,10 @@ RSpec.describe "Repository chats", type: :request do
         expect(summary).to include("a.py, b.py")
       end
 
-      it "hides standalone abbreviated tool_result rows in the default view" do
+      it "hides standalone tool_result rows in the default view" do
         chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
-        chat.messages.create!(role: "tool_use",    content: { "text" => "● Read(a.py)" })
-        chat.messages.create!(role: "tool_result", content: { "text" => "  ⎿ contents" })
+        chat.messages.create!(role: "tool_use", tool_name: "Read", content: { "input" => { "file_path" => "a.py" } })
+        chat.messages.create!(role: "tool_result", tool_name: "Read", content: { "result" => [ { "type" => "text", "text" => "contents" } ] })
 
         get repository_chats_path(repo)
 
@@ -150,7 +150,7 @@ RSpec.describe "Repository chats", type: :request do
         expect(document.css('[data-tool-call-result]').size).to eq(0)
         # No standalone tool_result_card box either.
         expect(response.body).not_to include('bg-emerald-50')
-        # Result text is still in the DOM, but inside the expand body.
+        # Result text is still in the DOM, inside the expand body.
         body = document.at_css('details[data-tool-call="true"] [data-tool-call-body]')
         expect(body.text).to include("contents")
       end
@@ -235,52 +235,6 @@ RSpec.describe "Repository chats", type: :request do
       expect(response.body).to include("propose_issue")
       expect(response.body).to include("Proposal ##{proposal.id} created (pending)")
       expect(response.body).to include(repository_proposals_path(repo))
-    end
-
-    it "expands only the first repeated draw tool card in an agent turn" do
-      chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
-      chat.messages.create!(role: "user", content: { "text" => "Sketch the shape of this thing." })
-      5.times do |i|
-        chat.messages.create!(
-          role: "tool_use",
-          tool_name: "draw_shape",
-          content: { "type" => "rectangle", "x" => i * 20, "y" => 10, "width" => 80, "height" => 40 }
-        )
-      end
-
-      get repository_chats_path(repo)
-
-      cards = Nokogiri::HTML(response.body).css("details").select { |node| node.text.include?("draw_shape") }
-      expect(cards.size).to eq(5)
-      expect(cards.count { |node| node.attribute("open").present? }).to eq(1)
-      expect(cards.first.attribute("open")).to be_present
-    end
-
-    it "always expands clear_canvas tool cards" do
-      chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
-      chat.messages.create!(role: "user", content: { "text" => "Start over." })
-      chat.messages.create!(role: "tool_use", tool_name: "draw_shape", content: { "type" => "rectangle" })
-      chat.messages.create!(role: "tool_use", tool_name: "clear_canvas", content: { "reason" => "reset" })
-
-      get repository_chats_path(repo)
-
-      clear_card = Nokogiri::HTML(response.body).css("details").find { |node| node.text.include?("clear_canvas") }
-      expect(clear_card.attribute("open")).to be_present
-    end
-
-    it "keeps read_scene and update_scene tool cards collapsed" do
-      chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
-      chat.messages.create!(role: "user", content: { "text" => "Inspect and sync the scene." })
-      chat.messages.create!(role: "tool_use", tool_name: "read_scene", content: {})
-      chat.messages.create!(role: "tool_use", tool_name: "update_scene", content: { "elements" => [] })
-
-      get repository_chats_path(repo)
-
-      cards = Nokogiri::HTML(response.body).css("details").select do |node|
-        node.text.include?("read_scene") || node.text.include?("update_scene")
-      end
-      expect(cards.size).to eq(2)
-      expect(cards).to all(satisfy { |node| node.attribute("open").blank? })
     end
 
     it "renders pending confirmation cards" do

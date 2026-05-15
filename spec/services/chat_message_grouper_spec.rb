@@ -5,14 +5,26 @@ RSpec.describe ChatMessageGrouper do
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
   let(:chat) { ChatSession.create!(repository: repo, user: user, last_message_at: Time.current) }
 
-  def msg(role, text, tool_name: nil)
-    chat.messages.create!(role: role, tool_name: tool_name, content: { "text" => text })
+  def msg_text(role, text)
+    chat.messages.create!(role: role, content: { "text" => text })
+  end
+
+  def tool_use(tool_name, input)
+    chat.messages.create!(role: "tool_use", tool_name: tool_name, content: { "input" => input })
+  end
+
+  def tool_result(tool_name, result, is_error: false)
+    chat.messages.create!(
+      role: "tool_result",
+      tool_name: tool_name,
+      content: { "result" => result, "is_error" => is_error }
+    )
   end
 
   it "passes through plain user/assistant/system messages" do
-    u = msg("user", "hi")
-    a = msg("assistant", "hello")
-    s = msg("system", "ok")
+    u = msg_text("user", "hi")
+    a = msg_text("assistant", "hello")
+    s = msg_text("system", "ok")
 
     items = described_class.group([ u, a, s ])
 
@@ -23,10 +35,10 @@ RSpec.describe ChatMessageGrouper do
     ])
   end
 
-  it "groups consecutive abbreviated tool_use messages of the same tool name" do
-    a = msg("tool_use", "● Read(a.py)")
-    b = msg("tool_use", "● Read(b.py)")
-    c = msg("tool_use", "● Read(c.py)")
+  it "groups consecutive tool_use messages of the same tool_name" do
+    a = tool_use("Read", { "file_path" => "a.py" })
+    b = tool_use("Read", { "file_path" => "b.py" })
+    c = tool_use("Read", { "file_path" => "c.py" })
 
     items = described_class.group([ a, b, c ])
 
@@ -38,40 +50,49 @@ RSpec.describe ChatMessageGrouper do
   end
 
   it "starts a new group when the tool name changes" do
-    r = msg("tool_use", "● Read(a.py)")
-    b = msg("tool_use", "● Bash(ls)")
-
-    items = described_class.group([ r, b ])
+    items = described_class.group([
+      tool_use("Read", { "file_path" => "a.py" }),
+      tool_use("Bash", { "command" => "ls" })
+    ])
 
     expect(items.map { |i| i[:tool] }).to eq([ "Read", "Bash" ])
   end
 
-  it "attaches an abbreviated tool_result to the last tool_use in the current group" do
-    a = msg("tool_use", "● Read(a.py)")
-    r = msg("tool_result", "  ⎿ file contents...")
+  it "attaches a tool_result to the last tool_use in the current group" do
+    a = tool_use("Read", { "file_path" => "a.py" })
+    r = tool_result("Read", [ { "type" => "text", "text" => "file contents..." } ])
 
     items = described_class.group([ a, r ])
 
-    group = items.first
-    expect(group[:calls].first[:result]).to eq(r)
-  end
-
-  it "leaves structured (canvas) tool_use messages as standalone passthroughs" do
-    chat.messages.create!(role: "tool_use", tool_name: "draw_box", content: { "x" => 10, "y" => 20 })
-    structured = chat.messages.last
-
-    items = described_class.group([ structured ])
-
-    expect(items).to eq([ { type: :message, message: structured } ])
+    expect(items.first[:calls].first[:result]).to eq(r)
   end
 
   it "breaks the current group when a non-tool message arrives between calls" do
-    a = msg("tool_use", "● Read(a.py)")
-    u = msg("assistant", "Done.")
-    b = msg("tool_use", "● Read(b.py)")
-
-    items = described_class.group([ a, u, b ])
+    items = described_class.group([
+      tool_use("Read", { "file_path" => "a.py" }),
+      msg_text("assistant", "Done."),
+      tool_use("Read", { "file_path" => "b.py" })
+    ])
 
     expect(items.map { |i| i[:type] }).to eq([ :tool_group, :message, :tool_group ])
+  end
+
+  it "uses the abbreviator's per-tool resolver to derive the detail" do
+    items = described_class.group([
+      tool_use("Bash", { "command" => "git status" }),
+      tool_use("Grep", { "pattern" => "TODO", "path" => "app" })
+    ])
+
+    details = items.map { |i| i[:calls].first[:detail] }
+    expect(details).to eq([ "git status", "TODO in app" ])
+  end
+
+  it "leaves tool_use messages with a proposal as standalone passthroughs" do
+    proposal = ChatProposal.create!(chat_session: chat, slug: "x", title: "X", body: "x.")
+    m = chat.messages.create!(role: "tool_use", tool_name: "propose_issue", proposal: proposal, content: { "input" => { "slug" => "x" } })
+
+    items = described_class.group([ m ])
+
+    expect(items).to eq([ { type: :message, message: m } ])
   end
 end

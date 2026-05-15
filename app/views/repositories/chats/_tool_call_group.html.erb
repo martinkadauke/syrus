@@ -33,9 +33,9 @@
           <%= tool %><% if call[:detail].present? %>(<%= call[:detail] %>)<% end %>
         </div>
         <% if call[:result] %>
-          <% result_text = call[:result].content.is_a?(Hash) ? call[:result].content["text"].to_s : call[:result].content.to_s %>
-          <% result_body = result_text.sub(/\A\s*⎿\s*/, "") %>
-          <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-gray-600"><%= result_body %></pre>
+          <% rc = call[:result].content %>
+          <% result_body = rc.is_a?(Hash) ? AgentEventAbbreviator.full_result_body(rc["result"]) : rc.to_s %>
+          <pre class="mt-1 whitespace-pre-wrap break-words font-mono text-gray-600 <%= 'text-red-600' if rc.is_a?(Hash) && rc['is_error'] %>"><%= result_body %></pre>
         <% end %>
       </div>
     <% end %>

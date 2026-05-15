@@ -31,8 +31,19 @@ RSpec.describe ChatTurnJob do
       expect(config.dig("mcpServers", "syrus-chat-sidecar", "alwaysLoad")).to eq(true)
 
       kwargs[:log_sink].call("Here is the shape of it.", kind: "assistant_text")
-      kwargs[:log_sink].call("● propose_issue(...)", kind: "tool_call")
-      kwargs[:log_sink].call("  Issue drafted", kind: "tool_result")
+      kwargs[:log_sink].call(
+        "● propose_issue(...)",
+        kind: "tool_call",
+        tool_name: "propose_issue",
+        tool_input: { "slug" => "x", "title" => "T", "body" => "b" }
+      )
+      kwargs[:log_sink].call(
+        "  Issue drafted",
+        kind: "tool_result",
+        tool_name: "propose_issue",
+        tool_result_content: [ { "type" => "text", "text" => "Issue drafted" } ],
+        tool_result_error: false
+      )
       result_fixture(
         session_id: "chat-session-1",
         transcript_jsonl: "{\"type\":\"system\"}\n",
