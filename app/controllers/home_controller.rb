@@ -20,6 +20,14 @@ class HomeController < ApplicationController
     @user_smart_folders = SmartFolder.for_user(Current.user)
     @active_smart_folder = smart_folder_from_params
 
+    # Hide "Pinned" from the sidebar when the user hasn't pinned anything
+    # yet — keeps the nav from advertising an empty feature. Stay visible
+    # if it's currently the active folder so the operator's not stranded
+    # without a way to navigate away.
+    unless Current.user.job_pins.exists? || @active_smart_folder&.filter&.dig("attention") == "pinned"
+      @builtin_smart_folders = @builtin_smart_folders.reject { |f| f.filter["attention"] == "pinned" }
+    end
+
     # Eager-load workflows + their steps for current_step_caption(job),
     # and runs for the per-row cost rollup.
     @jobs = Current.user.jobs.where(repository_id: active_repo_ids)
@@ -149,7 +157,7 @@ class HomeController < ApplicationController
 
   def smart_folder_counts(base_scope)
     (@builtin_smart_folders + @user_smart_folders).to_h do |folder|
-      [ folder.id, Jobs::Filter.new(folder.filter).apply(base_scope).count ]
+      [ folder.id, Jobs::Filter.new(folder.filter, user: Current.user).apply(base_scope).count ]
     end
   end
 

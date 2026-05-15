@@ -103,6 +103,42 @@ RSpec.describe "Dashboard", type: :request do
       expect(document.at_css("a[href='#{job_pin_path(newer)}'][aria-label='Unpin job']")["data-turbo-method"]).to eq("delete")
     end
 
+    it "shows the pinned folder's count scoped to the user's pins, not all jobs" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      pinned = Factories.job(repository: repo, issue_number: 1)
+      4.times { |i| Factories.job(repository: repo, issue_number: 100 + i) }
+      Factories.job_pin(user: user, job: pinned)
+
+      SmartFolder.ensure_builtins!
+      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+      get root_path
+
+      sidebar = Nokogiri::HTML(response.body).at_css("aside")
+      pinned_row = sidebar.css("a").find { |a| a["href"] == root_path(smart_folder_id: pinned_folder.id) }
+      expect(pinned_row).to be_present
+      expect(pinned_row.text).to match(/Pinned\s+1\b/)
+    end
+
+    it "hides the Pinned sidebar entry when the user has nothing pinned" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      get root_path
+
+      sidebar = Nokogiri::HTML(response.body).at_css("aside")
+      expect(sidebar.text).not_to include("Pinned")
+    end
+
+    it "keeps the Pinned sidebar entry visible when it is the active folder, even if empty" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+      SmartFolder.ensure_builtins!
+      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+
+      get root_path, params: { smart_folder_id: pinned_folder.id }
+
+      sidebar = Nokogiri::HTML(response.body).at_css("aside")
+      expect(sidebar.text).to include("Pinned")
+    end
+
     it "keeps normal filters available in the pinned smart folder view" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       open_job = Factories.job(repository: repo, issue_number: 1)
