@@ -218,8 +218,34 @@ RSpec.describe "Dashboard", type: :request do
 
       expect(response.body).not_to include("#1")
       expect(response.body).to include("#2")
-      expect(response.body).to include('name="smart_folder_id"')
-      expect(response.body).to include(%(value="#{pinned_folder.id}"))
+    end
+
+    it "does not carry smart_folder_id through the filter form so manual changes break out of the folder" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+      SmartFolder.ensure_builtins!
+      inbox = SmartFolder.builtins.find { |f| f.filter["attention"] == "inbox" }
+
+      get root_path, params: { smart_folder_id: inbox.id }
+
+      document = Nokogiri::HTML(response.body)
+      filter_form = document.css("form[action='#{root_path}']").find { |f| f["method"] == "get" }
+      expect(filter_form).to be_present
+      expect(filter_form.at_css("input[name='smart_folder_id']")).to be_nil
+      # The smart folder's filters are pre-populated in the form inputs
+      # so submitting the form preserves them as plain URL params.
+      expect(filter_form.at_css("select[name='attention'] option[selected]")["value"]).to eq("inbox")
+    end
+
+    it "points the Clear link at root_path so it drops both filters and any active smart folder" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+      SmartFolder.ensure_builtins!
+      inbox = SmartFolder.builtins.find { |f| f.filter["attention"] == "inbox" }
+
+      get root_path, params: { smart_folder_id: inbox.id, state: "open" }
+
+      clear_link = Nokogiri::HTML(response.body).css("a").find { |a| a.text.strip == "Clear" }
+      expect(clear_link).to be_present
+      expect(clear_link["href"]).to eq(root_path)
     end
 
     it "shows up to three tag chips with overflow in job rows" do

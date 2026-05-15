@@ -79,10 +79,15 @@
       </aside>
 
       <div class="space-y-4">
+        <%# Note: we deliberately do NOT carry smart_folder_id through this
+            form. Any manual filter change inflates the smart folder's
+            filter set onto plain URL params (each input is already
+            pre-populated with the folder's values) and drops the
+            smart_folder_id, letting the operator refine and save the
+            result as a new smart folder. %>
         <%= form_with url: root_path, method: :get,
               data: { controller: "auto-submit filter-memory" },
               class: "flex flex-wrap items-center gap-3" do |f| %>
-          <%= f.hidden_field :smart_folder_id, value: @active_smart_folder.id if @active_smart_folder %>
           <% select_classes = "text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" %>
           <% attention_options = [["Any attention", ""]] + SmartFolder::BUILTIN_DEFINITIONS.filter_map { |d| [d[:name], d[:filter]["attention"]] if d[:filter]["attention"] } %>
 
@@ -122,7 +127,7 @@
                 class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
           <% if @job_filter.active? %>
-            <%= link_to "Clear", (@active_smart_folder ? root_path(smart_folder_id: @active_smart_folder.id) : root_path),
+            <%= link_to "Clear", root_path,
                   class: "text-sm text-gray-500 hover:text-gray-700 underline",
                   data: { action: "click->filter-memory#clear" } %>
           <% end %>
