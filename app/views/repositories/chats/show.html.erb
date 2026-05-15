@@ -249,13 +249,9 @@
              data-chat-target="stream"
              data-action="scroll->chat#scroll">
           <% if @messages.any? %>
-            <% ChatMessageGrouper.group(@messages).each do |item| %>
-              <% if item[:type] == :tool_group %>
-                <%= render "repositories/chats/tool_call_group", group: item, repository: @repository %>
-              <% else %>
-                <%= render "repositories/chats/message", message: item[:message], repository: @repository %>
-              <% end %>
-            <% end %>
+            <%= render "repositories/chats/message_stream",
+                  items: ChatMessageGrouper.group(@messages),
+                  repository: @repository %>
           <% else %>
             <div class="h-full flex items-center justify-center text-sm text-gray-500">
               Start a chat with this repository.

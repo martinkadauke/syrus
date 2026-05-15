@@ -85,7 +85,10 @@ export default class extends Controller {
 
   // Enter submits, Shift+Enter inserts a newline (textarea default).
   // Ignore IME composition keys so non-Latin input methods that
-  // commit on Enter aren't hijacked.
+  // commit on Enter aren't hijacked. Click the actual submit
+  // button rather than calling form.requestSubmit() so the path is
+  // identical to a real Send click — same submitter, same Turbo
+  // interception, no surprises.
   submitOnEnter(event) {
     if (event.key !== "Enter") return
     if (event.shiftKey) return
@@ -93,17 +96,14 @@ export default class extends Controller {
     if (!this.hasTextareaTarget) return
     if (this.textareaTarget.disabled) return
 
-    event.preventDefault()
     const form = this.textareaTarget.closest("form")
     if (!form) return
 
-    // Use requestSubmit so HTML5 validation + Turbo's submit
-    // interception fire — `form.submit()` skips both.
-    if (typeof form.requestSubmit === "function") {
-      form.requestSubmit()
-    } else {
-      form.submit()
-    }
+    const submitter = form.querySelector('input[type="submit"], button[type="submit"]')
+    if (!submitter || submitter.disabled) return
+
+    event.preventDefault()
+    submitter.click()
   }
 
   scroll() {

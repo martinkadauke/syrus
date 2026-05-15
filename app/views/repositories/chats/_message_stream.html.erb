@@ -1,0 +1,11 @@
+<%# Iterates the grouped items ChatMessageGrouper produces and
+    dispatches each to the right partial. Used by show.html.erb for
+    the initial render and by the messages action for the prepended
+    older-history loads, so both paths apply the same grouping. %>
+<% items.each do |item| %>
+  <% if item[:type] == :tool_group %>
+    <%= render "repositories/chats/tool_call_group", group: item, repository: repository %>
+  <% else %>
+    <%= render "repositories/chats/message", message: item[:message], repository: repository %>
+  <% end %>
+<% end %>
