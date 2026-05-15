@@ -147,7 +147,7 @@ class GithubClient
       @client.merge_pull_request(
         repo_slug,
         pr_number,
-        nil,
+        "",
         commit_title: commit_title,
         merge_method: merge_method
       )
