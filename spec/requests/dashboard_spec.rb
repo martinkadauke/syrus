@@ -163,6 +163,47 @@ RSpec.describe "Dashboard", type: :request do
       expect(sidebar.text).to include("Pinned")
     end
 
+    it "shows the In progress folder when a job has a queued or running workflow" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      running = Factories.job(repository: repo, issue_number: 1)
+      running.workflows.first.update!(state: "running", started_at: Time.current)
+      idle = Factories.job(repository: repo, issue_number: 2)
+      idle.workflows.first.update!(state: "succeeded", started_at: 1.hour.ago, finished_at: Time.current)
+
+      get root_path
+
+      sidebar = Nokogiri::HTML(response.body).at_css("aside")
+      in_progress_row = sidebar.css("a").find { |a| a.text.include?("In progress") }
+      expect(in_progress_row).to be_present
+      expect(in_progress_row.text).to match(/In progress\s+1\b/)
+    end
+
+    it "hides the In progress folder when nothing is queued or running" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      done = Factories.job(repository: repo, issue_number: 1)
+      done.workflows.first.update!(state: "succeeded", started_at: 1.hour.ago, finished_at: Time.current)
+
+      get root_path
+
+      sidebar = Nokogiri::HTML(response.body).at_css("aside")
+      expect(sidebar.text).not_to include("In progress")
+    end
+
+    it "filters jobs by attention=in_progress" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      running = Factories.job(repository: repo, issue_number: 1)
+      running.workflows.first.update!(state: "running", started_at: Time.current)
+      queued = Factories.job(repository: repo, issue_number: 2) # initial workflow defaults to queued
+      done = Factories.job(repository: repo, issue_number: 3)
+      done.workflows.first.update!(state: "succeeded", started_at: 1.hour.ago, finished_at: Time.current)
+
+      get root_path, params: { attention: "in_progress" }
+
+      expect(response.body).to include("#1")
+      expect(response.body).to include("#2")
+      expect(response.body).not_to include("#3")
+    end
+
     it "keeps normal filters available in the pinned smart folder view" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       open_job = Factories.job(repository: repo, issue_number: 1)

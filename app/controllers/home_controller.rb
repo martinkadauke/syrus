@@ -1,5 +1,6 @@
 class HomeController < ApplicationController
   PER_PAGE = 25
+  HIDE_BUILTIN_WHEN_EMPTY = %w[ pinned in_progress ].freeze
 
   def index
     # Dashboard hides archived repositories and everything that
@@ -20,14 +21,6 @@ class HomeController < ApplicationController
     @user_smart_folders = SmartFolder.for_user(Current.user)
     @active_smart_folder = smart_folder_from_params
 
-    # Hide "Pinned" from the sidebar when the user hasn't pinned anything
-    # yet — keeps the nav from advertising an empty feature. Stay visible
-    # if it's currently the active folder so the operator's not stranded
-    # without a way to navigate away.
-    unless Current.user.job_pins.exists? || @active_smart_folder&.filter&.dig("attention") == "pinned"
-      @builtin_smart_folders = @builtin_smart_folders.reject { |f| f.filter["attention"] == "pinned" }
-    end
-
     # Eager-load workflows + their steps for current_step_caption(job),
     # and runs for the per-row cost rollup.
     @jobs = Current.user.jobs.where(repository_id: active_repo_ids)
@@ -37,6 +30,16 @@ class HomeController < ApplicationController
     @job_filter = Jobs::Filter.new(@job_filter_params, user: Current.user)
     @jobs = @job_filter.apply(@jobs)
     @smart_folder_counts = smart_folder_counts(Current.user.jobs.where(repository_id: active_repo_ids))
+
+    # Hide built-in folders whose attention is in HIDE_BUILTIN_WHEN_EMPTY
+    # when they have zero matches — keeps the nav from advertising
+    # features the operator isn't currently using. Stay visible if it's
+    # the active folder so they're not stranded mid-browse.
+    @builtin_smart_folders = @builtin_smart_folders.reject do |folder|
+      HIDE_BUILTIN_WHEN_EMPTY.include?(folder.filter["attention"]) &&
+        @smart_folder_counts[folder.id].to_i.zero? &&
+        @active_smart_folder != folder
+    end
 
     @jobs_total = @jobs.count
     @jobs = @jobs.includes(:tags)

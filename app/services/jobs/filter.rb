@@ -88,6 +88,8 @@ module Jobs
         return relation unless user
 
         relation.joins(:job_pins).where(job_pins: { user_id: user.id })
+      when "in_progress"
+        relation.where(id: Workflow.active.select(:job_id))
       when "inbox"
         relation.where(id: awaiting_operator_job_ids)
                 .or(relation.where(id: unread_feedback_job_ids))
