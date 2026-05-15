@@ -1,8 +1,4 @@
 class Repositories::ChatsController < ApplicationController
-  CHAT_TEMPLATES = {
-    "docs_maintenance" => ChatTemplates::DocsMaintenance
-  }.freeze
-
   before_action :load_repository
   before_action :load_chat_session, only: %i[ message stop refresh reset ]
   before_action :load_pending_action, only: %i[ confirm_pending_action destroy_pending_action ]
@@ -15,8 +11,7 @@ class Repositories::ChatsController < ApplicationController
   end
 
   def create
-    template = chat_template
-    text = template&.user_message || message_text
+    text = message_text
     if text.blank?
       redirect_to repository_chats_path(@repository, new_chat: "1")
       return
@@ -27,36 +22,14 @@ class Repositories::ChatsController < ApplicationController
     ApplicationRecord.transaction do
       chat_session = @repository.chat_sessions.create!(
         user: Current.user,
-        title: template&.title || text.truncate(80),
+        title: text.truncate(80),
         last_message_at: Time.current
       )
-      if template&.system_message.present?
-        chat_session.messages.create!(role: "system", content: { "text" => template.system_message })
-      end
       user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
     end
 
     ChatTurnJob.perform_later(chat_session.id, user_message.id)
     redirect_to repository_chats_path(@repository), notice: "Message sent."
-  end
-
-  def triage
-    text = ChatTemplates::Triage.new(repository: @repository, target: params[:target]).to_s
-    chat_session = nil
-    user_message = nil
-    ApplicationRecord.transaction do
-      chat_session = @repository.chat_sessions.create!(
-        user: Current.user,
-        title: "Triage open #{params[:target] == 'prs' ? 'PRs' : 'issues'}",
-        last_message_at: Time.current
-      )
-      user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
-    end
-
-    ChatTurnJob.perform_later(chat_session.id, user_message.id)
-    redirect_to repository_chats_path(@repository), notice: "Triage chat started."
-  rescue ArgumentError => e
-    redirect_to repository_path(@repository), alert: e.message
   end
 
   def message
@@ -151,22 +124,6 @@ class Repositories::ChatsController < ApplicationController
   end
 
   def message_text
-    template_text.presence || params.dig(:chat_message, :text).to_s.strip
-  end
-
-  def template_text
-    template_key = params[:chat_template].to_s
-    return "" if template_key.blank?
-
-    CHAT_TEMPLATES.fetch(template_key).new(repository: @repository).to_s.strip
-  rescue KeyError
-    ""
-  end
-
-  def chat_template
-    case params[:chat_template].to_s
-    when "walkthrough"
-      ChatTemplates::Walkthrough.new(repository: @repository)
-    end
+    params.dig(:chat_message, :text).to_s.strip
   end
 end

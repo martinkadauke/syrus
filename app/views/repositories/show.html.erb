@@ -23,20 +23,7 @@
   </div>
 
   <%# Tabs %>
-  <%= render "repositories/tabs", repository: @repository, active: @tab.to_sym do %>
-    <%= button_to "Triage open issues",
-          repository_chat_triage_path(@repository),
-          method: :post,
-          params: { target: "issues" },
-          class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
-          form: { class: "inline" } %>
-    <%= button_to "Triage open PRs",
-          repository_chat_triage_path(@repository),
-          method: :post,
-          params: { target: "prs" },
-          class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
-          form: { class: "inline" } %>
-  <% end %>
+  <%= render "repositories/tabs", repository: @repository, active: @tab.to_sym %>
 
   <% if @tab == "overview" %>
     <%# Repo metadata — lives at the top of the Overview body rather
@@ -109,11 +96,6 @@
       <% end %>
       <%= link_to "Edit", edit_repository_path(@repository),
             class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium" %>
-      <%= button_to "Review ROADMAP + plans",
-            repository_chats_path(@repository),
-            params: { chat_template: "docs_maintenance" },
-            class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
-            form: { class: "inline" } %>
       <%# Archive is the soft-stop action — flips polling off and
           surfaces the repo under "Archived" on the index. Reversible.
           Hard delete still lives on the index page next to the

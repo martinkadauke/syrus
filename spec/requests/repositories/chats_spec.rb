@@ -281,59 +281,6 @@ RSpec.describe "Repository chats", type: :request do
       expect(response).to redirect_to(repository_chats_path(repo))
     end
 
-    it "creates a seeded docs-maintenance chat from a template" do
-      expect {
-        post repository_chats_path(repo), params: { chat_template: "docs_maintenance" }
-      }.to change(ChatSession, :count).by(1)
-        .and change(ChatMessage, :count).by(1)
-        .and have_enqueued_job(ChatTurnJob)
-
-      chat = repo.chat_sessions.last
-      message = chat.messages.last
-      expect(chat.title).to include("Review roadmap and planning documentation")
-      expect(message.content.fetch("text")).to include("ROADMAP.md")
-      expect(message.content.fetch("text")).to include("Discover Markdown files across the repository")
-      expect(message.content.fetch("text")).to include("docs/plans/complete/")
-      expect(message.content.fetch("text")).to include("propose_issue")
-      expect(response).to redirect_to(repository_chats_path(repo))
-    end
-  end
-
-  describe "POST /repositories/:repository_id/chats/triage" do
-    it "starts a seeded open-issues triage chat and enqueues a turn" do
-      expect {
-        post repository_chat_triage_path(repo), params: { target: "issues" }
-      }.to change(ChatSession, :count).by(1)
-        .and change(ChatMessage, :count).by(1)
-        .and have_enqueued_job(ChatTurnJob)
-
-      chat = repo.chat_sessions.last
-      expect(chat.title).to eq("Triage open issues")
-      expect(chat.messages.last.content.fetch("text")).to include("Triage acme/widgets's open issues.")
-      expect(response).to redirect_to(repository_chats_path(repo))
-    end
-
-    it "starts a seeded open-PR triage chat and enqueues a turn" do
-      expect {
-        post repository_chat_triage_path(repo), params: { target: "prs" }
-      }.to change(ChatSession, :count).by(1)
-        .and change(ChatMessage, :count).by(1)
-        .and have_enqueued_job(ChatTurnJob)
-
-      chat = repo.chat_sessions.last
-      expect(chat.title).to eq("Triage open PRs")
-      expect(chat.messages.last.content.fetch("text")).to include("Triage acme/widgets's open PRs.")
-      expect(response).to redirect_to(repository_chats_path(repo))
-    end
-
-    it "rejects unknown triage targets" do
-      expect {
-        post repository_chat_triage_path(repo), params: { target: "branches" }
-      }.not_to change(ChatSession, :count)
-
-      expect(response).to redirect_to(repository_path(repo))
-      expect(flash[:alert]).to match(/target must be issues or prs/)
-    end
   end
 
   describe "POST /repositories/:repository_id/chats/:id/message" do

@@ -38,12 +38,6 @@
               class: "rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium cursor-pointer",
               form: { class: "inline" } %>
       <% end %>
-      <%= button_to "Postmortem",
-            repository_chats_path(@job.repository),
-            method: :post,
-            params: { template: "postmortem", subject_job_id: @job.id },
-            class: "rounded-md px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium cursor-pointer",
-            form: { class: "inline" } %>
       <% if @job.open? && @job.pr_number.present? %>
         <% feedback_agent_options = @job.alternate_configured_agent_providers.map do |provider|
              {

@@ -70,15 +70,6 @@ RSpec.describe "Repositories", type: :request do
     end
 
     describe "credential mode banner" do
-      it "shows the docs maintenance chat entry point" do
-        repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-
-        get repository_path(repo)
-
-        expect(response.body).to include("Review ROADMAP + plans")
-        expect(response.body).to include("docs_maintenance")
-      end
-
       it "shows installed App status without a warning banner" do
         AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
         installation = Factories.installation(user: user, account_login: "acme")
@@ -159,16 +150,6 @@ RSpec.describe "Repositories", type: :request do
       }.to have_enqueued_job(PollRepositoryJob).with(mine.id, force: true)
       expect(response).to redirect_to(repository_path(mine))
       expect(flash[:notice]).to match(/Polling/)
-    end
-
-    it "shows triage entry points on the repository page" do
-      mine = Factories.repository(user: user, owner: "acme", name: "widgets")
-
-      get repository_path(mine)
-
-      expect(response.body).to include("Triage open issues")
-      expect(response.body).to include("Triage open PRs")
-      expect(response.body).to include(repository_chat_triage_path(mine))
     end
 
     describe "archive / unarchive" do
