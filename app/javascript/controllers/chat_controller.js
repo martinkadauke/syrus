@@ -83,6 +83,29 @@ export default class extends Controller {
     ta.style.height = `${ta.scrollHeight}px`
   }
 
+  // Enter submits, Shift+Enter inserts a newline (textarea default).
+  // Ignore IME composition keys so non-Latin input methods that
+  // commit on Enter aren't hijacked.
+  submitOnEnter(event) {
+    if (event.key !== "Enter") return
+    if (event.shiftKey) return
+    if (event.isComposing) return
+    if (!this.hasTextareaTarget) return
+    if (this.textareaTarget.disabled) return
+
+    event.preventDefault()
+    const form = this.textareaTarget.closest("form")
+    if (!form) return
+
+    // Use requestSubmit so HTML5 validation + Turbo's submit
+    // interception fire — `form.submit()` skips both.
+    if (typeof form.requestSubmit === "function") {
+      form.requestSubmit()
+    } else {
+      form.submit()
+    }
+  }
+
   scroll() {
     this.wasNearBottom = this.isNearBottom()
     if (this.wasNearBottom) this.hideNewMessagesPill()
