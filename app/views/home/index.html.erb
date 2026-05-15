@@ -84,6 +84,12 @@
               class: "flex flex-wrap items-center gap-3" do |f| %>
           <%= f.hidden_field :smart_folder_id, value: @active_smart_folder.id if @active_smart_folder %>
           <% select_classes = "text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" %>
+          <% attention_options = [["Any attention", ""]] + SmartFolder::BUILTIN_DEFINITIONS.filter_map { |d| [d[:name], d[:filter]["attention"]] if d[:filter]["attention"] } %>
+
+          <%= f.select :attention,
+                options_for_select(attention_options, @job_filter_params["attention"]),
+                {},
+                class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
           <%= f.select :state,
                 options_for_select([["All states", ""], ["Open", "open"], ["Failed", "failed"], ["Succeeded", "succeeded"], ["Closed", "closed"]], @job_filter_params["state"]),

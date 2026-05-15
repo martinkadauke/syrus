@@ -103,6 +103,30 @@ RSpec.describe "Dashboard", type: :request do
       expect(document.at_css("a[href='#{job_pin_path(newer)}'][aria-label='Unpin job']")["data-turbo-method"]).to eq("delete")
     end
 
+    it "renders an attention dropdown with every built-in smart folder's attention value" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      get root_path
+
+      select = Nokogiri::HTML(response.body).at_css("select[name='attention']")
+      expect(select).to be_present
+      option_values = select.css("option").map { |o| o["value"] }
+      expected = SmartFolder::BUILTIN_DEFINITIONS.filter_map { |d| d[:filter]["attention"] }
+      expect(option_values).to eq([""] + expected)
+    end
+
+    it "filters jobs by attention=just_failed when picked from the dropdown" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      failing = Factories.job(repository: repo, issue_number: 1)
+      failing.initial_run.update!(state: "failed", finished_at: Time.current)
+      Factories.job(repository: repo, issue_number: 2)
+
+      get root_path, params: { attention: "just_failed" }
+
+      expect(response.body).to include("#1")
+      expect(response.body).not_to include("#2")
+    end
+
     it "shows the pinned folder's count scoped to the user's pins, not all jobs" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       pinned = Factories.job(repository: repo, issue_number: 1)
