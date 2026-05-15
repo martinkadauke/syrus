@@ -12,6 +12,11 @@ class SmartFolder < ApplicationRecord
 
   belongs_to :user, optional: true
 
+  # MySQL 8 rejects defaults on JSON columns, so seed an empty filter
+  # on initialize for new records — keeps `filter: {}` working as the
+  # implicit default the migration used to provide.
+  after_initialize :seed_empty_filter, if: :new_record?
+
   enum :kind, { builtin: "builtin", user_defined: "user_defined" }, validate: true
 
   validates :name, presence: true
@@ -36,6 +41,10 @@ class SmartFolder < ApplicationRecord
   end
 
   private
+
+  def seed_empty_filter
+    self.filter ||= {}
+  end
 
   def builtin_owner_and_user_defined_owner
     if builtin? && user_id.present?

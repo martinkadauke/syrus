@@ -4,7 +4,9 @@ class CreateSmartFolders < ActiveRecord::Migration[8.1]
       t.string :name, null: false
       t.references :user, foreign_key: true
       t.string :kind, null: false
-      t.json :filter, null: false, default: {}
+      # MySQL 8 rejects defaults on JSON columns; SmartFolder seeds an
+      # empty hash on initialize.
+      t.json :filter, null: false
       t.integer :position, null: false, default: 0
 
       t.timestamps

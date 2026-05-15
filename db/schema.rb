@@ -531,7 +531,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_14_000000) do
 
   create_table "smart_folders", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.json "filter", default: {}, null: false
+    t.json "filter", null: false
     t.string "kind", null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
