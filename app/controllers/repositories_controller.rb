@@ -86,7 +86,7 @@ class RepositoriesController < ApplicationController
     if @repository.save
       redirect_to repositories_path, notice: "Repository #{@repository.slug} added."
     else
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
     end
   end
 
@@ -97,7 +97,7 @@ class RepositoriesController < ApplicationController
     if @repository.update(repository_params)
       redirect_to repositories_path, notice: "Repository #{@repository.slug} updated."
     else
-      render :edit, status: :unprocessable_entity
+      render :edit, status: :unprocessable_content
     end
   end
 

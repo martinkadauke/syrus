@@ -1486,7 +1486,7 @@ RSpec.describe "Jobs", type: :request do
         }
       }.not_to change(Job, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("That agent is not configured.")
     end
 
@@ -1694,7 +1694,7 @@ RSpec.describe "Jobs", type: :request do
         post jobs_path, params: { repository_id: repository.id, prompt: "  " }
       }.not_to change(Job, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("blank")
       expect(response.body).to include("configure-syrus-prep")  # templates survive re-render
     end
@@ -1704,7 +1704,7 @@ RSpec.describe "Jobs", type: :request do
         post jobs_path, params: { repository_id: "", prompt: "Do something." }
       }.not_to change(Job, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("Repository not found")
     end
 
@@ -1717,7 +1717,7 @@ RSpec.describe "Jobs", type: :request do
         }
       }.not_to change(Job, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
     end
   end
 

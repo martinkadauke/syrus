@@ -97,7 +97,7 @@ RSpec.describe "Repository documents", type: :request do
         }
       }.not_to change(RepositoryDocument, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("must be a supported text, PDF, Office, or image file")
     end
 

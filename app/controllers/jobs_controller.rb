@@ -39,13 +39,13 @@ class JobsController < ApplicationController
 
     unless repository
       flash.now[:alert] = "Repository not found or not active."
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
       return
     end
 
     if agent_provider.present? && !Current.user.agent_provider_configured?(agent_provider)
       flash.now[:alert] = "That agent is not configured."
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
       return
     end
 
@@ -54,7 +54,7 @@ class JobsController < ApplicationController
 
     if prompt_text.blank?
       flash.now[:alert] = "Prompt can't be blank."
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
       return
     end
 
@@ -75,7 +75,7 @@ class JobsController < ApplicationController
     if attachment_errors.any?
       job.destroy!
       flash.now[:alert] = attachment_errors.to_sentence
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
       return
     end
 
@@ -606,7 +606,6 @@ class JobsController < ApplicationController
                     job_attachments: { file_attachment: :blob },
                     dependencies: [ :created_by_user, depends_on_job: :repository ],
                     dependent_links: [ job: :repository ],
-                    job_attachments: { file_attachment: :blob },
                     runs: [ :job_logs, :run_health_snapshots ]
                   )
                   .find(params[:id])

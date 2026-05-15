@@ -58,14 +58,14 @@ RSpec.describe "API: /api/v1/admin/workflows/:id/*", type: :request do
     it "refuses when the workspace was already cleaned up" do
       workflow.update_columns(cleaned_up_at: Time.current)
       post "/api/v1/admin/workflows/#{workflow.id}/retry_step", headers: auth
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(parse_body.dig("error", "code")).to eq("workspace_cleaned_up")
     end
 
     it "refuses when the workflow isn't failed" do
       workflow.update!(state: "running", finished_at: nil)
       post "/api/v1/admin/workflows/#{workflow.id}/retry_step", headers: auth
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(parse_body.dig("error", "code")).to eq("workflow_not_failed")
     end
   end

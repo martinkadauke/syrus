@@ -13,7 +13,7 @@ class Repositories::ProposalsController < ApplicationController
       load_index
       @edit_proposal = @proposal
       flash.now[:alert] = "Proposal could not be updated."
-      render :index, status: :unprocessable_entity
+      render :index, status: :unprocessable_content
     end
   end
 

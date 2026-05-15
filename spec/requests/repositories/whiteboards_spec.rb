@@ -105,7 +105,7 @@ RSpec.describe "Repository whiteboards", type: :request do
               as: :json
       }.not_to change(Whiteboard, :count)
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(parse_body).to eq("error" => Whiteboard.element_limit_message)
     end
 

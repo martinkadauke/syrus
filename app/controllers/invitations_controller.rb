@@ -12,7 +12,7 @@ class InvitationsController < ApplicationController
       redirect_to invitations_path, notice: "Invitation created for #{@invitation.email_address}."
     else
       @pending_invitations = Invitation.pending.order(created_at: :desc)
-      render :index, status: :unprocessable_entity
+      render :index, status: :unprocessable_content
     end
   end
 

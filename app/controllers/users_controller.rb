@@ -15,7 +15,7 @@ class UsersController < ApplicationController
       start_new_session_for(@user)
       redirect_to root_url, notice: signup_notice
     else
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
     end
   end
 

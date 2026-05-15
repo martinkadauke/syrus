@@ -12,7 +12,7 @@ class TagsController < ApplicationController
       redirect_to tags_path, notice: "Tag created."
     else
       @tags = Current.user.tags.ordered.includes(:jobs)
-      render :index, status: :unprocessable_entity
+      render :index, status: :unprocessable_content
     end
   end
 
@@ -21,7 +21,7 @@ class TagsController < ApplicationController
       redirect_to tags_path, notice: "Tag updated."
     else
       @tags = Current.user.tags.ordered.includes(:jobs)
-      render :index, status: :unprocessable_entity
+      render :index, status: :unprocessable_content
     end
   end
 

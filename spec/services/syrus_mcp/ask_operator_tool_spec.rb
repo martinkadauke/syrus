@@ -4,6 +4,16 @@ RSpec.describe SyrusMcp::AskOperatorTool do
   let(:repository) { Factories.repository(allow_operator_chat: "in_syrus") }
   let(:run) { Factories.job(repository: repository).initial_run }
 
+  around do |example|
+    old_data_root = ENV["SYRUS_DATA_ROOT"]
+    data_root = Dir.mktmpdir("syrus-ask-operator")
+    ENV["SYRUS_DATA_ROOT"] = data_root
+    example.run
+  ensure
+    ENV["SYRUS_DATA_ROOT"] = old_data_root
+    FileUtils.rm_rf(data_root) if data_root
+  end
+
   before { FileUtils.rm_rf(WorkflowWorkspace.path_for(run.workflow)) }
   after { FileUtils.rm_rf(WorkflowWorkspace.path_for(run.workflow)) }
 

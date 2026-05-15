@@ -78,9 +78,12 @@ RSpec.describe ScheduledTask do
 
   describe "minute_offset seeding" do
     it "seeds a random 0..59 offset for cron tasks at create" do
-      offsets = 30.times.map { build_cron.tap(&:valid?).minute_offset }
-      expect(offsets).to all(be_between(0, 59))
-      expect(offsets.uniq.size).to be > 5  # extremely unlikely to collide every time
+      allow(SecureRandom).to receive(:random_number).with(60).and_return(37)
+
+      task = build_cron
+      task.valid?
+
+      expect(task.minute_offset).to eq(37)
     end
 
     it "respects an explicitly-passed non-zero minute_offset" do

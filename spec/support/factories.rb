@@ -62,6 +62,30 @@ module Factories
     job
   end
 
+  # Creates only the Job row, without the model's issue-job after_create
+  # workflow. Use this for list/filter specs that don't assert workflow or
+  # run behavior; use `job` when the initial Workflow/Run graph matters.
+  def job_record(**attrs)
+    repo = attrs[:repository] || repository(user: attrs[:user] || user)
+    desired_state = attrs.key?(:state) ? attrs[:state] : "open"
+
+    create_attrs = {
+      user: attrs[:user] || repo.user,
+      repository: repo,
+      issue_number: 42
+    }.merge(attrs).merge(state: "closed")
+
+    job = Job.create!(create_attrs)
+    if desired_state != "closed"
+      updates = { state: desired_state }
+      updates[:finished_at] = attrs[:finished_at] if attrs.key?(:finished_at)
+      updates[:closure_reason] = attrs[:closure_reason] if attrs.key?(:closure_reason)
+      job.update_columns(updates)
+      job.reload
+    end
+    job
+  end
+
   def job_pin(**attrs)
     pin_user = attrs[:user]
     pinned_job = attrs[:job] || job(repository: repository(user: pin_user || user))

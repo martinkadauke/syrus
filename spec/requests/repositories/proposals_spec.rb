@@ -106,7 +106,7 @@ RSpec.describe "Repository proposals", type: :request do
         chat_proposal: { title: "", body: "Still has a body", labels: "" }
       }
 
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("Proposal could not be updated.")
       expect(response.body).to include("Title can")
       expect(draft.reload.title).to eq("Draft")

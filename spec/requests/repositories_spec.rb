@@ -65,7 +65,7 @@ RSpec.describe "Repositories", type: :request do
 
     it "re-renders new on validation failure" do
       post repositories_path, params: { repository: { owner: "bad owner", name: "" } }
-      expect(response).to have_http_status(:unprocessable_entity)
+      expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("can")  # error messages present
     end
 

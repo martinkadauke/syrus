@@ -17,7 +17,7 @@ class Repositories::DocumentsController < ApplicationController
     else
       @documents = @repository.repository_documents.includes(:user, file_attachment: :blob).newest_first
       flash.now[:alert] = @document.errors.full_messages.to_sentence
-      render :index, status: :unprocessable_entity, layout: false
+      render :index, status: :unprocessable_content, layout: false
     end
   end
 

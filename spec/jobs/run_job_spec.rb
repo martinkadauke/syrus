@@ -17,8 +17,18 @@ RSpec.describe RunJob do
   end
   let(:job) { Factories.job(repository: repository, issue_number: 42) }
 
+  before(:context) do
+    @seed_bare_remote_dir = Pathname.new(Dir.mktmpdir("syrus-bare-seed"))
+    seed_remote_with_initial_commit(@seed_bare_remote_dir)
+  end
+
+  after(:context) do
+    FileUtils.rm_rf(@seed_bare_remote_dir) if @seed_bare_remote_dir
+  end
+
   before do
-    seed_remote_with_initial_commit(bare_remote_dir)
+    FileUtils.rm_rf(bare_remote_dir)
+    FileUtils.cp_r(@seed_bare_remote_dir.to_s, bare_remote_dir.to_s)
     allow_any_instance_of(Repository).to receive(:remote_url).and_return("file://#{bare_remote_dir}")
     allow_any_instance_of(Repository).to receive(:authenticated_push_url).and_return("file://#{bare_remote_dir}")
 

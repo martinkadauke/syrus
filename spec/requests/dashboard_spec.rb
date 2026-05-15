@@ -16,10 +16,10 @@ RSpec.describe "Dashboard", type: :request do
 
     it "lists the current user's recent jobs" do
       mine_repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-      Factories.job(repository: mine_repo, issue_number: 7)
+      Factories.job_record(repository: mine_repo, issue_number: 7)
 
       other_repo = Factories.repository(user: other, owner: "globex", name: "things")
-      Factories.job(repository: other_repo, issue_number: 99)
+      Factories.job_record(repository: other_repo, issue_number: 99)
 
       get root_path
       expect(response.body).to include("acme/widgets")
@@ -66,7 +66,7 @@ RSpec.describe "Dashboard", type: :request do
 
     it "renders a pin toggle on each job row" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-      job = Factories.job(repository: repo, issue_number: 7)
+      job = Factories.job_record(repository: repo, issue_number: 7)
 
       get root_path
 
@@ -78,11 +78,11 @@ RSpec.describe "Dashboard", type: :request do
 
     it "shows pinned jobs for the current user sorted by pinned time via the pinned smart folder" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-      older = Factories.job(repository: repo, issue_number: 1)
-      newer = Factories.job(repository: repo, issue_number: 2)
-      unpinned = Factories.job(repository: repo, issue_number: 3)
+      older = Factories.job_record(repository: repo, issue_number: 1)
+      newer = Factories.job_record(repository: repo, issue_number: 2)
+      unpinned = Factories.job_record(repository: repo, issue_number: 3)
       other_repo = Factories.repository(user: other, owner: "globex", name: "things")
-      others_pin = Factories.job(repository: other_repo, issue_number: 4)
+      others_pin = Factories.job_record(repository: other_repo, issue_number: 4)
 
       Factories.job_pin(user: user, job: older).update!(created_at: 2.hours.ago)
       Factories.job_pin(user: user, job: newer).update!(created_at: 1.hour.ago)
@@ -129,8 +129,8 @@ RSpec.describe "Dashboard", type: :request do
 
     it "shows the pinned folder's count scoped to the user's pins, not all jobs" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-      pinned = Factories.job(repository: repo, issue_number: 1)
-      4.times { |i| Factories.job(repository: repo, issue_number: 100 + i) }
+      pinned = Factories.job_record(repository: repo, issue_number: 1)
+      4.times { |i| Factories.job_record(repository: repo, issue_number: 100 + i) }
       Factories.job_pin(user: user, job: pinned)
 
       SmartFolder.ensure_builtins!
@@ -206,8 +206,8 @@ RSpec.describe "Dashboard", type: :request do
 
     it "keeps normal filters available in the pinned smart folder view" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-      open_job = Factories.job(repository: repo, issue_number: 1)
-      closed_job = Factories.job(repository: repo, issue_number: 2)
+      open_job = Factories.job_record(repository: repo, issue_number: 1)
+      closed_job = Factories.job_record(repository: repo, issue_number: 2)
       closed_job.close!; closed_job.save!
       Factories.job_pin(user: user, job: open_job)
       Factories.job_pin(user: user, job: closed_job)
@@ -250,7 +250,7 @@ RSpec.describe "Dashboard", type: :request do
 
     it "shows up to three tag chips with overflow in job rows" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-      job = Factories.job(repository: repo, issue_number: 7)
+      job = Factories.job_record(repository: repo, issue_number: 7)
       %w[alpha beta gamma zeta].each { |name| job.tags << Factories.tag(user: user, name: name) }
 
       get root_path
@@ -483,8 +483,8 @@ RSpec.describe "Dashboard", type: :request do
 
       describe "state filter" do
         it "shows only open jobs when state=open" do
-          open_job   = Factories.job(repository: repo, issue_number: 1)
-          closed_job = Factories.job(repository: repo, issue_number: 2)
+          open_job   = Factories.job_record(repository: repo, issue_number: 1)
+          closed_job = Factories.job_record(repository: repo, issue_number: 2)
           closed_job.close!; closed_job.save!
 
           get root_path, params: { state: "open" }
@@ -493,8 +493,8 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         it "shows only closed jobs when state=closed" do
-          open_job   = Factories.job(repository: repo, issue_number: 1)
-          closed_job = Factories.job(repository: repo, issue_number: 2)
+          open_job   = Factories.job_record(repository: repo, issue_number: 1)
+          closed_job = Factories.job_record(repository: repo, issue_number: 2)
           closed_job.close!; closed_job.save!
 
           get root_path, params: { state: "closed" }
@@ -503,8 +503,8 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         it "shows all jobs when state is absent" do
-          open_job   = Factories.job(repository: repo, issue_number: 1)
-          closed_job = Factories.job(repository: repo, issue_number: 2)
+          open_job   = Factories.job_record(repository: repo, issue_number: 1)
+          closed_job = Factories.job_record(repository: repo, issue_number: 2)
           closed_job.close!; closed_job.save!
 
           get root_path
@@ -563,8 +563,8 @@ RSpec.describe "Dashboard", type: :request do
         it "shows only jobs for the selected repository" do
           repo_a = Factories.repository(user: user, owner: "acme", name: "alpha")
           repo_b = Factories.repository(user: user, owner: "acme", name: "beta")
-          Factories.job(repository: repo_a, issue_number: 10)
-          Factories.job(repository: repo_b, issue_number: 20)
+          Factories.job_record(repository: repo_a, issue_number: 10)
+          Factories.job_record(repository: repo_b, issue_number: 20)
 
           get root_path, params: { repository_id: repo_a.id }
           expect(response.body).to include("#10")
@@ -574,8 +574,8 @@ RSpec.describe "Dashboard", type: :request do
 
       describe "PR filter" do
         it "shows only jobs with a PR when pr=has_pr" do
-          with    = Factories.job(repository: repo, issue_number: 1)
-          without = Factories.job(repository: repo, issue_number: 2)
+          with    = Factories.job_record(repository: repo, issue_number: 1)
+          without = Factories.job_record(repository: repo, issue_number: 2)
           with.update!(pr_number: 99)
 
           get root_path, params: { pr: "has_pr" }
@@ -584,8 +584,8 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         it "shows only jobs without a PR when pr=no_pr" do
-          with    = Factories.job(repository: repo, issue_number: 1)
-          without = Factories.job(repository: repo, issue_number: 2)
+          with    = Factories.job_record(repository: repo, issue_number: 1)
+          without = Factories.job_record(repository: repo, issue_number: 2)
           with.update!(pr_number: 99)
 
           get root_path, params: { pr: "no_pr" }
@@ -594,9 +594,9 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         it "includes jobs with external_pr_number in has_pr results" do
-          external = Factories.job(repository: repo, issue_number: 5,
-                                   state: "closed", closure_reason: "preempted",
-                                   external_pr_number: 7, finished_at: Time.current)
+          external = Factories.job_record(repository: repo, issue_number: 5,
+                                          state: "closed", closure_reason: "preempted",
+                                          external_pr_number: 7, finished_at: Time.current)
           get root_path, params: { pr: "has_pr" }
           expect(response.body).to include("#5")
         end
@@ -604,8 +604,8 @@ RSpec.describe "Dashboard", type: :request do
 
       describe "age filter" do
         it "shows only jobs created within the last day when age=1d" do
-          recent = Factories.job(repository: repo, issue_number: 1)
-          old    = Factories.job(repository: repo, issue_number: 2)
+          recent = Factories.job_record(repository: repo, issue_number: 1)
+          old    = Factories.job_record(repository: repo, issue_number: 2)
           old.update_column(:created_at, 2.days.ago)
 
           get root_path, params: { age: "1d" }
@@ -614,8 +614,8 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         it "shows only jobs created within the last 7 days when age=7d" do
-          recent = Factories.job(repository: repo, issue_number: 1)
-          old    = Factories.job(repository: repo, issue_number: 2)
+          recent = Factories.job_record(repository: repo, issue_number: 1)
+          old    = Factories.job_record(repository: repo, issue_number: 2)
           old.update_column(:created_at, 8.days.ago)
 
           get root_path, params: { age: "7d" }
@@ -624,8 +624,8 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         it "shows only jobs created within the last 30 days when age=30d" do
-          recent = Factories.job(repository: repo, issue_number: 1)
-          old    = Factories.job(repository: repo, issue_number: 2)
+          recent = Factories.job_record(repository: repo, issue_number: 1)
+          old    = Factories.job_record(repository: repo, issue_number: 2)
           old.update_column(:created_at, 31.days.ago)
 
           get root_path, params: { age: "30d" }
@@ -634,7 +634,7 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         it "ignores an unrecognised age value and shows all jobs" do
-          Factories.job(repository: repo, issue_number: 1)
+          Factories.job_record(repository: repo, issue_number: 1)
           get root_path, params: { age: "bogus" }
           expect(response.body).to include("#1")
         end
@@ -645,10 +645,10 @@ RSpec.describe "Dashboard", type: :request do
           repo_a = Factories.repository(user: user, owner: "acme", name: "alpha")
           repo_b = Factories.repository(user: user, owner: "acme", name: "beta")
 
-          open_a  = Factories.job(repository: repo_a, issue_number: 1)
-          closed_a = Factories.job(repository: repo_a, issue_number: 2)
+          open_a  = Factories.job_record(repository: repo_a, issue_number: 1)
+          closed_a = Factories.job_record(repository: repo_a, issue_number: 2)
           closed_a.close!; closed_a.save!
-          open_b  = Factories.job(repository: repo_b, issue_number: 3)
+          open_b  = Factories.job_record(repository: repo_b, issue_number: 3)
 
           get root_path, params: { state: "open", repository_id: repo_a.id }
           expect(response.body).to include("#1")
@@ -659,9 +659,9 @@ RSpec.describe "Dashboard", type: :request do
 
       describe "tag filter" do
         it "shows jobs matching any selected tag" do
-          first = Factories.job(repository: repo, issue_number: 1)
-          second = Factories.job(repository: repo, issue_number: 2)
-          third = Factories.job(repository: repo, issue_number: 3)
+          first = Factories.job_record(repository: repo, issue_number: 1)
+          second = Factories.job_record(repository: repo, issue_number: 2)
+          third = Factories.job_record(repository: repo, issue_number: 3)
           urgent = Factories.tag(user: user, name: "urgent", color: "red")
           auth = Factories.tag(user: user, name: "area:auth", color: "blue")
           first.tags << urgent
@@ -721,8 +721,8 @@ RSpec.describe "Dashboard", type: :request do
       end
 
       it "shows and applies user-defined smart folders in the sidebar" do
-        with_pr = Factories.job(repository: repo, issue_number: 1, pr_number: 9)
-        without_pr = Factories.job(repository: repo, issue_number: 2)
+        with_pr = Factories.job_record(repository: repo, issue_number: 1, pr_number: 9)
+        without_pr = Factories.job_record(repository: repo, issue_number: 2)
         folder = user.smart_folders.create!(
           name: "PRs",
           kind: "user_defined",
@@ -785,7 +785,7 @@ RSpec.describe "Dashboard", type: :request do
       end
 
       it "attaches filter-memory#clear action to the Clear link when filters are active" do
-        Factories.job(repository: repo, issue_number: 1)
+        Factories.job_record(repository: repo, issue_number: 1)
         get root_path, params: { state: "open" }
         expect(response.body).to include("filter-memory#clear")
       end

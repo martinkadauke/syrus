@@ -12,7 +12,7 @@ class CredentialsController < ApplicationController
       redirect_to edit_credentials_path, notice: "Credentials updated."
     else
       @user = Current.user
-      render :edit, status: :unprocessable_entity
+      render :edit, status: :unprocessable_content
     end
   end
 

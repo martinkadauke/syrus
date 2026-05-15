@@ -19,7 +19,7 @@ class CronTemplatesController < ApplicationController
     if @template.save
       redirect_to cron_template_path(@template), notice: "Template created."
     else
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
     end
   end
 
@@ -30,7 +30,7 @@ class CronTemplatesController < ApplicationController
     if @template.update(cron_template_params)
       redirect_to cron_template_path(@template), notice: "Template updated."
     else
-      render :edit, status: :unprocessable_entity
+      render :edit, status: :unprocessable_content
     end
   end
 

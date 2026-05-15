@@ -43,7 +43,7 @@ class ScheduledTasksController < ApplicationController
     if @task.save
       redirect_to scheduled_task_path(@task), notice: "Scheduled task created."
     else
-      render :new, status: :unprocessable_entity
+      render :new, status: :unprocessable_content
     end
   end
 
@@ -54,7 +54,7 @@ class ScheduledTasksController < ApplicationController
     if @task.update(scheduled_task_params)
       redirect_to scheduled_task_path(@task), notice: "Scheduled task updated."
     else
-      render :edit, status: :unprocessable_entity
+      render :edit, status: :unprocessable_content
     end
   end
 
