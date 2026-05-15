@@ -80,6 +80,7 @@ Rails.application.routes.draw do
     end
     get  "chats",             to: "repositories/chats#show",    as: :chats
     post "chats",             to: "repositories/chats#create"
+    get  "chats/:id/messages", to: "repositories/chats#messages", as: :chat_messages
     post "chats/:id/message", to: "repositories/chats#message", as: :chat_message
     post "chats/:id/stop",    to: "repositories/chats#stop",    as: :chat_stop
     post "chats/:id/refresh", to: "repositories/chats#refresh", as: :chat_refresh

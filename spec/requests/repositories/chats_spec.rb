@@ -120,6 +120,65 @@ RSpec.describe "Repository chats", type: :request do
       expect(response.body).to include("Stop")
     end
 
+    describe "message pagination on initial load" do
+      it "renders only the latest 30 messages and reports more older are available" do
+        chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
+        40.times { |i| chat.messages.create!(role: "user", content: { "text" => "msg-#{i}" }) }
+
+        get repository_chats_path(repo)
+
+        # Only the latest 30 chat-message wrappers are rendered.
+        message_ids = response.body.scan(/id="chat_message_(\d+)"/).flatten.map(&:to_i)
+        all_ids = chat.messages.order(:id).pluck(:id)
+        expect(message_ids).to eq(all_ids.last(30))
+        expect(response.body).to include('data-chat-has-more-older-value="true"')
+      end
+
+      it "reports no older messages when the session is short" do
+        chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
+        chat.messages.create!(role: "user", content: { "text" => "hi" })
+
+        get repository_chats_path(repo)
+
+        expect(response.body).to include('data-chat-has-more-older-value="false"')
+      end
+    end
+
+    describe "GET /repositories/:repository_id/chats/:id/messages" do
+      it "returns the page of older messages before the given id without a continuation when fewer than a page remain" do
+        chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
+        msgs = 40.times.map { |i| chat.messages.create!(role: "user", content: { "text" => "msg-#{i}" }) }
+
+        # Messages strictly older than msgs[29] are msgs[0..28] = 29 — fewer
+        # than PAGE_SIZE — so the full set is returned and has_more is false.
+        get repository_chat_messages_path(repo, chat), params: { before: msgs[29].id }
+
+        expect(response).to have_http_status(:ok)
+        returned_ids = response.body.scan(/id="chat_message_(\d+)"/).flatten.map(&:to_i)
+        expect(returned_ids).to eq(msgs.first(29).map(&:id))
+        expect(response.headers["X-Chat-Has-More-Older"]).to eq("false")
+      end
+
+      it "reports has-more=true when a full page of older messages was returned" do
+        chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
+        msgs = 70.times.map { |i| chat.messages.create!(role: "user", content: { "text" => "msg-#{i}" }) }
+
+        get repository_chat_messages_path(repo, chat), params: { before: msgs[40].id }
+
+        expect(response.headers["X-Chat-Has-More-Older"]).to eq("true")
+      end
+
+      it "is not found on another user's chat" do
+        other = Factories.user(claude_oauth_token: "oat-other")
+        other_repo = Factories.repository(user: other, owner: "globex", name: "things")
+        other_chat = ChatSession.create!(repository: other_repo, user: other, last_message_at: Time.current)
+
+        get repository_chat_messages_path(other_repo, other_chat), params: { before: 999_999 }
+
+        expect(response).to have_http_status(:not_found).or redirect_to(repositories_path)
+      end
+    end
+
     it "renders tool rows with proposal links" do
       chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
       proposal = ChatProposal.create!(

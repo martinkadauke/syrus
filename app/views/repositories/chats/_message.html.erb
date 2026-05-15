@@ -1,7 +1,7 @@
 <% text = message.content.is_a?(Hash) ? message.content["text"].to_s : message.content.to_s %>
 <% dom_id = "chat_message_#{message.id}" %>
 
-<div id="<%= dom_id %>" class="chat-message" data-chat-target="message">
+<div id="<%= dom_id %>" class="chat-message" data-chat-target="message" data-message-id="<%= message.id %>">
   <% case message.role
      when "user" %>
     <div class="flex justify-end">

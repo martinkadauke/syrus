@@ -2,10 +2,15 @@ import { Controller } from "@hotwired/stimulus"
 
 export default class extends Controller {
   static targets = ["stream", "newMessagesPill", "textarea", "sendButton", "stopButton", "whiteboard", "whiteboardPlaceholder"]
-  static values = { turnInFlight: Boolean }
+  static values = {
+    turnInFlight: Boolean,
+    olderMessagesUrl: String,
+    hasMoreOlder: Boolean,
+  }
 
   connect() {
     this.wasNearBottom = true
+    this.loadingOlder = false
     this.scrollToBottom()
     this.updateCompose()
     this.syncWhiteboardPlaceholder()
@@ -45,9 +50,59 @@ export default class extends Controller {
   scroll() {
     this.wasNearBottom = this.isNearBottom()
     if (this.wasNearBottom) this.hideNewMessagesPill()
+    if (this.isNearTop()) this.loadOlderMessages()
+  }
+
+  isNearTop() {
+    if (!this.hasStreamTarget) return false
+    return this.streamTarget.scrollTop < 120
+  }
+
+  async loadOlderMessages() {
+    if (this.loadingOlder) return
+    if (!this.hasMoreOlderValue) return
+    if (!this.hasOlderMessagesUrlValue || !this.olderMessagesUrlValue) return
+    if (!this.hasStreamTarget) return
+
+    const first = this.streamTarget.querySelector("[data-message-id]")
+    if (!first) return
+    const beforeId = first.dataset.messageId
+    if (!beforeId) return
+
+    this.loadingOlder = true
+    try {
+      const response = await fetch(`${this.olderMessagesUrlValue}?before=${encodeURIComponent(beforeId)}`, {
+        headers: { Accept: "text/html" },
+        credentials: "same-origin",
+      })
+      if (!response.ok) return
+
+      const hasMoreHeader = response.headers.get("X-Chat-Has-More-Older")
+      if (hasMoreHeader !== null) {
+        this.hasMoreOlderValue = hasMoreHeader === "true"
+      }
+
+      const html = await response.text()
+      if (!html.trim()) return
+
+      // Preserve the user's visual scroll position: prepending taller
+      // content would otherwise leave them looking at a different
+      // section of the conversation.
+      const prevScrollHeight = this.streamTarget.scrollHeight
+      const prevScrollTop = this.streamTarget.scrollTop
+      first.insertAdjacentHTML("beforebegin", html)
+      this.streamTarget.scrollTop = prevScrollTop + (this.streamTarget.scrollHeight - prevScrollHeight)
+    } finally {
+      this.loadingOlder = false
+    }
   }
 
   messagesChanged() {
+    // Prepending older messages also fires the mutation observer.
+    // Don't auto-scroll or surface the "new messages" pill in that
+    // case — the change happened above the viewport, not below.
+    if (this.loadingOlder) return
+
     if (this.wasNearBottom || this.isNearBottom()) {
       this.scrollToBottom()
     } else {

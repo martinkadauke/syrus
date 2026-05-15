@@ -14,7 +14,11 @@
      data-chat-layout-whiteboard-enabled-value="<%= @chat_session.present? %>"
      data-chat-side-panel-repository-id-value="<%= @repository.id %>"
      data-chat-side-panel-documentation-url-value="/repositories/<%= @repository.to_param %>/documents?frame=1"
-     data-chat-turn-in-flight-value="<%= @turn_in_flight %>">
+     data-chat-turn-in-flight-value="<%= @turn_in_flight %>"
+     <% if @chat_session %>
+       data-chat-older-messages-url-value="<%= repository_chat_messages_path(@repository, @chat_session) %>"
+       data-chat-has-more-older-value="<%= @has_more_older %>"
+     <% end %>>
   <div class="space-y-3">
     <%= render "header", repository: @repository, chat_session: @chat_session, chat_available: chat_available %>
   </div>

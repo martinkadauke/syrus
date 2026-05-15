@@ -1,13 +1,37 @@
 class Repositories::ChatsController < ApplicationController
+  PAGE_SIZE = 30
+
   before_action :load_repository
-  before_action :load_chat_session, only: %i[ message stop refresh reset ]
+  before_action :load_chat_session, only: %i[ message stop refresh reset messages ]
   before_action :load_pending_action, only: %i[ confirm_pending_action destroy_pending_action ]
 
   def show
     @chat_session = current_chat_session unless new_chat?
-    @messages = @chat_session&.messages&.includes(:proposal)&.order(:created_at, :id) || []
+    @messages, @has_more_older = paginated_tail(@chat_session)
     @pending_actions = @chat_session&.pending_actions&.pending&.order(:created_at, :id) || []
     @turn_in_flight = @chat_session&.turn_in_flight? || false
+  end
+
+  # Returns an HTML fragment of the next page of older messages, for
+  # the infinite-scroll-up behavior in chat_controller.js. The fragment
+  # is rendered without a layout so it can be parsed and prepended
+  # directly into the live stream container.
+  def messages
+    before_id = params[:before].to_i
+    fetched = @chat_session.messages.includes(:proposal)
+                .where("id < ?", before_id)
+                .order(created_at: :desc, id: :desc)
+                .limit(PAGE_SIZE + 1)
+                .to_a
+    has_more = fetched.size > PAGE_SIZE
+    older = fetched.first(PAGE_SIZE).reverse
+
+    response.headers["X-Chat-Has-More-Older"] = has_more ? "true" : "false"
+    render partial: "repositories/chats/message",
+           collection: older,
+           as: :message,
+           locals: { repository: @repository },
+           layout: false
   end
 
   def create
@@ -125,5 +149,17 @@ class Repositories::ChatsController < ApplicationController
 
   def message_text
     params.dig(:chat_message, :text).to_s.strip
+  end
+
+  # Loads the latest PAGE_SIZE messages in chronological order plus a
+  # flag for whether older messages exist. Returns an empty pair when
+  # there is no chat_session (initial empty-state render).
+  def paginated_tail(chat_session)
+    return [ [], false ] unless chat_session
+
+    scope = chat_session.messages.includes(:proposal)
+    fetched = scope.order(created_at: :desc, id: :desc).limit(PAGE_SIZE + 1).to_a
+    has_more = fetched.size > PAGE_SIZE
+    [ fetched.first(PAGE_SIZE).reverse, has_more ]
   end
 end
