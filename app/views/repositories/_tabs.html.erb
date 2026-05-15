@@ -27,7 +27,12 @@
   inactive_cls = "border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300"
   active_cls   = "border-blue-600 text-blue-600"
 %>
-<div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200">
+<%# Pin the row to a constant height so the tab strip doesn't shift
+    when navigating between tabs with an action slot (Chats, Scheduled
+    Tasks) and tabs without one (Overview, GitHub Issues, Proposals).
+    items-end keeps the active tab's border-b-2 (with -mb-px) flush
+    against the row's border-b regardless of right-slot content. %>
+<div class="flex flex-wrap items-end justify-between gap-3 border-b border-gray-200 min-h-10">
   <div class="flex flex-wrap">
     <% tabs.each do |key, label, path| %>
       <%= link_to label, path,
