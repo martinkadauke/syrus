@@ -24,6 +24,32 @@ class HomeController < ApplicationController
     render :index
   end
 
+  def bulk_jobs
+    job_ids = Array(params[:job_ids]).filter_map { |id| Integer(id, exception: false) }.uniq
+    if job_ids.empty?
+      redirect_back fallback_location: dashboard_jobs_path, alert: "Select at least one job."
+      return
+    end
+
+    jobs = Current.user.jobs.joins(:repository)
+                       .where(repositories: { archived_at: nil })
+                       .where(id: job_ids)
+                       .includes(:runs, :workflows)
+
+    case params[:bulk_action].to_s
+    when "retry"
+      bulk_retry_jobs(jobs)
+    when /\Aretry:(.+)\z/
+      bulk_retry_jobs(jobs, agent_provider: Regexp.last_match(1))
+    when "close"
+      bulk_close_jobs(jobs)
+    when "apply_tag"
+      bulk_apply_tag(jobs)
+    else
+      redirect_back fallback_location: dashboard_jobs_path, alert: "Choose a bulk action."
+    end
+  end
+
   private
 
   def load_epics_dashboard
@@ -110,32 +136,6 @@ class HomeController < ApplicationController
                          .includes(:steps, job: :repository)
     @workflows_total = @workflows.count
     @workflows = @workflows.order(created_at: :desc).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
-  end
-
-  def bulk_jobs
-    job_ids = Array(params[:job_ids]).filter_map { |id| Integer(id, exception: false) }.uniq
-    if job_ids.empty?
-      redirect_back fallback_location: dashboard_jobs_path, alert: "Select at least one job."
-      return
-    end
-
-    jobs = Current.user.jobs.joins(:repository)
-                       .where(repositories: { archived_at: nil })
-                       .where(id: job_ids)
-                       .includes(:runs, :workflows)
-
-    case params[:bulk_action].to_s
-    when "retry"
-      bulk_retry_jobs(jobs)
-    when /\Aretry:(.+)\z/
-      bulk_retry_jobs(jobs, agent_provider: Regexp.last_match(1))
-    when "close"
-      bulk_close_jobs(jobs)
-    when "apply_tag"
-      bulk_apply_tag(jobs)
-    else
-      redirect_back fallback_location: dashboard_jobs_path, alert: "Choose a bulk action."
-    end
   end
 
   def tag_filter_ids
