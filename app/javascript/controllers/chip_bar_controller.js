@@ -2,16 +2,22 @@ import { Controller } from "@hotwired/stimulus"
 
 // Composable-filter chip bar.
 //
-// Owns the JSON-encoded AST tree (Stimulus value), renders one chip
-// per top-level child, exposes an add-filter popover backed by the
-// Filters::Schema metadata, and routes chip clicks to a per-bucket
-// editor that mutates the tree and submits the form with ?q=<encoded>.
+// Owns the JSON-encoded AST tree (Stimulus value), renders one
+// element per top-level AND child, and exposes an add-filter
+// popover backed by Filters::Schema. Clicks on a chip route to a
+// per-bucket editor that mutates the tree and submits the form
+// with ?q=<encoded>.
 //
-// The tree shape this commit handles is a flat AND-of-chips. OR
-// groups and NOT wrappers are added in subsequent commits — for now
-// any non-chip node in the tree is rendered as a read-only "complex
-// filter" badge so user-defined smart folders with OR/NOT can still
-// be displayed without crashing.
+// Tree shape supported here:
+//   - top-level AND of flat chips
+//   - OR sub-groups containing 2+ flat chips
+//
+// NOT wrappers are still rendered as a read-only "complex filter"
+// badge — added in a follow-up commit.
+//
+// Chip addressing: paths are arrays. `[i]` = top-level i'th child.
+// `[i, j]` = j'th child of the i'th top-level OR group. We pass
+// paths through DOM via JSON strings on `data-chip-path`.
 export default class extends Controller {
   static targets = [
     "form", "qInput", "chips", "addButton", "addMenu", "addSearch", "addList", "editor"
@@ -23,7 +29,8 @@ export default class extends Controller {
   }
 
   connect() {
-    this.editingChipIndex = null
+    this.editingChipPath = null
+    this.pendingAddTarget = null  // null = top-level AND; { path } = append to OR group at path
     this.renderChips()
     document.addEventListener("click", this.handleDocumentClick)
   }
@@ -39,8 +46,6 @@ export default class extends Controller {
 
   // ---- AST helpers ----
 
-  // Returns the array of top-level children. Treats a missing or
-  // malformed root as an empty AND.
   topChildren() {
     const tree = this.treeValue || {}
     return Array.isArray(tree.and) ? tree.and : []
@@ -50,6 +55,65 @@ export default class extends Controller {
     this.treeValue = { and: children }
     this.syncQInput()
     this.renderChips()
+  }
+
+  // Returns the node at `path`. Path semantics defined at top of file.
+  nodeAtPath(path) {
+    if (!Array.isArray(path) || path.length === 0) return null
+    const top = this.topChildren()[path[0]]
+    if (path.length === 1) return top
+    if (!top || !Array.isArray(top.or)) return null
+    return top.or[path[1]]
+  }
+
+  // Replace the node at `path`. If replacing inside an OR group leaves
+  // it with a single child, auto-flatten back to a bare chip.
+  replaceNodeAtPath(path, node) {
+    const children = this.topChildren().slice()
+    if (path.length === 1) {
+      children[path[0]] = node
+    } else {
+      const group = children[path[0]]
+      if (!group || !Array.isArray(group.or)) return
+      const newOr = group.or.slice()
+      newOr[path[1]] = node
+      children[path[0]] = { or: newOr }
+    }
+    this.setTopChildren(children)
+  }
+
+  // Delete the node at `path`. Auto-flattens singleton OR groups and
+  // removes empty OR groups.
+  removeNodeAtPath(path) {
+    const children = this.topChildren().slice()
+    if (path.length === 1) {
+      children.splice(path[0], 1)
+    } else {
+      const group = children[path[0]]
+      if (!group || !Array.isArray(group.or)) return
+      const newOr = group.or.slice()
+      newOr.splice(path[1], 1)
+      if (newOr.length === 0) {
+        children.splice(path[0], 1)
+      } else if (newOr.length === 1) {
+        children[path[0]] = newOr[0]  // collapse singleton back to a flat chip
+      } else {
+        children[path[0]] = { or: newOr }
+      }
+    }
+    this.setTopChildren(children)
+  }
+
+  // Wrap the flat chip at `path` (length 1) into an OR group so the
+  // operator can append alternatives.
+  wrapInOrGroup(path) {
+    if (path.length !== 1) return path
+    const children = this.topChildren().slice()
+    const existing = children[path[0]]
+    if (!existing || !("field" in existing)) return path
+    children[path[0]] = { or: [ existing ] }
+    this.setTopChildren(children)
+    return [ path[0], 0 ]
   }
 
   syncQInput() {
@@ -64,15 +128,25 @@ export default class extends Controller {
 
   renderChips() {
     const children = this.topChildren()
-    this.chipsTarget.replaceChildren(...children.map((node, index) => this.chipElement(node, index)))
+    const elements = []
+    children.forEach((node, i) => {
+      if (i > 0) elements.push(separator("and"))
+      elements.push(this.topElement(node, i))
+    })
+    this.chipsTarget.replaceChildren(...elements)
   }
 
-  chipElement(node, index) {
-    if (node && typeof node === "object" && "field" in node) return this.flatChipElement(node, index)
-    return this.complexBadgeElement(node, index)
+  topElement(node, index) {
+    if (node && typeof node === "object" && "field" in node) {
+      return this.flatChipElement(node, [ index ])
+    }
+    if (node && typeof node === "object" && Array.isArray(node.or)) {
+      return this.orGroupElement(node, index)
+    }
+    return this.complexBadgeElement(node, [ index ])
   }
 
-  flatChipElement(chip, index) {
+  flatChipElement(chip, path) {
     const meta = this.metaFor(chip.field)
     const wrapper = document.createElement("span")
     wrapper.className = "inline-flex items-center gap-1 rounded-md border border-gray-300 bg-gray-50 px-2 py-1 text-sm hover:bg-gray-100"
@@ -81,7 +155,7 @@ export default class extends Controller {
     editLink.type = "button"
     editLink.className = "inline-flex items-baseline gap-1 cursor-pointer"
     editLink.dataset.action = "click->chip-bar#editChip"
-    editLink.dataset.chipIndex = index
+    editLink.dataset.chipPath = JSON.stringify(path)
     editLink.append(
       labelSpan(meta ? meta.label : chip.field),
       opSpan(chip.op),
@@ -94,26 +168,59 @@ export default class extends Controller {
     removeButton.textContent = "×"
     removeButton.setAttribute("aria-label", `Remove ${meta ? meta.label : chip.field} filter`)
     removeButton.dataset.action = "click->chip-bar#removeChip"
-    removeButton.dataset.chipIndex = index
+    removeButton.dataset.chipPath = JSON.stringify(path)
 
     wrapper.append(editLink, removeButton)
     return wrapper
   }
 
-  complexBadgeElement(node, index) {
-    // OR / NOT / unrecognized — show as a read-only badge so smart
-    // folders that already carry composite trees still render.
+  orGroupElement(orNode, index) {
+    const wrapper = document.createElement("span")
+    wrapper.className = "inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-sm"
+
+    const opening = document.createElement("span")
+    opening.className = "text-xs font-semibold text-indigo-700"
+    opening.textContent = "("
+    wrapper.append(opening)
+
+    orNode.or.forEach((child, j) => {
+      if (j > 0) wrapper.append(separator("or"))
+      const childPath = [ index, j ]
+      if (child && typeof child === "object" && "field" in child) {
+        wrapper.append(this.flatChipElement(child, childPath))
+      } else {
+        wrapper.append(this.complexBadgeElement(child, childPath))
+      }
+    })
+
+    const addAlt = document.createElement("button")
+    addAlt.type = "button"
+    addAlt.className = "ml-1 inline-flex items-center rounded border border-dashed border-indigo-400 px-1.5 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 cursor-pointer"
+    addAlt.textContent = "+ or"
+    addAlt.dataset.action = "click->chip-bar#openAddMenuForOrGroup"
+    addAlt.dataset.chipPath = JSON.stringify([ index ])
+    wrapper.append(addAlt)
+
+    const closing = document.createElement("span")
+    closing.className = "text-xs font-semibold text-indigo-700"
+    closing.textContent = ")"
+    wrapper.append(closing)
+
+    return wrapper
+  }
+
+  complexBadgeElement(node, path) {
     const wrapper = document.createElement("span")
     wrapper.className = "inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-800"
     wrapper.title = JSON.stringify(node)
-    wrapper.textContent = node && (node.or ? "OR group" : node.not ? "NOT group" : "complex filter")
+    wrapper.textContent = node && node.not ? "NOT group" : "complex filter"
 
     const removeButton = document.createElement("button")
     removeButton.type = "button"
     removeButton.className = "ml-1 text-amber-600 hover:text-amber-900 cursor-pointer"
     removeButton.textContent = "×"
     removeButton.dataset.action = "click->chip-bar#removeChip"
-    removeButton.dataset.chipIndex = index
+    removeButton.dataset.chipPath = JSON.stringify(path)
     wrapper.append(removeButton)
     return wrapper
   }
@@ -125,10 +232,8 @@ export default class extends Controller {
   // ---- Chip mutations ----
 
   removeChip(event) {
-    const index = Number(event.currentTarget.dataset.chipIndex)
-    const children = this.topChildren().slice()
-    children.splice(index, 1)
-    this.setTopChildren(children)
+    const path = JSON.parse(event.currentTarget.dataset.chipPath)
+    this.removeNodeAtPath(path)
     this.submitForm()
   }
 
@@ -139,7 +244,23 @@ export default class extends Controller {
 
   // ---- Add-filter popover ----
 
+  // Default add: append a new chip at the top level (AND).
   openAddMenu(event) {
+    this.pendingAddTarget = null
+    this.closePopovers()
+    this.positionPopover(this.addMenuTarget, event.currentTarget)
+    this.populateAddMenu("")
+    this.addMenuTarget.classList.remove("hidden")
+    this.addSearchTarget.value = ""
+    this.addSearchTarget.focus()
+  }
+
+  // Open the add menu in "append to OR group" mode. The button passes
+  // the OR group's top-level path; the next addChip will append into
+  // that group instead of the AND root.
+  openAddMenuForOrGroup(event) {
+    const path = JSON.parse(event.currentTarget.dataset.chipPath)
+    this.pendingAddTarget = { kind: "or_group", path }
     this.closePopovers()
     this.positionPopover(this.addMenuTarget, event.currentTarget)
     this.populateAddMenu("")
@@ -188,47 +309,60 @@ export default class extends Controller {
     if (!meta) return
 
     const defaults = defaultsFor(meta)
-    const children = this.topChildren().slice()
-    const newIndex = children.length
-    children.push({ field, op: defaults.op, value: defaults.value })
-    this.setTopChildren(children)
+    const newChip = { field, op: defaults.op, value: defaults.value }
+
+    let newPath
+    if (this.pendingAddTarget && this.pendingAddTarget.kind === "or_group") {
+      const groupIndex = this.pendingAddTarget.path[0]
+      const children = this.topChildren().slice()
+      const group = children[groupIndex]
+      if (!group || !Array.isArray(group.or)) return
+      const newOr = group.or.concat([ newChip ])
+      children[groupIndex] = { or: newOr }
+      this.setTopChildren(children)
+      newPath = [ groupIndex, newOr.length - 1 ]
+    } else {
+      const children = this.topChildren().slice()
+      children.push(newChip)
+      this.setTopChildren(children)
+      newPath = [ children.length - 1 ]
+    }
+
+    this.pendingAddTarget = null
     this.closePopovers()
-    // Immediately open the editor on the new chip so the operator
-    // can pick a value without an extra click.
-    this.openEditorForIndex(newIndex)
+    this.openEditorForPath(newPath)
   }
 
   // ---- Per-chip editor popover ----
 
   editChip(event) {
-    const index = Number(event.currentTarget.dataset.chipIndex)
-    this.openEditorForIndex(index)
+    const path = JSON.parse(event.currentTarget.dataset.chipPath)
+    this.openEditorForPath(path)
   }
 
-  openEditorForIndex(index) {
-    const chip = this.topChildren()[index]
+  openEditorForPath(path) {
+    const chip = this.nodeAtPath(path)
     if (!chip || !("field" in chip)) return
     const meta = this.metaFor(chip.field)
     if (!meta) return
 
-    this.editingChipIndex = index
-    this.editorTarget.replaceChildren(this.editorContent(chip, meta))
+    this.editingChipPath = path
+    this.editorTarget.replaceChildren(this.editorContent(chip, meta, path))
 
-    const anchor = this.chipsTarget.children[index] || this.addButtonTarget
+    const anchor = this.chipsTarget.querySelector(`[data-chip-path='${JSON.stringify(path)}']`) || this.addButtonTarget
     this.positionPopover(this.editorTarget, anchor)
     this.editorTarget.classList.remove("hidden")
   }
 
-  editorContent(chip, meta) {
+  editorContent(chip, meta, path) {
     const root = document.createElement("div")
-    root.className = "p-3 space-y-3"
+    root.className = "p-3 space-y-3 min-w-[14rem]"
 
     const header = document.createElement("div")
     header.className = "text-xs font-semibold uppercase tracking-wide text-gray-500"
     header.textContent = meta.label
     root.append(header)
 
-    // Operator picker (only if the chip has more than one operator).
     if (meta.operators.length > 1) {
       const opSelect = document.createElement("select")
       opSelect.className = "block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
@@ -247,13 +381,26 @@ export default class extends Controller {
     if (valueEditor) root.append(valueEditor)
 
     const footer = document.createElement("div")
-    footer.className = "flex justify-end pt-1"
+    footer.className = "flex items-center justify-between gap-2 pt-1"
+
+    // Add OR alternative: visible on flat chips (length-1 path) AND
+    // on chips already inside an OR group (length-2 path). For flat
+    // chips, applying wraps in an OR group first; for grouped chips,
+    // it appends an alternative directly to the existing group.
+    const addOr = document.createElement("button")
+    addOr.type = "button"
+    addOr.className = "rounded-md border border-indigo-300 px-2 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-50 cursor-pointer"
+    addOr.textContent = "+ OR alternative"
+    addOr.dataset.action = "click->chip-bar#addOrAlternativeFromEditor"
+    footer.append(addOr)
+
     const done = document.createElement("button")
     done.type = "button"
     done.className = "rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 cursor-pointer"
     done.textContent = "Done"
     done.dataset.action = "click->chip-bar#applyEditor"
     footer.append(done)
+
     root.append(footer)
 
     return root
@@ -268,7 +415,7 @@ export default class extends Controller {
       case "preset":
         return enumEditor(chip, meta)
       case "boolean":
-        return null // operator IS the value; no separate editor needed
+        return null
       case "string":
         return stringEditor(chip)
       case "number":
@@ -282,44 +429,74 @@ export default class extends Controller {
     }
   }
 
-  // The editor's inputs use `data-chip-bar-target="editorInput"` to
-  // namespace; on Done we re-read them all.
   applyEditor() {
-    if (this.editingChipIndex === null) return
-    const children = this.topChildren().slice()
-    const chip = { ...children[this.editingChipIndex] }
-    const opSelect = this.editorTarget.querySelector("select[data-action*='updateChipOp']")
-    if (opSelect) chip.op = opSelect.value
+    if (this.editingChipPath === null) return
+    const current = this.nodeAtPath(this.editingChipPath)
+    if (!current) return
 
-    chip.value = readEditorValue(this.editorTarget, chip.op)
-    children[this.editingChipIndex] = chip
-    this.setTopChildren(children)
+    const opSelect = this.editorTarget.querySelector("select[data-action*='updateChipOp']")
+    const updated = { ...current }
+    if (opSelect) updated.op = opSelect.value
+    updated.value = readEditorValue(this.editorTarget, updated.op)
+
+    this.replaceNodeAtPath(this.editingChipPath, updated)
     this.closePopovers()
     this.submitForm()
   }
 
+  // Apply current edits, then either wrap the chip in a fresh OR
+  // group (if it's a flat top-level chip) or address the existing
+  // OR group, and open the add menu for the alternative.
+  addOrAlternativeFromEditor() {
+    if (this.editingChipPath === null) return
+    const current = this.nodeAtPath(this.editingChipPath)
+    if (!current) return
+
+    const opSelect = this.editorTarget.querySelector("select[data-action*='updateChipOp']")
+    const updated = { ...current }
+    if (opSelect) updated.op = opSelect.value
+    updated.value = readEditorValue(this.editorTarget, updated.op)
+    this.replaceNodeAtPath(this.editingChipPath, updated)
+
+    let groupTopPath
+    if (this.editingChipPath.length === 1) {
+      const newPath = this.wrapInOrGroup(this.editingChipPath)
+      groupTopPath = [ newPath[0] ]
+    } else {
+      groupTopPath = [ this.editingChipPath[0] ]
+    }
+
+    this.editorTarget.classList.add("hidden")
+    this.editingChipPath = null
+    this.pendingAddTarget = { kind: "or_group", path: groupTopPath }
+
+    const anchor = this.chipsTarget.querySelector(`[data-chip-path='${JSON.stringify(groupTopPath)}']`)
+      || this.chipsTarget.children[groupTopPath[0]]
+      || this.addButtonTarget
+    this.positionPopover(this.addMenuTarget, anchor)
+    this.populateAddMenu("")
+    this.addMenuTarget.classList.remove("hidden")
+    this.addSearchTarget.value = ""
+    this.addSearchTarget.focus()
+  }
+
   updateChipOp(event) {
-    // Re-render the editor when the operator changes — between/within_last
-    // need different inputs than equals/contains, and predicates need
-    // no value input at all.
-    if (this.editingChipIndex === null) return
+    if (this.editingChipPath === null) return
     const newOp = event.currentTarget.value
-    const children = this.topChildren().slice()
-    children[this.editingChipIndex] = { ...children[this.editingChipIndex], op: newOp, value: null }
-    this.setTopChildren(children)
-    this.openEditorForIndex(this.editingChipIndex)
+    const current = this.nodeAtPath(this.editingChipPath)
+    if (!current) return
+    this.replaceNodeAtPath(this.editingChipPath, { ...current, op: newOp, value: null })
+    this.openEditorForPath(this.editingChipPath)
   }
 
   closePopovers() {
     this.addMenuTarget.classList.add("hidden")
     this.editorTarget.classList.add("hidden")
-    this.editingChipIndex = null
+    this.editingChipPath = null
+    this.pendingAddTarget = null
   }
 
   positionPopover(popover, anchor) {
-    // Position relative to the controller's element. Operators see
-    // the popover anchored to the chip / button they clicked,
-    // tucked into the page flow.
     const containerRect = this.element.getBoundingClientRect()
     const anchorRect = anchor.getBoundingClientRect()
     popover.style.position = "absolute"
@@ -348,11 +525,19 @@ function humanizeOp(op) {
 
 function encodeTree(tree) {
   const json = JSON.stringify(tree || { and: [] })
-  // base64-url without padding — matches Filters::QueryParam.encode.
   return btoa(unescape(encodeURIComponent(json)))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/, "")
+}
+
+function separator(kind) {
+  const span = document.createElement("span")
+  span.className = kind === "or"
+    ? "text-xs font-semibold uppercase tracking-wide text-indigo-600"
+    : "text-xs font-semibold uppercase tracking-wide text-gray-400"
+  span.textContent = kind
+  return span
 }
 
 function labelSpan(text) {
@@ -499,8 +684,6 @@ function dateInput(value) {
 }
 
 function collectionEditor(chip, meta) {
-  // For collection chips with no static values (tags don't have a
-  // schema-time value list), drop back to a comma-separated input.
   if (!Array.isArray(meta.values) || meta.values.length === 0) {
     const input = document.createElement("input")
     input.type = "text"
@@ -520,14 +703,12 @@ function readEditorValue(editor, op) {
   const inputs = editor.querySelectorAll('[data-chip-bar-target="editorInput"]')
   if (inputs.length === 0) return null
 
-  // within_last / more_than_ago: { n, unit }
   const nInput = editor.querySelector('[data-role="n"]')
   const unitSelect = editor.querySelector('[data-role="unit"]')
   if (nInput && unitSelect) {
     return { n: Number(nInput.value || 0), unit: unitSelect.value }
   }
 
-  // CSV (tag ids without a schema list)
   const csvInput = editor.querySelector('[data-role="csv"]')
   if (csvInput) {
     return csvInput.value.split(",").map(s => s.trim()).filter(Boolean)
@@ -545,7 +726,6 @@ function readEditorValue(editor, op) {
     return input.value === "" ? null : input.value
   }
 
-  // Multiple inputs without explicit roles → array of values
   return Array.from(inputs).map(input => {
     if (input.type === "number") {
       const num = Number(input.value)
