@@ -240,6 +240,43 @@ preserve scroll position across morphs.
   hand-written file you already committed, delete it, regenerate via
   the generator, and rewrite the diff onto the new file before
   pushing.
+- **Migrations are idempotent.** Wrap every `add_column`,
+  `remove_column`, `add_reference`, `remove_reference`, and
+  `add_index` in an existence guard:
+
+  ```ruby
+  def up
+    add_column :jobs, :approved_at, :datetime unless column_exists?(:jobs, :approved_at)
+    add_reference :jobs, :approved_by_user, null: true, foreign_key: { to_table: :users } unless column_exists?(:jobs, :approved_by_user_id)
+    add_index :jobs, :approved_at unless index_exists?(:jobs, :approved_at)
+  end
+  ```
+
+  Why: production migrations occasionally crash partway through (OOM,
+  pod eviction, transient lock contention, etc.) and don't record the
+  version in `schema_migrations`. On retry the bare `add_column` dies
+  with `Mysql2::Error: Duplicate column name`, the init container
+  loops, the deploy hangs. Idempotent migrations recover instead. The
+  same applies to `down`: guard with `if column_exists?` so a rollback
+  on a partial-state DB doesn't crash. `add_table` / `drop_table` are
+  less critical (table creation is more atomic) but follow the pattern
+  anyway — `create_table :foo do |t|` becomes `create_table :foo,
+  if_not_exists: true do |t|` with no behavior change.
+- **JSON columns can't have defaults on MySQL 8.** `add_column :jobs,
+  :payload, :json, default: {}, null: false` runs fine on SQLite (dev /
+  test) and crashes the production migration with `BLOB, TEXT, GEOMETRY
+  or JSON column 'payload' can't have a default value`. The pattern
+  that works:
+
+  ```ruby
+  add_column :jobs, :payload, :json
+  execute "UPDATE jobs SET payload = '{}' WHERE payload IS NULL"
+  change_column_null :jobs, :payload, false
+  ```
+
+  Add an `after_initialize` callback on the model that seeds `{}` for
+  new records so the column stays non-null going forward without a DB
+  default. SmartFolder + Whiteboard already do this; copy that pattern.
 - **Three-dot diffs only** — `git diff <base>...HEAD`, never two-dot.
   Lesson learned the hard way (commit `67b2bf9`).
 - **Clones live outside the repo** — under `$SYRUS_DATA_ROOT` (default
@@ -479,6 +516,19 @@ Required runtime env:
 - **`BUNDLE_WITHOUT="development"` doesn't exclude `:test`** — use
   `"development:test"` (colon-separated). The Rails 8 default is wrong.
   (Fixed in commit `77cae32`.)
+- **Non-idempotent migrations hang the deploy on partial retry.** Any
+  bare `add_column` / `remove_column` / `add_reference` will die with
+  `Mysql2::Error: Duplicate column name` (or its missing-column twin)
+  if a previous deploy attempt got partway through, added the column,
+  and then crashed before `schema_migrations` was updated. The init
+  container then crashloops indefinitely. Always guard with
+  `column_exists?` / `index_exists?` — see Conventions.
+- **JSON columns can't have a DB default on MySQL 8.** `add_column :t,
+  :c, :json, default: {}` works on SQLite, crashes prod with `BLOB,
+  TEXT, GEOMETRY or JSON column ... can't have a default value`. Add
+  nullable, backfill `{}` via `execute`, then `change_column_null`,
+  with an `after_initialize` seed on the model. SmartFolder and
+  Whiteboard do this; copy the pattern. See Conventions.
 - **Hand-written migration timestamps collide across branches.** Two
   PRs both picking `20260513120100_*.rb` will install identical rows
   in `schema_migrations` on whichever environment merges them first,
