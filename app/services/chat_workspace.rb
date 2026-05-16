@@ -4,7 +4,6 @@ require "fileutils"
 # Unlike WorkflowWorkspace, this workspace is long-lived and is not
 # reset between turns.
 class ChatWorkspace
-  CLONE_DEPTH = 50
   EXCLUDE_ENTRY = ".syrus/".freeze
 
   def self.data_root
@@ -43,7 +42,7 @@ class ChatWorkspace
 
     FileUtils.mkdir_p(@path.dirname)
     @git.run(
-      "clone", "--depth", CLONE_DEPTH.to_s,
+      "clone",
       "--branch", @repository.default_branch,
       "--no-tags", authenticated_url, @path.to_s,
       env: @env

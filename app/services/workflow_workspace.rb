@@ -1,8 +1,17 @@
 require "fileutils"
 
-# Per-Workflow workspace. One shallow clone at
+# Per-Workflow workspace. One full clone at
 # $SYRUS_DATA_ROOT/workflows/<workflow_id>/, lifecycle owned by the
 # Workflow's terminal state transitions (not the individual Run).
+#
+# Cloning depth: we used to fetch with `--depth 50` to keep clones
+# small, but the shallow window doesn't reach historical SHAs after
+# rebases or force-pushes — stacked-PR checkouts then failed with
+# "reference is not a tree". Full clones are slow on a per-Workflow
+# basis but correct. The plan is to switch to a shared bare clone
+# plus per-Workflow worktrees (one fetch, many cheap checkouts),
+# which fixes both the cost and the correctness side. Until then,
+# pay the clone cost.
 #
 # All Steps + Runs in a Workflow share this workspace. That's the
 # whole point of the v1 chain: implement commits locally, summarize
@@ -16,7 +25,6 @@ require "fileutils"
 # Jobs (or different Workflows on the same Job in sequence) never
 # share a path.
 class WorkflowWorkspace
-  CLONE_DEPTH = 50
   EXCLUDE_ENTRY = ".syrus/".freeze
 
   attr_reader :path, :branch_name
@@ -169,7 +177,7 @@ class WorkflowWorkspace
     end
 
     @git.run(
-      "clone", "--depth", CLONE_DEPTH.to_s,
+      "clone",
       "--branch", @repository.default_branch,
       "--no-tags", authenticated_url, path.to_s,
       env: @env
@@ -190,7 +198,7 @@ class WorkflowWorkspace
 
     if remote_ref.strip.present?
       @git.run(
-        "fetch", "--depth", CLONE_DEPTH.to_s, authenticated_url,
+        "fetch", authenticated_url,
         "refs/heads/#{@branch_name}:refs/heads/#{@branch_name}",
         chdir: path.to_s, env: @env
       )
@@ -209,7 +217,7 @@ class WorkflowWorkspace
 
   def fetch_stack_parent
     @git.run(
-      "fetch", "--depth", CLONE_DEPTH.to_s, authenticated_url,
+      "fetch", authenticated_url,
       "refs/heads/#{stack_parent.branch_name}:refs/remotes/origin/#{stack_parent.branch_name}",
       chdir: path.to_s, env: @env
     )
