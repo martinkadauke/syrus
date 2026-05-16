@@ -224,6 +224,22 @@ preserve scroll position across morphs.
   `@total_<collection>` and reads `PER_PAGE` from the controller constant;
   the view computes `first_item`/`last_item` inline. Only show the
   pagination block when `total_pages > 1`.
+- **Migration timestamps come from the generator. No exceptions.**
+  Always create migrations with `bin/rails generate migration <Name>`.
+  Never hand-write a `db/migrate/YYYYMMDDHHMMSS_*.rb` filename, never
+  copy a sibling migration and bump the digits, never reuse a timestamp
+  you saw in another branch's PR. Hand-rolled timestamps collide:
+  two branches that both pick `20260513120100` produce identical
+  `schema_migrations` rows on the first environment to merge them, and
+  the second branch's file then crashes the deploy with
+  `Mysql2::Error: Table 'X' already exists`. Recovery is manual
+  `UPDATE schema_migrations SET version = '<new>' WHERE version =
+  '<old>'` SQL in every environment (dev, test, staging, production) —
+  we have paid for this several times. This applies to backfills,
+  schema-version bumps, no-op migrations, every kind. If you regret a
+  hand-written file you already committed, delete it, regenerate via
+  the generator, and rewrite the diff onto the new file before
+  pushing.
 - **Three-dot diffs only** — `git diff <base>...HEAD`, never two-dot.
   Lesson learned the hard way (commit `67b2bf9`).
 - **Clones live outside the repo** — under `$SYRUS_DATA_ROOT` (default
@@ -463,6 +479,13 @@ Required runtime env:
 - **`BUNDLE_WITHOUT="development"` doesn't exclude `:test`** — use
   `"development:test"` (colon-separated). The Rails 8 default is wrong.
   (Fixed in commit `77cae32`.)
+- **Hand-written migration timestamps collide across branches.** Two
+  PRs both picking `20260513120100_*.rb` will install identical rows
+  in `schema_migrations` on whichever environment merges them first,
+  and the second one's table-create then 500s on deploy. Always use
+  `bin/rails generate migration` — see Conventions. Recovery is
+  hand-edited `UPDATE schema_migrations` SQL in every environment,
+  which is exactly the kind of toil this rule exists to prevent.
 
 ## Key files at a glance
 
