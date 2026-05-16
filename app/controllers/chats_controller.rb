@@ -11,7 +11,7 @@ class ChatsController < ApplicationController
     @pending_actions = []
     @turn_in_flight = false
     @attachment_groups = {}
-    @documents_in_scope = RepositoryDocument.none
+    @documents_in_scope = Document.none
     @attachment_results = []
   end
 
@@ -137,10 +137,11 @@ class ChatsController < ApplicationController
   def confirm_pending_action
     if @pending_action.confirm!(user: Current.user)
       record = @pending_action.result
-      notice = case record
-               when ScheduledTask then "Scheduled task created: #{record.name}."
-               else "Pending action confirmed."
-               end
+      notice =
+        case record
+        when ScheduledTask then "Scheduled task created: #{record.name}."
+        else "Pending action confirmed."
+        end
       redirect_to chat_path(@chat_session), notice: notice
     else
       redirect_to chat_path(@chat_session), alert: "Pending action is no longer active."
@@ -185,7 +186,7 @@ class ChatsController < ApplicationController
     @pending_actions = @chat_session.pending_actions.pending.order(:created_at, :id)
     @turn_in_flight = @chat_session.turn_in_flight?
     @attachment_groups = @chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type)
-    @documents_in_scope = @chat_session.attached_documents_in_scope.includes(:repository).order(:title, :id)
+    @documents_in_scope = @chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id)
     @attachment_results = attachment_search_results
   end
 
@@ -221,7 +222,7 @@ class ChatsController < ApplicationController
     raw = params[:attachable_type].presence || params.dig(:chat_attachment, :attachable_type).presence
     return unless raw
 
-    type = raw.to_s == "Document" ? "RepositoryDocument" : raw.to_s
+    type = raw.to_s == "RepositoryDocument" ? "Document" : raw.to_s
     ChatAttachment::ATTACHABLE_TYPES.include?(type) ? type : nil
   end
 
@@ -231,8 +232,8 @@ class ChatsController < ApplicationController
       Current.user.repositories.find(id)
     when "Job"
       Current.user.jobs.find(id)
-    when "RepositoryDocument"
-      RepositoryDocument.where(user: Current.user).find(id)
+    when "Document"
+      Document.where(user: Current.user, attachable_type: "Repository").find(id)
     else
       type.safe_constantize&.where(user: Current.user)&.find(id)
     end
@@ -253,7 +254,7 @@ class ChatsController < ApplicationController
 
   def normalized_search_type
     raw = params[:attachment_type].presence || params[:attachable_type].presence || "Repository"
-    raw.to_s == "Document" ? "RepositoryDocument" : raw.to_s
+    raw.to_s == "RepositoryDocument" ? "Document" : raw.to_s
   end
 
   def attachment_search_scope(type)
@@ -262,8 +263,8 @@ class ChatsController < ApplicationController
       Current.user.repositories.active.order(:owner, :name, :id)
     when "Job"
       Current.user.jobs.includes(:repository).order(created_at: :desc, id: :desc)
-    when "RepositoryDocument"
-      RepositoryDocument.where(user: Current.user).includes(:repository).order(:title, :id)
+    when "Document"
+      Document.where(user: Current.user, attachable_type: "Repository").includes(:attachable).order(:title, :id)
     else
       klass = type.safe_constantize
       klass&.where(user: Current.user)&.order(:id)
@@ -278,7 +279,7 @@ class ChatsController < ApplicationController
     when "Job"
       id = Integer(query, exception: false)
       id ? scope.where("issue_title LIKE ? OR issue_body LIKE ? OR jobs.id = ?", like, like, id) : scope.where("issue_title LIKE ? OR issue_body LIKE ?", like, like)
-    when "RepositoryDocument"
+    when "Document"
       scope.where("title LIKE ?", like)
     else
       scope
@@ -289,7 +290,7 @@ class ChatsController < ApplicationController
     case record
     when Repository then record.slug
     when Job then "Job ##{record.id}"
-    when RepositoryDocument then record.title
+    when Document then record.title
     else record.try(:name).presence || record.try(:title).presence || "#{record.class.name} ##{record.id}"
     end
   end

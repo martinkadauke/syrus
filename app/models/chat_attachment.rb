@@ -1,5 +1,5 @@
 class ChatAttachment < ApplicationRecord
-  ATTACHABLE_TYPES = %w[ Repository Epic Job Document RepositoryDocument ].freeze
+  ATTACHABLE_TYPES = %w[ Repository Epic Job Document ].freeze
 
   belongs_to :chat_session
   belongs_to :attachable, polymorphic: true

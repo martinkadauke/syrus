@@ -109,6 +109,7 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
         updated_at: row["updated_at"]
       )
       move_attachment!("RepositoryDocument", row["id"], "Document", id)
+      move_chat_attachment!("RepositoryDocument", row["id"], "Document", id)
     end
   end
 
@@ -138,6 +139,7 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
         updated_at: row["updated_at"]
       )
       move_attachment!("JobAttachment", row["id"], "Document", id)
+      move_chat_attachment!("JobAttachment", row["id"], "Document", id)
     end
   end
 
@@ -147,9 +149,11 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
       when "Repository"
         id = insert_repository_document!(row)
         move_attachment!("Document", row["id"], "RepositoryDocument", id)
+        move_chat_attachment!("Document", row["id"], "RepositoryDocument", id)
       when "Job"
         id = insert_job_attachment!(row)
         move_attachment!("Document", row["id"], "JobAttachment", id)
+        move_chat_attachment!("Document", row["id"], "JobAttachment", id)
       end
     end
   end
@@ -187,6 +191,16 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
       UPDATE active_storage_attachments
       SET record_type = #{sql_quote(new_type)}, record_id = #{sql_quote(new_id)}
       WHERE record_type = #{sql_quote(old_type)} AND record_id = #{sql_quote(old_id)}
+    SQL
+  end
+
+  def move_chat_attachment!(old_type, old_id, new_type, new_id)
+    return unless table_exists?(:chat_attachments)
+
+    execute(<<~SQL.squish)
+      UPDATE chat_attachments
+      SET attachable_type = #{sql_quote(new_type)}, attachable_id = #{sql_quote(new_id)}
+      WHERE attachable_type = #{sql_quote(old_type)} AND attachable_id = #{sql_quote(old_id)}
     SQL
   end
 

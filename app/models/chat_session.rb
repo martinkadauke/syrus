@@ -8,8 +8,8 @@ class ChatSession < ApplicationRecord
   has_many :job_attachments,
            -> { where(attachable_type: "Job").order(:attached_at, :id) },
            class_name: "ChatAttachment"
-  has_many :repository_document_attachments,
-           -> { where(attachable_type: "RepositoryDocument").order(:attached_at, :id) },
+  has_many :document_attachments,
+           -> { where(attachable_type: "Document").order(:attached_at, :id) },
            class_name: "ChatAttachment"
   has_many :attached_repositories,
            through: :repository_attachments,
@@ -20,9 +20,9 @@ class ChatSession < ApplicationRecord
            source: :attachable,
            source_type: "Job"
   has_many :attached_repository_documents,
-           through: :repository_document_attachments,
+           through: :document_attachments,
            source: :attachable,
-           source_type: "RepositoryDocument"
+           source_type: "Document"
   has_many :messages, class_name: "ChatMessage", dependent: :destroy
   has_many :bookmarks,
            -> { order("chat_messages.created_at ASC", "chat_messages.id ASC", "chat_bookmarks.id ASC") },
@@ -65,20 +65,17 @@ class ChatSession < ApplicationRecord
   end
 
   def attached_documents
-    return attached_repository_documents unless "Document".safe_constantize
-
-    records = attached_records_for("Document")
-    records.to_a + attached_repository_documents.to_a
+    attached_repository_documents
   end
 
   def attached_documents_in_scope
     repository_ids = attached_repositories.ids + attached_jobs.includes(:repository).map(&:repository_id)
     document_ids = attached_repository_documents.ids
+    documents = Document.where(user_id: user_id)
 
-    RepositoryDocument
-      .where(user_id: user_id)
-      .where(repository_id: repository_ids.uniq)
-      .or(RepositoryDocument.where(user_id: user_id, id: document_ids))
+    documents
+      .where(attachable_type: "Repository", attachable_id: repository_ids.uniq)
+      .or(documents.where(id: document_ids))
       .distinct
   end
 
