@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_16_180000) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_16_190000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -370,10 +370,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_180000) do
     t.datetime "last_seen_comment_at"
     t.boolean "operator_chat_disabled", default: false, null: false
     t.integer "parent_job_id"
+    t.json "pending_epic_reference", null: false
     t.boolean "pr_mergeable"
     t.datetime "pr_mergeable_checked_at"
     t.integer "pr_number"
-    t.json "pending_epic_reference", default: {}, null: false
     t.string "priority", default: "medium", null: false
     t.integer "repository_id", null: false
     t.integer "scheduled_task_id"
