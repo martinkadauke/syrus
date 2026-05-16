@@ -2,6 +2,7 @@ module Filters
   module Chips
     class PinnedByMe < Base
       filter_name "pinned_by_me"
+      label "Pinned by me"
       bucket :boolean
       operators :is_true, :is_false
 

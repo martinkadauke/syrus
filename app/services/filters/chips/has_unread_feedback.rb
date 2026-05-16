@@ -6,6 +6,7 @@ module Filters
     # newer than the last addressed-at (or addressed-at is nil).
     class HasUnreadFeedback < Base
       filter_name "has_unread_feedback"
+      label "Has unread feedback"
       bucket :boolean
       operators :is_true, :is_false
 

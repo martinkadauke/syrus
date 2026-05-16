@@ -5,6 +5,7 @@ module Filters
     # filters don't fight with each other via repeated joins.
     class Tags < Base
       filter_name "tags"
+      label "Tags"
       bucket :collection
       operators :contains_any, :contains_all, :contains_none, :is_empty, :is_not_empty
 

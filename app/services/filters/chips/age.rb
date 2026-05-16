@@ -7,6 +7,7 @@ module Filters
     # back-compat with the current filter bar.
     class Age < Base
       filter_name "age"
+      label "Age"
       bucket :enum
       operators :is
 

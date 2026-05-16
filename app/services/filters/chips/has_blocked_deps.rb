@@ -5,6 +5,7 @@ module Filters
     # Mirrors Filters::Chips::Attention#blocked_dependency_ids.
     class HasBlockedDeps < Base
       filter_name "has_blocked_deps"
+      label "Has blocked deps"
       bucket :boolean
       operators :is_true, :is_false
 

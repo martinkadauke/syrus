@@ -2,6 +2,7 @@ module Filters
   module Chips
     class RepositoryId < Base
       filter_name "repository_id"
+      label "Repository"
       bucket :fk
       operators :is, :is_not, :is_one_of, :is_none_of
 

@@ -2,8 +2,10 @@ module Filters
   module Chips
     class Kind < Base
       filter_name "kind"
+      label "Kind"
       bucket :enum
       operators :is, :is_not, :is_one_of, :is_none_of
+      values "issue", "cron", "adhoc"
 
       def apply
         case op

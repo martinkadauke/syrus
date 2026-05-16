@@ -10,8 +10,10 @@ module Filters
     # operators that need to target a specific AASM state directly.
     class State < Base
       filter_name "state"
+      label "State"
       bucket :enum
       operators :is, :is_not, :is_one_of, :is_none_of
+      values "open", "closed"
 
       def apply
         case op

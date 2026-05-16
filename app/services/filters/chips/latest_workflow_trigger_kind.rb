@@ -2,8 +2,10 @@ module Filters
   module Chips
     class LatestWorkflowTriggerKind < Base
       filter_name "latest_workflow_trigger_kind"
+      label "Latest workflow trigger"
       bucket :enum
       operators :is, :is_not, :is_one_of, :is_none_of
+      values "initial", "pr_comment", "ci_failure", "retry", "rebase", "resume", "manual", "replay"
 
       def apply
         case op

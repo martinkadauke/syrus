@@ -6,8 +6,10 @@ module Filters
     # LatestWorkflowState uses.
     class LatestRunState < Base
       filter_name "latest_run_state"
+      label "Latest run state"
       bucket :enum
       operators :is, :is_not, :is_one_of, :is_none_of
+      values "queued", "running", "succeeded", "failed", "cancelled", "awaiting_operator"
 
       def apply
         case op

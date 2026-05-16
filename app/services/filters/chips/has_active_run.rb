@@ -3,6 +3,7 @@ module Filters
     # "Active" matches Run's scope: queued / running / awaiting_operator.
     class HasActiveRun < Base
       filter_name "has_active_run"
+      label "Has active run"
       bucket :boolean
       operators :is_true, :is_false
 

@@ -1,0 +1,63 @@
+<%# Composable-filter chip bar. Replaces the row of dropdowns; the
+    Stimulus controller (chip_bar_controller.js) owns the AST tree
+    and writes it back as ?q=<base64-json> on every change. The
+    server hands the controller two things on mount:
+
+      data-chip-bar-tree-value  — initial AST tree as JSON
+      data-chip-bar-schema-value — every chip's metadata
+                                   ({field,label,bucket,operators,values})
+
+    Plus the action URL the form submits to. Everything else (chip
+    rendering, add-filter popover, per-bucket editor) is JS. %>
+<%
+  filter_tree_json = @job_filter.to_h.to_json
+  schema_json = Filters::Schema.for_user(Current.user).to_json
+%>
+<div data-controller="chip-bar"
+     data-chip-bar-tree-value="<%= filter_tree_json %>"
+     data-chip-bar-schema-value="<%= schema_json %>"
+     data-chip-bar-submit-url-value="<%= dashboard_jobs_path %>"
+     class="<%= local_assigns.fetch(:class_name, '') %>">
+  <form data-chip-bar-target="form"
+        action="<%= dashboard_jobs_path %>"
+        method="get"
+        class="flex flex-wrap items-center gap-2">
+    <%# The single payload submitted: the encoded AST tree. The
+        chip-bar controller keeps this in sync with chip mutations. %>
+    <input type="hidden" name="q" data-chip-bar-target="qInput" value="<%= @job_filter.to_query_param %>">
+
+    <div data-chip-bar-target="chips" class="flex flex-wrap items-center gap-2"></div>
+
+    <button type="button"
+            data-chip-bar-target="addButton"
+            data-action="chip-bar#openAddMenu"
+            class="inline-flex items-center gap-1 rounded-md border border-dashed border-gray-300 px-2 py-1.5 text-sm text-gray-600 hover:border-gray-400 hover:text-gray-900">
+      <span>+ Add filter</span>
+      <span class="text-gray-400">▾</span>
+    </button>
+
+    <% if @job_filter.active? %>
+      <button type="button"
+              data-action="chip-bar#clearAll"
+              class="text-sm text-gray-500 hover:text-gray-700 underline">Clear</button>
+    <% end %>
+  </form>
+
+  <%# Add-filter popover. Hidden until the operator clicks +Add. %>
+  <div data-chip-bar-target="addMenu"
+       class="hidden absolute z-20 mt-1 w-72 rounded-md border border-gray-200 bg-white shadow-lg">
+    <input type="search"
+           data-chip-bar-target="addSearch"
+           data-action="input->chip-bar#filterAddMenu keydown->chip-bar#addMenuKeydown"
+           placeholder="Search filters…"
+           class="block w-full rounded-t-md border-b border-gray-200 px-3 py-2 text-sm focus:outline-none">
+    <div data-chip-bar-target="addList"
+         class="max-h-72 overflow-y-auto py-1"></div>
+  </div>
+
+  <%# Editor popover. Reused for every chip; the controller swaps
+      content based on the chip's bucket. %>
+  <div data-chip-bar-target="editor"
+       class="hidden absolute z-20 mt-1 w-72 rounded-md border border-gray-200 bg-white shadow-lg">
+  </div>
+</div>

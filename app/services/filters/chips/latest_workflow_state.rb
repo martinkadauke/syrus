@@ -7,8 +7,10 @@ module Filters
     # Filters::Chips::Attention uses for its presets.
     class LatestWorkflowState < Base
       filter_name "latest_workflow_state"
+      label "Latest workflow state"
       bucket :enum
       operators :is, :is_not, :is_one_of, :is_none_of
+      values "queued", "running", "succeeded", "failed", "cancelled"
 
       def apply
         case op

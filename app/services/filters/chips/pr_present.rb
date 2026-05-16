@@ -6,8 +6,10 @@ module Filters
     # check only.
     class PrPresent < Base
       filter_name "pr_present"
+      label "PR"
       bucket :enum
       operators :is
+      values "has", "none"
 
       def apply
         case op

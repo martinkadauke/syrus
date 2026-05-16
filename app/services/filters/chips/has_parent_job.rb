@@ -3,6 +3,7 @@ module Filters
     # "Has a parent" = stacked on another Job's branch.
     class HasParentJob < Base
       filter_name "has_parent_job"
+      label "Has parent"
       bucket :boolean
       operators :is_true, :is_false
 

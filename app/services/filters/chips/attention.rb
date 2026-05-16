@@ -9,6 +9,7 @@ module Filters
     # primitive sub-chips for further editing.
     class Attention < Base
       filter_name "attention"
+      label "Attention preset"
       bucket :preset
       operators :is
 
@@ -16,6 +17,8 @@ module Filters
         pinned in_progress inbox awaiting_approval just_failed in_review
         stale blocked merged_this_week awaiting_epic needs_review
       ].freeze
+
+      values(*PRESETS)
 
       def apply
         unsupported_op! unless op == :is

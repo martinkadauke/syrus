@@ -23,6 +23,11 @@ module Filters
           @filter_name
         end
 
+        def label(text = nil)
+          @label = text.to_s if text
+          @label ||= filter_name.to_s.humanize
+        end
+
         def bucket(name = nil)
           @bucket = name.to_sym if name
           @bucket
@@ -31,6 +36,15 @@ module Filters
         def operators(*ops)
           @operators = ops.map(&:to_sym).freeze if ops.any?
           @operators ||= [].freeze
+        end
+
+        # Static value-set for enum-style chips. Returns an empty
+        # array for buckets that take free input (strings, numbers,
+        # dates) — the editor falls back to a text/number/date
+        # widget in that case.
+        def values(*list)
+          @values = list.flatten.map(&:to_s).freeze if list.any?
+          @values ||= [].freeze
         end
       end
 

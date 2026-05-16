@@ -4,6 +4,7 @@ module Filters
     # parent_job_id. Uses an EXISTS subquery via where(id: ...).
     class HasChildJobs < Base
       filter_name "has_child_jobs"
+      label "Has children"
       bucket :boolean
       operators :is_true, :is_false
 
