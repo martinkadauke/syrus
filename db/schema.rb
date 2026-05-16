@@ -346,7 +346,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_15_130000) do
     t.integer "external_pr_number"
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
-    t.json "invalidation_evidence", default: [], null: false
+    t.json "invalidation_evidence", null: false
     t.text "invalidation_reason"
     t.text "issue_body"
     t.integer "issue_number"
