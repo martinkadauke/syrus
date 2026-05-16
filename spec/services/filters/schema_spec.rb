@@ -40,5 +40,19 @@ RSpec.describe Filters::Schema do
       expect(schema["bucket"]).to eq("enum")
       expect(schema["values"]).to eq(%w[high medium low])
     end
+
+    it "embeds preset expansions on chips that declare them" do
+      schema = described_class.chip_for("attention")
+      expect(schema["expansions"]).to be_a(Hash)
+      expect(schema["expansions"].keys).to include("stale", "blocked", "pinned")
+      expect(schema["expansions"]["pinned"]).to eq(
+        "field" => "pinned_by_me", "op" => "is_true", "value" => nil
+      )
+    end
+
+    it "omits the expansions key for chips that don't declare them" do
+      schema = described_class.chip_for("priority")
+      expect(schema).not_to have_key("expansions")
+    end
   end
 end

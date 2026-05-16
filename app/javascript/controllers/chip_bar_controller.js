@@ -449,6 +449,21 @@ export default class extends Controller {
     const valueEditor = this.valueEditorFor(chip, meta)
     if (valueEditor) root.append(valueEditor)
 
+    // Preset-only: surface an "Expand into primitives" button when
+    // the current value has a known expansion. Clicking replaces the
+    // preset chip with the underlying primitive chips so the operator
+    // can tweak the building blocks (date window, OR branches, etc.).
+    const expansion = expansionForPresetChip(chip, meta)
+    if (expansion && path.length === 1) {
+      const expand = document.createElement("button")
+      expand.type = "button"
+      expand.className = "block w-full rounded-md border border-purple-300 bg-purple-50 px-2 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 cursor-pointer"
+      expand.textContent = "Expand into primitives"
+      expand.title = "Replace this preset with its underlying primitive chips so you can edit them"
+      expand.dataset.action = "click->chip-bar#expandPresetFromEditor"
+      root.append(expand)
+    }
+
     const footer = document.createElement("div")
     footer.className = "flex items-center justify-between gap-2 pt-1"
 
@@ -509,6 +524,29 @@ export default class extends Controller {
     updated.value = readEditorValue(this.editorTarget, updated.op)
 
     this.replaceNodeAtPath(this.editingChipPath, updated)
+    this.closePopovers()
+    this.submitForm()
+  }
+
+  // Replace a top-level preset chip with its primitive expansion.
+  // If the expansion is `{and: [...]}`, splice its children into the
+  // top-level AND so they appear as individual chips. If it's a
+  // single chip or `{or: [...]}`, use it as one slot.
+  expandPresetFromEditor() {
+    if (this.editingChipPath === null) return
+    if (this.editingChipPath.length !== 1) return
+    const current = this.nodeAtPath(this.editingChipPath)
+    const meta = current && this.metaFor(current.field)
+    const expansion = expansionForPresetChip(current, meta)
+    if (!expansion) return
+
+    const replacement = expansion.and && Array.isArray(expansion.and)
+      ? expansion.and
+      : [ expansion ]
+
+    const children = this.topChildren().slice()
+    children.splice(this.editingChipPath[0], 1, ...replacement)
+    this.setTopChildren(children)
     this.closePopovers()
     this.submitForm()
   }
@@ -586,6 +624,16 @@ function defaultsFor(meta) {
 
 function isPredicateOp(op) {
   return [ "is_true", "is_false", "is_set", "is_unset", "is_empty", "is_not_empty" ].includes(op)
+}
+
+// Look up a preset chip's expansion from its meta. Returns an AST
+// sub-tree ({"field":...}, {"and":[...]}, {"or":[...]}) or null if
+// the preset value has no defined expansion.
+function expansionForPresetChip(chip, meta) {
+  if (!chip || !meta || meta.bucket !== "preset") return null
+  if (!meta.expansions || typeof meta.expansions !== "object") return null
+  const key = String(chip.value || "")
+  return meta.expansions[key] || null
 }
 
 function humanizeOp(op) {

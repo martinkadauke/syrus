@@ -20,6 +20,84 @@ module Filters
 
       values(*PRESETS)
 
+      # Static expansions: maps preset value → AST sub-tree of
+      # primitive chips. The chip-bar UI's "Expand" button replaces a
+      # preset chip with these primitives so operators can tweak the
+      # underlying filter (e.g., bump the staleness window from 7 to
+      # 14 days, or add a NOT to one branch of `blocked`). Expansions
+      # are intentionally lossy: they capture the most common reading
+      # of the preset, not every edge case in `apply_*`. Re-selecting
+      # the preset is always available if the expansion drifts.
+      #
+      # Presets without a clean primitive mapping (`inbox`, which
+      # depends on awaiting_operator state that has no chip) return
+      # nil — the UI hides the Expand button for those.
+      EXPANSIONS = {
+        "pinned"             => -> { chip_node("pinned_by_me", "is_true", nil) },
+        "in_progress"        => -> {
+          and_node(
+            chip_node("state", "is", "open"),
+            chip_node("has_active_run", "is_true", nil)
+          )
+        },
+        "awaiting_approval"  => -> { chip_node("state", "is", "implemented") },
+        "just_failed"        => -> { chip_node("latest_run_state", "is", "failed") },
+        "in_review"          => -> {
+          and_node(
+            chip_node("state", "is", "open"),
+            chip_node("pr_present", "is_true", nil),
+            chip_node("latest_workflow_state", "is", "succeeded")
+          )
+        },
+        "stale"              => -> {
+          and_node(
+            chip_node("state", "is", "open"),
+            chip_node("updated_at", "more_than_ago", { "n" => 7, "unit" => "days" })
+          )
+        },
+        "blocked"            => -> {
+          or_node(
+            chip_node("has_blocked_deps", "is_true", nil),
+            chip_node("pr_mergeable", "is_false", nil)
+          )
+        },
+        "merged_this_week"   => -> {
+          and_node(
+            chip_node("state", "is", "closed"),
+            chip_node("closure_reason", "is_one_of", %w[pr_merged external_pr_merged]),
+            chip_node("finished_at", "within_last", { "n" => 7, "unit" => "days" })
+          )
+        },
+        "awaiting_epic"      => -> { chip_node("triaging_reason", "is", "pending_epic_ref") },
+        "needs_review"       => -> {
+          chip_node("validity", "is_one_of", %w[duplicate already_implemented])
+        }
+      }.freeze
+
+      def self.expansion_for(preset_value)
+        builder = EXPANSIONS[preset_value.to_s]
+        builder&.call
+      end
+
+      # Convenience for the Schema serializer: a hash of all
+      # expandable preset values → their AST sub-trees, suitable for
+      # JSON-encoding into the chip-bar metadata.
+      def self.expansions
+        EXPANSIONS.transform_values(&:call)
+      end
+
+      def self.chip_node(field, op, value)
+        { "field" => field, "op" => op, "value" => value }
+      end
+
+      def self.and_node(*children)
+        { "and" => children }
+      end
+
+      def self.or_node(*children)
+        { "or" => children }
+      end
+
       def apply
         unsupported_op! unless op == :is
 

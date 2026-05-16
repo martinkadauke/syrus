@@ -15,13 +15,15 @@ module Filters
 
     def chip_for(field, user: nil)
       chip = Registry.find(field)
-      {
+      meta = {
         "field"     => field,
         "label"     => chip.label,
         "bucket"    => chip.bucket.to_s,
         "operators" => chip.operators.map(&:to_s),
         "values"    => dynamic_values(chip, user) || chip.values
       }
+      meta["expansions"] = chip.expansions if chip.respond_to?(:expansions)
+      meta
     end
 
     # FK chips (repository_id, epic_id, parent_job_id) need
