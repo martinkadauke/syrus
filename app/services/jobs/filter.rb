@@ -1,185 +1,161 @@
 module Jobs
+  # Thin wrapper over Filters::Ast + Filters::Compiler that keeps the
+  # existing public interface (`#apply`, `#active?`, `#pinned?`,
+  # `#to_h`) so callers don't need to know about the AST shape. The
+  # bulk of filter logic lives in Filters::Chips now; this class
+  # exists to bridge the controller's flat URL params + an optional
+  # active SmartFolder into a single AST tree.
   class Filter
-    PARAM_KEYS = %w[ state repository_id kind pr age attention tag_ids ].freeze
+    # Flat URL-param keys the legacy dropdown filter bar still emits.
+    # Each is translated to one or more AST chips by `from_params`.
+    LEGACY_URL_KEYS = %w[ state repository_id kind pr age attention tag_ids ].freeze
 
-    attr_reader :params, :user
+    # Build a Filter from the controller's request params plus an
+    # optional active SmartFolder. URL filters layer on top of the
+    # folder's saved tree via AND-composition.
+    def self.from_params(params, smart_folder: nil, user: nil)
+      url_tree = build_tree_from_url_params(params)
+      folder_tree = smart_folder&.filter.presence
 
-    # `user:` is required for any filter that needs operator context —
-    # currently the `pinned` attention filter, which joins job_pins
-    # for the requesting user. Callers that don't pass a user can
-    # still use the user-agnostic filters (state, repo, etc.).
-    def initialize(params, user: nil)
-      sliced = params.to_h.slice(*PARAM_KEYS)
-      # tag_ids is multi-valued; preserve it as an array of strings and
-      # drop empty entries so callers can pass raw form values.
-      if sliced["tag_ids"].present?
-        ids = Array(sliced["tag_ids"]).flatten.compact_blank.map(&:to_s)
-        sliced["tag_ids"] = ids.presence
-      end
-      @params = sliced.compact_blank
+      tree =
+        if folder_tree.present? && url_tree
+          merge_and(folder_tree, url_tree)
+        elsif folder_tree.present?
+          folder_tree
+        else
+          url_tree || Filters::Ast.serialize(Filters::Ast::EMPTY)
+        end
+
+      new(tree, user: user)
+    end
+
+    # Build a Filter directly from an AST tree (hash shape). Used by
+    # smart_folder_counts and by callers that already hold a tree.
+    def self.from_tree(tree, user: nil)
+      new(tree, user: user)
+    end
+
+    def initialize(tree, user: nil)
+      @ast = Filters::Ast.parse(tree)
       @user = user
     end
 
-    def pinned?
-      params["attention"] == "pinned"
+    def apply(scope)
+      Filters::Compiler.call(@ast, scope: scope, user: @user)
     end
 
-    def apply(relation)
-      relation = apply_attention(relation)
-      relation = apply_state(relation)
-      relation = apply_repository(relation)
-      relation = apply_kind(relation)
-      relation = apply_pr(relation)
-      relation = apply_age(relation)
-      apply_tags(relation)
-    end
-
+    # True if the tree contains any chip.
     def active?
-      params.any?
+      chips.any?
     end
 
+    # True if the tree contains an `attention: pinned` chip anywhere.
+    # The controller uses this to order results by pin timestamp.
+    def pinned?
+      chips.any? { |chip| chip.field == "attention" && chip.value.to_s == "pinned" }
+    end
+
+    # AST tree as a JSON-friendly Hash. Suitable for SmartFolder#filter
+    # storage and for JSON-encoding into a hidden form field.
     def to_h
-      params
+      Filters::Ast.serialize(@ast)
     end
 
     private
 
-    def apply_state(relation)
+    # Walk the AST and yield every Chip node anywhere in the tree.
+    def chips
+      collected = []
+      walk = ->(node) {
+        case node
+        when Filters::Ast::Chip   then collected << node
+        when Filters::Ast::AndNode, Filters::Ast::OrNode
+          node.children.each(&walk)
+        when Filters::Ast::NotNode
+          walk.call(node.child)
+        end
+      }
+      walk.call(@ast)
+      collected
+    end
+
+    # ---- URL-param → AST tree adapter ----
+
+    def self.build_tree_from_url_params(params)
+      # Accept either a regular Hash (specs) or ActionController::Parameters
+      # (controller). Permit only the legacy URL keys so we don't trip
+      # `unable to convert unpermitted parameters to hash`.
+      params =
+        if params.respond_to?(:permit)
+          params.permit(*LEGACY_URL_KEYS, tag_ids: []).to_h
+        else
+          params.to_h
+        end
+      params = params.transform_keys(&:to_s)
+
+      chips = []
+
+      if (attention = params["attention"]).is_a?(String) && attention.present?
+        chips << chip("attention", "is", attention)
+      end
+
+      # state=open/closed is a direct state filter; state=failed/succeeded
+      # is sugar for "open AND latest_workflow_state matches" — same
+      # semantics today's dropdown emits.
       case params["state"]
       when "open", "closed"
-        params["state"] == "open" ? relation.open_threads : relation.closed_threads
+        chips << chip("state", "is", params["state"])
       when "failed", "succeeded"
-        relation.open_threads.where(id: latest_workflow_job_ids(params["state"]))
-      else
-        relation
+        chips << chip("state", "is", "open")
+        chips << chip("latest_workflow_state", "is", params["state"])
       end
-    end
 
-    def apply_repository(relation)
-      return relation if params["repository_id"].blank?
+      if (repository_id = params["repository_id"]).present?
+        chips << chip("repository_id", "is", repository_id)
+      end
 
-      relation.where(repository_id: params["repository_id"])
-    end
+      if (kind = params["kind"]).present? && Job::KINDS.include?(kind)
+        chips << chip("kind", "is", kind)
+      end
 
-    def apply_kind(relation)
-      return relation unless Job::KINDS.include?(params["kind"])
-
-      relation.where(kind: params["kind"])
-    end
-
-    def apply_pr(relation)
       case params["pr"]
-      when "has_pr" then relation.with_pr
-      when "no_pr" then relation.without_pr
-      else relation
+      when "has_pr" then chips << chip("pr_present", "is", "has")
+      when "no_pr"  then chips << chip("pr_present", "is", "none")
       end
-    end
 
-    def apply_age(relation)
-      cutoff = { "1d" => 1.day.ago, "7d" => 7.days.ago, "30d" => 30.days.ago }[params["age"]]
-      return relation unless cutoff
-
-      relation.where(created_at: cutoff..)
-    end
-
-    def apply_tags(relation)
-      ids = Array(params["tag_ids"]).compact_blank
-      return relation if ids.empty?
-
-      relation.joins(:job_tags).where(job_tags: { tag_id: ids }).distinct
-    end
-
-    def apply_attention(relation)
-      case params["attention"]
-      when "pinned"
-        return relation unless user
-
-        relation.joins(:job_pins).where(job_pins: { user_id: user.id })
-      when "in_progress"
-        relation.open_threads.where(id: Workflow.active.select(:job_id))
-      when "inbox"
-        # Closed jobs never need attention — even if their latest run
-        # failed or they have unread feedback, the operator chose to
-        # close them. Filter to open_threads.
-        relation.open_threads
-                .where(id: awaiting_operator_job_ids)
-                .or(relation.open_threads.where(id: unread_feedback_job_ids))
-                .or(relation.open_threads.where(id: latest_failed_run_job_ids))
-                .or(relation.open_threads.where(id: awaiting_epic_job_ids))
-                .or(relation.open_threads.where(id: needs_review_job_ids))
-      when "awaiting_epic"
-        relation.where(id: awaiting_epic_job_ids)
-      when "needs_review"
-        relation.where(id: needs_review_job_ids)
-      when "just_failed"
-        relation.where(id: latest_failed_run_job_ids)
-      when "in_review"
-        relation.open_threads.with_pr.where(id: latest_workflow_job_ids("succeeded"))
-      when "stale"
-        relation.open_threads.where(updated_at: ..7.days.ago)
-      when "blocked"
-        relation.where(id: blocked_dependency_job_ids).or(relation.where(pr_mergeable: false))
-      when "merged_this_week"
-        relation.closed_threads
-                .where(closure_reason: %w[ pr_merged external_pr_merged ])
-                .where(finished_at: 7.days.ago..)
-      else
-        relation
+      if (age = params["age"]).present?
+        chips << chip("age", "is", age)
       end
-    end
 
-    def latest_workflow_job_ids(state)
-      Workflow.where(state: state)
-              .where(<<~SQL.squish)
-                workflows.id = (
-                  SELECT latest_workflows.id
-                  FROM workflows latest_workflows
-                  WHERE latest_workflows.job_id = workflows.job_id
-                  ORDER BY latest_workflows.created_at DESC, latest_workflows.id DESC
-                  LIMIT 1
-                )
-              SQL
-              .select(:job_id)
-    end
+      ids = Array(params["tag_ids"]).flatten.compact_blank.map(&:to_s)
+      chips << chip("tags", "contains_any", ids) if ids.any?
 
-    def latest_failed_run_job_ids
-      Run.where(state: "failed")
-         .where(<<~SQL.squish)
-           runs.id = (
-             SELECT latest_runs.id
-             FROM runs latest_runs
-             WHERE latest_runs.job_id = runs.job_id
-             ORDER BY latest_runs.created_at DESC, latest_runs.id DESC
-             LIMIT 1
-           )
-         SQL
-         .select(:job_id)
-    end
+      return nil if chips.empty?
 
-    def awaiting_operator_job_ids
-      Run.where(state: "awaiting_operator").select(:job_id)
+      { "and" => chips }
     end
+    private_class_method :build_tree_from_url_params
 
-    def awaiting_epic_job_ids
-      Job.triaging.where(triaging_reason: "pending_epic_ref").select(:id)
+    def self.chip(field, op, value)
+      h = { "field" => field, "op" => op }
+      h["value"] = value unless value.nil?
+      h
     end
+    private_class_method :chip
 
-    def needs_review_job_ids
-      Job.where(validity: %w[ duplicate already_implemented ]).select(:id)
+    # AND-merge two trees: { and: [..., folder_chips..., url_chips...] }.
+    # Both trees may already be AndNodes; flatten one level so we don't
+    # nest unnecessarily.
+    def self.merge_and(folder_tree, url_tree)
+      children = [ folder_tree, url_tree ].flat_map do |tree|
+        if tree.is_a?(Hash) && tree["and"].is_a?(Array)
+          tree["and"]
+        else
+          [ tree ]
+        end
+      end
+      { "and" => children }
     end
-
-    def unread_feedback_job_ids
-      Job.where.not(last_seen_comment_at: nil)
-         .where("last_feedback_addressed_at IS NULL OR last_seen_comment_at > last_feedback_addressed_at")
-         .select(:id)
-    end
-
-    def blocked_dependency_job_ids
-      successful_jobs = Job.closed_threads.where(closure_reason: Job::SUCCESSFUL_CLOSURE_REASONS)
-
-      JobDependency.pending
-                   .or(JobDependency.resolved.where.not(depends_on_job_id: successful_jobs.select(:id)))
-                   .select(:job_id)
-    end
+    private_class_method :merge_and
   end
 end

@@ -99,8 +99,7 @@ class HomeController < ApplicationController
     @jobs = Current.user.jobs.where(repository_id: active_repo_ids)
                              .includes(:repository, :runs, workflows: :steps)
 
-    @job_filter_params = job_filter_params
-    @job_filter = Jobs::Filter.new(@job_filter_params, user: Current.user)
+    @job_filter = Jobs::Filter.from_params(params, smart_folder: @active_smart_folder, user: Current.user)
     @jobs = @job_filter.apply(@jobs)
     @epics = epics_for_active_smart_folder(active_repo_ids)
     @smart_folder_counts = smart_folder_counts(Current.user.jobs.where(repository_id: active_repo_ids))
@@ -202,19 +201,6 @@ class HomeController < ApplicationController
       SmartFolder.for_user(Current.user).find_by(id: params[:smart_folder_id])
   end
 
-  def job_filter_params
-    base = params.permit(:state, :repository_id, :kind, :pr, :age, :attention).to_h.compact_blank
-    base["tag_ids"] = tag_filter_ids if params[:tag_ids].present?
-
-    if @active_smart_folder
-      # The smart folder's filter is the floor; the operator can layer
-      # additional URL filters on top (e.g. filter by state within a folder).
-      @active_smart_folder.filter.merge(base)
-    else
-      base
-    end
-  end
-
   def epic_filter_params
     params.permit(:repository_id, :blocked, :done, :sort).to_h.compact_blank
   end
@@ -234,14 +220,14 @@ class HomeController < ApplicationController
 
   def smart_folder_counts(base_scope)
     (@builtin_smart_folders + @user_smart_folders).to_h do |folder|
-      count = Jobs::Filter.new(folder.filter, user: Current.user).apply(base_scope).count
+      count = Jobs::Filter.from_tree(folder.filter, user: Current.user).apply(base_scope).count
       count += epic_count_for_filter(folder.filter)
       [ folder.id, count ]
     end
   end
 
   def epics_for_active_smart_folder(active_repo_ids)
-    return Epic.none unless @active_smart_folder&.filter&.fetch("attention", nil) == "inbox"
+    return Epic.none unless folder_uses_attention?(@active_smart_folder, "inbox")
 
     Epic.includes(:repository)
         .where(user: Current.user, repository_id: active_repo_ids, state: "ready")
@@ -249,12 +235,32 @@ class HomeController < ApplicationController
   end
 
   def epic_count_for_filter(filter)
-    return 0 unless filter["attention"] == "inbox"
+    return 0 unless filter_has_attention_chip?(filter, "inbox")
 
     Current.user.epics.joins(:repository)
            .where(repositories: { archived_at: nil })
            .where(state: "ready")
            .count
+  end
+
+  def folder_uses_attention?(folder, preset)
+    filter_has_attention_chip?(folder&.filter, preset)
+  end
+
+  # Walks the AST tree shape looking for an `attention: <preset>`
+  # chip anywhere — handles legacy folders just in case but mostly
+  # serves the new tree-shape rows.
+  def filter_has_attention_chip?(tree, preset)
+    return false unless tree.is_a?(Hash)
+
+    Array(tree["and"]).any? { |child| chip_matches_attention?(child, preset) } ||
+      chip_matches_attention?(tree, preset)
+  end
+
+  def chip_matches_attention?(node, preset)
+    return false unless node.is_a?(Hash)
+
+    node["field"] == "attention" && node["value"].to_s == preset
   end
 
   def bulk_apply_tag(jobs)

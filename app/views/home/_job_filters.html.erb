@@ -8,31 +8,39 @@
       data: { controller: "auto-submit filter-memory" },
       class: local_assigns.fetch(:class_name, "flex flex-wrap items-center gap-3") do |f| %>
   <% select_classes = "text-sm border border-gray-300 rounded-md px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" %>
-  <% attention_options = [["Any attention", ""]] + SmartFolder::BUILTIN_DEFINITIONS.filter_map { |d| [d[:name], d[:filter]["attention"]] if d[:filter]["attention"] } %>
+  <%# Source attention options from BUILTIN_DEFINITIONS so renaming /
+      adding a preset shows up here automatically. Each preset's
+      attention value lives inside the filter tree under the first
+      attention chip. %>
+  <% attention_options = [ [ "Any attention", "" ] ] +
+       SmartFolder::BUILTIN_DEFINITIONS.filter_map do |definition|
+         attention_chip = Array(definition[:filter]["and"]).find { |chip| chip["field"] == "attention" }
+         [ definition[:name], attention_chip["value"] ] if attention_chip
+       end %>
 
   <%= f.select :attention,
-        options_for_select(attention_options, @job_filter_params["attention"]),
+        options_for_select(attention_options, params[:attention]),
         {},
         class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
   <%= f.select :state,
-        options_for_select([["All states", ""], ["Open", "open"], ["Failed", "failed"], ["Succeeded", "succeeded"], ["Closed", "closed"]], @job_filter_params["state"]),
+        options_for_select([["All states", ""], ["Open", "open"], ["Failed", "failed"], ["Succeeded", "succeeded"], ["Closed", "closed"]], params[:state]),
         {},
         class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
   <%= f.select :repository_id,
-        options_for_select([["All repos", ""]] + @repositories.map { |r| [r.slug, r.id] }, @job_filter_params["repository_id"]),
+        options_for_select([["All repos", ""]] + @repositories.map { |r| [r.slug, r.id] }, params[:repository_id]),
         {},
         class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
   <%= f.select :kind,
-        options_for_select([["All kinds", ""], ["Issue", "issue"], ["Direct", "direct"], ["Cron", "cron"]], @job_filter_params["kind"]),
+        options_for_select([["All kinds", ""], ["Issue", "issue"], ["Direct", "direct"], ["Cron", "cron"]], params[:kind]),
         {},
         class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
   <% if @tags.any? %>
     <%= f.select :tag_ids,
-          options_for_select(@tags.map { |tag| [tag.name, tag.id] }, Array(@job_filter_params["tag_ids"])),
+          options_for_select(@tags.map { |tag| [tag.name, tag.id] }, Array(params[:tag_ids])),
           { include_hidden: false },
           multiple: true,
           size: [[@tags.size, 1].max, 4].min,
@@ -41,12 +49,12 @@
   <% end %>
 
   <%= f.select :pr,
-        options_for_select([["Any PR status", ""], ["Has PR", "has_pr"], ["No PR", "no_pr"]], @job_filter_params["pr"]),
+        options_for_select([["Any PR status", ""], ["Has PR", "has_pr"], ["No PR", "no_pr"]], params[:pr]),
         {},
         class: select_classes, data: { action: "change->auto-submit#submit" } %>
 
   <%= f.select :age,
-        options_for_select([["All time", ""], ["Last 24h", "1d"], ["Last 7 days", "7d"], ["Last 30 days", "30d"]], @job_filter_params["age"]),
+        options_for_select([["All time", ""], ["Last 24h", "1d"], ["Last 7 days", "7d"], ["Last 30 days", "30d"]], params[:age]),
         {},
         class: select_classes, data: { action: "change->auto-submit#submit" } %>
 

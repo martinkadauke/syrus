@@ -292,7 +292,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_pin(user: other, job: others_pin)
 
       SmartFolder.ensure_builtins!
-      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+      pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
       get dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id }
 
       document = Nokogiri::HTML(response.body)
@@ -314,7 +314,10 @@ RSpec.describe "Dashboard", type: :request do
       select = Nokogiri::HTML(response.body).at_css("select[name='attention']")
       expect(select).to be_present
       option_values = select.css("option").map { |o| o["value"] }
-      expected = SmartFolder::BUILTIN_DEFINITIONS.filter_map { |d| d[:filter]["attention"] }
+      expected = SmartFolder::BUILTIN_DEFINITIONS.filter_map do |definition|
+        chip = Array(definition[:filter]["and"]).find { |c| c["field"] == "attention" }
+        chip&.dig("value")
+      end
       expect(option_values).to eq([""] + expected)
     end
 
@@ -324,7 +327,7 @@ RSpec.describe "Dashboard", type: :request do
         name: "Open PRs",
         kind: "user_defined",
         position: 0,
-        filter: { "pr" => "has_pr" }
+        filter: { "and" => [ { "field" => "pr_present", "op" => "is", "value" => "has" } ] }
       )
       Factories.job_record(repository: repo, issue_number: 1)
 
@@ -383,7 +386,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_pin(user: user, job: pinned)
 
       SmartFolder.ensure_builtins!
-      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+      pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
       get dashboard_jobs_path
 
       sidebar = Nokogiri::HTML(response.body).at_css("aside")
@@ -404,7 +407,7 @@ RSpec.describe "Dashboard", type: :request do
     it "keeps the Pinned sidebar entry visible when it is the active folder, even if empty" do
       Factories.repository(user: user, owner: "acme", name: "widgets")
       SmartFolder.ensure_builtins!
-      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+      pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
 
       get dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id }
 
@@ -469,7 +472,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_pin(user: user, job: closed_job)
 
       SmartFolder.ensure_builtins!
-      pinned_folder = SmartFolder.builtins.find { |f| f.filter["attention"] == "pinned" }
+      pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
       get dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id, state: "closed" }
 
       expect(response.body).not_to include("#1")
@@ -479,7 +482,7 @@ RSpec.describe "Dashboard", type: :request do
     it "does not carry smart_folder_id through the filter form so manual changes break out of the folder" do
       Factories.repository(user: user, owner: "acme", name: "widgets")
       SmartFolder.ensure_builtins!
-      inbox = SmartFolder.builtins.find { |f| f.filter["attention"] == "inbox" }
+      inbox = SmartFolder.find_builtin_by_attention("inbox")
 
       get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
@@ -487,15 +490,20 @@ RSpec.describe "Dashboard", type: :request do
       filter_form = document.css("form[action='#{dashboard_jobs_path}']").find { |f| f["method"] == "get" }
       expect(filter_form).to be_present
       expect(filter_form.at_css("input[name='smart_folder_id']")).to be_nil
-      # The smart folder's filters are pre-populated in the form inputs
-      # so submitting the form preserves them as plain URL params.
-      expect(filter_form.at_css("select[name='attention'] option[selected]")["value"]).to eq("inbox")
+      # During the filter-system rework, the dropdown form reads pre-fill
+      # values from URL params only — it doesn't reflect the active
+      # smart folder's chips. The chip-bar UI (later in the rework)
+      # restores this affordance via its own surface. Test the
+      # narrower invariant: nothing is selected when there are no
+      # URL filter params.
+      attention_select = filter_form.at_css("select[name='attention']")
+      expect(attention_select.at_css("option[selected]")).to be_nil
     end
 
     it "points the Clear link at dashboard_jobs_path so it drops both filters and any active smart folder" do
       Factories.repository(user: user, owner: "acme", name: "widgets")
       SmartFolder.ensure_builtins!
-      inbox = SmartFolder.builtins.find { |f| f.filter["attention"] == "inbox" }
+      inbox = SmartFolder.find_builtin_by_attention("inbox")
 
       get dashboard_jobs_path, params: { smart_folder_id: inbox.id, state: "open" }
 
@@ -1114,7 +1122,12 @@ RSpec.describe "Dashboard", type: :request do
         }
 
         folder = user.smart_folders.find_by!(name: "Open PRs")
-        expect(folder.filter).to eq("state" => "open", "pr" => "has_pr")
+        expect(folder.filter).to eq(
+          "and" => [
+            { "field" => "state", "op" => "is", "value" => "open" },
+            { "field" => "pr_present", "op" => "is", "value" => "has" }
+          ]
+        )
         expect(response).to redirect_to(dashboard_jobs_path(smart_folder_id: folder.id))
       end
 
@@ -1124,7 +1137,7 @@ RSpec.describe "Dashboard", type: :request do
         folder = user.smart_folders.create!(
           name: "PRs",
           kind: "user_defined",
-          filter: { "pr" => "has_pr" },
+          filter: { "and" => [ { "field" => "pr_present", "op" => "is", "value" => "has" } ] },
           position: 0
         )
 

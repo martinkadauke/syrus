@@ -1,9 +1,10 @@
 <% if @job_filter.active? && @active_smart_folder.nil? %>
   <%= form_with url: smart_folders_path, method: :post,
         class: local_assigns.fetch(:class_name, "flex flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm") do |f| %>
-    <% @job_filter.to_h.each do |key, value| %>
-      <%= hidden_field_tag key, value %>
-    <% end %>
+    <%# Serialize the entire AST tree into a single JSON field. The
+        controller parses it back via Filters::Ast.parse so any chip
+        shape — including OR-groups and NOT-wrappers — round-trips. %>
+    <%= hidden_field_tag "filter", @job_filter.to_h.to_json %>
     <%= f.label :name, "Save current filter as", class: "text-gray-600" %>
     <%= f.text_field :name, name: "smart_folder[name]", required: true, placeholder: "Folder name",
           class: "w-52 text-sm border border-gray-300 rounded-md px-2 py-1.5" %>

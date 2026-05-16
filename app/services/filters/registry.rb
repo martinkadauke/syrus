@@ -11,12 +11,14 @@ module Filters
   # class itself (`bucket`, `operators` DSL).
   class Registry
     CHIPS = {
-      "state"         => "Filters::Chips::State",
-      "repository_id" => "Filters::Chips::RepositoryId",
-      "pr_present"    => "Filters::Chips::PrPresent",
-      "age"           => "Filters::Chips::Age",
-      "tags"          => "Filters::Chips::Tags",
-      "attention"     => "Filters::Chips::Attention"
+      "state"                 => "Filters::Chips::State",
+      "kind"                  => "Filters::Chips::Kind",
+      "repository_id"         => "Filters::Chips::RepositoryId",
+      "pr_present"            => "Filters::Chips::PrPresent",
+      "age"                   => "Filters::Chips::Age",
+      "tags"                  => "Filters::Chips::Tags",
+      "attention"             => "Filters::Chips::Attention",
+      "latest_workflow_state" => "Filters::Chips::LatestWorkflowState"
     }.freeze
 
     def self.find(field)

@@ -6,17 +6,29 @@ class SmartFolder < ApplicationRecord
   #   :on_demand    — tucked into the "More" disclosure at the bottom of
   #                   the sidebar; still available via direct URL and via
   #                   the attention dropdown.
+  # Each built-in's `filter` is a Filters::Ast tree (JSON-friendly).
+  # The attention preset chip carries today's union/composite logic
+  # internally; over time these can decompose into primitive chip
+  # combinations as the chip vocabulary grows.
+  def self.attention_preset_filter(preset)
+    {
+      "and" => [
+        { "field" => "attention", "op" => "is", "value" => preset }
+      ]
+    }
+  end
+
   BUILTIN_DEFINITIONS = [
-    { key: "pinned",           name: "Pinned",           visibility: :when_present, filter: { "attention" => "pinned" } },
-    { key: "in_progress",      name: "In progress",      visibility: :when_present, filter: { "attention" => "in_progress" } },
-    { key: "inbox",            name: "Inbox",            visibility: :always,       filter: { "attention" => "inbox" } },
-    { key: "just_failed",      name: "Just failed",      visibility: :when_present, filter: { "attention" => "just_failed" } },
-    { key: "in_review",        name: "In review",        visibility: :always,       filter: { "attention" => "in_review" } },
-    { key: "blocked",          name: "Blocked",          visibility: :when_present, filter: { "attention" => "blocked" } },
-    { key: "stale",            name: "Stale",            visibility: :when_present, filter: { "attention" => "stale" } },
-    { key: "awaiting_epic",    name: "Awaiting Epic",    visibility: :on_demand,    filter: { "attention" => "awaiting_epic" } },
-    { key: "needs_review",     name: "Needs review",     visibility: :on_demand,    filter: { "attention" => "needs_review" } },
-    { key: "merged_this_week", name: "Merged this week", visibility: :on_demand,    filter: { "attention" => "merged_this_week" } }
+    { key: "pinned",           name: "Pinned",           visibility: :when_present, filter: attention_preset_filter("pinned") },
+    { key: "in_progress",      name: "In progress",      visibility: :when_present, filter: attention_preset_filter("in_progress") },
+    { key: "inbox",            name: "Inbox",            visibility: :always,       filter: attention_preset_filter("inbox") },
+    { key: "just_failed",      name: "Just failed",      visibility: :when_present, filter: attention_preset_filter("just_failed") },
+    { key: "in_review",        name: "In review",        visibility: :always,       filter: attention_preset_filter("in_review") },
+    { key: "blocked",          name: "Blocked",          visibility: :when_present, filter: attention_preset_filter("blocked") },
+    { key: "stale",            name: "Stale",            visibility: :when_present, filter: attention_preset_filter("stale") },
+    { key: "awaiting_epic",    name: "Awaiting Epic",    visibility: :on_demand,    filter: attention_preset_filter("awaiting_epic") },
+    { key: "needs_review",     name: "Needs review",     visibility: :on_demand,    filter: attention_preset_filter("needs_review") },
+    { key: "merged_this_week", name: "Merged this week", visibility: :on_demand,    filter: attention_preset_filter("merged_this_week") }
   ].freeze
 
   VISIBILITY_BY_NAME = BUILTIN_DEFINITIONS.to_h { |d| [ d.fetch(:name), d.fetch(:visibility) ] }.freeze
@@ -64,6 +76,26 @@ class SmartFolder < ApplicationRecord
     return :user_defined unless builtin?
 
     VISIBILITY_BY_NAME[name] || :on_demand
+  end
+
+  # Returns the attention-preset value for this folder if its filter
+  # is "and-of-an-attention-chip" (today's built-in shape). nil for
+  # folders without an attention chip — typically user-defined.
+  def attention_preset
+    return nil unless filter.is_a?(Hash)
+
+    Array(filter["and"]).each do |chip|
+      next unless chip.is_a?(Hash) && chip["field"] == "attention"
+      return chip["value"].to_s
+    end
+    nil
+  end
+
+  # Look up a built-in folder by its attention-preset value.
+  # `SmartFolder.find_builtin_by_attention("pinned")` is cleaner than
+  # walking the AST manually in specs and view helpers.
+  def self.find_builtin_by_attention(preset)
+    builtins.find { |folder| folder.attention_preset == preset }
   end
 
   private
