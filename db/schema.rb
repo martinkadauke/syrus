@@ -221,7 +221,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_15_130000) do
     t.string "source_url"
     t.string "title", null: false
     t.datetime "updated_at", null: false
-    t.integer "user_id"
+    t.bigint "user_id"
     t.index ["attachable_type", "attachable_id", "created_at"], name: "index_documents_on_attachable_and_created_at"
     t.index ["attachable_type", "attachable_id", "source_url"], name: "index_documents_on_attachable_and_source_url", unique: true
     t.index ["user_id"], name: "index_documents_on_user_id"

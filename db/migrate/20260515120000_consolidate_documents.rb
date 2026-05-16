@@ -1,6 +1,7 @@
 class ConsolidateDocuments < ActiveRecord::Migration[8.1]
   def up
     create_documents_table
+    ensure_documents_user_id_is_bigint
     add_documents_indexes
 
     migrate_repository_documents if table_exists?(:repository_documents)
@@ -53,7 +54,7 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
     create_table :documents do |t|
       t.string :attachable_type, null: false
       t.integer :attachable_id, null: false
-      t.integer :user_id
+      t.bigint :user_id
       t.string :kind, null: false, default: "file"
       t.string :title, null: false
       t.string :google_doc_url
@@ -76,6 +77,14 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
     end
     add_index :documents, :user_id unless index_exists?(:documents, :user_id)
     add_foreign_key :documents, :users unless foreign_key_exists?(:documents, :users)
+  end
+
+  def ensure_documents_user_id_is_bigint
+    column = columns(:documents).find { |candidate| candidate.name == "user_id" }
+    return unless column
+    return if column.sql_type.downcase.include?("bigint")
+
+    change_column :documents, :user_id, :bigint
   end
 
   def migrate_repository_documents
