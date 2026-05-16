@@ -57,61 +57,98 @@ export default class extends Controller {
     this.renderChips()
   }
 
-  // Returns the node at `path`. Path semantics defined at top of file.
-  nodeAtPath(path) {
-    if (!Array.isArray(path) || path.length === 0) return null
-    const top = this.topChildren()[path[0]]
-    if (path.length === 1) return top
-    if (!top || !Array.isArray(top.or)) return null
-    return top.or[path[1]]
+  // Top-level slots can carry a NOT wrapper. `slotInner(slot)` returns
+  // the inner node (the chip or OR group being negated). We address
+  // chips through the NOT transparently — replaceNodeAtPath /
+  // removeNodeAtPath preserve the wrapper unless removing the inner
+  // chip empties it.
+  slotInner(slot) {
+    return slot && typeof slot === "object" && slot.not !== undefined ? slot.not : slot
   }
 
-  // Replace the node at `path`. If replacing inside an OR group leaves
-  // it with a single child, auto-flatten back to a bare chip.
+  slotIsNegated(slot) {
+    return slot && typeof slot === "object" && slot.not !== undefined
+  }
+
+  // Returns the node at `path`. Path semantics defined at top of file.
+  // Walks through any NOT wrapper at the top-level slot transparently.
+  nodeAtPath(path) {
+    if (!Array.isArray(path) || path.length === 0) return null
+    const slot = this.topChildren()[path[0]]
+    const inner = this.slotInner(slot)
+    if (path.length === 1) return inner
+    if (!inner || !Array.isArray(inner.or)) return null
+    return inner.or[path[1]]
+  }
+
+  // Replace the node at `path`, preserving any top-level NOT wrapper
+  // so toggling negation and editing the chip are independent.
   replaceNodeAtPath(path, node) {
     const children = this.topChildren().slice()
+    const slot = children[path[0]]
+    const wasNegated = this.slotIsNegated(slot)
+    let inner
     if (path.length === 1) {
-      children[path[0]] = node
+      inner = node
     } else {
-      const group = children[path[0]]
-      if (!group || !Array.isArray(group.or)) return
-      const newOr = group.or.slice()
+      const innerSlot = this.slotInner(slot)
+      if (!innerSlot || !Array.isArray(innerSlot.or)) return
+      const newOr = innerSlot.or.slice()
       newOr[path[1]] = node
-      children[path[0]] = { or: newOr }
+      inner = { or: newOr }
     }
+    children[path[0]] = wasNegated ? { not: inner } : inner
     this.setTopChildren(children)
   }
 
-  // Delete the node at `path`. Auto-flattens singleton OR groups and
-  // removes empty OR groups.
+  // Delete the node at `path`. Auto-flattens singleton OR groups
+  // (preserving the NOT wrapper) and removes empty OR groups along
+  // with their wrappers.
   removeNodeAtPath(path) {
     const children = this.topChildren().slice()
     if (path.length === 1) {
       children.splice(path[0], 1)
     } else {
-      const group = children[path[0]]
-      if (!group || !Array.isArray(group.or)) return
-      const newOr = group.or.slice()
+      const slot = children[path[0]]
+      const wasNegated = this.slotIsNegated(slot)
+      const innerSlot = this.slotInner(slot)
+      if (!innerSlot || !Array.isArray(innerSlot.or)) return
+      const newOr = innerSlot.or.slice()
       newOr.splice(path[1], 1)
       if (newOr.length === 0) {
         children.splice(path[0], 1)
       } else if (newOr.length === 1) {
-        children[path[0]] = newOr[0]  // collapse singleton back to a flat chip
+        children[path[0]] = wasNegated ? { not: newOr[0] } : newOr[0]
       } else {
-        children[path[0]] = { or: newOr }
+        children[path[0]] = wasNegated ? { not: { or: newOr } } : { or: newOr }
       }
     }
     this.setTopChildren(children)
   }
 
+  // Toggle the NOT wrapper on a top-level slot. Wraps or unwraps the
+  // entire chip / OR group in `{not: ...}` without disturbing its
+  // contents.
+  toggleNegationAtIndex(index) {
+    const children = this.topChildren().slice()
+    const slot = children[index]
+    if (!slot || typeof slot !== "object") return
+    children[index] = this.slotIsNegated(slot) ? slot.not : { not: slot }
+    this.setTopChildren(children)
+  }
+
   // Wrap the flat chip at `path` (length 1) into an OR group so the
-  // operator can append alternatives.
+  // operator can append alternatives. Preserves any NOT wrapper on
+  // the top-level slot.
   wrapInOrGroup(path) {
     if (path.length !== 1) return path
     const children = this.topChildren().slice()
-    const existing = children[path[0]]
-    if (!existing || !("field" in existing)) return path
-    children[path[0]] = { or: [ existing ] }
+    const slot = children[path[0]]
+    const wasNegated = this.slotIsNegated(slot)
+    const inner = this.slotInner(slot)
+    if (!inner || !("field" in inner)) return path
+    const newInner = { or: [ inner ] }
+    children[path[0]] = wasNegated ? { not: newInner } : newInner
     this.setTopChildren(children)
     return [ path[0], 0 ]
   }
@@ -137,19 +174,32 @@ export default class extends Controller {
   }
 
   topElement(node, index) {
-    if (node && typeof node === "object" && "field" in node) {
-      return this.flatChipElement(node, [ index ])
+    const negated = this.slotIsNegated(node)
+    const inner = this.slotInner(node)
+
+    if (inner && typeof inner === "object" && "field" in inner) {
+      return this.flatChipElement(inner, [ index ], { negated })
     }
-    if (node && typeof node === "object" && Array.isArray(node.or)) {
-      return this.orGroupElement(node, index)
+    if (inner && typeof inner === "object" && Array.isArray(inner.or)) {
+      return this.orGroupElement(inner, index, { negated })
     }
     return this.complexBadgeElement(node, [ index ])
   }
 
-  flatChipElement(chip, path) {
+  flatChipElement(chip, path, { negated = false } = {}) {
     const meta = this.metaFor(chip.field)
     const wrapper = document.createElement("span")
-    wrapper.className = "inline-flex items-center gap-1 rounded-md border border-gray-300 bg-gray-50 px-2 py-1 text-sm hover:bg-gray-100"
+    wrapper.className = negated
+      ? "inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-2 py-1 text-sm hover:bg-rose-100"
+      : "inline-flex items-center gap-1 rounded-md border border-gray-300 bg-gray-50 px-2 py-1 text-sm hover:bg-gray-100"
+
+    // The NOT toggle is only meaningful on top-level slots (length-1
+    // paths). Inside an OR group, negation belongs on the operator
+    // (`is_not`, `does_not_contain`, etc.) — we don't expose a
+    // separate wrapper there.
+    if (path.length === 1) {
+      wrapper.append(notToggleButton(path, negated))
+    }
 
     const editLink = document.createElement("button")
     editLink.type = "button"
@@ -157,14 +207,16 @@ export default class extends Controller {
     editLink.dataset.action = "click->chip-bar#editChip"
     editLink.dataset.chipPath = JSON.stringify(path)
     editLink.append(
-      labelSpan(meta ? meta.label : chip.field),
+      labelSpan(meta ? meta.label : chip.field, { negated }),
       opSpan(chip.op),
       valueSpan(chip, meta)
     )
 
     const removeButton = document.createElement("button")
     removeButton.type = "button"
-    removeButton.className = "ml-1 text-gray-400 hover:text-gray-700 cursor-pointer"
+    removeButton.className = negated
+      ? "ml-1 text-rose-400 hover:text-rose-800 cursor-pointer"
+      : "ml-1 text-gray-400 hover:text-gray-700 cursor-pointer"
     removeButton.textContent = "×"
     removeButton.setAttribute("aria-label", `Remove ${meta ? meta.label : chip.field} filter`)
     removeButton.dataset.action = "click->chip-bar#removeChip"
@@ -174,12 +226,18 @@ export default class extends Controller {
     return wrapper
   }
 
-  orGroupElement(orNode, index) {
+  orGroupElement(orNode, index, { negated = false } = {}) {
     const wrapper = document.createElement("span")
-    wrapper.className = "inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-sm"
+    wrapper.className = negated
+      ? "inline-flex items-center gap-1 rounded-md border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-sm"
+      : "inline-flex items-center gap-1 rounded-md border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-sm"
+
+    wrapper.append(notToggleButton([ index ], negated))
 
     const opening = document.createElement("span")
-    opening.className = "text-xs font-semibold text-indigo-700"
+    opening.className = negated
+      ? "text-xs font-semibold text-rose-700"
+      : "text-xs font-semibold text-indigo-700"
     opening.textContent = "("
     wrapper.append(opening)
 
@@ -195,14 +253,18 @@ export default class extends Controller {
 
     const addAlt = document.createElement("button")
     addAlt.type = "button"
-    addAlt.className = "ml-1 inline-flex items-center rounded border border-dashed border-indigo-400 px-1.5 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 cursor-pointer"
+    addAlt.className = negated
+      ? "ml-1 inline-flex items-center rounded border border-dashed border-rose-400 px-1.5 py-0.5 text-xs font-medium text-rose-700 hover:bg-rose-100 cursor-pointer"
+      : "ml-1 inline-flex items-center rounded border border-dashed border-indigo-400 px-1.5 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 cursor-pointer"
     addAlt.textContent = "+ or"
     addAlt.dataset.action = "click->chip-bar#openAddMenuForOrGroup"
     addAlt.dataset.chipPath = JSON.stringify([ index ])
     wrapper.append(addAlt)
 
     const closing = document.createElement("span")
-    closing.className = "text-xs font-semibold text-indigo-700"
+    closing.className = negated
+      ? "text-xs font-semibold text-rose-700"
+      : "text-xs font-semibold text-indigo-700"
     closing.textContent = ")"
     wrapper.append(closing)
 
@@ -234,6 +296,13 @@ export default class extends Controller {
   removeChip(event) {
     const path = JSON.parse(event.currentTarget.dataset.chipPath)
     this.removeNodeAtPath(path)
+    this.submitForm()
+  }
+
+  toggleNegation(event) {
+    const path = JSON.parse(event.currentTarget.dataset.chipPath)
+    if (!Array.isArray(path) || path.length !== 1) return
+    this.toggleNegationAtIndex(path[0])
     this.submitForm()
   }
 
@@ -540,11 +609,32 @@ function separator(kind) {
   return span
 }
 
-function labelSpan(text) {
+function labelSpan(text, { negated = false } = {}) {
   const span = document.createElement("span")
   span.className = "font-medium text-gray-700"
-  span.textContent = text
+  if (negated) {
+    const prefix = document.createElement("span")
+    prefix.className = "mr-1 rounded bg-rose-200 px-1 py-0.5 text-[0.65rem] font-bold uppercase tracking-wider text-rose-800"
+    prefix.textContent = "NOT"
+    span.append(prefix, document.createTextNode(text))
+  } else {
+    span.textContent = text
+  }
   return span
+}
+
+function notToggleButton(path, negated) {
+  const btn = document.createElement("button")
+  btn.type = "button"
+  btn.className = negated
+    ? "inline-flex h-5 w-5 items-center justify-center rounded bg-rose-200 text-rose-900 hover:bg-rose-300 cursor-pointer"
+    : "inline-flex h-5 w-5 items-center justify-center rounded border border-gray-300 text-gray-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 cursor-pointer"
+  btn.textContent = "¬"
+  btn.setAttribute("aria-label", negated ? "Remove NOT wrapper" : "Negate this filter group")
+  btn.title = negated ? "Remove NOT (negation)" : "Wrap in NOT (negation)"
+  btn.dataset.action = "click->chip-bar#toggleNegation"
+  btn.dataset.chipPath = JSON.stringify(path)
+  return btn
 }
 
 function opSpan(op) {
