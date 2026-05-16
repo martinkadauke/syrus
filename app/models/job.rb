@@ -746,6 +746,7 @@ class Job < ApplicationRecord
     self.triaging_reason ||= "classifier_pending"
     self.invalidation_evidence ||= []
     self.approval_evidence ||= {}
+    self.pending_epic_reference ||= {}
   end
 
   def assign_approval_metadata(*args)

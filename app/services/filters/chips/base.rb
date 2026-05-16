@@ -18,24 +18,35 @@ module Filters
     #   end
     class Base
       class << self
+        # Ruby class instance variables don't inherit. Each getter
+        # below walks the ancestor chain so a subclass that declares
+        # only `column :foo` still inherits its parent's `bucket`,
+        # `operators`, and `values`. Without this, EnumColumn's
+        # `bucket :enum` would be visible only when querying
+        # EnumColumn itself — every subclass would report a blank
+        # bucket and the chip-bar UI would fall back to free-text.
         def filter_name(name = nil)
           @filter_name = name.to_s if name
-          @filter_name
+          @filter_name || (superclass.respond_to?(:filter_name) ? superclass.filter_name : nil)
         end
 
         def label(text = nil)
           @label = text.to_s if text
-          @label ||= filter_name.to_s.humanize
+          return @label if defined?(@label) && @label
+          inherited = superclass.respond_to?(:label) ? superclass.label : nil
+          inherited || filter_name.to_s.humanize
         end
 
         def bucket(name = nil)
           @bucket = name.to_sym if name
-          @bucket
+          return @bucket if defined?(@bucket) && @bucket
+          superclass.respond_to?(:bucket) ? superclass.bucket : nil
         end
 
         def operators(*ops)
           @operators = ops.map(&:to_sym).freeze if ops.any?
-          @operators ||= [].freeze
+          return @operators if defined?(@operators) && @operators&.any?
+          superclass.respond_to?(:operators) ? superclass.operators : [].freeze
         end
 
         # Static value-set for enum-style chips. Returns an empty
@@ -44,7 +55,8 @@ module Filters
         # widget in that case.
         def values(*list)
           @values = list.flatten.map(&:to_s).freeze if list.any?
-          @values ||= [].freeze
+          return @values if defined?(@values) && @values&.any?
+          superclass.respond_to?(:values) ? superclass.values : [].freeze
         end
       end
 
