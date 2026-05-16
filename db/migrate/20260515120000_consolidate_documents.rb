@@ -1,25 +1,7 @@
 class ConsolidateDocuments < ActiveRecord::Migration[8.1]
   def up
-    create_table :documents do |t|
-      t.string :attachable_type, null: false
-      t.integer :attachable_id, null: false
-      t.integer :user_id
-      t.string :kind, null: false, default: "file"
-      t.string :title, null: false
-      t.string :google_doc_url
-      t.text :content_cache, limit: 64.kilobytes
-      t.datetime :content_cached_at
-      t.string :source_url
-      t.string :filename
-      t.string :content_type
-      t.bigint :byte_size
-      t.timestamps
-    end
-
-    add_index :documents, [ :attachable_type, :attachable_id, :created_at ], name: "index_documents_on_attachable_and_created_at"
-    add_index :documents, [ :attachable_type, :attachable_id, :source_url ], unique: true, name: "index_documents_on_attachable_and_source_url"
-    add_index :documents, :user_id
-    add_foreign_key :documents, :users
+    create_documents_table
+    add_documents_indexes
 
     migrate_repository_documents if table_exists?(:repository_documents)
     migrate_job_attachments if table_exists?(:job_attachments)
@@ -65,9 +47,47 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
 
   private
 
+  def create_documents_table
+    return if table_exists?(:documents)
+
+    create_table :documents do |t|
+      t.string :attachable_type, null: false
+      t.integer :attachable_id, null: false
+      t.integer :user_id
+      t.string :kind, null: false, default: "file"
+      t.string :title, null: false
+      t.string :google_doc_url
+      t.text :content_cache, limit: 64.kilobytes
+      t.datetime :content_cached_at
+      t.string :source_url
+      t.string :filename
+      t.string :content_type
+      t.bigint :byte_size
+      t.timestamps
+    end
+  end
+
+  def add_documents_indexes
+    unless index_exists?(:documents, [ :attachable_type, :attachable_id, :created_at ], name: "index_documents_on_attachable_and_created_at")
+      add_index :documents, [ :attachable_type, :attachable_id, :created_at ], name: "index_documents_on_attachable_and_created_at"
+    end
+    unless index_exists?(:documents, [ :attachable_type, :attachable_id, :source_url ], name: "index_documents_on_attachable_and_source_url")
+      add_index :documents, [ :attachable_type, :attachable_id, :source_url ], unique: true, name: "index_documents_on_attachable_and_source_url"
+    end
+    add_index :documents, :user_id unless index_exists?(:documents, :user_id)
+    add_foreign_key :documents, :users unless foreign_key_exists?(:documents, :users)
+  end
+
   def migrate_repository_documents
     select_all("SELECT * FROM repository_documents").each do |row|
-      id = insert_document!(
+      id = existing_document_id(
+        attachable_type: "Repository",
+        attachable_id: row["repository_id"],
+        google_doc_url: row["google_docs_url"],
+        source_url: nil,
+        filename: nil,
+        title: row["title"]
+      ) || insert_document!(
         attachable_type: "Repository",
         attachable_id: row["repository_id"],
         user_id: row["user_id"],
@@ -87,7 +107,14 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
     select_all("SELECT job_attachments.*, jobs.user_id FROM job_attachments INNER JOIN jobs ON jobs.id = job_attachments.job_id").each do |row|
       kind = row["attachment_type"] == "google_doc_link" ? "google_doc" : "file"
       title = row["filename"].presence || (kind == "google_doc" ? "Google Doc" : "Attachment")
-      id = insert_document!(
+      id = existing_document_id(
+        attachable_type: "Job",
+        attachable_id: row["job_id"],
+        google_doc_url: row["google_doc_url"],
+        source_url: row["source_url"],
+        filename: row["filename"],
+        title: title
+      ) || insert_document!(
         attachable_type: "Job",
         attachable_id: row["job_id"],
         user_id: row["user_id"],
@@ -152,5 +179,21 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
       SET record_type = #{quote(new_type)}, record_id = #{quote(new_id)}
       WHERE record_type = #{quote(old_type)} AND record_id = #{quote(old_id)}
     SQL
+  end
+
+  def existing_document_id(attachable_type:, attachable_id:, google_doc_url:, source_url:, filename:, title:)
+    relation = "attachable_type = #{quote(attachable_type)} AND attachable_id = #{quote(attachable_id)}"
+    discriminator =
+      if source_url.present?
+        "source_url = #{quote(source_url)}"
+      elsif google_doc_url.present?
+        "google_doc_url = #{quote(google_doc_url)}"
+      elsif filename.present?
+        "filename = #{quote(filename)}"
+      else
+        "title = #{quote(title)}"
+      end
+
+    select_value("SELECT id FROM documents WHERE #{relation} AND #{discriminator} ORDER BY id LIMIT 1")
   end
 end
