@@ -205,7 +205,18 @@ class WorkflowWorkspace
       @git.run("checkout", @branch_name, chdir: path.to_s)
     elsif stack_parent
       fetch_stack_parent
-      @git.run("checkout", "-b", @branch_name, stack_parent.head_sha, chdir: path.to_s)
+      # Branch from the parent's current remote tip (what we just
+      # fetched into refs/remotes/origin/<parent_branch>), not the
+      # parent's stored head_sha. The stored SHA is a snapshot of
+      # the parent's HEAD at the time of its last recorded Run — if
+      # the parent's branch has since been rebased or force-pushed
+      # (operator action, auto-rebase, etc.), that SHA is dangling
+      # on origin and unreachable from any ref. A full clone can't
+      # fetch dangling commits, so checking out -b <branch> <sha>
+      # would die with "reference is not a tree". The current tip
+      # is what stacking actually means anyway — child off whatever
+      # the parent currently is.
+      @git.run("checkout", "-b", @branch_name, "origin/#{stack_parent.branch_name}", chdir: path.to_s)
     else
       @git.run("checkout", "-b", @branch_name, chdir: path.to_s)
     end

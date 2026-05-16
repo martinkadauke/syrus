@@ -87,6 +87,43 @@ RSpec.describe WorkflowWorkspace do
         expect(ws.path.join("parent.rb")).to exist
       end
 
+      it "branches from the parent's current remote tip even when the parent's stored head_sha is dangling" do
+        parent = Factories.job(repository: repository, issue_number: 8)
+        parent_branch = "syrus/issue-8-#{parent.id}"
+        parent_worktree = Pathname.new(@data_root).join("workflows", "_parent_dangling")
+        sh("git clone -q file://#{bare_remote_dir} #{parent_worktree}")
+        sh("git -C #{parent_worktree} checkout -q -b #{parent_branch}")
+        File.write(parent_worktree.join("first.rb"), "FIRST\n")
+        sh("git -C #{parent_worktree} add .")
+        sh("git -C #{parent_worktree} -c user.email=t@e -c user.name=t commit -q -m 'first'")
+        dangling_sha = sh("git -C #{parent_worktree} rev-parse HEAD").strip
+        sh("git -C #{parent_worktree} push -q origin #{parent_branch}")
+
+        # Simulate a force-push that rewrites the parent's branch. The
+        # original commit becomes dangling on origin: still recorded
+        # in our Run as head_sha, but unreachable from any ref.
+        sh("git -C #{parent_worktree} reset -q --hard HEAD~1")
+        File.write(parent_worktree.join("second.rb"), "SECOND\n")
+        sh("git -C #{parent_worktree} add .")
+        sh("git -C #{parent_worktree} -c user.email=t@e -c user.name=t commit -q -m 'second'")
+        new_tip = sh("git -C #{parent_worktree} rev-parse HEAD").strip
+        sh("git -C #{parent_worktree} push -q --force origin #{parent_branch}")
+        FileUtils.rm_rf(parent_worktree)
+
+        parent.update!(branch_name: parent_branch, pr_number: 8)
+        parent.runs.create!(trigger_kind: "initial", agent_provider: parent.agent_provider, head_sha: dangling_sha)
+        job.update!(parent_job: parent)
+
+        expect(parent.head_sha).to eq(dangling_sha)
+        expect(dangling_sha).not_to eq(new_tip)
+
+        ws = described_class.new(workflow)
+        expect { ws.setup }.not_to raise_error
+        expect(sh("git -C #{ws.path} rev-parse HEAD").strip).to eq(new_tip)
+        expect(ws.path.join("second.rb")).to exist
+        expect(ws.path.join("first.rb")).not_to exist
+      end
+
       it "configures the repository-local Git author for PAT-backed agent commits" do
         ws = described_class.new(workflow)
         ws.setup
