@@ -159,7 +159,7 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
       INSERT INTO documents
         (attachable_type, attachable_id, user_id, kind, title, google_doc_url, content_cache, content_cached_at, source_url, filename, content_type, byte_size, created_at, updated_at)
       VALUES
-        (#{quote(attrs[:attachable_type])}, #{quote(attrs[:attachable_id])}, #{quote(attrs[:user_id])}, #{quote(attrs[:kind])}, #{quote(attrs[:title])}, #{quote(attrs[:google_doc_url])}, #{quote(attrs[:content_cache])}, #{quote(attrs[:content_cached_at])}, #{quote(attrs[:source_url])}, #{quote(attrs[:filename])}, #{quote(attrs[:content_type])}, #{quote(attrs[:byte_size])}, #{quote(attrs[:created_at])}, #{quote(attrs[:updated_at])})
+        (#{sql_quote(attrs[:attachable_type])}, #{sql_quote(attrs[:attachable_id])}, #{sql_quote(attrs[:user_id])}, #{sql_quote(attrs[:kind])}, #{sql_quote(attrs[:title])}, #{sql_quote(attrs[:google_doc_url])}, #{sql_quote(attrs[:content_cache])}, #{sql_quote(attrs[:content_cached_at])}, #{sql_quote(attrs[:source_url])}, #{sql_quote(attrs[:filename])}, #{sql_quote(attrs[:content_type])}, #{sql_quote(attrs[:byte_size])}, #{sql_quote(attrs[:created_at])}, #{sql_quote(attrs[:updated_at])})
     SQL
   end
 
@@ -168,7 +168,7 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
       INSERT INTO repository_documents
         (repository_id, user_id, kind, title, google_docs_url, content_cache, content_cached_at, created_at, updated_at)
       VALUES
-        (#{quote(row["attachable_id"])}, #{quote(row["user_id"])}, #{quote(row["kind"])}, #{quote(row["title"])}, #{quote(row["google_doc_url"])}, #{quote(row["content_cache"])}, #{quote(row["content_cached_at"])}, #{quote(row["created_at"])}, #{quote(row["updated_at"])})
+        (#{sql_quote(row["attachable_id"])}, #{sql_quote(row["user_id"])}, #{sql_quote(row["kind"])}, #{sql_quote(row["title"])}, #{sql_quote(row["google_doc_url"])}, #{sql_quote(row["content_cache"])}, #{sql_quote(row["content_cached_at"])}, #{sql_quote(row["created_at"])}, #{sql_quote(row["updated_at"])})
     SQL
   end
 
@@ -178,31 +178,35 @@ class ConsolidateDocuments < ActiveRecord::Migration[8.1]
       INSERT INTO job_attachments
         (job_id, attachment_type, google_doc_url, source_url, filename, content_type, byte_size, created_at, updated_at)
       VALUES
-        (#{quote(row["attachable_id"])}, #{quote(attachment_type)}, #{quote(row["google_doc_url"])}, #{quote(row["source_url"])}, #{quote(row["filename"])}, #{quote(row["content_type"])}, #{quote(row["byte_size"])}, #{quote(row["created_at"])}, #{quote(row["updated_at"])})
+        (#{sql_quote(row["attachable_id"])}, #{sql_quote(attachment_type)}, #{sql_quote(row["google_doc_url"])}, #{sql_quote(row["source_url"])}, #{sql_quote(row["filename"])}, #{sql_quote(row["content_type"])}, #{sql_quote(row["byte_size"])}, #{sql_quote(row["created_at"])}, #{sql_quote(row["updated_at"])})
     SQL
   end
 
   def move_attachment!(old_type, old_id, new_type, new_id)
     execute(<<~SQL.squish)
       UPDATE active_storage_attachments
-      SET record_type = #{quote(new_type)}, record_id = #{quote(new_id)}
-      WHERE record_type = #{quote(old_type)} AND record_id = #{quote(old_id)}
+      SET record_type = #{sql_quote(new_type)}, record_id = #{sql_quote(new_id)}
+      WHERE record_type = #{sql_quote(old_type)} AND record_id = #{sql_quote(old_id)}
     SQL
   end
 
   def existing_document_id(attachable_type:, attachable_id:, google_doc_url:, source_url:, filename:, title:)
-    relation = "attachable_type = #{quote(attachable_type)} AND attachable_id = #{quote(attachable_id)}"
+    relation = "attachable_type = #{sql_quote(attachable_type)} AND attachable_id = #{sql_quote(attachable_id)}"
     discriminator =
       if source_url.present?
-        "source_url = #{quote(source_url)}"
+        "source_url = #{sql_quote(source_url)}"
       elsif google_doc_url.present?
-        "google_doc_url = #{quote(google_doc_url)}"
+        "google_doc_url = #{sql_quote(google_doc_url)}"
       elsif filename.present?
-        "filename = #{quote(filename)}"
+        "filename = #{sql_quote(filename)}"
       else
-        "title = #{quote(title)}"
+        "title = #{sql_quote(title)}"
       end
 
     select_value("SELECT id FROM documents WHERE #{relation} AND #{discriminator} ORDER BY id LIMIT 1")
+  end
+
+  def sql_quote(value)
+    connection.quote(value)
   end
 end
