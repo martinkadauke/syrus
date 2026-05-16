@@ -703,8 +703,19 @@ function formatChipValue(chip, meta) {
   if (isPredicateOp(chip.op)) return ""
   if (chip.value === null || chip.value === undefined) return "(unset)"
   if (Array.isArray(chip.value)) return chip.value.map(v => labelForOption(v, meta)).join(", ")
-  if (typeof chip.value === "object") return JSON.stringify(chip.value)
+  if (typeof chip.value === "object") return formatObjectValue(chip)
   return labelForOption(chip.value, meta)
+}
+
+function formatObjectValue(chip) {
+  // within_last / more_than_ago carry { n, unit }
+  if (chip.value && "n" in chip.value && "unit" in chip.value) {
+    const n = chip.value.n
+    const unit = chip.value.unit
+    const singular = unit && unit.endsWith("s") && Number(n) === 1 ? unit.slice(0, -1) : unit
+    return `${n} ${singular}`
+  }
+  return JSON.stringify(chip.value)
 }
 
 function labelForOption(value, meta) {
@@ -717,29 +728,152 @@ function labelForOption(value, meta) {
 // ---- Per-bucket value editors ----
 
 function enumEditor(chip, meta) {
-  const wrapper = document.createElement("div")
   const multi = [ "is_one_of", "is_none_of", "contains_any", "contains_all", "contains_none" ].includes(chip.op)
+  if (multi) return multiPillEditor(chip, meta)
+
+  const wrapper = document.createElement("div")
   const select = document.createElement("select")
   select.className = "block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
   select.dataset.chipBarTarget = "editorInput"
-  if (multi) {
-    select.multiple = true
-    select.size = Math.min(Math.max(meta.values.length, 2), 6)
-  }
 
-  const currentValues = multi ? Array(chip.value || []).flat() : [ chip.value ]
   meta.values.forEach(v => {
     const option = document.createElement("option")
     const val = typeof v === "object" ? v.value : v
     const label = typeof v === "object" ? v.label : v
     option.value = val
     option.textContent = label
-    if (currentValues.some(curr => String(curr) === String(val))) option.selected = true
+    if (String(chip.value) === String(val)) option.selected = true
     select.append(option)
   })
 
   wrapper.append(select)
   return wrapper
+}
+
+// Multi-pill autocomplete: pills above a search input above a
+// scrollable, filtered options list. Selected values live in the
+// wrapper's dataset.selected JSON; readEditorValue picks them up
+// from there.
+function multiPillEditor(chip, meta) {
+  const wrapper = document.createElement("div")
+  wrapper.className = "rounded-md border border-gray-300 bg-white"
+  wrapper.dataset.chipBarTarget = "editorInput"
+  wrapper.dataset.role = "multi-pill"
+
+  const initial = Array.isArray(chip.value) ? chip.value.map(String) : []
+  wrapper.dataset.selected = JSON.stringify(initial)
+
+  const pillsRow = document.createElement("div")
+  pillsRow.className = "flex flex-wrap gap-1 p-2"
+  pillsRow.dataset.role = "pills-row"
+
+  const search = document.createElement("input")
+  search.type = "text"
+  search.placeholder = (meta.values && meta.values.length) ? "Search…" : "No options available"
+  search.className = "block w-full border-0 border-t border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-0"
+  search.dataset.role = "search"
+  search.autocomplete = "off"
+
+  const list = document.createElement("div")
+  list.className = "max-h-40 overflow-y-auto border-t border-gray-200 text-sm"
+  list.dataset.role = "options-list"
+
+  wrapper.append(pillsRow, search, list)
+
+  const refresh = () => renderMultiPillState(wrapper, meta)
+  refresh()
+
+  search.addEventListener("input", refresh)
+  search.addEventListener("keydown", event => {
+    if (event.key !== "Enter") return
+    event.preventDefault()
+    const first = list.querySelector("button[data-role='option']")
+    if (first) first.click()
+  })
+
+  pillsRow.addEventListener("click", event => {
+    const target = event.target.closest("button[data-role='pill-remove']")
+    if (!target) return
+    const value = target.dataset.value
+    const selected = JSON.parse(wrapper.dataset.selected || "[]")
+    wrapper.dataset.selected = JSON.stringify(selected.filter(v => String(v) !== String(value)))
+    refresh()
+  })
+
+  list.addEventListener("click", event => {
+    const target = event.target.closest("button[data-role='option']")
+    if (!target) return
+    const value = target.dataset.value
+    const selected = JSON.parse(wrapper.dataset.selected || "[]")
+    if (!selected.some(v => String(v) === String(value))) {
+      selected.push(value)
+      wrapper.dataset.selected = JSON.stringify(selected)
+    }
+    search.value = ""
+    refresh()
+    search.focus()
+  })
+
+  return wrapper
+}
+
+function renderMultiPillState(wrapper, meta) {
+  const selected = JSON.parse(wrapper.dataset.selected || "[]").map(String)
+  const pillsRow = wrapper.querySelector("[data-role='pills-row']")
+  const search = wrapper.querySelector("[data-role='search']")
+  const list = wrapper.querySelector("[data-role='options-list']")
+
+  // Pills
+  pillsRow.replaceChildren(...selected.map(value => {
+    const pill = document.createElement("span")
+    pill.className = "inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-800"
+    const text = document.createElement("span")
+    text.textContent = labelForOption(value, meta)
+    const remove = document.createElement("button")
+    remove.type = "button"
+    remove.dataset.role = "pill-remove"
+    remove.dataset.value = value
+    remove.className = "text-indigo-500 hover:text-indigo-900 cursor-pointer"
+    remove.textContent = "×"
+    pill.append(text, remove)
+    return pill
+  }))
+
+  if (selected.length === 0) {
+    const placeholder = document.createElement("span")
+    placeholder.className = "text-xs text-gray-400"
+    placeholder.textContent = "Nothing selected yet"
+    pillsRow.append(placeholder)
+  }
+
+  // Filtered options
+  const query = (search.value || "").trim().toLowerCase()
+  const selectedSet = new Set(selected)
+  const options = (Array.isArray(meta.values) ? meta.values : []).map(v => {
+    return typeof v === "object" ? { value: String(v.value), label: v.label }
+                                  : { value: String(v),       label: String(v) }
+  })
+  const matches = options
+    .filter(opt => !selectedSet.has(opt.value))
+    .filter(opt => !query || opt.label.toLowerCase().includes(query) || opt.value.toLowerCase().includes(query))
+    .slice(0, 50)
+
+  list.replaceChildren(...matches.map(opt => {
+    const btn = document.createElement("button")
+    btn.type = "button"
+    btn.dataset.role = "option"
+    btn.dataset.value = opt.value
+    btn.className = "flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left hover:bg-gray-50 cursor-pointer"
+    btn.textContent = opt.label
+    return btn
+  }))
+
+  if (matches.length === 0) {
+    const empty = document.createElement("div")
+    empty.className = "px-3 py-1.5 text-xs text-gray-400"
+    empty.textContent = options.length === 0 ? "No options available" : "No matches"
+    list.append(empty)
+  }
 }
 
 function stringEditor(chip) {
@@ -803,36 +937,42 @@ function dateEditor(chip) {
 
   if (chip.op === "between") {
     const wrapper = document.createElement("div")
-    wrapper.className = "flex items-center gap-2"
+    wrapper.className = "flex flex-col gap-2"
     const range = Array.isArray(chip.value) ? chip.value : []
-    wrapper.append(dateInput(range[0]), dateInput(range[1]))
+    wrapper.append(
+      labeledDateInput("from", range[0]),
+      labeledDateInput("to", range[1])
+    )
     return wrapper
   }
 
   return dateInput(chip.value)
 }
 
+function labeledDateInput(label, value) {
+  const row = document.createElement("label")
+  row.className = "flex items-center gap-2 text-xs text-gray-500"
+  const text = document.createElement("span")
+  text.className = "w-10 shrink-0"
+  text.textContent = label
+  row.append(text, dateInput(value))
+  return row
+}
+
 function dateInput(value) {
   const input = document.createElement("input")
   input.type = "date"
   input.value = value ? String(value).slice(0, 10) : ""
-  input.className = "block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+  input.className = "block w-full min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
   input.dataset.chipBarTarget = "editorInput"
   return input
 }
 
 function collectionEditor(chip, meta) {
-  if (!Array.isArray(meta.values) || meta.values.length === 0) {
-    const input = document.createElement("input")
-    input.type = "text"
-    input.value = Array.isArray(chip.value) ? chip.value.join(",") : (chip.value || "")
-    input.placeholder = "comma-separated ids"
-    input.className = "block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
-    input.dataset.chipBarTarget = "editorInput"
-    input.dataset.role = "csv"
-    return input
-  }
-  return enumEditor(chip, meta)
+  // Always use the multi-pill picker — the schema embeds the user's
+  // tag list via dynamic_values, so this works for tags and any
+  // future collection chip with a known value set.
+  return multiPillEditor(chip, meta)
 }
 
 function readEditorValue(editor, op) {
@@ -847,9 +987,9 @@ function readEditorValue(editor, op) {
     return { n: Number(nInput.value || 0), unit: unitSelect.value }
   }
 
-  const csvInput = editor.querySelector('[data-role="csv"]')
-  if (csvInput) {
-    return csvInput.value.split(",").map(s => s.trim()).filter(Boolean)
+  const multiPill = editor.querySelector('[data-role="multi-pill"]')
+  if (multiPill) {
+    return JSON.parse(multiPill.dataset.selected || "[]")
   }
 
   if (inputs.length === 1) {

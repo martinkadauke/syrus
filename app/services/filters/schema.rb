@@ -42,6 +42,8 @@ module Filters
         user.jobs.where.not(branch_name: nil).order(created_at: :desc).limit(200).map do |job|
           { "value" => job.id, "label" => "##{job.issue_number || job.id} #{job.issue_title}".strip }
         end
+      when "tags"
+        user.tags.order(Arel.sql("LOWER(tags.name)")).map { |t| { "value" => t.id, "label" => t.name } }
       else
         nil
       end

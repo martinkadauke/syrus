@@ -17,6 +17,8 @@ module Filters
         "30d" => 30.days
       }.freeze
 
+      values(*CUTOFFS.keys)
+
       def apply
         case op
         when :is

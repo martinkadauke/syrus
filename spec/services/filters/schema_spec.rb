@@ -54,5 +54,33 @@ RSpec.describe Filters::Schema do
       schema = described_class.chip_for("priority")
       expect(schema).not_to have_key("expansions")
     end
+
+    it "populates values for triaging_reason from the Job constant" do
+      schema = described_class.chip_for("triaging_reason")
+      expect(schema["values"]).to match_array(Job::TRIAGING_REASONS)
+    end
+
+    it "populates values for age from CUTOFFS" do
+      schema = described_class.chip_for("age")
+      expect(schema["values"]).to eq(%w[1d 7d 30d])
+    end
+
+    it "renders pr_mergeable as a boolean tri-state chip" do
+      schema = described_class.chip_for("pr_mergeable")
+      expect(schema["bucket"]).to eq("boolean")
+      expect(schema["operators"]).to eq(%w[is_true is_false is_set is_unset])
+      expect(schema["values"]).to eq([])
+    end
+
+    it "strips is_set / is_unset from non-nullable date columns" do
+      schema = described_class.chip_for("created_at")
+      expect(schema["operators"]).to eq(%w[before after between within_last more_than_ago])
+      expect(schema["operators"]).not_to include("is_set", "is_unset")
+    end
+
+    it "keeps is_set / is_unset on nullable date columns" do
+      schema = described_class.chip_for("finished_at")
+      expect(schema["operators"]).to include("is_set", "is_unset")
+    end
   end
 end

@@ -4,6 +4,7 @@ module Filters
       filter_name "triaging_reason"
       label "Triaging reason"
       column :triaging_reason
+      values(*Job::TRIAGING_REASONS)
     end
   end
 end
