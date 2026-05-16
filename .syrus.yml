@@ -13,3 +13,14 @@ prepare:
   # the agent just installed.
   - bundle config set --local path vendor/bundle
   - bundle install --jobs 4
+
+grade:
+  # Reject migrations whose YYYYMMDDHHMMSS timestamps collide with
+  # main or with each other. Hand-rolled timestamps silently corrupt
+  # dev DBs (db:migrate skips colliding versions) and crash production
+  # deploys with "table already exists". See CLAUDE.md "Migration
+  # timestamps come from the generator" — the script fails the grade
+  # so the loop nudges the agent to regenerate via the rails generator.
+  - name: migration-collisions
+    run: bin/check-migration-collisions
+    timeout_minutes: 1

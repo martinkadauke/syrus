@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# Syrus migration-collision grader.
+#
+# Fails the workflow's grade step if a migration on this branch
+# shares its YYYYMMDDHHMMSS timestamp with any migration that
+# already exists on the default branch, OR if two new migrations
+# on this branch share a timestamp with each other.
+#
+# Hand-rolled migration timestamps collide across branches and
+# `rails db:migrate` silently skips colliding versions (because
+# `schema_migrations` already records the version). Result:
+# missing tables in production, silent-skip dev DBs. The fix is
+# always `bin/rails generate migration <Name>` so the timestamp
+# is fresh at file-creation time — but as long as agents can
+# hand-write filenames, the grader is the enforcement point.
+#
+# See CLAUDE.md ("Migration timestamps come from the generator").
+
+set -euo pipefail
+
+# Detect the default branch ref. Prefer origin/HEAD if symbolic-ref
+# is wired; otherwise fall back through the conventional names.
+resolve_default_branch() {
+  local ref
+  ref=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||') || ref=""
+  if [ -n "$ref" ] && git rev-parse --verify "origin/$ref" >/dev/null 2>&1; then
+    echo "origin/$ref"
+    return
+  fi
+  for candidate in origin/main origin/master main master; do
+    if git rev-parse --verify "$candidate" >/dev/null 2>&1; then
+      echo "$candidate"
+      return
+    fi
+  done
+  return 1
+}
+
+default_branch=$(resolve_default_branch) || {
+  echo "[migration-collisions] could not locate the default branch ref — skipping check"
+  exit 0
+}
+
+# Three-dot diff: files added on this branch since it diverged
+# from the default. --diff-filter=A keeps only newly-added paths;
+# renames + modifications would be a false positive here since
+# we're checking for new schema versions. Pathspec is broad and
+# filtered with grep — git's literal pathspec doesn't auto-glob
+# `*.rb`, so listing the directory and matching server-side is
+# both simpler and more portable.
+new_migrations=$(git diff --name-only --diff-filter=A "${default_branch}...HEAD" -- db/migrate/ 2>/dev/null | grep -E '\.rb$' || true)
+
+if [ -z "$new_migrations" ]; then
+  echo "[migration-collisions] no new migrations on this branch — nothing to check"
+  exit 0
+fi
+
+# Extract YYYYMMDDHHMMSS prefixes — anchor the regex to a 14-digit
+# block followed by an underscore so we don't accidentally match
+# files whose names happen to embed numbers.
+extract_timestamps() {
+  sed -n 's|^.*/\([0-9]\{14\}\)_[^/]*$|\1|p'
+}
+
+new_ts=$(echo "$new_migrations" | extract_timestamps | sort)
+unique_new_ts=$(echo "$new_ts" | sort -u)
+
+# 1. Intra-branch duplicates — two new migrations sharing a timestamp.
+intra=$(echo "$new_ts" | uniq -d)
+if [ -n "$intra" ]; then
+  echo "[migration-collisions] two new migrations on this branch share a timestamp:"
+  while IFS= read -r ts; do
+    [ -z "$ts" ] && continue
+    echo "  $ts:"
+    echo "$new_migrations" | grep "/${ts}_" | sed 's/^/    /'
+  done <<<"$intra"
+  echo
+  echo "Regenerate one of them with bin/rails generate migration <Name> so its timestamp is unique."
+  exit 1
+fi
+
+# 2. Collisions with existing migrations on the default branch.
+existing_ts=$(git ls-tree -r --name-only "$default_branch" -- db/migrate/ 2>/dev/null | grep -E '\.rb$' | extract_timestamps | sort -u)
+collisions=$(comm -12 <(echo "$unique_new_ts") <(echo "$existing_ts"))
+
+if [ -n "$collisions" ]; then
+  echo "[migration-collisions] migration timestamp(s) already exist on ${default_branch}:"
+  while IFS= read -r ts; do
+    [ -z "$ts" ] && continue
+    new_file=$(echo "$new_migrations" | grep "/${ts}_" || true)
+    existing_file=$(git ls-tree -r --name-only "$default_branch" -- db/migrate/ | grep "/${ts}_" || true)
+    echo "  $ts"
+    echo "    new on this branch: $new_file"
+    echo "    already on ${default_branch}: $existing_file"
+  done <<<"$collisions"
+  echo
+  echo "rails db:migrate silently SKIPS migrations whose version is already in"
+  echo "schema_migrations, so a collision leaves a corrupted dev DB and a"
+  echo "missing-table production deploy. Delete the colliding file and"
+  echo "regenerate via 'bin/rails generate migration <Name>' so it gets a"
+  echo "fresh timestamp; then port your migration body onto the new file."
+  exit 1
+fi
+
+echo "[migration-collisions] all new migration timestamps are unique against ${default_branch}"
+exit 0
