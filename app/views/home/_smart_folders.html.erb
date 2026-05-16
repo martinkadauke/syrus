@@ -1,15 +1,39 @@
+<% folder_link_classes = ->(active) { "flex items-center justify-between rounded-md px-2 py-1.5 text-sm #{active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}" } %>
 <div class="bg-white border border-gray-200 rounded-lg p-3">
   <div class="mb-2 text-xs font-semibold uppercase text-gray-500">Attention</div>
   <nav class="space-y-1">
-    <% @builtin_smart_folders.each do |folder| %>
+    <% @primary_builtin_smart_folders.each do |folder| %>
       <% active = @active_smart_folder == folder %>
       <%= link_to dashboard_jobs_path(smart_folder_id: folder.id),
-            class: "flex items-center justify-between rounded-md px-2 py-1.5 text-sm #{active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}" do %>
+            class: folder_link_classes.call(active) do %>
         <span><%= folder.name %></span>
         <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"><%= @smart_folder_counts[folder.id] %></span>
       <% end %>
     <% end %>
   </nav>
+
+  <% if @more_builtin_smart_folders.any? %>
+    <%# Tier C: rarely-needed built-ins tucked behind a disclosure.
+        Auto-opens when one of them is the active folder so the
+        operator sees their context. %>
+    <% more_open = @more_builtin_smart_folders.include?(@active_smart_folder) %>
+    <details class="mt-1 group/more" <%= "open" if more_open %>>
+      <summary class="flex cursor-pointer items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-gray-500 select-none hover:bg-gray-50 hover:text-gray-700">
+        <span class="text-gray-400 group-open/more:rotate-90 transition-transform">▸</span>
+        <span>More</span>
+      </summary>
+      <nav class="mt-1 space-y-1">
+        <% @more_builtin_smart_folders.each do |folder| %>
+          <% active = @active_smart_folder == folder %>
+          <%= link_to dashboard_jobs_path(smart_folder_id: folder.id),
+                class: folder_link_classes.call(active) do %>
+            <span><%= folder.name %></span>
+            <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"><%= @smart_folder_counts[folder.id] %></span>
+          <% end %>
+        <% end %>
+      </nav>
+    </details>
+  <% end %>
 
   <div class="my-3 border-t border-gray-200"></div>
 

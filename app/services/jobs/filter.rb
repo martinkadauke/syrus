@@ -111,8 +111,6 @@ module Jobs
         relation.where(id: awaiting_epic_job_ids)
       when "needs_review"
         relation.where(id: needs_review_job_ids)
-      when "awaiting_your_move"
-        relation.none
       when "just_failed"
         relation.where(id: latest_failed_run_job_ids)
       when "in_review"

@@ -1,6 +1,5 @@
 class HomeController < ApplicationController
   PER_PAGE = 25
-  HIDE_BUILTIN_WHEN_EMPTY = %w[ pinned in_progress ].freeze
 
   def index
     redirect_to default_chat_path
@@ -106,14 +105,30 @@ class HomeController < ApplicationController
     @epics = epics_for_active_smart_folder(active_repo_ids)
     @smart_folder_counts = smart_folder_counts(Current.user.jobs.where(repository_id: active_repo_ids))
 
-    # Hide built-in folders whose attention is in HIDE_BUILTIN_WHEN_EMPTY
-    # when they have zero matches — keeps the nav from advertising
-    # features the operator isn't currently using. Stay visible if it's
-    # the active folder so they're not stranded mid-browse.
-    @builtin_smart_folders = @builtin_smart_folders.reject do |folder|
-      HIDE_BUILTIN_WHEN_EMPTY.include?(folder.filter["attention"]) &&
-        @smart_folder_counts[folder.id].to_i.zero? &&
-        @active_smart_folder != folder
+    # Split the built-ins into the primary sidebar list and the
+    # collapsible "More" disclosure at the bottom. See
+    # SmartFolder::BUILTIN_DEFINITIONS for visibility semantics:
+    #   :always       — always in the primary list.
+    #   :when_present — primary list only when there's something to show
+    #                   (or it's the active folder, so the operator
+    #                   isn't stranded mid-browse). Hidden entirely
+    #                   otherwise — not demoted to "More".
+    #   :on_demand    — always tucked under "More".
+    @primary_builtin_smart_folders = []
+    @more_builtin_smart_folders = []
+    @builtin_smart_folders.each do |folder|
+      case folder.visibility
+      when :always
+        @primary_builtin_smart_folders << folder
+      when :on_demand
+        @more_builtin_smart_folders << folder
+      when :when_present
+        if @smart_folder_counts[folder.id].to_i.positive? || @active_smart_folder == folder
+          @primary_builtin_smart_folders << folder
+        end
+      else
+        @primary_builtin_smart_folders << folder
+      end
     end
 
     @jobs_total = @jobs.count
@@ -226,7 +241,7 @@ class HomeController < ApplicationController
   end
 
   def epics_for_active_smart_folder(active_repo_ids)
-    return Epic.none unless %w[ inbox awaiting_your_move ].include?(@active_smart_folder&.filter&.fetch("attention", nil))
+    return Epic.none unless @active_smart_folder&.filter&.fetch("attention", nil) == "inbox"
 
     Epic.includes(:repository)
         .where(user: Current.user, repository_id: active_repo_ids, state: "ready")
@@ -234,7 +249,7 @@ class HomeController < ApplicationController
   end
 
   def epic_count_for_filter(filter)
-    return 0 unless %w[ inbox awaiting_your_move ].include?(filter["attention"])
+    return 0 unless filter["attention"] == "inbox"
 
     Current.user.epics.joins(:repository)
            .where(repositories: { archived_at: nil })

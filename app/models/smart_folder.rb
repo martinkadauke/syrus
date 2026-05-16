@@ -1,17 +1,25 @@
 class SmartFolder < ApplicationRecord
+  # `visibility` controls where each built-in renders in the sidebar:
+  #   :always       — pinned to the top of the sidebar regardless of count.
+  #   :when_present — shown only when the count is non-zero (unless it's
+  #                   the active folder, so the operator can navigate away).
+  #   :on_demand    — tucked into the "More" disclosure at the bottom of
+  #                   the sidebar; still available via direct URL and via
+  #                   the attention dropdown.
   BUILTIN_DEFINITIONS = [
-    { key: "pinned", name: "Pinned", filter: { "attention" => "pinned" } },
-    { key: "in_progress", name: "In progress", filter: { "attention" => "in_progress" } },
-    { key: "inbox", name: "Inbox", filter: { "attention" => "inbox" } },
-    { key: "awaiting_epic", name: "Awaiting Epic", filter: { "attention" => "awaiting_epic" } },
-    { key: "needs_review", name: "Needs review", filter: { "attention" => "needs_review" } },
-    { key: "awaiting_your_move", name: "Awaiting your move", filter: { "attention" => "awaiting_your_move" } },
-    { key: "just_failed", name: "Just failed", filter: { "attention" => "just_failed" } },
-    { key: "in_review", name: "In review", filter: { "attention" => "in_review" } },
-    { key: "stale", name: "Stale", filter: { "attention" => "stale" } },
-    { key: "blocked", name: "Blocked", filter: { "attention" => "blocked" } },
-    { key: "merged_this_week", name: "Merged this week", filter: { "attention" => "merged_this_week" } }
+    { key: "pinned",           name: "Pinned",           visibility: :when_present, filter: { "attention" => "pinned" } },
+    { key: "in_progress",      name: "In progress",      visibility: :when_present, filter: { "attention" => "in_progress" } },
+    { key: "inbox",            name: "Inbox",            visibility: :always,       filter: { "attention" => "inbox" } },
+    { key: "just_failed",      name: "Just failed",      visibility: :when_present, filter: { "attention" => "just_failed" } },
+    { key: "in_review",        name: "In review",        visibility: :always,       filter: { "attention" => "in_review" } },
+    { key: "blocked",          name: "Blocked",          visibility: :when_present, filter: { "attention" => "blocked" } },
+    { key: "stale",            name: "Stale",            visibility: :when_present, filter: { "attention" => "stale" } },
+    { key: "awaiting_epic",    name: "Awaiting Epic",    visibility: :on_demand,    filter: { "attention" => "awaiting_epic" } },
+    { key: "needs_review",     name: "Needs review",     visibility: :on_demand,    filter: { "attention" => "needs_review" } },
+    { key: "merged_this_week", name: "Merged this week", visibility: :on_demand,    filter: { "attention" => "merged_this_week" } }
   ].freeze
+
+  VISIBILITY_BY_NAME = BUILTIN_DEFINITIONS.to_h { |d| [ d.fetch(:name), d.fetch(:visibility) ] }.freeze
 
   KINDS = %w[ builtin user_defined ].freeze
 
@@ -43,6 +51,19 @@ class SmartFolder < ApplicationRecord
       )
       folder.save! if folder.changed? || folder.new_record?
     end
+
+    # Sweep retired built-ins so they don't keep appearing in the
+    # sidebar after we remove or rename a definition. ("Awaiting your
+    # move" used to live here; its filter resolved to relation.none.)
+    builtin.where(user_id: nil).where.not(name: BUILTIN_DEFINITIONS.map { |d| d.fetch(:name) }).destroy_all
+  end
+
+  # Sidebar tier for this folder — see BUILTIN_DEFINITIONS for the
+  # tier semantics. User-defined folders aren't classified.
+  def visibility
+    return :user_defined unless builtin?
+
+    VISIBILITY_BY_NAME[name] || :on_demand
   end
 
   private

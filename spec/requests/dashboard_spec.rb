@@ -949,8 +949,36 @@ RSpec.describe "Dashboard", type: :request do
 
         document = Nokogiri::HTML(response.body)
         attention = document.at_css("aside")
-        expect(attention.text).to include("Inbox", "Awaiting Epic", "Needs review", "Awaiting your move", "Just failed", "In review", "Stale", "Blocked", "Merged this week")
+        # Always-visible + when_present (Just failed has 1 match).
+        expect(attention.text).to include("Inbox", "In review", "Just failed")
+        # On-demand folders live behind the "More" disclosure.
+        expect(attention.text).to include("More", "Awaiting Epic", "Needs review", "Merged this week")
+        # Sweeping retired folders means "Awaiting your move" is gone.
+        expect(attention.text).not_to include("Awaiting your move")
         expect(attention.css("a").find { |link| link.text.include?("Just failed") }.text).to include("1")
+      end
+
+      it "tucks on-demand folders into a More disclosure that closes by default" do
+        Factories.job(repository: repo, issue_number: 1)
+
+        get dashboard_jobs_path
+
+        document = Nokogiri::HTML(response.body)
+        details = document.at_css("aside details")
+        expect(details).to be_present
+        expect(details["open"]).to be_nil
+        expect(details.text).to include("Awaiting Epic", "Needs review", "Merged this week")
+      end
+
+      it "auto-opens the More disclosure when an on-demand folder is active" do
+        Factories.job(repository: repo, issue_number: 1)
+        SmartFolder.ensure_builtins!
+        needs_review = SmartFolder.find_by!(name: "Needs review")
+
+        get dashboard_jobs_path, params: { smart_folder_id: needs_review.id }
+
+        details = Nokogiri::HTML(response.body).at_css("aside details")
+        expect(details["open"]).not_to be_nil
       end
 
       it "shows triaging jobs pending an epic ref in Awaiting Epic until they leave triaging" do
@@ -1015,25 +1043,6 @@ RSpec.describe "Dashboard", type: :request do
 
         get dashboard_jobs_path, params: { smart_folder_id: needs_review.id }
         expect(response.body).not_to include("Rebuild the aqueduct")
-      end
-
-      it "shows ready epics in Awaiting your move until they enter progress" do
-        ready = Factories.epic(user: user, repository: repo, state: "ready", title: "Restore the forum")
-        Factories.epic(user: user, repository: repo, state: "in_progress", title: "Already marching")
-        SmartFolder.ensure_builtins!
-        awaiting_move = SmartFolder.find_by!(name: "Awaiting your move")
-
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_move.id }
-
-        expect(response.body).to include("Epics awaiting your move")
-        expect(response.body).to include("Restore the forum")
-        expect(response.body).not_to include("Already marching")
-        expect(Nokogiri::HTML(response.body).at_css("aside").css("a").find { |link| link.text.include?("Awaiting your move") }.text).to include("1")
-
-        ready.in_progress!
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_move.id }
-
-        expect(response.body).not_to include("Restore the forum")
       end
 
       it "applies a built-in smart folder filter" do
