@@ -1,0 +1,8 @@
+module Filters
+  module Chips
+    class AgentProvider < EnumColumn
+      filter_name "agent_provider"
+      column :agent_provider
+    end
+  end
+end
