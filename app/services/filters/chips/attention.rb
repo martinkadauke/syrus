@@ -1,0 +1,131 @@
+module Filters
+  module Chips
+    # Preset macro chip — value selects a named composite filter
+    # (pinned / in_progress / inbox / just_failed / in_review / stale /
+    # blocked / merged_this_week / awaiting_epic / needs_review). Each
+    # preset compiles to whatever sub-scope it needs; the UI will
+    # eventually let operators "expand" a preset chip into its
+    # primitive sub-chips for further editing.
+    class Attention < Base
+      filter_name "attention"
+      bucket :preset
+      operators :is
+
+      PRESETS = %w[
+        pinned in_progress inbox just_failed in_review stale blocked
+        merged_this_week awaiting_epic needs_review
+      ].freeze
+
+      def apply
+        unsupported_op! unless op == :is
+
+        preset = value.to_s
+        return scope unless PRESETS.include?(preset)
+
+        send("apply_#{preset}")
+      end
+
+      private
+
+      def apply_pinned
+        return scope unless user
+
+        scope.joins(:job_pins).where(job_pins: { user_id: user.id })
+      end
+
+      def apply_in_progress
+        scope.open_threads.where(id: Workflow.active.select(:job_id))
+      end
+
+      def apply_inbox
+        open = scope.open_threads
+        open.where(id: awaiting_operator_ids)
+            .or(open.where(id: unread_feedback_ids))
+            .or(open.where(id: latest_failed_run_ids))
+            .or(open.where(id: awaiting_epic_ids))
+            .or(open.where(id: needs_review_ids))
+      end
+
+      def apply_just_failed
+        scope.where(id: latest_failed_run_ids)
+      end
+
+      def apply_in_review
+        scope.open_threads.with_pr.where(id: latest_workflow_succeeded_ids)
+      end
+
+      def apply_stale
+        scope.open_threads.where(updated_at: ..7.days.ago)
+      end
+
+      def apply_blocked
+        scope.where(id: blocked_dependency_ids).or(scope.where(pr_mergeable: false))
+      end
+
+      def apply_merged_this_week
+        scope.closed_threads
+             .where(closure_reason: %w[ pr_merged external_pr_merged ])
+             .where(finished_at: 7.days.ago..)
+      end
+
+      def apply_awaiting_epic
+        scope.where(id: awaiting_epic_ids)
+      end
+
+      def apply_needs_review
+        scope.where(id: needs_review_ids)
+      end
+
+      def awaiting_operator_ids
+        Run.where(state: "awaiting_operator").select(:job_id)
+      end
+
+      def latest_failed_run_ids
+        Run.where(state: "failed")
+           .where(<<~SQL.squish)
+             runs.id = (
+               SELECT latest_runs.id FROM runs latest_runs
+               WHERE latest_runs.job_id = runs.job_id
+               ORDER BY latest_runs.created_at DESC, latest_runs.id DESC
+               LIMIT 1
+             )
+           SQL
+           .select(:job_id)
+      end
+
+      def latest_workflow_succeeded_ids
+        Workflow.where(state: "succeeded")
+                .where(<<~SQL.squish)
+                  workflows.id = (
+                    SELECT latest_workflows.id FROM workflows latest_workflows
+                    WHERE latest_workflows.job_id = workflows.job_id
+                    ORDER BY latest_workflows.created_at DESC, latest_workflows.id DESC
+                    LIMIT 1
+                  )
+                SQL
+                .select(:job_id)
+      end
+
+      def awaiting_epic_ids
+        Job.triaging.where(triaging_reason: "pending_epic_ref").select(:id)
+      end
+
+      def needs_review_ids
+        Job.where(validity: %w[ duplicate already_implemented ]).select(:id)
+      end
+
+      def unread_feedback_ids
+        Job.where.not(last_seen_comment_at: nil)
+           .where("last_feedback_addressed_at IS NULL OR last_seen_comment_at > last_feedback_addressed_at")
+           .select(:id)
+      end
+
+      def blocked_dependency_ids
+        successful = Job.closed_threads.where(closure_reason: Job::SUCCESSFUL_CLOSURE_REASONS)
+        JobDependency.pending
+                     .or(JobDependency.resolved.where.not(depends_on_job_id: successful.select(:id)))
+                     .select(:job_id)
+      end
+    end
+  end
+end
