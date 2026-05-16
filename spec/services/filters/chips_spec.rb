@@ -9,28 +9,32 @@ RSpec.describe "Filters::Chips" do
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
 
   def run(field:, op:, value:)
+    # Scope to the test's user so leakage from prior specs in the same
+    # suite (or before(:context) seeds for unrelated users) doesn't
+    # pollute results. The Repository chip still sees multiple repos
+    # within the user's scope.
     Filters::Compiler.call(
       Filters::Ast.parse("field" => field, "op" => op, "value" => value),
-      scope: Job.all,
+      scope: Job.where(user: user),
       user: user
     )
   end
 
   describe "state" do
     it "filters by exact state" do
-      open_job = Factories.job(repository: repo, issue_number: 1)
+      queued_job = Factories.job(repository: repo, issue_number: 1)
       closed_job = Factories.job(repository: repo, issue_number: 2)
       closed_job.close!; closed_job.save!
 
-      expect(run(field: "state", op: "is", value: "open")).to contain_exactly(open_job)
+      expect(run(field: "state", op: "is", value: queued_job.state)).to contain_exactly(queued_job)
     end
 
     it "supports is_one_of for multi-value matches" do
-      open_job = Factories.job(repository: repo, issue_number: 1)
+      queued_job = Factories.job(repository: repo, issue_number: 1)
       closed_job = Factories.job(repository: repo, issue_number: 2)
       closed_job.close!; closed_job.save!
 
-      expect(run(field: "state", op: "is_one_of", value: %w[ open closed ])).to contain_exactly(open_job, closed_job)
+      expect(run(field: "state", op: "is_one_of", value: [ queued_job.state, "closed" ])).to contain_exactly(queued_job, closed_job)
     end
   end
 

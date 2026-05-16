@@ -5,7 +5,9 @@ RSpec.describe Filters::Compiler do
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
 
   def compile(tree)
-    described_class.call(Filters::Ast.parse(tree), scope: Job.all, user: user)
+    # Scope to the test's own repo so leakage from prior specs in the
+    # same suite (or before(:context) seeds) doesn't pollute results.
+    described_class.call(Filters::Ast.parse(tree), scope: Job.where(repository: repo), user: user)
   end
 
   it "returns the base scope for an empty filter" do
@@ -20,7 +22,7 @@ RSpec.describe Filters::Compiler do
     Factories.job(repository: other_repo, issue_number: 2)
 
     result = compile("and" => [
-      { "field" => "state", "op" => "is", "value" => "open" },
+      { "field" => "state", "op" => "is", "value" => match.state },
       { "field" => "repository_id", "op" => "is", "value" => repo.id }
     ])
 
@@ -28,18 +30,18 @@ RSpec.describe Filters::Compiler do
   end
 
   it "OR-group produces the union of branches" do
-    open_job = Factories.job(repository: repo, issue_number: 1)
+    queued_job = Factories.job(repository: repo, issue_number: 1)
     closed_job = Factories.job(repository: repo, issue_number: 2)
     closed_job.close!; closed_job.save!
 
     result = compile("and" => [
       { "or" => [
-        { "field" => "state", "op" => "is", "value" => "open" },
+        { "field" => "state", "op" => "is", "value" => queued_job.state },
         { "field" => "state", "op" => "is", "value" => "closed" }
       ]}
     ])
 
-    expect(result).to contain_exactly(open_job, closed_job)
+    expect(result).to contain_exactly(queued_job, closed_job)
   end
 
   it "NOT chip excludes matched jobs" do

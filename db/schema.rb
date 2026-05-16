@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_16_170000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -45,7 +45,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
     t.text "params"
     t.datetime "performed_at", null: false
     t.datetime "updated_at", null: false
-    t.bigint "user_id", null: false
+    t.integer "user_id", null: false
     t.index ["performed_at"], name: "index_admin_actions_on_performed_at"
     t.index ["user_id"], name: "index_admin_actions_on_user_id"
   end
@@ -140,12 +140,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
   create_table "chat_proposals", force: :cascade do |t|
     t.text "body", null: false
     t.integer "chat_session_id", null: false
+    t.datetime "confirmed_at"
     t.datetime "created_at", null: false
     t.datetime "discarded_at"
     t.datetime "edited_at"
     t.integer "epic_id"
     t.datetime "filed_at"
-    t.datetime "confirmed_at"
     t.integer "github_issue_number"
     t.integer "job_id"
     t.string "kind", default: "syrus_issue", null: false
@@ -255,8 +255,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
     t.string "title", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
-    t.index ["repository_id"], name: "index_epics_on_repository_id"
     t.index ["number"], name: "index_epics_on_number", unique: true
+    t.index ["repository_id"], name: "index_epics_on_repository_id"
     t.index ["user_id", "state"], name: "index_epics_on_user_id_and_state"
     t.index ["user_id"], name: "index_epics_on_user_id"
   end
@@ -303,9 +303,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
     t.index ["created_by_user_id"], name: "index_job_dependencies_on_created_by_user_id"
     t.index ["depends_on_job_id"], name: "index_job_dependencies_on_depends_on_job_id"
     t.index ["job_id", "depends_on_job_id"], name: "index_job_dependencies_on_job_id_and_depends_on_job_id", unique: true
-    t.index ["job_id", "unresolved_owner", "unresolved_repo", "unresolved_number"], name: "index_job_deps_on_unique_unresolved_per_job", unique: true
+    t.index ["job_id", "unresolved_owner", "unresolved_repo", "unresolved_number"], name: "index_job_deps_on_unique_unresolved_per_job", unique: true, where: "depends_on_job_id IS NULL"
     t.index ["job_id"], name: "index_job_dependencies_on_job_id"
-    t.index ["unresolved_owner", "unresolved_repo", "unresolved_number"], name: "index_job_deps_on_unresolved_reference"
+    t.index ["unresolved_owner", "unresolved_repo", "unresolved_number"], name: "index_job_deps_on_unresolved_reference", where: "unresolved_owner IS NOT NULL"
   end
 
   create_table "job_logs", force: :cascade do |t|
@@ -342,10 +342,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
 
   create_table "jobs", force: :cascade do |t|
     t.string "agent_provider", null: false
+    t.json "approval_evidence", default: {}, null: false
     t.datetime "approved_at"
     t.integer "approved_by_user_id"
     t.string "approved_via"
-    t.json "approval_evidence", default: {}, null: false
     t.string "branch_name"
     t.string "closure_reason"
     t.datetime "created_at", null: false
@@ -381,12 +381,12 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
     t.string "validity", default: "valid", null: false
+    t.index ["approved_by_user_id"], name: "index_jobs_on_approved_by_user_id"
     t.index ["credential_mode"], name: "index_jobs_on_credential_mode"
     t.index ["dependencies_overridden_by_user_id"], name: "index_jobs_on_dependencies_overridden_by_user_id"
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
-    t.index ["approved_by_user_id"], name: "index_jobs_on_approved_by_user_id"
     t.index ["repository_id", "issue_number", "state"], name: "index_jobs_on_repository_id_and_issue_number_and_state"
     t.index ["repository_id", "state"], name: "index_jobs_on_repository_id_and_state"
     t.index ["repository_id"], name: "index_jobs_on_repository_id"
@@ -443,7 +443,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
     t.string "trigger_label", default: "syrus", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
-    t.index ["allow_operator_chat"], name: "index_repositories_on_allow_operator_chat"
     t.index ["archived_at"], name: "index_repositories_on_archived_at"
     t.index ["github_owner_id"], name: "index_repositories_on_github_owner_id"
     t.index ["github_repository_id"], name: "index_repositories_on_github_repository_id"
@@ -590,7 +589,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
 
   create_table "smart_folders", force: :cascade do |t|
     t.datetime "created_at", null: false
-    t.json "filter", null: false
+    t.json "filter", default: {}, null: false
     t.string "kind", null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
@@ -667,7 +666,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
     t.integer "chat_session_id", null: false
     t.datetime "created_at", null: false
     t.datetime "last_edited_at"
-    t.json "scene_json", null: false
+    t.json "scene_json", default: {"elements"=>[]}, null: false
     t.datetime "updated_at", null: false
     t.integer "version", default: 0, null: false
     t.index ["chat_session_id"], name: "index_whiteboards_on_chat_session_id", unique: true
@@ -704,8 +703,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_16_002034) do
   add_foreign_key "chat_pending_actions", "users"
   add_foreign_key "chat_proposal_dependencies", "chat_proposals", column: "depends_on_id"
   add_foreign_key "chat_proposal_dependencies", "chat_proposals", column: "proposal_id"
-  add_foreign_key "chat_proposals", "epics"
   add_foreign_key "chat_proposals", "chat_sessions"
+  add_foreign_key "chat_proposals", "epics"
   add_foreign_key "chat_proposals", "jobs"
   add_foreign_key "chat_sessions", "users"
   add_foreign_key "chat_whiteboards", "chat_sessions"
