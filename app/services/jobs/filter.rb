@@ -11,20 +11,23 @@ module Jobs
     LEGACY_URL_KEYS = %w[ state repository_id kind pr age attention tag_ids ].freeze
 
     # Build a Filter from the controller's request params plus an
-    # optional active SmartFolder. URL filters layer on top of the
-    # folder's saved tree via AND-composition.
+    # optional active SmartFolder. Source-of-truth precedence (when
+    # multiple inputs are present, they AND together with the
+    # smart folder as the floor):
+    #
+    #   1. `q=<base64-json>` — chip-bar UI's canonical wire format.
+    #      A full AST tree, possibly with OR / NOT.
+    #   2. Legacy flat URL params (state=, repository_id=, etc.) —
+    #      still emitted by the existing dropdown form. Translated
+    #      to a flat AND-of-chips tree via build_tree_from_url_params.
+    #   3. SmartFolder#filter — the floor when one is active.
     def self.from_params(params, smart_folder: nil, user: nil)
+      q_tree = Filters::QueryParam.decode(params[Filters::QueryParam::PARAM_NAME])
       url_tree = build_tree_from_url_params(params)
       folder_tree = smart_folder&.filter.presence
 
-      tree =
-        if folder_tree.present? && url_tree
-          merge_and(folder_tree, url_tree)
-        elsif folder_tree.present?
-          folder_tree
-        else
-          url_tree || Filters::Ast.serialize(Filters::Ast::EMPTY)
-        end
+      tree = [ folder_tree, q_tree, url_tree ].compact.reduce { |acc, next_tree| merge_and(acc, next_tree) }
+      tree ||= Filters::Ast.serialize(Filters::Ast::EMPTY)
 
       new(tree, user: user)
     end
@@ -59,6 +62,12 @@ module Jobs
     # storage and for JSON-encoding into a hidden form field.
     def to_h
       Filters::Ast.serialize(@ast)
+    end
+
+    # base64-url-encoded JSON for embedding in the dashboard URL as
+    # `?q=<encoded>` — the chip-bar UI's wire format.
+    def to_query_param
+      Filters::QueryParam.encode(to_h)
     end
 
     private
