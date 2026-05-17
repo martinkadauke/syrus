@@ -70,8 +70,17 @@ class AutoMergeGate
   # protection passes at merge time, but that's a separate concern
   # — even if the review write fails, the gate still recognises the
   # local approval and we surface the GitHub failure at merge_pull_request.
+  #
+  # We deliberately do NOT use Job#approved? here. That's the AASM
+  # state predicate; by the time AutoMerge runs the gate, the Job
+  # has already transitioned :approved → :landing, so #approved?
+  # returns false even though the operator did approve. The
+  # persistent metadata columns (approved_via + approved_at) are
+  # the source of truth — fail_landing / defer_landing clear them,
+  # so "via=operator + at present" really does mean "still
+  # approved" regardless of current state.
   def syrus_operator_approval?
-    @job.approved? && @job.approved_via.to_s == "operator"
+    @job.approved_via.to_s == "operator" && @job.approved_at.present?
   end
 
   def formal_approval?(_pr)

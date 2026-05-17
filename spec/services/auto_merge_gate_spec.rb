@@ -58,11 +58,38 @@ RSpec.describe AutoMergeGate do
     expect(result).to be_approved
   end
 
+  # Regression: AutoMerge runs the gate AFTER the Job has already
+  # transitioned :approved → :landing. The previous implementation
+  # used Job#approved? (the AASM state predicate) and returned false
+  # in this state, falling through to GitHub checks and emitting a
+  # misleading "PR is not approved" error. The fix uses persistent
+  # metadata (approved_via + approved_at) which the state machine
+  # preserves across the :approved → :landing transition.
+  it "still recognises operator approval after the Job has transitioned to landing" do
+    job.update_columns(state: "landing", approved_at: Time.current, approved_via: "operator")
+
+    result = described_class.new(job: job.reload, client: client).evaluate
+
+    expect(result).to be_merge_ready
+    expect(result).to be_approved
+  end
+
   it "ignores non-operator Syrus approvals as a gate bypass" do
     # github_review approvals are already counted via pr_reviews — they
     # shouldn't be double-counted through the local-DB path. With no
     # APPROVED review on the GitHub side, the gate should block.
     job.update_columns(state: "approved", approved_at: Time.current, approved_via: "github_review")
+
+    result = described_class.new(job: job.reload, client: client).evaluate
+
+    expect(result).not_to be_merge_ready
+    expect(result.reason).to include("not approved")
+  end
+
+  it "ignores operator approval that has been cleared by fail_landing" do
+    # fail_landing nulls approved_at; this should drop the gate-bypass
+    # even though approved_via might still be set on the row.
+    job.update_columns(state: "landing_failed", approved_at: nil, approved_via: "operator")
 
     result = described_class.new(job: job.reload, client: client).evaluate
 
