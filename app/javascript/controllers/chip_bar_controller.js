@@ -791,9 +791,16 @@ function multiPillEditor(chip, meta) {
     if (first) first.click()
   })
 
+  // stopPropagation is intentional: refresh() replaces the clicked
+  // pill / option button via replaceChildren, which detaches it from
+  // the DOM. The chip-bar's document-click handler treats clicks
+  // whose target is no longer inside `this.element` as "outside" and
+  // calls closePopovers — so without this guard, picking an item
+  // would dismiss the editor and lose the selection.
   pillsRow.addEventListener("click", event => {
     const target = event.target.closest("button[data-role='pill-remove']")
     if (!target) return
+    event.stopPropagation()
     const value = target.dataset.value
     const selected = JSON.parse(wrapper.dataset.selected || "[]")
     wrapper.dataset.selected = JSON.stringify(selected.filter(v => String(v) !== String(value)))
@@ -803,6 +810,7 @@ function multiPillEditor(chip, meta) {
   list.addEventListener("click", event => {
     const target = event.target.closest("button[data-role='option']")
     if (!target) return
+    event.stopPropagation()
     const value = target.dataset.value
     const selected = JSON.parse(wrapper.dataset.selected || "[]")
     if (!selected.some(v => String(v) === String(value))) {
