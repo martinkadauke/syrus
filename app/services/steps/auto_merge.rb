@@ -17,17 +17,27 @@ module Steps
 
       gate = AutoMergeGate.new(job: job, client: client, bypass_cache: true).evaluate
 
+      # Every early-exit path here must transition the Job out of
+      # :landing before cancelling the workflow — otherwise
+      # LandingQueueProcessor#landing_in_progress? sees a Job in
+      # :landing with no active auto_merge workflow and blocks the
+      # entire queue indefinitely. The transient and needs_rebase
+      # cases defer (back to :implemented) so re-approval can
+      # re-queue; the :closed case closes the Job to match the PR.
       case gate.outcome
       when :closed
         log("auto_merge: PR ##{job.pr_number} is already closed; cancelling workflow", kind: "system")
+        job.close_with_reason!("pr_closed") if job.open?
         cancel_workflow!
         return
       when :transient
         log("auto_merge: deferred - mergeable_state=#{deferred_mergeable_state(gate)}", kind: "system")
+        defer_landing_if_possible!
         cancel_workflow!
         return
       when :needs_rebase
         log("auto_merge: deferred - mergeable_state=#{deferred_mergeable_state(gate)}; rebase workflow will handle it", kind: "system")
+        defer_landing_if_possible!
         cancel_workflow!
         return
       end
@@ -89,6 +99,16 @@ module Steps
       step.save!
       workflow.cancel! if workflow.may_cancel?
       workflow.save!
+    end
+
+    # Send the Job back to :implemented so the landing queue isn't
+    # blocked by a Job in :landing with no active auto_merge
+    # workflow. Idempotent: only fires if the transition is legal.
+    def defer_landing_if_possible!
+      return unless job.may_defer_landing?
+
+      job.defer_landing!
+      job.save! if job.changed?
     end
 
     def deferred_mergeable_state(gate)

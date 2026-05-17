@@ -67,6 +67,46 @@ RSpec.describe Steps::AutoMerge do
     expect(workflow.reload).to be_cancelled
   end
 
+  it "closes the Job when the PR was already closed externally so the landing queue isn't blocked" do
+    # Job 340 regression: when the gate evaluated to :closed, the
+    # old code cancelled the workflow without transitioning the Job
+    # out of :landing, leaving LandingQueueProcessor#landing_in_progress?
+    # permanently true.
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    allow(client).to receive(:pull_request).and_return(pr(state: "closed"))
+
+    described_class.new(run).call
+
+    expect(job.reload).to be_closed
+    expect(job.closure_reason).to eq("pr_closed")
+  end
+
+  it "defers landing when the gate is :needs_rebase so the landing queue can advance" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "behind"))
+
+    described_class.new(run).call
+
+    expect(job.reload).to be_implemented
+    expect(job.approved_at).to be_nil
+  end
+
+  it "defers landing when the gate is :transient so the landing queue can advance" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "unknown"))
+
+    described_class.new(run).call
+
+    expect(job.reload).to be_implemented
+    expect(job.approved_at).to be_nil
+  end
+
   it "queues the merge attempt while a stack parent is still open" do
     parent = Factories.job(user: user, repository: repository, issue_number: 41, pr_number: 6)
     job.update!(parent_job: parent)
