@@ -173,9 +173,7 @@ class HomeController < ApplicationController
   end
 
   def load_epics_dashboard
-    active_repositories = Current.user.repositories.active.order(:owner, :name)
-    @epic_repositories = active_repositories
-    @epic_filter_params = epic_filter_params
+    active_repo_ids = Current.user.repositories.active.select(:id)
     @page = [ params[:page].to_i, 1 ].max
     SmartFolder.ensure_builtins!
     SmartFolder.ensure_epic_builtins!
@@ -184,32 +182,21 @@ class HomeController < ApplicationController
     @filter = ::Epics::Filter.from_params(params, smart_folder: @smart_folder, user: Current.user)
     @smart_folders = SmartFolder.for_subject(:epic).where(user: Current.user).order(:position, :id)
     @builtin_smart_folders = SmartFolder.for_subject(:epic).built_in_sidebar_order
-    @smart_folder_counts = epic_smart_folder_counts(Current.user.epics.where(repository_id: active_repositories.select(:id)))
+    @smart_folder_counts = epic_smart_folder_counts(Current.user.epics.where(repository_id: active_repo_ids))
     @primary_builtin_smart_folders, @more_builtin_smart_folders = split_epic_builtin_smart_folders
 
-    epics = Current.user.epics
-                        .where(repository_id: active_repositories.select(:id))
-                        .includes(:repository, { jobs: :repository }, { dependencies: :depends_on_epic }, { dependent_links: :epic })
-
-    @epics = @filter.apply(Current.user.epics.includes(:repository).where(repository_id: active_repositories.select(:id)))
+    @epics = @filter.apply(Current.user.epics.includes(:repository).where(repository_id: active_repo_ids))
     @epics_total = @epics.count
     @epics = @epics.order(updated_at: :desc, id: :desc).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
 
-    if @epic_filter_params["repository_id"].present?
-      epics = epics.where(repository_id: @epic_filter_params["repository_id"])
-    end
-
-    @show_done_epics = @epic_filter_params["done"] == "1"
-    epics = epics.where.not(state: "done") unless @show_done_epics
-
-    epics = epics.to_a
-    if @epic_filter_params["blocked"] == "1"
-      epics = epics.select { |epic| epic_blocked_for_board?(epic) }
-    end
-
-    epics = sort_epics_for_board(epics, @epic_filter_params["sort"])
-    @epic_records = epics
-    @epic_lanes = Epic::STATES.index_with { |state| epics.select { |epic| epic.state == state } }
+    kanban_scope = Current.user.epics
+                                .where(repository_id: active_repo_ids)
+                                .includes(:repository,
+                                          { jobs: :repository },
+                                          { dependencies: :depends_on_epic },
+                                          { dependent_links: :epic })
+    @epic_records = @filter.apply(kanban_scope).order(updated_at: :desc, id: :desc).to_a
+    @epic_lanes = Epic::STATES.index_with { |state| @epic_records.select { |epic| epic.state == state } }
     @epics_matching_count = @epics_total
     @jobs_matching_count = job_count_from_current_filter
   end
@@ -492,23 +479,6 @@ class HomeController < ApplicationController
     filter.apply(Current.user.epics.where(repository_id: active_repo_ids)).count
   rescue ::Filters::UnknownFilterField, ArgumentError
     Current.user.epics.where(repository_id: active_repo_ids).count
-  end
-
-  def epic_filter_params
-    params.permit(:repository_id, :blocked, :done, :sort).to_h.compact_blank
-  end
-
-  def sort_epics_for_board(epics, sort)
-    case sort
-    when "updated_asc"
-      epics.sort_by { |epic| [ epic.updated_at || Time.zone.at(0), epic.id ] }
-    else
-      epics.sort_by { |epic| [ epic.updated_at || Time.zone.at(0), epic.id ] }.reverse
-    end
-  end
-
-  def epic_blocked_for_board?(epic)
-    epic.dependencies.any? { |dependency| !dependency.depends_on_epic.done? }
   end
 
   def smart_folder_counts(base_scope)

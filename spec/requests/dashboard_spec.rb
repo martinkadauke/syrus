@@ -178,7 +178,23 @@ RSpec.describe "Dashboard", type: :request do
       expect(kanban_card["data-kanban-state-url"]).to eq(state_epic_path(epic))
       expect(kanban_card["data-epic-state-url"]).to eq(state_epic_path(epic))
       expect(response.body).to include("Override state")
-      expect(response.body).to include("Done epics hidden")
+    end
+
+    it "renders the smart-folders sidebar and chip bar on the Epics Kanban view" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      get dashboard_epics_path
+
+      document = Nokogiri::HTML(response.body)
+      # The chip-bar Stimulus controller mounts with epic-specific schema data.
+      chip_bar = document.at_css("[data-controller~='chip-bar'][data-filter-memory-subject-value='epic']")
+      expect(chip_bar).to be_present
+      expect(chip_bar["data-chip-bar-schema-value"]).to include("repository_id")
+      # The built-in epic smart folders ("In progress", etc.) sit in the sidebar.
+      expect(response.body).to include(">In progress<")
+      # No remnants of the retired select-tag form.
+      expect(response.body).not_to include("Show Done")
+      expect(response.body).not_to include("Recently updated")
     end
 
     it "starts a ready Epic from the Kanban transition endpoint and unblocks child Jobs" do
@@ -235,26 +251,33 @@ RSpec.describe "Dashboard", type: :request do
       expect(response.body).to include(epic_path(done_epic))
     end
 
-    it "filters Epics by repository and blocked status" do
+    it "filters Epics by repository via the legacy ?repository_id= URL param" do
       repo_a = Factories.repository(user: user, owner: "acme", name: "widgets")
       repo_b = Factories.repository(user: user, owner: "acme", name: "api")
-      prerequisite = Factories.epic(user: user, repository: repo_a, title: "Unfinished prerequisite", state: "backlog")
-      blocked = Factories.epic(user: user, repository: repo_a, title: "Blocked board", state: "backlog")
-      unblocked = Factories.epic(user: user, repository: repo_a, title: "Open runway", state: "backlog")
-      other_repo = Factories.epic(user: user, repository: repo_b, title: "Wrong repo", state: "backlog")
+      Factories.epic(user: user, repository: repo_a, title: "Acme board", state: "backlog")
+      Factories.epic(user: user, repository: repo_b, title: "Wrong repo", state: "backlog")
+
+      get dashboard_epics_path, params: { repository_id: repo_a.id }
+
+      expect(response.body).to include("Acme board")
+      expect(response.body).not_to include("Wrong repo")
+    end
+
+    it "filters Epics by attention=blocked_by_dependency via the legacy URL param" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      prerequisite = Factories.epic(user: user, repository: repo, title: "Unfinished prerequisite", state: "backlog")
+      blocked = Factories.epic(user: user, repository: repo, title: "Blocked board", state: "backlog")
+      Factories.epic(user: user, repository: repo, title: "Open runway", state: "backlog")
       EpicDependency.create!(epic: blocked, depends_on_epic: prerequisite, derived: false)
 
-      get dashboard_epics_path, params: { repository_id: repo_a.id, blocked: "1" }
+      get dashboard_epics_path, params: { attention: "blocked_by_dependency" }
 
       expect(response.body).to include("Blocked board")
       expect(response.body).not_to include("Open runway")
-      expect(response.body).not_to include("Wrong repo")
       expect(response.body).not_to include("Unfinished prerequisite")
-      expect(response.body).to include(%(option selected="selected" value="#{repo_a.id}"))
-      expect(other_repo.repository).to eq(repo_b)
     end
 
-    it "sorts Epics within a lane by recently updated first by default" do
+    it "sorts Epics within a lane by recently updated first" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       older = Factories.epic(user: user, repository: repo, title: "Older board", state: "backlog")
       newer = Factories.epic(user: user, repository: repo, title: "Newer board", state: "backlog")
@@ -267,13 +290,6 @@ RSpec.describe "Dashboard", type: :request do
       card_titles = backlog.css("a").map(&:text).map(&:squish)
       expect(card_titles.first).to include("Newer board")
       expect(card_titles.second).to include("Older board")
-
-      get dashboard_epics_path, params: { sort: "updated_asc" }
-
-      backlog = Nokogiri::HTML(response.body).css("section").find { |section| section.at_css("h2")&.text&.strip == "Backlog" }
-      card_titles = backlog.css("a").map(&:text).map(&:squish)
-      expect(card_titles.first).to include("Older board")
-      expect(card_titles.second).to include("Newer board")
     end
 
     it "renders the Epic detail page" do

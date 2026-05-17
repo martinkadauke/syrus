@@ -192,45 +192,60 @@
         </div>
       </div>
     <% else %>
-    <div class="space-y-4">
-      <%= form_with url: dashboard_epics_path, method: :get, class: "flex flex-wrap items-center gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm" do %>
-        <label class="flex items-center gap-2 text-gray-700">
-          <span>Repo</span>
-          <%= select_tag :repository_id,
-                options_for_select([ [ "All repositories", "" ] ] + @epic_repositories.map { |repository| [ repository.slug, repository.id ] }, @epic_filter_params["repository_id"]),
-                class: "rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700" %>
-        </label>
-        <label class="flex items-center gap-2 text-gray-700">
-          <span>Sort</span>
-          <%= select_tag :sort,
-                options_for_select([ [ "Recently updated", "updated_desc" ], [ "Oldest updated", "updated_asc" ] ], @epic_filter_params["sort"].presence || "updated_desc"),
-                class: "rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-700" %>
-        </label>
-        <label class="inline-flex items-center gap-2 rounded-full border border-gray-300 px-3 py-1.5 text-gray-700">
-          <%= check_box_tag :done, "1", @show_done_epics, class: "rounded border-gray-300 text-blue-600 focus:ring-blue-500" %>
-          <span>Show Done</span>
-        </label>
-        <label class="inline-flex items-center gap-2 rounded-full border border-amber-300 bg-amber-50 px-3 py-1.5 text-amber-900">
-          <%= check_box_tag :blocked, "1", @epic_filter_params["blocked"] == "1", class: "rounded border-amber-300 text-amber-600 focus:ring-amber-500" %>
-          <span>Blocked</span>
-        </label>
-        <%= submit_tag "Apply",
-              class: "rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 cursor-pointer" %>
-        <% if @epic_filter_params.any? %>
-          <%= link_to "Clear", dashboard_epics_path, class: "text-sm text-gray-600 underline hover:no-underline" %>
-        <% end %>
-      <% end %>
+      <% folder_link_classes = ->(active) { "flex items-center justify-between rounded-md px-2 py-1.5 text-sm #{active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50'}" } %>
 
-      <%= render "shared/kanban_board",
-            subject: :epic,
-            records: @epic_records,
-            column_attribute: :state,
-            columns: Epic::STATES,
-            card_partial: "epics/card",
-            drag_enabled: true,
-            drop_endpoint: ->(epic) { state_epic_path(epic) },
-            empty_column_messages: ({ "done" => "Done epics hidden." } unless @show_done_epics) || {} %>
-    </div>
+      <details class="group rounded-lg border border-gray-200 bg-white lg:hidden">
+        <summary class="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-medium text-gray-700">
+          <span>Folders and filters</span>
+          <span class="text-gray-400 group-open:hidden">Show</span>
+          <span class="hidden text-gray-400 group-open:inline">Hide</span>
+        </summary>
+        <div class="space-y-4 border-t border-gray-200 p-3">
+          <%= render "epics/epic_smart_folders", folder_link_classes: folder_link_classes %>
+          <%= render "home/chip_bar",
+                subject: :epic,
+                filter: @filter,
+                schema: @schema,
+                action_url: root_path(subject: "epic", view: current_view),
+                class_name: "relative flex flex-col gap-3" %>
+          <% if @smart_folder %>
+            <div class="rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+              Showing smart folder: <strong><%= @smart_folder.name %></strong>
+            </div>
+          <% end %>
+        </div>
+      </details>
+
+      <div class="grid gap-5 lg:grid-cols-[16rem_1fr]">
+        <aside class="hidden space-y-4 lg:block">
+          <%= render "epics/epic_smart_folders", folder_link_classes: folder_link_classes %>
+        </aside>
+
+        <div class="space-y-4">
+          <%= render "home/chip_bar",
+                subject: :epic,
+                filter: @filter,
+                schema: @schema,
+                action_url: root_path(subject: "epic", view: current_view),
+                class_name: "relative hidden lg:block" %>
+
+          <% if @smart_folder %>
+            <div class="hidden rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800 lg:block">
+              Showing smart folder: <strong><%= @smart_folder.name %></strong>
+            </div>
+          <% end %>
+
+          <%= render "shared/kanban_board",
+                subject: :epic,
+                records: @epic_records,
+                column_attribute: :state,
+                columns: Epic::STATES,
+                card_partial: "epics/card",
+                drag_enabled: true,
+                drop_endpoint: ->(epic) { state_epic_path(epic) },
+                empty_column_messages: {} %>
+        </div>
+      </div>
     <% end %>
   <% elsif @active_tab == "jobs" %>
     <details class="group rounded-lg border border-gray-200 bg-white lg:hidden">
