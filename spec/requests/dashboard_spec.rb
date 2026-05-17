@@ -130,6 +130,31 @@ RSpec.describe "Dashboard", type: :request do
       expect(view_nav.at_css("a[href='/?subject=job&view=kanban']")["data-turbo-frame"]).to eq("dashboard_content")
     end
 
+    # Regression: subject-toggle badges used to swing wildly between
+    # tabs because the inactive-tab badge was computed by applying the
+    # active tab's filter to the other subject's scope (cross-subject
+    # filter application either rescues to total or compiles to 0,
+    # depending on whether a chip name happened to exist for both
+    # subjects). The fix: inactive-tab badge is always the unfiltered
+    # total of that subject; active-tab badge is the filtered count.
+    it "shows unfiltered totals for the inactive subject toggle, regardless of active filter" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      Factories.epic(user: user, repository: repo, title: "Alpha", state: "ready")
+      Factories.epic(user: user, repository: repo, title: "Beta",  state: "backlog")
+      Factories.epic(user: user, repository: repo, title: "Gamma", state: "done")
+      4.times { |i| Factories.job_record(repository: repo, issue_number: 100 + i) }
+
+      # Apply a job-side filter that matches nothing (state=closed but
+      # all our jobs default to queued); the Epics badge must remain
+      # the total of 3, not the filter cross-applied.
+      q = Filters::QueryParam.encode({ "field" => "state", "op" => "is", "value" => "closed" })
+      get dashboard_jobs_path, params: { q: q }
+
+      subject_nav = Nokogiri::HTML(response.body).at_css("nav[aria-label='Dashboard subject']")
+      expect(subject_nav.at_css("a[href*='subject=epic']").text.squish).to include("Epics 3")
+      expect(subject_nav.at_css("a[href*='subject=job']").text.squish).to include("Jobs 0")
+    end
+
     # Regression: the dashboard_content turbo-frame used to inherit its
     # target down to every link inside it. Clicking a job (or epic) link
     # tried to load /jobs/:id into that frame; since the show page has no
@@ -564,10 +589,12 @@ RSpec.describe "Dashboard", type: :request do
       mobile_panel = document.at_css("details")
       desktop_sidebar = document.at_css("aside")
       # The legacy <select name="attention"> dropdown form is gone —
-      # the chip-bar is the filter UI. Check for the chip-bar's
-      # controller div on the desktop side (rendered with `lg:block`).
+      # the chip-bar is the filter UI. The desktop chip-bar now lives
+      # in the top controls row (between subject + view toggles),
+      # inside a wrapper marked `hidden lg:block`.
       desktop_chip_bar = document.css("[data-controller~='chip-bar']").find do |el|
-        el["class"].to_s.include?("lg:block")
+        parent_class = el.parent&.[]("class").to_s
+        parent_class.include?("lg:block") && parent_class.include?("hidden")
       end
 
       expect(mobile_panel).to be_present

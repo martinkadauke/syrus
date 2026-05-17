@@ -50,7 +50,15 @@
       <%= link_to "Workflows", dashboard_workflows_path %>
     </nav>
 
-    <div class="flex flex-wrap items-center justify-between gap-3">
+    <%# Combined controls row: subject toggle (left, sized to the
+        sidebar width on lg so the chip bar aligns with the table's
+        left edge), chip bar (middle, grows; hidden on mobile because
+        the mobile <details> carries its own copy), view toggle
+        (right). gap-5 matches the grid's gap-5 below so the column
+        boundaries line up vertically. pb-2 gives a touch more
+        breathing room between this row and what follows. %>
+    <div class="flex flex-wrap items-center gap-3 lg:gap-5 pb-2">
+      <div class="lg:w-64 lg:shrink-0">
       <nav class="inline-flex overflow-hidden rounded-md border border-gray-300 bg-white" aria-label="Dashboard subject">
         <%= link_to root_path(subject: "epic", view: current_view),
               class: subject_link_classes.call(@active_tab == "epics"),
@@ -71,6 +79,25 @@
           </span>
         <% end %>
       </nav>
+      </div>
+
+      <%# flex-1 lets the chip bar swell to fill the gap when present;
+          when it's absent (Workflows tab) the empty div still grows
+          and pushes the View toggle to the right edge — same visual
+          as the old justify-between. min-w-0 keeps the chip bar's
+          wrap behavior correct inside a flex parent. %>
+      <div class="hidden lg:block flex-1 min-w-0">
+        <% if @active_tab == "epics" %>
+          <%= render "home/chip_bar",
+                subject: :epic,
+                filter: @filter,
+                schema: @schema,
+                action_url: root_path(subject: "epic", view: current_view),
+                class_name: "relative" %>
+        <% elsif @active_tab == "jobs" %>
+          <%= render "chip_bar", class_name: "relative" %>
+        <% end %>
+      </div>
 
       <nav class="inline-flex overflow-hidden rounded-md border border-gray-300 bg-white" aria-label="Dashboard view">
         <% view_params = request.query_parameters.except("page").merge("subject" => @dashboard_subject, "view" => "list") %>
@@ -117,13 +144,6 @@
         </aside>
 
         <div class="space-y-4">
-          <%= render "home/chip_bar",
-                subject: :epic,
-                filter: @filter,
-                schema: @schema,
-                action_url: root_path(subject: "epic", view: current_view),
-                class_name: "relative hidden lg:block" %>
-
           <% if @smart_folder %>
             <div class="hidden rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800 lg:block">
               Showing smart folder: <strong><%= @smart_folder.name %></strong>
@@ -229,13 +249,6 @@
         </aside>
 
         <div class="space-y-4">
-          <%= render "home/chip_bar",
-                subject: :epic,
-                filter: @filter,
-                schema: @schema,
-                action_url: root_path(subject: "epic", view: current_view),
-                class_name: "relative hidden lg:block" %>
-
           <% if @smart_folder %>
             <div class="hidden rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800 lg:block">
               Showing smart folder: <strong><%= @smart_folder.name %></strong>
@@ -279,7 +292,6 @@
       </aside>
 
       <div class="space-y-4">
-        <%= render "chip_bar", class_name: "relative hidden lg:block" %>
         <%= render "save_smart_folder_form", class_name: "hidden flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm lg:flex" %>
 
         <% if @active_smart_folder %>

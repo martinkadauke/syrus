@@ -163,7 +163,12 @@ class HomeController < ApplicationController
     @epics = @filter.apply(Current.user.epics.includes(:repository))
     @epics_total = @epics.count
     @epics_matching_count = @epics_total
-    @jobs_matching_count = job_count_from_current_filter
+    # Inactive-tab badge shows the unfiltered total, not the active
+    # tab's filter applied to the other subject — that path produced
+    # arbitrary numbers (rescue-to-total when chips don't exist for
+    # the other subject, 0 when a shared chip name compiles cleanly
+    # but matches nothing). Total is stable across tabs.
+    @jobs_matching_count = jobs_total_for_dashboard
     @epics = @epics.order(updated_at: :desc, id: :desc).offset((@page - 1) * EpicsController::PER_PAGE).limit(EpicsController::PER_PAGE)
   end
 
@@ -198,7 +203,8 @@ class HomeController < ApplicationController
     @epic_records = @filter.apply(kanban_scope).order(updated_at: :desc, id: :desc).to_a
     @epic_lanes = Epic::STATES.index_with { |state| @epic_records.select { |epic| epic.state == state } }
     @epics_matching_count = @epics_total
-    @jobs_matching_count = job_count_from_current_filter
+    # See epic_list — inactive-tab badge is the unfiltered total.
+    @jobs_matching_count = jobs_total_for_dashboard(active_repo_ids)
   end
 
   def load_dashboard
@@ -228,7 +234,9 @@ class HomeController < ApplicationController
     @job_filter = Jobs::Filter.from_params(params, smart_folder: @active_smart_folder, user: Current.user)
     @jobs = @job_filter.apply(@jobs)
     @jobs_matching_count = @jobs.count
-    @epics_matching_count = epic_count_from_current_filter(active_repo_ids)
+    # Inactive-tab badge — see comment in epic_list. Total epics across
+    # the user's active repos, not the active job filter cross-applied.
+    @epics_matching_count = epics_total_for_dashboard(active_repo_ids)
     @epics = epics_for_active_smart_folder(active_repo_ids)
     @smart_folder_counts = smart_folder_counts(Current.user.jobs.where(repository_id: active_repo_ids))
     @landing_queue_entries = LandingQueueProcessor.entries(Current.user.jobs.where(repository_id: active_repo_ids)).index_by(&:job_id)
@@ -466,18 +474,14 @@ class HomeController < ApplicationController
     split_epic_builtin_smart_folders
   end
 
-  def job_count_from_current_filter
-    active_repo_ids = Current.user.repositories.active.select(:id)
-    filter = ::Jobs::Filter.from_params(params, user: Current.user)
-    filter.apply(Current.user.jobs.where(repository_id: active_repo_ids)).count
-  rescue ::Filters::UnknownFilterField, ArgumentError
+  # Unfiltered totals for the inactive-tab badge. Scoped to active
+  # repos so archived-repo content doesn't inflate the count beyond
+  # what the dashboard would actually surface.
+  def jobs_total_for_dashboard(active_repo_ids = Current.user.repositories.active.select(:id))
     Current.user.jobs.where(repository_id: active_repo_ids).count
   end
 
-  def epic_count_from_current_filter(active_repo_ids)
-    filter = ::Epics::Filter.from_params(params, user: Current.user)
-    filter.apply(Current.user.epics.where(repository_id: active_repo_ids)).count
-  rescue ::Filters::UnknownFilterField, ArgumentError
+  def epics_total_for_dashboard(active_repo_ids = Current.user.repositories.active.select(:id))
     Current.user.epics.where(repository_id: active_repo_ids).count
   end
 
