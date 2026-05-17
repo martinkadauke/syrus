@@ -48,6 +48,13 @@ Rails.application.routes.draw do
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
 
+        # Per-instance version info — returns the SHA + role of the
+        # pod handling THIS request (`request_handler`) plus every
+        # other live instance (`instances`) with a fresh heartbeat.
+        # Use to verify a deploy has finished rolling: during a
+        # rolling deploy you'll see both old + new SHAs simultaneously.
+        get "version", to: "versions#index"
+
         # User directory (mirror Admin::UsersController).
         resources :users, only: %i[ index show ]
 

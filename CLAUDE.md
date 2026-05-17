@@ -286,6 +286,21 @@ preserve scroll position across morphs.
   `spec/support/`. WebMock + VCR for GitHub. The agent runner is stubbed
   via `RunJob.agent_runner` and `PrSummarizer.runner` test seams; never
   shell out to real `claude` from tests.
+- **Per-instance version tracking (`InstanceVersion`)** — Every
+  web pod and worker pod registers a row in `instance_versions` on
+  boot via `InstanceVersionSupervisor` (started from a
+  `to_prepare` initializer when `ENV["SYRUS_ROLE"]` is set —
+  manifest-driven, skipped in local/test/console). The row carries
+  hostname, role, git SHA (from `ENV["GIT_SHA"]` baked into the
+  image by `bin/deploy`), started_at, and a heartbeat thread bumps
+  `last_heartbeat_at` every 30s. `at_exit` stamps `finished_at`
+  on graceful SIGTERM; `ReapStaleInstanceVersionsJob` (every
+  minute) finalizes rows whose heartbeat hasn't moved for 5+ min
+  (SIGKILL / OOMKill / node eviction). `GET /api/v1/admin/version`
+  returns the request handler's identity plus every fresh
+  instance — useful for confirming a deploy has finished rolling
+  (during a deploy you see both old + new SHAs in the
+  `instances` array until the old pods drain).
 - **REST Admin API** — `GET /api/v1/admin/overview`, `/stuck`, `/jobs`
   (filterable by `pr_number`, `issue_number`, `repo`, `state`, `user`,
   `has_active_workflow`, `failed_in_last_24h`), `/jobs/:id`, `/workflows/:id`,

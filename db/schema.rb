@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_17_202032) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_17_222557) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -285,6 +285,21 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_17_202032) do
     t.integer "user_id", null: false
     t.index ["github_installation_id"], name: "index_installations_on_github_installation_id", unique: true
     t.index ["user_id"], name: "index_installations_on_user_id"
+  end
+
+  create_table "instance_versions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.datetime "finished_at"
+    t.string "hostname", null: false
+    t.datetime "last_heartbeat_at"
+    t.string "outcome"
+    t.string "role", null: false
+    t.datetime "started_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "version", null: false
+    t.index ["finished_at"], name: "index_instance_versions_on_finished_at"
+    t.index ["hostname", "role"], name: "index_instance_versions_on_hostname_and_role", unique: true
+    t.index ["last_heartbeat_at"], name: "index_instance_versions_on_last_heartbeat_at"
   end
 
   create_table "invitations", force: :cascade do |t|
