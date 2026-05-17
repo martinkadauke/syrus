@@ -28,6 +28,9 @@ default: &default
   reap_stale_runs:
     class: ReapStaleRunsJob
     schedule: every minute
+  reap_classifier_pending:
+    class: ReapClassifierPendingJob
+    schedule: every 5 minutes
   reap_awaiting_operator_runs:
     class: ReapAwaitingOperatorRunsJob
     schedule: every hour

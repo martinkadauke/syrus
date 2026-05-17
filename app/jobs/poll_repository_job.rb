@@ -158,11 +158,19 @@ class PollRepositoryJob < ApplicationJob
     enqueue_issue_image_ingest(job)
   end
 
+  # Hand off to a background job rather than running the classifier
+  # inline. The classifier spawns an agent subprocess that can take
+  # tens of seconds; running it in the poll frame meant a deploy
+  # SIGKILL during the agent call left Jobs stuck in
+  # triaging/classifier_pending forever (the poll's dedup logic
+  # never re-tries existing Jobs). SolidQueue's at-least-once
+  # delivery lets a fresh worker pick up the classify after a
+  # restart. See ClassifyIssueJob + ReapClassifierPendingJob.
   def classify_if_available(job)
     return unless job.triaging? && job.triaging_reason_classifier_pending?
     return unless job.user.agent_provider_configured?(job.agent_provider)
 
-    IngestionClassifier.call(job: job)
+    ClassifyIssueJob.perform_later(job.id)
   end
 
   def latest_job_for_issue(repository, issue_number)
