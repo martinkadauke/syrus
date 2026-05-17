@@ -102,10 +102,10 @@ class Job < ApplicationRecord
             ROW_NUMBER() OVER (
               PARTITION BY workflows.job_id
               ORDER BY workflows.created_at DESC, workflows.id DESC
-            ) AS row_number
+            ) AS rn
           FROM workflows
         ) latest_workflows
-        WHERE latest_workflows.row_number = 1
+        WHERE latest_workflows.rn = 1
       ) latest_workflow_per_job
         ON latest_workflow_per_job.latest_workflow_job_id = jobs.id
     SQL
