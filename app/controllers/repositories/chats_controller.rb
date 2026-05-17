@@ -58,20 +58,28 @@ class Repositories::ChatsController < ApplicationController
       return
     end
 
-    chat_session = nil
-    user_message = nil
-    ApplicationRecord.transaction do
-      chat_session = ChatSession.create!(
-        user: Current.user,
-        repository: @repository,
-        title: text.truncate(80),
-        last_message_at: Time.current
-      )
-      user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
+    attempts = 0
+    begin
+      chat_session = nil
+      user_message = nil
+      ApplicationRecord.transaction do
+        chat_session = ChatSession.create!(
+          user: Current.user,
+          repository: @repository,
+          title: text.truncate(80),
+          last_message_at: Time.current
+        )
+        user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
+      end
+      ChatTurnJob.perform_later(chat_session.id, user_message.id)
+      redirect_to repository_chats_path(@repository), notice: "Message sent."
+    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+      attempts += 1
+      retry if attempts < 2
+      Rails.logger.warn("[Repositories::ChatsController#create] giving up after #{attempts} attempts (#{e.class})")
+      redirect_to repository_chats_path(@repository),
+                  alert: "Chat creation was blocked by a temporary database lock. Try again."
     end
-
-    ChatTurnJob.perform_later(chat_session.id, user_message.id)
-    redirect_to repository_chats_path(@repository), notice: "Message sent."
   end
 
   def message
@@ -81,14 +89,22 @@ class Repositories::ChatsController < ApplicationController
       return
     end
 
-    user_message = nil
-    ApplicationRecord.transaction do
-      @chat_session.update!(last_message_at: Time.current)
-      user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
+    attempts = 0
+    begin
+      user_message = nil
+      ApplicationRecord.transaction do
+        @chat_session.update!(last_message_at: Time.current)
+        user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
+      end
+      ChatTurnJob.perform_later(@chat_session.id, user_message.id)
+      redirect_to repository_chats_path(@repository), notice: "Message sent."
+    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+      attempts += 1
+      retry if attempts < 2
+      Rails.logger.warn("[Repositories::ChatsController#message] giving up after #{attempts} attempts (#{e.class})")
+      redirect_to repository_chats_path(@repository),
+                  alert: "Sending the message was blocked by a temporary database lock. Try again."
     end
-
-    ChatTurnJob.perform_later(@chat_session.id, user_message.id)
-    redirect_to repository_chats_path(@repository), notice: "Message sent."
   end
 
   def stop

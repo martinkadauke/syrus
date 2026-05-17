@@ -19,23 +19,38 @@ class ChatsController < ApplicationController
   def create
     text = message_text
     repository = repository_from_params
-    chat_session = nil
-    user_message = nil
-
-    ApplicationRecord.transaction do
-      chat_session = ChatSession.create!(
-        user: Current.user,
-        repository: repository,
-        title: text.presence&.truncate(80),
-        last_message_at: text.present? ? Time.current : nil
-      )
-      if text.present?
-        user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
+    attempts = 0
+    begin
+      chat_session = nil
+      user_message = nil
+      ApplicationRecord.transaction do
+        chat_session = ChatSession.create!(
+          user: Current.user,
+          repository: repository,
+          title: text.presence&.truncate(80),
+          last_message_at: text.present? ? Time.current : nil
+        )
+        if text.present?
+          user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
+        end
       end
+      ChatTurnJob.perform_later(chat_session.id, user_message.id) if user_message
+      redirect_to chat_path(chat_session), notice: text.present? ? "Message sent." : "Chat created."
+    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+      # Concurrent broadcasts / FK gap locks on chat_sessions can
+      # stall the create past MySQL's 50s lock-wait timeout. Retry
+      # once with a fresh transaction (typically lands cleanly), and
+      # fall back to a redirect-with-alert rather than a 500 so the
+      # operator can just try again.
+      attempts += 1
+      if attempts < 2
+        Rails.logger.info("[ChatsController#create] retrying after #{e.class}: #{e.message[0, 120]}")
+        retry
+      end
+      Rails.logger.warn("[ChatsController#create] giving up after #{attempts} attempts (#{e.class})")
+      redirect_back fallback_location: new_chat_path,
+                    alert: "Chat creation was blocked by a temporary database lock. Try again."
     end
-
-    ChatTurnJob.perform_later(chat_session.id, user_message.id) if user_message
-    redirect_to chat_path(chat_session), notice: text.present? ? "Message sent." : "Chat created."
   end
 
   def show
@@ -68,14 +83,22 @@ class ChatsController < ApplicationController
       return
     end
 
-    user_message = nil
-    ApplicationRecord.transaction do
-      @chat_session.update!(last_message_at: Time.current, title: @chat_session.title.presence || text.truncate(80))
-      user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
+    attempts = 0
+    begin
+      user_message = nil
+      ApplicationRecord.transaction do
+        @chat_session.update!(last_message_at: Time.current, title: @chat_session.title.presence || text.truncate(80))
+        user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
+      end
+      ChatTurnJob.perform_later(@chat_session.id, user_message.id)
+      redirect_to chat_path(@chat_session), notice: "Message sent."
+    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+      attempts += 1
+      retry if attempts < 2
+      Rails.logger.warn("[ChatsController#message] giving up after #{attempts} attempts (#{e.class})")
+      redirect_to chat_path(@chat_session),
+                  alert: "Sending the message was blocked by a temporary database lock. Try again."
     end
-
-    ChatTurnJob.perform_later(@chat_session.id, user_message.id)
-    redirect_to chat_path(@chat_session), notice: "Message sent."
   end
 
   def create_proposal
