@@ -62,14 +62,16 @@ class Repositories::ChatsController < ApplicationController
     begin
       chat_session = nil
       user_message = nil
-      ApplicationRecord.transaction do
-        chat_session = ChatSession.create!(
-          user: Current.user,
-          repository: @repository,
-          title: text.truncate(80),
-          last_message_at: Time.current
-        )
-        user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
+      with_short_lock_wait do
+        ApplicationRecord.transaction do
+          chat_session = ChatSession.create!(
+            user: Current.user,
+            repository: @repository,
+            title: text.truncate(80),
+            last_message_at: Time.current
+          )
+          user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
+        end
       end
       ChatTurnJob.perform_later(chat_session.id, user_message.id)
       redirect_to repository_chats_path(@repository), notice: "Message sent."
@@ -92,9 +94,11 @@ class Repositories::ChatsController < ApplicationController
     attempts = 0
     begin
       user_message = nil
-      ApplicationRecord.transaction do
-        @chat_session.update!(last_message_at: Time.current)
-        user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
+      with_short_lock_wait do
+        ApplicationRecord.transaction do
+          @chat_session.update!(last_message_at: Time.current)
+          user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
+        end
       end
       ChatTurnJob.perform_later(@chat_session.id, user_message.id)
       redirect_to repository_chats_path(@repository), notice: "Message sent."
