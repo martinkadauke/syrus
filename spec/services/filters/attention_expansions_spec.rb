@@ -30,10 +30,15 @@ RSpec.describe Filters::Chips::Attention do
       )
     end
 
-    # `inbox` depends on awaiting_operator (no chip primitive) — the
-    # UI hides the Expand button for it, gated by this returning nil.
-    it "returns nil for presets without a clean primitive mapping" do
-      expect(described_class.expansion_for("inbox")).to be_nil
+    it "expands inbox lossily — the OR group covers the primitives we have" do
+      inbox = described_class.expansion_for("inbox")
+      expect(inbox).to have_key("and")
+      or_branch = inbox["and"].find { |child| child.key?("or") }
+      expect(or_branch).not_to be_nil
+      fields = or_branch["or"].map { |c| c["field"] }
+      expect(fields).to include(
+        "has_unread_feedback", "latest_run_state", "triaging_reason", "validity", "state"
+      )
     end
 
     it "returns nil for unknown values" do
@@ -45,7 +50,7 @@ RSpec.describe Filters::Chips::Attention do
     it "includes every defined expansion as parsed AST nodes" do
       expansions = described_class.expansions
       expect(expansions.keys).to match_array(%w[
-        pinned in_progress awaiting_approval just_failed in_review
+        pinned in_progress inbox awaiting_approval just_failed in_review
         stale blocked merged_this_week awaiting_epic needs_review
       ])
     end

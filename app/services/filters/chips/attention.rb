@@ -40,6 +40,25 @@ module Filters
             chip_node("has_active_run", "is_true", nil)
           )
         },
+        # `inbox` is the union of every reason a Job might be sitting
+        # in the operator's queue. apply_inbox also includes
+        # `awaiting_operator_ids` (runs in operator-question state),
+        # which has no primitive chip — the expansion is intentionally
+        # lossy on that branch. Re-selecting the preset is always
+        # available if the expansion misses a Job the apply scope
+        # would have caught.
+        "inbox"              => -> {
+          and_node(
+            chip_node("state", "is", "open"),
+            or_node(
+              chip_node("has_unread_feedback", "is_true", nil),
+              chip_node("latest_run_state", "is", "failed"),
+              chip_node("triaging_reason", "is", "pending_epic_ref"),
+              chip_node("validity", "is_one_of", %w[duplicate already_implemented]),
+              chip_node("state", "is", "implemented")
+            )
+          )
+        },
         "awaiting_approval"  => -> { chip_node("state", "is", "implemented") },
         "just_failed"        => -> { chip_node("latest_run_state", "is", "failed") },
         "in_review"          => -> {

@@ -33,10 +33,32 @@ export default class extends Controller {
     this.pendingAddTarget = null  // null = top-level AND; { path } = append to OR group at path
     this.renderChips()
     document.addEventListener("click", this.handleDocumentClick)
+    // Turbo's morph-based refreshes can wipe the chips container —
+    // the server-rendered partial has an empty `<div data-chip-bar-target="chips">`
+    // (the controller fills it client-side), so morphing the live
+    // DOM to match the new HTML deletes every rendered chip. We
+    // re-render after every Turbo render pass to put them back.
+    this.handleTurboRender = () => {
+      if (this.hasChipsTarget) this.renderChips()
+    }
+    document.addEventListener("turbo:render", this.handleTurboRender)
+    document.addEventListener("turbo:frame-render", this.handleTurboRender)
+    document.addEventListener("turbo:morph", this.handleTurboRender)
   }
 
   disconnect() {
     document.removeEventListener("click", this.handleDocumentClick)
+    document.removeEventListener("turbo:render", this.handleTurboRender)
+    document.removeEventListener("turbo:frame-render", this.handleTurboRender)
+    document.removeEventListener("turbo:morph", this.handleTurboRender)
+  }
+
+  // Stimulus fires this automatically when the controller's
+  // data-chip-bar-tree-value attribute changes — e.g., after a Turbo
+  // morph patches the attribute to reflect the new URL state. We
+  // re-render so the chips stay synchronized with the tree.
+  treeValueChanged() {
+    if (this.hasChipsTarget) this.renderChips()
   }
 
   handleDocumentClick = (event) => {
@@ -596,6 +618,15 @@ export default class extends Controller {
     this.openEditorForPath(this.editingChipPath)
   }
 
+  updateChipValue(event) {
+    if (this.editingChipPath === null) return
+    const newValue = event.currentTarget.value
+    const current = this.nodeAtPath(this.editingChipPath)
+    if (!current) return
+    this.replaceNodeAtPath(this.editingChipPath, { ...current, value: newValue })
+    this.openEditorForPath(this.editingChipPath)
+  }
+
   closePopovers() {
     this.addMenuTarget.classList.add("hidden")
     this.editorTarget.classList.add("hidden")
@@ -619,7 +650,22 @@ function defaultsFor(meta) {
   if (meta.bucket === "collection") return { op: "contains_any", value: [] }
   if (meta.bucket === "date") return { op: "within_last", value: { n: 7, unit: "days" } }
   if (meta.bucket === "number") return { op: "equals", value: null }
-  return { op: meta.operators[0] || "is", value: null }
+  const op = meta.operators[0] || "is"
+  // For single-value enum / preset / fk chips with a static values
+  // list, pre-fill the first option so the chip face shows something
+  // meaningful immediately and operator-only features (like the
+  // preset Expand button) work without an extra Done round-trip.
+  const firstValue = firstStaticValue(meta)
+  if (firstValue !== null && (meta.bucket === "enum" || meta.bucket === "preset" || meta.bucket === "fk")) {
+    return { op, value: firstValue }
+  }
+  return { op, value: null }
+}
+
+function firstStaticValue(meta) {
+  const first = (meta.values || [])[0]
+  if (first === undefined || first === null) return null
+  return typeof first === "object" ? first.value : first
 }
 
 function isPredicateOp(op) {
@@ -771,6 +817,12 @@ function enumEditor(chip, meta) {
   const select = document.createElement("select")
   select.className = "block w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
   select.dataset.chipBarTarget = "editorInput"
+  // Preset chips depend on the *current* value to decide whether the
+  // Expand button shows in the editor footer. Trigger a re-render
+  // when the operator picks a different preset.
+  if (meta.bucket === "preset") {
+    select.dataset.action = "change->chip-bar#updateChipValue"
+  }
 
   meta.values.forEach(v => {
     const option = document.createElement("option")
