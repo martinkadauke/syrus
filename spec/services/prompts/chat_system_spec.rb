@@ -64,7 +64,11 @@ RSpec.describe Prompts::ChatSystem do
 
     out = described_class.new(repository: repo).to_s
 
-    pinned = out[/Pinned context:\n(?<body>.*?)\n\nYour environment:/m, :body].rstrip
+    # Match the pinned-context bullet list — runs of "  - …" lines
+    # ending at the first blank line. Anchoring on the next section
+    # header is brittle: the prompt has multiple sections, and any
+    # one of them could land first.
+    pinned = out[/Pinned context:\n(?<body>(?:  - .*\n)+)/, :body].rstrip
     expect(pinned.length).to be <= 2.kilobytes + 10
     expect(pinned).to end_with("...")
   end
@@ -90,13 +94,25 @@ RSpec.describe Prompts::ChatSystem do
     out = described_class.new(repository: repo).to_s
 
     expect(out).to include("The durable products of this session are proposals")
-    expect(out).to include("`propose_issue` and `propose_epic`")
+    expect(out).to include("`propose_epic`")
+    expect(out).to include("`propose_job`")
+    expect(out).to include("`propose_issue`")
     expect(out).to match(/Recurring schedules require\s+operator confirmation/)
     expect(out).to include("Use unique, stable, descriptive `slug`s")
     expect(out).to include("Express dependencies between proposals when they exist")
     expect(out).to include("Default `kind: \"syrus_issue\"`")
-    expect(out).to include("Use `propose_epic`")
     expect(out).to include("Use `schedule_recurring(cron_expression, label, prompt)` only")
+  end
+
+  it "explains the Syrus domain model so the agent can reason about Epics, Jobs, and the lifecycle" do
+    out = described_class.new(repository: repo).to_s
+
+    expect(out).to include("What Syrus is")
+    expect(out).to include("**Job** — one thread of work")
+    expect(out).to include("**Epic** — a named grouping of Jobs")
+    expect(out).to include("triaging → queued → open → implemented")
+    expect(out).to include("propose_epic_with_jobs")
+    expect(out).to include("When the operator hands you a planning document")
   end
 
   it "instructs the agent to bookmark topic shifts and epic origins" do
