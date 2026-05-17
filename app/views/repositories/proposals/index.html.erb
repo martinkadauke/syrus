@@ -57,8 +57,9 @@
     <% end %>
   <% else %>
     <div class="bg-white border border-gray-200 rounded-lg p-6 text-sm text-gray-600">
-      No proposed cards. Open a chat to draft some.
-      <%= link_to "Chats tab", repository_chats_path(@repository), class: "text-blue-600 underline hover:no-underline" %>
+      No proposed cards.
+      <%= link_to "Open a chat", new_chat_path, class: "text-blue-600 underline hover:no-underline" %>
+      and draft some.
     </div>
   <% end %>
 

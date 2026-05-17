@@ -70,7 +70,7 @@ class ChatsController < ApplicationController
     older = fetched.first(PAGE_SIZE).reverse
 
     response.headers["X-Chat-Has-More-Older"] = has_more ? "true" : "false"
-    render partial: "repositories/chats/message_stream",
+    render partial: "chats/message_stream",
            locals: {
              items: ChatMessageGrouper.group(older),
              repository: @chat_session.repository

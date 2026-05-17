@@ -639,25 +639,4 @@ RSpec.describe "Chats", type: :request do
     end
   end
 
-  describe "repository chat URL" do
-    # The repository chat URL used to redirect to the top-level
-    # /chats/:id and auto-create a ChatSession on visit. That was
-    # replaced by an inline-rendering controller that does not mutate
-    # state on GET (see spec/requests/repositories/chats_spec.rb).
-    # These specs lock in that GET /repositories/:id/chats does NOT
-    # redirect or persist anything new.
-    it "renders inline instead of redirecting" do
-      ChatSession.create!(user: user, repository: repo, last_message_at: 1.hour.ago)
-
-      get repository_chats_path(repo)
-
-      expect(response).to have_http_status(:ok)
-    end
-
-    it "does not create a ChatSession when the operator just visits the page" do
-      expect {
-        get repository_chats_path(repo)
-      }.not_to change(ChatSession, :count)
-    end
-  end
 end

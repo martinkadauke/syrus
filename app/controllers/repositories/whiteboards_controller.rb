@@ -1,103 +1,12 @@
 class Repositories::WhiteboardsController < ApplicationController
   before_action :load_repository
-  before_action :load_chat_session, if: :chat_whiteboard_request?
-  before_action :load_repository_whiteboard, unless: :chat_whiteboard_request?
+  before_action :load_repository_whiteboard
 
   def show
     render json: whiteboard_payload
   end
 
   def update
-    if chat_whiteboard_request?
-      update_chat_whiteboard
-    else
-      update_repository_whiteboard
-    end
-  end
-
-  private
-
-  def load_repository
-    @repository = Current.user.repositories.find(params[:repository_id])
-  end
-
-  def chat_whiteboard_request?
-    params[:chat_id].present?
-  end
-
-  def load_chat_session
-    @chat_session = @repository.chat_sessions.find(params[:chat_id])
-  end
-
-  def load_repository_whiteboard
-    @repository_whiteboard = @repository.repository_whiteboard || @repository.create_repository_whiteboard!
-  end
-
-  def whiteboard_elements
-    elements = params.fetch(:elements)
-    raise ActionController::BadRequest, "elements must be an array" unless elements.is_a?(Array)
-
-    elements.map do |element|
-      element.respond_to?(:to_unsafe_h) ? element.to_unsafe_h : element
-    end
-  end
-
-  # Frontend (app/javascript/controllers/whiteboard_controller.js) reads
-  # `payload.scene_json.elements` for both repo- and chat-scoped
-  # whiteboards. The flat `{ elements, version }` shape that
-  # `Whiteboard#current_state` returns predates that, so wrap it here
-  # to keep the response surface uniform.
-  def whiteboard_payload
-    if chat_whiteboard_request?
-      whiteboard = @chat_session.whiteboard
-      return {
-        scene_json: { elements: whiteboard&.elements || [] },
-        version: whiteboard&.version || 0
-      }
-    end
-
-    {
-      scene_json: { elements: @repository_whiteboard.elements },
-      version: @repository_whiteboard.version
-    }
-  end
-
-  def chat_whiteboard_state_payload(whiteboard)
-    {
-      scene_json: { elements: whiteboard.elements },
-      version: whiteboard.version
-    }
-  end
-
-  def update_chat_whiteboard
-    elements = whiteboard_elements
-    if elements.size > Whiteboard::MAX_ELEMENTS
-      render json: { "error" => Whiteboard.element_limit_message }, status: 422
-      return
-    end
-
-    expected_version = params.fetch(:expected_version).to_i
-
-    whiteboard = nil
-    state = nil
-    status = :ok
-
-    @chat_session.with_lock do
-      whiteboard = @chat_session.whiteboard || @chat_session.create_whiteboard!
-
-      if expected_version == whiteboard.version
-        whiteboard.replace_elements!(elements)
-      else
-        status = :conflict
-      end
-
-      state = chat_whiteboard_state_payload(whiteboard)
-    end
-
-    render json: state, status: status
-  end
-
-  def update_repository_whiteboard
     expected_version = params.require(:expected_version).to_i
 
     unless @repository_whiteboard.apply_elements!(params.fetch(:elements, []), expected_version: expected_version)
@@ -107,5 +16,27 @@ class Repositories::WhiteboardsController < ApplicationController
     end
 
     render json: whiteboard_payload
+  end
+
+  private
+
+  def load_repository
+    @repository = Current.user.repositories.find(params[:repository_id])
+  end
+
+  def load_repository_whiteboard
+    @repository_whiteboard = @repository.repository_whiteboard || @repository.create_repository_whiteboard!
+  end
+
+  # Frontend (app/javascript/controllers/whiteboard_controller.js) reads
+  # `payload.scene_json.elements`. The flat `{ elements, version }`
+  # shape that `Whiteboard#current_state` returns predates that, so
+  # wrap it here to keep the response surface uniform with the
+  # chat-scoped variant (ChatWhiteboardsController).
+  def whiteboard_payload
+    {
+      scene_json: { elements: @repository_whiteboard.elements },
+      version: @repository_whiteboard.version
+    }
   end
 end

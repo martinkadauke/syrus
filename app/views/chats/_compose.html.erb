@@ -54,12 +54,12 @@
   </div>
 
   <% if chat_session && repository %>
-    <%= render "repositories/chats/manual_proposal_dialog",
+    <%= render "chats/manual_proposal_dialog",
           chat_session: chat_session,
           kind: "epic",
           title: "Propose Epic",
           submit_label: "Create Epic Proposal" %>
-    <%= render "repositories/chats/manual_proposal_dialog",
+    <%= render "chats/manual_proposal_dialog",
           chat_session: chat_session,
           kind: "syrus_issue",
           title: "Propose Job",

@@ -34,7 +34,7 @@ class ChatMessage < ApplicationRecord
     broadcast_append_later_to(
       "chat_session_#{chat_session_id}_messages",
       target: "chat_session_#{chat_session_id}_messages",
-      partial: "repositories/chats/message",
+      partial: "chats/message",
       locals: { message: self, repository: chat_session.repository }
     )
   end

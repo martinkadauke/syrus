@@ -48,7 +48,9 @@ RSpec.describe "Repository proposals", type: :request do
     it "renders the empty state when there are no proposed cards" do
       get repository_proposals_path(repo)
 
-      expect(response.body).to include("No proposed cards. Open a chat to draft some.")
+      expect(response.body).to include("No proposed cards.")
+      expect(response.body).to include("Open a chat")
+      expect(response.body).to include(new_chat_path)
     end
 
     it "groups and orders proposals by DAG layer" do

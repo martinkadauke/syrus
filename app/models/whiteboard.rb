@@ -49,7 +49,7 @@ class Whiteboard < ApplicationRecord
     Turbo::StreamsChannel.broadcast_replace_later_to(
       broadcast_channel,
       target: "chat_session_#{chat_session_id}_whiteboard_broadcast",
-      partial: "repositories/chats/whiteboard_broadcast",
+      partial: "chats/whiteboard_broadcast",
       locals: { chat_session: chat_session, whiteboard: self }
     )
   end

@@ -114,7 +114,7 @@ class ChatSession < ApplicationRecord
     broadcast_replace_later_to(
       "chat_session_#{id}_header",
       target: "chat_session_#{id}_header",
-      partial: "repositories/chats/header",
+      partial: "chats/header",
       locals: { repository: repository, chat_session: self }
     )
   end
@@ -128,7 +128,7 @@ class ChatSession < ApplicationRecord
     broadcast_replace_later_to(
       "chat_session_#{id}_controls",
       target: "chat_session_#{id}_controls",
-      partial: "repositories/chats/compose",
+      partial: "chats/compose",
       locals: { repository: repository, chat_session: self, turn_in_flight: turn_in_flight? }
     )
   end

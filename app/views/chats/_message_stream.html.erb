@@ -4,8 +4,8 @@
     older-history loads, so both paths apply the same grouping. %>
 <% items.each do |item| %>
   <% if item[:type] == :tool_group %>
-    <%= render "repositories/chats/tool_call_group", group: item, repository: repository %>
+    <%= render "chats/tool_call_group", group: item, repository: repository %>
   <% else %>
-    <%= render "repositories/chats/message", message: item[:message], repository: repository %>
+    <%= render "chats/message", message: item[:message], repository: repository %>
   <% end %>
 <% end %>

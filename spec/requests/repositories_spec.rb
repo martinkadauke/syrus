@@ -426,7 +426,9 @@ RSpec.describe "Repositories", type: :request do
           expect(response).to have_http_status(:ok)
           expect(response.body).to include("Overview")
           expect(response.body).to include("GitHub Issues")
-          expect(response.body).not_to include(repository_chats_path(repo))
+          # repository_chats_path is gone with the Repositories::ChatsController
+          # retirement; the assertion that the overview tab didn't link to it
+          # is also gone.
           expect(response.body).to include("Recent jobs")
         end
 

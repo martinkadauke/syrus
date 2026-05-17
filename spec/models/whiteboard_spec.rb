@@ -57,7 +57,7 @@ RSpec.describe Whiteboard do
       "chat_session_#{chat_session.id}_whiteboard",
       hash_including(
         target: "chat_session_#{chat_session.id}_whiteboard_broadcast",
-        partial: "repositories/chats/whiteboard_broadcast"
+        partial: "chats/whiteboard_broadcast"
       )
     )
 

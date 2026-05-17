@@ -35,12 +35,18 @@ function buildController(Controller, { capture = { name: "bug-report-viewport.pn
   controller.viewportRadioTarget = { checked: !noneChecked }
   controller.fullPageRadioTarget = { checked: false }
   controller.noneRadioTarget = { checked: noneChecked }
+  // Stimulus auto-generates hasXTarget when target X is declared.
+  // The bare new Controller() doesn't get that wiring, so mock it
+  // explicitly — the controller branches on it to decide whether
+  // the "no screenshot" radio is in scope.
+  controller.hasNoneRadioTarget = true
   controller.screenshotInputTarget = { files: existingFiles, value: "existing" }
 
   return { controller, wasClosed: () => closed }
 }
 
 globalThis.DataTransfer = FakeDataTransfer
+globalThis.window = { alert() {} }
 
 test("closes the dialog after a valid bug report submit starts", async () => {
   const { default: Controller } = await loadController()
