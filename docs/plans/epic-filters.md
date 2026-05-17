@@ -328,3 +328,299 @@ EPIC_BUILTINS = [
   `attention` presets are guesses without real usage data. Mitigation:
   ship the 6-preset minimum, instrument view counts, drop / add
   presets based on observed usage.
+
+---
+
+# Appendix (added 2026-05-17 after Phases 1–4 shipped)
+
+The original four phases delivered Epic filters and a standalone
+`/epics` index. The next chunk of work merges Jobs and Epics onto a
+single dashboard surface and extends the same filter + kanban
+treatment down to Workflows so the operator gets the same UX at all
+three levels of the hierarchy (Epic → Job → Workflow).
+
+## Phase 5 — universal dashboard with subject + view toggles
+
+### Goal
+
+Single landing dashboard at `/`. Two orthogonal toggles:
+
+- **Subject**: `Epic` / `Job` / `Workflow` (Workflow added in Phase 6)
+- **View**: `List` / `Kanban`
+
+Filters (the chip-bar) and SmartFolders work in both views. All four
+(eventually six) combinations are first-class.
+
+### URL shape
+
+```
+/                          → user's persisted last subject + view (default: epic/list on first visit)
+/?subject=epic&view=kanban → explicit selection
+/?subject=job&view=list
+/jobs                      → 302 to /?subject=job
+/epics                     → 302 to /?subject=epic
+```
+
+The chip-bar `q=` param still rides on top: `/?subject=epic&view=kanban&q=<base64>`.
+
+### Persistence
+
+Per-user, in a new `users.dashboard_preferences` JSON column (or
+existing preferences column if one exists). Stores `last_subject`,
+`last_view`. On `/` with no params, redirect to the persisted state.
+Explicit `subject=`/`view=` params take precedence and update the
+preference.
+
+### Kanban column dimensions per subject
+
+Each subject's kanban needs a column-defining attribute. Decisions
+here are load-bearing — they shape the operator's mental model.
+
+| Subject | Column dimension | Columns |
+|---|---|---|
+| Epic | `state` | `backlog`, `ready`, `in_progress`, `done` |
+| Job | `latest_workflow_state` (derived) | `queued`, `running`, `succeeded`, `failed` |
+| Workflow | `state` (direct AASM) | `queued`, `running`, succeeded/failed/cancelled rolled into a single `done` column (or split — see Phase 6 open question) |
+
+Jobs don't have a useful native state machine for kanban (`open`/`closed`
+is binary). `latest_workflow_state` is the most informative
+derivation — "what is this Job's most recent attempt doing right now."
+Alternative considered: a synthetic "stage" enum (Triage / Implementing
+/ Reviewing / Merged). Rejected for v1 — would require additional
+derivation logic and operator re-education vs. just showing the
+existing state.
+
+### What stays on the dashboard alongside the toggle
+
+The existing home dashboard surfaces more than a Job list (cost
+totals, recent activity, smart-folder counts). On the unified
+dashboard:
+
+- **Top of page (unchanged across subjects)**: user-wide cost totals,
+  user-wide recent-activity summary. These are user-scoped, not
+  subject-scoped.
+- **Subject toggle + view toggle**: a horizontal control row beneath
+  the user-wide summary.
+- **Filter chip-bar**: subject-aware (`Filters::Schema.for(subject:)`),
+  re-renders when subject changes. Filter state is scoped per subject
+  in `filter_memory_controller.js` (key by subject so switching
+  doesn't clobber the other's filter).
+- **Sidebar with SmartFolders**: subject-aware
+  (`SmartFolder.for_subject(name)`), built-ins appear per subject.
+- **Main content area**: List view or Kanban view, depending on the
+  view toggle.
+
+### Kanban renderer shape
+
+A shared partial `app/views/shared/_kanban_board.html.erb` that
+accepts:
+
+```erb
+<%= render "shared/kanban_board",
+      subject: :epic,
+      records: @records,                    # the filtered AR collection
+      column_attribute: :state,             # how to bucket
+      columns: %w[backlog ready in_progress done],  # explicit order
+      card_partial: "epics/card",            # subject-specific card render
+      drag_enabled: true                     # whether DnD transitions are wired up
+%>
+```
+
+Drag-and-drop for state transitions reuses the existing
+`epic_kanban_controller.js` pattern (originally from PR #496), but the
+controller becomes subject-aware via a `data-` attribute pointing at
+the AASM-transition endpoint per subject. The Jobs kanban probably
+doesn't get drag-and-drop in v1 (Jobs transition implicitly when
+their Runs do, not by operator action).
+
+### Acceptance
+
+- [ ] `/` honours `subject=` and `view=` URL params; defaults from
+      `users.dashboard_preferences` when unset
+- [ ] `/jobs` and `/epics` 302 to `/?subject=job` / `/?subject=epic`
+      for back-compat with existing bookmarks
+- [ ] Subject toggle visibly switches the chip-bar, sidebar, and
+      content area; filter state isolated per subject
+- [ ] View toggle switches between List and Kanban for the current
+      subject; filter state preserved across the switch
+- [ ] Epic kanban: columns `backlog → ready → in_progress → done`;
+      drag-and-drop transitions work via the existing controller
+- [ ] Job kanban: columns derived from `latest_workflow_state`; no
+      drag-and-drop in v1 (read-only kanban)
+- [ ] Workflow kanban: lands in Phase 6
+- [ ] Persisted preference: refreshing `/` lands on the last subject +
+      view the user used
+- [ ] Spec coverage: each (subject × view) combination round-trips
+      through URL + chip-bar + filter without state leaking across
+      subjects
+
+### Open question
+
+- **Kanban drag for Jobs?** Jobs don't have operator-driven state
+  transitions today (state machine is `open ⇄ closed`, advanced by
+  workflow completion). Read-only kanban is simpler and probably the
+  right v1; revisit if there's demand for "drag a Job between buckets
+  to manually advance it."
+
+### Out of scope
+
+- A combined cross-subject view ("show me everything matching X
+  regardless of subject"). Different problem.
+- Persisting per-subject *filter state* in the DB (vs localStorage).
+  Today's chip-bar filter memory is browser-local; that stays.
+- Kanban swim lanes (e.g. group Jobs in each column by repository).
+  Plausible later; not v1.
+
+## Phase 6 — Workflows as a third subject
+
+### Goal
+
+Apply the same filter + kanban treatment to Workflows. Without this,
+the dashboard is consistent for two of three hierarchy levels and
+operators have to drop into a Job's detail page to see Workflow state.
+
+### Phase 6a — `Workflows::Filter` + Workflow chip set
+
+Mirror of `Epics::Filter` / `Jobs::Filter`:
+
+```ruby
+module Workflows
+  class Filter
+    LEGACY_URL_KEYS = %w[ state trigger_kind job_id ].freeze
+    # same shape as Jobs::Filter / Epics::Filter
+    def apply(scope)
+      Filters::Compiler.call(@ast, scope: scope, user: @user, subject: :workflow)
+    end
+  end
+end
+```
+
+Register the subject:
+
+```ruby
+Filters::SUBJECTS[:workflow] = Filters::Subject.new(
+  name: :workflow,
+  model: Workflow,
+  chips: { ... }
+)
+```
+
+#### Workflow chip set
+
+Reused generics (no new files):
+
+| Chip | Source |
+|---|---|
+| `CreatedAt` | generic |
+| `UpdatedAt` | generic |
+
+Workflow-specific column chips (new files under `Filters::Chips::Workflows::*`):
+
+| Chip | Type | Column / values |
+|---|---|---|
+| `State` | EnumColumn | `queued`, `running`, `succeeded`, `failed`, `cancelled` |
+| `TriggerKind` | EnumColumn | `initial`, `pr_comment`, `ci_failure`, `retry`, `manual`, `rebase`, `resume` |
+| `JobId` | FkColumn | `column :job_id` |
+| `AgentProvider` | EnumColumn | from `AgentProviders::REGISTRY` |
+| `StartedAt` | DateColumn | `column :started_at` |
+| `FinishedAt` | DateColumn | `column :finished_at` |
+| `FailureReason` | StringColumn | `column :failure_reason` |
+
+Workflow derivation chips:
+
+| Chip | Semantics |
+|---|---|
+| `HasFailedSteps` | boolean — `EXISTS Step.where(workflow_id: ..., state: "failed")` |
+| `IsStuck` | boolean — `state = "running"` AND latest Run's `last_heartbeat_at` older than `Run::STALE_HEARTBEAT_THRESHOLD` |
+| `RunCount` | numeric — total Runs in this Workflow (range / threshold ops) |
+
+#### Attention preset (`Filters::Chips::Workflows::Attention`)
+
+v1 preset list:
+
+| Preset | Definition |
+|---|---|
+| `running` | `state = "running"` |
+| `stuck` | `state = "running"` + stale heartbeat |
+| `just_failed` | `state = "failed"` + `finished_at` within last 1h |
+| `queued` | `state = "queued"` (not yet picked up) |
+| `interrupted` | `state = "cancelled"` AND a `cancellation_reason` indicating worker-died (only meaningful once that distinction is encoded) |
+
+### Phase 6b — Workflow SmartFolder builtins
+
+Add to `SmartFolder` per the Phase 4a `subject_type` machinery:
+
+```ruby
+WORKFLOW_BUILTINS = [
+  { key: "workflows_running",    name: "Running",    visibility: :always,       filter: workflow_attention("running") },
+  { key: "workflows_stuck",      name: "Stuck",      visibility: :when_present, filter: workflow_attention("stuck") },
+  { key: "workflows_just_failed", name: "Just failed", visibility: :when_present, filter: workflow_attention("just_failed") },
+  { key: "workflows_queued",     name: "Queued",     visibility: :on_demand,    filter: workflow_attention("queued") }
+].freeze
+```
+
+### Phase 6c — Workflow on the dashboard
+
+Add `Workflow` to the dashboard's subject toggle (Phase 5). Wire:
+
+- `/?subject=workflow&view=list` — table of workflows; uses
+  `Workflows::Filter`. Columns: `id`, `job_id`, `trigger_kind`,
+  `state`, `started_at`, `finished_at`, action links.
+- `/?subject=workflow&view=kanban` — columns by `state`.
+  - **Column layout question** (operator review needed): three columns
+    (`queued`, `running`, `done` with succeeded/failed/cancelled as
+    coloured chips inside the cards), or five flat columns. v1
+    recommendation: three columns + status chip on each card. Less
+    horizontal scroll; the terminal-state distinction is captured by
+    chip colour. Operators can filter by `state` for the precise view.
+  - No drag-and-drop. Workflow transitions are driven by the system,
+    not the operator.
+
+### Acceptance (Phase 6 as a whole)
+
+- [ ] `Workflows::Filter`, `Filters::Chips::Workflows::*` chip set,
+      and `Filters::SUBJECTS[:workflow]` exist and pass the
+      chip-DSL contract spec
+- [ ] `SmartFolder.for_subject(:workflow)` seeds the 4 builtins on
+      first boot
+- [ ] Dashboard subject toggle includes `Workflow`; both list and
+      kanban views render correctly
+- [ ] Workflow kanban columns match the chosen layout (default: 3
+      columns)
+- [ ] No drag-and-drop on Workflow kanban; cards are read-only with
+      click-through to Workflow detail
+- [ ] Specs cover each chip class plus integration tests for the 4
+      attention presets
+- [ ] No regressions on Job / Epic sides
+
+### Out of scope
+
+- A separate `Runs` subject. Runs are children of Workflows; they
+  surface within the Workflow detail page. If a runs-level dashboard
+  becomes useful later, it slots in as Phase 7 with the same
+  mechanical shape.
+- Workflow drag-and-drop. State transitions are system-driven.
+- Cross-subject hierarchical drill-down on the dashboard (clicking
+  an Epic row jumping to its Jobs filtered by `epic_id`). Worth a
+  follow-up; not blocking.
+
+## Risks (appendix)
+
+- **Subject-toggle URL collisions with existing bookmarks**: any
+  existing link to `/` expecting "Jobs dashboard" now lands on the
+  user's persisted choice, which may surprise them on first visit.
+  Mitigation: explicit one-time toast / banner ("We unified the
+  dashboard — pick your default subject"), backed by a one-shot user
+  flag.
+- **`latest_workflow_state` derivation cost on the Jobs kanban**: this
+  is the Job kanban's column dimension and it requires a per-row
+  lookup unless we denormalize. Already used by the existing chip
+  (`latest_workflow_state`) so the SQL is solved, but the kanban
+  rendering hits it for *all* Jobs in the visible filter — could be
+  slow on big lists. Mitigation: scope kanban view to a reasonable
+  page size; surface a "showing the first 100; refine filters" hint
+  if hit.
+- **Workflow volume**: a long-running deployment can accumulate
+  thousands of Workflow rows. Default Workflow list filter should
+  probably scope to "recent" (last 7 days, say) or "non-terminal" to
+  avoid loading 50k rows. Operator can override via chips.
