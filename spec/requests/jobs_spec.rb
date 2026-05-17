@@ -114,6 +114,61 @@ RSpec.describe "Jobs", type: :request do
         expect(job.reload.state).to eq("landing")
       end
 
+      it "files an APPROVE review on GitHub when the Job has a PR and the repo opts in" do
+        job.update!(state: "implemented", pr_number: 123)
+        client = instance_double(GithubClient)
+        allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+        expect(client).to receive(:create_pr_review)
+          .with("acme/widgets", 123, event: "APPROVE", body: a_string_including("Syrus"))
+          .and_return(Struct.new(:id).new(987))
+
+        post approve_job_path(job)
+
+        expect(response).to redirect_to(job_path(job))
+        expect(flash[:notice]).to include("GitHub review left")
+        expect(job.reload.approval_evidence).to include("github_review_id" => 987)
+      end
+
+      it "skips the GitHub review when the repo opts out" do
+        repository.update!(approval_propagates_to_github: false)
+        job.update!(state: "implemented", pr_number: 123)
+        expect(GithubClient).not_to receive(:for)
+
+        post approve_job_path(job)
+
+        expect(job.reload.state).to eq("approved")
+        expect(flash[:notice]).to eq("Job approved.")
+      end
+
+      it "still approves Syrus-side if the GitHub review write fails" do
+        job.update!(state: "implemented", pr_number: 123)
+        client = instance_double(GithubClient)
+        allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+        allow(client).to receive(:create_pr_review)
+          .and_raise(Octokit::UnprocessableEntity.new(body: { message: "Pull request author can't approve their own pull request" }))
+
+        post approve_job_path(job)
+
+        expect(response).to redirect_to(job_path(job))
+        expect(job.reload.state).to eq("approved")
+        expect(flash[:notice]).to include("GitHub review failed")
+      end
+
+      it "dismisses the GitHub review on unapprove" do
+        job.update!(state: "implemented", pr_number: 123)
+        job.approve!(via: "operator", by_user: user, evidence: { "github_review_id" => 555 })
+        client = instance_double(GithubClient)
+        allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+        expect(client).to receive(:dismiss_pr_review)
+          .with("acme/widgets", 123, 555, message: a_string_including("Syrus"))
+
+        post unapprove_job_path(job)
+
+        expect(response).to redirect_to(job_path(job))
+        expect(job.reload.state).to eq("implemented")
+        expect(flash[:notice]).to include("GitHub review dismissed")
+      end
+
       it "renders the current user's pin state in the header" do
         Factories.job_pin(user: user, job: job)
 

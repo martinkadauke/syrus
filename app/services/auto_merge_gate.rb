@@ -60,7 +60,18 @@ class AutoMergeGate
   end
 
   def approved?(pr)
-    formal_approval?(pr) || slash_approval?(pr)
+    syrus_operator_approval? || formal_approval?(pr) || slash_approval?(pr)
+  end
+
+  # Operator clicked Approve in the Syrus UI. The DB carries the
+  # authoritative record (`approved_via: "operator"`); the gate
+  # honors it without re-checking GitHub. The JobsController#approve
+  # path also tries to leave a real GitHub review so branch
+  # protection passes at merge time, but that's a separate concern
+  # — even if the review write fails, the gate still recognises the
+  # local approval and we surface the GitHub failure at merge_pull_request.
+  def syrus_operator_approval?
+    @job.approved? && @job.approved_via.to_s == "operator"
   end
 
   def formal_approval?(_pr)

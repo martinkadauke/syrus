@@ -49,6 +49,27 @@ RSpec.describe AutoMergeGate do
     expect(result.outcome).to eq(:ready)
   end
 
+  it "allows a Syrus-side operator approval without any GitHub review" do
+    job.update_columns(state: "approved", approved_at: Time.current, approved_via: "operator")
+
+    result = described_class.new(job: job.reload, client: client).evaluate
+
+    expect(result).to be_merge_ready
+    expect(result).to be_approved
+  end
+
+  it "ignores non-operator Syrus approvals as a gate bypass" do
+    # github_review approvals are already counted via pr_reviews — they
+    # shouldn't be double-counted through the local-DB path. With no
+    # APPROVED review on the GitHub side, the gate should block.
+    job.update_columns(state: "approved", approved_at: Time.current, approved_via: "github_review")
+
+    result = described_class.new(job: job.reload, client: client).evaluate
+
+    expect(result).not_to be_merge_ready
+    expect(result.reason).to include("not approved")
+  end
+
   it "allows a write-access slash approval from the PR author of record" do
     allow(client).to receive(:pr_issue_comments).and_return([ comment(body: "/approve") ])
 

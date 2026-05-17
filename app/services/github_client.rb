@@ -272,6 +272,35 @@ class GithubClient
     raise
   end
 
+  # Files a PR review under whichever identity owns the token on this
+  # client (operator's PAT or the GitHub App installation). Used by
+  # JobsController#approve to propagate Syrus-side approval onto the
+  # PR so branch-protection rules requiring an approving review pass
+  # at merge time. event is "APPROVE", "REQUEST_CHANGES", or "COMMENT".
+  def create_pr_review(repo_slug, pr_number, event:, body: nil)
+    track_rate_limits do
+      @client.create_pull_request_review(
+        repo_slug,
+        pr_number,
+        { event: event, body: body }.compact
+      )
+    end
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user&.email_address} rate-limited reviewing #{repo_slug}##{pr_number}: #{e.message}")
+    raise
+  end
+
+  # Dismisses a previously-filed PR review (e.g. when the operator
+  # unapproves in the Syrus UI). GitHub requires a dismissal message.
+  def dismiss_pr_review(repo_slug, pr_number, review_id, message: "Dismissed by Syrus")
+    track_rate_limits do
+      @client.dismiss_pull_request_review(repo_slug, pr_number, review_id, message)
+    end
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user&.email_address} rate-limited dismissing #{repo_slug}##{pr_number} review: #{e.message}")
+    raise
+  end
+
   def pr_commits(repo_slug, pr_number)
     track_rate_limits { @client.pull_request_commits(repo_slug, pr_number) }
   rescue Octokit::TooManyRequests => e

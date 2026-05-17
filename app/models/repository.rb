@@ -8,6 +8,7 @@ class Repository < ApplicationRecord
   attribute :prepare_enabled, :boolean, default: true
   attribute :pr_cost_footer_enabled, :boolean, default: true
   attribute :auto_merge_enabled, :boolean, default: false
+  attribute :approval_propagates_to_github, :boolean, default: true
   attribute :allow_operator_chat, :string, default: "disabled"
 
   belongs_to :user
