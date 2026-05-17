@@ -2,49 +2,69 @@ require "rails_helper"
 require "socket"
 
 RSpec.describe ReapOrphanedSpawnedProcessesJob do
-  let(:hostname) { Socket.gethostname }
-
   def fixture(**overrides)
     SpawnedProcess.create!({
       kind: "agent",
       command: "claude --print",
-      hostname: hostname,
+      hostname: "some-pod-abc",
       started_at: 30.minutes.ago,
       last_chunk_at: 20.minutes.ago,
-      pid: 999_999_999 # very-likely-nonexistent
+      pid: 12_345
     }.merge(overrides))
   end
 
-  it "finalizes stale, hostname-local rows whose pid is gone" do
-    stale = fixture
-
-    described_class.perform_now
-
-    stale.reload
-    expect(stale).to be_finished
-    expect(stale.outcome).to eq("orphaned")
+  # SolidQueue tables aren't reachable from the test connection
+  # (single-DB), so we stub the private live-hosts method on each
+  # job instance. Each example sets up which hostnames are "live".
+  def stub_live_hosts(*hostnames)
+    allow_any_instance_of(described_class)
+      .to receive(:live_solid_queue_hostnames)
+      .and_return(Set.new(hostnames))
   end
 
-  it "leaves stale rows on a different hostname alone" do
-    other = fixture(hostname: "some-other-pod")
+  it "finalizes rows whose hostname is not in the live SolidQueue process set" do
+    dead = fixture(hostname: "dead-pod-xyz")
+    stub_live_hosts("some-other-live-pod")
 
     described_class.perform_now
 
-    other.reload
-    expect(other).to be_running
+    dead.reload
+    expect(dead).to be_finished
+    expect(dead.outcome).to eq("orphaned")
   end
 
-  it "leaves still-alive pids alone" do
-    alive = fixture(pid: Process.pid)
+  it "leaves rows whose hostname IS in the live set alone" do
+    live = fixture(hostname: "live-pod-abc")
+    stub_live_hosts("live-pod-abc", "some-other-live-pod")
+
     described_class.perform_now
-    alive.reload
-    expect(alive).to be_running
+
+    live.reload
+    expect(live).to be_running
   end
 
-  it "leaves recently-heartbeating rows alone" do
-    fresh = fixture(last_chunk_at: 1.minute.ago)
+  it "skips cleanly when the SolidQueue tables are unreachable" do
+    sp = fixture(hostname: "any-pod")
+    allow_any_instance_of(described_class)
+      .to receive(:live_solid_queue_hostnames)
+      .and_return(nil)
+
+    expect { described_class.perform_now }.not_to raise_error
+
+    sp.reload
+    expect(sp).to be_running
+  end
+
+  it "does not touch already-finished rows on dead hosts (lost race)" do
+    sp = fixture(hostname: "dead-pod-xyz",
+                 finished_at: 1.second.ago,
+                 outcome: "succeeded",
+                 exit_status: 0)
+    stub_live_hosts("live-pod")
+
     described_class.perform_now
-    fresh.reload
-    expect(fresh).to be_running
+
+    sp.reload
+    expect(sp.outcome).to eq("succeeded") # conditional update_all returned 0
   end
 end

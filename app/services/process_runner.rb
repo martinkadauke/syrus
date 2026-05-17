@@ -72,6 +72,11 @@ class ProcessRunner
     @kind = kind
     @run = run
     @workflow = workflow
+
+    # Idempotent — only the first call in this process spawns the
+    # supervisor thread. Web pods never reach this code path so they
+    # never get a supervisor thread (nothing to supervise there).
+    SpawnedProcessSupervisor.ensure_running if @kind
   end
 
   def run
@@ -247,14 +252,25 @@ class ProcessRunner
     Rails.logger.warn("[ProcessRunner] heartbeat failed: #{e.class}: #{e.message}")
   end
 
+  # Conditional UPDATE races safely with SpawnedProcessSupervisor#tick,
+  # which uses the same WHERE finished_at IS NULL pattern. Whichever
+  # transaction commits first wins; the loser silently no-ops. In the
+  # rare race where the supervisor wins (subprocess exited microseconds
+  # before our wait_thread noticed), the row keeps the supervisor's
+  # "orphaned" guess instead of our accurate outcome — acceptable
+  # fidelity loss for the simpler synchronization story.
   def finalize_spawned_process!(outcome:, exit_status:)
     return unless @spawned_process
 
-    @spawned_process.update!(
-      finished_at: Time.current,
-      outcome: outcome,
-      exit_status: exit_status
-    )
+    rows = SpawnedProcess.where(id: @spawned_process.id, finished_at: nil)
+                         .update_all(
+                           finished_at: Time.current,
+                           outcome: outcome,
+                           exit_status: exit_status
+                         )
+    if rows.zero?
+      Rails.logger.info("[ProcessRunner] SpawnedProcess ##{@spawned_process.id} already finalized (supervisor beat us)")
+    end
   rescue StandardError => e
     Rails.logger.warn("[ProcessRunner] finalize failed: #{e.class}: #{e.message}")
   end

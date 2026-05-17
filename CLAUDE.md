@@ -307,10 +307,19 @@ preserve scroll position across morphs.
   `kill_requested_at`; the owning worker's `ProcessRunner` polls the row
   once per second and terminates the local pid. `SpawnedProcess#host_metrics`
   reads `/proc/<pid>/{status,stat}` on Linux for live CPU/RSS readout.
-  Two recurring jobs keep the table tidy:
-  `ReapOrphanedSpawnedProcessesJob` (every 5 min) finalizes hostname-local
-  rows whose pid is gone, and `SpawnedProcessPruneJob` (daily 3:20am)
-  deletes finished rows past 7 days.
+  Two-layer cleanup catches orphans without timeout-based guessing:
+  `SpawnedProcessSupervisor` is an in-process ticker thread that
+  ProcessRunner.new lazy-starts on first call; every 30s it walks
+  own-hostname rows and finalizes any whose pid is gone (detects
+  Ruby-thread death / OOM-killed subprocesses inside an otherwise-
+  alive pod). `ReapOrphanedSpawnedProcessesJob` (every minute) handles
+  the cross-hostname case — finalizes rows whose hostname isn't in
+  the current `SolidQueue::Process.distinct.pluck(:hostname)` set
+  (detects dead pods within ~5 min of SQ pruning the worker). Both
+  paths use conditional `update_all(WHERE finished_at IS NULL)` so
+  they race safely with each other and with ProcessRunner's own
+  finalize call. `SpawnedProcessPruneJob` (daily 3:20am) deletes
+  finished rows past 7 days.
 
 ## Tests are not optional
 
