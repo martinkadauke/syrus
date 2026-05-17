@@ -116,7 +116,13 @@ module Api
             agent_provider: job.agent_provider,
             closure_reason: job.closure_reason,
             failure_count: job.failure_count,
-            repository: { id: job.repository.id, slug: job.repository.slug, default_branch: job.repository.default_branch },
+            repository: {
+              id: job.repository.id,
+              slug: job.repository.slug,
+              default_branch: job.repository.default_branch,
+              auto_merge_enabled: job.repository.auto_merge_enabled,
+              approval_propagates_to_github: job.repository.approval_propagates_to_github
+            },
             user_email: job.user.email_address,
             issue_number: job.issue_number,
             issue_title: job.issue_title,
@@ -128,6 +134,11 @@ module Api
             scheduled_task_id: job.scheduled_task_id,
             started_at: job.started_at,
             finished_at: job.finished_at,
+            approved_at: job.approved_at,
+            approved_via: job.approved_via,
+            approved_by_user_id: job.approved_by_user_id,
+            approval_evidence: job.approval_evidence,
+            landing_failure_reason: job.landing_failure_reason,
             workflows: job.workflows.order(:created_at).map { |wf| ::Admin::JobStateSerializer.workflow(wf) }
           }
         rescue => e
