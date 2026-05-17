@@ -481,16 +481,16 @@ class HomeController < ApplicationController
 
   def job_count_from_current_filter
     active_repo_ids = Current.user.repositories.active.select(:id)
-    filter = Jobs::Filter.from_params(params, user: Current.user)
+    filter = ::Jobs::Filter.from_params(params, user: Current.user)
     filter.apply(Current.user.jobs.where(repository_id: active_repo_ids)).count
-  rescue Filters::UnknownFilterField, ArgumentError
+  rescue ::Filters::UnknownFilterField, ArgumentError
     Current.user.jobs.where(repository_id: active_repo_ids).count
   end
 
   def epic_count_from_current_filter(active_repo_ids)
     filter = ::Epics::Filter.from_params(params, user: Current.user)
     filter.apply(Current.user.epics.where(repository_id: active_repo_ids)).count
-  rescue Filters::UnknownFilterField, ArgumentError
+  rescue ::Filters::UnknownFilterField, ArgumentError
     Current.user.epics.where(repository_id: active_repo_ids).count
   end
 

@@ -326,6 +326,24 @@ RSpec.describe "Dashboard", type: :request do
       expect(response.body).to include("No jobs yet")
     end
 
+    # Regression: HomeController#jobs used to raise NameError when an
+    # epic-side filter chip lookup failed, because the rescue clause's
+    # bare `Filters::UnknownFilterField` resolved through the controller's
+    # ancestor chain to ActiveSupport::Callbacks::Filters instead of the
+    # app-level Filters module. Triggering condition: q= encodes a field
+    # the Jobs registry recognizes (`kind`) but the Epics registry does
+    # not — so the matching-jobs count succeeds, the matching-epics
+    # count's compiler raises UnknownFilterField, and the rescue clause
+    # itself must resolve correctly.
+    it "swallows epic-side UnknownFilterField when the q= chip is job-only" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+      q = Filters::QueryParam.encode({ "field" => "kind", "op" => "is", "value" => "issue" })
+
+      get dashboard_jobs_path, params: { q: q }
+
+      expect(response).to have_http_status(:ok)
+    end
+
     it "shows each job's workflow count instead of run count" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       job = Factories.job(repository: repo, issue_number: 7)
