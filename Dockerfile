@@ -177,6 +177,11 @@ USER root
 # up the agent dramatically when exploring code. The lib*-dev deps are
 # kept here too (not just runtime-cache) so on-demand `mise install`
 # of a non-default version inside the worker pod still has them.
+#
+# C++ / CMake / Qt 6 / Xvfb are included so repos like tkadauke/raytracer
+# can run `cmake --preset release && ctest` inside `.syrus.yml` graders
+# without sudo apt-get in `prepare:` (the worker runs as uid 1000 with
+# no sudo capability).
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
       build-essential pkg-config \
@@ -187,6 +192,8 @@ RUN apt-get update -qq && \
       sqlite3 postgresql-client default-mysql-client \
       wget openssh-client jq ripgrep fd-find less vim \
       python3 python3-pip python3-venv \
+      cmake ninja-build \
+      qt6-base-dev qt6-declarative-dev libgl1-mesa-dev xvfb \
     && rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # Pull pre-compiled runtimes + the mise binary from the runtime-cache
