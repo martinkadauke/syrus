@@ -74,7 +74,33 @@ RSpec.describe AutoMergeGate do
     expect(result).to be_approved
   end
 
-  it "ignores non-operator Syrus approvals as a gate bypass" do
+  # Regression: bulk-approve from the dashboard sets approved_via to
+  # "bulk", not "operator". The first version of syrus_side_approval?
+  # checked only "operator" and silently dropped bulk approvals
+  # through to the GitHub-side fallback, which then returned "not
+  # approved" if no PR review existed. Production hit this on a
+  # bulk-approved batch of four Jobs that all failed with
+  # "auto_merge: PR is not approved" — see the SYRUS_SIDE_APPROVAL_VIAS
+  # constant for the full whitelist.
+  it "recognises bulk-approve (approved_via: \"bulk\") as a Syrus-side approval" do
+    job.update_columns(state: "landing", approved_at: Time.current, approved_via: "bulk")
+
+    result = described_class.new(job: job.reload, client: client).evaluate
+
+    expect(result).to be_merge_ready
+    expect(result).to be_approved
+  end
+
+  it "recognises auto-rule approval (approved_via: \"auto_rule\") as a Syrus-side approval" do
+    job.update_columns(state: "landing", approved_at: Time.current, approved_via: "auto_rule")
+
+    result = described_class.new(job: job.reload, client: client).evaluate
+
+    expect(result).to be_merge_ready
+    expect(result).to be_approved
+  end
+
+  it "ignores github_review approvals as a Syrus-side gate bypass" do
     # github_review approvals are already counted via pr_reviews — they
     # shouldn't be double-counted through the local-DB path. With no
     # APPROVED review on the GitHub side, the gate should block.

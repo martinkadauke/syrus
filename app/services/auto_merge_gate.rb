@@ -3,6 +3,13 @@ class AutoMergeGate
   WRITE_ASSOCIATIONS = %w[OWNER MEMBER COLLABORATOR].freeze
   TRANSIENT_MERGEABLE_STATES = %w[unknown has_hooks].freeze
 
+  # Approval vias the operator deliberately set via Syrus UI or
+  # configuration — distinct from `github_review`, which is the
+  # PR-review-mirror path (and already counted via formal_approval?).
+  # New approval mechanisms in Syrus should add their via here so the
+  # gate honors them without a separate code change.
+  SYRUS_SIDE_APPROVAL_VIAS = %w[operator bulk auto_rule].freeze
+
   Result = Struct.new(:outcome, :approved, :reason, :pr, keyword_init: true) do
     def merge_ready? = outcome == :ready
     def closed? = outcome == :closed
@@ -60,16 +67,16 @@ class AutoMergeGate
   end
 
   def approved?(pr)
-    syrus_operator_approval? || formal_approval?(pr) || slash_approval?(pr)
+    syrus_side_approval? || formal_approval?(pr) || slash_approval?(pr)
   end
 
-  # Operator clicked Approve in the Syrus UI. The DB carries the
-  # authoritative record (`approved_via: "operator"`); the gate
-  # honors it without re-checking GitHub. The JobsController#approve
-  # path also tries to leave a real GitHub review so branch
-  # protection passes at merge time, but that's a separate concern
-  # — even if the review write fails, the gate still recognises the
-  # local approval and we surface the GitHub failure at merge_pull_request.
+  # The operator deliberately approved this Job via Syrus — single-
+  # job Approve button (`via: "operator"`), bulk approve from the
+  # dashboard (`via: "bulk"`), or an auto-approval rule the operator
+  # configured (`via: "auto_rule"`). All three express the same
+  # human intent and should pass the gate without re-checking
+  # GitHub. The github_review via is intentionally excluded; the
+  # GitHub side already passes via formal_approval?.
   #
   # We deliberately do NOT use Job#approved? here. That's the AASM
   # state predicate; by the time AutoMerge runs the gate, the Job
@@ -77,10 +84,10 @@ class AutoMergeGate
   # returns false even though the operator did approve. The
   # persistent metadata columns (approved_via + approved_at) are
   # the source of truth — fail_landing / defer_landing clear them,
-  # so "via=operator + at present" really does mean "still
+  # so "syrus-side via + at present" really does mean "still
   # approved" regardless of current state.
-  def syrus_operator_approval?
-    @job.approved_via.to_s == "operator" && @job.approved_at.present?
+  def syrus_side_approval?
+    SYRUS_SIDE_APPROVAL_VIAS.include?(@job.approved_via.to_s) && @job.approved_at.present?
   end
 
   def formal_approval?(_pr)
