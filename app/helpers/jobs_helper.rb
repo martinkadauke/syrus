@@ -220,14 +220,26 @@ module JobsHelper
     end
   end
 
+  # Returns an HTML-safe caption containing a <time> tag from
+  # relative_timestamp. String-interpolating an html_safe SafeBuffer
+  # into a plain "..." String literal strips the safe flag, so ERB
+  # then escapes the entire result and the operator sees the raw
+  # <time datetime="..."> tag rendered as visible text. safe_join
+  # escapes the non-safe segments individually and preserves the
+  # already-safe time tag, giving us correct rendering without
+  # opening an XSS on approval_evidence values that flow into actor.
   def approval_caption(job)
     return "Not approved" if job.approved_at.blank?
-    return "Approved by #{approval_actor(job)} #{relative_timestamp(job.approved_at)}" if job.approved_via == "auto_rule"
 
     actor = approval_actor(job)
-    via = approval_via_label(job)
     time = relative_timestamp(job.approved_at)
-    "Approved by #{actor} via #{via} #{time}"
+
+    if job.approved_via == "auto_rule"
+      safe_join([ "Approved by ", actor, " ", time ])
+    else
+      via = approval_via_label(job)
+      safe_join([ "Approved by ", actor, " via ", via, " ", time ])
+    end
   end
 
   def approval_actor(job)

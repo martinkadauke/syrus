@@ -11,6 +11,46 @@ RSpec.describe JobsHelper, type: :helper do
     end
   end
 
+  describe "#approval_caption" do
+    let(:job) do
+      j = Factories.job
+      j.update_columns(
+        approved_at: Time.zone.parse("2026-05-17T01:13:09Z"),
+        approved_via: "github_review",
+        approval_evidence: {}
+      )
+      j
+    end
+
+    it "preserves the <time> tag from relative_timestamp as raw HTML" do
+      caption = helper.approval_caption(job)
+
+      expect(caption).to be_html_safe
+      expect(caption).to include("<time")
+      expect(caption).to include('datetime="2026-05-17T01:13:09Z"')
+      # Regression: before the safe_join fix, ERB escaped the
+      # entire interpolated string and the operator saw
+      # `<time datetime=...>` rendered as visible text.
+      expect(caption).not_to include("&lt;time")
+    end
+
+    it "escapes operator-controllable evidence in the actor name" do
+      job.update_column(:approved_via, "auto_rule")
+      job.update_column(:approval_evidence, { "rule" => "<script>alert(1)</script>" })
+
+      caption = helper.approval_caption(job)
+
+      expect(caption).to be_html_safe
+      expect(caption).not_to include("<script>")
+      expect(caption).to include("&lt;script&gt;")
+    end
+
+    it "returns a plain string when the job isn't approved" do
+      job.update_columns(approved_at: nil, approved_via: nil)
+      expect(helper.approval_caption(job)).to eq("Not approved")
+    end
+  end
+
   describe "#current_step_caption" do
     let(:job) { job_with_workflow }
 
