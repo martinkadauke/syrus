@@ -120,6 +120,29 @@ RSpec.describe ProcessRunner do
     expect(result.duration_s).to be < 5
   end
 
+  it "detects a parent that exits while a child holds the stdout pipe open" do
+    # Reproduces today's edge case: the agent process exits but a
+    # child it spawned inherits the stdout fd and keeps the pipe
+    # alive, so the Ruby reader never sees EOF. ProcessRunner's
+    # aliveness probe (`Process.kill 0, parent_pid`) detects the
+    # parent's death directly and terminates the process group.
+    skip "bash not available" unless system("which bash >/dev/null 2>&1")
+
+    result = described_class.new(
+      env: {},
+      command: [ "bash", "-c", "sleep 10 & disown; exit 0" ],
+      chdir: @dir,
+      timeout: 30,
+      silent_timeout: nil,
+      kill_grace_seconds: 0
+    ).run
+
+    # Without the aliveness probe, the run would hang at least 10s
+    # waiting for the disowned child's pipe to close. With the probe,
+    # it completes in well under a second.
+    expect(result.duration_s).to be < 3
+  end
+
   it "does not kill a process that keeps producing output within silent_timeout" do
     # The subprocess prints every 100ms for 1 second, well under
     # silent_timeout. ProcessRunner should let it complete cleanly.

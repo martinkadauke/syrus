@@ -59,6 +59,20 @@ Rails.application.routes.draw do
         get  "workflows/:id",                   to: "workflows#show"
         post "workflows/:id/retry_step",        to: "workflows#retry_step"
         post "workflows/:id/cleanup_workspace", to: "workflows#cleanup_workspace"
+
+        # Subprocess inventory — see Admin::SpawnedProcessesController.
+        # Index supports ?state=running|finished|all (default
+        # "active_or_recent"), ?kind=, ?hostname=, ?since=,
+        # ?run_id=, ?workflow_id=. Detail returns the same payload
+        # plus host metrics (cpu_percent, rss_bytes) when running.
+        # Kill flips kill_requested_at — the owning worker pod
+        # polls that flag and terminates the local pid; the response
+        # returns the updated row immediately.
+        resources :processes, only: %i[ index show ], controller: "spawned_processes" do
+          member do
+            post :kill
+          end
+        end
       end
     end
   end
@@ -212,6 +226,15 @@ Rails.application.routes.draw do
     # Stuck-things watchlist — Run heartbeat stale or Workflow
     # nearing prune. See Admin::StuckItems for the definition.
     get "stuck", to: "stuck#index", as: :stuck
+
+    # Subprocess inventory — see Admin::SpawnedProcessesController.
+    # Shows every claude/codex/git/grader/prepare subprocess Syrus
+    # has spawned, with staleness, timeouts, and a kill button.
+    resources :processes, only: %i[ index show ], controller: "spawned_processes" do
+      member do
+        post :kill
+      end
+    end
 
     get  "installations",         to: "installations#index",   as: :installations
     post "installations/refresh", to: "installations#refresh", as: :installations_refresh

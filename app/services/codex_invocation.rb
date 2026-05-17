@@ -67,6 +67,7 @@ class CodexInvocation
       cache_creation_input_tokens: nil,
       cache_read_input_tokens: nil
     }
+    current_run = Thread.current[:syrus_current_run]
     runner_result = ProcessRunner.new(
       env: env,
       command: cmd,
@@ -76,6 +77,9 @@ class CodexInvocation
       # for codex: continuous JSONL streaming, prolonged silence is
       # a wedged process, not normal pacing.
       silent_timeout: AgentInvocation::SILENT_TIMEOUT_SECONDS,
+      kind: "agent",
+      run: current_run,
+      workflow: current_run&.workflow,
       on_output_line: ->(line) do
         update = process_event(line, log_sink)
         metadata.merge!(update.compact) if update

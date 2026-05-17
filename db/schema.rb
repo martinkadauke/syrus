@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_17_040949) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_17_185503) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -372,8 +372,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_17_040949) do
     t.integer "issue_number"
     t.string "issue_title"
     t.string "kind", default: "issue", null: false
-    t.string "last_ci_handled_sha"
     t.text "landing_failure_reason"
+    t.string "last_ci_handled_sha"
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
     t.boolean "operator_chat_disabled", default: false, null: false
@@ -403,8 +403,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_17_040949) do
     t.index ["repository_id", "state"], name: "index_jobs_on_repository_id_and_state"
     t.index ["repository_id"], name: "index_jobs_on_repository_id"
     t.index ["scheduled_task_id"], name: "index_jobs_on_scheduled_task_id"
-    t.index ["state", "approved_at", "id"], name: "index_jobs_on_state_and_approved_at_and_id"
     t.index ["stack_base"], name: "index_jobs_on_stack_base"
+    t.index ["state", "approved_at", "id"], name: "index_jobs_on_state_and_approved_at_and_id"
     t.index ["triaging_reason"], name: "index_jobs_on_triaging_reason"
     t.index ["user_id"], name: "index_jobs_on_user_id"
     t.index ["validity"], name: "index_jobs_on_validity"
@@ -608,16 +608,43 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_17_040949) do
     t.string "kind", null: false
     t.string "name", null: false
     t.integer "position", default: 0, null: false
-    t.string "subject_type", null: false
+    t.string "subject_type", limit: 16, default: "job", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id"
-    t.index ["kind", "subject_type"], name: "index_smart_folders_on_kind_and_subject_type"
     t.index ["kind"], name: "index_smart_folders_on_kind"
     t.index ["subject_type", "user_id"], name: "index_smart_folders_on_subject_type_and_user_id"
     t.index ["user_id", "name", "subject_type"], name: "index_smart_folders_on_user_id_name_subject_type", unique: true
     t.index ["user_id", "position"], name: "index_smart_folders_on_user_id_and_position"
-    t.index ["user_id", "subject_type", "name"], name: "index_smart_folders_on_user_id_and_subject_type_and_name", unique: true
     t.index ["user_id"], name: "index_smart_folders_on_user_id"
+  end
+
+  create_table "spawned_processes", force: :cascade do |t|
+    t.string "command", limit: 4096, null: false
+    t.datetime "created_at", null: false
+    t.integer "exit_status"
+    t.datetime "finished_at"
+    t.string "hostname", limit: 255, null: false
+    t.datetime "kill_requested_at"
+    t.integer "kill_requested_by_user_id"
+    t.string "kind", limit: 32, null: false
+    t.datetime "last_chunk_at"
+    t.string "outcome", limit: 32
+    t.integer "pgid"
+    t.integer "pid"
+    t.integer "run_id"
+    t.integer "silent_timeout_s"
+    t.datetime "started_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "wall_timeout_s"
+    t.string "workdir", limit: 4096
+    t.integer "workflow_id"
+    t.index ["finished_at", "last_chunk_at"], name: "idx_spawned_processes_active"
+    t.index ["finished_at"], name: "index_spawned_processes_on_finished_at"
+    t.index ["hostname"], name: "index_spawned_processes_on_hostname"
+    t.index ["kill_requested_by_user_id"], name: "index_spawned_processes_on_kill_requested_by_user_id"
+    t.index ["kind"], name: "index_spawned_processes_on_kind"
+    t.index ["run_id"], name: "index_spawned_processes_on_run_id"
+    t.index ["workflow_id"], name: "index_spawned_processes_on_workflow_id"
   end
 
   create_table "steps", force: :cascade do |t|
@@ -773,6 +800,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_17_040949) do
   add_foreign_key "scheduled_tasks", "users"
   add_foreign_key "sessions", "users"
   add_foreign_key "smart_folders", "users"
+  add_foreign_key "spawned_processes", "runs"
+  add_foreign_key "spawned_processes", "users", column: "kill_requested_by_user_id"
+  add_foreign_key "spawned_processes", "workflows"
   add_foreign_key "steps", "steps", column: "next_step_id"
   add_foreign_key "steps", "workflows"
   add_foreign_key "whiteboards", "chat_sessions"

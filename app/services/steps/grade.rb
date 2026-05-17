@@ -70,6 +70,9 @@ module Steps
           command: [ "bash", "-c", grader.command ],
           chdir: workspace.path,
           timeout: grader.timeout_minutes.minutes,
+          kind: "grader",
+          run: run,
+          workflow: workflow,
           on_output_chunk: ->(chunk) do
             file.write(chunk)
             file.flush

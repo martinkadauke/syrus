@@ -154,6 +154,23 @@ in-flight Runs.
 | `GET /api/v1/admin/queue/failed[?since=ISO8601]` | Recent failed_executions |
 | `GET /api/v1/admin/queue/recurring` | Recurring tasks + last_run_at + last_finished_at |
 | `GET /api/v1/admin/queue/workers` | Workers (with stale flag) + all_processes |
+| `GET /api/v1/admin/processes` | Subprocess inventory (agent/grader/git/prepare). Filters: `state=running|finished|all`, `kind`, `hostname`, `run_id`, `workflow_id`, `since=ISO8601`. Use for "what's running right now across the whole worker pool" or "show me everything a particular Run spawned". |
+| `GET /api/v1/admin/processes/:id` | One subprocess record + host metrics (CPU%, RSS bytes) when still running. Read from /proc on Linux. |
+
+### "What's a wedged worker actually doing?"
+
+When the queue feels stuck but the workers look "alive", check the
+subprocess inventory before assuming SQ is to blame:
+
+```bash
+curl -s -H "Authorization: Bearer $SYRUS_TOKEN" \
+  "$SYRUS_BASE/api/v1/admin/processes?state=running" \
+  | jq '.processes[] | {kind, command: .command[0:80], stale, duration_s, hostname}'
+```
+
+A subprocess marked `stale: true` whose `duration_s` exceeds the
+typical wall-clock window for its kind is the agent or grader that's
+holding up the chain. The `Run` link points at the transcript.
 
 ### Mutations (require explicit operator authorization)
 
@@ -166,6 +183,7 @@ workflow + creates a fresh Run. OK?"
 | `POST /api/v1/admin/queue/reap_stale_runs` | Runs ReapStaleRunsJob inline. Safe — same code path the recurring scheduler runs every minute. |
 | `POST /api/v1/admin/workflows/:id/retry_step` | Reopens workflow + failed step, creates a fresh Run. Inline-chain dispatch picks it up. |
 | `POST /api/v1/admin/workflows/:id/cleanup_workspace` | Tears down the workspace ahead of WorkflowWorkspacePruneJob's daily sweep. **Destroys** committed-but-unpushed work in the workspace; check `workflow.cleaned_up_at` first to confirm it's not already gone. |
+| `POST /api/v1/admin/processes/:id/kill` | Stamps `kill_requested_at` on the SpawnedProcess. The owning worker's ProcessRunner polls the flag once a second and terminates the local pid (TERM then KILL after 5s grace). Cross-pod safe — the web pod can't signal worker pids directly, this is the DB-based handshake. Returns 409 if already finalized. |
 
 ## Error envelope
 

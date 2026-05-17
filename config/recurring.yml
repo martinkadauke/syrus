@@ -31,6 +31,12 @@ default: &default
   reap_classifier_pending:
     class: ReapClassifierPendingJob
     schedule: every 5 minutes
+  reap_orphaned_spawned_processes:
+    class: ReapOrphanedSpawnedProcessesJob
+    schedule: every 5 minutes
+  prune_spawned_processes:
+    class: SpawnedProcessPruneJob
+    schedule: every day at 3:20am
   reap_awaiting_operator_runs:
     class: ReapAwaitingOperatorRunsJob
     schedule: every hour

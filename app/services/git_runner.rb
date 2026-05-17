@@ -1,5 +1,3 @@
-require "open3"
-
 class GitRunner
   # Redacts tokens out of any string that contains a
   # `https://x-access-token:TOKEN@github.com/...` URL — the form
@@ -13,6 +11,12 @@ class GitRunner
   #     e.g. "fatal: unable to access 'https://x-access-token:T@…'")
   AUTH_URL_PATTERN = %r{(https://x-access-token:)[^@\s]+(@)}.freeze
 
+  # Wall-clock ceiling for any git operation. Network-bound clones /
+  # fetches against very large repos can be slow; 10 minutes covers
+  # the realistic upper end. ProcessRunner's aliveness probe still
+  # catches the "git process died, child held the pipe" case faster.
+  DEFAULT_TIMEOUT = 10.minutes
+
   def self.redact(text)
     text.to_s.gsub(AUTH_URL_PATTERN, '\1[REDACTED]\2')
   end
@@ -20,7 +24,7 @@ class GitRunner
   class GitError < StandardError
     attr_reader :command, :exit_status, :output
 
-    OUTPUT_TAIL_LIMIT = 1500   # chars; enough to surface git's "fatal: ..." line(s)
+    OUTPUT_TAIL_LIMIT = 1500 # chars; enough to surface git's "fatal: ..." line(s)
 
     def initialize(command, exit_status, output)
       @command = command.map { |a| GitRunner.redact(a) }
@@ -56,19 +60,33 @@ class GitRunner
   # Per-call env is merged with the instance env (per-call wins).
   # Useful for one-shot flags like GIT_TERMINAL_PROMPT=0 that you
   # only want on git operations that talk to a remote.
-  def run(*args, chdir: nil, env: {})
+  def run(*args, chdir: nil, env: {}, timeout: DEFAULT_TIMEOUT)
     cmd = [ "git", *args.map(&:to_s) ]
     output = +""
+    log_sink = @log_sink
+    current_run = Thread.current[:syrus_current_run]
 
-    Open3.popen2e(@env.merge(env), *cmd, chdir: chdir || Dir.pwd) do |stdin, stream, wait_thread|
-      stdin.close
-      stream.each_line do |raw_line|
+    # Route through ProcessRunner so the aliveness probe, kill switch,
+    # SpawnedProcess registration, and heartbeat all apply to git ops
+    # too — same coverage as agent and grader subprocesses. Without
+    # this, a wedged `git fetch` would hold a worker thread silently.
+    result = ProcessRunner.new(
+      env: @env.merge(env),
+      command: cmd,
+      chdir: chdir || Dir.pwd,
+      timeout: timeout.to_i,
+      kind: "git",
+      run: current_run,
+      workflow: current_run&.workflow,
+      on_output_line: ->(raw_line) do
         line = self.class.redact(raw_line)
         output << line
-        @log_sink.call(line)
+        log_sink.call(line)
       end
-      status = wait_thread.value
-      raise GitError.new(args, status.exitstatus, output) unless status.success?
+    ).run
+
+    unless result.success?
+      raise GitError.new(args, result.exit_status || -1, output)
     end
 
     output

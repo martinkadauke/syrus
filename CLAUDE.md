@@ -290,11 +290,27 @@ preserve scroll position across morphs.
   (filterable by `pr_number`, `issue_number`, `repo`, `state`, `user`,
   `has_active_workflow`, `failed_in_last_24h`), `/jobs/:id`, `/workflows/:id`,
   `/runs` (cross-Job flat list; filterable by `state`, `trigger_kind`, `job_id`,
-  `since`), `/queue`, etc. Bearer-token auth via `User#api_token`
+  `since`), `/queue`, `/processes` (subprocess inventory; filters
+  `state=running|finished|all`, `kind`, `hostname`, `run_id`, `workflow_id`,
+  `since`; `POST /processes/:id/kill` stamps `kill_requested_at` for the
+  cross-pod kill switch), etc. Bearer-token auth via `User#api_token`
   (deterministic-encrypted column). Nested serializers are resilient — a single
   bad row emits `{ error_serializing: "..." }` rather than 500ing the whole
   response (`Admin::JobStateSerializer`). See `app/controllers/api/` and
   `app/services/admin/`.
+- **Subprocess inventory (`SpawnedProcess`)** — every subprocess spawned
+  through `ProcessRunner` (agent CLIs, graders, git, prepare) registers a
+  row, heartbeats on every output chunk, and finalizes on exit. `kind`
+  is a strict CONSTANT enum (`SpawnedProcess::KINDS`) — new spawn sites
+  must register a kind. The operator-facing list lives at `/admin/processes`
+  with kind/hostname/run filters + per-row Kill button. Kill stamps
+  `kill_requested_at`; the owning worker's `ProcessRunner` polls the row
+  once per second and terminates the local pid. `SpawnedProcess#host_metrics`
+  reads `/proc/<pid>/{status,stat}` on Linux for live CPU/RSS readout.
+  Two recurring jobs keep the table tidy:
+  `ReapOrphanedSpawnedProcessesJob` (every 5 min) finalizes hostname-local
+  rows whose pid is gone, and `SpawnedProcessPruneJob` (daily 3:20am)
+  deletes finished rows past 7 days.
 
 ## Tests are not optional
 

@@ -64,6 +64,9 @@ module Steps
         command: [ "bash", "-c", cmd ],
         chdir: workspace.path,
         timeout: PER_COMMAND_TIMEOUT,
+        kind: "prepare",
+        run: run,
+        workflow: workflow,
         on_output_chunk: ->(chunk) { stream_buffered_chunk(buffer, chunk) }
       ).run
       flush_log_buffer(buffer)

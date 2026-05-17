@@ -3,12 +3,15 @@ require "json"
 class AgentInvocation
   DEFAULT_TIMEOUT_SECONDS = 30.minutes.to_i
   # Kill the agent subprocess if it produces no output for this long.
-  # The agent's stream-json output is one event per token + tool call,
-  # so multi-minute silence is a wedge, not normal pacing. Today's
-  # incident: a codex process stopped emitting output and the worker
-  # thread blocked on the read for 50+ minutes, holding its SolidQueue
-  # claim open and starving the whole pod. See app/services/process_runner.rb.
-  SILENT_TIMEOUT_SECONDS = 5.minutes.to_i
+  # Sized to accommodate long tool execs — a full test suite, a
+  # `bundle install`, or a slow `git fetch` invoked from inside the
+  # agent can legitimately silence the stream-json stream for many
+  # minutes. The wall-clock DEFAULT_TIMEOUT_SECONDS (30 min) is the
+  # absolute ceiling; 20 min of silence is the "wedged, not slow"
+  # heuristic. A separate aliveness probe in ProcessRunner catches
+  # the case where the subprocess is dead but a child held the pipe —
+  # that fires immediately regardless of this threshold.
+  SILENT_TIMEOUT_SECONDS = 20.minutes.to_i
   # Fallback only for callers that don't pass max_turns. RunJob threads
   # the per-user ceiling (User#agent_max_turns) through every invocation
   # in production. Kept in sync with User::AGENT_MAX_TURNS_RANGE's
@@ -124,15 +127,16 @@ class AgentInvocation
       cost_usd: nil, input_tokens: nil, output_tokens: nil,
       cache_creation_input_tokens: nil, cache_read_input_tokens: nil
     }
+    current_run = Thread.current[:syrus_current_run]
     runner_result = ProcessRunner.new(
       env: env,
       command: cmd,
       chdir: workspace_path,
       timeout: timeout,
-      # Claude stream-json prints one event per line for every model
-      # token + tool call — natural cadence is sub-second. 5 minutes
-      # of complete silence means the agent is wedged, not thinking.
       silent_timeout: SILENT_TIMEOUT_SECONDS,
+      kind: "agent",
+      run: current_run,
+      workflow: current_run&.workflow,
       stop_requested: stop_requested,
       on_output_line: ->(line) do
         update = process_event(line, log_sink)
