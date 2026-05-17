@@ -15,6 +15,13 @@
 # healthy to anyone counting PIDs; it was deeply broken to anyone
 # checking forward progress. This script catches that.
 
+# Bundler activates the gems in the Gemfile.lock onto $LOAD_PATH.
+# In a deployment install (`bundle install --deployment` or its
+# modern equivalent) mysql2 lives under vendor/bundle/... and a bare
+# `require "mysql2"` will fail with LoadError. We want gem activation
+# but NOT Rails boot — Bundler.setup is the right amount of work.
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
+require "bundler/setup"
 require "mysql2"
 
 FRESHNESS_SECONDS = Integer(ENV.fetch("HEALTHCHECK_FRESHNESS_SECONDS", "180"))
