@@ -161,7 +161,9 @@
   <% end %>
 
   <%# Shared comment dialog — populated by issue-comment controller %>
-  <dialog data-issue-comment-target="dialog"
+  <dialog id="repository-<%= @repository.id %>-issues-comment-dialog"
+          data-turbo-permanent
+          data-issue-comment-target="dialog"
           class="rounded-lg shadow-xl p-0 w-full max-w-lg backdrop:bg-black/50">
     <%= form_with url: comment_issue_repository_path(@repository), method: :post, class: "p-6 space-y-4" do |f| %>
       <h2 class="text-base font-semibold text-gray-900">Comment on

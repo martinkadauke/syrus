@@ -122,7 +122,9 @@
                 disabled: !@job.open?,
                 primary: { label: "Retry", path: run_again_job_path(@job) },
                 options: retry_context_options) %>
-          <dialog data-retry-context-target="dialog"
+          <dialog id="job-<%= @job.id %>-retry-context-dialog"
+                  data-turbo-permanent
+                  data-retry-context-target="dialog"
                   class="rounded-lg shadow-xl p-0 w-full max-w-lg backdrop:bg-black/50">
             <%= form_with url: run_again_job_path(@job), method: :post, class: "p-6 space-y-4" do |f| %>
               <h2 class="text-base font-semibold text-gray-900">Retry with additional context</h2>

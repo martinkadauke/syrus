@@ -1,6 +1,7 @@
 <% dialog_id = "chat_session_#{chat_session.id}_#{kind == "epic" ? "epic" : "job"}_proposal_dialog" %>
 
 <dialog id="<%= dialog_id %>"
+        data-turbo-permanent
         class="w-full max-w-2xl rounded-lg border border-gray-200 p-0 shadow-xl backdrop:bg-gray-900/30"
         data-chat-target="proposalDialog">
   <div class="border-b border-gray-200 px-5 py-4">

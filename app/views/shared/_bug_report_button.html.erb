@@ -10,7 +10,15 @@
   </svg>
 </button>
 
-<dialog data-bug-report-target="dialog"
+<%# data-turbo-permanent keeps the dialog (and its in-flight state:
+    showModal() open attribute, screenshot previews, half-typed
+    title/description) intact across Turbo morph passes. Without
+    it, every broadcast_refresh from a running Job would morph the
+    dialog back to closed and wipe the operator's draft. Requires
+    an id so morph can match it across page versions. %>
+<dialog id="bug-report-dialog"
+        data-turbo-permanent
+        data-bug-report-target="dialog"
         class="w-[calc(100vw-2rem)] max-w-2xl rounded-lg p-0 shadow-xl backdrop:bg-black/50">
   <%= form_with url: bug_reports_path,
         method: :post,

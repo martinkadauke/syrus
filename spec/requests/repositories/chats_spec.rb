@@ -92,8 +92,15 @@ RSpec.describe "Repository chats", type: :request do
     end
 
     it "renders attached Epic reference graph chips collapsed" do
+      # The dependency graph renderer (since commit 9e01b08) only
+      # renders when an Epic has external dependencies — either an
+      # EpicDependency edge to another Epic, or a Job blocker from a
+      # different Epic. Wire one up so the partial actually emits
+      # the graph instead of "No external dependencies".
       chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
       epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
+      blocker_epic = Factories.epic(user: user, repository: repo, title: "Excavate trench")
+      EpicDependency.create!(epic: epic, depends_on_epic: blocker_epic)
       Factories.job_record(user: user, repository: repo, epic: epic, issue_number: 7, issue_title: "Sweep marble")
       chat.chat_attachments.create!(attachable: epic)
 

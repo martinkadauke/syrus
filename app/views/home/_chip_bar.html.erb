@@ -16,8 +16,25 @@
   schema = local_assigns.fetch(:schema, Filters::Schema.for(subject: subject, user: Current.user))
   filter_tree_json = filter.to_h.to_json
   schema_json = schema.to_json
+  # Two chip-bars typically render per page (mobile + desktop). Each
+  # needs a stable, unique id so data-turbo-permanent can match across
+  # morph passes. The viewport bucket (lg vs. flex) is the natural
+  # discriminator — but allow callers to override via `key:` for
+  # future cases.
+  viewport_bucket = local_assigns.fetch(:class_name, "").to_s.include?("lg:block") ? "desktop" : "mobile"
+  permanent_id = local_assigns.fetch(:key, "chip-bar-#{subject}-#{viewport_bucket}")
 %>
-<div data-controller="chip-bar filter-memory"
+<%# data-turbo-permanent preserves the controller's live DOM (open
+    add-menu / chip-editor popovers, half-typed search input,
+    pending-add target) across Turbo morphs. Without this, every
+    broadcast_refresh tick from a running Job snapped the popovers
+    closed mid-interaction. The trade-off: chip rendering after morph
+    is driven by treeValueChanged + the turbo:render listener inside
+    the controller, not by re-serializing data-* attributes from the
+    server. %>
+<div id="<%= permanent_id %>"
+     data-turbo-permanent
+     data-controller="chip-bar filter-memory"
      data-chip-bar-tree-value="<%= filter_tree_json %>"
      data-chip-bar-schema-value="<%= schema_json %>"
      data-chip-bar-submit-url-value="<%= action_url %>"
