@@ -54,7 +54,7 @@ RSpec.describe Filters::Chips::Jobs::Attention do
     it "includes every defined expansion as parsed AST nodes" do
       expansions = described_class.expansions
       expect(expansions.keys).to match_array(%w[
-        pinned in_progress inbox awaiting_approval just_failed in_review
+        pinned in_progress inbox awaiting_approval just_failed
         stale blocked merged_this_week awaiting_epic needs_review
       ])
     end

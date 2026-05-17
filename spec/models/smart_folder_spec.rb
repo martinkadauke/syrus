@@ -2,22 +2,22 @@ require "rails_helper"
 
 RSpec.describe SmartFolder do
   it "creates the built-in folders as system-owned rows" do
-    expect { described_class.ensure_builtins! }.to change(described_class, :count).by(22)
+    # 11 Job built-ins (post "In review" removal) + 6 Epic + 4 Workflow = 21.
+    expect { described_class.ensure_builtins! }.to change(described_class, :count).by(21)
 
     expect(described_class::JOB_BUILTINS).to eq(described_class::BUILTIN_DEFINITIONS)
     expect(described_class::EPIC_BUILTINS).to eq(described_class::EPIC_BUILTIN_DEFINITIONS)
     expect(described_class.builtins.pluck(:name)).to eq([
       "Pinned",
       "In progress",
+      "Invalid",
+      "Awaiting Epic",
       "Inbox",
       "Awaiting your approval",
       "Landing queue",
       "Just failed",
-      "In review",
       "Blocked",
       "Stale",
-      "Awaiting Epic",
-      "Needs review",
       "Merged this week"
     ])
     expect(described_class.builtins.pluck(:user_id).uniq).to eq([ nil ])
@@ -55,11 +55,14 @@ RSpec.describe SmartFolder do
     by_name = described_class.builtins.to_h { |f| [ f.name, f.visibility ] }
 
     expect(by_name["Inbox"]).to eq(:always)
-    expect(by_name["In review"]).to eq(:always)
+    expect(by_name["Landing queue"]).to eq(:when_present)
     expect(by_name["Pinned"]).to eq(:when_present)
+    expect(by_name["Invalid"]).to eq(:when_present)
+    expect(by_name["Awaiting Epic"]).to eq(:when_present)
     expect(by_name["Stale"]).to eq(:when_present)
     expect(by_name["Merged this week"]).to eq(:on_demand)
-    expect(by_name["Needs review"]).to eq(:on_demand)
+    expect(by_name).not_to have_key("In review")
+    expect(by_name).not_to have_key("Needs review")
 
     epic_by_name = described_class.builtins(:epic).to_h { |f| [ f.name, f.visibility ] }
     expect(epic_by_name["In progress"]).to eq(:always)

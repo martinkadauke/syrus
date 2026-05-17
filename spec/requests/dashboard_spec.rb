@@ -1326,24 +1326,32 @@ RSpec.describe "Dashboard", type: :request do
         # "Awaiting your approval" is `:when_present` — it only
         # appears in the sidebar if there's at least one Job in
         # `implemented` state. Set one up so the folder rendering
-        # path that surfaces it is exercised.
+        # path that surfaces it is exercised. Also create an
+        # invalid + an awaiting_epic Job so the high-priority
+        # when_present folders show up.
         failed = Factories.job(repository: repo, issue_number: 1)
+        failed.latest_workflow.update!(state: "failed", finished_at: Time.current)
         failed.initial_run.update!(state: "failed", finished_at: Time.current)
         Factories.job(repository: repo, issue_number: 2)
         awaiting_approval = Factories.job(repository: repo, issue_number: 3)
         awaiting_approval.update_columns(state: "implemented")
+        Factories.job_record(repository: repo, issue_number: 4, state: "triaging",
+                              validity: "duplicate", invalidation_reason: "covered")
+        Factories.job_record(repository: repo, issue_number: 5, state: "triaging",
+                              triaging_reason: "pending_epic_ref")
 
         get dashboard_jobs_path
 
         document = Nokogiri::HTML(response.body)
         attention = document.at_css("aside")
-        # Always-visible + when_present folders that have at least
-        # one matching Job.
-        expect(attention.text).to include("Inbox", "Landing queue", "In review", "Awaiting your approval", "Just failed")
-        # On-demand folders live behind the "More" disclosure.
-        expect(attention.text).to include("More", "Awaiting Epic", "Needs review", "Merged this week")
-        # Sweeping retired folders means "Awaiting your move" is gone.
+        # Always-visible + populated when_present folders.
+        expect(attention.text).to include("Inbox", "Awaiting your approval", "Just failed", "Invalid", "Awaiting Epic")
+        # Retired folders are gone.
+        expect(attention.text).not_to include("In review")
+        expect(attention.text).not_to include("Needs review")
         expect(attention.text).not_to include("Awaiting your move")
+        # On-demand folders still live behind the "More" disclosure.
+        expect(attention.text).to include("More", "Merged this week")
         expect(attention.css("a").find { |link| link.text.include?("Just failed") }.text).to include("1")
       end
 
@@ -1356,15 +1364,20 @@ RSpec.describe "Dashboard", type: :request do
         details = document.at_css("aside details")
         expect(details).to be_present
         expect(details["open"]).to be_nil
-        expect(details.text).to include("Awaiting Epic", "Needs review", "Merged this week")
+        # Post-cleanup: only Merged this week is on_demand. Invalid
+        # and Awaiting Epic moved out to :when_present.
+        expect(details.text).to include("Merged this week")
+        expect(details.text).not_to include("Awaiting Epic")
+        expect(details.text).not_to include("Needs review")
+        expect(details.text).not_to include("Invalid")
       end
 
       it "auto-opens the More disclosure when an on-demand folder is active" do
         Factories.job(repository: repo, issue_number: 1)
         SmartFolder.ensure_builtins!
-        needs_review = SmartFolder.find_by!(name: "Needs review")
+        merged_this_week = SmartFolder.find_by!(name: "Merged this week")
 
-        get dashboard_jobs_path, params: { smart_folder_id: needs_review.id }
+        get dashboard_jobs_path, params: { smart_folder_id: merged_this_week.id }
 
         details = Nokogiri::HTML(response.body).at_css("aside details")
         expect(details["open"]).not_to be_nil
@@ -1430,7 +1443,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(response.body).not_to include("#3")
       end
 
-      it "shows invalid jobs in Needs review with evidence and lets the operator mark them valid" do
+      it "shows invalid jobs in the Invalid folder with evidence and lets the operator mark them valid" do
         job = Factories.job_record(
           repository: repo,
           issue_number: 5,
@@ -1441,9 +1454,9 @@ RSpec.describe "Dashboard", type: :request do
           issue_title: "Rebuild the aqueduct"
         )
         SmartFolder.ensure_builtins!
-        needs_review = SmartFolder.find_by!(name: "Needs review")
+        invalid_folder = SmartFolder.find_by!(name: "Invalid")
 
-        get dashboard_jobs_path, params: { smart_folder_id: needs_review.id }
+        get dashboard_jobs_path, params: { smart_folder_id: invalid_folder.id }
 
         expect(response.body).to include("Rebuild the aqueduct")
         expect(response.body).to include("Covered by the ancient scroll.")
@@ -1451,7 +1464,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(response.body).to include("Override (mark valid)")
 
         expect {
-          post mark_valid_job_path(job), headers: { "HTTP_REFERER" => dashboard_jobs_path(smart_folder_id: needs_review.id) }
+          post mark_valid_job_path(job), headers: { "HTTP_REFERER" => dashboard_jobs_path(smart_folder_id: invalid_folder.id) }
         }.to change { job.reload.state }.from("triaging").to("queued")
           .and change { job.runs.count }.from(0).to(1)
 
@@ -1459,7 +1472,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(job.invalidation_reason).to be_nil
         expect(job.invalidation_evidence).to eq([])
 
-        get dashboard_jobs_path, params: { smart_folder_id: needs_review.id }
+        get dashboard_jobs_path, params: { smart_folder_id: invalid_folder.id }
         expect(response.body).not_to include("Rebuild the aqueduct")
       end
 

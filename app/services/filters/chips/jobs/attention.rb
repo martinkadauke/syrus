@@ -3,7 +3,7 @@ module Filters
     module Jobs
       # Preset macro chip — value selects a named composite filter
       # (pinned / in_progress / inbox / awaiting_approval / just_failed /
-      # in_review / stale / blocked / merged_this_week / awaiting_epic /
+      # stale / blocked / merged_this_week / awaiting_epic /
       # needs_review / landing_queue). Each
       # preset compiles to whatever sub-scope it needs; the UI will
       # eventually let operators "expand" a preset chip into its
@@ -15,7 +15,7 @@ module Filters
         operators :is
 
         PRESETS = %w[
-          pinned in_progress inbox awaiting_approval just_failed in_review
+          pinned in_progress inbox awaiting_approval just_failed
           stale blocked merged_this_week awaiting_epic needs_review landing_queue
         ].freeze
 
@@ -64,14 +64,7 @@ module Filters
           "just_failed"        => -> {
             and_node(
               chip_node("state", "is", "open"),
-              chip_node("latest_run_state", "is", "failed")
-            )
-          },
-          "in_review"          => -> {
-            and_node(
-              chip_node("state", "is", "open"),
-              chip_node("pr_present", "is_true", nil),
-              chip_node("latest_workflow_state", "is", "succeeded")
+              chip_node("latest_workflow_state", "is", "failed")
             )
           },
           "stale"              => -> {
@@ -165,11 +158,7 @@ module Filters
         end
 
         def apply_just_failed
-          scope.open_threads.where(id: latest_failed_run_ids)
-        end
-
-        def apply_in_review
-          scope.open_threads.with_pr.where(id: latest_workflow_succeeded_ids)
+          scope.open_threads.where(id: latest_workflow_failed_ids)
         end
 
         def apply_stale
@@ -216,8 +205,8 @@ module Filters
              .select(:job_id)
         end
 
-        def latest_workflow_succeeded_ids
-          Workflow.where(state: "succeeded")
+        def latest_workflow_failed_ids
+          Workflow.where(state: "failed")
                   .where(<<~SQL.squish)
                     workflows.id = (
                       SELECT latest_workflows.id FROM workflows latest_workflows

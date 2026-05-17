@@ -27,18 +27,25 @@ class SmartFolder < ApplicationRecord
   end
 
   JOB_BUILTINS = [
-    { key: "pinned",           name: "Pinned",           visibility: :when_present, filter: attention_preset_filter("pinned") },
-    { key: "in_progress",      name: "In progress",      visibility: :when_present, filter: attention_preset_filter("in_progress") },
-    { key: "inbox",            name: "Inbox",            visibility: :always,       filter: attention_preset_filter("inbox") },
+    # Tier 1: high-priority alerts. Each appears above the fold only
+    # when populated — so an empty sidebar means there's nothing
+    # urgent. When populated, they sit near the top where the
+    # operator will notice them.
+    { key: "pinned",           name: "Pinned",                 visibility: :when_present, filter: attention_preset_filter("pinned") },
+    { key: "in_progress",      name: "In progress",            visibility: :when_present, filter: attention_preset_filter("in_progress") },
+    { key: "invalid",          name: "Invalid",                visibility: :when_present, filter: attention_preset_filter("needs_review") },
+    { key: "awaiting_epic",    name: "Awaiting Epic",          visibility: :when_present, filter: attention_preset_filter("awaiting_epic") },
+
+    # Tier 2: always-on routing.
+    { key: "inbox",            name: "Inbox",                  visibility: :always,       filter: attention_preset_filter("inbox") },
     { key: "awaiting_approval", name: "Awaiting your approval", visibility: :when_present, filter: attention_preset_filter("awaiting_approval") },
-    { key: "landing_queue",    name: "Landing queue",    visibility: :always,       filter: attention_preset_filter("landing_queue") },
-    { key: "just_failed",      name: "Just failed",      visibility: :when_present, filter: attention_preset_filter("just_failed") },
-    { key: "in_review",        name: "In review",        visibility: :always,       filter: attention_preset_filter("in_review") },
-    { key: "blocked",          name: "Blocked",          visibility: :when_present, filter: attention_preset_filter("blocked") },
-    { key: "stale",            name: "Stale",            visibility: :when_present, filter: attention_preset_filter("stale") },
-    { key: "awaiting_epic",    name: "Awaiting Epic",    visibility: :on_demand,    filter: attention_preset_filter("awaiting_epic") },
-    { key: "needs_review",     name: "Needs review",     visibility: :on_demand,    filter: attention_preset_filter("needs_review") },
-    { key: "merged_this_week", name: "Merged this week", visibility: :on_demand,    filter: attention_preset_filter("merged_this_week") }
+    { key: "landing_queue",    name: "Landing queue",          visibility: :when_present, filter: attention_preset_filter("landing_queue") },
+    { key: "just_failed",      name: "Just failed",            visibility: :when_present, filter: attention_preset_filter("just_failed") },
+    { key: "blocked",          name: "Blocked",                visibility: :when_present, filter: attention_preset_filter("blocked") },
+    { key: "stale",            name: "Stale",                  visibility: :when_present, filter: attention_preset_filter("stale") },
+
+    # Tier 3: historical lookups, tucked into "More" disclosure.
+    { key: "merged_this_week", name: "Merged this week",       visibility: :on_demand,    filter: attention_preset_filter("merged_this_week") }
   ].freeze
   BUILTIN_DEFINITIONS = JOB_BUILTINS
 
