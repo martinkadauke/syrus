@@ -60,7 +60,12 @@ module Filters
           )
         },
         "awaiting_approval"  => -> { chip_node("state", "is", "implemented") },
-        "just_failed"        => -> { chip_node("latest_run_state", "is", "failed") },
+        "just_failed"        => -> {
+          and_node(
+            chip_node("state", "is", "open"),
+            chip_node("latest_run_state", "is", "failed")
+          )
+        },
         "in_review"          => -> {
           and_node(
             chip_node("state", "is", "open"),
@@ -75,9 +80,12 @@ module Filters
           )
         },
         "blocked"            => -> {
-          or_node(
-            chip_node("has_blocked_deps", "is_true", nil),
-            chip_node("pr_mergeable", "is_false", nil)
+          and_node(
+            chip_node("state", "is", "open"),
+            or_node(
+              chip_node("has_blocked_deps", "is_true", nil),
+              chip_node("pr_mergeable", "is_false", nil)
+            )
           )
         },
         "merged_this_week"   => -> {
@@ -89,7 +97,10 @@ module Filters
         },
         "awaiting_epic"      => -> { chip_node("triaging_reason", "is", "pending_epic_ref") },
         "needs_review"       => -> {
-          chip_node("validity", "is_one_of", %w[duplicate already_implemented])
+          and_node(
+            chip_node("state", "is", "open"),
+            chip_node("validity", "is_one_of", %w[duplicate already_implemented])
+          )
         }
       }.freeze
 
@@ -153,7 +164,7 @@ module Filters
       end
 
       def apply_just_failed
-        scope.where(id: latest_failed_run_ids)
+        scope.open_threads.where(id: latest_failed_run_ids)
       end
 
       def apply_in_review
@@ -165,7 +176,8 @@ module Filters
       end
 
       def apply_blocked
-        scope.where(id: blocked_dependency_ids).or(scope.where(pr_mergeable: false))
+        open = scope.open_threads
+        open.where(id: blocked_dependency_ids).or(open.where(pr_mergeable: false))
       end
 
       def apply_merged_this_week
@@ -179,7 +191,7 @@ module Filters
       end
 
       def apply_needs_review
-        scope.where(id: needs_review_ids)
+        scope.open_threads.where(id: needs_review_ids)
       end
 
       def apply_landing_queue

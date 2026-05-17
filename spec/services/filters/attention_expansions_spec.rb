@@ -21,10 +21,14 @@ RSpec.describe Filters::Chips::Attention do
       )
     end
 
-    it "returns an OR tree for disjunctive presets like `blocked`" do
+    it "wraps disjunctive presets like `blocked` in state=open AND (...)" do
       blocked = described_class.expansion_for("blocked")
-      expect(blocked).to have_key("or")
-      expect(blocked["or"]).to include(
+      expect(blocked).to have_key("and")
+      expect(blocked["and"]).to include(
+        hash_including("field" => "state", "op" => "is", "value" => "open")
+      )
+      or_branch = blocked["and"].find { |c| c.key?("or") }
+      expect(or_branch["or"]).to include(
         hash_including("field" => "has_blocked_deps", "op" => "is_true"),
         hash_including("field" => "pr_mergeable", "op" => "is_false")
       )
