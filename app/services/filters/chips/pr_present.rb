@@ -1,24 +1,19 @@
 module Filters
   module Chips
-    # "Has a PR" / "No PR" — matches the existing `pr=has_pr/no_pr`
-    # dropdown semantics. Will likely be augmented by a `pr_mergeable`
-    # chip in a later commit; this chip is for the binary presence
-    # check only.
+    # Boolean presence check: "has a PR" / "no PR". Models the legacy
+    # `pr=has_pr/no_pr` dropdown semantics as a boolean chip rather
+    # than an enum, since the value is the operator (is_true /
+    # is_false) — no separate dropdown is needed.
     class PrPresent < Base
       filter_name "pr_present"
       label "PR"
-      bucket :enum
-      operators :is
-      values "has", "none"
+      bucket :boolean
+      operators :is_true, :is_false
 
       def apply
         case op
-        when :is
-          case value.to_s
-          when "has"  then scope.with_pr
-          when "none" then scope.without_pr
-          else scope
-          end
+        when :is_true  then scope.with_pr
+        when :is_false then scope.without_pr
         else unsupported_op!
         end
       end

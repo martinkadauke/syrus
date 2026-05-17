@@ -49,18 +49,18 @@ RSpec.describe "Filters::Chips" do
   end
 
   describe "pr_present" do
-    it "matches jobs with a PR when value is 'has'" do
+    it "matches jobs with a PR when op is is_true" do
       with_pr = Factories.job(repository: repo, issue_number: 1, pr_number: 42)
       Factories.job(repository: repo, issue_number: 2)
 
-      expect(run(field: "pr_present", op: "is", value: "has")).to contain_exactly(with_pr)
+      expect(run(field: "pr_present", op: "is_true", value: nil)).to contain_exactly(with_pr)
     end
 
-    it "matches jobs without a PR when value is 'none'" do
+    it "matches jobs without a PR when op is is_false" do
       Factories.job(repository: repo, issue_number: 1, pr_number: 42)
       without = Factories.job(repository: repo, issue_number: 2)
 
-      expect(run(field: "pr_present", op: "is", value: "none")).to contain_exactly(without)
+      expect(run(field: "pr_present", op: "is_false", value: nil)).to contain_exactly(without)
     end
   end
 

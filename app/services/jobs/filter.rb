@@ -128,8 +128,8 @@ module Jobs
       end
 
       case params["pr"]
-      when "has_pr" then chips << chip("pr_present", "is", "has")
-      when "no_pr"  then chips << chip("pr_present", "is", "none")
+      when "has_pr" then chips << chip("pr_present", "is_true", nil)
+      when "no_pr"  then chips << chip("pr_present", "is_false", nil)
       end
 
       if (age = params["age"]).present?
