@@ -267,7 +267,7 @@ RSpec.describe Workflow do
       expect(LandingQueueProcessor).not_to have_received(:try_land!)
     end
 
-    it "swallows LandingQueueProcessor exceptions so the workflow state transition still commits" do
+    it "swallows hook exceptions so the workflow state transition still commits" do
       job = landing_job
       rebase_wf = Workflows::Rebase.instantiate(job: job)
       rebase_wf.update!(state: "running")
@@ -280,6 +280,58 @@ RSpec.describe Workflow do
       }.not_to raise_error
 
       expect(rebase_wf.reload).to be_succeeded
+    end
+  end
+
+  describe "#dispatch_hook (workflow-class hook dispatcher)" do
+    let(:wf) { described_class.create!(job: job, trigger_kind: "initial") }
+
+    it "invokes the hook method on the matching Workflows::* template class" do
+      allow(Workflows::Initial).to receive(:after_success)
+
+      wf.send(:dispatch_hook, :after_success)
+
+      expect(Workflows::Initial).to have_received(:after_success).with(wf)
+    end
+
+    it "logs and swallows exceptions raised by the hook" do
+      allow(Workflows::Initial).to receive(:after_success).and_raise(StandardError, "boom")
+      allow(Rails.logger).to receive(:warn)
+
+      expect { wf.send(:dispatch_hook, :after_success) }.not_to raise_error
+      expect(Rails.logger).to have_received(:warn).with(/after_success hook raised.*StandardError.*boom/)
+    end
+
+    it "no-ops for an unknown trigger_kind without raising" do
+      wf.update_column(:trigger_kind, "no_longer_registered")
+
+      expect { wf.send(:dispatch_hook, :after_success) }.not_to raise_error
+    end
+  end
+
+  describe "Workflows::PrFeedback.after_success" do
+    let(:job) { Factories.job }
+    let(:wf) do
+      described_class.create!(
+        job: job,
+        trigger_kind: "pr_comment",
+        artifacts: { "pr_comments" => [
+          { "id" => 1, "created_at" => "2026-05-17T18:00:00Z" },
+          { "id" => 2, "created_at" => "2026-05-17T20:30:00Z" }
+        ] }
+      )
+    end
+
+    it "marks the job's feedback as addressed at the latest comment timestamp" do
+      Workflows::PrFeedback.after_success(wf)
+
+      expect(job.reload.last_feedback_addressed_at).to be_within(1.second).of(Time.iso8601("2026-05-17T20:30:00Z"))
+    end
+
+    it "is a no-op when artifacts has no pr_comments" do
+      wf.update!(artifacts: {})
+
+      expect { Workflows::PrFeedback.after_success(wf) }.not_to change { job.reload.last_feedback_addressed_at }
     end
   end
 end

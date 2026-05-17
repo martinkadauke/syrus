@@ -45,13 +45,14 @@ class Workflow < ApplicationRecord
     # clone shared across the chain's Steps + Runs), so we tear it
     # down exactly when the Workflow ends — not when each Run
     # finishes (Runs come and go; the chain's Workflow owns the
-    # disk space).
+    # disk space). Trigger-kind-specific concerns (rebase →
+    # auto_merge handoff, pr_feedback → mark addressed) live on the
+    # `Workflows::*` template class via Workflows::Base#after_success.
     event :succeed do
       transitions from: :running, to: :succeeded, after: -> {
         self.finished_at = Time.current
         cleanup_workspace!
-        record_addressed_feedback!
-        dispatch_post_rebase_landing!
+        dispatch_hook(:after_success)
       }
     end
 
@@ -64,6 +65,7 @@ class Workflow < ApplicationRecord
     event :fail do
       transitions from: [ :queued, :running ], to: :failed, after: -> {
         self.finished_at = Time.current
+        dispatch_hook(:after_fail)
       }
     end
 
@@ -80,6 +82,7 @@ class Workflow < ApplicationRecord
         self.finished_at = Time.current
         cancel_active_descendants!
         cleanup_workspace!
+        dispatch_hook(:after_cancel)
       }
     end
 
@@ -207,35 +210,22 @@ class Workflow < ApplicationRecord
 
   private
 
-  def record_addressed_feedback!
-    return unless trigger_kind == "pr_comment"
-
-    addressed_at = Array(artifact("pr_comments")).filter_map do |comment|
-      parse_comment_time(comment["created_at"])
-    end.max
-    job.mark_feedback_addressed!(addressed_at)
-  end
-
-  # When a rebase workflow succeeds AND the Job is still approved
-  # (defer_landing preserves approval), kick off the follow-up
-  # auto_merge immediately — no waiting for the 30s
-  # LandingQueueProcessor tick. LandingQueueProcessor.try_land!
-  # runs the same blockage + landing_in_progress? checks the
-  # recurring loop uses, so this is race-safe with the
-  # next scheduled tick.
-  def dispatch_post_rebase_landing!
-    return unless trigger_kind == "rebase"
-    return unless job&.approved?
-
-    LandingQueueProcessor.try_land!(job)
-  rescue StandardError => e
-    Rails.logger.warn("[Workflow##{id}] post-rebase landing dispatch failed: #{e.class}: #{e.message}")
-  end
-
-  def parse_comment_time(value)
-    Time.iso8601(value.to_s)
+  # Look up the workflow-template class by trigger_kind and invoke
+  # its lifecycle hook (after_success / after_fail / after_cancel).
+  # Each `Workflows::*` class declares only the hooks it cares
+  # about; the rest default to no-ops via Workflows::Base. Hooks
+  # are best-effort — exceptions are caught and logged so a
+  # downstream failure (queue blip, race) doesn't roll back the
+  # workflow's already-committed state transition.
+  def dispatch_hook(name)
+    klass = Workflows.for(trigger_kind: trigger_kind)
+    klass.public_send(name, self)
   rescue ArgumentError
+    # Unknown trigger_kind — no template, no hook. Old workflows
+    # whose trigger_kind has since been retired land here; that's fine.
     nil
+  rescue StandardError => e
+    Rails.logger.warn("[Workflow##{id}] #{name} hook raised: #{e.class}: #{e.message}")
   end
 
   # Write a JobLog entry on the latest run so cleanup activity is

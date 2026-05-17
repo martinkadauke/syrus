@@ -23,5 +23,23 @@ module Workflows
         "push"
       ]
     end
+
+    # Mark the most recently-addressed PR comment so the feedback
+    # poller doesn't re-enqueue the same comment as fresh work on
+    # the next tick. The comments + timestamps came in via the
+    # workflow's artifacts when PollPullRequestJob enqueued this.
+    def self.after_success(workflow)
+      addressed_at = Array(workflow.artifact("pr_comments")).filter_map do |comment|
+        parse_comment_time(comment["created_at"])
+      end.max
+
+      workflow.job.mark_feedback_addressed!(addressed_at)
+    end
+
+    def self.parse_comment_time(value)
+      Time.iso8601(value.to_s)
+    rescue ArgumentError
+      nil
+    end
   end
 end

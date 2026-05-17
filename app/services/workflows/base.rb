@@ -31,6 +31,23 @@ module Workflows
       raise NotImplementedError, "#{name} must define `trigger_kind`"
     end
 
+    # Lifecycle hooks. The Workflow model invokes the matching hook
+    # on the workflow-template class via Workflow#dispatch_hook after
+    # the model handles generic concerns (timestamps, workspace
+    # cleanup). Hooks receive the Workflow model instance.
+    #
+    # Subclasses override what they care about — e.g. PrFeedback marks
+    # feedback as addressed in after_success, Rebase re-dispatches
+    # auto-merge after a successful rebase. Defaults are no-ops so
+    # adding a new template doesn't require declaring stubs.
+    #
+    # Exceptions raised here are caught and logged by
+    # Workflow#dispatch_hook — a hook failure must NOT roll back the
+    # state transition that already happened.
+    def self.after_success(workflow); end
+    def self.after_fail(workflow); end
+    def self.after_cancel(workflow); end
+
     # Build the Workflow + Steps for the given job. Returns the
     # persisted Workflow with its steps. `artifacts` seeds the
     # workflow with structured input that downstream step handlers
