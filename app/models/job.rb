@@ -220,10 +220,15 @@ class Job < ApplicationRecord
       }
     end
 
+    # Deferring landing is "we want to merge but not right now" — e.g.
+    # mergeable_state needs a rebase first, or a transient GitHub
+    # error. The approval persists (operator's intent is unchanged);
+    # the Job stays in :approved so LandingQueueProcessor can re-pick
+    # it up automatically once the blocker clears (rebase finishes,
+    # GitHub recovers). Contrast with fail_landing, which is the
+    # "give up; require operator re-approval" path.
     event :defer_landing do
-      transitions from: :landing, to: :implemented, after: -> {
-        self.approved_at = nil
-      }
+      transitions from: :landing, to: :approved
     end
 
     # Undoes a close. Clears closure_reason + finished_at so the thread

@@ -43,8 +43,13 @@ class AutoMergeGate
     case mergeable_state(pr)
     when "clean"
       Result.new(outcome: :ready, approved: true, reason: "approved and clean", pr: pr)
-    when "behind"
-      Result.new(outcome: :needs_rebase, approved: true, reason: "PR mergeable_state is \"behind\"", pr: pr)
+    when "behind", "dirty"
+      # `behind` means the base branch moved forward — clean rebase
+      # fixes it. `dirty` means there are merge conflicts — the
+      # agent-driven rebase chain (auto_rebase → agent_rebase →
+      # force_push) is specifically designed to resolve them, so
+      # treat both as :needs_rebase rather than blocking outright.
+      Result.new(outcome: :needs_rebase, approved: true, reason: "PR mergeable_state is #{mergeable_state(pr).inspect}", pr: pr)
     when *TRANSIENT_MERGEABLE_STATES
       Result.new(outcome: :transient, approved: true, reason: "PR mergeable_state is #{mergeable_state(pr).inspect}", pr: pr)
     else

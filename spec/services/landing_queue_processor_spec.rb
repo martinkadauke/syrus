@@ -64,4 +64,43 @@ RSpec.describe LandingQueueProcessor do
     expect(described_class.call).to be_nil
     expect(ready.reload).to be_approved
   end
+
+  describe ".try_land!" do
+    it "dispatches an AutoMerge workflow for a specific approved Job" do
+      job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+
+      workflow = described_class.try_land!(job)
+
+      expect(workflow).to be_present
+      expect(workflow.trigger_kind).to eq("auto_merge")
+      expect(job.reload).to be_landing
+    end
+
+    it "no-ops when the Job is not approved" do
+      job = Factories.job_record(user: user, repository: repository, issue_number: 1,
+                                  pr_number: 1, state: "implemented")
+
+      expect(described_class.try_land!(job)).to be_nil
+      expect(job.reload).to be_implemented
+    end
+
+    it "no-ops when a blocker (active workflow) is present" do
+      job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+      Workflows::Rebase.instantiate(job: job).update!(state: "running")
+
+      expect(described_class.try_land!(job)).to be_nil
+      expect(job.reload).to be_approved
+    end
+
+    it "no-ops when another Job is already landing" do
+      already_landing = queue_job(issue_number: 1, approved_at: 2.minutes.ago)
+      already_landing.start_landing!
+      already_landing.save!
+
+      target = queue_job(issue_number: 2, approved_at: 1.minute.ago)
+
+      expect(described_class.try_land!(target)).to be_nil
+      expect(target.reload).to be_approved
+    end
+  end
 end

@@ -83,28 +83,66 @@ RSpec.describe Steps::AutoMerge do
     expect(job.closure_reason).to eq("pr_closed")
   end
 
-  it "defers landing when the gate is :needs_rebase so the landing queue can advance" do
+  it "defers landing back to :approved (preserving approval) AND dispatches a Rebase workflow inline when the gate is :needs_rebase" do
     job.approve!(via: "github_review")
+    original_approved_at = job.approved_at
     job.start_landing!
     job.save!
     allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "behind"))
+    allow(StepDispatcher).to receive(:start_workflow)
 
-    described_class.new(run).call
+    expect {
+      described_class.new(run).call
+    }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
 
-    expect(job.reload).to be_implemented
-    expect(job.approved_at).to be_nil
+    expect(job.reload).to be_approved
+    # Approval persists across the defer — operator doesn't have to re-approve.
+    expect(job.approved_at).to eq(original_approved_at)
+    expect(job.approved_via).to eq("github_review")
+    expect(StepDispatcher).to have_received(:start_workflow).with(an_instance_of(Workflow))
+  end
+
+  it "does not dispatch a second Rebase workflow when one is already active" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    existing = Workflows::Rebase.instantiate(job: job)
+    existing.update!(state: "running")
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "behind"))
+    allow(StepDispatcher).to receive(:start_workflow)
+
+    expect {
+      described_class.new(run).call
+    }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+
+    expect(StepDispatcher).not_to have_received(:start_workflow)
+  end
+
+  it "fails landing instead of dispatching a rebase once REBASE_ATTEMPT_CAP consecutive rebases have failed" do
+    job.approve!(via: "github_review")
+    PollRebaseJob::REBASE_ATTEMPT_CAP.times do
+      Workflows::Rebase.instantiate(job: job).update!(state: "failed")
+    end
+    job.start_landing!
+    job.save!
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "dirty"))
+
+    expect {
+      described_class.new(run).call
+    }.to raise_error(Steps::Base::StepFailed, /rebase cap reached/)
   end
 
   it "defers landing when the gate is :transient so the landing queue can advance" do
     job.approve!(via: "github_review")
+    original_approved_at = job.approved_at
     job.start_landing!
     job.save!
     allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "unknown"))
 
     described_class.new(run).call
 
-    expect(job.reload).to be_implemented
-    expect(job.approved_at).to be_nil
+    expect(job.reload).to be_approved
+    expect(job.approved_at).to eq(original_approved_at)
   end
 
   it "queues the merge attempt while a stack parent is still open" do
@@ -123,11 +161,13 @@ RSpec.describe Steps::AutoMerge do
   {
     "unknown" => "deferred - mergeable_state=unknown",
     "has_hooks" => "deferred - mergeable_state=has_hooks",
-    "behind" => "deferred - mergeable_state=behind"
+    "behind" => "deferred - mergeable_state=behind",
+    "dirty" => "deferred - mergeable_state=dirty"
   }.each do |mergeable_state, log_message|
     it "cancels cleanly when mergeable_state is #{mergeable_state.inspect}" do
       allow(client).to receive(:pull_request).and_return(pr(mergeable_state: mergeable_state))
       allow(client).to receive(:merge_pull_request)
+      allow(StepDispatcher).to receive(:start_workflow)
 
       expect { described_class.new(run).call }.not_to raise_error
 
@@ -141,7 +181,6 @@ RSpec.describe Steps::AutoMerge do
   end
 
   {
-    "dirty" => "PR mergeable_state is \"dirty\"",
     "blocked" => "PR mergeable_state is \"blocked\"",
     "unstable" => "PR mergeable_state is \"unstable\""
   }.each do |mergeable_state, error_message|
@@ -175,7 +214,7 @@ RSpec.describe Steps::AutoMerge do
         described_class.new(run).call
       }.not_to change { job.reload.failure_count }
       expect(workflow.reload.failure_count).to eq(0)
-      expect(job.reload).to be_implemented
+      expect(job.reload).to be_approved
       expect(run.reload).to be_cancelled
       expect(step.reload).to be_cancelled
       expect(workflow.reload).to be_cancelled

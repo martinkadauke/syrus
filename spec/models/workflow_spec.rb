@@ -216,4 +216,70 @@ RSpec.describe Workflow do
       expect(other_wf.failure_count).to eq(0)
     end
   end
+
+  describe "#succeed (Rebase → AutoMerge handoff)" do
+    let(:user) { Factories.user(github_token: "ghp_test") }
+    let(:repository) { Factories.repository(user: user, auto_merge_enabled: true) }
+
+    def landing_job
+      job = Factories.job_record(user: user, repository: repository, issue_number: 1,
+                                  pr_number: 1, state: "open")
+      job.approve!(via: "github_review")
+      job
+    end
+
+    it "calls LandingQueueProcessor.try_land! when a rebase workflow succeeds on an approved Job" do
+      job = landing_job
+      rebase_wf = Workflows::Rebase.instantiate(job: job)
+      rebase_wf.update!(state: "running")
+
+      allow(LandingQueueProcessor).to receive(:try_land!)
+
+      rebase_wf.succeed!
+      rebase_wf.save!
+
+      expect(LandingQueueProcessor).to have_received(:try_land!).with(job)
+    end
+
+    it "skips LandingQueueProcessor.try_land! when the succeeding workflow is not a rebase" do
+      job = landing_job
+      initial_wf = described_class.create!(job: job, trigger_kind: "initial", state: "running")
+
+      allow(LandingQueueProcessor).to receive(:try_land!)
+
+      initial_wf.succeed!
+      initial_wf.save!
+
+      expect(LandingQueueProcessor).not_to have_received(:try_land!)
+    end
+
+    it "skips LandingQueueProcessor.try_land! when the Job is no longer approved" do
+      job = Factories.job_record(user: user, repository: repository, issue_number: 1,
+                                  pr_number: 1, state: "open")
+      rebase_wf = Workflows::Rebase.instantiate(job: job)
+      rebase_wf.update!(state: "running")
+
+      allow(LandingQueueProcessor).to receive(:try_land!)
+
+      rebase_wf.succeed!
+      rebase_wf.save!
+
+      expect(LandingQueueProcessor).not_to have_received(:try_land!)
+    end
+
+    it "swallows LandingQueueProcessor exceptions so the workflow state transition still commits" do
+      job = landing_job
+      rebase_wf = Workflows::Rebase.instantiate(job: job)
+      rebase_wf.update!(state: "running")
+
+      allow(LandingQueueProcessor).to receive(:try_land!).and_raise(StandardError, "boom")
+
+      expect {
+        rebase_wf.succeed!
+        rebase_wf.save!
+      }.not_to raise_error
+
+      expect(rebase_wf.reload).to be_succeeded
+    end
+  end
 end

@@ -195,7 +195,7 @@ RSpec.describe AutoMergeGate do
     "unknown" => :transient,
     "has_hooks" => :transient,
     "behind" => :needs_rebase,
-    "dirty" => :blocked,
+    "dirty" => :needs_rebase,
     "blocked" => :blocked,
     "clean" => :ready,
     "unstable" => :blocked

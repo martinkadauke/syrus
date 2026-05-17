@@ -13,6 +13,22 @@ class LandingQueueProcessor
     new.entries(scope)
   end
 
+  # Try to land a specific Job right now. Used by callers that have
+  # just made a Job land-able and don't want to wait for the next
+  # recurring tick — e.g. a Rebase workflow's success callback when
+  # the Job is still approved. Returns the dispatched Workflow or
+  # nil if the Job wasn't landable (not approved, blockage present,
+  # landing already in progress).
+  def self.try_land!(job) = new.try_land!(job)
+
+  def try_land!(job)
+    return if landing_in_progress?
+    return unless job.approved?
+    return unless blockage_for(job)[:blocked_reason].blank?
+
+    land(job)
+  end
+
   def call
     return if landing_in_progress?
 

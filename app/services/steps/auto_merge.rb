@@ -21,9 +21,10 @@ module Steps
       # :landing before cancelling the workflow — otherwise
       # LandingQueueProcessor#landing_in_progress? sees a Job in
       # :landing with no active auto_merge workflow and blocks the
-      # entire queue indefinitely. The transient and needs_rebase
-      # cases defer (back to :implemented) so re-approval can
-      # re-queue; the :closed case closes the Job to match the PR.
+      # entire queue indefinitely. defer_landing preserves the
+      # approval and sends the Job back to :approved so it
+      # re-enters the landing queue after the blocker clears; the
+      # :closed case closes the Job to match the PR.
       case gate.outcome
       when :closed
         log("auto_merge: PR ##{job.pr_number} is already closed; cancelling workflow", kind: "system")
@@ -36,9 +37,7 @@ module Steps
         cancel_workflow!
         return
       when :needs_rebase
-        log("auto_merge: deferred - mergeable_state=#{deferred_mergeable_state(gate)}; rebase workflow will handle it", kind: "system")
-        defer_landing_if_possible!
-        cancel_workflow!
+        handle_needs_rebase!(gate)
         return
       end
 
@@ -101,14 +100,58 @@ module Steps
       workflow.save!
     end
 
-    # Send the Job back to :implemented so the landing queue isn't
+    # Send the Job back to :approved so the landing queue isn't
     # blocked by a Job in :landing with no active auto_merge
-    # workflow. Idempotent: only fires if the transition is legal.
+    # workflow. The approval persists across the defer; the queue
+    # will re-attempt landing once the blocker clears. Idempotent.
     def defer_landing_if_possible!
       return unless job.may_defer_landing?
 
       job.defer_landing!
       job.save! if job.changed?
+    end
+
+    # PR's mergeable_state is `behind` or `dirty`. Both are
+    # recoverable via the agent-driven rebase chain (auto_rebase →
+    # agent_rebase → force_push). Trigger the rebase inline if one
+    # isn't already running and we haven't hit the consecutive-
+    # failure cap — when the rebase succeeds, Workflow#succeed's
+    # dispatch_post_rebase_landing! re-fires auto_merge without
+    # waiting for the next LandingQueueProcessor tick.
+    #
+    # Loop guard: if PollRebaseJob::REBASE_ATTEMPT_CAP consecutive
+    # rebase workflows have failed, fail_landing instead — the
+    # operator needs to intervene (manual rebase, conflict
+    # resolution offline, etc.) before we burn more agent turns.
+    def handle_needs_rebase!(gate)
+      if rebase_attempt_cap_reached?
+        log("auto_merge: needs_rebase but #{PollRebaseJob::REBASE_ATTEMPT_CAP} consecutive rebase attempts have failed; failing landing", kind: "system")
+        raise StepFailed, "auto_merge: #{gate.reason} and rebase cap reached"
+      end
+
+      log("auto_merge: deferred - mergeable_state=#{deferred_mergeable_state(gate)}; dispatching rebase workflow inline", kind: "system")
+      defer_landing_if_possible!
+
+      unless rebase_workflow_active?
+        rebase_workflow = Workflows::Rebase.instantiate(job: job)
+        log("auto_merge: dispatched rebase workflow ##{rebase_workflow.id}", kind: "system")
+        StepDispatcher.start_workflow(rebase_workflow)
+      end
+
+      cancel_workflow!
+    end
+
+    def rebase_workflow_active?
+      job.workflows.active.where(trigger_kind: "rebase").exists?
+    end
+
+    def rebase_attempt_cap_reached?
+      consecutive = 0
+      job.workflows.where(trigger_kind: "rebase").reorder(id: :desc).each do |workflow|
+        break if workflow.succeeded?
+        consecutive += 1 if workflow.failed?
+      end
+      consecutive >= PollRebaseJob::REBASE_ATTEMPT_CAP
     end
 
     def deferred_mergeable_state(gate)
