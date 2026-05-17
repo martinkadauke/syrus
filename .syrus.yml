@@ -24,3 +24,14 @@ grade:
   - name: migration-collisions
     run: bin/check-migration-collisions
     timeout_minutes: 1
+
+  # Full RSpec suite. CLAUDE.md "Tests are not optional" is the rule;
+  # this grader is the enforcement. The agent gets push-back when a
+  # spec fails — newly added behavior without coverage, OR a stale
+  # spec left red by a refactor. The suite runs in ~90s on a fresh
+  # worker checkout; allow up to 5 minutes for cold-start + parallel
+  # sandbox I/O. `db:test:prepare` runs first so schema changes
+  # landed in the same workflow are picked up before spec collection.
+  - name: rspec
+    run: bin/rails db:test:prepare && bin/rspec
+    timeout_minutes: 5
