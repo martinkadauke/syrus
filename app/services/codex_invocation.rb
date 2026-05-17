@@ -72,6 +72,10 @@ class CodexInvocation
       command: cmd,
       chdir: workspace_path,
       timeout: timeout,
+      # See AgentInvocation::SILENT_TIMEOUT_SECONDS — same rationale
+      # for codex: continuous JSONL streaming, prolonged silence is
+      # a wedged process, not normal pacing.
+      silent_timeout: AgentInvocation::SILENT_TIMEOUT_SECONDS,
       on_output_line: ->(line) do
         update = process_event(line, log_sink)
         metadata.merge!(update.compact) if update
@@ -82,7 +86,7 @@ class CodexInvocation
     AgentInvocation::Result.new(
       turns: metadata[:turns],
       exit_status: runner_result.exit_status,
-      timed_out: runner_result.timed_out,
+      timed_out: runner_result.timed_out || runner_result.silent_timed_out,
       is_error: metadata[:is_error],
       outcome: metadata[:outcome],
       final_text: metadata[:final_text],

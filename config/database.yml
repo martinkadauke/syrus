@@ -45,6 +45,17 @@ production:
     database: syrus_production
     username: syrus
     password: <%= ENV["SYRUS_DATABASE_PASSWORD"] %>
+    # MySQL's default innodb_lock_wait_timeout is 50s — far too long
+    # for a Rails request or recurring poll. A single contended row
+    # would hold a connection from the pool for 50s, and three or
+    # four of those in flight will exhaust the pool and cascade into
+    # ConnectionTimeoutError for every other thread. The deploy on
+    # 2026-05-17 saw exactly that failure mode (LandingQueueProcessorJob
+    # enqueue → 50s lock-wait → all SolidQueue threads starved →
+    # workers stopped heartbeating → 3 RunJobs orphaned). 10s is the
+    # ceiling.
+    variables:
+      innodb_lock_wait_timeout: 10
   cache:
     <<: *primary_production
     database: syrus_production_cache

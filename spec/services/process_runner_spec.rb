@@ -99,6 +99,49 @@ RSpec.describe ProcessRunner do
     ENV.replace(saved)
   end
 
+  it "kills the subprocess when silent_timeout elapses with no output" do
+    # The subprocess prints once and then sleeps — past silent_timeout
+    # with no further output, ProcessRunner must terminate it and
+    # surface silent_timed_out so the agent caller can fail the Run
+    # quickly instead of holding its SolidQueue claim open.
+    result = described_class.new(
+      env: {},
+      command: [ ruby, "-e", "STDOUT.sync = true; puts 'starting'; sleep 10" ],
+      chdir: @dir,
+      timeout: 30,
+      silent_timeout: 0.5,
+      kill_grace_seconds: 0
+    ).run
+
+    expect(result).to be_silent_timed_out
+    expect(result).not_to be_timed_out
+    expect(result).not_to be_success
+    expect(result.exit_status).to be_nil
+    expect(result.duration_s).to be < 5
+  end
+
+  it "does not kill a process that keeps producing output within silent_timeout" do
+    # The subprocess prints every 100ms for 1 second, well under
+    # silent_timeout. ProcessRunner should let it complete cleanly.
+    script = <<~RUBY
+      STDOUT.sync = true
+      10.times do
+        puts 'tick'
+        sleep 0.1
+      end
+    RUBY
+    result = described_class.new(
+      env: {},
+      command: [ ruby, "-e", script ],
+      chdir: @dir,
+      timeout: 30,
+      silent_timeout: 2
+    ).run
+
+    expect(result).to be_success
+    expect(result).not_to be_silent_timed_out
+  end
+
   it "builds forwarded env from an allowlist plus explicit extras" do
     saved = ENV.to_h
     ENV.replace("HOME" => "/tmp/home", "RAILS_MASTER_KEY" => "secret")

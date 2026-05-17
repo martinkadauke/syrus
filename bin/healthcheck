@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+# K8s liveness probe target for the worker pod.
+#
+# Exits 0 if at least one SolidQueue process has heartbeated within
+# HEALTHCHECK_FRESHNESS_SECONDS (default 180). Exits 1 otherwise.
+#
+# Why a standalone script: K8s liveness runs in the container as a
+# new process. Booting Rails for a heartbeat check would cost ~5-10s
+# every probe interval. We need a fast, dependency-light check, so
+# this connects to MySQL directly via mysql2 and runs one query.
+#
+# Why we check SolidQueue::Process and not just `is pid 1 alive`:
+# today's incident had every SolidQueue process alive but unable to
+# heartbeat (DB pool wedged on a lock-wait cascade). The pod looked
+# healthy to anyone counting PIDs; it was deeply broken to anyone
+# checking forward progress. This script catches that.
+
+require "mysql2"
+
+FRESHNESS_SECONDS = Integer(ENV.fetch("HEALTHCHECK_FRESHNESS_SECONDS", "180"))
+
+def env!(key)
+  value = ENV[key]
+  return value if value && !value.empty?
+
+  warn "[healthcheck] missing required env var #{key}"
+  exit 2
+end
+
+begin
+  client = Mysql2::Client.new(
+    host: ENV.fetch("DB_HOST", "127.0.0.1"),
+    username: ENV.fetch("SYRUS_DATABASE_USERNAME", "syrus"),
+    password: env!("SYRUS_DATABASE_PASSWORD"),
+    database: ENV.fetch("SYRUS_QUEUE_DATABASE", "syrus_production_queue"),
+    connect_timeout: 5,
+    read_timeout: 5,
+    write_timeout: 5
+  )
+
+  row = client.query(<<~SQL).first
+    SELECT COUNT(*) AS live
+    FROM solid_queue_processes
+    WHERE last_heartbeat_at > UTC_TIMESTAMP() - INTERVAL #{FRESHNESS_SECONDS} SECOND
+  SQL
+
+  live = row.fetch("live").to_i
+  if live.zero?
+    warn "[healthcheck] no SolidQueue processes heartbeating in last #{FRESHNESS_SECONDS}s"
+    exit 1
+  end
+
+  puts "ok (#{live} live processes)"
+  exit 0
+rescue Mysql2::Error => e
+  warn "[healthcheck] DB error: #{e.class}: #{e.message}"
+  # If we can't reach the queue DB, the worker can't be doing useful
+  # work anyway — fail loud so K8s restarts.
+  exit 1
+rescue StandardError => e
+  warn "[healthcheck] unexpected error: #{e.class}: #{e.message}"
+  exit 1
+ensure
+  client&.close
+end

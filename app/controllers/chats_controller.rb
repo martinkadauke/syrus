@@ -23,27 +23,25 @@ class ChatsController < ApplicationController
     begin
       chat_session = nil
       user_message = nil
-      with_short_lock_wait do
-        ApplicationRecord.transaction do
-          chat_session = ChatSession.create!(
-            user: Current.user,
-            repository: repository,
-            title: text.presence&.truncate(80),
-            last_message_at: text.present? ? Time.current : nil
-          )
-          if text.present?
-            user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
-          end
+      ApplicationRecord.transaction do
+        chat_session = ChatSession.create!(
+          user: Current.user,
+          repository: repository,
+          title: text.presence&.truncate(80),
+          last_message_at: text.present? ? Time.current : nil
+        )
+        if text.present?
+          user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
         end
       end
       ChatTurnJob.perform_later(chat_session.id, user_message.id) if user_message
       redirect_to chat_path(chat_session), notice: text.present? ? "Message sent." : "Chat created."
     rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
       # Concurrent broadcasts / FK gap locks on chat_sessions can
-      # stall the create — with the short session timeout above we
-      # fail in seconds rather than the 50s MySQL default, so retry
-      # is cheap. Fall back to a redirect-with-alert rather than a
-      # 500 so the operator can just try again.
+      # stall the create. With the 10s global innodb_lock_wait_timeout
+      # (config/database.yml) we fail in 10s rather than 50s, so
+      # retry is cheap. Fall back to a redirect-with-alert rather
+      # than a 500 so the operator can just try again.
       attempts += 1
       if attempts < 2
         Rails.logger.info("[ChatsController#create] retrying after #{e.class}: #{e.message[0, 120]}")
@@ -88,11 +86,9 @@ class ChatsController < ApplicationController
     attempts = 0
     begin
       user_message = nil
-      with_short_lock_wait do
-        ApplicationRecord.transaction do
-          @chat_session.update!(last_message_at: Time.current, title: @chat_session.title.presence || text.truncate(80))
-          user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
-        end
+      ApplicationRecord.transaction do
+        @chat_session.update!(last_message_at: Time.current, title: @chat_session.title.presence || text.truncate(80))
+        user_message = @chat_session.messages.create!(role: "user", content: { "text" => text })
       end
       ChatTurnJob.perform_later(@chat_session.id, user_message.id)
       redirect_to chat_path(@chat_session), notice: "Message sent."

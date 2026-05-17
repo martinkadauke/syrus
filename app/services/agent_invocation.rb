@@ -2,6 +2,13 @@ require "json"
 
 class AgentInvocation
   DEFAULT_TIMEOUT_SECONDS = 30.minutes.to_i
+  # Kill the agent subprocess if it produces no output for this long.
+  # The agent's stream-json output is one event per token + tool call,
+  # so multi-minute silence is a wedge, not normal pacing. Today's
+  # incident: a codex process stopped emitting output and the worker
+  # thread blocked on the read for 50+ minutes, holding its SolidQueue
+  # claim open and starving the whole pod. See app/services/process_runner.rb.
+  SILENT_TIMEOUT_SECONDS = 5.minutes.to_i
   # Fallback only for callers that don't pass max_turns. RunJob threads
   # the per-user ceiling (User#agent_max_turns) through every invocation
   # in production. Kept in sync with User::AGENT_MAX_TURNS_RANGE's
@@ -122,6 +129,10 @@ class AgentInvocation
       command: cmd,
       chdir: workspace_path,
       timeout: timeout,
+      # Claude stream-json prints one event per line for every model
+      # token + tool call — natural cadence is sub-second. 5 minutes
+      # of complete silence means the agent is wedged, not thinking.
+      silent_timeout: SILENT_TIMEOUT_SECONDS,
       stop_requested: stop_requested,
       on_output_line: ->(line) do
         update = process_event(line, log_sink)
@@ -132,7 +143,12 @@ class AgentInvocation
     Result.new(
       turns: metadata[:turns],
       exit_status: runner_result.exit_status,
-      timed_out: runner_result.timed_out,
+      # A silent-timeout kill is, from the caller's perspective, the
+      # same outcome as a wall-clock timeout: the agent didn't
+      # complete. Surface it as `timed_out` so existing failure
+      # handling in Steps::Implement (etc.) covers both cases without
+      # any new branches.
+      timed_out: runner_result.timed_out || runner_result.silent_timed_out,
       is_error: metadata[:is_error],
       outcome: metadata[:outcome],
       final_text: metadata[:final_text],

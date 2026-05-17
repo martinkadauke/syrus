@@ -34,27 +34,4 @@ class ApplicationController < ActionController::Base
     chat_session ? chat_path(chat_session) : new_chat_path
   end
 
-  # Run a block with a short MySQL innodb_lock_wait_timeout (default
-  # 50s) so a request-path transaction blocked on FK / gap-lock
-  # contention fails fast and bounces to a retry / friendly error
-  # instead of hanging the worker for ~50s. Resets to the connection
-  # default in `ensure` so connection-pool reuse doesn't propagate
-  # the short timeout to unrelated requests.
-  #
-  # No-op on SQLite (dev/test) — the setting is MySQL-specific.
-  def with_short_lock_wait(seconds = 5)
-    connection = ActiveRecord::Base.connection
-    return yield unless connection.adapter_name.downcase.include?("mysql")
-
-    connection.execute("SET innodb_lock_wait_timeout = #{seconds.to_i}")
-    begin
-      yield
-    ensure
-      begin
-        connection.execute("SET innodb_lock_wait_timeout = DEFAULT")
-      rescue StandardError => e
-        Rails.logger.warn("[with_short_lock_wait] failed to reset timeout: #{e.class}: #{e.message}")
-      end
-    end
-  end
 end
