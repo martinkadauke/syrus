@@ -12,7 +12,11 @@
     <span class="font-mono font-medium text-gray-900"><%= tool_name %></span>
     <% if message.proposal %>
       <span class="text-gray-500">→</span>
-      <%= link_to "Proposal ##{message.proposal.id} created (#{message.proposal.state})",
+      <%# The model state is "proposed" but operators read it as
+          "pending" — surface the friendlier label here. Other states
+          (confirmed / rejected / withdrawn) read fine literally. %>
+      <% state_label = message.proposal.state == "proposed" ? "pending" : message.proposal.state %>
+      <%= link_to "Proposal ##{message.proposal.id} created (#{state_label})",
             repository_proposals_path(repository),
             class: "text-blue-700 underline hover:no-underline" %>
     <% end %>

@@ -13,14 +13,17 @@ RSpec.describe "Bug reports", type: :request do
 
   describe "layout entry point" do
     it "renders the floating bug-report control for signed-in app pages" do
+      # root_path now redirects to chat; check the dashboard, which
+      # renders the application layout (where the bug-report control
+      # lives) directly.
       Factories.repository(user: user, owner: "tkadauke", name: "syrus")
       sign_in_as(user)
 
-      get root_path
+      get dashboard_jobs_path
 
       expect(response.body).to include('data-controller="form-validation"')
       expect(response.body).to include('data-controller="bug-report"')
-      expect(response.body).to include('data-bug-context="Home#index"')
+      expect(response.body).to include('data-bug-context="Home#jobs"')
       expect(response.body).to include("Report a bug")
       expect(response.body).to include("bug_reports")
     end
@@ -84,7 +87,9 @@ RSpec.describe "Bug reports", type: :request do
       }.not_to change(Job, :count)
 
       expect(response).to redirect_to(root_path)
-      follow_redirect!
+      # root_path redirects to default_chat_path (chat), so the
+      # alert lands two hops away. Follow until we reach a 200.
+      follow_redirect! while response.redirect?
       expect(response.body).to include("Bug report repository tkadauke/syrus is not configured.")
     end
   end

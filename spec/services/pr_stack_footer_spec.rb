@@ -2,9 +2,14 @@ require "rails_helper"
 
 RSpec.describe PrStackFooter do
   let(:repository) { Factories.repository(owner: "acme", name: "widgets") }
-  let(:parent) { Factories.job(repository: repository, issue_number: 41, pr_number: 123) }
-  let(:job) { Factories.job(repository: repository, issue_number: 42, pr_number: 124, parent_job: parent) }
-  let!(:child) { Factories.job(repository: repository, issue_number: 43, pr_number: 125, parent_job: job) }
+  # job_record creates without firing advance_after_triage!, so the
+  # parent_job_id assignment survives. Factories.job advances through
+  # triaging, which runs JobStackResolver and clears parent_job when
+  # there's no matching JobDependency — the stack-footer specs only
+  # need the model relation, not the dependency machinery.
+  let(:parent) { Factories.job_record(repository: repository, issue_number: 41, pr_number: 123) }
+  let(:job) { Factories.job_record(repository: repository, issue_number: 42, pr_number: 124, parent_job: parent) }
+  let!(:child) { Factories.job_record(repository: repository, issue_number: 43, pr_number: 125, parent_job: job) }
 
   it "renders a linked stack footer with the current PR highlighted" do
     body = described_class.apply("Body", job)

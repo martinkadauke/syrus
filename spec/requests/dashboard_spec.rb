@@ -33,6 +33,11 @@ RSpec.describe "Dashboard", type: :request do
     end
 
     it "renders top-level navigation and points Dashboard at the default Epics subtab" do
+      # The "+ New chat" link in the global nav is gated on having a
+      # Claude OAuth token (per /repositories/.../chats spec). Set
+      # one up so this nav-presence test exercises the chat-available
+      # path; the token-missing path is covered separately.
+      user.update!(claude_oauth_token: "oat-test")
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
 
@@ -176,7 +181,7 @@ RSpec.describe "Dashboard", type: :request do
       expect(card_titles.second).to include("Newer board")
     end
 
-    it "renders the placeholder Epic detail page" do
+    it "renders the Epic detail page" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       epic = Factories.epic(user: user, repository: repo, title: "Detail shell", state: "ready")
 
@@ -184,7 +189,8 @@ RSpec.describe "Dashboard", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Detail shell")
-      expect(response.body).to include("Epic detail page placeholder")
+      expect(response.body).to include(epic.display_number)
+      expect(response.body).to include("Back to Epics")
     end
 
     it "redirects legacy list URLs to Dashboard subtabs" do
@@ -306,19 +312,26 @@ RSpec.describe "Dashboard", type: :request do
       expect(document.at_css("a[href='#{job_pin_path(newer)}'][aria-label='Unpin job']")["data-turbo-method"]).to eq("delete")
     end
 
-    it "renders an attention dropdown with every built-in smart folder's attention value" do
+    it "exposes every built-in smart folder's attention preset in the chip-bar schema" do
+      # Replaces the legacy <select name="attention"> dropdown spec —
+      # the chip-bar now drives attention selection. The dashboard
+      # serializes the schema (including every Attention preset) into
+      # data-chip-bar-schema-value on the controller root.
       Factories.repository(user: user, owner: "acme", name: "widgets")
 
       get dashboard_jobs_path
 
-      select = Nokogiri::HTML(response.body).at_css("select[name='attention']")
-      expect(select).to be_present
-      option_values = select.css("option").map { |o| o["value"] }
+      schema_attr = Nokogiri::HTML(response.body).at_css("[data-chip-bar-schema-value]")&.[]("data-chip-bar-schema-value")
+      expect(schema_attr).to be_present
+      schema = JSON.parse(schema_attr)
+      attention_chip = schema.find { |c| c["field"] == "attention" }
+      expect(attention_chip).to be_present
+      preset_values = attention_chip["values"].map { |v| v["value"] }
       expected = SmartFolder::BUILTIN_DEFINITIONS.filter_map do |definition|
         chip = Array(definition[:filter]["and"]).find { |c| c["field"] == "attention" }
         chip&.dig("value")
       end
-      expect(option_values).to eq([""] + expected)
+      expect(preset_values).to include(*expected)
     end
 
     it "collapses folders and filters by default on mobile only" do
@@ -336,8 +349,11 @@ RSpec.describe "Dashboard", type: :request do
       document = Nokogiri::HTML(response.body)
       mobile_panel = document.at_css("details")
       desktop_sidebar = document.at_css("aside")
-      desktop_filter_form = document.css("form[action='#{dashboard_jobs_path}']").find do |form|
-        form["method"] == "get" && form["class"].to_s.include?("lg:flex")
+      # The legacy <select name="attention"> dropdown form is gone —
+      # the chip-bar is the filter UI. Check for the chip-bar's
+      # controller div on the desktop side (rendered with `lg:block`).
+      desktop_chip_bar = document.css("[data-controller~='chip-bar']").find do |el|
+        el["class"].to_s.include?("lg:block")
       end
 
       expect(mobile_panel).to be_present
@@ -346,11 +362,11 @@ RSpec.describe "Dashboard", type: :request do
       expect(mobile_panel.at_css("summary").text).to include("Folders and filters")
       expect(mobile_panel.text).to include("Attention")
       expect(mobile_panel.text).to include("Open PRs")
-      expect(mobile_panel.at_css("select[name='attention']")).to be_present
+      expect(mobile_panel.at_css("[data-controller~='chip-bar']")).to be_present
 
       expect(desktop_sidebar["class"]).to include("hidden")
       expect(desktop_sidebar["class"]).to include("lg:block")
-      expect(desktop_filter_form).to be_present
+      expect(desktop_chip_bar).to be_present
     end
 
     it "excludes closed jobs from the inbox even when they have a failed latest run" do
@@ -479,7 +495,12 @@ RSpec.describe "Dashboard", type: :request do
       expect(response.body).to include("#2")
     end
 
-    it "does not carry smart_folder_id through the filter form so manual changes break out of the folder" do
+    it "does not carry smart_folder_id through the chip-bar form so manual changes break out of the folder" do
+      # Legacy dropdown form is gone; the chip-bar's hidden form
+      # carries only the encoded `q` AST tree. Smart folder identity
+      # is not round-tripped through the form — the operator is
+      # supposed to break out of the folder by editing the chips,
+      # not by toggling form state.
       Factories.repository(user: user, owner: "acme", name: "widgets")
       SmartFolder.ensure_builtins!
       inbox = SmartFolder.find_builtin_by_attention("inbox")
@@ -487,29 +508,27 @@ RSpec.describe "Dashboard", type: :request do
       get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
       document = Nokogiri::HTML(response.body)
-      filter_form = document.css("form[action='#{dashboard_jobs_path}']").find { |f| f["method"] == "get" }
-      expect(filter_form).to be_present
-      expect(filter_form.at_css("input[name='smart_folder_id']")).to be_nil
-      # During the filter-system rework, the dropdown form reads pre-fill
-      # values from URL params only — it doesn't reflect the active
-      # smart folder's chips. The chip-bar UI (later in the rework)
-      # restores this affordance via its own surface. Test the
-      # narrower invariant: nothing is selected when there are no
-      # URL filter params.
-      attention_select = filter_form.at_css("select[name='attention']")
-      expect(attention_select.at_css("option[selected]")).to be_nil
+      chip_bar_form = document.at_css("[data-controller~='chip-bar'] form")
+      expect(chip_bar_form).to be_present
+      expect(chip_bar_form.at_css("input[name='smart_folder_id']")).to be_nil
+      # The form's hidden q input is the only data it submits.
+      hidden_inputs = chip_bar_form.css("input[type='hidden']").map { |i| i["name"] }
+      expect(hidden_inputs).to include("q")
     end
 
-    it "points the Clear link at dashboard_jobs_path so it drops both filters and any active smart folder" do
+    it "exposes a Clear control on the chip-bar so the operator can drop all filters" do
+      # The Clear UX is now a chip-bar Stimulus button (not an anchor).
+      # When the filter is active, it appears and triggers
+      # chip-bar#clearAll which submits the form with an empty tree.
       Factories.repository(user: user, owner: "acme", name: "widgets")
       SmartFolder.ensure_builtins!
       inbox = SmartFolder.find_builtin_by_attention("inbox")
 
       get dashboard_jobs_path, params: { smart_folder_id: inbox.id, state: "open" }
 
-      clear_link = Nokogiri::HTML(response.body).css("a").find { |a| a.text.strip == "Clear" }
-      expect(clear_link).to be_present
-      expect(clear_link["href"]).to eq(dashboard_jobs_path)
+      clear_button = Nokogiri::HTML(response.body).css("button").find { |b| b.text.strip == "Clear" }
+      expect(clear_button).to be_present
+      expect(clear_button["data-action"]).to include("chip-bar#clearAll")
     end
 
     it "shows up to three tag chips with overflow in job rows" do
@@ -921,11 +940,16 @@ RSpec.describe "Dashboard", type: :request do
       end
 
       describe "kind filter" do
-        it "renders Direct in the kind facet" do
+        it "exposes the Direct kind value in the chip-bar schema" do
+          # Legacy <select name='kind'> dropdown has been replaced by
+          # the chip-bar's kind chip; its value list ships in the
+          # serialized schema. Each value is humanized for display.
           get dashboard_jobs_path
 
-          document = Nokogiri::HTML(response.body)
-          labels = document.css("select[name='kind'] option").map(&:text)
+          schema_attr = Nokogiri::HTML(response.body).at_css("[data-chip-bar-schema-value]")&.[]("data-chip-bar-schema-value")
+          schema = JSON.parse(schema_attr)
+          kind_chip = schema.find { |c| c["field"] == "kind" }
+          labels = kind_chip["values"].map { |v| v["label"] }
 
           expect(labels).to include("Issue", "Direct", "Cron")
         end
@@ -1058,15 +1082,22 @@ RSpec.describe "Dashboard", type: :request do
       let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
 
       it "renders built-in attention folders with counts" do
+        # "Awaiting your approval" is `:when_present` — it only
+        # appears in the sidebar if there's at least one Job in
+        # `implemented` state. Set one up so the folder rendering
+        # path that surfaces it is exercised.
         failed = Factories.job(repository: repo, issue_number: 1)
         failed.initial_run.update!(state: "failed", finished_at: Time.current)
         Factories.job(repository: repo, issue_number: 2)
+        awaiting_approval = Factories.job(repository: repo, issue_number: 3)
+        awaiting_approval.update_columns(state: "implemented")
 
         get dashboard_jobs_path
 
         document = Nokogiri::HTML(response.body)
         attention = document.at_css("aside")
-        # Always-visible + when_present (Just failed has 1 match).
+        # Always-visible + when_present folders that have at least
+        # one matching Job.
         expect(attention.text).to include("Inbox", "Landing queue", "In review", "Awaiting your approval", "Just failed")
         # On-demand folders live behind the "More" disclosure.
         expect(attention.text).to include("More", "Awaiting Epic", "Needs review", "Merged this week")
@@ -1191,31 +1222,43 @@ RSpec.describe "Dashboard", type: :request do
         expect(response.body).not_to include("Rebuild the aqueduct")
       end
 
-      it "shows ready epics in Awaiting your move until they enter progress" do
+      it "shows ready epics in the Inbox folder until they enter progress" do
+        # The "Awaiting your move" folder was retired; the Inbox folder
+        # is the current trigger for the home page's
+        # "Epics awaiting your move" section (controller gates this on
+        # folder_uses_attention?("inbox")).
         ready = Factories.epic(user: user, repository: repo, state: "ready", title: "Restore the forum")
         Factories.epic(user: user, repository: repo, state: "in_progress", title: "Already marching")
         SmartFolder.ensure_builtins!
-        awaiting_move = SmartFolder.find_by!(name: "Awaiting your move")
+        inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_move.id }
+        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
-        expect(response.body).to include("Epics awaiting your move")
-        expect(response.body).to include("Restore the forum")
-        expect(response.body).not_to include("Already marching")
-        expect(Nokogiri::HTML(response.body).at_css("aside").css("a").find { |link| link.text.include?("Awaiting your move") }.text).to include("1")
+        # Scope assertions to the Epic table — Epic titles also appear
+        # in the chip-bar schema's epic_id value list, which would
+        # otherwise spuriously match the not_to include checks. The
+        # heading "Epics awaiting your move" sits in a header div
+        # adjacent to a sibling <table> inside the same wrapper div.
+        document = Nokogiri::HTML(response.body)
+        epic_section = document.at_xpath("//h2[normalize-space()='Epics awaiting your move']/ancestor::div[contains(@class,'bg-white')][1]")
+        expect(epic_section).not_to be_nil
+        expect(epic_section.text).to include("Restore the forum")
+        expect(epic_section.text).not_to include("Already marching")
 
         ready.in_progress!
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_move.id }
+        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
-        expect(response.body).not_to include("Restore the forum")
+        epic_section_after = Nokogiri::HTML(response.body)
+                                     .at_xpath("//h2[normalize-space()='Epics awaiting your move']/ancestor::div[contains(@class,'bg-white')][1]")
+        expect(epic_section_after.to_s).not_to include("Restore the forum") if epic_section_after
       end
 
       it "updates an Epic auto-approval rule from the Epics dashboard" do
         epic = Factories.epic(user: user, repository: repo, state: "ready", title: "Polish aqueduct")
         SmartFolder.ensure_builtins!
-        awaiting_move = SmartFolder.find_by!(name: "Awaiting your move")
+        inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_move.id }
+        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
         expect(response.body).to include("Auto-approval")
         expect(response.body).to include("If graders pass")
 
@@ -1228,11 +1271,13 @@ RSpec.describe "Dashboard", type: :request do
       end
 
       it "renders a Kanban card menu action that opens the dependency graph drawer" do
+        # root_path redirects to chat now; the dashboard with the
+        # Epics-aware Inbox folder is where the drawer lives.
         epic = Factories.epic(user: user, repository: repo, state: "ready", title: "Restore the forum")
         SmartFolder.ensure_builtins!
-        awaiting_move = SmartFolder.find_by!(name: "Awaiting your move")
+        inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-        get root_path, params: { smart_folder_id: awaiting_move.id }
+        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
         document = Nokogiri::HTML(response.body)
         graph_link = document.at_css("a[href='#{graph_epic_path(epic, drawer: 1)}']")
@@ -1335,9 +1380,12 @@ RSpec.describe "Dashboard", type: :request do
         JSON.parse(stdout)
       end
 
-      it "attaches filter-memory controller to the jobs filter form" do
+      it "attaches filter-memory controller to the chip-bar" do
+        # The legacy dropdown form was data-controller="auto-submit
+        # filter-memory"; the chip-bar uses "chip-bar filter-memory"
+        # and broadcasts subject + storage key the same way.
         get dashboard_jobs_path
-        expect(response.body).to include('data-controller="auto-submit filter-memory"')
+        expect(response.body).to include('data-controller="chip-bar filter-memory"')
       end
 
       it "attaches filter-memory#clear action to the Clear link when filters are active" do

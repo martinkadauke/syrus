@@ -137,7 +137,12 @@ RSpec.describe PollPullRequestJob do
       expect(job.closure_reason).to eq("pr_merged")
     end
 
-    it "keeps the Job open on a new APPROVED review when auto-merge is disabled" do
+    it "keeps the Job open (transitions to approved) on a new APPROVED review when auto-merge is disabled" do
+      # An APPROVED review moves the Job to `approved` state — which
+      # is still `open?` per Job#open? (== !closed? && !merged?). The
+      # earlier assertion `not_to change { job.reload.state }` was a
+      # misread of "keeps the Job open" as "doesn't change state";
+      # they're separate concerns.
       stub_pr
       stub_reviews([
         { id: 1, state: "APPROVED", submitted_at: Time.current.iso8601, html_url: "https://github.com/acme/widgets/pull/7#pullrequestreview-1", user: { login: "reviewer" } }
@@ -146,11 +151,9 @@ RSpec.describe PollPullRequestJob do
       stub_review_comments([])
       stub_check_runs("deadbeef0000000000000000000000000000beef", [])
 
-      expect {
-        described_class.perform_now(job.id)
-      }.not_to change { job.reload.state }
+      described_class.perform_now(job.id)
 
-      expect(job).to be_open
+      expect(job.reload).to be_open
       expect(job.state).to eq("approved")
       expect(job.approved_via).to eq("github_review")
       expect(job.closure_reason).to be_nil

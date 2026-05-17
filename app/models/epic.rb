@@ -113,6 +113,11 @@ class Epic < ApplicationRecord
         job.epic = self
         if job.blocked_by_epic? && job.may_release_epic_block?
           job.release_epic_block!
+          # release_epic_block!'s after-callback (create_initial_run_if_needed)
+          # bails when a workflow already exists, leaving any queued
+          # workflow without a Run. Explicitly start pending workflows
+          # so the chain actually advances.
+          job.start_pending_workflows_if_dependencies_satisfied!
         else
           job.start_pending_workflows_if_dependencies_satisfied!
         end

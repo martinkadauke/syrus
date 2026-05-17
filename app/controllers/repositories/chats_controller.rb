@@ -6,14 +6,21 @@ class Repositories::ChatsController < ApplicationController
   before_action :load_pending_action, only: %i[ confirm_pending_action destroy_pending_action ]
   before_action :load_proposal, only: %i[ confirm_proposal reject_proposal ]
 
+  # Renders the repository chat home. Picks up the newest chat for
+  # this user+repository, or falls back to an empty-state view that
+  # waits for the operator's first message before creating any
+  # ChatSession. Visiting the page must NOT mutate state — that's why
+  # `POST /repositories/:id/chats` exists for explicit chat creation.
   def show
-    chat_session = if new_chat?
-      ChatSession.create!(user: Current.user, repository: @repository)
-    else
-      current_chat_session || ChatSession.create!(user: Current.user, repository: @repository)
-    end
-
-    redirect_to chat_path(chat_session), status: :moved_permanently
+    @chat_session = current_chat_session
+    @chat_available = Current.user.claude_oauth_token.present?
+    @messages, @has_more_older = paginated_tail(@chat_session)
+    @pending_actions = @chat_session ? @chat_session.pending_actions.where(state: "pending").order(:created_at, :id) : []
+    @turn_in_flight = @chat_session&.turn_in_flight? || false
+    @attachment_groups = @chat_session ? @chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type) : {}
+    @documents_in_scope = @chat_session ? @chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id) : Document.none
+    @attachment_results = []
+    @bookmarks = @chat_session ? @chat_session.bookmarks.includes(:chat_message) : []
   end
 
   # Returns an HTML fragment of the next page of older messages, for
@@ -42,8 +49,12 @@ class Repositories::ChatsController < ApplicationController
   def create
     text = message_text
     if text.blank?
-      chat_session = ChatSession.create!(user: Current.user, repository: @repository)
-      redirect_to chat_path(chat_session), notice: "Chat created."
+      # Empty POST is the "New chat" button — defer creating any
+      # ChatSession until the operator actually has something to
+      # send. Re-rendering the show page with new_chat=1 lets the
+      # view clear any displayed chat without leaving a turd behind
+      # in the DB.
+      redirect_to repository_chats_path(@repository, new_chat: "1")
       return
     end
 
@@ -60,13 +71,13 @@ class Repositories::ChatsController < ApplicationController
     end
 
     ChatTurnJob.perform_later(chat_session.id, user_message.id)
-    redirect_to chat_path(chat_session), notice: "Message sent."
+    redirect_to repository_chats_path(@repository), notice: "Message sent."
   end
 
   def message
     text = message_text
     if text.blank?
-      redirect_to chat_path(@chat_session), alert: "Message cannot be blank."
+      redirect_to repository_chats_path(@repository), alert: "Message cannot be blank."
       return
     end
 
@@ -77,23 +88,23 @@ class Repositories::ChatsController < ApplicationController
     end
 
     ChatTurnJob.perform_later(@chat_session.id, user_message.id)
-    redirect_to chat_path(@chat_session), notice: "Message sent."
+    redirect_to repository_chats_path(@repository), notice: "Message sent."
   end
 
   def stop
     @chat_session.update!(stop_requested_at: Time.current)
     @chat_session.broadcast_controls
-    redirect_to chat_path(@chat_session), notice: "Stop requested."
+    redirect_to repository_chats_path(@repository), notice: "Stop requested."
   end
 
   def refresh
     ChatWorkspaceJob.perform_later(@chat_session.id, action: :refresh)
-    redirect_to chat_path(@chat_session), notice: "Repository refresh queued."
+    redirect_to repository_chats_path(@repository), notice: "Repository refresh queued."
   end
 
   def reset
     ChatWorkspaceJob.perform_later(@chat_session.id, action: :reset)
-    redirect_to chat_path(@chat_session), notice: "Workspace reset queued."
+    redirect_to repository_chats_path(@repository), notice: "Workspace reset queued."
   end
 
   def confirm_pending_action
@@ -103,13 +114,13 @@ class Repositories::ChatsController < ApplicationController
                when ScheduledTask then "Scheduled task created: #{record.name}."
                else "Pending action confirmed."
                end
-      redirect_to chat_path(@pending_action.chat_session), notice: notice
+      redirect_to repository_chats_path(@repository), notice: notice
     else
-      redirect_to chat_path(@pending_action.chat_session), alert: "Pending action is no longer active."
+      redirect_to repository_chats_path(@repository), alert: "Pending action is no longer active."
     end
   rescue ActiveRecord::RecordInvalid => e
     message = e.record.errors.full_messages.to_sentence.presence || "Pending action could not be confirmed."
-    redirect_to chat_path(@pending_action.chat_session), alert: message
+    redirect_to repository_chats_path(@repository), alert: message
   rescue ActiveRecord::RecordNotFound, ArgumentError => e
     redirect_to repository_chats_path(@repository), alert: e.message
   end
@@ -124,9 +135,9 @@ class Repositories::ChatsController < ApplicationController
 
     if result
       notice = rejection ? "Pending action rejected." : "Pending action cancelled."
-      redirect_to chat_path(@pending_action.chat_session), notice: notice
+      redirect_to repository_chats_path(@repository), notice: notice
     else
-      redirect_to chat_path(@pending_action.chat_session), alert: "Pending action is no longer active."
+      redirect_to repository_chats_path(@repository), alert: "Pending action is no longer active."
     end
   rescue ActiveRecord::RecordNotFound => e
     redirect_to repository_chats_path(@repository), alert: e.message
@@ -134,12 +145,12 @@ class Repositories::ChatsController < ApplicationController
 
   def confirm_proposal
     if @proposal.confirmed?
-      redirect_to chat_path(@proposal.chat_session), alert: "Proposal is already confirmed."
+      redirect_to repository_chats_path(@repository), alert: "Proposal is already confirmed."
       return
     end
 
     unless @proposal.proposed?
-      redirect_to chat_path(@proposal.chat_session), alert: "Proposal is no longer proposed."
+      redirect_to repository_chats_path(@repository), alert: "Proposal is no longer proposed."
       return
     end
 
@@ -157,19 +168,19 @@ class Repositories::ChatsController < ApplicationController
     else
       "Proposal confirmed."
     end
-    redirect_to chat_path(@proposal.chat_session), notice: notice
+    redirect_to repository_chats_path(@repository), notice: notice
   rescue ArgumentError => e
-    redirect_to chat_path(@proposal.chat_session), alert: e.message
+    redirect_to repository_chats_path(@repository), alert: e.message
   rescue ActiveRecord::RecordInvalid => e
-    redirect_to chat_path(@proposal.chat_session), alert: e.record.errors.full_messages.to_sentence
+    redirect_to repository_chats_path(@repository), alert: e.record.errors.full_messages.to_sentence
   end
 
   def reject_proposal
     if @proposal.proposed?
       @proposal.update!(state: "rejected", rejected_at: Time.current)
-      redirect_to chat_path(@proposal.chat_session), notice: "Proposal rejected."
+      redirect_to repository_chats_path(@repository), notice: "Proposal rejected."
     else
-      redirect_to chat_path(@proposal.chat_session), alert: "Proposal is no longer proposed."
+      redirect_to repository_chats_path(@repository), alert: "Proposal is no longer proposed."
     end
   end
 
