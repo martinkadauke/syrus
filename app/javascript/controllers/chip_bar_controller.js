@@ -44,6 +44,25 @@ export default class extends Controller {
     document.addEventListener("turbo:render", this.handleTurboRender)
     document.addEventListener("turbo:frame-render", this.handleTurboRender)
     document.addEventListener("turbo:morph", this.handleTurboRender)
+
+    // Open popovers are pure client state — the server-rendered HTML
+    // always has them hidden — so idiomorph patches the `hidden`
+    // class back on, closing the operator's open menu mid-interaction
+    // during any broadcast_refresh. Cancel the per-element morph for
+    // open popovers (we can't mark them data-turbo-permanent because
+    // that would also block full-visit navigation from updating their
+    // host chip-bar).
+    this.handleBeforeMorphElement = (event) => {
+      const el = event.target
+      if (!(el instanceof Element)) return
+      if (!this.element.contains(el)) return
+      const isPopover = (this.hasAddMenuTarget && el === this.addMenuTarget) ||
+                        (this.hasEditorTarget && el === this.editorTarget)
+      if (isPopover && !el.classList.contains("hidden")) {
+        event.preventDefault()
+      }
+    }
+    document.addEventListener("turbo:before-morph-element", this.handleBeforeMorphElement)
   }
 
   disconnect() {
@@ -51,6 +70,7 @@ export default class extends Controller {
     document.removeEventListener("turbo:render", this.handleTurboRender)
     document.removeEventListener("turbo:frame-render", this.handleTurboRender)
     document.removeEventListener("turbo:morph", this.handleTurboRender)
+    document.removeEventListener("turbo:before-morph-element", this.handleBeforeMorphElement)
   }
 
   // Stimulus fires this automatically when the controller's
