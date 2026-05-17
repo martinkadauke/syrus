@@ -91,11 +91,15 @@ RSpec.describe "Dashboard", type: :request do
       expect(document.at_css("a[href='#{dashboard_workflows_path}']").text).to include("Workflows")
     end
 
-    it "uses the default Dashboard preference on /dashboard" do
+    it "renders the default Dashboard preference on /dashboard inline" do
+      # /dashboard used to redirect to the canonical
+      # dashboard_epics/dashboard_jobs URL; it now dispatches to
+      # the right view inline so the subject+view toggle in the
+      # top nav can switch without round-tripping a redirect.
       get "/dashboard"
 
-      expect(response).to have_http_status(:found)
-      expect(response).to redirect_to(dashboard_epics_path(view: "list"))
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Dashboard subject")
     end
 
     it "updates only the explicit Dashboard preference field" do
@@ -103,7 +107,7 @@ RSpec.describe "Dashboard", type: :request do
 
       get "/dashboard", params: { subject: "jobs" }
 
-      expect(response).to redirect_to(dashboard_jobs_path(view: "kanban"))
+      expect(response).to have_http_status(:ok)
       expect(user.reload.dashboard_preferences).to eq("last_subject" => "job", "last_view" => "kanban")
     end
 

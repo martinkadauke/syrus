@@ -265,21 +265,15 @@
             Showing smart folder: <strong><%= @active_smart_folder.name %></strong>
           </div>
         <% end %>
-        <div class="flex items-center justify-between gap-3">
-          <div class="flex gap-2 text-sm">
-            <%= link_to "List",
-                  dashboard_jobs_path(request.query_parameters.except("page", "view")),
-                  class: "rounded-md border px-3 py-1.5 #{@dashboard_view == 'list' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}" %>
-            <%= link_to "Kanban",
-                  dashboard_jobs_path(request.query_parameters.except("page").merge("view" => "kanban")),
-                  class: "rounded-md border px-3 py-1.5 #{@dashboard_view == 'kanban' ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}" %>
+        <%# The List/Kanban toggle now lives in the top-level dashboard
+            nav (around line 68); the second copy that used to live here
+            was a leftover from before the nav-level toggle existed.
+            Keep only the Kanban-cap notice. %>
+        <% if @dashboard_view == "kanban" && @job_kanban_cap_hit %>
+          <div class="text-sm text-amber-700">
+            Showing the first <%= HomeController::KANBAN_PER_PAGE %> jobs; refine filters to narrow the board.
           </div>
-          <% if @dashboard_view == "kanban" && @job_kanban_cap_hit %>
-            <div class="text-sm text-amber-700">
-              Showing the first <%= HomeController::KANBAN_PER_PAGE %> jobs; refine filters to narrow the board.
-            </div>
-          <% end %>
-        </div>
+        <% end %>
     <% if @epics&.any? %>
       <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <div class="px-4 py-3 border-b border-gray-200">
