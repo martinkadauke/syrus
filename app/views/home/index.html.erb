@@ -31,7 +31,14 @@
           class: "rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium" %>
   </div>
 
-  <%= turbo_frame_tag "dashboard_content" do %>
+  <%# target: "_top" makes top-level navigation the default for every
+      link inside this frame. The only in-frame navigations are the
+      List/Kanban view toggle below (explicitly marked with
+      data-turbo-frame="dashboard_content"). Without target="_top",
+      links to /jobs/:id and /epics/:id inherit the frame target,
+      fetch the show page, find no matching frame in the response,
+      and render "Content missing." %>
+  <%= turbo_frame_tag "dashboard_content", target: "_top" do %>
     <% current_view = @dashboard_view.presence || "list" %>
     <% subject_link_classes = ->(active) { "inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium #{active ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-50'}" } %>
     <% view_link_classes = ->(active) { "inline-flex items-center px-2.5 py-1 text-xs font-medium #{active ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-50'}" } %>

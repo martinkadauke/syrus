@@ -130,6 +130,26 @@ RSpec.describe "Dashboard", type: :request do
       expect(view_nav.at_css("a[href='/?subject=job&view=kanban']")["data-turbo-frame"]).to eq("dashboard_content")
     end
 
+    # Regression: the dashboard_content turbo-frame used to inherit its
+    # target down to every link inside it. Clicking a job (or epic) link
+    # tried to load /jobs/:id into that frame; since the show page has no
+    # matching frame, Turbo rendered "Content missing". Cmd-click worked
+    # because that bypasses Turbo entirely. The fix sets target="_top" on
+    # the frame so out-links default to top-level navigation; the only
+    # in-frame links are the view-toggle ones, which set their own
+    # data-turbo-frame.
+    it "marks the dashboard_content turbo-frame with target=_top so job and epic links escape it" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      Factories.job_record(repository: repo, issue_number: 7)
+
+      get dashboard_jobs_path
+
+      document = Nokogiri::HTML(response.body)
+      frame = document.at_css("turbo-frame#dashboard_content")
+      expect(frame).to be_present
+      expect(frame["target"]).to eq("_top")
+    end
+
     it "renders the Epic subject with the Epic chip bar and sidebar on list view" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.epic(user: user, repository: repo, title: "Raise the forum", state: "ready")
