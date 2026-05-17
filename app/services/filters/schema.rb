@@ -20,10 +20,47 @@ module Filters
         "label"     => chip.label,
         "bucket"    => chip.bucket.to_s,
         "operators" => chip.operators.map(&:to_s),
-        "values"    => dynamic_values(chip, user) || chip.values
+        "values"    => humanize_values(dynamic_values(chip, user) || chip.values)
       }
       meta["expansions"] = chip.expansions if chip.respond_to?(:expansions)
       meta
+    end
+
+    # Take an array of static enum values (strings) or pre-labeled
+    # hashes and emit a uniform `[{value, label}]` shape with the
+    # label run through `humanize_value` so "pr_merged" displays as
+    # "PR merged" and "external_pr_merged" displays as "External PR
+    # merged". Pre-labeled entries (dynamic_values from FK chips) are
+    # passed through untouched.
+    def humanize_values(values)
+      return values unless values.is_a?(Array)
+      values.map do |v|
+        case v
+        when Hash         then v
+        when String, Symbol then { "value" => v.to_s, "label" => humanize_value(v) }
+        else v
+        end
+      end
+    end
+
+    # Sentence-case humanizer with acronym handling. Designed for
+    # short enum values like "pr_merged", "ci_failure",
+    # "awaiting_approval" — first word capitalized, rest lowercase,
+    # except known acronyms which stay uppercase wherever they fall.
+    ACRONYMS = %w[PR CI AI ID URL API MCP].freeze
+
+    def humanize_value(value)
+      parts = value.to_s.split(/[_\-]/)
+      parts.map.with_index do |word, i|
+        upper = word.upcase
+        if ACRONYMS.include?(upper)
+          upper
+        elsif i.zero?
+          word.capitalize
+        else
+          word.downcase
+        end
+      end.join(" ")
     end
 
     # FK chips (repository_id, epic_id, parent_job_id) need

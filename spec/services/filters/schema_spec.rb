@@ -10,7 +10,10 @@ RSpec.describe Filters::Schema do
       schema = described_class.chip_for("agent_provider")
       expect(schema["bucket"]).to eq("enum")
       expect(schema["operators"]).to include("is", "is_one_of", "is_set")
-      expect(schema["values"]).to eq(%w[claude codex])
+      expect(schema["values"]).to eq([
+        { "value" => "claude", "label" => "Claude" },
+        { "value" => "codex",  "label" => "Codex" }
+      ])
     end
 
     it "inherits string operators from StringColumn base" do
@@ -38,7 +41,7 @@ RSpec.describe Filters::Schema do
     it "still respects per-chip overrides for bucket and values" do
       schema = described_class.chip_for("priority")
       expect(schema["bucket"]).to eq("enum")
-      expect(schema["values"]).to eq(%w[high medium low])
+      expect(schema["values"].map { |v| v["value"] }).to eq(%w[high medium low])
     end
 
     it "embeds preset expansions on chips that declare them" do
@@ -57,12 +60,18 @@ RSpec.describe Filters::Schema do
 
     it "populates values for triaging_reason from the Job constant" do
       schema = described_class.chip_for("triaging_reason")
-      expect(schema["values"]).to match_array(Job::TRIAGING_REASONS)
+      expect(schema["values"].map { |v| v["value"] }).to match_array(Job::TRIAGING_REASONS)
     end
 
     it "populates values for age from CUTOFFS" do
       schema = described_class.chip_for("age")
-      expect(schema["values"]).to eq(%w[1d 7d 30d])
+      expect(schema["values"].map { |v| v["value"] }).to eq(%w[1d 7d 30d])
+    end
+
+    it "humanizes enum value labels (acronyms, sentence-case)" do
+      labels = described_class.chip_for("closure_reason")["values"].to_h { |v| [ v["value"], v["label"] ] }
+      expect(labels["pr_merged"]).to eq("PR merged")
+      expect(labels["external_pr_merged"]).to eq("External PR merged") if labels.key?("external_pr_merged")
     end
 
     it "renders pr_mergeable as a boolean tri-state chip" do

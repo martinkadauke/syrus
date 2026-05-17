@@ -636,8 +636,41 @@ function expansionForPresetChip(chip, meta) {
   return meta.expansions[key] || null
 }
 
+// Explicit map of operator → human-readable phrase. Keeping this
+// as a static table (vs. a generic underscore→space substitution)
+// lets us pick wording that reads as natural English: "is any of"
+// beats "is one of", "doesn't contain" beats "does not contain".
+const OP_LABELS = {
+  is:                   "is",
+  is_not:               "is not",
+  is_one_of:            "is any of",
+  is_none_of:           "is none of",
+  is_set:               "is set",
+  is_unset:             "is not set",
+  is_true:              "is true",
+  is_false:             "is false",
+  is_empty:             "is empty",
+  is_not_empty:         "is not empty",
+  contains:             "contains",
+  does_not_contain:     "doesn't contain",
+  starts_with:          "starts with",
+  does_not_start_with:  "doesn't start with",
+  ends_with:            "ends with",
+  does_not_end_with:    "doesn't end with",
+  equals:               "equals",
+  not_equals:           "doesn't equal",
+  contains_any:         "contains any of",
+  contains_all:         "contains all of",
+  contains_none:        "contains none of",
+  before:               "before",
+  after:                "after",
+  between:              "between",
+  within_last:          "within last",
+  more_than_ago:        "more than"
+}
+
 function humanizeOp(op) {
-  return op.replace(/_/g, " ")
+  return OP_LABELS[op] || op.replace(/_/g, " ")
 }
 
 function encodeTree(tree) {
@@ -713,7 +746,10 @@ function formatObjectValue(chip) {
     const n = chip.value.n
     const unit = chip.value.unit
     const singular = unit && unit.endsWith("s") && Number(n) === 1 ? unit.slice(0, -1) : unit
-    return `${n} ${singular}`
+    const phrase = `${n} ${singular}`
+    // more_than_ago reads naturally with an "ago" tail — "more
+    // than 7 days ago" beats "more than 7 days".
+    return chip.op === "more_than_ago" ? `${phrase} ago` : phrase
   }
   return JSON.stringify(chip.value)
 }
