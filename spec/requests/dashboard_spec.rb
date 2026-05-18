@@ -123,7 +123,9 @@ RSpec.describe "Dashboard", type: :request do
       subject_nav = document.at_css("nav[aria-label='Dashboard subject']")
       view_nav = document.at_css("nav[aria-label='Dashboard view']")
 
-      expect(subject_nav.text.squish).to include("Epics 1", "Jobs 1", "Workflows")
+      expect(subject_nav.text.squish).to include("Epics", "Jobs", "Workflows")
+      # Counts moved to the hover tooltip — visible badges were dropped
+      # because three tabs + badges + chip bar + view toggle didn't fit.
       expect(subject_nav.at_css("a[href='/?subject=epic&view=list']")["title"]).to eq("1 epic matches the current filter")
       expect(subject_nav.at_css("a[href='/?subject=job&view=list']")["class"]).to include("bg-blue-600")
       expect(subject_nav.at_css("a[href='/?subject=workflow&view=list']")).to be_present
@@ -152,8 +154,12 @@ RSpec.describe "Dashboard", type: :request do
       get dashboard_jobs_path, params: { q: q }
 
       subject_nav = Nokogiri::HTML(response.body).at_css("nav[aria-label='Dashboard subject']")
-      expect(subject_nav.at_css("a[href*='subject=epic']").text.squish).to include("Epics 3")
-      expect(subject_nav.at_css("a[href*='subject=job']").text.squish).to include("Jobs 0")
+      # Counts live in the `title` hover-tooltip now (badges removed
+      # for layout reasons). The semantic check still works: the
+      # inactive Epics tab tooltip reports the unfiltered total (3),
+      # not the active filter cross-applied.
+      expect(subject_nav.at_css("a[href*='subject=epic']")["title"]).to eq("3 epics match the current filter")
+      expect(subject_nav.at_css("a[href*='subject=job']")["title"]).to eq("0 jobs match the current filter")
     end
 
     # Regression: the dashboard_content turbo-frame used to inherit its

@@ -59,34 +59,24 @@
         breathing room between this row and what follows. %>
     <div class="flex flex-wrap items-center gap-3 lg:gap-5 pb-2">
       <div class="lg:w-64 lg:shrink-0">
+      <%# Subject toggle. Counts removed from the badges to make room
+          for the chip bar + view toggle on narrower-but-still-lg
+          screens — they pushed the chip bar off the right edge and
+          clipped "Workflows." The hover tooltip (`title`) still
+          carries the count for operators who want it. %>
       <nav class="inline-flex overflow-hidden rounded-md border border-gray-300 bg-white" aria-label="Dashboard subject">
-        <%= link_to root_path(subject: "epic", view: current_view),
+        <%= link_to "Epics", root_path(subject: "epic", view: current_view),
               class: subject_link_classes.call(@active_tab == "epics"),
               title: count_title.call(@epics_matching_count.to_i, "epic"),
-              data: { turbo_frame: "_top" } do %>
-          <span>Epics</span>
-          <span class="<%= @active_tab == 'epics' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600' %> rounded-full px-2 py-0.5 text-xs">
-            <%= number_with_delimiter(@epics_matching_count.to_i) %>
-          </span>
-        <% end %>
-        <%= link_to root_path(subject: "job", view: current_view),
+              data: { turbo_frame: "_top" } %>
+        <%= link_to "Jobs", root_path(subject: "job", view: current_view),
               class: subject_link_classes.call(@active_tab == "jobs"),
               title: count_title.call(@jobs_matching_count.to_i, "job"),
-              data: { turbo_frame: "_top" } do %>
-          <span>Jobs</span>
-          <span class="<%= @active_tab == 'jobs' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600' %> rounded-full px-2 py-0.5 text-xs">
-            <%= number_with_delimiter(@jobs_matching_count.to_i) %>
-          </span>
-        <% end %>
-        <%= link_to root_path(subject: "workflow", view: current_view),
+              data: { turbo_frame: "_top" } %>
+        <%= link_to "Workflows", root_path(subject: "workflow", view: current_view),
               class: subject_link_classes.call(@active_tab == "workflows"),
               title: count_title.call(@workflows_matching_count.to_i, "workflow"),
-              data: { turbo_frame: "_top" } do %>
-          <span>Workflows</span>
-          <span class="<%= @active_tab == 'workflows' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600' %> rounded-full px-2 py-0.5 text-xs">
-            <%= number_with_delimiter(@workflows_matching_count.to_i) %>
-          </span>
-        <% end %>
+              data: { turbo_frame: "_top" } %>
       </nav>
       </div>
 
