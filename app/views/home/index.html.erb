@@ -80,11 +80,9 @@
       </nav>
       </div>
 
-      <%# flex-1 lets the chip bar swell to fill the gap when present;
-          when it's absent (Workflows tab) the empty div still grows
-          and pushes the View toggle to the right edge — same visual
-          as the old justify-between. min-w-0 keeps the chip bar's
-          wrap behavior correct inside a flex parent. %>
+      <%# flex-1 lets the chip bar swell to fill the gap; min-w-0
+          keeps the chip bar's wrap behavior correct inside a flex
+          parent. Per-tab branch picks the right filter ivar. %>
       <div class="hidden lg:block flex-1 min-w-0">
         <% if @active_tab == "epics" %>
           <%= render "home/chip_bar",
@@ -95,6 +93,13 @@
                 class_name: "relative" %>
         <% elsif @active_tab == "jobs" %>
           <%= render "chip_bar", class_name: "relative" %>
+        <% elsif @active_tab == "workflows" %>
+          <%= render "home/chip_bar",
+                subject: :workflow,
+                filter: @workflow_filter,
+                schema: @schema,
+                action_url: root_path(subject: "workflow", view: current_view),
+                class_name: "relative" %>
         <% end %>
       </div>
 
@@ -678,13 +683,6 @@
       </aside>
 
       <div class="space-y-4">
-        <%= render "chip_bar",
-              subject: :workflow,
-              filter: @workflow_filter,
-              schema: @schema,
-              action_url: root_path(subject: "workflow", view: current_view),
-              class_name: "relative hidden lg:block" %>
-
         <% if @active_smart_folder %>
           <div class="hidden rounded-md border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-800 lg:block">
             Showing smart folder: <strong><%= @active_smart_folder.name %></strong>
