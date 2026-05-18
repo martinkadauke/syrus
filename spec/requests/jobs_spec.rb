@@ -3,7 +3,10 @@ require "rails_helper"
 RSpec.describe "Jobs", type: :request do
   let(:user)  { Factories.user }
   let(:other) { Factories.user }
-  let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets") }
+  # auto_merge_enabled: true so approve specs don't all need to set
+  # it explicitly. The single "rejects approve on auto-merge-disabled
+  # repo" spec creates its own repo with the flag off.
+  let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets", auto_merge_enabled: true) }
   let(:job) { Factories.job(repository: repository, issue_number: 42) }
 
   around do |example|
@@ -67,6 +70,26 @@ RSpec.describe "Jobs", type: :request do
         expect(response.body).to include("Codex")
         expect(response.body).not_to include("Claude Code")
         expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*Codex/m)
+      end
+
+      # Regression: approving a Job whose repo has auto_merge_enabled
+      # off used to silently succeed locally, then get wiped on the
+      # next landing tick when AutoMergeGate raised
+      # "repository has not enabled auto-merge" → fail_landing →
+      # approved_at cleared. Surface the misconfiguration at approve
+      # time instead.
+      it "refuses to approve a Job whose repository has auto-merge disabled" do
+        no_automerge_repo = Factories.repository(user: user, owner: "acme", name: "lib",
+                                                  auto_merge_enabled: false)
+        no_automerge_job = Factories.job(repository: no_automerge_repo, issue_number: 99)
+        no_automerge_job.update!(state: "implemented")
+
+        post approve_job_path(no_automerge_job)
+
+        expect(response).to redirect_to(job_path(no_automerge_job))
+        expect(flash[:alert]).to include("Auto-merge is disabled for acme/lib")
+        expect(no_automerge_job.reload.state).to eq("implemented")
+        expect(no_automerge_job.approved_at).to be_nil
       end
 
       it "approves an implemented job from the job page" do

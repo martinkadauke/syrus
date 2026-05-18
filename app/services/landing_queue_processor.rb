@@ -84,6 +84,12 @@ class LandingQueueProcessor
     return { blocked_reason: nil, waiting_for: nil } if job.landing?
     return blocked("landing paused") if job.user.landing_paused?
     return blocked("repository archived") if job.repository.archived?
+    # Don't burn a fail_landing cycle on a Job whose repo isn't set
+    # up for auto-merge — that wipes the operator's approval without
+    # surfacing the real misconfiguration. Keep the Job in :approved
+    # with a clear blocked_reason; once the repo flips
+    # auto_merge_enabled=true the queue picks it up immediately.
+    return blocked("auto-merge not enabled for repository") unless job.repository.auto_merge_enabled?
     return blocked("missing pull request") if job.pr_number.blank?
     return blocked("active workflow") if job.workflows.active.exists?
     return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?

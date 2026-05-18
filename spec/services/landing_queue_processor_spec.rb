@@ -65,6 +65,25 @@ RSpec.describe LandingQueueProcessor do
     expect(ready.reload).to be_approved
   end
 
+  # Regression: an approved Job on a repo without auto_merge_enabled
+  # used to be picked up by the queue, transitioned to :landing,
+  # then immediately failed at AutoMergeGate ("repository has not
+  # enabled auto-merge") — which fail_landing'd and wiped the
+  # approved_at. blockage_for now catches this so the Job stays
+  # approved with a clear blocked_reason until the repo is configured.
+  it "blocks approved Jobs whose repository does not have auto-merge enabled" do
+    disabled_repo = Factories.repository(user: user, auto_merge_enabled: false)
+    job = Factories.job_record(user: user, repository: disabled_repo, issue_number: 1,
+                                pr_number: 1, state: "open").tap do |j|
+      j.approve!(via: "github_review")
+    end
+
+    expect(described_class.call).to be_nil
+    expect(job.reload).to be_approved
+    entry = described_class.entries(Job.where(id: job.id)).first
+    expect(entry.blocked_reason).to include("auto-merge not enabled")
+  end
+
   describe ".try_land!" do
     it "dispatches an AutoMerge workflow for a specific approved Job" do
       job = queue_job(issue_number: 1, approved_at: 1.minute.ago)

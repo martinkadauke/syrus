@@ -409,10 +409,20 @@ class HomeController < ApplicationController
     batch_id = SecureRandom.uuid
     approved = 0
     approved_jobs = []
+    skipped_auto_merge_disabled = []
 
     ActiveRecord::Base.transaction do
       jobs.each do |job|
         next unless job.may_approve?
+
+        # Same guard as JobsController#approve — refuse approval on
+        # repos without auto_merge_enabled so the operator's intent
+        # isn't silently lost to a fail_landing cycle. Skipping here
+        # is the bulk equivalent of the single-Job alert.
+        unless job.repository.auto_merge_enabled?
+          skipped_auto_merge_disabled << job
+          next
+        end
 
         job.approve!(
           via: "bulk",
@@ -424,13 +434,22 @@ class HomeController < ApplicationController
       end
     end
 
-    if approved.zero?
+    if approved.zero? && skipped_auto_merge_disabled.empty?
       redirect_back fallback_location: dashboard_jobs_path, alert: "No selected jobs were awaiting approval."
+    elsif approved.zero?
+      redirect_back fallback_location: dashboard_jobs_path,
+                    alert: bulk_auto_merge_disabled_message(skipped_auto_merge_disabled)
     else
       github_note = bulk_github_approval_note(approved_jobs)
+      skip_note = skipped_auto_merge_disabled.any? ? bulk_auto_merge_disabled_message(skipped_auto_merge_disabled) : nil
       redirect_back fallback_location: dashboard_jobs_path,
-                    notice: [ "Approved #{helpers.pluralize(approved, 'job')} in batch #{batch_id}.", github_note ].compact.join(" ")
+                    notice: [ "Approved #{helpers.pluralize(approved, 'job')} in batch #{batch_id}.", github_note, skip_note ].compact.join(" ")
     end
+  end
+
+  def bulk_auto_merge_disabled_message(skipped)
+    repos = skipped.map { |job| job.repository.slug }.uniq.sort
+    "Skipped #{helpers.pluralize(skipped.size, 'job')} whose repository has auto-merge disabled (#{repos.join(', ')}). Enable auto-merge in repository settings to approve."
   end
 
   def bulk_review_approval(jobs)

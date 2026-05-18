@@ -834,7 +834,7 @@ RSpec.describe "Dashboard", type: :request do
     end
 
     describe "bulk job actions" do
-      let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
+      let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets", auto_merge_enabled: true) }
 
       def finish_initial_work(job, provider: "claude")
         job.initial_run.update!(
@@ -941,6 +941,26 @@ RSpec.describe "Dashboard", type: :request do
         expect(active_job.reload).to be_closed
         expect(active_job.initial_run.reload).to be_cancelled
         expect(flash[:notice]).to match(/2 jobs closed/)
+      end
+
+      # Regression: bulk-approving Jobs whose repo has auto_merge
+      # disabled used to silently succeed, then get wiped on the next
+      # landing tick. Skip those Jobs with a clear flash that names
+      # the affected repos so the operator can enable auto-merge.
+      it "bulk approve skips Jobs whose repository has auto-merge disabled" do
+        no_automerge_repo = Factories.repository(user: user, owner: "acme", name: "lib", auto_merge_enabled: false)
+        enabled = Factories.job(repository: repo, issue_number: 10)
+        disabled = Factories.job(repository: no_automerge_repo, issue_number: 11)
+        enabled.update!(state: "implemented")
+        disabled.update!(state: "implemented")
+
+        post bulk_dashboard_jobs_path, params: { job_ids: [ enabled.id, disabled.id ], bulk_action: "approve" }
+
+        expect(enabled.reload.state).to eq("approved")
+        expect(disabled.reload.state).to eq("implemented")
+        expect(disabled.approved_at).to be_nil
+        expect(flash[:notice]).to include("Approved 1 job in batch")
+        expect(flash[:notice]).to include("Skipped 1 job whose repository has auto-merge disabled (acme/lib)")
       end
 
       it "bulk approves selected implemented jobs with a shared batch id" do

@@ -179,6 +179,17 @@ class JobsController < ApplicationController
       return
     end
 
+    # Surface the misconfiguration at approve time instead of letting
+    # the approval flow into LandingQueueProcessor and AutoMergeGate
+    # only to fail with "repository has not enabled auto-merge."
+    # LandingQueueProcessor's blockage_for also catches this, but
+    # by then the operator has already clicked Approve under the
+    # belief that landing would happen.
+    unless @job.repository.auto_merge_enabled?
+      redirect_to job_path(@job), alert: "Auto-merge is disabled for #{@job.repository.slug}; enable it in repository settings before approving."
+      return
+    end
+
     @job.approve!(via: "operator", by_user: Current.user)
     github_note = Job::ApprovalPropagator.approve(@job, user: Current.user).message
     redirect_to job_path(@job), notice: [ "Job approved.", github_note ].compact.join(" ")
