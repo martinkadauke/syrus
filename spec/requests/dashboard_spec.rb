@@ -1174,8 +1174,13 @@ RSpec.describe "Dashboard", type: :request do
         document = Nokogiri::HTML(response.body)
         tree = JSON.parse(document.at_css("[data-chip-bar-tree-value]")["data-chip-bar-tree-value"])
         expect(tree).to eq(Workflows::Filter.default_tree)
-        expect(response.body).to include("Recent failure")
-        expect(response.body).not_to include("Ancient failure")
+        # Check the table body specifically, not the whole page — Job
+        # titles now also appear in the chip-bar's job_id picker
+        # schema JSON, so a broad response.body assertion would match
+        # the picker options as well as rendered rows.
+        tbody_text = document.at_css("tbody").text
+        expect(tbody_text).to include("Recent failure")
+        expect(tbody_text).not_to include("Ancient failure")
       end
 
       it "lets an explicit workflow chip filter narrow the list" do
@@ -1188,8 +1193,9 @@ RSpec.describe "Dashboard", type: :request do
 
         get root_path, params: { subject: "workflow", view: "list", q: q }
 
-        expect(response.body).to include("Still marching")
-        expect(response.body).not_to include("Awaiting orders")
+        tbody_text = Nokogiri::HTML(response.body).at_css("tbody").text
+        expect(tbody_text).to include("Still marching")
+        expect(tbody_text).not_to include("Awaiting orders")
       end
 
       it "renders the Workflow kanban as queued, running, and done columns without drag handles" do

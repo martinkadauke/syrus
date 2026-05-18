@@ -83,6 +83,15 @@ module Filters
         user.jobs.where.not(branch_name: nil).order(created_at: :desc).limit(200).map do |job|
           { "value" => job.id, "label" => "##{job.issue_number || job.id} #{job.issue_title}".strip }
         end
+      when "job_id"
+        # Workflows-side FK chip. Same shape as parent_job_id but
+        # without the branch_name filter (any Job's workflows are
+        # filterable, not just stack-able parents). Capped at 200
+        # most-recent for now — the upcoming typeahead refactor
+        # (see issue) replaces the limit with server-side search.
+        user.jobs.order(created_at: :desc).limit(200).map do |job|
+          { "value" => job.id, "label" => "##{job.issue_number || job.id} #{job.issue_title}".strip }
+        end
       when "tags"
         user.tags.order(Arel.sql("LOWER(tags.name)")).map { |t| { "value" => t.id, "label" => t.name } }
       else
