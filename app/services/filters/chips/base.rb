@@ -53,8 +53,15 @@ module Filters
         # array for buckets that take free input (strings, numbers,
         # dates) — the editor falls back to a text/number/date
         # widget in that case.
+        #
+        # Entries may be plain strings (auto-humanized into labels
+        # by Filters::Schema.humanize_values) OR `{"value" => ...,
+        # "label" => ...}` hashes for cases where the default
+        # humanization would mislead — e.g. the Jobs::State chip's
+        # "open" composite value needs the label "Any open" to
+        # distinguish it from the AASM :open state.
         def values(*list)
-          @values = list.flatten.map(&:to_s).freeze if list.any?
+          @values = list.flatten.map { |v| v.is_a?(Hash) ? v.transform_keys(&:to_s) : v.to_s }.freeze if list.any?
           return @values if defined?(@values) && @values&.any?
           superclass.respond_to?(:values) ? superclass.values : [].freeze
         end

@@ -88,6 +88,23 @@ RSpec.describe Filters::Schema do
       expect(labels["external_pr_merged"]).to eq("External PR merged") if labels.key?("external_pr_merged")
     end
 
+    it "exposes both composite and individual AASM state values for the state chip" do
+      labels = described_class.chip_for("state")["values"].to_h { |v| [ v["value"], v["label"] ] }
+      # Composites get explicit labels that disambiguate from
+      # individual AASM state names they collide with.
+      expect(labels["open"]).to eq("Any open")
+      expect(labels["closed"]).to eq("Closed or merged")
+      # Individual AASM states pass through humanize_value.
+      expect(labels["implemented"]).to eq("Implemented")
+      expect(labels["approved"]).to eq("Approved")
+      expect(labels["landing"]).to eq("Landing")
+      expect(labels["landing_failed"]).to eq("Landing failed")
+      expect(labels["merged"]).to eq("Merged")
+      expect(labels["triaging"]).to eq("Triaging")
+      expect(labels["blocked_by_epic"]).to eq("Blocked by epic")
+      expect(labels["queued"]).to eq("Queued")
+    end
+
     it "renders pr_mergeable as a boolean tri-state chip" do
       schema = described_class.chip_for("pr_mergeable")
       expect(schema["bucket"]).to eq("boolean")

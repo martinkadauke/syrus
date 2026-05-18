@@ -1,20 +1,42 @@
 module Filters
   module Chips
     module Jobs
-      # The legacy "state" dropdown is conceptually a two-bucket
-      # filter: open vs closed. Internally Job's AASM has many states
-      # (triaging, queued, running, open, classified, …) — Job's
-      # open_threads scope already groups them ("everything that
-      # isn't closed/merged") and closed_threads groups the rest.
-      # Map "open" / "closed" to those scopes; pass any other value
-      # through as a literal `state` column match for forward-looking
-      # operators that need to target a specific AASM state directly.
+      # The chip surfaces two kinds of values:
+      #
+      # 1. Composites — "open" maps to Job.open_threads (everything
+      #    that isn't closed/merged), "closed" maps to
+      #    Job.closed_threads (closed or merged). These collide with
+      #    the AASM :open / :closed state names; the composites win.
+      #    Labeled distinctly in the picker ("Any open", "Closed or
+      #    merged") to make the override obvious.
+      # 2. Individual AASM states (triaging, queued, implemented,
+      #    approved, landing, landing_failed, merged, blocked_by_epic)
+      #    — passed through as literal `state` column matches via the
+      #    `else` branch in scope_for. The AASM :open and :closed
+      #    states aren't in the picker because they'd duplicate the
+      #    composite value names; operators who need them can still
+      #    pass them via URL params and the literal-match path will
+      #    handle them.
+      #
+      # Ordering follows the lifecycle so the picker reads top-to-
+      # bottom as "this is what a Job goes through."
       class State < Base
         filter_name "state"
         label "State"
         bucket :enum
         operators :is, :is_not, :is_one_of, :is_none_of
-        values "open", "closed"
+        values(
+          { "value" => "open",   "label" => "Any open" },
+          { "value" => "closed", "label" => "Closed or merged" },
+          "triaging",
+          "blocked_by_epic",
+          "queued",
+          "implemented",
+          "approved",
+          "landing",
+          "landing_failed",
+          "merged"
+        )
 
         def apply
           case op
