@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Runs both test suites and exits non-zero if EITHER failed. The
+# explicit `set +e` + accumulate-exit pattern (not `&&`) means a
+# failure in the Ruby suite doesn't hide a separate failure in JS,
+# and vice versa — both suites always run, the operator sees both
+# results, exit code reflects the OR of the two.
+#
+# CI should run bin/rspec and bin/test-js as separate stages so
+# each suite's failures are reported distinctly; this is the
+# local-dev one-command convenience.
+
+set +e
+
+bin/rspec
+rspec_exit=$?
+
+bin/test-js
+js_exit=$?
+
+if [ "$rspec_exit" -ne 0 ] || [ "$js_exit" -ne 0 ]; then
+  echo
+  echo "—— summary ——"
+  echo "  rspec: exit $rspec_exit"
+  echo "  test-js: exit $js_exit"
+  exit 1
+fi

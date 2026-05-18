@@ -494,9 +494,20 @@ Local dev:
 ```
 bin/setup          # initial install + DB
 bin/dev            # foreman: web + worker + tailwind:watch
-bin/rspec          # full suite (~10s, 230+ examples)
+bin/rspec          # Ruby suite (~2500 examples)
 bin/rspec spec/jobs/run_job_spec.rb   # one file
+bin/test-js        # JS controller specs via `node --test` (no Rails, no npm install)
+bin/test           # both suites; reports separately; exits non-zero if EITHER fails
 ```
+
+JS controller specs live as plain `node --test` files under
+`spec/javascript/*.test.mjs`. There is no RSpec wrapper anymore —
+running them under RSpec was theatrical (Open3 → node → faking
+per-file granularity). `node --test` is the actual driver; the
+`.test.mjs` files load each controller via a regex-replaced
+data: URL import so no bundler / `npm install` is required.
+`bin/rspec` ignores `spec/javascript/`; use `bin/test-js` to run
+JS, or `bin/test` to chain both.
 
 Docker (production image):
 

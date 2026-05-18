@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Runs the JavaScript controller specs via Node's built-in test
+# runner. node --test is the real driver here — there is no RSpec
+# or bundler involvement. The .test.mjs files load each controller
+# directly via a regex-replaced data: URL import (see
+# spec/javascript/<x>.test.mjs's loadController helper), so no
+# `npm install` is required either.
+#
+# This script exists so bin/test can chain Ruby + JS tests and so a
+# developer working only on a controller doesn't have to invoke
+# Rails just to run JS. See CLAUDE.md's "Tests" section for the
+# split rationale.
+set -e
+exec node --test spec/javascript/*.test.mjs

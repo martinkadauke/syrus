@@ -35,3 +35,14 @@ grade:
   - name: rspec
     run: bin/rails db:test:prepare && bin/rspec
     timeout_minutes: 5
+
+  # JS controller specs via `node --test`. Separate grader from
+  # rspec so failures report distinctly — when the agent breaks a
+  # Stimulus controller, the feedback says "js-tests failed" not
+  # "rspec failed." Driven directly by node (no Rails boot, no
+  # bundler), so ~100ms in practice; 1 minute is generous slack
+  # for a cold worker. See CLAUDE.md "Tests" for why this lives
+  # outside the RSpec suite.
+  - name: js-tests
+    run: bin/test-js
+    timeout_minutes: 1
