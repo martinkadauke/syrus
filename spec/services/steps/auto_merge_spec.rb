@@ -181,8 +181,7 @@ RSpec.describe Steps::AutoMerge do
   end
 
   {
-    "blocked" => "PR mergeable_state is \"blocked\"",
-    "unstable" => "PR mergeable_state is \"unstable\""
+    "blocked" => "PR mergeable_state is \"blocked\""
   }.each do |mergeable_state, error_message|
     it "raises StepFailed when mergeable_state is #{mergeable_state.inspect}" do
       allow(client).to receive(:pull_request).and_return(pr(mergeable_state: mergeable_state))
@@ -195,6 +194,28 @@ RSpec.describe Steps::AutoMerge do
       expect(step.reload).to be_running
       expect(workflow.reload).to be_running
     end
+  end
+
+  # Regression: production hit "auto_merge: PR mergeable_state is
+  # \"unstable\"" → fail_landing wiped the approval. `unstable`
+  # means a non-required CI check is failing but the merge call
+  # itself would succeed. AutoMergeGate now treats it as :ready;
+  # if GitHub actually refuses the merge, the existing
+  # TRANSIENT_MERGE_ERRORS path catches it and defers (approval
+  # preserved).
+  it "attempts the merge when mergeable_state is \"unstable\"" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "unstable"))
+    allow(client).to receive(:merge_pull_request).and_return(OpenStruct.new(merged: true))
+    allow(client).to receive(:add_issue_comment)
+
+    described_class.new(run).call
+
+    expect(client).to have_received(:merge_pull_request)
+    expect(job.reload).to be_closed
+    expect(job.closure_reason).to eq("pr_merged")
   end
 
   [

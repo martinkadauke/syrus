@@ -41,8 +41,14 @@ class AutoMergeGate
     return blocked("PR is not approved", pr: pr, approved: false) unless approved
 
     case mergeable_state(pr)
-    when "clean"
-      Result.new(outcome: :ready, approved: true, reason: "approved and clean", pr: pr)
+    when "clean", "unstable"
+      # `unstable` means a non-required CI check is failing — the
+      # merge call itself would succeed. Operator approved knowing
+      # the PR's state; the failing check isn't gating. If the repo
+      # has stricter branch protection that we didn't anticipate,
+      # the merge_pull_request call will surface that via
+      # TRANSIENT_MERGE_ERRORS and defer (approval preserved).
+      Result.new(outcome: :ready, approved: true, reason: "approved and #{mergeable_state(pr)}", pr: pr)
     when "behind", "dirty"
       # `behind` means the base branch moved forward — clean rebase
       # fixes it. `dirty` means there are merge conflicts — the

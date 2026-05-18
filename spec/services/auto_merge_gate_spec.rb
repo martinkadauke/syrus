@@ -198,7 +198,9 @@ RSpec.describe AutoMergeGate do
     "dirty" => :needs_rebase,
     "blocked" => :blocked,
     "clean" => :ready,
-    "unstable" => :blocked
+    # `unstable` = non-required CI check failing; the merge call
+    # itself would succeed. Operator approved knowing the state.
+    "unstable" => :ready
   }.each do |mergeable_state, outcome|
     it "returns #{outcome.inspect} for mergeable_state=#{mergeable_state.inspect}" do
       allow(client).to receive(:pull_request).and_return(pr(mergeable_state: mergeable_state))
