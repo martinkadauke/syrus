@@ -87,7 +87,16 @@ module Steps
         last_flush = Time.current
       end
 
-      sink = lambda do |chunk, kind: nil|
+      # `**` swallows the structured kwargs that ClaudeInvocation /
+      # CodexInvocation pass on tool_use / tool_result events
+      # (tool_name, tool_input, tool_result_content, tool_use_id,
+      # …). The buffered sink only uses chunk + kind for log
+      # batching; the structured metadata is consumed by callers
+      # that wire log_sink directly (e.g. ChatTurnJob). Without the
+      # `**`, every submit_summary call (and any other MCP tool
+      # use) blows up with ArgumentError mid-run. Mirrors the
+      # `**` in RunJob#log and Steps::Base#log for the same reason.
+      sink = lambda do |chunk, kind: nil, **|
         text = chunk.to_s
         next if text.strip.empty?  # mirrors #log: blank lines don't accumulate
         flush.call if !buffer.empty? && kind != last_kind
