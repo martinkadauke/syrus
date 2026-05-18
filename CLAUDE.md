@@ -168,6 +168,34 @@ Dev mode uses `solid_cable` (NOT `async`) so cross-process broadcasts work.
 The transcript element on the show page uses `data-turbo-permanent` to
 preserve scroll position across morphs.
 
+**Turbo conventions.** Full audit in `docs/turbo-audit.md`. Defaults:
+
+- **`turbo_frame_tag` defaults to `target: "_top"`** unless the frame's
+  whole purpose is hosting in-place navigation. Links inside the frame
+  inherit the target; without `_top` you get the "Content missing" bug
+  when an inbound link targets the frame but the response doesn't
+  contain it (commit `b222bd7`). In-frame links override with their
+  own `data-turbo-frame=`.
+- **Form state must survive morph cycles.** Page-level morphs fire on
+  every `broadcasts_refreshes` save; an in-flight checkbox / focus /
+  scroll gets wiped unless protected. Two patterns: (a) wrap a small,
+  one-instance element in `data-turbo-permanent`, or (b) write a
+  morph-aware Stimulus controller that re-syncs from a stable store
+  (sessionStorage, URL params, `data-` on a permanent neighbor) on
+  `turbo:morph` / `turbo:render` events. The morph algorithm does NOT
+  preserve form state via DOM matching.
+- **`data-turbo-permanent` goes on the smallest possible element** —
+  wrapping whole sections silently prevents Stimulus re-init inside
+  them on URL changes. Scope tightly (the dialog itself, the checkbox
+  row, the transcript container).
+- **Hot-path broadcasts that fire on every save** (`Run`, `JobLog`)
+  can fan out into dashboard-wide morphs N times per heartbeat
+  interval. If a page feels chattery, guard the broadcast with
+  `if: -> { saved_change_to_state? }` or downgrade to a targeted
+  `broadcasts_to` for state changes only.
+- **Cable adapter is `solid_cable` in dev AND prod.** Async doesn't
+  cross from `bin/jobs` to `bin/rails server`. Don't switch.
+
 ## Conventions
 
 - **Prompts** all live under `app/services/prompts/` as PORO classes
