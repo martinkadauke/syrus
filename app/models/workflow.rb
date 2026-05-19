@@ -117,16 +117,18 @@ class Workflow < ApplicationRecord
   # cancelled — keeps the per-Run audit trail honest. Idempotent:
   # already-terminal records are skipped (may_cancel? returns false).
   def cancel_active_descendants!
-    steps.active.find_each do |step|
-      step.runs.active.find_each do |run|
-        if run.may_cancel?
-          run.cancel!
-          run.save!
+    Step.suppress_cancel_cascade do
+      steps.active.find_each do |step|
+        step.runs.active.find_each do |run|
+          if run.may_cancel?
+            run.cancel!
+            run.save!
+          end
         end
-      end
-      if step.may_cancel?
-        step.cancel!
-        step.save!
+        if step.may_cancel?
+          step.cancel!
+          step.save!
+        end
       end
     end
   end

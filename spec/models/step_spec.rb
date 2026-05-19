@@ -120,6 +120,63 @@ RSpec.describe Step do
     end
   end
 
+  describe "cancellation cascade" do
+    let!(:step_a) { described_class.create!(workflow: workflow, kind: "implement", position: 0) }
+    let!(:step_b) { described_class.create!(workflow: workflow, kind: "summarize", position: 1) }
+    let!(:step_c) { described_class.create!(workflow: workflow, kind: "pr_open",   position: 2) }
+
+    before do
+      step_a.update!(next_step_id: step_b.id)
+      step_b.update!(next_step_id: step_c.id)
+      workflow.update!(state: "running", started_at: 1.minute.ago)
+    end
+
+    it "cancels downstream queued steps when a running step is cancelled outside an orchestration" do
+      step_a.start!
+      step_a.save!
+
+      step_a.cancel!
+      step_a.save!
+
+      expect(step_b.reload.state).to eq("cancelled")
+      expect(step_c.reload.state).to eq("cancelled")
+    end
+
+    it "cancels the workflow when no active steps remain" do
+      step_a.cancel!
+      step_a.save!
+
+      expect(workflow.reload.state).to eq("cancelled")
+    end
+
+    it "leaves later steps queued when the cancel is wrapped in suppress_cancel_cascade (skip-one-step pattern)" do
+      Step.suppress_cancel_cascade do
+        step_b.cancel!
+        step_b.save!
+      end
+
+      expect(step_c.reload.state).to eq("queued")
+      expect(workflow.reload.state).to eq("running")
+    end
+
+    it "is idempotent — cascading a step that's already past doesn't re-cancel terminal steps" do
+      step_c.update!(state: "succeeded")
+      step_a.cancel!
+      step_a.save!
+
+      expect(step_b.reload.state).to eq("cancelled")
+      expect(step_c.reload.state).to eq("succeeded")
+    end
+
+    it "still fires when Workflow#cancel cascades but doesn't reactivate the cascade chain" do
+      expect { workflow.cancel!; workflow.save! }.not_to raise_error
+      expect(step_a.reload.state).to eq("cancelled")
+      expect(step_b.reload.state).to eq("cancelled")
+      expect(step_c.reload.state).to eq("cancelled")
+      expect(workflow.reload.state).to eq("cancelled")
+    end
+  end
+
   describe "#upstream_session_id" do
     let!(:step_a) { described_class.create!(workflow: workflow, kind: "implement", position: 0) }
     let!(:step_b) { described_class.create!(workflow: workflow, kind: "summarize", position: 1) }

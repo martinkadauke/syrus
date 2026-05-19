@@ -218,7 +218,9 @@ RSpec.describe RunJob, "step-dispatch path" do
 
     it "abandons the Run as cancelled if the Step is already terminal" do
       StepDispatcher.start_workflow(workflow)
-      s_implement.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      Step.suppress_cancel_cascade do
+        s_implement.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      end
       run = s_implement.runs.last
       described_class.perform_now(run.id)
       expect(run.reload.state).to eq("cancelled")

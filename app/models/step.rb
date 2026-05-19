@@ -45,6 +45,28 @@ class Step < ApplicationRecord
   scope :active, -> { where(state: %w[ queued running ]) }
   scope :terminal, -> { where(state: %w[ succeeded failed cancelled ]) }
 
+  # When a Step transitions to :cancelled, `cancel_workflow_chain!`
+  # normally cascades the cancellation to downstream queued steps
+  # and (if the workflow is left with no active work) cancels the
+  # workflow itself. That cascade is what we want for "this step
+  # was the current chain — the workflow is dead" cases.
+  #
+  # But there's a legitimate inverse pattern: a still-running
+  # upstream step intentionally cancels a single FUTURE step it
+  # knows it can skip (Steps::AutoRebase cancelling agent_rebase
+  # after a clean deterministic rebase; the dispatcher's
+  # cancel_post_loop_steps! before failing the workflow with a
+  # reason). In those cases the auto-cascade would over-reach and
+  # kill the rest of the chain. Wrap the explicit cancel call in
+  # `Step.suppress_cancel_cascade { ... }` to opt out.
+  def self.suppress_cancel_cascade
+    prior = Thread.current[:syrus_step_suppress_cancel_cascade]
+    Thread.current[:syrus_step_suppress_cancel_cascade] = true
+    yield
+  ensure
+    Thread.current[:syrus_step_suppress_cancel_cascade] = prior
+  end
+
   aasm column: :state, whiny_transitions: false do
     state :queued, initial: true
     state :running, :succeeded, :failed, :cancelled
@@ -95,9 +117,17 @@ class Step < ApplicationRecord
   # When a Step fails, the linear chain can't advance: v1 has no
   # intra-workflow retry, so the workflow itself is dead. Mark
   # the Workflow failed (which fires its own cleanup callbacks).
-  # Cancelled steps don't trigger this — cancel_downstream! is a
-  # legitimate "skip the rest of the chain" pattern.
   after_update_commit :fail_workflow!, if: :saved_change_to_state_to_failed?
+
+  # When a Step is cancelled, anything queued behind it in the
+  # chain is orphaned: the dispatcher only advances on succeed,
+  # so the queued tail will never run. Cascade the cancel to
+  # downstream queued steps, then (if the workflow has no active
+  # work left) cancel the workflow itself so workspace cleanup +
+  # after_cancel hooks fire. Legitimate "skip one future step"
+  # callsites wrap their cancel in Step.suppress_cancel_cascade
+  # to opt out — see the class method's comment.
+  after_update_commit :cancel_workflow_chain!, if: :saved_change_to_state_to_cancelled?
 
   def saved_change_to_state_to_succeeded?
     saved_change_to_state? && state == "succeeded"
@@ -105,6 +135,10 @@ class Step < ApplicationRecord
 
   def saved_change_to_state_to_failed?
     saved_change_to_state? && state == "failed"
+  end
+
+  def saved_change_to_state_to_cancelled?
+    saved_change_to_state? && state == "cancelled"
   end
 
   def saved_change_to_succeeded_grade?
@@ -121,6 +155,33 @@ class Step < ApplicationRecord
 
   def fail_workflow!
     StepDispatcher.fail_from(self)
+  end
+
+  def cancel_workflow_chain!
+    return if Thread.current[:syrus_step_suppress_cancel_cascade]
+
+    Step.suppress_cancel_cascade { cancel_downstream_queued_steps! }
+    cancel_workflow_if_idle!
+  end
+
+  def cancel_downstream_queued_steps!
+    cursor = next_step
+    while cursor
+      if cursor.may_cancel?
+        cursor.cancel!
+        cursor.save!
+      end
+      cursor = cursor.next_step
+    end
+  end
+
+  def cancel_workflow_if_idle!
+    wf = workflow
+    return unless wf.may_cancel?
+    return if wf.steps.active.exists?
+
+    wf.cancel!
+    wf.save!
   end
 
   # The most recently created Run on this Step — i.e. the latest

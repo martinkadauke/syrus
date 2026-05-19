@@ -84,7 +84,9 @@ RSpec.describe StepDispatcher do
     end
 
     it "skips cancelled steps and creates a Run on the first queued step beyond them" do
-      s2.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      Step.suppress_cancel_cascade do
+        s2.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      end
       expect {
         described_class.advance_from(s1)
       }.to change { s3.runs.count }.by(1)
@@ -93,8 +95,10 @@ RSpec.describe StepDispatcher do
 
     it "transitions the Workflow to succeeded when no runnable step remains" do
       workflow.start!; workflow.save!
-      s2.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
-      s3.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      Step.suppress_cancel_cascade do
+        s2.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+        s3.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)
+      end
       described_class.advance_from(s1)
       expect(workflow.reload).to be_succeeded
     end

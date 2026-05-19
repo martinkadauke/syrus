@@ -167,14 +167,16 @@ class StepDispatcher
   end
 
   def cancel_post_loop_steps!(reason)
-    cursor = @from_step.next_step
-    while cursor
-      if cursor.may_cancel?
-        cursor.cancellation_reason = reason
-        cursor.cancel!
-        cursor.save!
+    Step.suppress_cancel_cascade do
+      cursor = @from_step.next_step
+      while cursor
+        if cursor.may_cancel?
+          cursor.cancellation_reason = reason
+          cursor.cancel!
+          cursor.save!
+        end
+        cursor = cursor.next_step
       end
-      cursor = cursor.next_step
     end
   end
 

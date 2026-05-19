@@ -257,14 +257,16 @@ module Steps
     # the linear chain via next_step pointer; a v3 graph would
     # need a graph-traversal version of this.
     def cancel_downstream!(reason: nil)
-      cursor = step.next_step
-      while cursor
-        if cursor.may_cancel?
-          log("[#{step.kind}] cancelling downstream step ##{cursor.id} (#{cursor.kind})#{reason ? ': ' + reason : ''}")
-          cursor.cancel!
-          cursor.save!
+      Step.suppress_cancel_cascade do
+        cursor = step.next_step
+        while cursor
+          if cursor.may_cancel?
+            log("[#{step.kind}] cancelling downstream step ##{cursor.id} (#{cursor.kind})#{reason ? ': ' + reason : ''}")
+            cursor.cancel!
+            cursor.save!
+          end
+          cursor = cursor.next_step
         end
-        cursor = cursor.next_step
       end
     end
   end

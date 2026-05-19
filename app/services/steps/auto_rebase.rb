@@ -27,8 +27,10 @@ module Steps
       return unless next_step.may_cancel?
 
       log("[#{step.kind}] cancelling downstream step ##{next_step.id} (#{next_step.kind}): #{reason}")
-      next_step.cancel!
-      next_step.save!
+      Step.suppress_cancel_cascade do
+        next_step.cancel!
+        next_step.save!
+      end
     end
   end
 end

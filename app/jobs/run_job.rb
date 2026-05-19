@@ -300,14 +300,16 @@ class RunJob < ApplicationJob
   end
 
   def cancel_downstream_steps!(reason:)
-    cursor = @step.next_step
-    while cursor
-      if cursor.may_cancel?
-        log("[#{@step.kind}] cancelling downstream step ##{cursor.id} (#{cursor.kind}): #{reason}")
-        cursor.cancel!
-        cursor.save!
+    Step.suppress_cancel_cascade do
+      cursor = @step.next_step
+      while cursor
+        if cursor.may_cancel?
+          log("[#{@step.kind}] cancelling downstream step ##{cursor.id} (#{cursor.kind}): #{reason}")
+          cursor.cancel!
+          cursor.save!
+        end
+        cursor = cursor.next_step
       end
-      cursor = cursor.next_step
     end
   end
 
