@@ -32,8 +32,18 @@ class AutoApprovalRule
           "grader_step_id" => grader_step.id
         }
       )
-      @job.land! if @job.may_land?
     end
+
+    # Dispatch the AutoMerge workflow inline instead of relying on
+    # the next LandingQueueProcessor tick (or worse, leaving the Job
+    # stuck in :landing with no workflow as the previous
+    # `@job.land!` did — land! transitioned state but never
+    # instantiated the workflow, jamming the queue). try_land! runs
+    # the same guards LandingQueueProcessor's loop uses; if a
+    # blockage is present (another Job currently landing, etc.) the
+    # enqueued LandingQueueProcessorJob from approve!'s state-change
+    # callback will pick it up on its tick.
+    LandingQueueProcessor.try_land!(@job)
 
     audit!("auto_approval: approved via #{mode} from #{source} after grader step ##{grader_step.id}")
     Result.new(approved: true, reason: nil, mode: mode, source: source)

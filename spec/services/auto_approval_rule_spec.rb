@@ -2,10 +2,19 @@ require "rails_helper"
 
 RSpec.describe AutoApprovalRule do
   let(:user) { Factories.user }
-  let(:repository) { Factories.repository(user: user) }
+  # auto_merge_enabled so the landing-queue blockage check passes;
+  # otherwise LandingQueueProcessor.try_land! refuses to dispatch
+  # the AutoMerge workflow and the Job stays :approved instead of
+  # progressing to :landing.
+  let(:repository) { Factories.repository(user: user, auto_merge_enabled: true) }
 
   def build_grade_context(job)
-    workflow = Workflow.create!(job: job, trigger_kind: "initial", agent_provider: job.agent_provider)
+    # The workflow must be in a terminal state so it doesn't count as
+    # "active workflow" in LandingQueueProcessor#blockage_for. Setting
+    # the grader step + run to :succeeded matches what a real
+    # post-grade-success state would look like.
+    workflow = Workflow.create!(job: job, trigger_kind: "initial",
+                                 agent_provider: job.agent_provider, state: "succeeded")
     step = Step.create!(workflow: workflow, kind: "grade", state: "succeeded", position: 0)
     Run.create!(job: job, step: step, trigger_kind: workflow.trigger_kind, agent_provider: job.agent_provider, state: "succeeded")
     workflow.set_artifact!("grade_plan_source", ".syrus.yml")
@@ -14,11 +23,17 @@ RSpec.describe AutoApprovalRule do
   end
 
   def approvable_job(**attrs)
-    Factories.job_record(**{ user: user, repository: repository, state: "queued" }.merge(attrs))
+    # pr_number required so landing-queue blockage check passes (no
+    # PR = no merge target). Same reasoning as auto_merge_enabled.
+    Factories.job_record(**{ user: user, repository: repository, state: "queued",
+                              pr_number: 100 + rand(10_000) }.merge(attrs))
   end
 
-  it "auto-approves and lands an Epic job when repo-committed graders pass" do
-    epic = Factories.epic(user: user, repository: repository, auto_approve_mode: "if_graders_pass")
+  it "auto-approves, lands, AND dispatches an AutoMerge workflow when repo-committed graders pass" do
+    # Epic#releases_jobs_for_execution? is true only when state is
+    # in_progress / done. Otherwise blocked_by_epic_before_execution?
+    # blocks landing-queue dispatch.
+    epic = Factories.epic(user: user, repository: repository, auto_approve_mode: "if_graders_pass", state: "in_progress")
     job = approvable_job(epic: epic)
     step = build_grade_context(job)
 
@@ -33,6 +48,11 @@ RSpec.describe AutoApprovalRule do
       "grader_step_id" => step.id
     )
     expect(job.current_run.job_logs.last.chunk).to include("auto_approval: approved via if_graders_pass")
+    # Regression: the previous `@job.land!` transitioned state to
+    # :landing but never instantiated the AutoMerge workflow, jamming
+    # the landing queue with a stuck Job. Now LandingQueueProcessor.try_land!
+    # dispatches the workflow inline.
+    expect(job.workflows.where(trigger_kind: "auto_merge").count).to eq(1)
   end
 
   it "auto-approves cron jobs from the originating ScheduledTask rule" do
@@ -53,6 +73,7 @@ RSpec.describe AutoApprovalRule do
 
     expect(job.reload.state).to eq("landing")
     expect(job.approval_evidence["source"]).to eq("ScheduledTask##{task.id}")
+    expect(job.workflows.where(trigger_kind: "auto_merge").count).to eq(1)
   end
 
   it "resolves ScheduledTask before Epic before repository before user before never" do
@@ -100,8 +121,29 @@ RSpec.describe AutoApprovalRule do
     expect(job.approved_via).to be_nil
   end
 
+  # Regression: when an auto_merge prerequisite is missing
+  # (repository.auto_merge_enabled = false, archived repo, etc.) the
+  # rule used to call @job.land! unconditionally — leaving the Job
+  # stuck in :landing without an AutoMerge workflow, jamming the
+  # landing queue. Now the Job correctly stays in :approved;
+  # LandingQueueProcessor's recurring tick will pick it up if/when
+  # the blockage clears.
+  it "stays in :approved (no stuck :landing) when the AutoMerge prerequisites aren't met" do
+    repository.update!(auto_merge_enabled: false)
+    epic = Factories.epic(user: user, repository: repository, auto_approve_mode: "if_graders_pass")
+    job = approvable_job(epic: epic)
+    step = build_grade_context(job)
+
+    result = described_class.for(job).apply_after_grader_success!(step)
+
+    expect(result).to be_approved
+    expect(job.reload.state).to eq("approved")
+    expect(job.approved_via).to eq("auto_rule")
+    expect(job.workflows.where(trigger_kind: "auto_merge")).to be_empty
+  end
+
   it "requires a safe tag for if_graders_pass_and_tagged_safe" do
-    epic = Factories.epic(user: user, repository: repository, auto_approve_mode: "if_graders_pass_and_tagged_safe")
+    epic = Factories.epic(user: user, repository: repository, auto_approve_mode: "if_graders_pass_and_tagged_safe", state: "in_progress")
     job = approvable_job(epic: epic)
     step = build_grade_context(job)
 
