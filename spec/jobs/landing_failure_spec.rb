@@ -11,7 +11,7 @@ RSpec.describe "landing failure handling" do
       issue_number: 42,
       pr_number: 7,
       branch_name: "syrus/issue-42-1",
-      state: "open"
+      state: "implemented"
     )
   end
 

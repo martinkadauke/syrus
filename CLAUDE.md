@@ -210,6 +210,19 @@ preserve scroll position across morphs.
 - **AASM events on Run** — call `start!`, `succeed!`, `fail!`, `cancel!`,
   always followed by `save!` (callbacks set timestamps but don't persist).
   See `Run` model.
+- **AASM event guards: ALWAYS `may_X?` before `state_X!`.** The Job
+  (and Workflow, and Step) AASM machines run with
+  `whiny_transitions: false` — `job.approve!` on a non-approvable Job
+  silently no-ops. That made the auto-approval bug (`7fb6aae`)
+  invisible until a Job got stuck. Pattern:
+  ```ruby
+  job.approve!(via: "operator", by_user: user) if job.may_approve?
+  ```
+  When you need the transition to be definite (not "skip silently if
+  not legal"), wrap it in a service that re-checks state and dispatches
+  side effects — `LandingQueueProcessor.try_land!` is the canonical
+  example. The State machine surface for Job is documented in
+  `docs/job-state-audit.md`.
 - **Per-Job concurrency** — `RunJob` uses Solid Queue's `limits_concurrency`
   keyed on `job_id` so two Workflows on the same Job never overlap. (Was
   per-repo; changed because the shared WorkflowWorkspace path is per-Workflow-id,

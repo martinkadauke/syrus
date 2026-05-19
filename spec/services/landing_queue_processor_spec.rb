@@ -5,13 +5,17 @@ RSpec.describe LandingQueueProcessor do
   let(:repository) { Factories.repository(user: user, auto_merge_enabled: true) }
 
   def queue_job(issue_number:, approved_at:, parent_job: nil, pr_number: issue_number)
+    # Start in :implemented so approve! works directly; mirrors the
+    # production flow where mark_implemented! happens before approval
+    # (post audit, :open → :implemented → :approved is the only
+    # legal pre-approval chain).
     Factories.job_record(
       user: user,
       repository: repository,
       issue_number: issue_number,
       pr_number: pr_number,
       parent_job: parent_job,
-      state: "open"
+      state: "implemented"
     ).tap do |job|
       job.approve!(via: "github_review")
       job.update!(approved_at: approved_at)
@@ -31,7 +35,7 @@ RSpec.describe LandingQueueProcessor do
   end
 
   it "keeps dependency-blocked Jobs approved and lands the next eligible Job" do
-    prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 1, state: "open", pr_number: 1)
+    prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 1, state: "queued", pr_number: 1)
     blocked = queue_job(issue_number: 2, approved_at: 2.minutes.ago)
     ready = queue_job(issue_number: 3, approved_at: 1.minute.ago)
     JobDependency.create!(job: blocked, depends_on_job: prerequisite, source: "manual")
@@ -74,7 +78,7 @@ RSpec.describe LandingQueueProcessor do
   it "blocks approved Jobs whose repository does not have auto-merge enabled" do
     disabled_repo = Factories.repository(user: user, auto_merge_enabled: false)
     job = Factories.job_record(user: user, repository: disabled_repo, issue_number: 1,
-                                pr_number: 1, state: "open").tap do |j|
+                                pr_number: 1, state: "implemented").tap do |j|
       j.approve!(via: "github_review")
     end
 

@@ -28,11 +28,11 @@ RSpec.describe PullRequestOpener do
       user: user,
       repository: repository,
       issue_number: 1,
-      state: "open",
+      state: "queued",
       branch_name: "syrus/issue-1",
       pr_number: 1
     )
-    job = Factories.job_record(user: user, repository: repository, issue_number: 2, state: "open")
+    job = Factories.job_record(user: user, repository: repository, issue_number: 2, state: "queued")
     JobDependency.create!(job: job, depends_on_job: parent, source: "manual", created_by_user: user)
     fake_pr = double(number: 100)
     fake_client = instance_double(GithubClient, create_pull_request: fake_pr)

@@ -90,13 +90,15 @@ RSpec.describe Job do
       end
     end
 
-    it "moves an approved job into landing and then merged" do
+    it "moves an approved job into landing and then closed (post :merged removal)" do
       job = Factories.job
       job.update!(state: "implemented")
       job.approve!(via: "bulk", by_user: job.user)
 
-      expect { job.land! }.to change(job, :state).from("approved").to("landing")
-      expect { job.mark_merged! }.to change(job, :state).from("landing").to("merged")
+      expect { job.start_landing! }.to change(job, :state).from("approved").to("landing")
+      # :merged was removed (audit finding 2); merge path is now
+      # close(closure_reason: "pr_merged") from :landing.
+      expect { job.close_with_reason!("pr_merged") }.to change(job, :state).from("landing").to("closed")
       expect(job.finished_at).to be_present
       expect(job.closure_reason).to eq("pr_merged")
     end
@@ -117,16 +119,16 @@ RSpec.describe Job do
       job = Factories.job
       job.update!(state: "implemented")
       job.approve!(via: "operator", by_user: job.user)
-      job.land!
+      job.start_landing!
 
       expect(job.may_unapprove?).to be false
       expect { job.unapprove! }.to raise_error(AASM::InvalidTransition)
       expect(job.state).to eq("landing")
     end
 
-    it "does not allow approving a merged job" do
+    it "does not allow approving a closed (merged) job" do
       job = Factories.job
-      job.update!(state: "merged")
+      job.update!(state: "closed", closure_reason: "pr_merged")
 
       expect(job.may_approve?).to be false
       expect { job.approve!(via: "operator", by_user: job.user) }.to raise_error(AASM::InvalidTransition)
@@ -669,11 +671,11 @@ RSpec.describe Job do
         user: user,
         repository: repository,
         issue_number: 41,
-        state: "open",
+        state: "queued",
         branch_name: "syrus/issue-41",
         pr_number: 41
       )
-      child = Factories.job_record(user: user, repository: repository, issue_number: 42, state: "open")
+      child = Factories.job_record(user: user, repository: repository, issue_number: 42, state: "queued")
       JobDependency.create!(job: child, depends_on_job: parent, source: "manual", created_by_user: user)
 
       expect(child.effective_base_branch).to eq("syrus/issue-41")
@@ -689,7 +691,7 @@ RSpec.describe Job do
         branch_name: "syrus/issue-41",
         pr_number: 41
       )
-      child = Factories.job_record(user: user, repository: repository, issue_number: 42, state: "open")
+      child = Factories.job_record(user: user, repository: repository, issue_number: 42, state: "queued")
       JobDependency.create!(job: child, depends_on_job: parent, source: "manual", created_by_user: user)
 
       expect(child.effective_base_branch).to eq("main")
@@ -703,7 +705,7 @@ RSpec.describe Job do
         state: "closed",
         closure_reason: "duplicate"
       )
-      child = Factories.job_record(user: user, repository: repository, issue_number: 42, state: "open")
+      child = Factories.job_record(user: user, repository: repository, issue_number: 42, state: "queued")
       JobDependency.create!(job: child, depends_on_job: parent, source: "manual", created_by_user: user)
 
       expect(child.effective_base_branch).to eq("main")

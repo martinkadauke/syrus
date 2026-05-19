@@ -165,7 +165,7 @@ module JobsHelper
 
     return "running" if job.latest_workflow_state == "running" || has_running_run
     return "queued" if (has_latest_workflow && job.latest_workflow_state == "queued") || has_queued_run
-    return "approved" if job.approved? || job.landing? || job.merged? || job.approved_at.present?
+    return "approved" if job.approved? || job.landing? || job.approved_at.present?
     return "blocked" if job.blocked_by_epic? || job.pr_mergeable == false || blocked_by_dependency
     return "awaiting feedback" if job.pr_number.present? || job.external_pr_number.present?
 
@@ -335,7 +335,7 @@ module JobsHelper
     return "preempted" if job.closure_reason == "preempted"
     return "preempted" if job.closure_reason&.start_with?("external_pr_")
     return "closed" if job.closed?
-    return job.state if job.triaging? || job.blocked_by_epic? || job.implemented? || job.approved? || job.landing? || job.landing_failed?
+    return job.state if job.triaging? || job.blocked_by_epic? || job.implemented? || job.approved? || job.landing?
     job.current_run&.state || "pending"
   end
 

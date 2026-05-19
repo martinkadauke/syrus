@@ -16,30 +16,29 @@ RSpec.describe Filters::Chips::Jobs::State do
   end
 
   describe "#apply" do
-    it "matches every non-closed/merged Job for the composite 'open'" do
+    it "matches every non-closed Job for the composite 'open'" do
       triaging   = job_in("triaging")
       queued     = job_in("queued")
       implemented = job_in("implemented")
       approved   = job_in("approved")
       landing    = job_in("landing")
-      landing_failed = job_in("landing_failed")
       closed     = job_in("closed")
-      merged     = job_in("merged")
 
       results = apply("open").to_a
 
-      expect(results).to include(triaging, queued, implemented, approved, landing, landing_failed)
-      expect(results).not_to include(closed, merged)
+      expect(results).to include(triaging, queued, implemented, approved, landing)
+      expect(results).not_to include(closed)
     end
 
-    it "matches closed AND merged Jobs for the composite 'closed'" do
-      open_job = job_in("open")
+    it "matches closed Jobs (which now includes merged via closure_reason) for the composite 'closed'" do
+      open_job = job_in("queued")
       closed   = job_in("closed")
-      merged   = job_in("merged")
+      merged_closed = job_in("closed")
+      merged_closed.update!(closure_reason: "pr_merged")
 
       results = apply("closed").to_a
 
-      expect(results).to contain_exactly(closed, merged)
+      expect(results).to contain_exactly(closed, merged_closed)
       expect(results).not_to include(open_job)
     end
 

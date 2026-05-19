@@ -213,7 +213,7 @@ RSpec.describe "Dashboard", type: :request do
       epic = Factories.epic(user: user, repository: repo, title: "Launch board", state: "ready")
       EpicDependency.create!(epic: epic, depends_on_epic: prerequisite, derived: false)
       Factories.job_record(repository: repo, epic: epic, issue_number: 7, state: "closed", closure_reason: "pr_merged")
-      Factories.job_record(repository: repo, epic: epic, issue_number: 8, state: "open")
+      Factories.job_record(repository: repo, epic: epic, issue_number: 8, state: "queued")
 
       get dashboard_epics_path
 

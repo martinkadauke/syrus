@@ -128,7 +128,7 @@ RSpec.describe "Jobs", type: :request do
       it "refuses to unapprove a landing job" do
         job.update!(state: "implemented")
         job.approve!(via: "operator", by_user: user)
-        job.land!
+        job.start_landing!
 
         post unapprove_job_path(job)
 

@@ -107,7 +107,7 @@ RSpec.describe "Filters::Chips::Epics" do
   describe "has_open_children" do
     it "matches Epics with open child Jobs" do
       parent = Factories.epic(user: user, repository: repo)
-      child_job(parent).update!(state: "open")
+      child_job(parent).update!(state: "queued")
       closed_parent = Factories.epic(user: user, repository: repo)
       child_job(closed_parent).update!(state: "closed", closure_reason: "pr_merged")
 

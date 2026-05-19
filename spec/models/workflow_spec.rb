@@ -223,7 +223,7 @@ RSpec.describe Workflow do
 
     def landing_job
       job = Factories.job_record(user: user, repository: repository, issue_number: 1,
-                                  pr_number: 1, state: "open")
+                                  pr_number: 1, state: "implemented")
       job.approve!(via: "github_review")
       job
     end
@@ -255,7 +255,7 @@ RSpec.describe Workflow do
 
     it "skips LandingQueueProcessor.try_land! when the Job is no longer approved" do
       job = Factories.job_record(user: user, repository: repository, issue_number: 1,
-                                  pr_number: 1, state: "open")
+                                  pr_number: 1, state: "queued")
       rebase_wf = Workflows::Rebase.instantiate(job: job)
       rebase_wf.update!(state: "running")
 

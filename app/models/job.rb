@@ -79,8 +79,8 @@ class Job < ApplicationRecord
   enum :stack_base, STACK_BASES.index_with(&:itself), prefix: true, validate: true
   enum :approved_via, APPROVAL_VIAS.index_with(&:itself), prefix: true, validate: { allow_nil: true }
 
-  scope :open_threads, -> { where.not(state: %w[ closed merged ]) }
-  scope :closed_threads, -> { where(state: %w[ closed merged ]) }
+  scope :open_threads, -> { where.not(state: "closed") }
+  scope :closed_threads, -> { where(state: "closed") }
   scope :landing_queue, -> { where(state: %w[ approved landing ]) }
   scope :issue_kind, -> { where(kind: "issue") }
   scope :cron_kind,  -> { where(kind: "cron") }
@@ -147,16 +147,18 @@ class Job < ApplicationRecord
     end
   end
 
+  # Audited 2026-05-18 (`docs/job-state-audit.md`). The :open,
+  # :landing_failed, and :merged states + the :land event were
+  # unreachable dead code — removed. If a real need surfaces, re-add
+  # with a transition that actually enters the state, not just a
+  # `from:` reference.
   aasm column: :state, whiny_transitions: false do
     state :triaging, initial: true
     state :blocked_by_epic
     state :queued
-    state :open
     state :implemented
     state :approved
     state :landing
-    state :merged
-    state :landing_failed
     state :closed
 
     event :advance_after_triage do
@@ -171,7 +173,7 @@ class Job < ApplicationRecord
     end
 
     event :block_by_epic do
-      transitions from: [ :triaging, :queued, :open ], to: :blocked_by_epic, guard: :blocked_by_epic_before_execution?
+      transitions from: [ :triaging, :queued ], to: :blocked_by_epic, guard: :blocked_by_epic_before_execution?
     end
 
     event :release_epic_block do
@@ -179,38 +181,30 @@ class Job < ApplicationRecord
     end
 
     event :mark_implemented do
-      transitions from: [ :queued, :open, :landing_failed ], to: :implemented
+      transitions from: :queued, to: :implemented
     end
 
     event :approve, before: :assign_approval_metadata do
-      transitions from: [ :open, :implemented, :landing_failed ], to: :approved
+      transitions from: :implemented, to: :approved
     end
 
     event :unapprove, after: :clear_approval_metadata do
       transitions from: :approved, to: :implemented
     end
 
-    event :land do
-      transitions from: :approved, to: :landing
-    end
-
     event :start_landing do
       transitions from: :approved, to: :landing
     end
 
-    event :mark_merged, after: -> {
-      self.finished_at = Time.current
-      self.closure_reason ||= "pr_merged"
-      record_outcome_to_scheduled_task! if cron?
-      refresh_epic_auto_state
-    } do
-      transitions from: :landing, to: :merged
-    end
-
-    event :close, after: :refresh_epic_auto_state do
-      transitions from: [ :open, :triaging, :blocked_by_epic, :queued, :implemented, :approved, :landing, :landing_failed ], to: :closed, after: -> {
+    # Single after-callback hook on the transition. The previous
+    # event-level `after: :refresh_epic_auto_state` was redundant
+    # with the after_save callback and just made the wiring harder
+    # to read.
+    event :close do
+      transitions from: [ :triaging, :blocked_by_epic, :queued, :implemented, :approved, :landing ], to: :closed, after: -> {
         self.finished_at = Time.current
         record_outcome_to_scheduled_task! if cron?
+        refresh_epic_auto_state
       }
     end
 
@@ -259,8 +253,14 @@ class Job < ApplicationRecord
   # awareness without scheduling any agent work.
   after_create :seed_parsed_dependencies
   after_create :resolve_pending_dependencies_targeting_self
-  after_create :create_initial_run, if: -> { state == "open" && issue? }
-  after_save :refresh_epic_auto_state, if: -> { epic_id.present? }
+  # `after_save :refresh_epic_auto_state` used to fire on every save —
+  # heartbeat updates, last_seen_comment_at touches, every Turbo
+  # broadcast tick. Now scoped to changes that actually affect the
+  # epic-rollup: state transitions, validity, epic membership,
+  # closure metadata. (The :close event also calls it explicitly via
+  # the transition `after:` lambda.)
+  after_save :refresh_epic_auto_state,
+             if: -> { epic_id.present? && (saved_change_to_state? || saved_change_to_validity? || saved_change_to_epic_id? || saved_change_to_closure_reason?) }
   after_commit :reopen_recent_closed_epic, if: :saved_change_to_epic_id?
   after_commit :suggest_stale_closed_epic_assignment, if: :stale_closed_epic_assignment?
 
@@ -293,8 +293,12 @@ class Job < ApplicationRecord
     broadcast_refresh_later_to(epic) if epic
   end
 
+  # "The thread is alive" — any non-terminal state. Distinct from
+  # the (removed) AASM :open state predicate; the name is preserved
+  # to match the GitHub-issue vocabulary the rest of the codebase
+  # uses (`open_threads` scope, GitHub API's "state=open" filter).
   def open?
-    !closed? && !merged?
+    !closed?
   end
 
   def ready_for_execution?
@@ -479,7 +483,11 @@ class Job < ApplicationRecord
   end
 
   def dependency_succeeded?
-    merged? || (closed? && SUCCESSFUL_CLOSURE_REASONS.include?(closure_reason))
+    # :merged was removed; the merge path now closes the Job with
+    # closure_reason "pr_merged". SUCCESSFUL_CLOSURE_REASONS already
+    # includes that, so the (closed? && reason in set) branch covers
+    # both kinds of successful close.
+    closed? && SUCCESSFUL_CLOSURE_REASONS.include?(closure_reason)
   end
 
   def effective_base_branch
@@ -878,12 +886,12 @@ class Job < ApplicationRecord
   end
 
   def saved_change_to_pr_merged_terminal?
-    saved_change_to_state? && (closed? || merged?) && closure_reason == "pr_merged"
+    saved_change_to_state? && closed? && closure_reason == "pr_merged"
   end
 
   def saved_change_needs_landing_queue_processor?
     return true if saved_change_to_state? && approved?
-    return true if saved_change_to_state? && (closed? || merged?) && closure_reason == "pr_merged"
+    return true if saved_change_to_state? && closed? && closure_reason == "pr_merged"
 
     false
   end

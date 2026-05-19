@@ -43,7 +43,7 @@ RSpec.describe JobsHelper, type: :helper do
     end
 
     it "falls back to awaiting feedback when there are no workflows or runs" do
-      job = Factories.job_record(state: "open")
+      job = Factories.job_record(state: "queued")
 
       expect(helper.job_attention_status(job)).to eq("awaiting feedback")
     end
