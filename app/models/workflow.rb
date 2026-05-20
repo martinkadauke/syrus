@@ -65,6 +65,7 @@ class Workflow < ApplicationRecord
     event :fail do
       transitions from: [ :queued, :running ], to: :failed, after: -> {
         self.finished_at = Time.current
+        cancel_orphan_active_runs!
         dispatch_hook(:after_fail)
       }
     end
@@ -116,6 +117,21 @@ class Workflow < ApplicationRecord
   # so that the Step's terminal transition observes Runs already
   # cancelled — keeps the per-Run audit trail honest. Idempotent:
   # already-terminal records are skipped (may_cancel? returns false).
+  # Cancel any :queued / :running / :awaiting_operator Runs left on
+  # this workflow when it transitions to :failed. Unlike
+  # cancel_active_descendants! (used by Workflow#cancel), this
+  # deliberately does NOT cancel Steps — Workflow#fail preserves the
+  # chain shape so "Retry from failed step" can reopen the failed
+  # Step and let the dispatcher advance through the still-queued
+  # downstream tail. Uses update_columns to bypass Run's
+  # cascade_cancel_to_workflow! callback, which would otherwise
+  # cancel the Run's Step and break that contract.
+  def cancel_orphan_active_runs!
+    Run.where(step_id: steps.select(:id)).active.find_each do |run|
+      run.update_columns(state: "cancelled", finished_at: Time.current)
+    end
+  end
+
   def cancel_active_descendants!
     Step.suppress_cancel_cascade do
       steps.active.find_each do |step|

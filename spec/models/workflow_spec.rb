@@ -135,6 +135,60 @@ RSpec.describe Workflow do
     end
   end
 
+  describe "#fail cancels orphan active Runs but preserves Steps" do
+    let(:wf) { described_class.create!(job: job, trigger_kind: "initial") }
+
+    it "moves queued/running Runs to :cancelled and leaves queued Steps alone (for retry-from-failed-step)" do
+      done_step    = Step.create!(workflow: wf, kind: "prepare",   position: 0, state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+      failed_step  = Step.create!(workflow: wf, kind: "implement", position: 1, state: "failed",    started_at: 1.minute.ago, finished_at: Time.current)
+      queued_step  = Step.create!(workflow: wf, kind: "summarize", position: 2)  # queued — orphan tail
+      tail_step    = Step.create!(workflow: wf, kind: "pr_open",   position: 3)  # queued — orphan tail
+
+      done_run    = Run.create!(job: job, step: done_step,   trigger_kind: "initial", state: "succeeded")
+      failed_run  = Run.create!(job: job, step: failed_step, trigger_kind: "initial", state: "failed")
+      orphan_run  = Run.create!(job: job, step: queued_step, trigger_kind: "initial")  # queued — speculatively created
+
+      wf.start!
+      wf.fail!
+      wf.save!
+
+      expect(wf).to be_failed
+
+      # Orphan active Run gets cancelled so Job#any_active_run? clears
+      # and the Retry button reappears in the UI.
+      expect(orphan_run.reload.state).to eq("cancelled")
+      expect(orphan_run.finished_at).to be_present
+
+      # Queued tail Steps stay queued so Retry-from-failed-step can
+      # reopen the failed Step and the dispatcher can advance through
+      # the chain.
+      expect(queued_step.reload.state).to eq("queued")
+      expect(tail_step.reload.state).to   eq("queued")
+
+      # Already-terminal records are untouched.
+      expect(done_step.reload.state).to   eq("succeeded")
+      expect(done_run.reload.state).to    eq("succeeded")
+      expect(failed_step.reload.state).to eq("failed")
+      expect(failed_run.reload.state).to  eq("failed")
+    end
+
+    it "is idempotent — failing twice doesn't crash when there are no orphan Runs left" do
+      Step.create!(workflow: wf, kind: "implement", position: 0, state: "failed", started_at: 1.minute.ago, finished_at: Time.current)
+      wf.start!
+      wf.fail!
+      wf.save!
+      expect { wf.cancel_orphan_active_runs! }.not_to raise_error
+    end
+
+    it "does NOT cleanup the workspace (deliberate — retry-from-failed-step needs it)" do
+      Step.create!(workflow: wf, kind: "implement", position: 0, state: "failed", started_at: 1.minute.ago, finished_at: Time.current)
+      wf.start!
+      expect(WorkflowWorkspace).not_to receive(:cleanup_for)
+      wf.fail!
+      wf.save!
+    end
+  end
+
   describe "artifacts" do
     let(:wf) { described_class.create!(job: job, trigger_kind: "initial") }
 
