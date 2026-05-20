@@ -9,7 +9,15 @@ module Prompts
     end
 
     def to_s
-      [ body, GitSafety::TEXT, SubmitSummaryInstructions::TEXT ].join("\n\n")
+      # NB: no SubmitSummaryInstructions here. This prompt is only
+      # appended during a grade-loop iteration (Implement → Grade,
+      # Respond → Grade). Telling the agent to submit_summary right
+      # before the grader runs is wasted effort: if the grader fails,
+      # the next iteration's submit_summary will replace it, and the
+      # artifact churn bloats the workflow's artifacts column. The
+      # dedicated summarize / summarize_amend step (after the loop
+      # terminates) is the one that calls submit_summary.
+      [ body, GitSafety::TEXT ].join("\n\n")
     end
 
     private

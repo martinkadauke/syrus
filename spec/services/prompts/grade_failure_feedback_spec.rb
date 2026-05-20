@@ -5,7 +5,7 @@ RSpec.describe Prompts::GradeFailureFeedback do
     out = described_class.new(iterations: []).to_s
 
     expect(out).to start_with("No prior quality grader iterations were recorded yet.")
-    expect(out).to end_with(Prompts::SubmitSummaryInstructions::TEXT)
+    expect(out).to end_with(Prompts::GitSafety::TEXT)
   end
 
   it "renders a single iteration with mixed pass, fail, and skipped results" do
@@ -99,10 +99,10 @@ RSpec.describe Prompts::GradeFailureFeedback do
     expect(out).not_to include("m" * 80)
   end
 
-  it "appends the submit_summary instructions" do
+  it "does not append submit_summary instructions (the grade-loop iteration's agent should not submit a summary)" do
     out = described_class.new(iterations: [ [ { name: "tests", status: "passed" } ] ]).to_s
 
-    expect(out).to include("CALL THE `submit_summary` MCP TOOL")
-    expect(out).to end_with(Prompts::SubmitSummaryInstructions::TEXT)
+    expect(out).not_to include("CALL THE `submit_summary` MCP TOOL")
+    expect(out).not_to include(Prompts::SubmitSummaryInstructions::TEXT)
   end
 end
