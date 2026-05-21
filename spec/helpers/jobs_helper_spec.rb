@@ -56,6 +56,45 @@ RSpec.describe JobsHelper, type: :helper do
     end
   end
 
+describe "#job_summary_state" do
+    it "returns 'closed' for a closed Job regardless of latest workflow state" do
+      job = Factories.job
+      job.update!(state: "closed", closure_reason: "cancelled", finished_at: Time.current)
+
+      expect(helper.job_summary_state(job)).to eq("closed")
+    end
+
+    it "returns the Job state directly for :triaging, :implemented, :approved, :landing" do
+      %w[triaging implemented approved landing].each do |state|
+        job = Factories.job_record(state: state)
+
+        expect(helper.job_summary_state(job)).to eq(state)
+      end
+    end
+
+    it "returns the latest workflow's state (not the latest run's) for :queued Jobs mid-chain" do
+      # Simulates "implement just-succeeded, grade about to start":
+      # the latest Run is :succeeded, but the workflow is still
+      # :running. The helper should reflect the workflow's stable
+      # state, not the flickering Run state.
+      job = Factories.job_record(state: "queued")
+      workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "running", started_at: 1.minute.ago)
+      Step.create!(workflow: workflow, kind: "implement", position: 0, state: "succeeded",
+                   started_at: 1.minute.ago, finished_at: Time.current)
+      Run.create!(job: job, trigger_kind: "initial", state: "succeeded",
+                  started_at: 1.minute.ago, finished_at: Time.current)
+
+      expect(job.current_run.state).to eq("succeeded")
+      expect(helper.job_summary_state(job)).to eq("running")
+    end
+
+    it "returns 'pending' for a :queued Job with no workflow yet" do
+      job = Factories.job_record(state: "queued")
+
+      expect(helper.job_summary_state(job)).to eq("pending")
+    end
+  end
+
   describe "#approval_caption" do
     let(:job) do
       j = Factories.job
