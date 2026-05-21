@@ -209,7 +209,8 @@ module Filters
         "hostname"    => "Filters::Chips::SpawnedProcesses::Hostname",
         "run_id"      => "Filters::Chips::SpawnedProcesses::RunId",
         "workflow_id" => "Filters::Chips::SpawnedProcesses::WorkflowId",
-        "stale"       => "Filters::Chips::SpawnedProcesses::Stale"
+        "stale"       => "Filters::Chips::SpawnedProcesses::Stale",
+        "started_at"  => "Filters::Chips::SpawnedProcesses::StartedAt"
       }
     )
   }.freeze
