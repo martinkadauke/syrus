@@ -227,6 +227,53 @@ test("renders a top-level OR tree as ordinary removable chips", async () => {
   assert.equal(controller.chipsTarget.querySelectorAll("[data-chip-path='[0,1]']").length, 2)
 })
 
+test("clearAll navigates to the form action URL with view preserved, dropping smart_folder_id and other URL params", async () => {
+  const { default: Controller } = await loadController()
+  const controller = buildController(Controller, {
+    tree: { and: [ { field: "attention", op: "is", value: "inbox" } ] },
+    schema: { chips: [], group_descriptors: [] }
+  })
+  controller.formTarget.action = "https://example.com/dashboard/jobs"
+
+  let navigatedTo = null
+  globalThis.window = {
+    location: {
+      origin: "https://example.com",
+      search: "?smart_folder_id=8&view=kanban&extra=ignored",
+      assign(url) { navigatedTo = url }
+    }
+  }
+
+  controller.clearAll()
+
+  // Tree is emptied first.
+  assert.deepEqual(decodeTree(controller.qInputTarget.value), { and: [] })
+  // Navigation drops smart_folder_id + extra; preserves view.
+  assert.equal(navigatedTo, "https://example.com/dashboard/jobs?view=kanban")
+})
+
+test("clearAll preserves nothing extra when view is absent from the URL", async () => {
+  const { default: Controller } = await loadController()
+  const controller = buildController(Controller, {
+    tree: { and: [ { field: "attention", op: "is", value: "inbox" } ] },
+    schema: { chips: [], group_descriptors: [] }
+  })
+  controller.formTarget.action = "https://example.com/dashboard/jobs"
+
+  let navigatedTo = null
+  globalThis.window = {
+    location: {
+      origin: "https://example.com",
+      search: "?smart_folder_id=8",
+      assign(url) { navigatedTo = url }
+    }
+  }
+
+  controller.clearAll()
+
+  assert.equal(navigatedTo, "https://example.com/dashboard/jobs")
+})
+
 test("removing chips from a top-level OR tree writes an explicit q tree", async () => {
   const { default: Controller } = await loadController()
   const controller = buildController(Controller, {

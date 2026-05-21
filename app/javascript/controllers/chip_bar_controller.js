@@ -367,8 +367,18 @@ export default class extends Controller {
   }
 
   clearAll() {
+    // Navigate explicitly to the form's action URL, preserving only
+    // `view` from the current URL. The form-submit-based approach
+    // worked server-side but was observed in the wild to retain
+    // `smart_folder_id` in the URL (likely a Turbo Drive
+    // form-handling edge case for GET method); navigating directly
+    // sidesteps that entirely and guarantees the operator's "Clear"
+    // really clears everything — smart folder included.
     this.setTopChildren([])
-    this.submitForm()
+    const action = new URL(this.formTarget.action, window.location.origin)
+    const here = new URLSearchParams(window.location.search)
+    if (here.has("view")) action.searchParams.set("view", here.get("view"))
+    window.location.assign(action.toString())
   }
 
   // ---- Add-filter popover ----
