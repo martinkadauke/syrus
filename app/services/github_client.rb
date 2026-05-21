@@ -1,6 +1,23 @@
 class GithubClient
   USER_AGENT = "Syrus/0.1 (+https://github.com/tkadauke/syrus)".freeze
 
+  # Faraday connection timeouts. Octokit (and Faraday underneath) has
+  # NO default timeouts — a slow or stalled socket against GitHub will
+  # block the worker thread forever. That happened in prod: 4
+  # PollMergeStateJob threads wedged for 4+ hours on hanging
+  # pull_request reads, locking the entire `default` queue (recurring
+  # scheduler, Turbo broadcasts, PR-feedback polling) behind them.
+  #   open_timeout: TCP connect must complete in N seconds.
+  #   timeout:      total request (incl. response read) capped at N.
+  # Bound generously: GitHub's slowest documented endpoints (large
+  # commit comparisons, etc.) finish well inside a minute when healthy.
+  #
+  # Octokit mutates the connection_options hash internally, so return
+  # a fresh dup per call instead of freezing a constant.
+  def self.connection_options
+    { request: { open_timeout: 10, timeout: 30 } }
+  end
+
   attr_reader :access_token
 
   def self.for(repository:, user: nil)
@@ -56,6 +73,7 @@ class GithubClient
       access_token: access_token,
       user_agent: USER_AGENT,
       auto_paginate: true,
+      connection_options: self.class.connection_options,
       middleware: self.class.middleware_stack(cache_namespace)
     )
   end
@@ -237,7 +255,8 @@ class GithubClient
     @uncached_client ||= Octokit::Client.new(
       access_token: @access_token,
       user_agent: USER_AGENT,
-      auto_paginate: true
+      auto_paginate: true,
+      connection_options: self.class.connection_options
     )
   end
 
@@ -571,6 +590,7 @@ class GithubClient
       access_token: @access_token,
       user_agent: USER_AGENT,
       auto_paginate: true,
+      connection_options: self.class.connection_options,
       middleware: self.class.middleware_stack(cache_namespace)
     )
     @uncached_client = nil
