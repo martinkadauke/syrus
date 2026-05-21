@@ -40,6 +40,14 @@ grade:
     run: bin/check-thread-budget
     timeout_minutes: 1
 
+  # Force Zeitwerk eager-load so duplicate-class / autoload-path
+  # crashes surface here instead of crashlooping the production
+  # pods. Tests lazy-load, so this is the only mechanism short of
+  # booting the production image.
+  - name: eager-load
+    run: bin/check-eager-load
+    timeout_minutes: 1
+
   - name: turbo-defaults
     run: bin/check-turbo-defaults
     timeout_minutes: 1

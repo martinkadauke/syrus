@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# Syrus eager-load grader.
+#
+# Forces Rails.application.eager_load! under RAILS_ENV=test so
+# Zeitwerk loads every file under app/ — same code path that runs
+# at production boot when config.eager_load = true.
+#
+# Production-only crashes that the test suite can't catch:
+#   - Two files defining the same constant with different
+#     superclasses ("superclass mismatch for class X").
+#   - Stale `Foo < UnknownParent` references after a rename.
+#   - Autoload-path / namespace mismatches.
+# These pass tests (which lazy-load) and detonate at boot in prod.
+#
+# Output mode: --quiet hides the success message (used by
+# bin/deploy's preflight); verbose prints the full Rails error
+# trace on failure so the agent's grader feedback is actionable.
+
+set -euo pipefail
+
+QUIET=${1:-}
+
+# bin/rails may not exist on a fresh checkout (no bundle install
+# yet); the grader runs AFTER the prepare step in .syrus.yml so
+# binstubs are present. Out of an abundance of caution: noop if
+# bin/rails is missing.
+if [ ! -x "bin/rails" ]; then
+  echo "[check-eager-load] no bin/rails — skipping"
+  exit 0
+fi
+
+if output=$(RAILS_ENV=test bin/rails runner 'Rails.application.eager_load!' 2>&1); then
+  [ "$QUIET" = "--quiet" ] || echo "[check-eager-load] ok"
+  exit 0
+fi
+
+cat >&2 <<MSG
+[check-eager-load] FAILED — Rails.application.eager_load! raised:
+
+$output
+
+This will crashloop the production pods. Common causes:
+  - Two files defining the same constant with different superclasses
+    (e.g. an umbrella file at app/services/foo.rb and a per-class
+    file at app/services/foo/bar.rb both declaring \`class Bar\`).
+  - Stale references after a rename (\`class Foo < OldParent\`).
+  - Namespace mismatch between path and constant.
+
+Reproduce locally:
+  RAILS_ENV=test bin/rails runner 'Rails.application.eager_load!'
+MSG
+exit 1
