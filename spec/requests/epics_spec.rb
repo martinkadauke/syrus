@@ -163,7 +163,7 @@ RSpec.describe "Epics", type: :request do
       folder = user.smart_folders.find_by!(name: "Ready forums")
       expect(folder.subject_type).to eq("epic")
       expect(folder.filter).to eq(filter)
-      expect(response).to redirect_to(epics_path(smart_folder_id: folder.id))
+      expect(response).to redirect_to(dashboard_epics_path(smart_folder_id: folder.id))
 
       get root_path, params: { subject: "epic", view: "list" }
 

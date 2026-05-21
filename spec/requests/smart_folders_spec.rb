@@ -20,7 +20,7 @@ RSpec.describe "Smart folders", type: :request do
           { "field" => "state", "op" => "is", "value" => "ready" }
         ]
       )
-      expect(response).to redirect_to(epics_path(smart_folder_id: folder.id))
+      expect(response).to redirect_to(dashboard_epics_path(smart_folder_id: folder.id))
     end
 
     it "creates a Workflow smart folder and redirects to the Workflow dashboard" do
