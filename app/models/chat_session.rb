@@ -111,7 +111,10 @@ class ChatSession < ApplicationRecord
   end
 
   def broadcast_header
-    broadcast_replace_later_to(
+    # Sync (NOT _later_to): see chat_message.rb#broadcast_to_chat
+    # for the rationale — the default queue gets clogged during an
+    # agent turn, and chat broadcasts shouldn't wait on it.
+    broadcast_replace_to(
       "chat_session_#{id}_header",
       target: "chat_session_#{id}_header",
       partial: "chats/header",
@@ -125,7 +128,7 @@ class ChatSession < ApplicationRecord
   # user message starts the turn, a non-user message ends it) and from
   # the Stop action so the operator's click is acknowledged in the UI.
   def broadcast_controls
-    broadcast_replace_later_to(
+    broadcast_replace_to(
       "chat_session_#{id}_controls",
       target: "chat_session_#{id}_controls",
       partial: "chats/compose",

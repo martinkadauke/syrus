@@ -35,7 +35,14 @@ class ChatMessage < ApplicationRecord
   end
 
   def broadcast_to_chat
-    broadcast_append_later_to(
+    # Sync broadcast (NOT _later_to): a single agent turn produces
+    # 30–80 ChatMessages (one per tool_call / tool_result /
+    # assistant_text chunk). Routing each broadcast through
+    # ActiveJob piles them into the `default` queue behind the
+    # polling/reaper jobs, which makes the chat window stop
+    # updating mid-turn until the queue drains. Inline via
+    # solid_cable is fast and keeps the operator's UI honest.
+    broadcast_append_to(
       "chat_session_#{chat_session_id}_messages",
       target: "chat_session_#{chat_session_id}_messages",
       partial: "chats/message",
