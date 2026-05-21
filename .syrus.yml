@@ -25,6 +25,21 @@ grade:
     run: bin/check-migration-collisions
     timeout_minutes: 1
 
+  # Catch idempotency / JSON-default footguns on the migrations this
+  # branch is adding. See CLAUDE.md "Migrations are idempotent" +
+  # "JSON columns can't have defaults on MySQL 8". Diff vs
+  # origin/main, so historical migrations aren't penalized.
+  - name: migration-lint
+    run: bin/check-migrations
+    timeout_minutes: 1
+
+  # SolidQueue worker can't boot if its thread budget exceeds the DB
+  # pool. Local check prevents the crashloop-after-deploy failure
+  # mode (the merges-queue addition bumped threads past pool=5).
+  - name: thread-budget
+    run: bin/check-thread-budget
+    timeout_minutes: 1
+
   - name: turbo-defaults
     run: bin/check-turbo-defaults
     timeout_minutes: 1

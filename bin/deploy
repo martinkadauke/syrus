@@ -65,6 +65,28 @@ SHA="$(git rev-parse --short HEAD)"
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 echo "→ deploying ${SHA} (branch ${BRANCH})"
 
+# --- preflight: eager-load probe -------------------------------------
+# Catches Zeitwerk superclass-mismatch crashes that lazy autoload in
+# dev/test hides. Production sets config.eager_load = true; any
+# duplicate class definition or autoload-path mismatch detonates at
+# boot, crashloops the pod, and stalls the rollout. Forcing
+# eager_load! in this short Ruby pass surfaces the same error
+# locally in ~3s.
+#
+# Skipped under --skip-build because by then the image is already
+# tagged and pushed — the operator has implicitly accepted whatever
+# it contains. Also skip if the syrus binstubs are missing (e.g.,
+# fresh checkout without bundle install) so the script doesn't
+# hard-fail in that edge case.
+if [ "$SKIP_BUILD" = false ] && [ -x bin/rails ]; then
+  echo "→ eager_load probe"
+  if ! RAILS_ENV=test bin/rails runner 'Rails.application.eager_load!' >/dev/null 2>&1; then
+    echo "✗ eager_load failed — run locally to see the error:" >&2
+    echo "    RAILS_ENV=test bin/rails runner 'Rails.application.eager_load!'" >&2
+    exit 1
+  fi
+fi
+
 # --- auth ------------------------------------------------------------
 if [ -z "${GHCR_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
   GHCR_TOKEN="$(cat "$TOKEN_FILE")"

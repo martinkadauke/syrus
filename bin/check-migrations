@@ -1,0 +1,174 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+#
+# Syrus migration linter.
+#
+# Rejects migrations that hit production-known footguns. Each rule is
+# a small Ruby block in RULES below; add a new one by appending. Run
+# as a grader so the agent gets immediate push-back when it
+# regresses one of the patterns CLAUDE.md warns about.
+#
+# Current rules:
+#   - non_idempotent_add_column     — bare `add_column` without
+#                                      `unless column_exists?`. Partial
+#                                      production migrations re-run on
+#                                      retry and crash with
+#                                      Mysql2::Error: Duplicate column.
+#   - non_idempotent_remove_column  — same, inverted.
+#   - non_idempotent_add_reference  — same, for add_reference / add_belongs_to.
+#   - non_idempotent_add_index      — same, for add_index.
+#   - mysql_json_default            — `add_column ..., :json, ..., default: ...`
+#                                      MySQL 8 rejects defaults on JSON columns
+#                                      at deploy time; SQLite (dev) accepts them
+#                                      so this only fires in prod migrations.
+
+require "pathname"
+
+ROOT = Pathname.new(File.expand_path("..", __dir__))
+MIGRATION_GLOB = ROOT.join("db/migrate/*.rb")
+
+# Lint only migrations changed on this branch vs the merge base
+# with origin/main (or `--all` to scan every migration). Legacy
+# migrations in the repo predate this linter; their offenses are
+# technical debt to clean up separately, not a reason to fail
+# every new workflow's grade.
+def migration_paths
+  if ARGV.include?("--all")
+    Pathname.glob(MIGRATION_GLOB).sort
+  else
+    diff_paths
+  end
+end
+
+def diff_paths
+  base = resolve_default_branch
+  return Pathname.glob(MIGRATION_GLOB).sort if base.nil?
+
+  diff = `git diff --name-only --diff-filter=AM #{base}...HEAD -- db/migrate 2>/dev/null`
+  diff.lines.map(&:strip).reject(&:empty?).map { |rel| ROOT.join(rel) }.select(&:exist?).sort
+end
+
+def resolve_default_branch
+  candidates = %w[origin/main origin/master main master]
+  candidates.find { |ref| system("git rev-parse --verify --quiet #{ref}", out: File::NULL, err: File::NULL) }
+end
+
+Offense = Struct.new(:rule, :path, :line, :detail, :remediation, keyword_init: true) do
+  def render
+    rel = path.relative_path_from(ROOT)
+    [
+      "  [#{rule}] #{rel}:#{line}",
+      "    #{detail}",
+      "    fix: #{remediation}"
+    ].join("\n")
+  end
+end
+
+RULES = []
+
+def rule(name, &block)
+  RULES << { name: name, run: block }
+end
+
+# Each rule receives (offenses, path, source_lines). Append to
+# `offenses` for any violations found.
+
+rule "non_idempotent_add_column" do |offenses, path, lines|
+  lines.each_with_index do |line, i|
+    next unless line =~ /^\s*add_column\b/
+    next if guarded_by?(lines, i, /column_exists\?/)
+    offenses << Offense.new(
+      rule: "non_idempotent_add_column",
+      path: path,
+      line: i + 1,
+      detail: "bare `add_column` — partial-migration retry will crash with Duplicate column",
+      remediation: "wrap in `add_column :t, :c, ... unless column_exists?(:t, :c)`"
+    )
+  end
+end
+
+rule "non_idempotent_remove_column" do |offenses, path, lines|
+  lines.each_with_index do |line, i|
+    next unless line =~ /^\s*remove_column\b/
+    next if guarded_by?(lines, i, /column_exists\?/)
+    offenses << Offense.new(
+      rule: "non_idempotent_remove_column",
+      path: path,
+      line: i + 1,
+      detail: "bare `remove_column` — partial-migration retry crashes when column already gone",
+      remediation: "wrap in `remove_column :t, :c if column_exists?(:t, :c)`"
+    )
+  end
+end
+
+rule "non_idempotent_add_reference" do |offenses, path, lines|
+  lines.each_with_index do |line, i|
+    next unless line =~ /^\s*add_(?:reference|belongs_to)\b/
+    next if guarded_by?(lines, i, /column_exists\?/)
+    offenses << Offense.new(
+      rule: "non_idempotent_add_reference",
+      path: path,
+      line: i + 1,
+      detail: "bare `add_reference`/`add_belongs_to` — partial retry trips on existing _id column",
+      remediation: "wrap in `add_reference :t, :assoc, ... unless column_exists?(:t, :assoc_id)`"
+    )
+  end
+end
+
+rule "non_idempotent_add_index" do |offenses, path, lines|
+  lines.each_with_index do |line, i|
+    next unless line =~ /^\s*add_index\b/
+    next if guarded_by?(lines, i, /index_exists\?/)
+    offenses << Offense.new(
+      rule: "non_idempotent_add_index",
+      path: path,
+      line: i + 1,
+      detail: "bare `add_index` — partial retry trips on already-created index name",
+      remediation: "wrap in `add_index :t, :c, ... unless index_exists?(:t, :c)`"
+    )
+  end
+end
+
+rule "mysql_json_default" do |offenses, path, lines|
+  lines.each_with_index do |line, i|
+    next unless line =~ /^\s*add_column\b/
+    next unless line =~ /:json\b/
+    next unless line =~ /\bdefault:/
+    offenses << Offense.new(
+      rule: "mysql_json_default",
+      path: path,
+      line: i + 1,
+      detail: "JSON column with `default:` — MySQL 8 rejects this at migration time (SQLite dev hides it)",
+      remediation: "add nullable, execute(\"UPDATE ... SET col = '{}' WHERE col IS NULL\"), change_column_null"
+    )
+  end
+end
+
+# Helper: did a recent line guard this operation? Looks backwards
+# up to LOOKBACK lines for a matching guard pattern; also matches
+# inline `... unless column_exists?(...)` on the same line.
+LOOKBACK = 3
+def guarded_by?(lines, index, pattern)
+  return true if lines[index] =~ pattern
+  ((index - LOOKBACK)..(index - 1)).any? { |i| i >= 0 && lines[i] =~ pattern }
+end
+
+# Run all rules over each in-scope migration.
+paths = migration_paths
+offenses = []
+paths.each do |path|
+  lines = path.readlines
+  RULES.each { |rule| rule[:run].call(offenses, path, lines) }
+end
+
+if offenses.empty?
+  scope = ARGV.include?("--all") ? "all" : "changed"
+  puts "[check-migrations] ok (#{paths.size} #{scope} files, #{RULES.size} rules, no offenses)"
+  exit 0
+end
+
+warn "[check-migrations] #{offenses.size} offense(s) across #{RULES.size} rules in #{paths.size} changed files"
+offenses.each { |o| warn o.render }
+warn ""
+warn "See CLAUDE.md \"Migrations are idempotent\" and \"JSON columns can't have defaults on MySQL 8\""
+exit 1

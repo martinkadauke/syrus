@@ -1,0 +1,72 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+#
+# Syrus thread-budget grader.
+#
+# SolidQueue's worker boots crash if the database connection pool
+# can't hold the worker's thread budget. The error is non-recoverable
+# at startup time:
+#   "Solid Queue is configured to use 7 threads but the database
+#    connection pool is 5. Increase it in `config/database.yml`"
+# A worker pod that crashloops takes the whole queue offline (default
+# queue: Turbo broadcasts, recurring schedulers, reapers; runs queue:
+# every agent invocation).
+#
+# Catch the mismatch locally: parse config/queue.yml, compute the max
+# per-worker thread count + a fixed overhead, compare to the
+# config/database.yml pool. ERB substitutions in either file are
+# evaluated with the same ENV defaults SolidQueue + Rails would use
+# at boot. Run as a grader so the agent gets feedback when a queue
+# config grows past the pool.
+
+require "erb"
+require "yaml"
+
+ROOT = File.expand_path("..", __dir__)
+
+# SolidQueue allocates a few non-worker threads per process for
+# heartbeat + shutdown supervision. The exact number isn't public
+# API; observed at 2. Bump headroom by another 1 so a single dead
+# connection doesn't take a worker down.
+OVERHEAD = 3
+
+def render(path)
+  raw = File.read(File.join(ROOT, path))
+  YAML.safe_load(ERB.new(raw).result, aliases: true, permitted_classes: [ Symbol ])
+end
+
+queue_yaml = render("config/queue.yml")
+database_yaml = render("config/database.yml")
+
+# All envs inherit from `default`; checking that one is enough.
+workers = Array(queue_yaml.dig("default", "workers"))
+abort "[check-thread-budget] no workers found in config/queue.yml" if workers.empty?
+
+# Find the worker with the highest thread count. Each worker config
+# becomes a process at boot, but the pool budget per worker is what
+# matters because each process has its own pool.
+worst = workers.max_by { |w| w["threads"].to_i }
+worker_threads = worst["threads"].to_i
+required_pool = worker_threads + OVERHEAD
+
+# Database.yml has multiple stanzas — production primary, test, etc.
+# The default block + production block both inherit `pool`. Find the
+# resolved pool from the production primary entry (that's what worker
+# pods actually use), falling back to the default block's pool.
+pool_value =
+  database_yaml.dig("production", "primary", "pool") ||
+  database_yaml.dig("default", "pool") ||
+  database_yaml["pool"]
+pool = pool_value.to_i
+abort "[check-thread-budget] could not determine pool size from config/database.yml" if pool.zero?
+
+if pool < required_pool
+  warn "[check-thread-budget] DB pool too small for SolidQueue worker"
+  warn "    Worst worker: queues=#{worst['queues']} threads=#{worker_threads}"
+  warn "    Required pool: #{required_pool} (#{worker_threads} threads + #{OVERHEAD} overhead)"
+  warn "    Actual pool:   #{pool}"
+  warn "    Fix:           bump `pool` in config/database.yml (or set RAILS_MAX_THREADS)"
+  exit 1
+end
+
+puts "[check-thread-budget] ok (worst worker: queues=#{worst['queues']} threads=#{worker_threads}, pool: #{pool}, required: #{required_pool})"
