@@ -78,6 +78,29 @@ RSpec.describe RetryWorkflowEnqueuer do
     expect(result.workflow.steps.order(:position).pluck(:kind)).to eq(%w[ implement grade summarize pr_open ])
   end
 
+it "transitions a :failed Job back to :queued before instantiating the new workflow" do
+    # Simulates the realistic post-failure state: the prior run
+    # finished, the workflow failed, and Workflow#fail's
+    # propagate_fail_to_job! drove the Job to :failed.
+    finish_current_run!(state: "failed")
+    job.update!(state: "failed")
+
+    expect {
+      result = described_class.call(job: job)
+      expect(result).to be_success
+    }.to change { job.reload.state }.from("failed").to("queued")
+  end
+
+  it "is a no-op on Job state when the Job is not :failed (e.g. :implemented retry)" do
+    finish_current_run!
+    job.update!(state: "implemented")
+
+    expect {
+      result = described_class.call(job: job)
+      expect(result).to be_success
+    }.not_to change { job.reload.state }
+  end
+
   it "can enforce alternate retry provider semantics for per-job retries" do
     finish_current_run!
     job.current_run.update!(agent_provider: "claude")

@@ -22,6 +22,17 @@ class RetryWorkflowEnqueuer
 
     job.switch_agent_provider!(agent_provider) if agent_provider.present?
     job.sync_skip_prepare_from_source!
+    # If the Job is :failed, transition back to :queued so the new
+    # workflow's Workflow#start can drive Job state :queued → :running
+    # via propagate_start_to_job!. Without this, the start callback's
+    # may_start_running? guard returns false (start_running only
+    # transitions from :queued / :implemented), the Job sits at :failed
+    # forever, and successive Retry clicks bounce off `any_active_run?`
+    # once the new Run starts piling up.
+    if job.failed? && job.may_retry_after_failure?
+      job.retry_after_failure!
+      job.save!
+    end
     workflow = Workflows::Retry.instantiate(job: job, artifacts: artifacts, agent_provider: agent_provider)
     StepDispatcher.start_workflow(workflow)
     Result.new(workflow: workflow, error: nil)
