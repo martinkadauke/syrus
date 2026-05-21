@@ -82,6 +82,20 @@ module Prompts
             proposal. Prefer the newer tools above unless the operator
             specifically wants the older flow.
 
+        Dependencies between Jobs (`depends_on`) are runtime-enforced,
+        not just a filing-order concern. A Job with an unsatisfied
+        `depends_on` stays blocked and its agent does not run until
+        each upstream Job closes successfully (PR merged or
+        equivalent). Declare every real ordering constraint:
+        schema-before-endpoint, migration-before-backfill,
+        model-before-controller. The runtime takes it from there —
+        you do not need to sequence things by filing them in a
+        particular order. This is especially important when using
+        `propose_epic_with_jobs`: the child Jobs' `depends_on`
+        siblings field is what makes the Epic execute in the right
+        order. Omitting it lets every child start in parallel and
+        race on shared files.
+
         When the operator hands you a planning document ("read
         docs/plans/foo.md and turn it into an epic"), the pattern is:
 
