@@ -40,6 +40,46 @@ RSpec.describe Steps::PrOpen do
     expect(body).not_to include("Run took")
   end
 
+  it "persists the Job's :implemented state after opening a new PR" do
+    job.update!(state: "running")
+    pr_open_run = Run.create!(
+      job: job,
+      step: pr_open_step,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: workflow.agent_provider
+    )
+    handler = described_class.new(pr_open_run)
+    workspace = instance_double(WorkflowWorkspace, setup: true, branch_name: "syrus/issue-42-#{job.id}")
+    allow(handler).to receive(:workspace).and_return(workspace)
+    allow(handler).to receive(:push_branch)
+    allow(handler).to receive(:pr_title_and_body).and_return([ "T", "B" ])
+    opener = instance_double(PullRequestOpener, open: 100)
+    allow(PullRequestOpener).to receive(:new).and_return(opener)
+
+    handler.call
+
+    expect(job.reload.state).to eq("implemented")
+  end
+
+  it "persists the Job's :implemented state on the idempotent retry path (PR already exists)" do
+    job.update!(state: "running", pr_number: 77)
+    pr_open_run = Run.create!(
+      job: job,
+      step: pr_open_step,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: workflow.agent_provider
+    )
+    handler = described_class.new(pr_open_run)
+    workspace = instance_double(WorkflowWorkspace, setup: true, branch_name: "syrus/issue-42-#{job.id}")
+    allow(handler).to receive(:workspace).and_return(workspace)
+    allow(handler).to receive(:push_branch)
+    expect(PullRequestOpener).not_to receive(:new)
+
+    handler.call
+
+    expect(job.reload.state).to eq("implemented")
+  end
+
   it "passes the Job to PullRequestOpener so dependent PRs use their effective base" do
     pr_open_run = Run.create!(
       job: job,

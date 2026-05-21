@@ -16,7 +16,7 @@ module Steps
 
       push_branch
       if job.pr_number.present?  # idempotent for retry
-        job.mark_implemented! if job.may_mark_implemented?
+        transition_job_to_implemented!
         return
       end
 
@@ -28,12 +28,24 @@ module Steps
         job: job
       )
       job.update!(pr_number: pr_number, branch_name: workspace.branch_name)
-      job.mark_implemented! if job.may_mark_implemented?
+      transition_job_to_implemented!
       refresh_stack_footer
       log("pr_open: opened PR ##{pr_number} (#{title.inspect})")
     end
 
     private
+
+    # AASM events on Job mutate in-memory state via the after-callback but
+    # don't persist; the save! is required for the transition to land in
+    # the DB. Without it, the in-memory mutation also pre-empts
+    # Workflow#propagate_succeed_to_job!'s `return unless job.running?`
+    # guard, so the workflow-level catch-all never saves either.
+    def transition_job_to_implemented!
+      return unless job.may_mark_implemented?
+
+      job.mark_implemented!
+      job.save!
+    end
 
     def push_branch
       git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
