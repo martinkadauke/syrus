@@ -20,7 +20,7 @@ class RepoGradePlan
   MAX_TIMEOUT_MINUTES = 30
   NAME_PATTERN = /\A[a-zA-Z0-9-]+\z/
 
-  Grader = Data.define(:name, :command, :required, :timeout_minutes)
+  Grader = Data.define(:name, :command, :description, :required, :timeout_minutes)
   Result = Data.define(:graders, :source, :note)
 
   def self.for(workspace_path)
@@ -70,6 +70,7 @@ class RepoGradePlan
     Grader.new(
       name: name,
       command: command,
+      description: entry["description"].to_s.strip.presence,
       required: entry.key?("required") ? !!entry["required"] : true,
       timeout_minutes: timeout_minutes(entry["timeout_minutes"])
     )

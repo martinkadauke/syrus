@@ -42,6 +42,13 @@ class Step < ApplicationRecord
   validates :kind, presence: true, inclusion: { in: KINDS }
   validates :position, presence: true, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
 
+  # MySQL 8 rejects defaults on JSON columns, so seed `{}` on new
+  # records via after_initialize instead of a column default. Existing
+  # rows were backfilled by the AddDetailsToSteps migration.
+  # (Native JSON column handles encode/decode — no explicit
+  # serialize: needed.)
+  after_initialize :default_details, if: :new_record?
+
   scope :active, -> { where(state: %w[ queued running ]) }
   scope :terminal, -> { where(state: %w[ succeeded failed cancelled ]) }
 
@@ -211,5 +218,11 @@ class Step < ApplicationRecord
     end
 
     nil
+  end
+
+  private
+
+  def default_details
+    self.details ||= {}
   end
 end

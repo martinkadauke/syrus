@@ -24,6 +24,19 @@ RSpec.describe Step do
     end
   end
 
+describe "details JSON bag" do
+    it "seeds an empty hash on new records (MySQL 8 disallows JSON column defaults)" do
+      step = described_class.new(workflow: workflow, kind: "implement", position: 0)
+      expect(step.details).to eq({})
+    end
+
+    it "round-trips arbitrary kind-specific keys" do
+      step = described_class.create!(workflow: workflow, kind: "implement", position: 0,
+                                     details: { "grader_name" => "rspec", "required" => true })
+      expect(step.reload.details).to eq("grader_name" => "rspec", "required" => true)
+    end
+  end
+
   describe "loop iteration columns" do
     it "defaults iteration to 1 and loop_id to nil" do
       step = described_class.create!(workflow: workflow, kind: "implement", position: 0)

@@ -14,63 +14,85 @@ prepare:
   - bundle config set --local path vendor/bundle
   - bundle install --jobs 4
 
+# Each grader's `description:` is surfaced in the UI (tooltip on the
+# grader name + above the output panel on failure) and prepended to
+# the per-grader block in the agent's grade-failure prompt. Authoring
+# guidance: lead with what the grader rejects (so the agent knows what
+# shape "passing" looks like), then mention the prod failure mode the
+# check exists to prevent. Keep it 2-4 sentences; the surfaces this
+# renders into don't have room for paragraphs.
 grade:
-  # Reject migrations whose YYYYMMDDHHMMSS timestamps collide with
-  # main or with each other. Hand-rolled timestamps silently corrupt
-  # dev DBs (db:migrate skips colliding versions) and crash production
-  # deploys with "table already exists". See CLAUDE.md "Migration
-  # timestamps come from the generator" — the script fails the grade
-  # so the loop nudges the agent to regenerate via the rails generator.
   - name: migration-collisions
+    description: |
+      Rejects migrations whose YYYYMMDDHHMMSS timestamps collide with
+      main or with each other. Hand-rolled timestamps silently corrupt
+      dev DBs (db:migrate skips colliding versions) and crash production
+      deploys with "table already exists." Always create migrations
+      via `bin/rails generate migration <Name>` so the timestamp is
+      fresh at file-creation time.
     run: bin/check-migration-collisions
     timeout_minutes: 1
 
-  # Catch idempotency / JSON-default footguns on the migrations this
-  # branch is adding. See CLAUDE.md "Migrations are idempotent" +
-  # "JSON columns can't have defaults on MySQL 8". Diff vs
-  # origin/main, so historical migrations aren't penalized.
   - name: migration-lint
+    description: |
+      Catches non-idempotent migration patterns (bare `add_column`,
+      `remove_column`, `add_reference`, `add_index` without
+      `_exists?` guards) and MySQL-8 JSON-default footguns on
+      migrations touched by this branch. Production deploys retry
+      partial migrations; without guards the retry crashes with
+      "Duplicate column" or "table already exists."
     run: bin/check-migrations
     timeout_minutes: 1
 
-  # SolidQueue worker can't boot if its thread budget exceeds the DB
-  # pool. Local check prevents the crashloop-after-deploy failure
-  # mode (the merges-queue addition bumped threads past pool=5).
   - name: thread-budget
+    description: |
+      Rejects a SolidQueue worker config whose thread budget exceeds
+      the DB connection pool. Mismatch crashloops the worker pod at
+      boot — it can't claim a connection per thread. Bump
+      RAILS_MAX_THREADS / config/database.yml's pool, or trim the
+      queue's thread count.
     run: bin/check-thread-budget
     timeout_minutes: 1
 
-  # Force Zeitwerk eager-load so duplicate-class / autoload-path
-  # crashes surface here instead of crashlooping the production
-  # pods. Tests lazy-load, so this is the only mechanism short of
-  # booting the production image.
   - name: eager-load
+    description: |
+      Forces Rails.application.eager_load! to surface Zeitwerk
+      duplicate-class / namespace-mismatch errors that lazy autoload
+      in dev/test hides. These crashes only fire at production boot
+      (when config.eager_load = true), so without this check they
+      detonate live pods. If this fails, two files probably define
+      the same constant with different superclasses — check umbrella
+      files vs per-class siblings.
     run: bin/check-eager-load
     timeout_minutes: 1
 
   - name: turbo-defaults
+    description: |
+      Rejects turbo_frame_tag calls without an explicit `target:`.
+      Without a target, in-frame links that target the frame but
+      receive a response without the same frame ID render as
+      "Content missing." Every turbo_frame_tag should pass
+      `target: "_top"` unless the frame is hosting in-place
+      navigation.
     run: bin/check-turbo-defaults
     timeout_minutes: 1
 
-  # Full RSpec suite. CLAUDE.md "Tests are not optional" is the rule;
-  # this grader is the enforcement. The agent gets push-back when a
-  # spec fails — newly added behavior without coverage, OR a stale
-  # spec left red by a refactor. The suite usually runs quickly, but
-  # cold workers can spend nearly 5 minutes in RSpec itself; allow
-  # enough margin for process shutdown too. `db:test:prepare` runs
-  # first so schema changes landed in the same workflow are picked up
-  # before spec collection.
   - name: rspec
+    description: |
+      Full RSpec suite. CLAUDE.md "Tests are not optional" is the
+      rule; this grader is the enforcement. New behavior needs new
+      specs; bug fixes need regression specs; refactors must keep
+      the suite green and add coverage to any under-tested area
+      they touch. `db:test:prepare` runs first so schema changes in
+      the same workflow are picked up before spec collection.
     run: bin/rails db:test:prepare && bin/rspec
     timeout_minutes: 10
 
-  # JS controller specs via `node --test`. Separate grader from
-  # rspec so failures report distinctly — when the agent breaks a
-  # Stimulus controller, the feedback says "js-tests failed" not
-  # "rspec failed." Driven directly by node (no Rails boot, no
-  # bundler), so ~100ms in practice; 1 minute is generous slack
-  # for a cold worker. See CLAUDE.md "Tests" for why this lives
-  # outside the RSpec suite.
   - name: js-tests
+    description: |
+      JS controller specs via `node --test` (no Rails boot, no
+      bundler). Separated from the rspec grader so a broken
+      Stimulus controller reports as "js-tests failed" instead of
+      hiding under a generic "rspec failed." Usually ~100ms.
     run: bin/test-js
     timeout_minutes: 1

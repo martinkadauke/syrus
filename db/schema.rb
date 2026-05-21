@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_21_032159) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_21_201911) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -668,6 +668,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_21_032159) do
   create_table "steps", force: :cascade do |t|
     t.string "cancellation_reason"
     t.datetime "created_at", null: false
+    t.json "details", null: false
     t.datetime "finished_at"
     t.integer "iteration", default: 1, null: false
     t.string "kind", null: false

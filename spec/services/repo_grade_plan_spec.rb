@@ -27,6 +27,28 @@ RSpec.describe RepoGradePlan do
       expect(result.graders.map(&:timeout_minutes)).to eq([ 15, 5 ])
     end
 
+it "captures the optional description field for surfacing in UI + agent prompts" do
+      write(".syrus.yml", <<~YAML)
+        grade:
+          - name: tests
+            run: bin/rspec
+            description: |
+              Full RSpec suite. Tests are not optional — every PR
+              must include tests for the behavior it changes.
+          - name: no-desc
+            run: bin/no-description-grader
+      YAML
+
+      graders = described_class.for(@dir).graders
+
+      tests = graders.find { |g| g.name == "tests" }
+      expect(tests.description).to start_with("Full RSpec suite.")
+      expect(tests.description).to include("Tests are not optional")
+
+      no_desc = graders.find { |g| g.name == "no-desc" }
+      expect(no_desc.description).to be_nil
+    end
+
     it "parses shorthand array form and caps timeouts" do
       write(".syrus.yml", <<~YAML)
         grade:
