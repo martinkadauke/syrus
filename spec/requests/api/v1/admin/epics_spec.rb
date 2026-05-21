@@ -1,0 +1,110 @@
+require "rails_helper"
+
+RSpec.describe "API: /api/v1/admin/epics", type: :request do
+  let(:admin) { Factories.user }
+  let(:non_admin) { admin; Factories.user }  # second user → not admin
+  let(:admin_token) { admin.generate_api_token! }
+  let(:non_admin_token) { non_admin.generate_api_token! }
+
+  def auth(token) = { "Authorization" => "Bearer #{token}" }
+  def parse_body  = JSON.parse(response.body)
+
+  let(:repo)  { Factories.repository(user: admin, owner: "acme", name: "widgets") }
+  let(:epic)  { Factories.epic(user: admin, repository: repo, title: "Launch", state: "ready") }
+
+  describe "auth" do
+    it "401s without an Authorization header" do
+      get "/api/v1/admin/epics/#{epic.id}"
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "403s when the token belongs to a non-admin user" do
+      get "/api/v1/admin/epics/#{epic.id}", headers: auth(non_admin_token)
+      expect(response).to have_http_status(:forbidden)
+    end
+
+    it "200s with an admin token" do
+      get "/api/v1/admin/epics/#{epic.id}", headers: auth(admin_token)
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "GET /epics (index)" do
+    before do
+      sign_in_as(admin)
+      admin_token
+      epic
+      Factories.epic(user: admin, repository: repo, title: "Done epic", state: "done")
+      other_repo = Factories.repository(user: admin, owner: "acme", name: "api")
+      Factories.epic(user: admin, repository: other_repo, title: "Other-repo epic", state: "in_progress")
+    end
+
+    it "returns a compact list with count" do
+      get "/api/v1/admin/epics", headers: auth(admin_token)
+
+      body = parse_body
+      expect(body["count"]).to eq(3)
+      epic_payload = body["epics"].find { |e| e["title"] == "Launch" }
+      expect(epic_payload).to include("id", "number", "state", "repository", "auto_approve_mode")
+      expect(epic_payload["repository"]).to eq("acme/widgets")
+    end
+
+    it "filters by ?state=" do
+      get "/api/v1/admin/epics", params: { state: "done" }, headers: auth(admin_token)
+      titles = parse_body["epics"].map { |e| e["title"] }
+      expect(titles).to contain_exactly("Done epic")
+    end
+
+    it "filters by ?repo=owner/name" do
+      get "/api/v1/admin/epics", params: { repo: "acme/widgets" }, headers: auth(admin_token)
+      slugs = parse_body["epics"].map { |e| e["repository"] }.uniq
+      expect(slugs).to eq([ "acme/widgets" ])
+    end
+
+    it "filters by ?has_unfinished_children=true" do
+      Factories.job_record(user: admin, repository: repo, epic: epic,
+                           issue_number: 1, state: "queued")
+
+      get "/api/v1/admin/epics", params: { has_unfinished_children: "true" }, headers: auth(admin_token)
+      titles = parse_body["epics"].map { |e| e["title"] }
+      expect(titles).to include("Launch")
+      expect(titles).not_to include("Done epic")
+    end
+  end
+
+  describe "GET /epics/:id (show)" do
+    before { sign_in_as(admin); admin_token }
+
+    it "returns the full payload with child jobs + dependency edges" do
+      prereq = Factories.epic(user: admin, repository: repo, title: "Prereq")
+      EpicDependency.create!(epic: epic, depends_on_epic: prereq)
+      child_a = Factories.job_record(user: admin, repository: repo, epic: epic,
+                                     issue_number: 10, state: "queued")
+      child_b = Factories.job_record(user: admin, repository: repo, epic: epic,
+                                     issue_number: 11, state: "closed",
+                                     closure_reason: "pr_merged", finished_at: Time.current)
+
+      get "/api/v1/admin/epics/#{epic.id}", headers: auth(admin_token)
+
+      body = parse_body
+      expect(body).to include(
+        "id" => epic.id,
+        "state" => "ready",
+        "title" => "Launch",
+        "complete" => false,
+        "ready_to_start" => false  # depends on prereq Epic that isn't done
+      )
+      expect(body["repository"]).to include("slug" => "acme/widgets")
+      expect(body["depends_on_epic_ids"]).to eq([ prereq.id ])
+      expect(body["jobs"].map { |j| j["id"] }).to contain_exactly(child_a.id, child_b.id)
+      child_a_payload = body["jobs"].find { |j| j["id"] == child_a.id }
+      expect(child_a_payload).to include("state" => "queued", "kind" => "issue", "repository" => "acme/widgets")
+    end
+
+    it "404s with a JSON error envelope for an unknown id" do
+      get "/api/v1/admin/epics/9999999", headers: auth(admin_token)
+      expect(response).to have_http_status(:not_found)
+      expect(parse_body.dig("error", "code")).to eq("not_found")
+    end
+  end
+end

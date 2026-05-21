@@ -22,6 +22,12 @@ Rails.application.routes.draw do
         # doesn't have to know the Syrus internal Job ID up front.
         resources :jobs, only: %i[ show index ]
 
+        # Epic read API. `#index` is compact (filter via ?state=,
+        # ?repo=owner/name, ?user=, ?has_unfinished_children=true);
+        # `#show` returns the full epic with child jobs + dependency
+        # edges + pending dependency refs.
+        resources :epics, only: %i[ show index ]
+
         # Compact list of Runs for cross-Job investigations
         # ("show me everything that failed in the last hour"
         # without walking each Job's response). Filters via
