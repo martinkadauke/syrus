@@ -35,9 +35,11 @@ module Admin
         id: step.id,
         kind: step.kind,
         position: step.position,
+        iteration: step.iteration,
         state: step.state,
         started_at: step.started_at,
         finished_at: step.finished_at,
+        details: step.details.presence,
         runs: step.runs.order(:created_at).map { |r| run(r) }
       }
     rescue => e

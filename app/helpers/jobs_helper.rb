@@ -34,13 +34,22 @@ module JobsHelper
     "push"            => "Push",
     "analyze_and_fix" => "Fix CI failures",
     "grade"           => "Grade",
+    "grader_fanout"   => "Plan graders",
+    "grader_collect"  => "Aggregate graders",
+    "grader"          => "Grader",
     "auto_rebase"     => "Auto-rebase",
     "agent_rebase"    => "Agent rebase",
     "force_push"      => "Force-push",
     "manual"          => "Manual"
   }.freeze
 
-  def step_kind_label(kind)
+  def step_kind_label(kind_or_step)
+    if kind_or_step.respond_to?(:kind) && kind_or_step.kind == "grader"
+      name = kind_or_step.details.is_a?(Hash) ? kind_or_step.details["name"] : nil
+      return name.present? ? "Grader: #{name}" : "Grader"
+    end
+
+    kind = kind_or_step.respond_to?(:kind) ? kind_or_step.kind : kind_or_step
     STEP_KIND_LABELS[kind.to_s] || kind.to_s.humanize
   end
 

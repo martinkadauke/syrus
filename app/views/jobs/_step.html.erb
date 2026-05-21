@@ -19,7 +19,16 @@
       <span class="text-xs uppercase tracking-wide text-gray-500">
         Step <%= step_number %>/<%= total_steps %>
       </span>
-      <span class="text-sm font-medium text-gray-800"><%= step_kind_label(step.kind) %></span>
+      <span class="text-sm font-medium text-gray-800"><%= step_kind_label(step) %></span>
+      <% if step.kind == "grader" && step.details.is_a?(Hash) %>
+        <% description = step.details["description"].to_s.strip %>
+        <% if description.present? %>
+          <span class="text-xs text-gray-500 italic" title="<%= description %>"><%= description.truncate(80) %></span>
+        <% end %>
+        <% if step.details["required"] == false %>
+          <span class="text-xs text-gray-500">advisory</span>
+        <% end %>
+      <% end %>
       <%# State pill omitted on purpose — in v1 a Step has at most
           one Run, so step.state mirrors run.state and the inner
           Run row already shows the same pill. The "skipped"
@@ -29,7 +38,20 @@
         <span class="text-xs text-gray-500 italic">skipped</span>
       <% end %>
     </div>
-    <div class="text-xs text-gray-500">
+    <div class="flex items-center gap-3 text-xs text-gray-500">
+      <% if step.kind == "grader" && step.details.is_a?(Hash) && step.terminal? %>
+        <% exit_code = step.details["exit_code"] %>
+        <% if exit_code %>
+          <span class="font-mono">exit <%= exit_code %></span>
+        <% end %>
+        <% if step.details["log_path"] && step.latest_run %>
+          <%= link_to "log",
+                run_grade_log_job_path(job, run_id: step.latest_run.id, name: step.details["name"]),
+                target: "_blank",
+                rel: "noopener",
+                class: "text-blue-600 underline hover:no-underline" %>
+        <% end %>
+      <% end %>
       <% if step.started_at && step.finished_at %>
         <%= duration_caption(step.started_at, step.finished_at) %>
       <% elsif step.started_at %>
