@@ -176,9 +176,6 @@
           <%= render "epics/save_smart_folder_form", class_name: "hidden flex-wrap items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm lg:flex" %>
           <%= mobile_sort_select(subject: :epic, current_sort: @epic_sort) %>
           <div class="overflow-hidden rounded-lg border border-gray-200 bg-white">
-            <div class="hidden justify-end border-b border-gray-200 px-3 py-2 sm:flex">
-              <%= render "home/column_picker", subject: "epics" %>
-            </div>
             <table class="min-w-full divide-y divide-gray-200">
               <thead class="hidden bg-gray-50 text-xs uppercase text-gray-500 sm:table-header-group">
                 <tr>
@@ -192,7 +189,9 @@
                   <% if dashboard_column_visible?("epics", "updated") %>
                     <%= sort_header(subject: :epic, column: :updated_at, current_sort: @epic_sort, th_class: "hidden sm:table-cell px-4 py-2 text-left") %>
                   <% end %>
-                  <th class="px-4 py-2"></th>
+                  <th class="px-4 py-2 text-right">
+                    <%= render "home/column_picker", subject: "epics" %>
+                  </th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-gray-100 text-sm">
@@ -407,9 +406,6 @@
       <% unless @custom_job_ordering %>
         <%= mobile_sort_select(subject: :job, current_sort: @job_sort) %>
       <% end %>
-      <div class="hidden justify-end sm:flex">
-        <%= render "home/column_picker", subject: "jobs" %>
-      </div>
       <%= form_with url: bulk_dashboard_jobs_path, method: :post,
             data: { controller: "bulk-jobs" },
             class: "space-y-3" do %>
@@ -495,7 +491,9 @@
                     <%= sort_header(subject: :job, column: :started_at, current_sort: @job_sort, th_class: "hidden sm:table-cell px-4 py-2 text-left") %>
                   <% end %>
                 <% end %>
-                <th class="hidden sm:table-cell px-4 py-2"></th>
+                <th class="hidden sm:table-cell px-4 py-2 text-right">
+                  <%= render "home/column_picker", subject: "jobs" %>
+                </th>
               </tr>
             </thead>
             <tbody class="divide-y divide-gray-100 text-sm">
@@ -786,9 +784,6 @@
       <% workflows_total_pages = (@workflows_total.to_f / HomeController::PER_PAGE).ceil %>
       <%= mobile_sort_select(subject: :workflow, current_sort: @workflow_sort) %>
       <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        <div class="hidden justify-end border-b border-gray-200 px-3 py-2 sm:flex">
-          <%= render "home/column_picker", subject: "workflows" %>
-        </div>
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="hidden bg-gray-50 text-xs uppercase text-gray-500 sm:table-header-group">
             <tr>
@@ -809,6 +804,9 @@
               <% if dashboard_column_visible?("workflows", "agent") %>
                 <th class="hidden sm:table-cell px-4 py-2 text-left">Agent</th>
               <% end %>
+              <th class="hidden sm:table-cell px-4 py-2 text-right w-10">
+                <%= render "home/column_picker", subject: "workflows" %>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-gray-100 text-sm">

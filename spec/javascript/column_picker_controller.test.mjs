@@ -58,11 +58,18 @@ function installDocument() {
   return listeners
 }
 
-function buildController(Controller) {
+function buildController(Controller, { dataset = {}, checkedColumns = [] } = {}) {
   const panelTarget = { classList: new ClassList([ "hidden" ]) }
   const element = {
+    dataset,
     contains(target) {
       return target === this || target === panelTarget
+    },
+    querySelectorAll(selector) {
+      if (selector === "input[type=checkbox][name='visible_columns[]']:checked") {
+        return checkedColumns.map((value) => ({ value }))
+      }
+      return []
     }
   }
   const controller = new Controller()
@@ -90,9 +97,14 @@ test("toggles the picker panel and closes on outside click", async () => {
 test("patches preferences and refreshes the current page after save", async () => {
   installDocument()
   const { default: Controller } = await loadController()
+  const appended = []
   globalThis.FormData = class FormData {
-    constructor(form) {
-      this.form = form
+    constructor() {
+      this.entries = []
+    }
+    append(name, value) {
+      this.entries.push([ name, value ])
+      appended.push([ name, value ])
     }
   }
   let fetchCall
@@ -108,14 +120,24 @@ test("patches preferences and refreshes the current page after save", async () =
       }
     }
   }
-  const controller = buildController(Controller)
-  const form = { action: "/dashboard/preferences" }
+  const controller = buildController(Controller, {
+    dataset: {
+      columnPickerEndpoint: "/dashboard/preferences",
+      columnPickerSubject: "jobs"
+    },
+    checkedColumns: [ "state", "repository" ]
+  })
 
-  await controller.save({ preventDefault() {}, target: form })
+  await controller.save({ preventDefault() {} })
 
   assert.equal(fetchCall.url, "/dashboard/preferences")
   assert.equal(fetchCall.options.method, "PATCH")
   assert.equal(fetchCall.options.headers["X-CSRF-Token"], "csrf-token")
+  assert.deepEqual(appended, [
+    [ "subject", "jobs" ],
+    [ "visible_columns[]", "state" ],
+    [ "visible_columns[]", "repository" ]
+  ])
   assert.equal(globalThis.window.Turbo.lastVisit.url, "/?subject=job&view=list")
   assert.deepEqual(globalThis.window.Turbo.lastVisit.options, { action: "replace" })
 })

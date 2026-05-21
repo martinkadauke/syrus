@@ -41,4 +41,5 @@
       <%= colored_pill(JobsHelper::AGENT_PROVIDER_LABELS[workflow.agent_provider] || workflow.agent_provider, classes: JobsHelper::AGENT_PROVIDER_STYLES[workflow.agent_provider] || ApplicationHelper::PILL_FALLBACK_CLASSES) %>
     </td>
   <% end %>
+  <td class="hidden sm:table-cell"></td>
 </tr>

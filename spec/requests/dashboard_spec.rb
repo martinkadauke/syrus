@@ -1042,16 +1042,23 @@ RSpec.describe "Dashboard", type: :request do
         expect(response.body).to include("epic:attachments")
       end
 
-      it "renders the jobs column picker outside the bulk actions form" do
+      it "the column picker is not nested inside a real <form> element" do
+        # The picker is rendered inside the table's thead, which is
+        # inside the bulk-actions form. If the picker had its own
+        # <form>, that'd illegally nest. The Stimulus save action
+        # submits via fetch instead, so the picker uses a <div>
+        # with data attributes carrying the action URL and subject.
         Factories.job(repository: repo, issue_number: 7)
 
         get dashboard_jobs_path
 
-        column_picker_form = response.body.index(%(action="#{dashboard_preferences_path}"))
-        bulk_form = response.body.index(%(action="#{bulk_dashboard_jobs_path}"))
-        expect(column_picker_form).to be_present
-        expect(bulk_form).to be_present
-        expect(column_picker_form).to be < bulk_form
+        expect(response.body).to include(
+          %(data-controller="column-picker"),
+          %(data-column-picker-endpoint="#{dashboard_preferences_path}"),
+          %(data-column-picker-subject="jobs")
+        )
+        # And not a literal nested <form action=dashboard_preferences_path>
+        expect(response.body).not_to include(%(action="#{dashboard_preferences_path}"))
       end
 
       it "renders all configured agent retry choices when more than one agent is configured" do

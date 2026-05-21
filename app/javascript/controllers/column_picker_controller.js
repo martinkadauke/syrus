@@ -28,13 +28,26 @@ export default class extends Controller {
   async save(event) {
     event.preventDefault()
 
-    const response = await fetch(event.target.action, {
+    // The picker no longer renders a <form> wrapper (which would
+    // illegally nest inside the bulk-actions form on /dashboard/jobs).
+    // Build the FormData manually from the controls within
+    // this.element. action URL + subject are carried on the root
+    // element's data attributes.
+    const url = this.element.dataset.columnPickerEndpoint
+    const subject = this.element.dataset.columnPickerSubject
+    const body = new FormData()
+    body.append("subject", subject)
+    this.element.querySelectorAll("input[type=checkbox][name='visible_columns[]']:checked").forEach((cb) => {
+      body.append("visible_columns[]", cb.value)
+    })
+
+    const response = await fetch(url, {
       method: "PATCH",
       headers: {
         "Accept": "text/vnd.turbo-stream.html, text/html, application/xhtml+xml",
         "X-CSRF-Token": document.querySelector("meta[name='csrf-token']")?.content || ""
       },
-      body: new FormData(event.target)
+      body
     })
 
     if (response.ok) {
