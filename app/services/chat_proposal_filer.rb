@@ -46,7 +46,12 @@ class ChatProposalFiler
 
         proposal.update!(proposal_attrs)
         wire_dependencies_for(proposal, materialized, job_by_proposal_id)
-        start_direct_workflow(materialized, proposal) if materialized.is_a?(Job)
+        # Advance the Job out of :triaging AFTER deps are wired so
+        # Job#create_initial_run_if_needed's stack_ready_for_execution?
+        # check sees the JobDependency rows. Without this ordering,
+        # a freshly-created direct Job would auto-start before its
+        # upstream deps existed, ignoring the chain.
+        materialized.advance_after_triage! if materialized.is_a?(Job) && materialized.may_advance_after_triage?
       end
     end
 
@@ -104,6 +109,9 @@ class ChatProposalFiler
   def create_direct_job(proposal)
     target_repository = proposal.effective_repository || repository
 
+    # Don't advance here — the filer's main loop runs
+    # advance_after_triage AFTER wiring dependencies so the
+    # Job-level auto-start callback sees the correct dep graph.
     user.jobs.create!(
       repository: target_repository,
       epic: proposal.target_epic,
@@ -112,14 +120,19 @@ class ChatProposalFiler
       issue_title: proposal.title,
       issue_body: proposal.body,
       agent_provider: target_repository.effective_agent_provider
-    ).tap(&:advance_after_triage!)
+    )
   end
 
   def create_epic(proposal)
+    # Chat-authored Epics are fully-specified by Claude in one shot;
+    # land them in :ready (not the default :backlog) so the operator
+    # can promote to :in_progress directly. Backlog is meant for
+    # partially-specified epics that still need filling out.
     user.epics.create!(
       repository: proposal.effective_repository || repository,
       title: proposal.title,
-      description: proposal.body
+      description: proposal.body,
+      state: "ready"
     )
   end
 
@@ -179,8 +192,4 @@ class ChatProposalFiler
     end
   end
 
-  def start_direct_workflow(job, proposal)
-    workflow = Workflows::Initial.instantiate(job: job, agent_provider: job.agent_provider)
-    StepDispatcher.start_workflow(workflow, prompt: Prompts::DirectJob.new(prompt: proposal.body).to_s)
-  end
 end

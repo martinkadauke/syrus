@@ -80,10 +80,9 @@ class JobsController < ApplicationController
       return
     end
 
-    rendered_prompt = Prompts::DirectJob.new(prompt: prompt_text).to_s
+    # advance_after_triage's after-callback creates the initial
+    # workflow + starts it for direct Jobs (Job#create_initial_run_if_needed).
     job.advance_after_triage!
-    workflow = Workflows::Initial.instantiate(job: job, agent_provider: job.agent_provider)
-    StepDispatcher.start_workflow(workflow, prompt: rendered_prompt)
 
     if @create_more
       redirect_to new_job_path(repository_id: repository.id, create_more: "1"), notice: "Direct job created."

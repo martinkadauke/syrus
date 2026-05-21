@@ -33,8 +33,9 @@ class BugReportsController < ApplicationController
         priority: "medium"
       )
 
+      # advance_after_triage's after-callback creates the initial
+      # workflow + starts it for direct Jobs (Job#create_initial_run_if_needed).
       job.advance_after_triage!
-      Workflows::Initial.instantiate(job: job, agent_provider: job.agent_provider)
       attach_screenshot!(job, screenshot) if screenshot.present?
     end
 

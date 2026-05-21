@@ -181,6 +181,26 @@ RSpec.describe Epic do
     expect(workflow.first_step.runs.first).to be_queued
   end
 
+  it "auto-instantiates and starts workflows for direct child Jobs on epic.start!" do
+    epic = described_class.create!(user: user, repository: repository, title: "Launch", state: "ready")
+    job = Factories.job_record(
+      user: user, repository: repository, epic: epic,
+      kind: "direct", issue_number: nil, issue_title: "t", issue_body: "build the thing",
+      state: "blocked_by_epic"
+    )
+
+    expect(job.workflows).to be_empty
+
+    expect {
+      epic.start!
+    }.to change { job.reload.state }.from("blocked_by_epic").to("queued")
+      .and change { job.workflows.count }.by(1)
+      .and change { job.runs.count }.by(1)
+
+    expect(job.workflows.first.trigger_kind).to eq("initial")
+    expect(job.runs.first.prompt).to include("build the thing")
+  end
+
   it "releases child Jobs from the Epic block without starting them while Job dependencies are unsatisfied" do
     epic = described_class.create!(user: user, repository: repository, title: "Launch", state: "ready")
     prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 19, state: "queued")

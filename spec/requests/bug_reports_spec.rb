@@ -41,7 +41,7 @@ RSpec.describe "Bug reports", type: :request do
   describe "POST /bug_reports" do
     before { sign_in_as(user) }
 
-    it "creates a queued direct Job for tkadauke/syrus with the selected screenshot attached" do
+    it "creates a direct Job for tkadauke/syrus and auto-starts its workflow with the selected screenshot attached" do
       repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
 
       expect {
@@ -53,8 +53,7 @@ RSpec.describe "Bug reports", type: :request do
       }.to change(Job, :count).by(1)
        .and change(Document, :count).by(1)
        .and change(Workflow, :count).by(1)
-
-      expect(Run.count).to eq(0)
+       .and change(Run, :count).by(1)
 
       job = Job.last
       expect(response).to have_http_status(:created)
@@ -68,7 +67,7 @@ RSpec.describe "Bug reports", type: :request do
         issue_body: "Home#index bug\n\nThe dashboard fell over."
       )
       expect(job.workflows.first).to be_queued
-      expect(job.runs).to be_empty
+      expect(job.runs.last).to be_queued
 
       attachment = job.job_attachments.last
       expect(attachment.source_url).to start_with("bug-report://")
@@ -78,7 +77,7 @@ RSpec.describe "Bug reports", type: :request do
       expect(attachment.file.download).to include("screenshot")
     end
 
-    it "creates a queued direct Job without an attachment when no screenshot is selected" do
+    it "creates a direct Job without an attachment when no screenshot is selected and auto-starts its workflow" do
       repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
 
       expect {
@@ -89,6 +88,7 @@ RSpec.describe "Bug reports", type: :request do
       }.to change(Job, :count).by(1)
        .and change(Document, :count).by(0)
        .and change(Workflow, :count).by(1)
+       .and change(Run, :count).by(1)
 
       job = Job.last
       expect(response).to have_http_status(:created)

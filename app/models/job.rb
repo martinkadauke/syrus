@@ -658,12 +658,19 @@ class Job < ApplicationRecord
   # observable behavior as the v0 single-Run flow, but each
   # phase is now its own attemptable step.
   def create_initial_run
-    workflow = Workflows::Initial.instantiate(job: self)
-    StepDispatcher.start_workflow(workflow)
+    workflow = Workflows::Initial.instantiate(job: self, agent_provider: agent_provider)
+    prompt = direct? ? Prompts::DirectJob.new(prompt: issue_body.to_s).to_s : nil
+    StepDispatcher.start_workflow(workflow, prompt: prompt)
   end
 
+  # Auto-create the Job's first workflow when the Job reaches :queued
+  # (via advance_after_triage or release_epic_block). Both issue and
+  # direct Jobs use this contract — once filed and not blocked by an
+  # epic or dependency, a direct Job starts on its own. Cron Jobs are
+  # excluded; PollScheduledTasksJob seeds them with a pre-rendered
+  # prompt at fire time.
   def create_initial_run_if_needed
-    return unless issue?
+    return if cron?
     return if workflows.where.not(state: "cancelled").exists?
 
     create_initial_run

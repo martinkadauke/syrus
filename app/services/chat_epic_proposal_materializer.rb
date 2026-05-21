@@ -56,10 +56,15 @@ class ChatEpicProposalMaterializer
 
   def create_epic_for(proposal)
     repository = proposal.repository || proposal.chat_session.repository
+    # Chat-authored Epics are fully-specified by Claude in one shot;
+    # land them in :ready so the operator can promote to :in_progress
+    # without first walking them through the backlog→ready transition
+    # (which is meant for partially-specified epics).
     user.epics.create!(
       repository: repository,
       title: proposal.title,
-      description: proposal.body
+      description: proposal.body,
+      state: "ready"
     )
   end
 

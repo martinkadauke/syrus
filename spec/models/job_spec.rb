@@ -315,6 +315,41 @@ RSpec.describe Job do
         .and change { job.runs.count }.from(0).to(1)
     end
 
+it "auto-creates and starts a workflow for direct jobs on advance_after_triage" do
+      job = Job.create!(user: user, repository: repository, kind: "direct",
+                        issue_number: nil, issue_title: "t", issue_body: "do a thing")
+
+      expect { job.advance_after_triage! }
+        .to change { job.reload.state }.from("triaging").to("queued")
+        .and change { job.workflows.count }.by(1)
+        .and change { job.runs.count }.by(1)
+
+      expect(job.workflows.first.trigger_kind).to eq("initial")
+      expect(job.runs.first.prompt).to include("do a thing")
+    end
+
+    it "renders Prompts::DirectJob for direct jobs' initial run prompt" do
+      job = Job.create!(user: user, repository: repository, kind: "direct",
+                        issue_number: nil, issue_title: "t", issue_body: "specific body")
+      job.advance_after_triage!
+
+      expect(job.runs.first.prompt).to eq(Prompts::DirectJob.new(prompt: "specific body").to_s)
+    end
+
+    it "does not create a workflow for cron jobs (those are seeded by PollScheduledTasksJob)" do
+      task = ScheduledTask.create!(
+        user: user, repository: repository, kind: "one_shot",
+        name: "smoke test", fire_at: 1.hour.from_now, prompt: "do the thing"
+      )
+      job = Job.create!(user: user, repository: repository, kind: "cron",
+                        scheduled_task: task)
+
+      expect { job.advance_after_triage! }
+        .to change { job.reload.state }.from("triaging").to("queued")
+        .and change { job.workflows.count }.by(0)
+        .and change { job.runs.count }.by(0)
+    end
+
     it "keeps duplicate jobs out of the queue" do
       job = Job.create!(user: user, repository: repository, issue_number: 1)
       job.update!(
