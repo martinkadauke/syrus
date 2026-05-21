@@ -79,6 +79,13 @@ class StepDispatcher
   def advance!
     next_step = find_next_runnable
     if next_step
+      # Idempotency: cascade_failure_to_step fires fail_from twice
+      # (once from Step#fail_workflow!, once explicitly from
+      # Run#cascade_failure_to_step). For grader Steps that
+      # advance-on-fail, both calls would try to create a Run on
+      # the same next_step. Skip if already materialized.
+      return if next_step.runs.any?
+
       self.class.create_run_and_enqueue(next_step, @workflow)
     else
       finish_workflow!
@@ -88,8 +95,27 @@ class StepDispatcher
   def fail!
     return if @workflow.terminal?
 
-    return hard_fail_workflow! unless loop_grade_step?(@from_step)
+    # Per-kind failure policy:
+    #   "grader"          → silent: advance to next sibling. All graders in
+    #                       an iteration run regardless of individual outcome;
+    #                       grader_collect aggregates the decision.
+    #   "grader_collect"  → loop iteration (Phase B's loop terminal kind).
+    #   "grade"           → loop iteration (legacy single-Step grader kept
+    #                       for backwards compat with existing workflows).
+    #   default           → workflow fails (existing behavior).
+    case @from_step&.kind
+    when "grader"
+      advance!
+    when "grader_collect", "grade"
+      handle_loop_iteration
+    else
+      hard_fail_workflow!
+    end
+  end
 
+  private
+
+  def handle_loop_iteration
     loop_node = loop_node_for(@from_step)
     return hard_fail_workflow! unless loop_node
 
@@ -100,18 +126,20 @@ class StepDispatcher
     end
   end
 
-  private
-
-  def loop_grade_step?(step)
-    step&.loop_id.present? && step.kind == "grade"
-  end
-
   def loop_node_for(step)
-    loop_kinds = @workflow.steps.where(loop_id: step.loop_id, iteration: step.iteration)
-                          .order(:position).pluck(:kind)
+    # Dynamically-inserted `grader` Steps aren't part of the static
+    # chain_template — Steps::GraderFanout inserts them at run time.
+    # Drop them before comparing so the template "[implement,
+    # grader_fanout, grader_collect]" matches the actual materialized
+    # "[implement, grader_fanout, grader_a, grader_b, …, grader_collect]".
+    actual_kinds = @workflow.steps
+                            .where(loop_id: step.loop_id, iteration: step.iteration)
+                            .order(:position)
+                            .pluck(:kind)
+                            .reject { |k| k == "grader" }
 
     Array(@workflow.chain_template).find do |node|
-      node["type"] == "loop" && Array(node["steps"]).map(&:to_s) == loop_kinds
+      node["type"] == "loop" && Array(node["steps"]).map(&:to_s) == actual_kinds
     end
   end
 

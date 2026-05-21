@@ -196,8 +196,14 @@ class RunJob < ApplicationJob
     @job.save!
   end
 
+  # A failure is "loop-controlled" when the dispatcher's per-kind
+  # fail logic takes over (advances to next sibling for graders,
+  # iterates for grader_collect / grade) rather than failing the
+  # workflow. RunJob must swallow these so the outer perform loop
+  # can continue inline on the next Step's Run.
   def loop_controlled_grade_failure?
-    @step&.kind == "grade" && @step.loop_id.present?
+    return false unless @step&.loop_id.present?
+    %w[ grade grader grader_collect ].include?(@step.kind)
   end
 
   def continue_inline_after_controlled_failure

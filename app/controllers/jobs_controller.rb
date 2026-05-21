@@ -508,7 +508,7 @@ class JobsController < ApplicationController
     end
 
     run = @job.runs.find_by(id: params[:run_id])
-    unless run&.step&.kind == "grade"
+    unless run && %w[ grade grader grader_collect ].include?(run.step&.kind)
       render plain: "Grade log is not available for this run.", status: :not_found
       return
     end

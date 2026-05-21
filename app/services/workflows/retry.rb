@@ -5,14 +5,14 @@ module Workflows
   # the existing branch instead of branching from default; pr_open
   # short-circuits if the Job already has a PR number.
   class Retry < Base
-    steps :prepare, Workflows::Loop.new(steps: [ :implement, :grade ]), :summarize, :pr_open
+    steps :prepare, Workflows::Loop.new(steps: [ :implement, :grader_fanout, :grader_collect ]), :summarize, :pr_open
 
     def self.trigger_kind = "retry"
 
     def self.steps_for(job)
       chain = [
         "prepare",
-        Workflows::Loop.new(max_iterations: AppSetting.grade_max_iterations, steps: [ :implement, :grade ]),
+        Workflows::Loop.new(max_iterations: AppSetting.grade_max_iterations, steps: [ :implement, :grader_fanout, :grader_collect ]),
         "summarize",
         "pr_open"
       ]

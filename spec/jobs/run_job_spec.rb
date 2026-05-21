@@ -79,11 +79,12 @@ RSpec.describe RunJob do
       expect(wf.trigger_kind).to eq("initial")
       expect(wf.state).to eq("succeeded")
       expect(wf.steps.pluck(:kind, :state)).to eq([
-        [ "prepare",   "succeeded" ],
-        [ "implement", "succeeded" ],
-        [ "grade",     "succeeded" ],
-        [ "summarize", "succeeded" ],
-        [ "pr_open",   "succeeded" ]
+        [ "prepare",        "succeeded" ],
+        [ "implement",      "succeeded" ],
+        [ "grader_fanout",  "succeeded" ],
+        [ "grader_collect", "succeeded" ],
+        [ "summarize",      "succeeded" ],
+        [ "pr_open",        "succeeded" ]
       ])
       expect(wf.artifact("pr_title")).to eq("Add greeting helper")
       expect(job.pr_number).to eq(123)
@@ -125,7 +126,9 @@ RSpec.describe RunJob do
       wf = job.workflows.last
       expect(wf.reload.state).to eq("succeeded")
       expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grade").pluck(:iteration, :state)).to eq([
+      # grader_collect is the loop terminal — fails on iteration 1 (the
+      # grader Step failed), succeeds on iteration 2 (all required passed).
+      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "succeeded" ]
       ])
@@ -165,7 +168,7 @@ RSpec.describe RunJob do
 
       wf = job.workflows.last
       expect(wf.reload.state).to eq("succeeded")
-      expect(wf.steps.where(kind: "grade").pluck(:iteration, :state)).to eq([
+      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "succeeded" ]
       ])
@@ -189,7 +192,7 @@ RSpec.describe RunJob do
       expect(wf.artifact("failure_reason")).to eq("loop_exhausted_after_grader_failure")
       expect(wf.failure_count).to eq(1)
       expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grade").pluck(:iteration, :state)).to eq([
+      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "failed" ]
       ])
@@ -352,10 +355,12 @@ RSpec.describe RunJob do
       wf.reload
 
       expect(wf.state).to eq("succeeded")
-      expect(wf.steps.pluck(:kind, :state)).to eq([
+      kinds_and_states = wf.steps.where.not(kind: "grader").pluck(:kind, :state)
+      expect(kinds_and_states).to eq([
         [ "prepare",         "succeeded" ],
         [ "respond",         "succeeded" ],
-        [ "grade",           "succeeded" ],
+        [ "grader_fanout",   "succeeded" ],
+        [ "grader_collect",  "succeeded" ],
         [ "summarize_amend", "succeeded" ],
         [ "push",            "succeeded" ]
       ])
@@ -400,7 +405,7 @@ RSpec.describe RunJob do
 
       expect(wf.reload.state).to eq("succeeded")
       expect(wf.steps.where(kind: "respond").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grade").pluck(:iteration, :state)).to eq([
+      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "succeeded" ]
       ])
@@ -437,7 +442,7 @@ RSpec.describe RunJob do
       expect(wf.artifact("failure_reason")).to eq("loop_exhausted_after_grader_failure")
       expect(wf.failure_count).to eq(1)
       expect(wf.steps.where(kind: "respond").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grade").pluck(:iteration, :state)).to eq([
+      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "failed" ]
       ])
@@ -485,7 +490,7 @@ RSpec.describe RunJob do
 
       expect(wf.reload.state).to eq("succeeded")
       expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grade").pluck(:iteration, :state)).to eq([
+      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "succeeded" ]
       ])
@@ -519,7 +524,7 @@ RSpec.describe RunJob do
       expect(wf.artifact("failure_reason")).to eq("loop_exhausted_after_grader_failure")
       expect(wf.failure_count).to eq(1)
       expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
-      expect(wf.steps.where(kind: "grade").pluck(:iteration, :state)).to eq([
+      expect(wf.steps.where(kind: "grader_collect").pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "failed" ]
       ])

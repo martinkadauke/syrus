@@ -11,14 +11,14 @@ module Workflows
   # --resumes respond and produces the *commit message for the
   # amendment* (not a fresh PR title). push is non-agentic.
   class PrFeedback < Base
-    steps :prepare, Workflows::Loop.new(steps: [ :respond, :grade ]), :summarize_amend, :push
+    steps :prepare, Workflows::Loop.new(steps: [ :respond, :grader_fanout, :grader_collect ]), :summarize_amend, :push
 
     def self.trigger_kind = "pr_comment"
 
     def self.steps_for(_job)
       [
         "prepare",
-        Workflows::Loop.new(max_iterations: AppSetting.grade_max_iterations, steps: [ :respond, :grade ]),
+        Workflows::Loop.new(max_iterations: AppSetting.grade_max_iterations, steps: [ :respond, :grader_fanout, :grader_collect ]),
         "summarize_amend",
         "push"
       ]

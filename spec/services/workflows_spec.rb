@@ -32,10 +32,10 @@ RSpec.describe Workflows do
       expect(wf.agent_provider).to eq("claude")
       expect(wf.state).to eq("queued")
       expect(wf.steps.pluck(:kind, :position)).to eq([
-        [ "prepare", 0 ], [ "implement", 1 ], [ "grade", 2 ], [ "summarize", 3 ], [ "pr_open", 4 ]
+        [ "prepare", 0 ], [ "implement", 1 ], [ "grader_fanout", 2 ], [ "grader_collect", 3 ], [ "summarize", 4 ], [ "pr_open", 5 ]
       ])
       expect(wf.chain_template).to include(
-        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ implement grade ] }
+        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ implement grader_fanout grader_collect ] }
       )
     end
 
@@ -45,9 +45,9 @@ RSpec.describe Workflows do
       wf = Workflows::Initial.instantiate(job: job)
 
       expect(wf.steps.pluck(:kind, :position)).to eq([
-        [ "implement", 0 ], [ "grade", 1 ], [ "summarize", 2 ], [ "pr_open", 3 ]
+        [ "implement", 0 ], [ "grader_fanout", 1 ], [ "grader_collect", 2 ], [ "summarize", 3 ], [ "pr_open", 4 ]
       ])
-      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ implement grade ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect ])
       expect(wf.artifacts).to include("prepare_skipped" => true)
     end
 
@@ -56,8 +56,8 @@ RSpec.describe Workflows do
 
       wf = Workflows::Retry.instantiate(job: job)
 
-      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grade summarize pr_open ])
-      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ implement grade ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize pr_open ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect ])
       expect(wf.trigger_kind).to eq("retry")
     end
 
@@ -74,7 +74,7 @@ RSpec.describe Workflows do
 
       wf = Workflows::Initial.instantiate(job: job)
 
-      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grade summarize pr_open ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize pr_open ])
       expect(wf.artifact("prepare_skipped_reason")).to eq("repository_configuration")
     end
 
@@ -83,7 +83,7 @@ RSpec.describe Workflows do
 
       wf = Workflows::Initial.instantiate(job: job)
 
-      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grade summarize pr_open ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize pr_open ])
       expect(wf.artifact("prepare_skipped_reason")).to eq("issue_label")
     end
 
@@ -121,12 +121,13 @@ RSpec.describe Workflows do
 
     it "wires next_step_id top-down (linear chain)" do
       wf = Workflows::Initial.instantiate(job: job)
-      a, b, c, d, e = wf.steps.order(:position)
+      a, b, c, d, e, f = wf.steps.order(:position)
       expect(a.next_step).to eq(b)
       expect(b.next_step).to eq(c)
       expect(c.next_step).to eq(d)
       expect(d.next_step).to eq(e)
-      expect(e.next_step).to be_nil
+      expect(e.next_step).to eq(f)
+      expect(f.next_step).to be_nil
     end
 
     it "materializes the first iteration of a loop node inside the chain" do
@@ -203,12 +204,12 @@ RSpec.describe Workflows do
       ])
     end
 
-    it "instantiates PrFeedback with respond → grade → summarize_amend → push" do
+    it "instantiates PrFeedback with respond → grader_fanout → grader_collect → summarize_amend → push" do
       wf = Workflows::PrFeedback.instantiate(job: job)
-      expect(wf.steps.pluck(:kind)).to eq(%w[ prepare respond grade summarize_amend push ])
-      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ respond grade ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ prepare respond grader_fanout grader_collect summarize_amend push ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ respond grader_fanout grader_collect ])
       expect(wf.chain_template).to include(
-        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ respond grade ] }
+        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ respond grader_fanout grader_collect ] }
       )
     end
 

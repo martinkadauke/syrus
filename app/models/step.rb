@@ -15,6 +15,9 @@ class Step < ApplicationRecord
     agent_rebase
     force_push
     grade
+    grader
+    grader_fanout
+    grader_collect
     apply_suggestions
     auto_merge
     manual
@@ -149,7 +152,12 @@ class Step < ApplicationRecord
   end
 
   def saved_change_to_succeeded_grade?
-    saved_change_to_state_to_succeeded? && kind == "grade"
+    # Auto-approval fires after the iteration's terminal step
+    # succeeds: legacy "grade" (single-step fanout) and new
+    # "grader_collect" (per-grader fanout). Per-grader "grader"
+    # Steps don't fire auto-approval individually — only the
+    # collector does.
+    saved_change_to_state_to_succeeded? && %w[ grade grader_collect ].include?(kind)
   end
 
   def advance_next_step!

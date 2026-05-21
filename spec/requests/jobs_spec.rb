@@ -506,7 +506,19 @@ RSpec.describe "Jobs", type: :request do
 
   describe "GET /jobs/:id/runs/:run_id/grade_log" do
     let(:workflow) { job.latest_workflow }
-    let(:grade_step) { workflow.steps.find_by!(kind: "grade") }
+    # In the per-grader-Step world the initial chain has a
+    # grader_fanout placeholder that materializes "grader" Steps at
+    # runtime. Tests bypass the fanout and manually create a grader
+    # Step + Run so the endpoint has a real Step kind to match.
+    let(:grade_step) do
+      collect = workflow.steps.find_by!(kind: "grader_collect")
+      collect.update!(position: collect.position + 1)
+      Step.create!(workflow: workflow, kind: "grader",
+                   position: collect.position - 1,
+                   loop_id: collect.loop_id,
+                   iteration: collect.iteration,
+                   details: { "name" => "tests", "command" => "echo ok" })
+    end
     let(:grade_run) { Run.create!(job: job, step: grade_step, trigger_kind: "initial", iteration: 1, state: "failed") }
 
     def write_grade_log(run, name, contents)
@@ -536,7 +548,14 @@ RSpec.describe "Jobs", type: :request do
       admin = user
       foreign_repo = Factories.repository(user: other)
       foreign_job = Factories.job(repository: foreign_repo, issue_number: 7)
-      foreign_grade_step = foreign_job.latest_workflow.steps.find_by!(kind: "grade")
+      foreign_wf = foreign_job.latest_workflow
+      foreign_collect = foreign_wf.steps.find_by!(kind: "grader_collect")
+      foreign_collect.update!(position: foreign_collect.position + 1)
+      foreign_grade_step = Step.create!(workflow: foreign_wf, kind: "grader",
+                                        position: foreign_collect.position - 1,
+                                        loop_id: foreign_collect.loop_id,
+                                        iteration: foreign_collect.iteration,
+                                        details: { "name" => "tests", "command" => "echo ok" })
       foreign_grade_run = Run.create!(job: foreign_job, step: foreign_grade_step, trigger_kind: "initial", iteration: 1, state: "failed")
       write_grade_log(foreign_grade_run, "tests", "foreign output\n")
       sign_in_as(admin)
@@ -619,7 +638,7 @@ RSpec.describe "Jobs", type: :request do
 
       workflow = job.reload.workflows.where(trigger_kind: "retry").last
       expect(job).to be_skip_prepare
-      expect(workflow.steps.order(:position).pluck(:kind)).to eq(%w[ implement grade summarize pr_open ])
+      expect(workflow.steps.order(:position).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize pr_open ])
     end
 
     it "retries with an explicitly selected alternate configured agent" do
@@ -740,7 +759,7 @@ RSpec.describe "Jobs", type: :request do
 
       new_job = Job.where(repository_id: repository.id, issue_number: 42).order(:created_at).last
       expect(new_job).to be_skip_prepare
-      expect(new_job.workflows.first.steps.order(:position).pluck(:kind)).to eq(%w[ implement grade summarize pr_open ])
+      expect(new_job.workflows.first.steps.order(:position).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize pr_open ])
     end
   end
 
