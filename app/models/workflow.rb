@@ -37,7 +37,10 @@ class Workflow < ApplicationRecord
     state :running, :succeeded, :failed, :cancelled
 
     event :start do
-      transitions from: :queued, to: :running, after: -> { self.started_at ||= Time.current }
+      transitions from: :queued, to: :running, after: -> {
+        self.started_at ||= Time.current
+        propagate_start_to_job!
+      }
     end
 
     # Each terminal transition stamps finished_at and triggers
@@ -52,6 +55,7 @@ class Workflow < ApplicationRecord
       transitions from: :running, to: :succeeded, after: -> {
         self.finished_at = Time.current
         cleanup_workspace!
+        propagate_succeed_to_job!
         dispatch_hook(:after_success)
       }
     end
@@ -66,6 +70,7 @@ class Workflow < ApplicationRecord
       transitions from: [ :queued, :running ], to: :failed, after: -> {
         self.finished_at = Time.current
         cancel_orphan_active_runs!
+        propagate_fail_to_job!
         dispatch_hook(:after_fail)
       }
     end
@@ -126,6 +131,49 @@ class Workflow < ApplicationRecord
   # downstream tail. Uses update_columns to bypass Run's
   # cascade_cancel_to_workflow! callback, which would otherwise
   # cancel the Run's Step and break that contract.
+  # When a workflow starts, drive the Job into :running (or :landing
+  # for auto_merge, but that's handled by LandingQueueProcessor's
+  # explicit start_landing! call before instantiating the workflow).
+  # Skips for auto_merge so Workflow#start on auto_merge doesn't
+  # spuriously try to transition an :approved Job to :running.
+  def propagate_start_to_job!
+    return if trigger_kind == "auto_merge"
+    return unless job.may_start_running?
+
+    job.start_running!
+    job.save!
+  end
+
+  # When a workflow fails, drive the Job into :failed so the operator
+  # can decide between Retry (failed → queued) and Close. Skips for
+  # auto_merge — that has its own fail_landing flow that returns
+  # :landing → :implemented (RunJob#record_landing_failure!).
+  def propagate_fail_to_job!
+    return if trigger_kind == "auto_merge"
+    return unless job.may_mark_failed?
+
+    job.mark_failed!
+    job.save!
+  end
+
+  # When a workflow succeeds, the Job's state usually has already
+  # been advanced by step-level callbacks (Steps::PrOpen calls
+  # mark_implemented! when the initial workflow opens its PR;
+  # AutoApprovalRule transitions :running → :implemented → :approved
+  # after a successful grade). This is the catch-all for follow-up
+  # workflows (pr_comment, ci_failure, retry that pushed to an
+  # existing PR) whose chains don't include pr_open: the Job is
+  # still :running and needs to return to :implemented now that the
+  # follow-up work is done.
+  def propagate_succeed_to_job!
+    return if trigger_kind == "auto_merge"
+    return unless job.running?
+    return unless job.may_mark_implemented?
+
+    job.mark_implemented!
+    job.save!
+  end
+
   def cancel_orphan_active_runs!
     Run.where(step_id: steps.select(:id)).active.find_each do |run|
       run.update_columns(state: "cancelled", finished_at: Time.current)

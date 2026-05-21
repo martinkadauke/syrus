@@ -616,6 +616,10 @@ RSpec.describe "Dashboard", type: :request do
     it "merges job state details into the issue column on mobile" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       job = Factories.job(repository: repo, issue_number: 7, priority: "high")
+      # Phase 1/2: Job state itself reflects the failure now;
+      # job_summary_state reads it directly rather than crawling
+      # into latest_run.state.
+      job.update!(state: "failed")
       job.initial_run.update!(state: "failed", cost_usd: 1.23)
 
       get dashboard_jobs_path
@@ -787,12 +791,12 @@ RSpec.describe "Dashboard", type: :request do
       expect(desktop_chip_bar).to be_present
     end
 
-    it "excludes closed jobs from the inbox even when they have a failed latest run" do
+    it "excludes closed jobs from the inbox even when they're in :failed state" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       open_failed = Factories.job(repository: repo, issue_number: 1)
-      open_failed.initial_run.update!(state: "failed", finished_at: Time.current)
+      open_failed.update!(state: "failed")
       closed_failed = Factories.job(repository: repo, issue_number: 2)
-      closed_failed.initial_run.update!(state: "failed", finished_at: Time.current)
+      closed_failed.update!(state: "failed")
       closed_failed.close!; closed_failed.save!
 
       get dashboard_jobs_path, params: { attention: "inbox" }
@@ -804,7 +808,7 @@ RSpec.describe "Dashboard", type: :request do
     it "filters jobs by attention=just_failed when picked from the dropdown" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       failing = Factories.job(repository: repo, issue_number: 1)
-      failing.initial_run.update!(state: "failed", finished_at: Time.current)
+      failing.update!(state: "failed")
       Factories.job(repository: repo, issue_number: 2)
 
       get dashboard_jobs_path, params: { attention: "just_failed" }
@@ -849,15 +853,13 @@ RSpec.describe "Dashboard", type: :request do
       expect(sidebar.text).to include("Pinned")
     end
 
-    it "shows the In progress folder when a job has a queued or running workflow" do
+    it "shows the In progress folder when a job is in :running or :landing state" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       running = Factories.job(repository: repo, issue_number: 1)
-      running.workflows.first.update!(state: "running", started_at: Time.current)
-      idle = Factories.job(repository: repo, issue_number: 2)
-      idle.workflows.first.update!(state: "succeeded", started_at: 1.hour.ago, finished_at: Time.current)
-      closed = Factories.job(repository: repo, issue_number: 3) # initial workflow defaults to queued
-      closed.close!
-      closed.save!
+      running.update!(state: "running")
+      Factories.job(repository: repo, issue_number: 2)  # plain queued — not in_progress
+      closed = Factories.job(repository: repo, issue_number: 3)
+      closed.close!; closed.save!
 
       get dashboard_jobs_path
 
@@ -867,10 +869,9 @@ RSpec.describe "Dashboard", type: :request do
       expect(in_progress_row.text).to match(/In progress\s+1\b/)
     end
 
-    it "hides the In progress folder when nothing is queued or running" do
+    it "hides the In progress folder when no job is in :running or :landing" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-      done = Factories.job(repository: repo, issue_number: 1)
-      done.workflows.first.update!(state: "succeeded", started_at: 1.hour.ago, finished_at: Time.current)
+      Factories.job(repository: repo, issue_number: 1)  # queued, not in_progress
 
       get dashboard_jobs_path
 
@@ -881,18 +882,17 @@ RSpec.describe "Dashboard", type: :request do
     it "filters jobs by attention=in_progress" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       running = Factories.job(repository: repo, issue_number: 1)
-      running.workflows.first.update!(state: "running", started_at: Time.current)
-      queued = Factories.job(repository: repo, issue_number: 2) # initial workflow defaults to queued
+      running.update!(state: "running")
+      Factories.job(repository: repo, issue_number: 2)  # queued, not in_progress
       done = Factories.job(repository: repo, issue_number: 3)
-      done.workflows.first.update!(state: "succeeded", started_at: 1.hour.ago, finished_at: Time.current)
-      closed = Factories.job(repository: repo, issue_number: 4) # initial workflow defaults to queued
-      closed.close!
-      closed.save!
+      done.update!(state: "implemented")
+      closed = Factories.job(repository: repo, issue_number: 4)
+      closed.close!; closed.save!
 
       get dashboard_jobs_path, params: { attention: "in_progress" }
 
       expect(response.body).to include("#1")
-      expect(response.body).to include("#2")
+      expect(response.body).not_to include("#2")
       expect(response.body).not_to include("#3")
       expect(response.body).not_to include("#4")
     end
@@ -1734,8 +1734,7 @@ RSpec.describe "Dashboard", type: :request do
         # invalid + an awaiting_epic Job so the high-priority
         # when_present folders show up.
         failed = Factories.job(repository: repo, issue_number: 1)
-        failed.latest_workflow.update!(state: "failed", finished_at: Time.current)
-        failed.initial_run.update!(state: "failed", finished_at: Time.current)
+        failed.update!(state: "failed")
         Factories.job(repository: repo, issue_number: 2)
         awaiting_approval = Factories.job(repository: repo, issue_number: 3)
         awaiting_approval.update_columns(state: "implemented")
@@ -1950,7 +1949,7 @@ RSpec.describe "Dashboard", type: :request do
 
       it "applies a built-in smart folder filter" do
         failed = Factories.job(repository: repo, issue_number: 1)
-        failed.initial_run.update!(state: "failed", finished_at: Time.current)
+        failed.update!(state: "failed")
         Factories.job(repository: repo, issue_number: 2)
         SmartFolder.ensure_builtins!
         just_failed = SmartFolder.find_by!(name: "Just failed")

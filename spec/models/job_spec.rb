@@ -126,6 +126,62 @@ RSpec.describe Job do
       expect(job.state).to eq("landing")
     end
 
+describe "running / failed lifecycle (new in this commit)" do
+      it "transitions :queued → :running via start_running!" do
+        job = Factories.job_record(state: "queued")
+        expect { job.start_running!; job.save! }
+          .to change { job.reload.state }.from("queued").to("running")
+      end
+
+      it "transitions :implemented → :running via start_running! (follow-up workflow)" do
+        job = Factories.job_record(state: "implemented")
+        expect { job.start_running!; job.save! }
+          .to change { job.reload.state }.from("implemented").to("running")
+      end
+
+      it "transitions :running → :implemented via mark_implemented!" do
+        job = Factories.job_record(state: "running")
+        expect { job.mark_implemented!; job.save! }
+          .to change { job.reload.state }.from("running").to("implemented")
+      end
+
+      it "transitions :running → :failed via mark_failed!" do
+        job = Factories.job_record(state: "running")
+        expect { job.mark_failed!; job.save! }
+          .to change { job.reload.state }.from("running").to("failed")
+      end
+
+      it "transitions :failed → :queued via retry_after_failure!" do
+        job = Factories.job_record(state: "failed")
+        expect { job.retry_after_failure!; job.save! }
+          .to change { job.reload.state }.from("failed").to("queued")
+      end
+
+      it "mark_failed! is illegal from anything except :running" do
+        %w[triaging queued implemented approved landing closed].each do |state|
+          job = Factories.job_record(state: state)
+          expect(job.may_mark_failed?).to be(false), "expected may_mark_failed? to be false from :#{state}"
+        end
+      end
+
+      it "start_running! is illegal from :triaging / :approved / :landing / :failed / :closed" do
+        %w[triaging approved landing failed closed].each do |state|
+          job = Factories.job_record(state: state)
+          expect(job.may_start_running?).to be(false), "expected may_start_running? to be false from :#{state}"
+        end
+      end
+
+      it "close! accepts :running and :failed (operator gives up)" do
+        running = Factories.job_record(state: "running")
+        running.close!; running.save!
+        expect(running.reload).to be_closed
+
+        failed = Factories.job_record(state: "failed")
+        failed.close!; failed.save!
+        expect(failed.reload).to be_closed
+      end
+    end
+
     it "does not allow approving a closed (merged) job" do
       job = Factories.job
       job.update!(state: "closed", closure_reason: "pr_merged")

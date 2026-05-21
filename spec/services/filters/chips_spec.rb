@@ -114,9 +114,9 @@ RSpec.describe "Filters::Chips" do
       expect(run(field: "attention", op: "is", value: "pinned")).to contain_exactly(pinned)
     end
 
-    it "just_failed: returns jobs whose latest run is failed" do
+    it "just_failed: returns jobs in :failed state" do
       failed = Factories.job(repository: repo, issue_number: 1)
-      failed.initial_run.update!(state: "failed", finished_at: Time.current)
+      failed.update!(state: "failed")
       Factories.job(repository: repo, issue_number: 2)
 
       expect(run(field: "attention", op: "is", value: "just_failed")).to contain_exactly(failed)

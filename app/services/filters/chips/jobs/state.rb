@@ -9,8 +9,8 @@ module Filters
       #    the AASM :open / :closed state names; the composites win.
       #    Labeled distinctly in the picker ("Any open", "Closed or
       #    merged") to make the override obvious.
-      # 2. Individual AASM states (triaging, queued, implemented,
-      #    approved, landing, landing_failed, merged, blocked_by_epic)
+      # 2. Individual AASM states (triaging, queued, running,
+      #    implemented, failed, approved, landing, blocked_by_epic)
       #    — passed through as literal `state` column matches via the
       #    `else` branch in scope_for. The AASM :open and :closed
       #    states aren't in the picker because they'd duplicate the
@@ -31,11 +31,11 @@ module Filters
           "triaging",
           "blocked_by_epic",
           "queued",
+          "running",
           "implemented",
+          "failed",
           "approved",
-          "landing",
-          "landing_failed",
-          "merged"
+          "landing"
         )
 
         def apply

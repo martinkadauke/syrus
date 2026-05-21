@@ -156,7 +156,9 @@ class Job < ApplicationRecord
     state :triaging, initial: true
     state :blocked_by_epic
     state :queued
+    state :running
     state :implemented
+    state :failed
     state :approved
     state :landing
     state :closed
@@ -180,8 +182,36 @@ class Job < ApplicationRecord
       transitions from: :blocked_by_epic, to: :queued, guard: :ready_for_execution?, after: :create_initial_run_if_needed
     end
 
+    # Fired by Workflow#start's after-callback when a workflow
+    # (initial / retry / pr_comment / ci_failure / rebase, but NOT
+    # auto_merge — landing has its own state) begins executing.
+    # `:queued → :running` for the first attempt on a Job;
+    # `:implemented → :running` when a follow-up workflow starts on
+    # a Job whose PR already exists.
+    event :start_running do
+      transitions from: [ :queued, :implemented ], to: :running
+    end
+
+    # Steps::PrOpen transitions :running → :implemented when the
+    # initial workflow's pr_open step succeeds and the PR is open.
+    # For follow-up workflows (pr_comment, ci_failure, retry that
+    # didn't open a new PR), Workflow#succeed's after-callback
+    # transitions :running → :implemented since the PR already exists.
     event :mark_implemented do
-      transitions from: :queued, to: :implemented
+      transitions from: [ :queued, :running ], to: :implemented
+    end
+
+    # Fired by Workflow#fail's after-callback for non-auto_merge
+    # workflows. The Job is now waiting on operator decision — Retry
+    # to attempt again (failed → queued) or Close.
+    event :mark_failed do
+      transitions from: :running, to: :failed
+    end
+
+    # Retry pathway: the operator clicked Retry on a failed Job.
+    # Goes back to :queued so a new workflow can be instantiated.
+    event :retry_after_failure do
+      transitions from: :failed, to: :queued
     end
 
     event :approve, before: :assign_approval_metadata do
@@ -201,7 +231,7 @@ class Job < ApplicationRecord
     # with the after_save callback and just made the wiring harder
     # to read.
     event :close do
-      transitions from: [ :triaging, :blocked_by_epic, :queued, :implemented, :approved, :landing ], to: :closed, after: -> {
+      transitions from: [ :triaging, :blocked_by_epic, :queued, :running, :implemented, :failed, :approved, :landing ], to: :closed, after: -> {
         self.finished_at = Time.current
         record_outcome_to_scheduled_task! if cron?
         refresh_epic_auto_state

@@ -40,8 +40,10 @@ RSpec.describe Filters::Chips::Jobs::Attention do
       or_branch = inbox["and"].find { |child| child.key?("or") }
       expect(or_branch).not_to be_nil
       fields = or_branch["or"].map { |c| c["field"] }
+      # `state` appears twice (once for :failed, once for :implemented)
+      # after the Phase 4 cleanup; that's the lossy OR-group expansion.
       expect(fields).to include(
-        "has_unread_feedback", "latest_run_state", "triaging_reason", "validity", "state"
+        "has_unread_feedback", "triaging_reason", "validity", "state"
       )
     end
 

@@ -35,12 +35,7 @@ module Filters
         # nil — the UI hides the Expand button for those.
         EXPANSIONS = {
           "pinned"             => -> { chip_node("pinned_by_me", "is_true", nil) },
-          "in_progress"        => -> {
-            and_node(
-              chip_node("state", "is", "open"),
-              chip_node("has_active_run", "is_true", nil)
-            )
-          },
+          "in_progress"        => -> { chip_node("state", "is_one_of", %w[running landing]) },
           # `inbox` is the union of every reason a Job might be sitting
           # in the operator's queue. apply_inbox also includes
           # `awaiting_operator_ids` (runs in operator-question state),
@@ -53,7 +48,7 @@ module Filters
               chip_node("state", "is", "open"),
               or_node(
                 chip_node("has_unread_feedback", "is_true", nil),
-                chip_node("latest_run_state", "is", "failed"),
+                chip_node("state", "is", "failed"),
                 chip_node("triaging_reason", "is", "pending_epic_ref"),
                 chip_node("validity", "is_one_of", %w[duplicate already_implemented]),
                 chip_node("state", "is", "implemented")
@@ -61,12 +56,7 @@ module Filters
             )
           },
           "awaiting_approval"  => -> { chip_node("state", "is", "implemented") },
-          "just_failed"        => -> {
-            and_node(
-              chip_node("state", "is", "open"),
-              chip_node("latest_workflow_state", "is", "failed")
-            )
-          },
+          "just_failed"        => -> { chip_node("state", "is", "failed") },
           "stale"              => -> {
             and_node(
               chip_node("state", "is", "open"),
@@ -140,14 +130,18 @@ module Filters
         end
 
         def apply_in_progress
-          scope.open_threads.where(id: Workflow.active.select(:job_id))
+          # Phase 4 simplification: Job.state is now authoritative.
+          # `:running` covers initial/retry/pr_comment/ci_failure
+          # workflow execution; `:landing` covers post-approval
+          # auto_merge/rebase work. No need to join Workflow.active.
+          scope.where(state: %w[running landing])
         end
 
         def apply_inbox
           open = scope.open_threads
           open.where(id: awaiting_operator_ids)
               .or(open.where(id: unread_feedback_ids))
-              .or(open.where(id: latest_failed_run_ids))
+              .or(open.where(state: "failed"))
               .or(open.where(id: awaiting_epic_ids))
               .or(open.where(id: needs_review_ids))
               .or(open.where(id: awaiting_approval_ids))
@@ -158,7 +152,11 @@ module Filters
         end
 
         def apply_just_failed
-          scope.open_threads.where(id: latest_workflow_failed_ids)
+          # Phase 4 simplification: a failed workflow now propagates
+          # to Job.state = :failed (Workflow#fail's after-callback),
+          # so we can read the Job state directly instead of joining
+          # workflows.
+          scope.where(state: "failed")
         end
 
         def apply_stale

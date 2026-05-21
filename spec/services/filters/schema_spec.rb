@@ -95,14 +95,14 @@ RSpec.describe Filters::Schema do
       expect(labels["open"]).to eq("Any open")
       expect(labels["closed"]).to eq("Closed or merged")
       # Individual AASM states pass through humanize_value.
-      expect(labels["implemented"]).to eq("Implemented")
-      expect(labels["approved"]).to eq("Approved")
-      expect(labels["landing"]).to eq("Landing")
-      expect(labels["landing_failed"]).to eq("Landing failed")
-      expect(labels["merged"]).to eq("Merged")
       expect(labels["triaging"]).to eq("Triaging")
       expect(labels["blocked_by_epic"]).to eq("Blocked by epic")
       expect(labels["queued"]).to eq("Queued")
+      expect(labels["running"]).to eq("Running")
+      expect(labels["implemented"]).to eq("Implemented")
+      expect(labels["failed"]).to eq("Failed")
+      expect(labels["approved"]).to eq("Approved")
+      expect(labels["landing"]).to eq("Landing")
     end
 
     it "renders pr_mergeable as a boolean tri-state chip" do

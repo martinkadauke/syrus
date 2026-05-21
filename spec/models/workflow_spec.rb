@@ -135,6 +135,75 @@ RSpec.describe Workflow do
     end
   end
 
+describe "Job state propagation (Phase 2)" do
+    let(:user) { Factories.user }
+    let(:repository) { Factories.repository(user: user) }
+    let(:job) { Factories.job_record(user: user, repository: repository, state: "queued") }
+
+    it "drives :queued → :running on workflow.start! for non-auto_merge workflows" do
+      wf = described_class.create!(job: job, trigger_kind: "initial")
+
+      expect { wf.start!; wf.save! }
+        .to change { job.reload.state }.from("queued").to("running")
+    end
+
+    it "drives :implemented → :running on workflow.start! for follow-up (pr_comment) workflows" do
+      job.update!(state: "implemented")
+      wf = described_class.create!(job: job, trigger_kind: "pr_comment")
+
+      expect { wf.start!; wf.save! }
+        .to change { job.reload.state }.from("implemented").to("running")
+    end
+
+    it "leaves Job state untouched on workflow.start! for auto_merge workflows" do
+      job.update!(state: "approved")
+      job.start_landing!; job.save!
+      wf = described_class.create!(job: job, trigger_kind: "auto_merge")
+
+      expect { wf.start!; wf.save! }
+        .not_to change { job.reload.state }
+
+      expect(job.reload.state).to eq("landing")
+    end
+
+    it "drives :running → :failed on workflow.fail! for non-auto_merge workflows" do
+      job.update!(state: "running")
+      wf = described_class.create!(job: job, trigger_kind: "initial", state: "running", started_at: 1.minute.ago)
+
+      expect { wf.fail!; wf.save! }
+        .to change { job.reload.state }.from("running").to("failed")
+    end
+
+    it "leaves Job state untouched on workflow.fail! for auto_merge workflows (fail_landing handles it)" do
+      job.update!(state: "landing")
+      wf = described_class.create!(job: job, trigger_kind: "auto_merge", state: "running", started_at: 1.minute.ago)
+
+      expect { wf.fail!; wf.save! }
+        .not_to change { job.reload.state }
+    end
+
+    it "drives :running → :implemented on workflow.succeed! for follow-up workflows whose chain doesn't include pr_open" do
+      job.update!(state: "running")
+      wf = described_class.create!(job: job, trigger_kind: "pr_comment", state: "running", started_at: 1.minute.ago)
+
+      expect { wf.succeed!; wf.save! }
+        .to change { job.reload.state }.from("running").to("implemented")
+    end
+
+    it "does not transition Job on workflow.succeed! when Job has already moved past :running (auto-approval path)" do
+      # Steps::PrOpen + AutoApprovalRule already advanced the Job
+      # to :approved before the workflow succeeds. workflow.succeed
+      # must not regress it back.
+      job.update!(state: "approved", approved_at: Time.current, approved_via: "operator")
+      wf = described_class.create!(job: job, trigger_kind: "initial", state: "running", started_at: 1.minute.ago)
+
+      expect { wf.succeed!; wf.save! }
+        .not_to change { job.reload.state }
+
+      expect(job.reload.state).to eq("approved")
+    end
+  end
+
   describe "#fail cancels orphan active Runs but preserves Steps" do
     let(:wf) { described_class.create!(job: job, trigger_kind: "initial") }
 

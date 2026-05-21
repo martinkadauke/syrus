@@ -328,26 +328,17 @@ module JobsHelper
     count.present? ? number_with_delimiter(count) : "—"
   end
 
-  # The most useful one-word summary for a Job in a list view:
-  # "preempted" beats "closed" when a Job was preempted by an external
-  # PR — that's a more informative bucket than generic "closed."
+  # The most useful one-word summary for a Job in a list view.
+  # `job.state` is now authoritative (since Phase 2 of the
+  # running/failed state expansion: Workflow#start/fail/succeed
+  # propagate to Job state directly). The only post-processing left
+  # is the closure-reason distinction — "preempted" beats "closed"
+  # when an external PR or human takeover ended the thread, since
+  # that's a more informative bucket for operator triage.
   def job_summary_state(job)
     return "preempted" if job.closure_reason == "preempted"
     return "preempted" if job.closure_reason&.start_with?("external_pr_")
-    return "closed" if job.closed?
-    return job.state if job.triaging? || job.blocked_by_epic? || job.implemented? || job.approved? || job.landing?
-    # While a workflow is actively :running, prefer that over the
-    # latest Run's state. A Run can transition to :succeeded mid-
-    # workflow (implement done → grade about to start), and the
-    # dispatcher advances on that transition; the Run state flickers
-    # but the workflow stays :running until the whole chain ends.
-    # Falling through to current_run.state used to flash a
-    # "succeeded" pill on a Job that was still working. Terminal
-    # workflow states (failed/succeeded/cancelled) fall through to
-    # current_run.state — the dashboard's "Latest" column is the
-    # dedicated surface for workflow-level outcome.
-    return "running" if job.latest_workflow&.state == "running"
-    job.current_run&.state || "pending"
+    job.state
   end
 
   # Per-Job dashboard caption — when a workflow is in flight, show
