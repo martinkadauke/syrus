@@ -290,9 +290,13 @@ class HomeController < ApplicationController
     @active_smart_folder = smart_folder_from_params
 
     # Eager-load workflows + their steps for current_step_caption(job),
-    # and runs for the per-row cost rollup.
+    # and runs for the per-row cost rollup. .preload forces separate
+    # IN-queries; the filter compiler often adds JOINs to the base
+    # scope (state-attention chips, blocked_by_deps, etc.), and with
+    # .includes Rails would promote these to JOIN-based preload and
+    # explode the row count by the Cartesian product of associations.
     @jobs = Current.user.jobs.where(repository_id: active_repo_ids)
-                             .includes(:repository, :runs, workflows: :steps)
+                             .preload(:repository, :runs, workflows: :steps)
 
     @job_filter = Jobs::Filter.from_params(params, smart_folder: @active_smart_folder, user: Current.user)
     @jobs = @job_filter.apply(@jobs)
@@ -332,7 +336,7 @@ class HomeController < ApplicationController
     end
 
     @jobs_total = @jobs.count
-    @jobs = @jobs.includes(:tags)
+    @jobs = @jobs.preload(:tags)
     @job_sort = resolved_dashboard_sort(:job)
     @custom_job_ordering = landing_queue_folder? || @job_filter.pinned?
 
@@ -482,9 +486,16 @@ class HomeController < ApplicationController
   end
 
   def load_job_kanban
+    # Use .preload (separate IN-queries) instead of .includes here:
+    # the base scope already carries the with_latest_workflow_snapshot
+    # LEFT JOIN, so Rails would otherwise promote .includes to JOIN-
+    # based preload. That JOINs jobs × runs × dependencies × tags
+    # into one Cartesian SELECT — at ~15 runs × 3 deps × 3 tags per
+    # job, 100 kanban cards becomes 135k result rows and ~1.6s of
+    # AR time in prod. .preload guarantees separate small queries.
     kanban_jobs = @jobs
       .with_latest_workflow_snapshot
-      .includes(:repository, :runs, { dependencies: :depends_on_job }, :tags)
+      .preload(:repository, :runs, { dependencies: :depends_on_job }, :tags)
       .order(created_at: :desc)
       .limit(@kanban_limit)
       .to_a
