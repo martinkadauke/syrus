@@ -202,6 +202,48 @@ describe "Job state propagation (Phase 2)" do
 
       expect(job.reload.state).to eq("approved")
     end
+
+    # Repro for Job 360's stuck state: workflow had a Run fail
+    # mid-chain → cascaded → workflow → :failed → Job → :failed.
+    # Operator clicked "Retry from failed step" → workflow.reopen
+    # flipped :failed → :running but Job stayed :failed. The new
+    # Run succeeded → workflow → :succeeded → propagate_succeed
+    # found Job not :running and silently no-op'd. Job stayed
+    # wedged at :failed forever.
+    it "lifts a :failed Job through :queued → :implemented when workflow.succeed runs after a stuck reopen" do
+      job.update!(state: "failed")
+      wf = described_class.create!(job: job, trigger_kind: "pr_comment", state: "running", started_at: 1.minute.ago)
+
+      expect { wf.succeed!; wf.save! }
+        .to change { job.reload.state }.from("failed").to("implemented")
+    end
+
+    it "drives Job :failed → :running on workflow.reopen (Retry-from-failed-step)" do
+      job.update!(state: "failed")
+      wf = described_class.create!(job: job, trigger_kind: "pr_comment", state: "failed",
+                                   started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+
+      expect { wf.reopen!; wf.save! }
+        .to change { job.reload.state }.from("failed").to("running")
+    end
+
+    it "leaves Job state untouched on workflow.reopen when Job is already :running (no stuck propagation gap)" do
+      job.update!(state: "running")
+      wf = described_class.create!(job: job, trigger_kind: "pr_comment", state: "failed",
+                                   started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+
+      expect { wf.reopen!; wf.save! }
+        .not_to change { job.reload.state }
+    end
+
+    it "leaves Job state untouched on workflow.reopen for auto_merge workflows" do
+      job.update!(state: "landing")
+      wf = described_class.create!(job: job, trigger_kind: "auto_merge", state: "failed",
+                                   started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+
+      expect { wf.reopen!; wf.save! }
+        .not_to change { job.reload.state }
+    end
   end
 
   describe "#fail cancels orphan active Runs but preserves Steps" do

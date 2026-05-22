@@ -98,6 +98,7 @@ class Workflow < ApplicationRecord
     event :reopen do
       transitions from: :failed, to: :running, after: -> {
         self.finished_at = nil
+        propagate_reopen_to_job!
       }
     end
   end
@@ -165,12 +166,47 @@ class Workflow < ApplicationRecord
   # existing PR) whose chains don't include pr_open: the Job is
   # still :running and needs to return to :implemented now that the
   # follow-up work is done.
+  #
+  # The :failed escape hatch covers two recovery scenarios:
+  #   1. workflow.reopen → workflow.succeed without going through a
+  #      fresh propagate_start_to_job (Job sat at :failed the entire
+  #      time the reopened workflow ran).
+  #   2. A polling-instantiated follow-up workflow ran on a :failed
+  #      Job — propagate_start_to_job! no-op'd at workflow.start
+  #      because may_start_running? rejects :failed. Without the
+  #      escape, the Job would silently stay :failed forever.
   def propagate_succeed_to_job!
     return if trigger_kind == "auto_merge"
-    return unless job.running?
+    return if job.implemented? || job.approved? || job.landing? || job.closed?
+
+    if job.failed? && job.may_retry_after_failure?
+      job.retry_after_failure!
+      job.save!
+    end
+
     return unless job.may_mark_implemented?
 
     job.mark_implemented!
+    job.save!
+  end
+
+  # Workflow#reopen drives :failed → :running, but the Job may have
+  # already been driven to :failed by the original workflow.fail's
+  # propagate_fail_to_job. Lift the Job back so subsequent step-
+  # success and workflow-success callbacks see a Job that's still
+  # tracking the (now-running) workflow.
+  def propagate_reopen_to_job!
+    return if trigger_kind == "auto_merge"
+    return if job.running?
+
+    if job.failed? && job.may_retry_after_failure?
+      job.retry_after_failure!
+      job.save!
+    end
+
+    return unless job.may_start_running?
+
+    job.start_running!
     job.save!
   end
 
