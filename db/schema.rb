@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_05_21_201911) do
+ActiveRecord::Schema[8.1].define(version: 2026_05_22_004424) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -663,6 +663,24 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_21_201911) do
     t.index ["kind"], name: "index_spawned_processes_on_kind"
     t.index ["run_id"], name: "index_spawned_processes_on_run_id"
     t.index ["workflow_id"], name: "index_spawned_processes_on_workflow_id"
+  end
+
+  create_table "state_transitions", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "event_name"
+    t.string "from_state", null: false
+    t.json "metadata"
+    t.bigint "run_id"
+    t.string "source", default: "aasm", null: false
+    t.integer "subject_id", null: false
+    t.string "subject_type", null: false
+    t.string "to_state", null: false
+    t.bigint "user_id"
+    t.index ["created_at"], name: "index_state_transitions_on_created_at"
+    t.index ["run_id"], name: "index_state_transitions_on_run_id"
+    t.index ["subject_type", "subject_id", "created_at"], name: "idx_state_transitions_on_subject_created"
+    t.index ["subject_type", "subject_id"], name: "index_state_transitions_on_subject"
+    t.index ["user_id"], name: "index_state_transitions_on_user_id"
   end
 
   create_table "steps", force: :cascade do |t|

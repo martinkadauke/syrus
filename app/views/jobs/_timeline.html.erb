@@ -24,15 +24,27 @@
                           else               "bg-gray-100 text-gray-600"
                           end %>
         <% source_classes = case ev.source
+                            when "job"      then "bg-indigo-50 text-indigo-700"
                             when "workflow" then "bg-purple-50 text-purple-700"
                             when "step"     then "bg-cyan-50 text-cyan-700"
                             when "run"      then "bg-gray-50 text-gray-700"
                             else                 "bg-gray-50 text-gray-700"
                             end %>
+        <% transition_source_classes = case ev.transition_source
+                                       when "propagate"  then "bg-emerald-50 text-emerald-700"
+                                       when "reconciler" then "bg-yellow-50 text-yellow-700"
+                                       when "operator"   then "bg-pink-50 text-pink-700"
+                                       when "system"     then "bg-slate-50 text-slate-700"
+                                       else                   "bg-gray-50 text-gray-500"
+                                       end %>
         <li class="px-4 py-2 flex items-start gap-3">
           <span class="text-xs text-gray-400 font-mono w-32 flex-shrink-0 pt-0.5"><%= relative_timestamp(ev.at) %></span>
           <span class="<%= source_classes %> text-xs px-1.5 py-0.5 rounded font-mono uppercase flex-shrink-0"><%= ev.source %></span>
           <span class="<%= kind_classes %> text-xs px-1.5 py-0.5 rounded font-mono uppercase flex-shrink-0"><%= ev.kind %></span>
+          <% if ev.transition_source %>
+            <span class="<%= transition_source_classes %> text-xs px-1.5 py-0.5 rounded font-mono uppercase flex-shrink-0"
+                  title="cause of transition: <%= ev.transition_source %>"><%= ev.transition_source %></span>
+          <% end %>
           <div class="flex-1 min-w-0">
             <div class="text-gray-800"><%= ev.title %></div>
             <% if ev.detail %>

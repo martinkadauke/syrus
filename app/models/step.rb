@@ -1,5 +1,6 @@
 class Step < ApplicationRecord
   include AASM
+  include RecordsStateTransitions
 
   # The full v1 set. Each kind has a Steps::<Camelized> handler.
   KINDS = %w[
@@ -78,6 +79,7 @@ class Step < ApplicationRecord
   end
 
   aasm column: :state, whiny_transitions: false do
+    after_all_transitions :record_state_transition!
     state :queued, initial: true
     state :running, :succeeded, :failed, :cancelled
 

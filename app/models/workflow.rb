@@ -1,5 +1,6 @@
 class Workflow < ApplicationRecord
   include AASM
+  include RecordsStateTransitions
 
   # Trigger kinds the v1 templates handle. The first six map
   # 1:1 to today's Run.trigger_kind values; once the migration
@@ -33,6 +34,7 @@ class Workflow < ApplicationRecord
   scope :ordered, -> { order(:created_at) }
 
   aasm column: :state, whiny_transitions: false do
+    after_all_transitions :record_state_transition!
     state :queued, initial: true
     state :running, :succeeded, :failed, :cancelled
 
@@ -141,8 +143,10 @@ class Workflow < ApplicationRecord
     return if trigger_kind == "auto_merge"
     return unless job.may_start_running?
 
-    job.start_running!
-    job.save!
+    StateTransition.with_source("propagate") do
+      job.start_running!
+      job.save!
+    end
   end
 
   # When a workflow fails, drive the Job into :failed so the operator
@@ -153,8 +157,10 @@ class Workflow < ApplicationRecord
     return if trigger_kind == "auto_merge"
     return unless job.may_mark_failed?
 
-    job.mark_failed!
-    job.save!
+    StateTransition.with_source("propagate") do
+      job.mark_failed!
+      job.save!
+    end
   end
 
   # When a workflow succeeds, the Job's state usually has already
@@ -179,15 +185,17 @@ class Workflow < ApplicationRecord
     return if trigger_kind == "auto_merge"
     return if job.implemented? || job.approved? || job.landing? || job.closed?
 
-    if job.failed? && job.may_retry_after_failure?
-      job.retry_after_failure!
+    StateTransition.with_source("propagate") do
+      if job.failed? && job.may_retry_after_failure?
+        job.retry_after_failure!
+        job.save!
+      end
+
+      return unless job.may_mark_implemented?
+
+      job.mark_implemented!
       job.save!
     end
-
-    return unless job.may_mark_implemented?
-
-    job.mark_implemented!
-    job.save!
   end
 
   # Workflow#reopen drives :failed → :running, but the Job may have
@@ -199,15 +207,17 @@ class Workflow < ApplicationRecord
     return if trigger_kind == "auto_merge"
     return if job.running?
 
-    if job.failed? && job.may_retry_after_failure?
-      job.retry_after_failure!
+    StateTransition.with_source("propagate") do
+      if job.failed? && job.may_retry_after_failure?
+        job.retry_after_failure!
+        job.save!
+      end
+
+      return unless job.may_start_running?
+
+      job.start_running!
       job.save!
     end
-
-    return unless job.may_start_running?
-
-    job.start_running!
-    job.save!
   end
 
   def cancel_orphan_active_runs!

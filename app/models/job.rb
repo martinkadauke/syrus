@@ -1,5 +1,6 @@
 class Job < ApplicationRecord
   include AASM
+  include RecordsStateTransitions
 
   KINDS = %w[ issue cron direct ].freeze
   CREDENTIAL_MODES = %w[ app pat ].freeze
@@ -153,6 +154,7 @@ class Job < ApplicationRecord
   # with a transition that actually enters the state, not just a
   # `from:` reference.
   aasm column: :state, whiny_transitions: false do
+    after_all_transitions :record_state_transition!
     state :triaging, initial: true
     state :blocked_by_epic
     state :queued

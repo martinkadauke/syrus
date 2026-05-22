@@ -161,12 +161,14 @@ class ReconcileJobStatesJob < ApplicationJob
         # observed, the plan is stale.
         return if job.state != @from_state
 
-        @steps.each do |event|
-          guard = "may_#{event.to_s.chomp('!')}?"
-          break unless job.public_send(guard)
+        StateTransition.with_source("reconciler") do
+          @steps.each do |event|
+            guard = "may_#{event.to_s.chomp('!')}?"
+            break unless job.public_send(guard)
 
-          job.public_send(event)
-          job.save!
+            job.public_send(event)
+            job.save!
+          end
         end
       end
     end

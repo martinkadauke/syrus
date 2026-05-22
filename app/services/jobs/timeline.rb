@@ -1,25 +1,27 @@
 module Jobs
-  # Builds a flat, chronological event list from the timestamps
-  # that already live on a Job's workflows, steps, and runs.
-  # Replaces the "scroll between three tables to reconstruct
-  # what happened" pattern that recurred across recent debug
-  # sessions.
+  # Builds a flat, chronological event feed for a Job. Sources:
   #
-  # No new schema — every event is derived from records that
-  # already track created_at / started_at / finished_at /
-  # state. PR-side events (PR opened, comments received,
-  # mergeability flips) need a proper audit log to surface
-  # cleanly; out of scope for v1.
+  # - StateTransition rows for Job/Workflow/Step/Run AASM transitions.
+  #   This is the canonical answer to "what state moved when, why,
+  #   by whom" — fed by RecordsStateTransitions on every transition.
+  # - Record creation timestamps for Workflows and Runs (so the
+  #   narrative starts with "Workflow N created" before "Workflow
+  #   N started"; the audit log only fires once the AASM `start`
+  #   event runs).
+  # - Run agent metadata (turns, cost, outcome) attached to the
+  #   Run's terminal transition event so operators see a single
+  #   "Run finished" line with the cost/duration breakdown.
   #
   # Each event is a Data with:
-  #   :at     — Time
-  #   :kind   — :info | :start | :success | :failure | :cancel
-  #   :source — "workflow" | "step" | "run"
-  #   :title  — short human description
-  #   :detail — optional secondary text
-  #   :ref    — { workflow_id:, step_id:, run_id: } for drill-down
+  #   :at                  — Time
+  #   :kind                — :info | :start | :success | :failure | :cancel
+  #   :source              — "job" | "workflow" | "step" | "run"
+  #   :transition_source   — "aasm" | "propagate" | "reconciler" | "operator" | "system" | nil
+  #   :title               — short human description
+  #   :detail              — optional secondary text
+  #   :ref                 — { workflow_id:, step_id:, run_id: } for drill-down
   class Timeline
-    Event = Data.define(:at, :kind, :source, :title, :detail, :ref)
+    Event = Data.define(:at, :kind, :source, :transition_source, :title, :detail, :ref)
 
     def self.for(job)
       new(job).events
@@ -30,119 +32,164 @@ module Jobs
     end
 
     def events
-      events = []
-
-      @job.workflows.includes(steps: :runs).each do |wf|
-        events.concat(workflow_events(wf))
-        wf.steps.each do |step|
-          events.concat(step_events(step))
-          step.runs.each do |run|
-            events.concat(run_events(run))
-          end
-        end
-      end
-
-      # Stable sort: chronological with NULLs last (records that
-      # never started/finished still surface, just not in the
-      # main timeline order).
-      events.compact.sort_by { |e| e.at || Time.zone.at(0) }
+      out = []
+      out.concat(creation_events)
+      out.concat(transition_events)
+      out.compact.sort_by { |e| [ e.at || Time.zone.at(0), source_order(e.source) ] }
     end
 
     private
 
-    def workflow_events(wf)
-      label = "Workflow ##{wf.id}"
-      label_with_kind = "#{label} (#{wf.trigger_kind})"
-      ref = { workflow_id: wf.id }
-
-      [
-        Event.new(at: wf.created_at, kind: :info, source: "workflow",
-                  title: "#{label_with_kind} created", detail: nil, ref: ref),
-        wf.started_at && Event.new(
-          at: wf.started_at, kind: :start, source: "workflow",
-          title: "#{label} started", detail: nil, ref: ref
-        ),
-        wf.finished_at && Event.new(
-          at: wf.finished_at,
-          kind: terminal_kind(wf.state),
-          source: "workflow",
-          title: "#{label} #{wf.state}",
-          detail: workflow_finish_detail(wf),
-          ref: ref
-        )
-      ]
+    def source_order(source)
+      # Stable tie-break when multiple events share a timestamp.
+      # Created-at sorts before AASM start for the same record.
+      %w[ job workflow step run ].index(source) || 99
     end
 
-    def step_events(step)
-      label = "Step #{step.kind}"
-      ref = { workflow_id: step.workflow_id, step_id: step.id }
+    def creation_events
+      events = []
 
-      [
-        step.started_at && Event.new(
-          at: step.started_at, kind: :start, source: "step",
-          title: "#{label} started", detail: nil, ref: ref
-        ),
-        step.finished_at && Event.new(
-          at: step.finished_at,
-          kind: terminal_kind(step.state),
-          source: "step",
-          title: "#{label} #{step.state}",
-          detail: step_finish_detail(step),
-          ref: ref
+      @job.workflows.order(:created_at).each do |wf|
+        events << Event.new(
+          at: wf.created_at, kind: :info, source: "workflow",
+          transition_source: nil,
+          title: "Workflow ##{wf.id} (#{wf.trigger_kind}) created",
+          detail: nil,
+          ref: { workflow_id: wf.id }
         )
-      ]
+      end
+
+      Run.where(job_id: @job.id).order(:created_at).each do |run|
+        events << Event.new(
+          at: run.created_at, kind: :info, source: "run",
+          transition_source: nil,
+          title: "Run ##{run.id} created (#{run.trigger_kind})",
+          detail: nil,
+          ref: { workflow_id: run.step&.workflow_id, step_id: run.step_id, run_id: run.id }
+        )
+      end
+
+      events
     end
 
-    def run_events(run)
-      label = "Run ##{run.id}"
-      ref = { workflow_id: run.step&.workflow_id, step_id: run.step_id, run_id: run.id }
-
-      [
-        Event.new(at: run.created_at, kind: :info, source: "run",
-                  title: "#{label} created (#{run.trigger_kind})",
-                  detail: nil, ref: ref),
-        run.started_at && Event.new(
-          at: run.started_at, kind: :start, source: "run",
-          title: "#{label} started", detail: nil, ref: ref
-        ),
-        run.finished_at && Event.new(
-          at: run.finished_at,
-          kind: terminal_kind(run.state),
-          source: "run",
-          title: "#{label} #{run.state}",
-          detail: run_finish_detail(run),
-          ref: ref
-        )
-      ]
+    def transition_events
+      transitions = fetch_transitions
+      transitions.map { |t| event_for_transition(t) }
     end
 
-    def terminal_kind(state)
-      case state
-      when "succeeded" then :success
-      when "failed"    then :failure
-      when "cancelled" then :cancel
-      else                  :info
+    def fetch_transitions
+      job_id = @job.id
+      workflow_ids = @job.workflows.pluck(:id)
+      step_ids = Step.where(workflow_id: workflow_ids).pluck(:id)
+      run_ids = Run.where(job_id: job_id).pluck(:id)
+
+      scope = StateTransition.where(
+        "(subject_type = 'Job' AND subject_id = :job_id) OR " \
+        "(subject_type = 'Workflow' AND subject_id IN (:workflow_ids)) OR " \
+        "(subject_type = 'Step' AND subject_id IN (:step_ids)) OR " \
+        "(subject_type = 'Run' AND subject_id IN (:run_ids))",
+        job_id: job_id,
+        workflow_ids: workflow_ids.presence || [ 0 ],
+        step_ids: step_ids.presence || [ 0 ],
+        run_ids: run_ids.presence || [ 0 ]
+      )
+      scope.order(:created_at).to_a
+    end
+
+    def event_for_transition(t)
+      source = t.subject_type.downcase
+      ref = ref_for(t)
+      detail = detail_for_transition(t)
+
+      Event.new(
+        at: t.created_at,
+        kind: kind_for(t.to_state),
+        source: source,
+        transition_source: t.source,
+        title: title_for(t),
+        detail: detail,
+        ref: ref
+      )
+    end
+
+    def ref_for(t)
+      case t.subject_type
+      when "Job"      then { job_id: t.subject_id }
+      when "Workflow" then { workflow_id: t.subject_id }
+      when "Step"
+        step = Step.find_by(id: t.subject_id)
+        { workflow_id: step&.workflow_id, step_id: t.subject_id }
+      when "Run"
+        run = Run.find_by(id: t.subject_id)
+        { workflow_id: run&.step&.workflow_id, step_id: run&.step_id, run_id: t.subject_id }
+      else
+        {}
       end
     end
 
-    def workflow_finish_detail(wf)
+    def title_for(t)
+      verb = lifecycle_verb(t)
+
+      case t.subject_type
+      when "Job"
+        # Job's AASM event names (start_running / mark_implemented /
+        # retry_after_failure) don't conjugate cleanly into past-tense
+        # verbs, so render Job transitions as explicit state moves.
+        "Job state #{t.from_state} → #{t.to_state}"
+      when "Workflow"
+        verb ? "Workflow ##{t.subject_id} #{verb}" :
+               "Workflow ##{t.subject_id} #{t.from_state} → #{t.to_state}"
+      when "Step"
+        step = Step.find_by(id: t.subject_id)
+        kind = step&.kind || "?"
+        verb ? "Step #{kind} #{verb}" : "Step #{kind} #{t.from_state} → #{t.to_state}"
+      when "Run"
+        verb ? "Run ##{t.subject_id} #{verb}" :
+               "Run ##{t.subject_id} #{t.from_state} → #{t.to_state}"
+      else
+        "#{t.subject_type}##{t.subject_id} #{t.from_state} → #{t.to_state}"
+      end
+    end
+
+    # Past-tense verbs for the Workflow/Step/Run AASM events.
+    # Returns nil when the event name is missing or not in the
+    # standard set — caller falls back to the from → to form.
+    def lifecycle_verb(t)
+      case t.event_name
+      when "start"  then "started"
+      when "succeed" then "succeeded"
+      when "fail"   then "failed"
+      when "cancel" then "cancelled"
+      when "reopen" then "reopened"
+      end
+    end
+
+    def detail_for_transition(t)
       bits = []
-      bits << "duration #{format_duration(wf.started_at, wf.finished_at)}" if wf.started_at
+      bits << t.event_name if t.event_name.present?
+
+      if t.subject_type == "Run" && %w[ succeeded failed cancelled ].include?(t.to_state)
+        run = Run.find_by(id: t.subject_id)
+        if run
+          bits << "outcome=#{run.agent_outcome}" if run.agent_outcome.present?
+          bits << "turns=#{run.agent_turns}" if run.agent_turns
+          if run.started_at && run.finished_at
+            bits << "duration #{format_duration(run.started_at, run.finished_at)}"
+          end
+        end
+      end
+
       bits.join(" · ").presence
     end
 
-    def step_finish_detail(step)
-      bits = []
-      bits << "duration #{format_duration(step.started_at, step.finished_at)}" if step.started_at
-      bits.join(" · ").presence
-    end
-
-    def run_finish_detail(run)
-      bits = []
-      bits << "outcome=#{run.agent_outcome}" if run.agent_outcome.present?
-      bits << "turns=#{run.agent_turns}"    if run.agent_turns
-      bits << "duration #{format_duration(run.started_at, run.finished_at)}" if run.started_at
-      bits.join(" · ").presence
+    def kind_for(to_state)
+      case to_state
+      when "succeeded", "implemented", "approved", "merged" then :success
+      when "failed"                                          then :failure
+      when "cancelled", "closed"                             then :cancel
+      when "running", "landing"                              then :start
+      else                                                        :info
+      end
     end
 
     def format_duration(start, finish)

@@ -3,41 +3,29 @@ require "rails_helper"
 RSpec.describe Jobs::Timeline do
   let(:job) { Factories.job }
 
-  def kinds_of(events) = events.map(&:kind)
   def titles_of(events) = events.map(&:title)
   def sources_of(events) = events.map(&:source)
 
   describe ".for" do
-    it "returns chronologically-sorted events derived from workflow + step + run timestamps" do
-      # job factory created an Initial workflow with prepare / implement /
-      # summarize / pr_open steps + the first step's queued initial Run.
+    it "returns chronologically-sorted events derived from StateTransition + record creation timestamps" do
       wf = job.workflows.last
       implement = wf.steps.find_by(kind: "implement")
       run = implement.runs.first || implement.runs.create!(job: job, trigger_kind: wf.trigger_kind)
 
-      # Timestamps must increase monotonically so the sort is deterministic.
-      base = Time.zone.local(2026, 5, 4, 12, 0, 0)
-      wf.update_columns(created_at: base, started_at: base + 1.second)
-      implement.update_columns(started_at: base + 2.seconds)
-      run.update_columns(created_at: base + 1.second,
-                         started_at: base + 3.seconds,
-                         finished_at: base + 4.seconds,
-                         state: "succeeded",
-                         agent_outcome: "success",
-                         agent_turns: 5)
-      implement.update_columns(finished_at: base + 4.seconds, state: "succeeded")
-      wf.update_columns(finished_at: base + 5.seconds, state: "succeeded")
+      # Drive real AASM transitions so the audit log fills in.
+      wf.start!;       wf.save!
+      implement.start!; implement.save!
+      run.start!;       run.save!
+      run.succeed!;     run.save!
+      implement.succeed!; implement.save!
+      wf.succeed!;      wf.save!
 
       events = described_class.for(job)
-
-      # Every timestamp produces an event; chronological order.
       timestamps = events.map(&:at).compact
       expect(timestamps).to eq(timestamps.sort)
 
-      # All three sources are represented.
       expect(sources_of(events)).to include("workflow", "step", "run")
 
-      # Lifecycle markers present.
       titles = titles_of(events).join(" | ")
       expect(titles).to include("Workflow ##{wf.id} (initial) created")
       expect(titles).to include("Workflow ##{wf.id} started")
@@ -54,13 +42,10 @@ RSpec.describe Jobs::Timeline do
       step = wf.steps.find_by(kind: "implement")
       run  = step.runs.first || step.runs.create!(job: job, trigger_kind: wf.trigger_kind)
 
-      run.update_columns(state: "failed",
-                         started_at: 1.minute.ago, finished_at: Time.current,
-                         agent_outcome: "error_max_turns")
-      step.update_columns(state: "failed",
-                          started_at: 1.minute.ago, finished_at: Time.current)
-      wf.update_columns(state: "failed",
-                        started_at: 1.minute.ago, finished_at: Time.current)
+      wf.start!;   wf.save!
+      step.start!; step.save!
+      run.start!;  run.save!
+      run.fail!;   run.save!
 
       events = described_class.for(job)
       failure_titles = events.select { |e| e.kind == :failure }.map(&:title)
@@ -72,24 +57,28 @@ RSpec.describe Jobs::Timeline do
     it "includes outcome + turns + duration in run finish detail" do
       wf = job.workflows.last
       run = wf.first_step.runs.first
-      run.update_columns(state: "succeeded",
-                         started_at: 90.seconds.ago, finished_at: Time.current,
-                         agent_outcome: "success",
-                         agent_turns: 12)
+      run.start!
+      run.update!(agent_outcome: "success", agent_turns: 12)
+      run.update_columns(started_at: 90.seconds.ago)
+      run.succeed!
+      run.update_columns(finished_at: Time.current)
+      run.save!
 
       events = described_class.for(job)
       finish_event = events.find { |e| e.title == "Run ##{run.id} succeeded" }
+      expect(finish_event).not_to be_nil
       expect(finish_event.detail).to include("outcome=success")
       expect(finish_event.detail).to include("turns=12")
       expect(finish_event.detail).to include("duration 1m30s")
     end
 
     it "doesn't blow up on records that never started or finished" do
-      # job factory leaves the initial Run in `queued` (no
-      # started_at, no finished_at). Timeline still works.
       events = described_class.for(job)
       expect(events).not_to be_empty
-      expect(events.first.title).to match(/created/)
+      # First event must be one of the creation markers (Workflow or Run
+      # created), since the factory leaves the initial Run in :queued
+      # with no state transitions on Workflow/Step/Run.
+      expect(events.first.title).to match(/created|→/)
     end
 
     it "includes the Run id in event refs for drill-downs" do
@@ -99,6 +88,20 @@ RSpec.describe Jobs::Timeline do
       expect(run_event.ref[:run_id]).to eq(run.id)
       expect(run_event.ref[:workflow_id]).to be_present
       expect(run_event.ref[:step_id]).to be_present
+    end
+
+    it "surfaces Job state transitions (which the timestamp-derived view couldn't show)" do
+      wf = job.workflows.last
+      wf.start!; wf.save!
+
+      events = described_class.for(job)
+      job_events = events.select { |e| e.source == "job" }
+      expect(job_events).not_to be_empty
+      # propagate_start_to_job drove Job :queued → :running and tagged
+      # the transition with source=propagate.
+      running_event = job_events.find { |e| e.title.include?("→ running") }
+      expect(running_event).not_to be_nil
+      expect(running_event.transition_source).to eq("propagate")
     end
   end
 end

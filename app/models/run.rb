@@ -1,5 +1,6 @@
 class Run < ApplicationRecord
   include AASM
+  include RecordsStateTransitions
 
   TRIGGER_KINDS = %w[ initial pr_comment ci_failure retry manual rebase auto_merge resume local_dev ].freeze
 
@@ -49,6 +50,7 @@ class Run < ApplicationRecord
   }
 
   aasm column: :state, whiny_transitions: false do
+    after_all_transitions :record_state_transition!
     state :queued, initial: true
     state :running, :awaiting_operator, :succeeded, :failed, :cancelled
 
