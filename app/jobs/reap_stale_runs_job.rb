@@ -3,7 +3,7 @@ class ReapStaleRunsJob < ApplicationJob
 
   queue_as :default
 
-  # Two reaping signals, in order of confidence/speed:
+  # Three reaping signals, in order of confidence/speed:
   #
   # 1. SolidQueue itself proved the worker died — the SQ::Job for
   #    this Run is in failed_execution with a `ProcessPrunedError`.
@@ -14,7 +14,17 @@ class ReapStaleRunsJob < ApplicationJob
   #    code mid-perform on its behalf is gone too. Reap immediately.
   #    Recovers post-deploy zombies in ~1 min.
   #
-  # 2. Heartbeat-stale (backstop). The Run's own
+  # 2. Orphaned-Run detection — Run is :running but no SQ::Job
+  #    exists for it (not pending, not claimed, not failed). This is
+  #    the wedge that bit Job 360: RunJob's handle_failure raised on
+  #    a dirty-attribute save retry, SQ recorded that as a clean
+  #    finish (job row finished_at set, no failed_execution row),
+  #    and the Run sat at :running orphaned. With no SQ::Job
+  #    referencing the Run, there's no worker that can ever resume
+  #    it; reap on the next pass. Grace period of 2 min for the
+  #    "Run just created, SQ::Job not yet committed" race.
+  #
+  # 3. Heartbeat-stale (backstop). The Run's own
   #    `last_heartbeat_at` (bumped by RunJob.log on every transcript
   #    chunk) hasn't moved in Run::STALE_HEARTBEAT_THRESHOLD (30
   #    min). Catches the rare case where the worker is alive but
@@ -23,12 +33,17 @@ class ReapStaleRunsJob < ApplicationJob
   # Why we don't just use SQ claim state as the primary signal: SQ
   # will prune a *live* worker whose SQ-heartbeat thread starves
   # under DB contention — false-positive class that bit us before
-  # PR #50. The signal we trust here is `failed_execution +
-  # ProcessPrunedError` specifically, NOT "no live claim." That
-  # narrow filter means we only act when SQ has *committed* to the
-  # worker being dead.
+  # PR #50. The signal we trust in path 1 is
+  # `failed_execution + ProcessPrunedError` specifically, NOT "no
+  # live claim." Path 2 uses a different signal — *no* SQ::Job at
+  # all for the Run — which is unambiguous: a Run that's
+  # :running with no enqueued/active job is by definition
+  # orphaned.
+  ORPHAN_RUN_GRACE_PERIOD = 2.minutes
+
   def perform
     reap_runs_with_pruned_workers   # fast path
+    reap_orphaned_running_runs      # ~3-min path
     reap_runs_with_stale_heartbeat  # 30-min backstop
   end
 
@@ -55,6 +70,44 @@ class ReapStaleRunsJob < ApplicationJob
     Run.stale.find_each do |run|
       reap!(run, reason: "no heartbeat in #{Run::STALE_HEARTBEAT_THRESHOLD.inspect}")
     end
+  end
+
+  # Finds Runs in :running state with no active SQ::Job referencing
+  # them. "Active" here means a row in solid_queue_jobs that hasn't
+  # been finalized (finished_at NULL). A pending job, a claimed
+  # job, or a failed-but-not-yet-cleaned-up job all qualify;
+  # successfully-finished jobs do not. If no row matches, the Run
+  # has no worker that will ever resume it — reap it.
+  #
+  # Grace period (ORPHAN_RUN_GRACE_PERIOD) prevents reaping a Run
+  # whose RunJob enqueue hasn't committed yet (the AR transaction
+  # creating the Run and enqueuing the SQ::Job can briefly leave
+  # the Run visible before the SQ::Job is).
+  def reap_orphaned_running_runs
+    cutoff = ORPHAN_RUN_GRACE_PERIOD.ago
+    candidates = Run.where(state: "running").where("started_at < ?", cutoff).to_a
+    return if candidates.empty?
+
+    active_ids = active_run_job_run_ids
+    candidates.each do |run|
+      next if active_ids.include?(run.id)
+      reap!(run, reason: "no SolidQueue::Job for Run ##{run.id} — orphaned (RunJob died without transitioning)")
+    end
+  rescue ActiveRecord::StatementInvalid => e
+    Rails.logger.debug("[ReapStaleRunsJob] SolidQueue tables unreachable (#{e.class}); skipping orphan-run path")
+  end
+
+  # Returns the set of Run ids referenced by any non-finalized
+  # SQ::Job for class_name=RunJob. Plain pluck + Ruby filter — the
+  # active set is small (zero to a few dozen Runs at any moment),
+  # so the cost is bounded.
+  def active_run_job_run_ids
+    SolidQueue::Job
+      .where(class_name: "RunJob", finished_at: nil)
+      .pluck(:arguments)
+      .filter_map { |args| args&.dig("arguments")&.first }
+      .map(&:to_i)
+      .to_set
   end
 
   # Returns the set of Run ids whose RunJob's SQ::Job has a

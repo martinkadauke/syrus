@@ -118,6 +118,49 @@ RSpec.describe ReapStaleRunsJob do
         expect(old.reload.state).to eq("failed")        # via heartbeat-stale
       end
     end
+
+    describe "orphan-run path: Run :running but no SQ::Job" do
+      # SolidQueue tables aren't loaded in the test DB, so we stub the
+      # active-set lookup. The behavior under test is the *decision*
+      # given a set of "active" Run ids vs. the candidate set — what
+      # SQ actually returns is exercised in production.
+      def stub_active_run_ids(*ids)
+        allow_any_instance_of(described_class)
+          .to receive(:active_run_job_run_ids)
+          .and_return(ids.map(&:to_i).to_set)
+      end
+
+      it "reaps a Run past the grace window whose SQ::Job has disappeared" do
+        run = running_run(heartbeat_age: ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds)
+        stub_active_run_ids  # no active SQ::Jobs reference this Run
+        described_class.perform_now
+        expect(run.reload.state).to eq("failed")
+        expect(run.agent_outcome).to eq("worker_died")
+      end
+
+      it "leaves a Run alone when its SQ::Job is still active" do
+        run = running_run(heartbeat_age: ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds)
+        stub_active_run_ids(run.id)  # pretend SQ::Job for this Run is alive
+        described_class.perform_now
+        expect(run.reload.state).to eq("running")
+      end
+
+      it "leaves a brand-new Run alone (inside the grace window)" do
+        # Just-created Run — SQ::Job enqueue race possible. Don't
+        # reap even though the active-set lookup returns nothing.
+        run = running_run(heartbeat_age: 30.seconds)
+        stub_active_run_ids
+        described_class.perform_now
+        expect(run.reload.state).to eq("running")
+      end
+
+      it "ignores Runs in non-:running states even past the grace window" do
+        run = Run.create!(job: job, trigger_kind: "initial")
+        run.update_columns(state: "queued", started_at: 1.hour.ago)
+        stub_active_run_ids
+        expect { described_class.perform_now }.not_to change { run.reload.state }
+      end
+    end
   end
 
   describe "Run.stale scope" do
