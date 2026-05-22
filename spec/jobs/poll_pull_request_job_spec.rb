@@ -241,7 +241,7 @@ RSpec.describe PollPullRequestJob do
       }.not_to change { job.workflows.where(trigger_kind: "pr_comment").count }
     end
 
-    it "only schedules comments newer than the addressed feedback watermark" do
+    it "fires when at least one comment is newer than the addressed feedback watermark — and stashes the full thread + cutoff" do
       t3 = Time.parse("2026-05-02 05:10:00 UTC")
       job.update!(last_feedback_addressed_at: t2)
       stub_issue_comments([
@@ -257,7 +257,11 @@ RSpec.describe PollPullRequestJob do
       }.to change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
 
       wf = job.workflows.where(trigger_kind: "pr_comment").last
-      expect(wf.artifact("pr_comments").map { |c| c["body"] }).to eq([ "fresh feedback" ])
+      # Full thread is preserved so the agent sees the arc — prior
+      # rounds + new feedback both rendered, with [NEW] tagging via
+      # the cutoff timestamp.
+      expect(wf.artifact("pr_comments").map { |c| c["body"] }).to eq([ "old feedback", "fresh feedback" ])
+      expect(wf.artifact("feedback_cutoff")).to eq(t2.iso8601)
     end
 
     it "uses an explicitly selected agent provider for PR feedback workflows" do

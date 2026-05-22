@@ -106,10 +106,14 @@ class PollPullRequestJob < ApplicationJob
   def react_to_pr_comments
     return if pending_followup?
 
-    new_comments = fetch_new_comments
+    cutoff = feedback_cutoff
+    all_comments = fetch_all_comments
+    new_comments = all_comments.select do |comment|
+      cutoff.nil? || (comment.created_at && comment.created_at > cutoff)
+    end
     return if new_comments.empty?
 
-    enqueue_followup_run(new_comments)
+    enqueue_followup_run(all_comments: all_comments, new_comments: new_comments, cutoff: cutoff)
   end
 
   def pending_followup?
@@ -122,24 +126,30 @@ class PollPullRequestJob < ApplicationJob
   # comments are exactly what we want to act on. When/if Syrus gets its
   # own bot identity (separate GitHub account or App), add a configurable
   # skip-by-login filter back here.
-  def fetch_new_comments
-    cutoff = feedback_cutoff
-    issue_comments = @client.pr_issue_comments(@slug, @job.pr_number, since: cutoff)
-    review_comments = @client.pr_review_comments(@slug, @job.pr_number, since: cutoff)
-    (issue_comments + review_comments)
-      .select { |comment| cutoff.nil? || (comment.created_at && comment.created_at > cutoff) }
-      .sort_by(&:created_at)
+  #
+  # Fetches the FULL comment thread (no `since:` cutoff), not just new
+  # comments since the watermark. The agent needs the prior comments
+  # too — otherwise it loses the arc of the conversation and
+  # oscillates: addresses feedback in round N, reverts in round N+1,
+  # re-adds in round N+2. The new-vs-prior distinction is preserved
+  # by tagging in the artifact so the prompt can flag what's
+  # actionable this round.
+  def fetch_all_comments
+    issue_comments = @client.pr_issue_comments(@slug, @job.pr_number)
+    review_comments = @client.pr_review_comments(@slug, @job.pr_number)
+    (issue_comments + review_comments).sort_by(&:created_at)
   end
 
-  def enqueue_followup_run(new_comments)
+  def enqueue_followup_run(all_comments:, new_comments:, cutoff:)
     ingest_comment_images(new_comments)
 
-    # Stash the comment payload on the workflow as a structured
-    # artifact; Steps::Respond reads it at run time and composes
-    # the Prompts::PrFeedback prompt itself. Polling job stays
-    # ignorant of prompt internals.
+    # Stash the full comment payload + the cutoff timestamp on the
+    # workflow as a structured artifact; Steps::Respond reads it at
+    # run time and composes the Prompts::PrFeedback prompt itself.
+    # Polling job stays ignorant of prompt internals.
     artifacts = {
-      "pr_comments" => new_comments.map { |c| serialize_comment(c) }
+      "pr_comments" => all_comments.map { |c| serialize_comment(c) },
+      "feedback_cutoff" => cutoff&.iso8601
     }
     workflow = Workflows::PrFeedback.instantiate(job: @job, artifacts: artifacts, agent_provider: @agent_provider)
     StepDispatcher.start_workflow(workflow)

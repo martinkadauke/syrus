@@ -21,8 +21,17 @@ module Steps
 
     def compose_prompt
       comments = workflow.artifact("pr_comments") || []
+      cutoff = parse_cutoff(workflow.artifact("feedback_cutoff"))
       issue = job.issue? ? GithubClient.for(repository: repository, user: job.user).fetch_issue(repository.slug, job.issue_number) : job.synthetic_issue
-      prompt = Prompts::PrFeedback.new(issue: issue, comments: hydrate_comments(comments)).to_s
+
+      prompt = Prompts::PrFeedback.new(
+        issue: issue,
+        comments: hydrate_comments(comments),
+        cutoff: cutoff,
+        prior_summaries: prior_pr_comment_summaries,
+        recent_commits: recent_branch_commits
+      ).to_s
+
       return prompt unless run.iteration > 1
 
       [
@@ -31,6 +40,60 @@ module Steps
           iterations: workflow.artifacts.fetch("iterations", [])
         ).to_s
       ].join("\n\n")
+    end
+
+    def parse_cutoff(raw)
+      return nil if raw.blank?
+      Time.zone.parse(raw.to_s)
+    rescue ArgumentError
+      nil
+    end
+
+    # Pull agent_summary strings off every prior pr_comment Workflow
+    # on this Job that produced one, in chronological order. The
+    # current workflow is excluded — the summary it will produce is
+    # not relevant to this Step's own prompt. Skips Workflows that
+    # never reached summarize_amend (no agent_summary on any Run).
+    def prior_pr_comment_summaries
+      prior_workflows = job.workflows
+                           .where(trigger_kind: "pr_comment")
+                           .where("id < ?", workflow.id)
+                           .order(:created_at)
+                           .to_a
+      prior_workflows.map { |wf| summary_for(wf) }.compact
+    end
+
+    def summary_for(wf)
+      wf.steps
+        .where(kind: "summarize_amend")
+        .order(:position)
+        .each do |step|
+          step.runs.order(:created_at).each do |r|
+            return r.agent_summary if r.agent_summary.present?
+          end
+        end
+      nil
+    end
+
+    # Last N commit subjects on the working branch, newest first.
+    # Best-effort — workspace setup may not have happened yet, the
+    # git log may fail, etc. — return [] rather than crashing the
+    # prompt build.
+    def recent_branch_commits(limit: 10)
+      workspace.setup
+      raw = GitRunner.new.run("log",
+        "--no-merges",
+        "-n", limit.to_s,
+        "--format=%H%x09%s",
+        "HEAD",
+        chdir: workspace.path.to_s)
+      raw.each_line.map do |line|
+        sha, subject = line.chomp.split("\t", 2)
+        { sha: sha, subject: subject }
+      end
+    rescue StandardError => e
+      log("[respond] could not read commit history for prompt: #{e.class}: #{e.message}")
+      []
     end
 
     # The polling job stashes raw comment data on the workflow

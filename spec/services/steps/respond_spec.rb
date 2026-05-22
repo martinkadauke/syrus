@@ -60,6 +60,62 @@ RSpec.describe Steps::Respond do
     expect(run.prompt).not_to include("quality graders flagged issues")
   end
 
+  it "tags new comments with [NEW] when the artifact carries a feedback_cutoff" do
+    cutoff = 1.minute.ago
+    # one prior + one new
+    workflow.update!(artifacts: workflow.artifacts.merge(
+      "pr_comments" => [
+        { "author" => "reviewer", "body" => "prior round comment", "created_at" => (cutoff - 1.hour).iso8601 },
+        { "author" => "reviewer", "body" => "fresh round comment", "created_at" => (cutoff + 30.seconds).iso8601 }
+      ],
+      "feedback_cutoff" => cutoff.iso8601
+    ))
+
+    handler.call
+
+    prompt = run.reload.prompt
+    expect(prompt).to include("[NEW]")
+    expect(prompt).to include("fresh round comment")
+    expect(prompt).to include("prior round comment")
+    # Prior comment is rendered but not tagged [NEW].
+    new_position = prompt.index("[NEW]")
+    prior_position = prompt.index("prior round comment")
+    expect(prior_position).to be < new_position  # chronological order preserved
+  end
+
+  it "includes prior pr_comment workflow summaries when they exist" do
+    # Build a prior succeeded pr_comment workflow with a summarize_amend
+    # step whose Run carries an agent_summary.
+    prior_wf = Workflows::PrFeedback.instantiate(job: job, artifacts: { "pr_comments" => [] })
+    prior_wf.update!(state: "succeeded", started_at: 1.hour.ago, finished_at: 30.minutes.ago)
+    summarize = prior_wf.steps.find_by(kind: "summarize_amend")
+    Run.create!(job: job, step: summarize, trigger_kind: "pr_comment",
+                state: "succeeded", agent_summary: "Tightened the greeting docstring per reviewer ask.")
+    # Re-instantiate the current workflow so it's newer than the prior one
+    new_wf = Workflows::PrFeedback.instantiate(job: job, artifacts: artifacts)
+    new_step = new_wf.steps.find_by(kind: "respond")
+    new_run = new_step.runs.create!(job: job, trigger_kind: new_wf.trigger_kind)
+    new_handler = described_class.new(new_run)
+    fake_ws = instance_double(WorkflowWorkspace, setup: nil, path: @ws_path)
+    allow(new_handler).to receive(:workspace).and_return(fake_ws)
+    allow(new_handler).to receive(:run_agent)
+    allow(new_handler).to receive(:commit_agent_changes)
+    allow(new_handler).to receive(:assert_branch_history_intact!)
+    allow(new_handler).to receive(:diff_against_default).and_return("diff --git a/foo.rb b/foo.rb\n+bar")
+    allow(new_handler).to receive(:head_sha).and_return("abc456")
+
+    new_handler.call
+
+    expect(new_run.reload.prompt).to include("previous review rounds")
+    expect(new_run.prompt).to include("Tightened the greeting docstring per reviewer ask.")
+  end
+
+  it "best-effort skips recent commits when git log fails" do
+    # GitRunner will fail because the tmp workspace isn't a real repo.
+    expect { handler.call }.not_to raise_error
+    expect(run.reload.prompt).not_to include("Recent commits on the working branch")
+  end
+
   it "appends grade failure feedback on later loop iterations" do
     workflow.set_artifact!("iterations", [
       [
