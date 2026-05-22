@@ -178,6 +178,23 @@ class RunJob < ApplicationJob
       CaptureRunDiagnostic.capture(@run, exception, workspace: handler_workspace)
     end
 
+    # Discard any in-memory attributes we couldn't persist. If the
+    # original exception was a column-size violation
+    # (ActiveRecord::ValueTooLong on `prompt` or `agent_pr_body`,
+    # say) or anything else that raised mid-update, the giant
+    # unsaved value is still attached to @run. A naive `fail! → save!`
+    # below would try to persist it again, raise again, and the
+    # Run/Step/Workflow/Job would stay wedged at :running with no
+    # cascade ever firing.
+    #
+    # restore_attributes reverts ONLY the dirty (unpersisted)
+    # attributes — keeps the in-memory record + its association
+    # caches intact, unlike reload which would reset both. That
+    # distinction matters for the loop-controlled grade path, where
+    # the perform loop later reads @step (a sibling ivar) and would
+    # be sensitive to a reload-driven association reset.
+    @run&.restore_attributes
+
     if @run&.may_fail?
       @run.fail!
       @run.save!

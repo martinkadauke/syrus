@@ -658,6 +658,75 @@ RSpec.describe RunJob do
     end
   end
 
+  describe "handle_failure resilience to dirty in-memory state" do
+    # Reproduces the Job 360 wedge: Steps::Respond raised
+    # ActiveRecord::ValueTooLong on `run.update!(prompt: ...)` because
+    # the new context-rich prompt exceeded the TEXT column cap. The
+    # rescue in #perform reached handle_failure, but the still-dirty
+    # giant prompt was attached to @run. The naive @run.save! inside
+    # handle_failure re-raised ValueTooLong, the Run never transitioned
+    # to :failed, and Step/Workflow/Job stayed wedged at :running with
+    # no cascade. handle_failure now reloads @run before fail!/save!
+    # so the dirty in-memory attribute is discarded and the failure
+    # transition can proceed.
+    # Emulates the column-overflow path on SQLite (no TEXT limit
+    # there): mark the prompt dirty in-memory with a giant value
+    # right before the step raises, then make Run#save! raise
+    # ValueTooLong whenever the dirty prompt is > the simulated
+    # column cap. The pre-fix code path called fail! → save!
+    # without reload, so the dirty prompt re-triggered the
+    # overflow and the Run never transitioned. With reload, the
+    # dirty attribute is discarded; save! succeeds.
+    it "still transitions Run → :failed when the action left a too-long unsaved attribute on the Run" do
+      RunJob.agent_runner = ->(**_) {
+        # Dirty the EXACT in-memory Run instance that RunJob's
+        # handle_failure will operate on. Thread.current's
+        # :syrus_current_run is set by perform; assign_attributes
+        # leaves the giant prompt unsaved on that instance,
+        # exactly mirroring what Steps::Respond did via update!
+        # before MySQL raised. SQLite has no TEXT cap, so we
+        # simulate the overflow via the save! stub below.
+        Thread.current[:syrus_current_run].assign_attributes(prompt: "X" * 200_000)
+        raise StandardError, "simulated mid-step failure"
+      }
+
+      # Materialize the Job + initial chain before installing the
+      # save! stub (the factory's chain bootstrap calls save! too,
+      # and we don't want to fail those).
+      job
+
+      # Any Run.save! whose in-memory prompt is over 100 KB raises
+      # ValueTooLong, like MySQL would on the real TEXT column. The
+      # fix's reload discards the dirty attr inside handle_failure,
+      # so the post-reload save! sees the persisted (short) prompt
+      # and proceeds.
+      # Any Run save (save or save!) whose in-memory prompt is over
+      # 100 KB raises ValueTooLong, like MySQL would on the real
+      # TEXT column. AASM's event! uses save (not save!), so we
+      # have to intercept both to simulate the overflow correctly.
+      # The fix's reload discards the dirty attr inside
+      # handle_failure, so the post-reload AASM save sees the
+      # persisted (short) prompt and proceeds.
+      simulated_cap = 100_000
+      simulate_overflow_save = lambda do |original, *args, **kwargs|
+        instance = original.receiver
+        if instance.prompt.to_s.bytesize > simulated_cap
+          raise ActiveRecord::ValueTooLong,
+                "Mysql2::Error: Data too long for column 'prompt' at row 1"
+        end
+        original.call(*args, **kwargs)
+      end
+      allow_any_instance_of(Run).to receive(:save!).and_wrap_original(&simulate_overflow_save)
+      allow_any_instance_of(Run).to receive(:save).and_wrap_original(&simulate_overflow_save)
+
+      drain_workflow!(job)
+
+      run = job.workflows.last.steps.find_by(kind: "implement").runs.first
+      expect(run.state).to eq("failed")
+      expect(run.job.reload.state).to eq("failed")
+    end
+  end
+
   describe "RunDiagnostic capture on step failure" do
     it "snapshots exception + repo metadata when a Run fails" do
       RunJob.agent_runner = ->(**_) {
