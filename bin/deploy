@@ -137,14 +137,22 @@ if [ "$SKIP_BUILD" = false ]; then
   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
 
   docker buildx use colima >/dev/null 2>&1 || true
+  CACHE_ARGS=()
+  if docker info --format '{{json .DriverStatus}}' | grep -q 'io.containerd.snapshotter.v1'; then
+    CACHE_ARGS=(
+      --cache-from "type=registry,ref=${CACHE_REF}"
+      --cache-to "type=registry,ref=${CACHE_REF},mode=max"
+    )
+  else
+    echo "→ buildx registry cache disabled (Docker driver without containerd image store)"
+  fi
 
   echo "→ ${REGISTRY}:${SHA} build+push (linux/amd64, target=app)"
   docker buildx build \
     --platform linux/amd64 \
     --target app \
     --build-arg "GIT_SHA=${SHA}" \
-    --cache-from "type=registry,ref=${CACHE_REF}" \
-    --cache-to "type=registry,ref=${CACHE_REF},mode=max" \
+    "${CACHE_ARGS[@]}" \
     -t "${REGISTRY}:${SHA}" \
     -t "${REGISTRY}:latest" \
     --push \
@@ -157,8 +165,7 @@ if [ "$SKIP_BUILD" = false ]; then
     --platform linux/amd64 \
     --target worker-dev \
     --build-arg "GIT_SHA=${SHA}" \
-    --cache-from "type=registry,ref=${CACHE_REF}" \
-    --cache-to "type=registry,ref=${CACHE_REF},mode=max" \
+    "${CACHE_ARGS[@]}" \
     -t "${WORKER_DEV_REGISTRY}:${SHA}" \
     -t "${WORKER_DEV_REGISTRY}:latest" \
     --push \
