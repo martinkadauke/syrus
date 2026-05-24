@@ -231,15 +231,24 @@ module Steps
     class AgentBrokeGitState < StepFailed; end
 
     def assert_branch_history_intact!
-      base = repository.default_branch
+      # Use the remote-tracking ref (`origin/<default>`), not the bare
+      # local branch name. WorkflowWorkspace clones with
+      # `--branch <effective_base_branch>` — which for stacked-PR Jobs
+      # is the parent stack branch, not master. In that case the local
+      # repo has no `master` ref at all and a bare `git merge-base
+      # master HEAD` exits 128 ("Not a valid object name"), false-
+      # positively flagging perfectly normal agent work as corrupt
+      # git state. `refs/remotes/origin/<default>` is always present
+      # after clone regardless of which branch was checked out.
+      base_ref = "origin/#{repository.default_branch}"
       # Non-streaming: we only care about success-or-raise here. The
       # merge-base SHA (the only output of this command) isn't useful
       # in the transcript and just adds noise above the agent_diff.
-      GitRunner.new.run("merge-base", base, "HEAD", chdir: workspace.path.to_s)
+      GitRunner.new.run("merge-base", base_ref, "HEAD", chdir: workspace.path.to_s)
     rescue GitRunner::GitError
       run.update!(agent_outcome: "git_state_corrupt")
       raise AgentBrokeGitState,
-            "agent's branch has no common ancestor with #{base} — orphan/detached state. " \
+            "agent's branch has no common ancestor with #{base_ref} — orphan/detached state. " \
             "Likely cause: agent ran `git checkout --orphan`, `git reset --hard <unrelated>`, or similar."
     end
 

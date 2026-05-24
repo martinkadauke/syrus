@@ -349,4 +349,86 @@ RSpec.describe Steps::Base do
       expect(run.job_logs.first.chunk).to eq("real")
     end
   end
+
+  describe "#assert_branch_history_intact!" do
+    # Build a workspace that mirrors the stacked-PR clone shape: a
+    # working tree with origin/<default_branch> as the only ref to
+    # the upstream, and the agent branch checked out off a sibling
+    # branch (no local <default_branch> ref at all). This is what
+    # WorkflowWorkspace produces when `effective_base_branch` resolves
+    # to a stack parent rather than master — and what
+    # `git merge-base master HEAD` choked on in production.
+    let(:workspace_dir) { Pathname.new(Dir.mktmpdir("syrus-history-check")) }
+    let(:bare_remote) { Pathname.new(Dir.mktmpdir("syrus-history-bare")) }
+    let(:fake_ws) { instance_double(WorkflowWorkspace, path: workspace_dir) }
+
+    before do
+      # Seed a bare remote with one commit on master.
+      system("git", "-C", bare_remote.to_s, "init", "--bare", "--initial-branch=master",
+             out: File::NULL, err: File::NULL)
+      seed = Pathname.new(Dir.mktmpdir("syrus-history-seed"))
+      system("git", "-C", seed.to_s, "init", "--initial-branch=master", out: File::NULL, err: File::NULL)
+      system("git", "-C", seed.to_s, "config", "user.email", "x@x.test")
+      system("git", "-C", seed.to_s, "config", "user.name", "Test")
+      File.write(seed.join("README.md"), "seed\n")
+      system("git", "-C", seed.to_s, "add", "README.md", out: File::NULL, err: File::NULL)
+      system("git", "-C", seed.to_s, "commit", "-m", "seed", out: File::NULL, err: File::NULL)
+      system("git", "-C", seed.to_s, "remote", "add", "origin", bare_remote.to_s, out: File::NULL, err: File::NULL)
+      system("git", "-C", seed.to_s, "push", "-u", "origin", "master", out: File::NULL, err: File::NULL)
+
+      # Push a sibling "stack parent" branch — what an upstream Job
+      # would have left on origin.
+      File.write(seed.join("parent.rb"), "parent\n")
+      system("git", "-C", seed.to_s, "add", "parent.rb", out: File::NULL, err: File::NULL)
+      system("git", "-C", seed.to_s, "commit", "-m", "stack parent", out: File::NULL, err: File::NULL)
+      system("git", "-C", seed.to_s, "branch", "syrus/issue-198-431", out: File::NULL, err: File::NULL)
+      system("git", "-C", seed.to_s, "push", "origin", "syrus/issue-198-431", out: File::NULL, err: File::NULL)
+      FileUtils.rm_rf(seed)
+
+      # Clone with --branch on the stack-parent. This produces a
+      # local repo with refs/heads/syrus/issue-198-431 + a
+      # refs/remotes/origin/master remote-tracking ref, but NO
+      # local refs/heads/master. Exactly the production shape.
+      FileUtils.rm_rf(workspace_dir)
+      system("git", "clone", "--branch", "syrus/issue-198-431",
+             bare_remote.to_s, workspace_dir.to_s, out: File::NULL, err: File::NULL)
+      system("git", "-C", workspace_dir.to_s, "config", "user.email", "x@x.test")
+      system("git", "-C", workspace_dir.to_s, "config", "user.name", "Test")
+      system("git", "-C", workspace_dir.to_s, "checkout", "-b", "syrus/issue-199-430",
+             out: File::NULL, err: File::NULL)
+      File.write(workspace_dir.join("feature.rb"), "feature\n")
+      system("git", "-C", workspace_dir.to_s, "add", "feature.rb", out: File::NULL, err: File::NULL)
+      system("git", "-C", workspace_dir.to_s, "commit", "-m", "agent change",
+             out: File::NULL, err: File::NULL)
+
+      job.repository.update!(default_branch: "master")
+      allow(handler).to receive(:workspace).and_return(fake_ws)
+    end
+
+    after do
+      FileUtils.rm_rf(workspace_dir)
+      FileUtils.rm_rf(bare_remote)
+    end
+
+    it "passes on a stacked-PR clone with no local master ref (Job 430 shape — was a false positive)" do
+      # Sanity: confirm the workspace really has no local master ref.
+      out = `git -C #{workspace_dir} branch --list master`.strip
+      expect(out).to eq(""), "expected no local master ref, got: #{out.inspect}"
+
+      expect { handler.send(:assert_branch_history_intact!) }.not_to raise_error
+      expect(run.reload.agent_outcome).not_to eq("git_state_corrupt")
+    end
+
+    it "still raises AgentBrokeGitState on a genuine orphan branch" do
+      system("git", "-C", workspace_dir.to_s, "checkout", "--orphan", "orphan-branch",
+             out: File::NULL, err: File::NULL)
+      File.write(workspace_dir.join("only.rb"), "only\n")
+      system("git", "-C", workspace_dir.to_s, "add", "only.rb", out: File::NULL, err: File::NULL)
+      system("git", "-C", workspace_dir.to_s, "commit", "-m", "orphan", out: File::NULL, err: File::NULL)
+
+      expect { handler.send(:assert_branch_history_intact!) }
+        .to raise_error(Steps::Base::AgentBrokeGitState, /no common ancestor with origin\/master/)
+      expect(run.reload.agent_outcome).to eq("git_state_corrupt")
+    end
+  end
 end
