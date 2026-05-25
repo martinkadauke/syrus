@@ -24,6 +24,8 @@ module Admin
         retry_available: wf.retry_available?,
         started_at: wf.started_at,
         finished_at: wf.finished_at,
+        created_at: wf.created_at,
+        updated_at: wf.updated_at,
         steps: wf.steps.order(:position).map { |s| step(s) }
       }
     rescue => e
@@ -39,6 +41,8 @@ module Admin
         state: step.state,
         started_at: step.started_at,
         finished_at: step.finished_at,
+        created_at: step.created_at,
+        updated_at: step.updated_at,
         details: step.details.presence,
         runs: step.runs.order(:created_at).map { |r| run(r) }
       }
@@ -63,6 +67,8 @@ module Admin
         started_at: run.started_at,
         last_heartbeat_at: run.last_heartbeat_at,
         finished_at: run.finished_at,
+        created_at: run.created_at,
+        updated_at: run.updated_at,
         agent_diff_present: run.agent_diff.present?,
         agent_diff_bytes: run.agent_diff&.bytesize || 0,
         job_log_count: run.job_logs.size,

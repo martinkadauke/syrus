@@ -24,6 +24,7 @@ module Api
               by_trigger: Run.where(state: "failed").where("finished_at >= ?", 24.hours.ago).group(:trigger_kind).count
             },
             github_rate_limits: low_rate_limit_users,
+            github_api_blocked_users: blocked_github_api_users,
             agent_session_capture_rate: capture_rate_payload,
             stuck: ::Admin::StuckItems.all.map { |i| serialize_stuck(i) }
           }
@@ -52,6 +53,24 @@ module Api
               remaining: u.gh_rate_limit_remaining,
               limit: u.gh_rate_limit_limit,
               resource: u.gh_rate_limit_resource
+            }
+          end
+        end
+
+        def blocked_github_api_users
+          User.where.not(gh_api_blocked_at: nil).order(:email_address).map do |u|
+            {
+              id: u.id,
+              email: u.email_address,
+              blocked_at: u.gh_api_blocked_at,
+              reason: u.gh_api_blocked_reason,
+              rate_limit: {
+                remaining: u.gh_rate_limit_remaining,
+                limit: u.gh_rate_limit_limit,
+                resource: u.gh_rate_limit_resource,
+                reset_at: u.gh_rate_limit_reset_at,
+                observed_at: u.gh_rate_limit_observed_at
+              }
             }
           end
         end

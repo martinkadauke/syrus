@@ -99,8 +99,12 @@ RSpec.describe "API: /api/v1/admin/workflows/:id/*", type: :request do
 
       body = parse_body
       expect(body).to include("id" => original.id, "trigger_kind" => "initial")
+      expect(body["created_at"]).to be_present
+      expect(body["updated_at"]).to be_present
       expect(body["steps"]).to be_an(Array)
       expect(body["steps"].size).to be > 0
+      expect(body["steps"].first["created_at"]).to be_present
+      expect(body["steps"].first["updated_at"]).to be_present
       # Sibling workflow on the same Job is NOT here — that's the
       # whole point of this endpoint vs /api/v1/admin/jobs/:id.
       expect(body).not_to have_key("workflows")

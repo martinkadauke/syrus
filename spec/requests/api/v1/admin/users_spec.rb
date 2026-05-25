@@ -38,6 +38,30 @@ RSpec.describe "API: /api/v1/admin/users", type: :request do
       expect(response.body).not_to include("codex_access_secret")
     end
 
+    it "includes GitHub API block state without exposing tokens" do
+      blocked = Factories.user(email_address: "blocked@example.com",
+                               github_token: "ghp_secret",
+                               gh_api_blocked_at: 1.minute.ago,
+                               gh_api_blocked_reason: "API rate limit exceeded",
+                               gh_rate_limit_remaining: 0,
+                               gh_rate_limit_limit: 5_000,
+                               gh_rate_limit_resource: "core")
+
+      get "/api/v1/admin/users", headers: auth
+      row = parse_body["users"].find { |u| u["id"] == blocked.id }
+
+      expect(row).to include(
+        "github_api_blocked" => true,
+        "github_api_blocked_reason" => "API rate limit exceeded"
+      )
+      expect(row["github_rate_limit"]).to include(
+        "remaining" => 0,
+        "limit" => 5_000,
+        "resource" => "core"
+      )
+      expect(response.body).not_to include("ghp_secret")
+    end
+
     it "applies the same filters as the HTML view" do
       Factories.user(email_address: "ok@example.com",
                       gh_rate_limit_remaining: 4500, gh_rate_limit_limit: 5000)
@@ -71,6 +95,7 @@ RSpec.describe "API: /api/v1/admin/users", type: :request do
       expect(body["github_rate_limit"]).to include(
         "remaining" => 100, "limit" => 5000, "resource" => "core"
       )
+      expect(body["github_api_blocked"]).to be false
       expect(body["recent_jobs"]).to eq([])
       expect(body["recent_runs"]).to eq([])
     end

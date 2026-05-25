@@ -54,6 +54,13 @@ Rails.application.routes.draw do
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
 
+        # Operator console kill switches.
+        get  "console",                 to: "console#show"
+        post "console/pause_polling",   to: "console#pause_polling"
+        post "console/unpause_polling", to: "console#unpause_polling"
+        post "console/pause_runs",      to: "console#pause_runs"
+        post "console/unpause_runs",    to: "console#unpause_runs"
+
         # Per-instance version info — returns the SHA + role of the
         # pod handling THIS request (`request_handler`) plus every
         # other live instance (`instances`) with a fresh heartbeat.

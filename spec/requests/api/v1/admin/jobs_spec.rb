@@ -1,4 +1,5 @@
 require "rails_helper"
+require "ostruct"
 
 RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
   let(:admin) { Factories.user }
@@ -40,6 +41,24 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
     before { sign_in_as(admin); admin_token }
 
     it "dumps job + repository + workflows + steps + runs in one shot" do
+      reset_at = 10.minutes.from_now.change(usec: 0)
+      admin.update!(
+        gh_api_blocked_at: 2.minutes.ago,
+        gh_api_blocked_reason: "API rate limit exceeded for installation ID 123",
+        gh_rate_limit_remaining: 0,
+        gh_rate_limit_limit: 5_000,
+        gh_rate_limit_resource: "core",
+        gh_rate_limit_reset_at: reset_at,
+        gh_rate_limit_observed_at: Time.current
+      )
+      job.update!(
+        pr_mergeable: true,
+        pr_mergeable_checked_at: Time.current,
+        last_seen_comment_at: 5.minutes.ago,
+        last_feedback_addressed_at: 6.minutes.ago,
+        last_ci_handled_sha: "abc123"
+      )
+
       # Initial workflow chain is prepare → implement → … . Set up
       # the implement step with a succeeded Run + captured agent session so
       # the assertions below match real production-shape data.
@@ -61,22 +80,43 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(body["id"]).to eq(job.id)
       expect(body["state"]).to eq("queued")
       expect(body["agent_provider"]).to eq(job.agent_provider)
+      expect(body["credential_mode"]).to eq(job.credential_mode)
       expect(body["stack_base"]).to eq(job.stack_base)
       expect(body["parent_job_id"]).to eq(job.parent_job_id)
       expect(body["effective_base_branch"]).to eq(job.effective_base_branch)
       expect(body["repository"]["slug"]).to eq(job.repository.slug)
+      expect(body["repository"]["credential_mode"]).to eq(job.repository.credential_mode)
+      expect(body["pr_mergeable"]).to be true
+      expect(body["last_seen_comment_at"]).to be_present
+      expect(body["last_feedback_addressed_at"]).to be_present
+      expect(body["last_ci_handled_sha"]).to eq("abc123")
+      expect(body["user"]).to include(
+        "id" => admin.id,
+        "email_address" => admin.email_address,
+        "github_api_blocked" => true,
+        "github_api_blocked_reason" => "API rate limit exceeded for installation ID 123"
+      )
+      expect(body.dig("user", "github_rate_limit")).to include(
+        "remaining" => 0,
+        "limit" => 5_000,
+        "resource" => "core"
+      )
 
       wf = body["workflows"].first
       expect(wf["trigger_kind"]).to eq("initial")
       expect(wf["state"]).to eq("succeeded")
       expect(wf["cleaned_up_at"]).to be_present
       expect(wf["retry_available"]).to be false  # cleaned up
+      expect(wf["created_at"]).to be_present
+      expect(wf["updated_at"]).to be_present
 
       # First step in Initial workflow is now `prepare` (added in
       # the prep-step commit). Find implement explicitly to match
       # the Run we set up above.
       step = wf["steps"].find { |s| s["kind"] == "implement" }
       expect(step["state"]).to eq("succeeded")
+      expect(step["created_at"]).to be_present
+      expect(step["updated_at"]).to be_present
 
       run_payload = step["runs"].first
       expect(run_payload["agent_outcome"]).to eq("success")
@@ -87,7 +127,62 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(run_payload["agent_session"]["provider"]).to eq("codex")
       expect(run_payload["agent_session"]["transcript_lines"]).to eq(2)
       expect(run_payload["agent_session"]["transcript_pruned"]).to be false
+      expect(run_payload["created_at"]).to be_present
+      expect(run_payload["updated_at"]).to be_present
       expect(run_payload).not_to have_key("claude_session")
+    end
+
+    it "can include a live GitHub PR snapshot without changing the default payload" do
+      job.update!(pr_number: 7)
+      client = instance_double(GithubClient)
+      pr = OpenStruct.new(
+        number: 7,
+        state: "open",
+        merged: false,
+        mergeable: true,
+        mergeable_state: "clean",
+        draft: false,
+        head: OpenStruct.new(ref: "syrus/issue-42", sha: "headsha", repo: OpenStruct.new(full_name: "acme/widgets")),
+        base: OpenStruct.new(ref: "main", sha: "basesha", repo: OpenStruct.new(full_name: "acme/widgets"))
+      )
+      allow(GithubClient).to receive(:for).with(repository: job.repository, user: admin).and_return(client)
+      allow(client).to receive(:pull_request).with(job.repository.slug, 7, bypass_cache: true).and_return(pr)
+
+      get "/api/v1/admin/jobs/#{job.id}", headers: auth(admin_token)
+      expect(parse_body).not_to have_key("github_pr")
+
+      get "/api/v1/admin/jobs/#{job.id}", params: { include_github: "true" }, headers: auth(admin_token)
+      expect(parse_body["github_pr"]).to include(
+        "number" => 7,
+        "state" => "open",
+        "mergeable" => true,
+        "mergeable_state" => "clean",
+        "head_ref" => "syrus/issue-42",
+        "head_sha" => "headsha",
+        "base_ref" => "main",
+        "base_sha" => "basesha"
+      )
+    end
+
+    it "reports repository installation diagnostics when the job uses app credentials" do
+      AppSetting.current.update!(github_app_id: "123")
+      installation = Factories.installation(user: admin, github_installation_id: 131_743_025, account_login: "acme")
+      repo = Factories.repository(user: admin, owner: "acme", name: "app-backed", installation: installation)
+      app_job = Factories.job(user: admin, repository: repo)
+
+      get "/api/v1/admin/jobs/#{app_job.id}", headers: auth(admin_token)
+      body = parse_body
+
+      expect(body["credential_mode"]).to eq("app")
+      expect(body["repository"]).to include(
+        "credential_mode" => "app",
+        "app_credential_active" => true
+      )
+      expect(body.dig("repository", "installation")).to include(
+        "github_installation_id" => 131_743_025,
+        "account_login" => "acme",
+        "active" => true
+      )
     end
 
     it "tolerates a captured agent session whose transcript was pruned post-success (issue surfaced by Job 80)" do
@@ -191,7 +286,12 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
     it "returns a compact shape — repository slug, issue/pr/branch, no nested workflows" do
       get "/api/v1/admin/jobs", params: { pr_number: 144 }, headers: auth(admin_token)
       row = parse_body["jobs"].first
-      expect(row).to include("id", "state", "kind", "agent_provider", "repository", "issue_number", "pr_number", "branch_name")
+      expect(row).to include(
+        "id", "state", "kind", "credential_mode", "agent_provider", "repository",
+        "issue_number", "pr_number", "branch_name", "pr_mergeable",
+        "pr_mergeable_checked_at", "last_seen_comment_at",
+        "last_feedback_addressed_at", "last_ci_handled_sha"
+      )
       expect(row["repository"]).to eq("acme/widgets")
       expect(row["agent_provider"]).to eq(job_124.agent_provider)
       expect(row).not_to have_key("workflows")

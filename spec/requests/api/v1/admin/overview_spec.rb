@@ -1,8 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "API: /api/v1/admin/overview", type: :request do
-  let(:admin) { Factories.user }
-  let(:admin_token) { admin.generate_api_token! }
+  let!(:admin) { Factories.user }
+  let!(:admin_token) { admin.generate_api_token! }
   def auth = { "Authorization" => "Bearer #{admin_token}" }
   def parse_body = JSON.parse(response.body)
 
@@ -20,6 +20,7 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(body).to have_key("queued_runs")
       expect(body).to have_key("recent_failures_24h")
       expect(body).to have_key("github_rate_limits")
+      expect(body).to have_key("github_api_blocked_users")
       expect(body).to have_key("agent_session_capture_rate")
       expect(body).not_to have_key("claude_session_capture_rate")
       expect(body).to have_key("workers")
@@ -56,6 +57,28 @@ RSpec.describe "API: /api/v1/admin/overview", type: :request do
       expect(stuck).not_to be_empty
       expect(stuck.first["kind"]).to eq("stale_heartbeat")
       expect(stuck.first["run_id"]).to eq(run.id)
+    end
+
+    it "surfaces users whose GitHub API access is blocked" do
+      blocked = Factories.user(email_address: "blocked@example.com",
+                               gh_api_blocked_at: Time.current,
+                               gh_api_blocked_reason: "API rate limit exceeded",
+                               gh_rate_limit_remaining: 0,
+                               gh_rate_limit_limit: 5_000,
+                               gh_rate_limit_resource: "core")
+
+      get "/api/v1/admin/overview", headers: auth
+      row = parse_body["github_api_blocked_users"].find { |u| u["id"] == blocked.id }
+
+      expect(row).to include(
+        "email" => "blocked@example.com",
+        "reason" => "API rate limit exceeded"
+      )
+      expect(row["rate_limit"]).to include(
+        "remaining" => 0,
+        "limit" => 5_000,
+        "resource" => "core"
+      )
     end
   end
 

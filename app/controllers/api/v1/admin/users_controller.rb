@@ -37,6 +37,9 @@ module Api
             has_codex_api_key: user.codex_api_key.present?,
             has_codex_auth_json: user.codex_auth_json.present?,
             agent_max_turns:   user.agent_max_turns,
+            github_api_blocked: user.gh_api_blocked?,
+            github_api_blocked_at: user.gh_api_blocked_at,
+            github_api_blocked_reason: user.gh_api_blocked_reason,
             github_rate_limit: github_rate_limit_payload(user),
             created_at:        user.created_at
           }

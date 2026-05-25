@@ -50,7 +50,9 @@ module Api
 
         def show
           job = Job.includes(workflows: { steps: :runs }).find(params[:id])
-          render json: serialize(job)
+          payload = serialize(job)
+          payload[:github_pr] = github_pr_snapshot(job) if truthy?(params[:include_github])
+          render json: payload
         end
 
         private
@@ -87,6 +89,7 @@ module Api
             kind:           job.kind,
             priority:       job.priority,
             validity:       job.validity,
+            credential_mode: job.credential_mode,
             triaging_reason: job.triaging_reason,
             epic_id:        job.epic_id,
             agent_provider: job.agent_provider,
@@ -94,6 +97,11 @@ module Api
             issue_number:   job.issue_number,
             pr_number:      job.pr_number,
             branch_name:    job.branch_name,
+            pr_mergeable:   job.pr_mergeable,
+            pr_mergeable_checked_at: job.pr_mergeable_checked_at,
+            last_seen_comment_at: job.last_seen_comment_at,
+            last_feedback_addressed_at: job.last_feedback_addressed_at,
+            last_ci_handled_sha: job.last_ci_handled_sha,
             created_at:     job.created_at,
             updated_at:     job.updated_at
           }
@@ -109,6 +117,7 @@ module Api
             kind: job.kind,
             priority: job.priority,
             validity: job.validity,
+            credential_mode: job.credential_mode,
             invalidation_reason: job.invalidation_reason,
             invalidation_evidence: job.invalidation_evidence,
             triaging_reason: job.triaging_reason,
@@ -124,9 +133,13 @@ module Api
               slug: job.repository.slug,
               default_branch: job.repository.default_branch,
               auto_merge_enabled: job.repository.auto_merge_enabled,
-              approval_propagates_to_github: job.repository.approval_propagates_to_github
+              approval_propagates_to_github: job.repository.approval_propagates_to_github,
+              credential_mode: job.repository.credential_mode,
+              app_credential_active: job.repository.app_credential_active?,
+              installation: installation_payload(job.repository.installation)
             },
             user_email: job.user.email_address,
+            user: user_github_payload(job.user),
             issue_number: job.issue_number,
             issue_title: job.issue_title,
             branch_name: job.branch_name,
@@ -141,11 +154,81 @@ module Api
             approved_via: job.approved_via,
             approved_by_user_id: job.approved_by_user_id,
             approval_evidence: job.approval_evidence,
+            last_seen_comment_at: job.last_seen_comment_at,
+            last_feedback_addressed_at: job.last_feedback_addressed_at,
+            last_ci_handled_sha: job.last_ci_handled_sha,
             landing_failure_reason: job.landing_failure_reason,
+            created_at: job.created_at,
+            updated_at: job.updated_at,
             workflows: job.workflows.order(:created_at).map { |wf| ::Admin::JobStateSerializer.workflow(wf) }
           }
         rescue => e
           ::Admin::JobStateSerializer.per_record_error(job, e)
+        end
+
+        def github_pr_snapshot(job)
+          pr_number = job.pr_number || job.external_pr_number
+          return unless pr_number
+
+          pr = GithubClient.for(repository: job.repository, user: job.user)
+                           .pull_request(job.repository.slug, pr_number, bypass_cache: true)
+
+          {
+            number: pr.number,
+            state: pr.state,
+            merged: pr.merged,
+            mergeable: pr.mergeable,
+            mergeable_state: (pr.mergeable_state if pr.respond_to?(:mergeable_state)),
+            draft: (pr.draft if pr.respond_to?(:draft)),
+            head_ref: pr.head&.ref,
+            head_sha: pr.head&.sha,
+            head_repo: pr.head&.repo&.full_name,
+            base_ref: pr.base&.ref,
+            base_sha: pr.base&.sha,
+            base_repo: pr.base&.repo&.full_name
+          }
+        rescue => e
+          {
+            error: "#{e.class}: #{e.message.to_s.split(/ \/\/ /, 2).first}"
+          }
+        end
+
+        def user_github_payload(user)
+          {
+            id: user.id,
+            email_address: user.email_address,
+            github_api_blocked: user.gh_api_blocked?,
+            github_api_blocked_at: user.gh_api_blocked_at,
+            github_api_blocked_reason: user.gh_api_blocked_reason,
+            github_rate_limit: github_rate_limit_payload(user)
+          }
+        end
+
+        def github_rate_limit_payload(user)
+          return unless user.gh_rate_limit_remaining
+
+          {
+            remaining: user.gh_rate_limit_remaining,
+            limit: user.gh_rate_limit_limit,
+            resource: user.gh_rate_limit_resource,
+            reset_at: user.gh_rate_limit_reset_at,
+            observed_at: user.gh_rate_limit_observed_at,
+            percent: user.gh_rate_limit_limit.to_i.positive? ?
+              (user.gh_rate_limit_remaining.to_f / user.gh_rate_limit_limit) : nil
+          }
+        end
+
+        def installation_payload(installation)
+          return unless installation
+
+          {
+            id: installation.id,
+            github_installation_id: installation.github_installation_id,
+            account_login: installation.account_login,
+            account_type: installation.account_type,
+            active: installation.active?,
+            removed_at: installation.removed_at
+          }
         end
       end
     end
