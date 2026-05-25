@@ -112,6 +112,14 @@ RSpec.describe User do
       expect(user.dashboard_visible_columns(:workflows)).to eq(%w[title job workflow trigger state started finished agent])
     end
 
+    it "returns default Kanban lanes for each dashboard subject" do
+      user = User.create!(attrs)
+
+      expect(user.dashboard_visible_kanban_lanes(:epics)).to eq(%w[backlog ready in_progress done])
+      expect(user.dashboard_visible_kanban_lanes(:jobs)).to eq(%w[queued running landing])
+      expect(user.dashboard_visible_kanban_lanes(:workflows)).to eq(%w[queued running done])
+    end
+
     it "normalizes assigned preference keys and values" do
       user = User.create!(attrs)
       user.dashboard_preferences = { last_subject: :jobs, last_view: :kanban }
@@ -154,6 +162,23 @@ RSpec.describe User do
       user.update_dashboard_columns!(subject: :jobs, columns: %w[state repository])
 
       expect(user.reload.dashboard_visible_columns(:jobs)).to eq(%w[title state repository])
+    end
+
+    it "persists selected Kanban lanes" do
+      user = User.create!(attrs)
+
+      user.update_dashboard_kanban_lanes!(subject: :jobs, lanes: %w[blocked running failed])
+
+      expect(user.reload.dashboard_visible_kanban_lanes(:jobs)).to eq(%w[blocked running failed])
+      expect(user.dashboard_preferences.fetch("jobs").fetch("kanban_lanes")).to eq(%w[blocked running failed])
+    end
+
+    it "rejects unknown Kanban lanes" do
+      user = User.create!(attrs)
+
+      expect {
+        user.update_dashboard_kanban_lanes!(subject: :workflows, lanes: %w[queued vaporized])
+      }.to raise_error(ArgumentError, "Unknown dashboard Kanban lanes: vaporized")
     end
   end
 

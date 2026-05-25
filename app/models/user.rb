@@ -25,18 +25,26 @@ class User < ApplicationRecord
     "epics" => {
       "sort_column" => "updated_at",
       "sort_direction" => "desc",
-      "visible_columns" => %w[epic state repository updated]
+      "visible_columns" => %w[epic state repository updated],
+      "kanban_lanes" => %w[backlog ready in_progress done]
     },
     "jobs" => {
       "sort_column" => "created_at",
       "sort_direction" => "desc",
-      "visible_columns" => %w[checkbox issue state repository latest workflows_count started]
+      "visible_columns" => %w[checkbox issue state repository latest workflows_count started],
+      "kanban_lanes" => %w[queued running landing]
     },
     "workflows" => {
       "sort_column" => "started_at",
       "sort_direction" => "desc",
-      "visible_columns" => %w[workflow job trigger state started finished agent]
+      "visible_columns" => %w[workflow job trigger state started finished agent],
+      "kanban_lanes" => %w[queued running done]
     }
+  }.freeze
+  DASHBOARD_KANBAN_LANES = {
+    "epics" => %w[backlog ready in_progress done],
+    "jobs" => %w[blocked queued running succeeded landing failed],
+    "workflows" => %w[queued running done succeeded failed]
   }.freeze
   DASHBOARD_REQUIRED_COLUMNS = {
     "epics" => %w[epic],
@@ -158,6 +166,15 @@ class User < ApplicationRecord
     (required_columns + columns).uniq
   end
 
+  def dashboard_visible_kanban_lanes(subject)
+    subject_key = normalize_dashboard_preference_table(subject)
+    known_lanes = DASHBOARD_KANBAN_LANES.fetch(subject_key)
+    lanes = Array(dashboard_preferences.fetch(subject_key)["kanban_lanes"]).map(&:to_s).reject(&:blank?)
+    selected_lanes = lanes.select { |lane| known_lanes.include?(lane) }
+
+    selected_lanes.presence || dashboard_default_kanban_lanes_for(subject_key)
+  end
+
   def update_dashboard_sort!(subject:, column:, direction:)
     subject_key = normalize_dashboard_preference_table(subject)
     normalized_subject = normalize_dashboard_preference_subject(subject)
@@ -196,6 +213,24 @@ class User < ApplicationRecord
     required_columns = %w[title] if subject_key == "jobs" && columns.include?("repository")
     updated[subject_key] = updated.fetch(subject_key).merge(
       "visible_columns" => (required_columns + columns).uniq
+    )
+
+    update!(dashboard_preferences: updated) if updated != dashboard_preferences
+  end
+
+  def update_dashboard_kanban_lanes!(subject:, lanes:)
+    subject_key = normalize_dashboard_preference_table(subject)
+    known_lanes = DASHBOARD_KANBAN_LANES.fetch(subject_key)
+    lanes = Array(lanes).map(&:to_s).reject(&:blank?)
+    unknown_lanes = lanes - known_lanes
+
+    if unknown_lanes.any?
+      raise ArgumentError, "Unknown dashboard Kanban lanes: #{unknown_lanes.to_sentence}"
+    end
+
+    updated = dashboard_preferences
+    updated[subject_key] = updated.fetch(subject_key).merge(
+      "kanban_lanes" => lanes.presence || dashboard_default_kanban_lanes_for(subject_key)
     )
 
     update!(dashboard_preferences: updated) if updated != dashboard_preferences
@@ -327,7 +362,11 @@ class User < ApplicationRecord
       next if value.blank?
 
       normalized_key = key.to_s
-      hash[normalized_key] = normalized_key == "visible_columns" ? Array(value).map(&:to_s) : value.to_s
+      hash[normalized_key] = if normalized_key.in?(%w[visible_columns kanban_lanes])
+        Array(value).map(&:to_s)
+      else
+        value.to_s
+      end
     end
   end
 
@@ -383,6 +422,10 @@ class User < ApplicationRecord
 
   def dashboard_default_columns_for(subject)
     DASHBOARD_REQUIRED_COLUMNS.fetch(subject) + DASHBOARD_OPTIONAL_COLUMNS.fetch(subject, [])
+  end
+
+  def dashboard_default_kanban_lanes_for(subject)
+    DASHBOARD_PREFERENCES_DEFAULTS.fetch(subject).fetch("kanban_lanes").dup
   end
 
   def normalize_dashboard_columns(subject, columns)

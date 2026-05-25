@@ -58,16 +58,17 @@ function installDocument() {
   return listeners
 }
 
-function buildController(Controller, { dataset = {}, checkedColumns = [] } = {}) {
+function buildController(Controller, { dataset = {}, checkedValues = [] } = {}) {
   const panelTarget = { classList: new ClassList([ "hidden" ]) }
+  const fieldName = dataset.columnPickerFieldName || "visible_columns[]"
   const element = {
     dataset,
     contains(target) {
       return target === this || target === panelTarget
     },
     querySelectorAll(selector) {
-      if (selector === "input[type=checkbox][name='visible_columns[]']:checked") {
-        return checkedColumns.map((value) => ({ value }))
+      if (selector === `input[type=checkbox][name='${fieldName}']:checked`) {
+        return checkedValues.map((value) => ({ value }))
       }
       return []
     }
@@ -125,7 +126,7 @@ test("patches preferences and refreshes the current page after save", async () =
       columnPickerEndpoint: "/dashboard/preferences",
       columnPickerSubject: "jobs"
     },
-    checkedColumns: [ "state", "repository" ]
+    checkedValues: [ "state", "repository" ]
   })
 
   await controller.save({ preventDefault() {} })
@@ -135,9 +136,47 @@ test("patches preferences and refreshes the current page after save", async () =
   assert.equal(fetchCall.options.headers["X-CSRF-Token"], "csrf-token")
   assert.deepEqual(appended, [
     [ "subject", "jobs" ],
+    [ "visible_columns[]", "" ],
     [ "visible_columns[]", "state" ],
     [ "visible_columns[]", "repository" ]
   ])
   assert.equal(globalThis.window.Turbo.lastVisit.url, "/?subject=job&view=list")
   assert.deepEqual(globalThis.window.Turbo.lastVisit.options, { action: "replace" })
+})
+
+test("patches a configured checkbox field name", async () => {
+  installDocument()
+  const { default: Controller } = await loadController()
+  const appended = []
+  globalThis.FormData = class FormData {
+    constructor() {
+      this.entries = []
+    }
+    append(name, value) {
+      this.entries.push([ name, value ])
+      appended.push([ name, value ])
+    }
+  }
+  globalThis.fetch = async () => ({ ok: true })
+  globalThis.window = {
+    location: { href: "/?subject=job&view=kanban" },
+    Turbo: { visit() {} }
+  }
+  const controller = buildController(Controller, {
+    dataset: {
+      columnPickerEndpoint: "/dashboard/preferences",
+      columnPickerSubject: "jobs",
+      columnPickerFieldName: "kanban_lanes[]"
+    },
+    checkedValues: [ "queued", "landing" ]
+  })
+
+  await controller.save({ preventDefault() {} })
+
+  assert.deepEqual(appended, [
+    [ "subject", "jobs" ],
+    [ "kanban_lanes[]", "" ],
+    [ "kanban_lanes[]", "queued" ],
+    [ "kanban_lanes[]", "landing" ]
+  ])
 })

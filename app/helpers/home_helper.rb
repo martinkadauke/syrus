@@ -52,6 +52,29 @@ module HomeHelper
     ],
     "workflows" => %w[created_at updated_at started_at finished_at cleaned_up_at]
   }.freeze
+  DASHBOARD_KANBAN_LANE_LABELS = {
+    "epics" => {
+      "backlog" => "Backlog",
+      "ready" => "Ready",
+      "in_progress" => "In Progress",
+      "done" => "Done"
+    },
+    "jobs" => {
+      "blocked" => "Blocked",
+      "queued" => "Queued",
+      "running" => "Running",
+      "succeeded" => "Succeeded",
+      "landing" => "Landing",
+      "failed" => "Failed"
+    },
+    "workflows" => {
+      "queued" => "Queued",
+      "running" => "Running",
+      "done" => "Done",
+      "succeeded" => "Succeeded",
+      "failed" => "Failed"
+    }
+  }.freeze
 
   def dashboard_column_visible?(subject, column)
     Current.user.dashboard_visible_columns(subject).include?(column.to_s)
@@ -71,5 +94,17 @@ module HomeHelper
 
   def dashboard_timestamp_columns(subject)
     DASHBOARD_TIMESTAMP_COLUMNS.fetch(subject.to_s)
+  end
+
+  def dashboard_kanban_lanes(subject)
+    User::DASHBOARD_KANBAN_LANES.fetch(subject.to_s)
+  end
+
+  def dashboard_kanban_lane_visible?(subject, lane)
+    Current.user.dashboard_visible_kanban_lanes(subject).include?(lane.to_s)
+  end
+
+  def dashboard_kanban_lane_label(subject, lane)
+    DASHBOARD_KANBAN_LANE_LABELS.dig(subject.to_s, lane.to_s) || lane.to_s.humanize
   end
 end

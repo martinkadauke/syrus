@@ -7,12 +7,13 @@ class HomeController < ApplicationController
   KANBAN_LIMIT_OPTIONS = [ 10, 25, 50, 100 ].freeze
   KANBAN_PER_PAGE = 100
   JOB_KANBAN_LANES = [
+    { key: "blocked", title: "Blocked" },
     { key: "queued", title: "Queued" },
     { key: "running", title: "Running" },
     { key: "succeeded", title: "Succeeded" },
+    { key: "landing", title: "Landing" },
     { key: "failed", title: "Failed" }
   ].freeze
-  WORKFLOW_KANBAN_COLUMNS = %w[queued running done].freeze
   WORKFLOW_DONE_STATES = %w[succeeded failed cancelled].freeze
 
   before_action :persist_dashboard_preferences_from_params, only: %i[index epics jobs workflows]
@@ -78,6 +79,13 @@ class HomeController < ApplicationController
       )
     end
 
+    if params.key?(:kanban_lanes)
+      Current.user.update_dashboard_kanban_lanes!(
+        subject: subject,
+        lanes: params[:kanban_lanes]
+      )
+    end
+
     respond_to do |format|
       format.turbo_stream { head :ok }
       format.html do
@@ -130,10 +138,17 @@ class HomeController < ApplicationController
   end
 
   def preferences
+    subject = params.require(:subject)
+
     Current.user.update_dashboard_columns!(
-      subject: params.require(:subject),
+      subject: subject,
       columns: params.fetch(:visible_columns, [])
-    )
+    ) if params.key?(:visible_columns)
+
+    Current.user.update_dashboard_kanban_lanes!(
+      subject: subject,
+      lanes: params.fetch(:kanban_lanes, [])
+    ) if params.key?(:kanban_lanes)
 
     head :no_content
   end
@@ -258,12 +273,13 @@ class HomeController < ApplicationController
                                           { jobs: :repository },
                                           { dependencies: :depends_on_epic },
                                           { dependent_links: :epic })
+    @epic_kanban_columns = Current.user.dashboard_visible_kanban_lanes(:epics)
     @epic_records = @filter.apply(kanban_scope)
-                            .where(state: Epic::BOARD_STATES)
+                            .where(state: @epic_kanban_columns)
                             .order(updated_at: :desc, id: :desc)
                             .limit(@kanban_limit)
                             .to_a
-    @epic_lanes = Epic::BOARD_STATES.index_with { |state| @epic_records.select { |epic| epic.state == state } }
+    @epic_lanes = @epic_kanban_columns.index_with { |state| @epic_records.select { |epic| epic.state == state } }
     @epics_matching_count = @epics_total
     # See epic_list — inactive-tab badge is the unfiltered total.
     @jobs_matching_count = jobs_total_for_dashboard(active_repo_ids)
@@ -356,7 +372,6 @@ class HomeController < ApplicationController
     end
     @jobs = @jobs.is_a?(Array) ? @jobs.slice((@page - 1) * PER_PAGE, PER_PAGE) || [] : @jobs.offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
     @pinned_job_ids = Current.user.job_pins.where(job_id: @jobs.map(&:id)).pluck(:job_id)
-
   end
 
   def load_workflows_dashboard
@@ -475,12 +490,15 @@ class HomeController < ApplicationController
   end
 
   def load_workflow_kanban
-    workflows = @workflows.order(created_at: :desc, id: :desc)
+    @workflow_kanban_columns = Current.user.dashboard_visible_kanban_lanes(:workflows)
+    candidate_states = workflow_kanban_candidate_states(@workflow_kanban_columns)
+    workflows = @workflows.where(state: candidate_states)
+                          .order(created_at: :desc, id: :desc)
                           .limit(@kanban_limit)
                           .to_a
-    @workflow_kanban_records = WORKFLOW_KANBAN_COLUMNS.to_h { |column| [ column, [] ] }
+    @workflow_kanban_records = @workflow_kanban_columns.to_h { |column| [ column, [] ] }
     workflows.each do |workflow|
-      column = WORKFLOW_DONE_STATES.include?(workflow.state) ? "done" : workflow.state
+      column = workflow_kanban_column_for(workflow, @workflow_kanban_columns)
       @workflow_kanban_records[column] << workflow if @workflow_kanban_records.key?(column)
     end
   end
@@ -493,18 +511,79 @@ class HomeController < ApplicationController
     # into one Cartesian SELECT — at ~15 runs × 3 deps × 3 tags per
     # job, 100 kanban cards becomes 135k result rows and ~1.6s of
     # AR time in prod. .preload guarantees separate small queries.
+    visible_lanes = Current.user.dashboard_visible_kanban_lanes(:jobs)
+    @job_kanban_lane_defs = JOB_KANBAN_LANES.select { |lane| visible_lanes.include?(lane.fetch(:key)) }
+    candidate_states = job_kanban_candidate_states(visible_lanes)
     kanban_jobs = @jobs
+      .where(state: candidate_states)
       .with_latest_workflow_snapshot
       .preload(:repository, :runs, { dependencies: :depends_on_job }, :tags)
       .order(created_at: :desc)
       .limit(@kanban_limit)
       .to_a
 
-    @job_kanban_lanes = JOB_KANBAN_LANES.to_h { |lane| [ lane.fetch(:key), [] ] }
+    @job_kanban_lanes = @job_kanban_lane_defs.to_h { |lane| [ lane.fetch(:key), [] ] }
     kanban_jobs.each do |job|
-      lane = JOB_KANBAN_LANES.find { |candidate| candidate.fetch(:key) == job.latest_workflow_state }&.fetch(:key) || "queued"
-      @job_kanban_lanes[lane] << job
+      lane = job_kanban_lane_for(job)
+      @job_kanban_lanes[lane] << job if @job_kanban_lanes.key?(lane)
     end
+  end
+
+  def workflow_kanban_candidate_states(columns)
+    states = []
+    states << "queued" if columns.include?("queued")
+    states << "running" if columns.include?("running")
+    states.concat(WORKFLOW_DONE_STATES) if columns.include?("done")
+    states << "succeeded" if columns.include?("succeeded")
+    states << "failed" if columns.include?("failed")
+    states.uniq
+  end
+
+  def workflow_kanban_column_for(workflow, columns)
+    case workflow.state
+    when "queued", "running"
+      workflow.state
+    when "succeeded"
+      columns.include?("succeeded") ? "succeeded" : "done"
+    when "failed"
+      columns.include?("failed") ? "failed" : "done"
+    else
+      "done" if WORKFLOW_DONE_STATES.include?(workflow.state)
+    end
+  end
+
+  def job_kanban_candidate_states(lanes)
+    states = []
+    states.concat(%w[triaging queued]) if lanes.include?("queued")
+    states << "running" if lanes.include?("running")
+    states.concat(%w[implemented closed]) if lanes.include?("succeeded")
+    states.concat(%w[approved landing]) if lanes.include?("landing")
+    states << "failed" if lanes.include?("failed")
+    states.concat(%w[triaging blocked_by_epic queued running implemented failed approved landing]) if lanes.include?("blocked")
+    states.uniq
+  end
+
+  def job_kanban_lane_for(job)
+    if job.approved? || job.landing?
+      "landing"
+    elsif job_blocked_for_kanban?(job)
+      "blocked"
+    elsif job.failed? || job.latest_workflow_state == "failed" || (job.closed? && !job.dependency_succeeded?)
+      "failed"
+    elsif job.running? || job.latest_workflow_state == "running"
+      "running"
+    elsif job.implemented? || job.latest_workflow_state == "succeeded" || job.dependency_succeeded?
+      "succeeded"
+    else
+      "queued"
+    end
+  end
+
+  def job_blocked_for_kanban?(job)
+    return true if job.blocked_by_epic?
+    return false unless job.open?
+
+    job.pr_mergeable == false || job.unsatisfied_dependencies.any?
   end
 
   def tag_filter_ids

@@ -161,7 +161,8 @@ RSpec.describe "Dashboard", type: :request do
               subject: "jobs",
               sort_column: "started_at",
               sort_direction: "asc",
-              visible_columns: %w[state repository]
+              visible_columns: %w[state repository],
+              kanban_lanes: %w[queued landing]
             },
             headers: { "HTTP_REFERER" => dashboard_jobs_path }
 
@@ -170,7 +171,8 @@ RSpec.describe "Dashboard", type: :request do
       expect(preferences).to include(
         "sort_column" => "started_at",
         "sort_direction" => "asc",
-        "visible_columns" => %w[title state repository]
+        "visible_columns" => %w[title state repository],
+        "kanban_lanes" => %w[queued landing]
       )
     end
 
@@ -186,6 +188,19 @@ RSpec.describe "Dashboard", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(response.body).to include("Unknown dashboard sort column: priority")
       expect(user.reload.dashboard_sort(:jobs)).to eq(column: "created_at", direction: "desc")
+    end
+
+    it "returns an error for invalid dashboard Kanban lanes" do
+      patch dashboard_preferences_path,
+            params: {
+              subject: "workflows",
+              kanban_lanes: %w[queued ablaze]
+            },
+            headers: { "ACCEPT" => "text/vnd.turbo-stream.html" }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(response.body).to include("Unknown dashboard Kanban lanes: ablaze")
+      expect(user.reload.dashboard_visible_kanban_lanes(:workflows)).to eq(%w[queued running done])
     end
 
     it "hides omitted optional Epic list columns from desktop table cells" do
@@ -403,7 +418,7 @@ RSpec.describe "Dashboard", type: :request do
 
       expect(response).to have_http_status(:ok)
       document = Nokogiri::HTML(response.body)
-      expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Queued", "Running", "Succeeded", "Failed" ])
+      expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Queued", "Running", "Landing" ])
       expect(response.body).to include("#77", "Count the tablets")
     end
 
@@ -421,6 +436,20 @@ RSpec.describe "Dashboard", type: :request do
       get root_path, params: { subject: "job", view: "list" }
       document = Nokogiri::HTML(response.body)
       expect(document.at_css("[data-kanban-limit-selector]")).to be_nil
+    end
+
+    it "renders a persisted Kanban lane picker in Kanban mode" do
+      Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      get root_path, params: { subject: "job", view: "kanban" }
+
+      document = Nokogiri::HTML(response.body)
+      picker = document.at_css("[data-column-picker-field-name='kanban_lanes[]']")
+      expect(picker).to be_present
+      expect(picker["data-column-picker-subject"]).to eq("jobs")
+      checked_lanes = picker.css("input[name='kanban_lanes[]']").select { |input| input["checked"] }
+      expect(checked_lanes.map { |input| input["value"] }).to eq(%w[queued running landing])
+      expect(picker.css("input[name='kanban_lanes[]']").map { |input| input["value"] }).to eq(%w[blocked queued running succeeded landing failed])
     end
 
     it "renders the Epics Kanban board with real cards" do
@@ -447,6 +476,21 @@ RSpec.describe "Dashboard", type: :request do
       expect(kanban_card["data-epic-state-url"]).to eq(state_epic_path(epic))
       expect(response.body).to include("Override state")
       expect(kanban_card.at_css("button[data-action='kanban#closeMenuOnSelect']")).to be_present
+    end
+
+    it "renders only selected Epic Kanban lanes" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      user.update_dashboard_kanban_lanes!(subject: :epics, lanes: %w[ready done])
+      Factories.epic(user: user, repository: repo, title: "Hidden backlog", state: "backlog")
+      Factories.epic(user: user, repository: repo, title: "Ready forum", state: "ready")
+      Factories.epic(user: user, repository: repo, title: "Finished forum", state: "done")
+
+      get root_path, params: { subject: "epic", view: "kanban" }
+
+      document = Nokogiri::HTML(response.body)
+      expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Ready", "Done" ])
+      expect(response.body).to include("Ready forum", "Finished forum")
+      expect(response.body).not_to include("Hidden backlog")
     end
 
     it "applies the Kanban limit selector to Epic boards" do
@@ -725,14 +769,17 @@ RSpec.describe "Dashboard", type: :request do
       expect(pin["data-turbo-method"]).to eq("post")
     end
 
-    it "renders the read-only Job Kanban board bucketed by latest workflow state" do
+    it "renders the read-only Job Kanban board bucketed by selected lanes" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      user.update_dashboard_kanban_lanes!(subject: :jobs, lanes: %w[blocked queued running succeeded landing failed])
+      blocked = Factories.job_record(repository: repo, issue_number: 6, issue_title: "Wait for the forum", state: "blocked_by_epic")
       pre_run = Factories.job_record(repository: repo, issue_number: 1, issue_title: "Await the first trumpet")
       running = Factories.job(repository: repo, issue_number: 2, issue_title: "March immediately")
       running.latest_workflow.update!(state: "running", created_at: 3.minutes.ago)
       succeeded = Factories.job(repository: repo, issue_number: 3, issue_title: "Return triumphant", pr_number: 8)
       succeeded.latest_workflow.update!(state: "succeeded", created_at: 2.minutes.ago)
       succeeded.initial_run.update!(state: "succeeded")
+      landing = Factories.job_record(repository: repo, issue_number: 5, issue_title: "Enter the landing queue", state: "approved")
       failed = Factories.job(repository: repo, issue_number: 4, issue_title: "Drop the standard")
       failed.latest_workflow.update!(state: "failed", trigger_kind: "retry", created_at: 1.minute.ago)
       failed.initial_run.update!(state: "failed")
@@ -742,11 +789,13 @@ RSpec.describe "Dashboard", type: :request do
       expect(response).to have_http_status(:ok)
       document = Nokogiri::HTML(response.body)
       lane_titles = document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }
-      expect(lane_titles).to eq([ "Queued", "Running", "Succeeded", "Failed" ])
+      expect(lane_titles).to eq([ "Blocked", "Queued", "Running", "Succeeded", "Landing", "Failed" ])
 
+      expect(document.at_css("[data-kanban-lane='blocked']").text).to include("#6", "Wait for the forum")
       expect(document.at_css("[data-kanban-lane='queued']").text).to include("#1", "Await the first trumpet", "No workflow yet")
       expect(document.at_css("[data-kanban-lane='running']").text).to include("#2", "March immediately", "running", "initial")
       expect(document.at_css("[data-kanban-lane='succeeded']").text).to include("#3", "Return triumphant", "awaiting feedback")
+      expect(document.at_css("[data-kanban-lane='landing']").text).to include("#5", "Enter the landing queue")
       expect(document.at_css("[data-kanban-lane='failed']").text).to include("#4", "Drop the standard", "failed", "retry")
 
       card = document.at_css("[data-job-id='#{failed.id}']")
@@ -1556,6 +1605,26 @@ RSpec.describe "Dashboard", type: :request do
         expect(document.at_css("[data-kanban-lane='running']").text).to include("Cross the Rubicon", "running for")
         expect(document.at_css("[data-kanban-lane='done']").text).to include("Misplace the laurel", "failed")
         expect(document.css("[data-workflow-id]").map { |card| card["draggable"] }).to all(be_nil)
+      end
+
+      it "renders selected Workflow terminal lanes without duplicating records in Done" do
+        repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+        user.update_dashboard_kanban_lanes!(subject: :workflows, lanes: %w[queued running done succeeded failed])
+        succeeded = Factories.job(repository: repo, issue_number: 1, issue_title: "Return with laurel")
+        succeeded.latest_workflow.update!(state: "succeeded", finished_at: 4.minutes.ago)
+        failed = Factories.job(repository: repo, issue_number: 2, issue_title: "Drop the laurel")
+        failed.latest_workflow.update!(state: "failed", finished_at: 3.minutes.ago)
+        cancelled = Factories.job(repository: repo, issue_number: 3, issue_title: "Cancel the laurel")
+        cancelled.latest_workflow.update!(state: "cancelled", finished_at: 2.minutes.ago)
+
+        get root_path, params: { subject: "workflow", view: "kanban" }
+
+        document = Nokogiri::HTML(response.body)
+        expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Queued", "Running", "Done", "Succeeded", "Failed" ])
+        expect(document.at_css("[data-kanban-lane='done']").text).to include("Cancel the laurel")
+        expect(document.at_css("[data-kanban-lane='done']").text).not_to include("Return with laurel", "Drop the laurel")
+        expect(document.at_css("[data-kanban-lane='succeeded']").text).to include("Return with laurel")
+        expect(document.at_css("[data-kanban-lane='failed']").text).to include("Drop the laurel")
       end
 
       it "applies the Kanban limit selector to Workflow boards" do
