@@ -77,6 +77,25 @@ RSpec.describe RunJob, "step-dispatch path" do
     }.not_to have_enqueued_job(RunJob)
   end
 
+  it "does not overwrite a terminal state applied while the handler is running" do
+    externally_failed_handler = Class.new(Steps::Base) do
+      def call
+        external = Run.find(run.id)
+        external.fail!
+        external.save!
+      end
+    end
+    allow(Steps).to receive(:handler_for).and_return(externally_failed_handler)
+
+    run = StepDispatcher.start_workflow(workflow)
+    described_class.perform_now(run.id)
+
+    expect(run.reload.state).to eq("failed")
+    expect(s_implement.reload.state).to eq("failed")
+    expect(workflow.reload.state).to eq("failed")
+    expect(s_summarize.reload.runs).to be_empty
+  end
+
   it "marks the Run outcome awaiting_operator after an ask_operator question" do
     s_implement.update!(next_step_id: nil)
     asking_handler = Class.new(Steps::Base) do

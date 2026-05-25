@@ -51,8 +51,11 @@ class ReapStaleRunsJob < ApplicationJob
 
   # Find SolidQueue::Jobs for class_name=RunJob whose only execution
   # row is a failed_execution carrying a ProcessPrunedError. Pull
-  # the Run id out of the active_job arguments and reap each
-  # matching Run.
+  # the root Run id out of the active_job arguments, then expand it
+  # to any currently-running inline Runs in the same Workflow. RunJob
+  # drives an entire Workflow chain inline, so the SQ row can still
+  # reference the first Step's Run while the live work has advanced to
+  # a later Step's Run.
   #
   # The error is JSON-serialized in the failed_executions.error
   # column, so we LIKE-match the exception_class string. Portable
@@ -97,17 +100,22 @@ class ReapStaleRunsJob < ApplicationJob
     Rails.logger.debug("[ReapStaleRunsJob] SolidQueue tables unreachable (#{e.class}); skipping orphan-run path")
   end
 
-  # Returns the set of Run ids referenced by any non-finalized
-  # SQ::Job for class_name=RunJob. Plain pluck + Ruby filter — the
-  # active set is small (zero to a few dozen Runs at any moment),
-  # so the cost is bounded.
+  # Returns the set of Run ids owned by any non-finalized SQ::Job for
+  # class_name=RunJob. The SQ row's arguments only contain the root
+  # Run id passed to RunJob.perform. Because RunJob processes the rest
+  # of that Workflow inline, a later Step's Run may be `running` with
+  # no SQ row that names it directly. Treat all running Runs in those
+  # active Workflows as active.
   def active_run_job_run_ids
+    expand_root_run_ids_to_running_inline_runs(active_run_job_root_run_ids)
+  end
+
+  def active_run_job_root_run_ids
     SolidQueue::Job
       .where(class_name: "RunJob", finished_at: nil)
       .pluck(:arguments)
       .filter_map { |args| args&.dig("arguments")&.first }
       .map(&:to_i)
-      .to_set
   end
 
   # Returns the set of Run ids whose RunJob's SQ::Job has a
@@ -117,6 +125,16 @@ class ReapStaleRunsJob < ApplicationJob
   # since the last reap" — usually 0, occasionally a small batch
   # right after a deploy.
   def pruned_run_ids_from_solid_queue
+    expand_root_run_ids_to_running_inline_runs(pruned_root_run_ids_from_solid_queue)
+  rescue ActiveRecord::StatementInvalid => e
+    # The SolidQueue tables aren't reachable from this connection
+    # — local dev/test runs single-database, so the queue tables
+    # don't exist there. Heartbeat-stale path still covers this.
+    Rails.logger.debug("[ReapStaleRunsJob] SolidQueue tables unreachable (#{e.class}); skipping pruned-worker fast path")
+    Set.new
+  end
+
+  def pruned_root_run_ids_from_solid_queue
     SolidQueue::Job
       .where(class_name: "RunJob")
       .joins(:failed_execution)
@@ -125,12 +143,26 @@ class ReapStaleRunsJob < ApplicationJob
       .filter_map { |args| args&.dig("arguments")&.first }
       .map(&:to_i)
       .uniq
-  rescue ActiveRecord::StatementInvalid => e
-    # The SolidQueue tables aren't reachable from this connection
-    # — local dev/test runs single-database, so the queue tables
-    # don't exist there. Heartbeat-stale path still covers this.
-    Rails.logger.debug("[ReapStaleRunsJob] SolidQueue tables unreachable (#{e.class}); skipping pruned-worker fast path")
-    []
+  end
+
+  def expand_root_run_ids_to_running_inline_runs(root_run_ids)
+    root_run_ids = root_run_ids.map(&:to_i).uniq
+    return Set.new if root_run_ids.empty?
+
+    workflow_ids = Run.joins(:step)
+                      .where(id: root_run_ids)
+                      .distinct
+                      .pluck("steps.workflow_id")
+                      .compact
+
+    inline_run_ids = if workflow_ids.empty?
+      []
+    else
+      Run.joins(:step)
+         .where(state: "running", steps: { workflow_id: workflow_ids })
+         .pluck(:id)
+    end
+    (root_run_ids + inline_run_ids).map(&:to_i).to_set
   end
 
   def reap!(run, reason:)

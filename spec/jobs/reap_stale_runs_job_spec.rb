@@ -15,6 +15,30 @@ RSpec.describe ReapStaleRunsJob do
     run
   end
 
+  def inline_workflow_runs
+    workflow = Workflow.create!(job: job, trigger_kind: "initial")
+    root_step = Step.create!(workflow: workflow, kind: "prepare", position: 0)
+    inline_step = Step.create!(workflow: workflow, kind: "implement", position: 1)
+    root_step.update!(next_step_id: inline_step.id)
+
+    root_run = root_step.runs.create!(job: job, trigger_kind: "initial")
+    root_run.update_columns(
+      state: "succeeded",
+      started_at: 5.minutes.ago,
+      finished_at: 4.minutes.ago
+    )
+
+    age = ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds
+    inline_run = inline_step.runs.create!(job: job, trigger_kind: "initial")
+    inline_run.update_columns(
+      state: "running",
+      started_at: age.ago,
+      last_heartbeat_at: age.ago
+    )
+
+    [ workflow, root_run, inline_run ]
+  end
+
   describe "#perform" do
     it "marks a run with stale heartbeat as failed" do
       run = running_run(heartbeat_age: Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes)
@@ -85,6 +109,12 @@ RSpec.describe ReapStaleRunsJob do
           .and_return(run_ids.map(&:to_i))
       end
 
+      def stub_pruned_roots(*run_ids)
+        allow_any_instance_of(described_class)
+          .to receive(:pruned_root_run_ids_from_solid_queue)
+          .and_return(run_ids.map(&:to_i))
+      end
+
       it "reaps a running Run whose SQ::Job was failed with ProcessPrunedError, even if heartbeat is fresh" do
         # Fresh heartbeat — heartbeat-stale path WOULD NOT reap. Only
         # the SQ-pruned signal does.
@@ -117,6 +147,16 @@ RSpec.describe ReapStaleRunsJob do
         expect(sq_pruned.reload.state).to eq("failed")  # via SQ signal
         expect(old.reload.state).to eq("failed")        # via heartbeat-stale
       end
+
+      it "reaps a running inline Run when the owning root RunJob was pruned" do
+        _workflow, root_run, inline_run = inline_workflow_runs
+        stub_pruned_roots(root_run.id)
+
+        described_class.perform_now
+
+        expect(inline_run.reload.state).to eq("failed")
+        expect(inline_run.agent_outcome).to eq("worker_died")
+      end
     end
 
     describe "orphan-run path: Run :running but no SQ::Job" do
@@ -128,6 +168,12 @@ RSpec.describe ReapStaleRunsJob do
         allow_any_instance_of(described_class)
           .to receive(:active_run_job_run_ids)
           .and_return(ids.map(&:to_i).to_set)
+      end
+
+      def stub_active_root_run_ids(*ids)
+        allow_any_instance_of(described_class)
+          .to receive(:active_run_job_root_run_ids)
+          .and_return(ids.map(&:to_i))
       end
 
       it "reaps a Run past the grace window whose SQ::Job has disappeared" do
@@ -143,6 +189,15 @@ RSpec.describe ReapStaleRunsJob do
         stub_active_run_ids(run.id)  # pretend SQ::Job for this Run is alive
         described_class.perform_now
         expect(run.reload.state).to eq("running")
+      end
+
+      it "leaves a running inline Run alone when an active root RunJob owns its Workflow" do
+        _workflow, root_run, inline_run = inline_workflow_runs
+        stub_active_root_run_ids(root_run.id)
+
+        described_class.perform_now
+
+        expect(inline_run.reload.state).to eq("running")
       end
 
       it "leaves a brand-new Run alone (inside the grace window)" do

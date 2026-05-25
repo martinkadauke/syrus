@@ -156,6 +156,14 @@ class RunJob < ApplicationJob
     @handler = Steps.handler_for(@step.kind).new(@run)
     @handler.call
 
+    # A reaper, operator stop, or another state propagator can make
+    # this Run/Step/Workflow terminal while the handler is still
+    # executing. Reload before deciding success so we don't overwrite
+    # that terminal state from stale in-memory records.
+    @run.reload
+    @step.reload
+    @workflow.reload
+
     return if @run.terminal? || @step.terminal? || @workflow.terminal?
 
     @run.agent_outcome = "awaiting_operator" if @run.operator_questions.exists?
