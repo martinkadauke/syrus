@@ -11,11 +11,26 @@ class PollAllMergeStatesJob < ApplicationJob
   def perform
     return if AppSetting.polling_paused?
 
-    Job.joins(:repository)
-       .merge(Repository.active)
-       .where("pr_number IS NOT NULL OR external_pr_number IS NOT NULL")
-       .find_each do |job|
+    pollable_jobs.find_each do |job|
       PollMergeStateJob.perform_later(job.id)
     end
+  end
+
+  private
+
+  def pollable_jobs
+    Job.joins(:repository)
+       .merge(Repository.active)
+       .where(<<~SQL.squish, closed: "closed", preempted: "preempted")
+         (
+           jobs.state != :closed
+           AND (jobs.pr_number IS NOT NULL OR jobs.external_pr_number IS NOT NULL)
+         )
+         OR (
+           jobs.state = :closed
+           AND jobs.closure_reason = :preempted
+           AND jobs.external_pr_number IS NOT NULL
+         )
+       SQL
   end
 end

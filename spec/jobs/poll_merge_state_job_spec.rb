@@ -37,6 +37,27 @@ RSpec.describe PollMergeStateJob do
     expect(job.approved_at).to be_present
   end
 
+  it "short-circuits when polling is paused, even if the child job was already queued" do
+    AppSetting.current.update!(polling_paused: true)
+
+    expect_any_instance_of(GithubClient).not_to receive(:pull_request)
+
+    expect {
+      described_class.perform_now(job.id)
+    }.not_to change { job.reload.pr_mergeable_checked_at }
+  ensure
+    AppSetting.current.update!(polling_paused: false)
+  end
+
+  it "uses the cached GitHub client path for periodic polling" do
+    expect_any_instance_of(GithubClient)
+      .to receive(:pull_request)
+      .with("acme/widgets", 7, bypass_cache: false)
+      .and_return(pr)
+
+    described_class.perform_now(job.id)
+  end
+
   it "re-approves after a cancelled transient auto-merge attempt" do
     cancelled = Workflows::AutoMerge.instantiate(job: job)
     cancelled.cancel!
@@ -102,7 +123,7 @@ RSpec.describe PollMergeStateJob do
     external.workflows.update_all(state: "succeeded")
     expect_any_instance_of(GithubClient)
       .to receive(:pull_request)
-      .with("acme/widgets", 99, bypass_cache: true)
+      .with("acme/widgets", 99, bypass_cache: false)
       .and_return(pr)
 
     described_class.perform_now(external.id)

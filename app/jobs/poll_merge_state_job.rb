@@ -5,6 +5,8 @@ class PollMergeStateJob < ApplicationJob
   limits_concurrency to: 1, key: ->(job_id) { "merge_state_poll:#{job_id}" }
 
   def perform(job_id)
+    return if AppSetting.polling_paused?
+
     @job = Job.find_by(id: job_id)
     return unless @job
 
@@ -17,7 +19,7 @@ class PollMergeStateJob < ApplicationJob
     return if @job.workflows.active.exists?
 
     @client = GithubClient.for(repository: @job.repository, user: @job.user)
-    @pr = @client.pull_request(@job.repository.slug, pr_number, bypass_cache: true)
+    @pr = @client.pull_request(@job.repository.slug, pr_number, bypass_cache: false)
     persist_mergeable(@pr.mergeable)
 
     return if @pr.merged

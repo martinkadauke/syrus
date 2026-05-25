@@ -24,6 +24,16 @@ RSpec.describe PollAllMergeStatesJob do
     }.to have_enqueued_job(PollMergeStateJob).with(external.id)
   end
 
+  it "does not fan out for closed Syrus-authored PRs" do
+    closed = Factories.job(pr_number: 7, branch_name: "syrus/issue-1-1")
+    closed.close!
+    closed.save!
+
+    expect {
+      described_class.perform_now
+    }.not_to have_enqueued_job(PollMergeStateJob).with(closed.id)
+  end
+
   it "skips Jobs whose Repository is archived" do
     archived_repo = Factories.repository
     archived_repo.archive!
