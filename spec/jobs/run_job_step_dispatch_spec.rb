@@ -217,7 +217,11 @@ RSpec.describe RunJob, "step-dispatch path" do
       allow(Steps).to receive(:handler_for).and_return(handler_class)
 
       StepDispatcher.start_workflow(loop_wf)
-      described_class.perform_now(implement.runs.last.id)
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+
+      expect {
+        described_class.perform_now(implement.runs.last.id)
+      }.not_to have_enqueued_job(RunJob)
 
       second_implement = loop_wf.reload.steps.find_by!(kind: "implement", iteration: 2)
       expect(second_implement.runs.last.parent_session_id).to eq("S-1")

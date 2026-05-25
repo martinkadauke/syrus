@@ -154,8 +154,6 @@ class StepDispatcher
     continuation = current_grade.next_step
     insertion_position = current_grade.position + 1
     next_iteration = current_grade.iteration + 1
-    next_run = nil
-
     Step.transaction do
       loop_step_count = loop_node.fetch("steps").size
       @workflow.steps.where("position >= ?", insertion_position).update_all(
@@ -176,10 +174,8 @@ class StepDispatcher
       ([ previous ] + new_steps).each_cons(2) { |step, next_step| step.update!(next_step_id: next_step.id) }
       new_steps.last.update!(next_step_id: continuation&.id)
 
-      next_run = self.class.create_run_and_enqueue(new_steps.first, @workflow, parent_session_id: prior_iteration_session_id)
+      self.class.create_run_and_enqueue(new_steps.first, @workflow, parent_session_id: prior_iteration_session_id)
     end
-
-    enqueue_loop_run_after_inline_failure(next_run)
   end
 
   def next_loop_iteration_already_materialized?(current_grade)
@@ -217,12 +213,6 @@ class StepDispatcher
 
     @workflow.fail!
     @workflow.save!
-  end
-
-  def enqueue_loop_run_after_inline_failure(run)
-    return unless run && Thread.current[:syrus_in_run_job]
-
-    RunJob.set(priority: @workflow.job.solid_queue_priority).perform_later(run.id)
   end
 
   def prior_iteration_session_id
