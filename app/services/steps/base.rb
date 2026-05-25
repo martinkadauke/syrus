@@ -166,9 +166,9 @@ module Steps
 
     # ---- Workspace + git helpers ----
 
-    # `git diff <default>...HEAD` for what THIS branch contributed
-    # since it diverged from default. Three-dot — what GitHub's
-    # "Files changed" tab shows.
+    # `git diff origin/<default>...HEAD` for what THIS branch
+    # contributed since it diverged from default. Three-dot — what
+    # GitHub's "Files changed" tab shows.
     #
     # Uses a non-streaming GitRunner: the diff is captured as the
     # return value (stored on Run#agent_diff and rendered on the Job
@@ -178,8 +178,12 @@ module Steps
     # data that already lives in Run#agent_diff. Mirror the same
     # capture-only pattern head_sha uses below.
     def diff_against_default
-      GitRunner.new.run("diff", "#{repository.default_branch}...HEAD",
+      GitRunner.new.run("diff", "#{default_branch_ref}...HEAD",
                        chdir: workspace.path.to_s)
+    end
+
+    def default_branch_ref
+      "origin/#{repository.default_branch}"
     end
 
     def head_sha
@@ -240,7 +244,7 @@ module Steps
       # positively flagging perfectly normal agent work as corrupt
       # git state. `refs/remotes/origin/<default>` is always present
       # after clone regardless of which branch was checked out.
-      base_ref = "origin/#{repository.default_branch}"
+      base_ref = default_branch_ref
       # Non-streaming: we only care about success-or-raise here. The
       # merge-base SHA (the only output of this command) isn't useful
       # in the transcript and just adds noise above the agent_diff.

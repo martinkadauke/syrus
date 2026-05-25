@@ -47,10 +47,10 @@ module Steps
       return false if plan.source == "none"
 
       changed = GitRunner.new.run(
-        "diff", "--name-only", "#{repository.default_branch}...HEAD", "--", *AutoApprovalRule::GRADER_FILES,
+        "diff", "--name-only", "-z", "#{default_branch_ref}...HEAD", "--", *AutoApprovalRule::GRADER_FILES,
         chdir: workspace.path.to_s
       )
-      changed.strip.empty?
+      !changed.include?("\0")
     rescue GitRunner::GitError => e
       log("[grade] could not verify committed grader source: #{e.message}")
       false

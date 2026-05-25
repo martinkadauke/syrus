@@ -51,8 +51,8 @@ class WorkflowWorkspace
     return nil unless path.exist? && workflow.failed? && workflow.cleaned_up_at.nil?
 
     git = GitRunner.new
-    default_branch = workflow.job.repository.default_branch
-    committed   = git.run("diff", "#{default_branch}...HEAD", chdir: path.to_s).strip
+    default_ref = "origin/#{workflow.job.repository.default_branch}"
+    committed   = git.run("diff", "#{default_ref}...HEAD", chdir: path.to_s).strip
     uncommitted = git.run("status", "--short", chdir: path.to_s).strip
 
     return nil if committed.empty? && uncommitted.empty?

@@ -102,7 +102,7 @@ class DiagnoseRunJob < ApplicationJob
     snapshot.worktree_exists = File.directory?(workspace_path)
 
     if snapshot.worktree_exists
-      base = run.job.repository.default_branch
+      base = "origin/#{run.job.repository.default_branch}"
 
       snapshot.worktree_git_status     = safe_git("status", "--porcelain", chdir: workspace_path)
       snapshot.worktree_recent_commits  = safe_git("log", "--oneline", "--max-count=5",

@@ -51,6 +51,27 @@ RSpec.describe Steps::Grade do
     expect(entries.first["log_bytes"]).to eq(tests_log.size)
   end
 
+  it "verifies committed grader source when the workspace has no local default-branch ref" do
+    write_config <<~YAML
+      grade:
+        steps:
+          - name: tests
+            run: ruby -e 'exit 0'
+    YAML
+    git("init", "-q", "-b", "main")
+    git("config", "user.email", "x@example.test")
+    git("config", "user.name", "Test")
+    git("add", ".syrus.yml")
+    git("commit", "-q", "-m", "seed")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("checkout", "-q", "-b", "stack-parent")
+    git("branch", "-D", "main")
+
+    handler.call
+
+    expect(workflow.reload.artifact("grade_plan_repo_committed")).to be(true)
+  end
+
   it "fails fast after a required grader failure and records the rest as skipped" do
     write_config <<~YAML
       grade:
@@ -174,6 +195,11 @@ RSpec.describe Steps::Grade do
 
   def write_config(contents)
     File.write(@ws_path.join(".syrus.yml"), contents)
+  end
+
+  def git(*args)
+    ok = system("git", "-C", @ws_path.to_s, *args.map(&:to_s), out: File::NULL, err: File::NULL)
+    raise "git failed: #{args.join(' ')}" unless ok
   end
 
   def artifact_entries

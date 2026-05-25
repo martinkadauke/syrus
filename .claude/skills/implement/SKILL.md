@@ -29,7 +29,7 @@ unless the task asks you to fix setup itself.
 
 Git pipeline contract — Syrus runs your work through:
 
-  commit_agent_changes  →  git diff <default_branch>...HEAD  →  push  →  open PR
+  commit_agent_changes  →  git diff origin/<default_branch>...HEAD  →  push  →  open PR
 
 For that pipeline to work, your branch's HEAD must share history
 with the repo's default branch. Don't break that invariant. In

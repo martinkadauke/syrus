@@ -419,6 +419,16 @@ RSpec.describe Steps::Base do
       expect(run.reload.agent_outcome).not_to eq("git_state_corrupt")
     end
 
+    it "captures the agent diff on a stacked-PR clone with no local master ref (Job 442 shape)" do
+      # Sanity: confirm the workspace really has no local master ref.
+      out = `git -C #{workspace_dir} branch --list master`.strip
+      expect(out).to eq(""), "expected no local master ref, got: #{out.inspect}"
+
+      diff = handler.send(:diff_against_default)
+
+      expect(diff).to include("feature.rb")
+    end
+
     it "still raises AgentBrokeGitState on a genuine orphan branch" do
       system("git", "-C", workspace_dir.to_s, "checkout", "--orphan", "orphan-branch",
              out: File::NULL, err: File::NULL)

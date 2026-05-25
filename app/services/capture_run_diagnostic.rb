@@ -97,7 +97,8 @@ class CaptureRunDiagnostic
       "branches_local"  => safe_git("branch", "--list",                           chdir: path),
       "branches_remote" => safe_git("branch", "--remotes",                        chdir: path),
       "merge_base_main" => safe_git("merge-base",
-                                    @run.job.repository.default_branch, "HEAD",   chdir: path),
+                                    "origin/#{@run.job.repository.default_branch}",
+                                    "HEAD",                                       chdir: path),
       "remote_v"        => safe_git("remote", "-v",                               chdir: path)
     }
   end

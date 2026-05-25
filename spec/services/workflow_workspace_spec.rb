@@ -326,6 +326,34 @@ RSpec.describe WorkflowWorkspace do
       expect(result[:uncommitted]).to be_empty
     end
 
+    it "returns committed diff when the workspace has no local default-branch ref" do
+      parent = Factories.job(repository: repository, issue_number: 6)
+      parent_branch = "syrus/issue-6-#{parent.id}"
+      parent_worktree = Pathname.new(@data_root).join("workflows", "_diff_parent")
+      sh("git clone -q file://#{bare_remote_dir} #{parent_worktree}")
+      sh("git -C #{parent_worktree} checkout -q -b #{parent_branch}")
+      File.write(parent_worktree.join("parent.rb"), "PARENT\n")
+      sh("git -C #{parent_worktree} add .")
+      sh("git -C #{parent_worktree} -c user.email=t@e -c user.name=t commit -q -m 'parent'")
+      sh("git -C #{parent_worktree} push -q origin #{parent_branch}")
+      FileUtils.rm_rf(parent_worktree)
+      parent.update!(branch_name: parent_branch, pr_number: 6)
+      JobDependency.create!(job: job, depends_on_job: parent, source: "manual", created_by_user: user)
+
+      ws = described_class.new(workflow)
+      ws.setup
+      expect(sh("git -C #{ws.path} branch --list main").strip).to be_empty
+
+      File.write(ws.path.join("feature.rb"), "def greet; 'hello'; end\n")
+      sh("git -C #{ws.path} add feature.rb")
+      sh("git -C #{ws.path} commit -q -m 'Add greeting'")
+      workflow.start!; workflow.fail!; workflow.save!
+
+      result = described_class.local_diff_for(workflow)
+      expect(result).not_to be_nil
+      expect(result[:committed]).to include("feature.rb")
+    end
+
     it "returns uncommitted status when there are only unstaged files" do
       ws = described_class.new(workflow)
       ws.setup

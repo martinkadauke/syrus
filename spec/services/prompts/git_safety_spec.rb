@@ -20,7 +20,7 @@ RSpec.describe Prompts::GitSafety do
   end
 
   it "explains the pipeline contract" do
-    expect(described_class::TEXT).to include("git diff <default_branch>...HEAD")
+    expect(described_class::TEXT).to include("git diff origin/<default_branch>...HEAD")
   end
 end
 
