@@ -182,6 +182,13 @@ class GithubClient
     raise
   end
 
+  def update_pull_request_base(repo_slug, pr_number, base:)
+    track_rate_limits { @client.update_pull_request(repo_slug, pr_number, base: base) }
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited retargeting #{repo_slug}##{pr_number}: #{e.message}")
+    raise
+  end
+
   def fetch_issue(repo_slug, number)
     track_rate_limits { @client.issue(repo_slug, number) }
   rescue Octokit::TooManyRequests => e

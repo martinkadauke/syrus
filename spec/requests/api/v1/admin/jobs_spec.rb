@@ -61,6 +61,9 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(body["id"]).to eq(job.id)
       expect(body["state"]).to eq("queued")
       expect(body["agent_provider"]).to eq(job.agent_provider)
+      expect(body["stack_base"]).to eq(job.stack_base)
+      expect(body["parent_job_id"]).to eq(job.parent_job_id)
+      expect(body["effective_base_branch"]).to eq(job.effective_base_branch)
       expect(body["repository"]["slug"]).to eq(job.repository.slug)
 
       wf = body["workflows"].first

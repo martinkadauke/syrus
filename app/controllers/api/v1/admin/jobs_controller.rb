@@ -114,6 +114,9 @@ module Api
             triaging_reason: job.triaging_reason,
             epic_id: job.epic_id,
             agent_provider: job.agent_provider,
+            stack_base: job.stack_base,
+            parent_job_id: job.parent_job_id,
+            effective_base_branch: job.effective_base_branch,
             closure_reason: job.closure_reason,
             failure_count: job.failure_count,
             repository: {

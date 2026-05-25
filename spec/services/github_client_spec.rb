@@ -208,6 +208,22 @@ RSpec.describe GithubClient do
     end
   end
 
+  describe "#update_pull_request_base" do
+    let(:client) { GithubClient.for(repository: repository, user: user) }
+
+    it "retargets the PR base branch" do
+      stub = stub_request(:patch, "https://api.github.com/repos/acme/widgets/pulls/7")
+        .with(body: { "base" => "main" })
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: { number: 7, base: { ref: "main" } }.to_json)
+
+      result = client.update_pull_request_base("acme/widgets", 7, base: "main")
+
+      expect(result.number).to eq(7)
+      expect(stub).to have_been_requested
+    end
+  end
+
   describe "#fetch_issue", :vcr do
     it "returns the issue title + body for prompt construction",
        vcr: { cassette_name: "github_client/fetch_issue" } do

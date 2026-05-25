@@ -25,6 +25,7 @@ class StackRebaseCoordinator
   def parent_merged
     @parent.stack_children.find_each do |child|
       child.update!(parent_job: nil)
+      retarget_child_pull_request(child)
       refresh_stack_footers(@parent, child)
       if child.branch_name.present? && child.pr_number.present?
         enqueue_rebase(child)
@@ -47,6 +48,19 @@ class StackRebaseCoordinator
 
     workflow = Workflows::Rebase.instantiate(job: child)
     StepDispatcher.start_workflow(workflow)
+  end
+
+  def retarget_child_pull_request(child)
+    return if child.pr_number.blank?
+
+    base = child.effective_base_branch
+    GithubClient.for(repository: child.repository, user: child.user)
+                .update_pull_request_base(child.repository.slug, child.pr_number, base: base)
+  rescue StandardError => e
+    Rails.logger.info(
+      "[StackRebaseCoordinator] failed to retarget PR for job #{child.id} " \
+      "to #{base || child.repository.default_branch}: #{e.class}: #{e.message}"
+    )
   end
 
   def refresh_stack_footers(*jobs)
