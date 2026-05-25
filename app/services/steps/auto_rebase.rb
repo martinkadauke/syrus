@@ -9,6 +9,7 @@ module Steps
     def call
       log("auto_rebase: attempting deterministic rebase (workflow ##{workflow.id})")
       result = ::AutoRebase.new(job).call
+      workflow.set_artifact!("auto_rebase_result", result.to_h)
 
       if result.succeeded?
         log("auto_rebase: clean — #{result.note}")

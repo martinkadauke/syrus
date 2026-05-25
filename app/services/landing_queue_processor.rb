@@ -104,6 +104,7 @@ class LandingQueueProcessor
     return blocked("auto-merge not enabled for repository") unless job.repository.auto_merge_enabled?
     return blocked("missing pull request") if job.pr_number.blank?
     return blocked("active workflow") if job.workflows.active.exists?
+    return blocked(RebaseLoopGuard::BLOCK_REASON) if RebaseLoopGuard.waiting_after_noop?(job)
     return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?
 
     parent = job.parent_job

@@ -7,6 +7,11 @@ module Steps
   # separate workflow facts.
   class ForcePush < Base
     def call
+      if noop_auto_rebase?
+        log("force_push: skipped — deterministic rebase was a no-op")
+        return
+      end
+
       workspace.setup
       log("force_push: pushing rebased #{workspace.branch_name} (workflow ##{workflow.id})")
 
@@ -15,6 +20,13 @@ module Steps
       git.run("push", "--force", push_url,
               "HEAD:refs/heads/#{workspace.branch_name}",
               chdir: workspace.path.to_s)
+    end
+
+    private
+
+    def noop_auto_rebase?
+      result = workflow.artifact("auto_rebase_result")
+      result.is_a?(Hash) && result["changed"] == false && result["reason"] == "rebased"
     end
   end
 end

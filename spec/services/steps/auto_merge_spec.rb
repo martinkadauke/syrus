@@ -10,12 +10,14 @@ RSpec.describe Steps::AutoMerge do
   let(:run) { Run.create!(job: job, step: step, trigger_kind: "auto_merge") }
   let(:client) { instance_double(GithubClient) }
 
-  def pr(state: "open", mergeable_state: "clean")
+  def pr(state: "open", mergeable_state: "clean", mergeable: true, head_sha: "abc", base_sha: "base")
     OpenStruct.new(
       state: state,
+      mergeable: mergeable,
       mergeable_state: mergeable_state,
       labels: [],
-      head: OpenStruct.new(sha: "abc")
+      head: OpenStruct.new(sha: head_sha),
+      base: OpenStruct.new(sha: base_sha)
     )
   end
 
@@ -115,6 +117,35 @@ RSpec.describe Steps::AutoMerge do
       described_class.new(run).call
     }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
 
+    expect(StepDispatcher).not_to have_received(:start_workflow)
+  end
+
+  it "does not dispatch another Rebase workflow when the latest no-op rebase already covered this head/base" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    rebase = Workflows::Rebase.instantiate(job: job)
+    rebase.update!(
+      state: "succeeded",
+      artifacts: {
+        "auto_rebase_result" => {
+          "reason" => "rebased",
+          "changed" => false,
+          "post_sha" => "abc",
+          "base_sha" => "base"
+        }
+      }
+    )
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "behind", mergeable: false))
+    allow(StepDispatcher).to receive(:start_workflow)
+
+    expect {
+      described_class.new(run).call
+    }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+
+    expect(job.reload).to be_approved
+    expect(job.pr_mergeable).to be false
+    expect(run.reload).to be_cancelled
     expect(StepDispatcher).not_to have_received(:start_workflow)
   end
 

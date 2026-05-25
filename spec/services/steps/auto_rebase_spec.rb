@@ -14,12 +14,25 @@ RSpec.describe Steps::AutoRebase do
   end
 
   it "skips only the agent rebase step after a clean deterministic rebase" do
-    allow(service).to receive(:call).and_return(::AutoRebase::Result.new(true, "rebased", "advanced abc1234 -> def5678"))
+    allow(service).to receive(:call).and_return(::AutoRebase::Result.new(
+      true,
+      "rebased",
+      "advanced abc1234 -> def5678",
+      changed: true,
+      pre_sha: "abc1234",
+      post_sha: "def5678",
+      base_sha: "base123"
+    ))
 
     described_class.new(run).call
 
     expect(agent_rebase_step.reload.state).to eq("cancelled")
     expect(force_push_step.reload.state).to eq("queued")
+    expect(workflow.reload.artifact("auto_rebase_result")).to include(
+      "changed" => true,
+      "post_sha" => "def5678",
+      "base_sha" => "base123"
+    )
     expect(run.job_logs.pluck(:chunk).join("\n")).to include("auto_rebase already succeeded")
   end
 

@@ -16,6 +16,7 @@ module Steps
       end
 
       gate = AutoMergeGate.new(job: job, client: client, bypass_cache: true).evaluate
+      persist_mergeable(gate.pr)
 
       # Every early-exit path here must transition the Job out of
       # :landing before cancelling the workflow — otherwise
@@ -110,6 +111,15 @@ module Steps
       job.save! if job.changed?
     end
 
+    def persist_mergeable(pr)
+      return unless pr&.respond_to?(:mergeable)
+
+      job.update!(
+        pr_mergeable: pr.mergeable,
+        pr_mergeable_checked_at: Time.current
+      )
+    end
+
     # PR's mergeable_state is `behind` or `dirty`. Both are
     # recoverable via the agent-driven rebase chain (auto_rebase →
     # agent_rebase → force_push). Trigger the rebase inline if one
@@ -123,6 +133,13 @@ module Steps
     # operator needs to intervene (manual rebase, conflict
     # resolution offline, etc.) before we burn more agent turns.
     def handle_needs_rebase!(gate)
+      if RebaseLoopGuard.noop_rebase_for?(job: job, pr: gate.pr)
+        log("auto_merge: deferred - mergeable_state=#{deferred_mergeable_state(gate)}; latest rebase was a no-op for this PR head/base, waiting for GitHub mergeability to refresh", kind: "system")
+        defer_landing_if_possible!
+        cancel_workflow!
+        return
+      end
+
       if rebase_attempt_cap_reached?
         log("auto_merge: needs_rebase but #{PollRebaseJob::REBASE_ATTEMPT_CAP} consecutive rebase attempts have failed; failing landing", kind: "system")
         raise StepFailed, "auto_merge: #{gate.reason} and rebase cap reached"

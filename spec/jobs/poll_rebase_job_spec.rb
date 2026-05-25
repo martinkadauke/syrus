@@ -9,9 +9,10 @@ RSpec.describe PollRebaseJob do
   # Build a Sawyer-ish PR resource using OpenStruct so the job can call
   # pr.merged, pr.state, pr.mergeable, pr.head.repo.full_name, etc.
   def pr_resource(merged: false, state: "open", mergeable: false,
-                  head_repo: "acme/widgets", base_repo: "acme/widgets")
-    head = OpenStruct.new(repo: OpenStruct.new(full_name: head_repo), ref: "syrus/issue-42-1")
-    base = OpenStruct.new(repo: OpenStruct.new(full_name: base_repo), ref: "main")
+                  head_repo: "acme/widgets", base_repo: "acme/widgets",
+                  head_sha: "abc", base_sha: "base")
+    head = OpenStruct.new(repo: OpenStruct.new(full_name: head_repo), ref: "syrus/issue-42-1", sha: head_sha)
+    base = OpenStruct.new(repo: OpenStruct.new(full_name: base_repo), ref: "main", sha: base_sha)
     OpenStruct.new(merged: merged, state: state, mergeable: mergeable, head: head, base: base)
   end
 
@@ -97,6 +98,25 @@ RSpec.describe PollRebaseJob do
     it "skips when a rebase Workflow is already active on this Job" do
       stub_pr(pr_resource(mergeable: false))
       Workflow.create!(job: job, trigger_kind: "rebase", state: "queued")
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "skips when the latest no-op rebase already covered the same head/base" do
+      stub_pr(pr_resource(mergeable: false))
+      Workflows::Rebase.instantiate(job: job).update!(
+        state: "succeeded",
+        artifacts: {
+          "auto_rebase_result" => {
+            "reason" => "rebased",
+            "changed" => false,
+            "post_sha" => "abc",
+            "base_sha" => "base"
+          }
+        }
+      )
+
       expect {
         described_class.perform_now(job.id)
       }.not_to change { job.workflows.where(trigger_kind: "rebase").count }

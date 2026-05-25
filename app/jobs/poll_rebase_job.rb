@@ -58,6 +58,7 @@ class PollRebaseJob < ApplicationJob
     return if pr.mergeable                # mergeable; nothing to do
 
     return unless we_control_head?(pr)    # head from a fork → can't push
+    return if noop_rebase_already_covers?(pr)
     return if pending_rebase?
     return if attempt_cap_reached?
     return if repo_rebase_concurrency_reached?
@@ -93,6 +94,13 @@ class PollRebaseJob < ApplicationJob
 
   def pending_rebase?
     @job.workflows.active.where(trigger_kind: "rebase").exists?
+  end
+
+  def noop_rebase_already_covers?(pr)
+    return false unless RebaseLoopGuard.noop_rebase_for?(job: @job, pr: pr)
+
+    Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{@job.pr_number || @job.external_pr_number} still unmergeable after no-op rebase for same head/base; waiting")
+    true
   end
 
   def attempt_cap_reached?

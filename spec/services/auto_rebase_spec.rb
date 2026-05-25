@@ -55,6 +55,10 @@ RSpec.describe AutoRebase do
     result = described_class.new(job).call
     expect(result).to be_succeeded
     expect(result.reason).to eq("rebased")
+    expect(result.changed?).to be true
+    expect(result.pre_sha).to be_present
+    expect(result.post_sha).to be_present
+    expect(result.base_sha).to be_present
 
     # Branch on origin should now contain BOTH the README and feature.rb
     files = `git --git-dir=#{bare_remote_dir} ls-tree --name-only #{feature}`.split("\n")
@@ -68,6 +72,7 @@ RSpec.describe AutoRebase do
     result = described_class.new(job).call
     expect(result).to be_succeeded
     expect(result.note).to match(/no-op/)
+    expect(result.no_op?).to be true
   end
 
   it "rebases onto the parent branch when the Job is stacked" do

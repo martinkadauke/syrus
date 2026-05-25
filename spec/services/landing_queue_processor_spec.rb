@@ -61,6 +61,27 @@ RSpec.describe LandingQueueProcessor do
     expect(described_class.call.job).to eq(job)
   end
 
+  it "blocks approved Jobs after a no-op rebase while GitHub still reports unmergeable" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    job.update!(pr_mergeable: false)
+    Workflows::Rebase.instantiate(job: job).update!(
+      state: "succeeded",
+      artifacts: {
+        "auto_rebase_result" => {
+          "reason" => "rebased",
+          "changed" => false,
+          "post_sha" => "abc",
+          "base_sha" => "base"
+        }
+      }
+    )
+
+    expect(described_class.call).to be_nil
+    expect(job.reload).to be_approved
+    entry = described_class.entries(Job.where(id: job.id)).first
+    expect(entry.blocked_reason).to eq(RebaseLoopGuard::BLOCK_REASON)
+  end
+
   it "lands approved Jobs in different repositories in the same tick" do
     other_repository = Factories.repository(user: user, auto_merge_enabled: true, name: "other")
     first = queue_job(issue_number: 1, approved_at: 2.minutes.ago)

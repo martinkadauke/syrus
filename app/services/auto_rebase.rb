@@ -12,9 +12,41 @@ require "fileutils"
 # before running rebase. No Ruby/Rails-specific knowledge in Syrus;
 # the driver lives in (and is shipped by) the target repo.
 class AutoRebase
-  Result = Data.define(:succeeded, :reason, :note) do
+  class Result
+    attr_reader :succeeded, :reason, :note, :changed, :pre_sha, :post_sha, :base_sha
+
+    def initialize(succeeded, reason, note, changed: nil, pre_sha: nil, post_sha: nil, base_sha: nil)
+      @succeeded = succeeded
+      @reason = reason
+      @note = note
+      @changed = changed
+      @pre_sha = pre_sha
+      @post_sha = post_sha
+      @base_sha = base_sha
+    end
+
     def succeeded?
       succeeded
+    end
+
+    def changed?
+      changed == true
+    end
+
+    def no_op?
+      succeeded? && changed == false
+    end
+
+    def to_h
+      {
+        "succeeded" => succeeded?,
+        "reason" => reason,
+        "note" => note,
+        "changed" => changed,
+        "pre_sha" => pre_sha,
+        "post_sha" => post_sha,
+        "base_sha" => base_sha
+      }.compact
     end
 
     def to_s
@@ -42,15 +74,18 @@ class AutoRebase
 
     register_merge_drivers
 
+    base_sha = base_head_sha
     pre_sha = head_sha
 
     if rebase_succeeded?
       post_sha = head_sha
       if pre_sha == post_sha
-        Result.new(true, "rebased", "no-op (already up-to-date)")
+        Result.new(true, "rebased", "no-op (already up-to-date)",
+                   changed: false, pre_sha: pre_sha, post_sha: post_sha, base_sha: base_sha)
       else
         force_push
-        Result.new(true, "rebased", "advanced #{pre_sha[0, 7]} → #{post_sha[0, 7]}")
+        Result.new(true, "rebased", "advanced #{pre_sha[0, 7]} → #{post_sha[0, 7]}",
+                   changed: true, pre_sha: pre_sha, post_sha: post_sha, base_sha: base_sha)
       end
     else
       abort_rebase
@@ -164,5 +199,9 @@ class AutoRebase
 
   def head_sha
     @git.run("rev-parse", "HEAD", chdir: clone_path.to_s).strip
+  end
+
+  def base_head_sha
+    @git.run("rev-parse", "origin/#{base_branch}", chdir: clone_path.to_s).strip
   end
 end
