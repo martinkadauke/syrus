@@ -18,10 +18,14 @@ class RebaseLoopGuard
 
     result = workflow.artifact("auto_rebase_result")
     post_sha = result["post_sha"].presence
-    base_sha = result["base_sha"].presence
-    return false if post_sha.blank? || base_sha.blank?
+    return false if post_sha.blank?
+    return false unless post_sha == pr_head_sha(pr)
 
-    post_sha == pr_head_sha(pr) && base_sha == pr_base_sha(pr)
+    base_sha = result["base_sha"].presence
+    current_base_sha = pr_base_sha(pr)
+    return true if base_sha.blank? || current_base_sha.blank?
+
+    base_sha == current_base_sha
   end
 
   def self.noop_result?(result)
