@@ -10,7 +10,7 @@ RSpec.describe Steps::AutoRebase do
   let(:service) { instance_double(::AutoRebase) }
 
   before do
-    allow(::AutoRebase).to receive(:new).with(job).and_return(service)
+    allow(::AutoRebase).to receive(:new).and_return(service)
   end
 
   it "skips only the agent rebase step after a clean deterministic rebase" do
@@ -26,6 +26,7 @@ RSpec.describe Steps::AutoRebase do
 
     described_class.new(run).call
 
+    expect(::AutoRebase).to have_received(:new).with(job, base_branch: job.effective_base_branch)
     expect(agent_rebase_step.reload.state).to eq("cancelled")
     expect(force_push_step.reload.state).to eq("queued")
     expect(workflow.reload.artifact("auto_rebase_result")).to include(
@@ -56,5 +57,14 @@ RSpec.describe Steps::AutoRebase do
     described_class.new(run).call
 
     expect(agent_rebase_step.reload.state).to eq("failed")
+  end
+
+  it "passes the captured live PR base branch to AutoRebase" do
+    workflow.set_artifact!("rebase_base_branch", "syrus/parent-branch")
+    allow(service).to receive(:call).and_return(::AutoRebase::Result.new(false, "conflict", nil))
+
+    described_class.new(run).call
+
+    expect(::AutoRebase).to have_received(:new).with(job, base_branch: "syrus/parent-branch")
   end
 end

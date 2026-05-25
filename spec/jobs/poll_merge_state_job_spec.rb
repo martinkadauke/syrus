@@ -6,7 +6,7 @@ RSpec.describe PollMergeStateJob do
   let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets", auto_merge_enabled: true) }
   let(:job) { Factories.job(user: user, repository: repository, pr_number: 7, branch_name: "syrus/issue-42-1") }
 
-  def pr(mergeable_state: "clean", mergeable: true, merged: false, state: "open", head_sha: "abc", base_sha: "base")
+  def pr(mergeable_state: "clean", mergeable: true, merged: false, state: "open", head_sha: "abc", base_ref: "main", base_sha: "base")
     repo = OpenStruct.new(full_name: "acme/widgets")
     OpenStruct.new(
       merged: merged,
@@ -15,7 +15,7 @@ RSpec.describe PollMergeStateJob do
       mergeable_state: mergeable_state,
       labels: [],
       head: OpenStruct.new(repo: repo, sha: head_sha),
-      base: OpenStruct.new(repo: repo, sha: base_sha)
+      base: OpenStruct.new(repo: repo, ref: base_ref, sha: base_sha)
     )
   end
 
@@ -81,11 +81,17 @@ RSpec.describe PollMergeStateJob do
   end
 
   it "dispatches Rebase when approved but behind" do
-    allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(mergeable_state: "behind", mergeable: false))
+    allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(
+      pr(mergeable_state: "behind", mergeable: false, base_ref: "syrus/parent", base_sha: "parent-sha")
+    )
 
     expect {
       described_class.perform_now(job.id)
     }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+
+    workflow = job.workflows.where(trigger_kind: "rebase").last
+    expect(workflow.artifact("rebase_base_branch")).to eq("syrus/parent")
+    expect(workflow.artifact("rebase_base_sha")).to eq("parent-sha")
   end
 
   it "does not dispatch Rebase when the latest no-op rebase already covered the same head/base" do

@@ -69,7 +69,7 @@ class PollRebaseJob < ApplicationJob
     # to force_push. If conflicts remain, the chain advances to the
     # agentic step, then force_push.
     Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} unmergeable; instantiating Rebase workflow")
-    workflow = Workflows::Rebase.instantiate(job: @job)
+    workflow = Workflows::Rebase.instantiate(job: @job, pr: pr)
     StepDispatcher.start_workflow(workflow)
   end
 

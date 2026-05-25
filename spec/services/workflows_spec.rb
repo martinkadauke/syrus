@@ -1,4 +1,5 @@
 require "rails_helper"
+require "ostruct"
 
 RSpec.describe Workflows do
   let(:job) { Factories.job }
@@ -221,6 +222,15 @@ RSpec.describe Workflows do
     it "instantiates Rebase with auto_rebase → agent_rebase → force_push" do
       wf = Workflows::Rebase.instantiate(job: job)
       expect(wf.steps.pluck(:kind)).to eq(%w[ auto_rebase agent_rebase force_push ])
+    end
+
+    it "captures the live PR base target for Rebase workflows" do
+      pr = OpenStruct.new(base: OpenStruct.new(ref: "syrus/issue-1-2", sha: "base-sha"))
+
+      wf = Workflows::Rebase.instantiate(job: job, pr: pr)
+
+      expect(wf.artifact("rebase_base_branch")).to eq("syrus/issue-1-2")
+      expect(wf.artifact("rebase_base_sha")).to eq("base-sha")
     end
 
     it "instantiates AutoMerge with apply_suggestions → auto_merge" do

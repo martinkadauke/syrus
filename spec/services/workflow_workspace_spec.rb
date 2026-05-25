@@ -92,6 +92,31 @@ RSpec.describe WorkflowWorkspace do
         expect(ws.path.join("parent.rb")).to exist
       end
 
+      it "creates a rebase workspace from the captured live PR base branch" do
+        live_base_branch = "syrus/live-pr-base"
+        live_base_worktree = Pathname.new(@data_root).join("workflows", "_live_base")
+        sh("git clone -q file://#{bare_remote_dir} #{live_base_worktree}")
+        sh("git -C #{live_base_worktree} checkout -q -b #{live_base_branch}")
+        File.write(live_base_worktree.join("live-base.rb"), "LIVE_BASE\n")
+        sh("git -C #{live_base_worktree} add .")
+        sh("git -C #{live_base_worktree} -c user.email=t@e -c user.name=t commit -q -m 'live base'")
+        live_base_sha = sh("git -C #{live_base_worktree} rev-parse HEAD").strip
+        sh("git -C #{live_base_worktree} push -q origin #{live_base_branch}")
+        FileUtils.rm_rf(live_base_worktree)
+
+        workflow = Workflow.create!(
+          job: job,
+          trigger_kind: "rebase",
+          artifacts: { "rebase_base_branch" => live_base_branch }
+        )
+
+        ws = described_class.new(workflow)
+        ws.setup
+
+        expect(sh("git -C #{ws.path} rev-parse HEAD").strip).to eq(live_base_sha)
+        expect(ws.path.join("live-base.rb")).to exist
+      end
+
       it "creates a fresh branch from the default branch after the dependency merges" do
         parent = Factories.job(repository: repository, issue_number: 9)
         parent_branch = "syrus/issue-9-#{parent.id}"

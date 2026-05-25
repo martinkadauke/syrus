@@ -93,6 +93,19 @@ RSpec.describe AutoRebase do
     expect(files).to include("feature.rb").and include("parent.rb")
   end
 
+  it "rebases onto an explicit live PR base branch even when Job metadata falls back to default" do
+    parent_branch = "syrus/issue-41-live-base"
+    feature = "syrus/issue-42-#{job.id}"
+    push_branch_with_file(parent_branch, "parent.rb", "PARENT\n", "parent")
+    push_branch_with_file(feature, "feature.rb", "FEATURE\n", "feature")
+
+    result = described_class.new(job, base_branch: parent_branch).call
+
+    expect(result).to be_succeeded
+    files = `git --git-dir=#{bare_remote_dir} ls-tree --name-only #{feature}`.split("\n")
+    expect(files).to include("feature.rb").and include("parent.rb")
+  end
+
   it "returns conflict and does not push when a real body conflict remains" do
     feature = "syrus/issue-42-#{job.id}"
     push_branch_with_file(feature, "shared.rb", "FROM_FEATURE\n", "feature edit")

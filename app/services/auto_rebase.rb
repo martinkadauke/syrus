@@ -54,9 +54,10 @@ class AutoRebase
     end
   end
 
-  def initialize(job, git: nil)
+  def initialize(job, git: nil, base_branch: nil)
     @job = job
     @git = git || GitRunner.new
+    @base_branch_override = base_branch.presence
     @env = { "GIT_TERMINAL_PROMPT" => "0" }
   end
 
@@ -111,7 +112,7 @@ class AutoRebase
   end
 
   def base_branch
-    @job.effective_base_branch
+    @base_branch_override || @job.effective_base_branch
   end
 
   # Full (non-shallow) clone on the effective base branch so that

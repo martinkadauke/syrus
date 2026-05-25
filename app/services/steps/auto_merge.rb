@@ -149,7 +149,7 @@ module Steps
       defer_landing_if_possible!
 
       unless rebase_workflow_active?
-        rebase_workflow = Workflows::Rebase.instantiate(job: job)
+        rebase_workflow = Workflows::Rebase.instantiate(job: job, pr: gate.pr)
         log("auto_merge: dispatched rebase workflow ##{rebase_workflow.id}", kind: "system")
         StepDispatcher.start_workflow(rebase_workflow)
       end

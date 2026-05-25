@@ -10,9 +10,9 @@ RSpec.describe PollRebaseJob do
   # pr.merged, pr.state, pr.mergeable, pr.head.repo.full_name, etc.
   def pr_resource(merged: false, state: "open", mergeable: false,
                   head_repo: "acme/widgets", base_repo: "acme/widgets",
-                  head_sha: "abc", base_sha: "base")
+                  head_sha: "abc", base_ref: "main", base_sha: "base")
     head = OpenStruct.new(repo: OpenStruct.new(full_name: head_repo), ref: "syrus/issue-42-1", sha: head_sha)
-    base = OpenStruct.new(repo: OpenStruct.new(full_name: base_repo), ref: "main", sha: base_sha)
+    base = OpenStruct.new(repo: OpenStruct.new(full_name: base_repo), ref: base_ref, sha: base_sha)
     OpenStruct.new(merged: merged, state: state, mergeable: mergeable, head: head, base: base)
   end
 
@@ -27,6 +27,16 @@ RSpec.describe PollRebaseJob do
       expect {
         described_class.perform_now(job.id)
       }.to change { job.runs.where(trigger_kind: "rebase").count }.by(1)
+    end
+
+    it "stores the live PR base on the rebase workflow" do
+      stub_pr(pr_resource(mergeable: false, base_ref: "syrus/parent", base_sha: "parent-sha"))
+
+      described_class.perform_now(job.id)
+
+      workflow = job.workflows.where(trigger_kind: "rebase").last
+      expect(workflow.artifact("rebase_base_branch")).to eq("syrus/parent")
+      expect(workflow.artifact("rebase_base_sha")).to eq("parent-sha")
     end
   end
 

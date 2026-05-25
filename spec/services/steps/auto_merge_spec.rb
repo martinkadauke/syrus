@@ -10,14 +10,14 @@ RSpec.describe Steps::AutoMerge do
   let(:run) { Run.create!(job: job, step: step, trigger_kind: "auto_merge") }
   let(:client) { instance_double(GithubClient) }
 
-  def pr(state: "open", mergeable_state: "clean", mergeable: true, head_sha: "abc", base_sha: "base")
+  def pr(state: "open", mergeable_state: "clean", mergeable: true, head_sha: "abc", base_ref: "main", base_sha: "base")
     OpenStruct.new(
       state: state,
       mergeable: mergeable,
       mergeable_state: mergeable_state,
       labels: [],
       head: OpenStruct.new(sha: head_sha),
-      base: OpenStruct.new(sha: base_sha)
+      base: OpenStruct.new(ref: base_ref, sha: base_sha)
     )
   end
 
@@ -90,7 +90,9 @@ RSpec.describe Steps::AutoMerge do
     original_approved_at = job.approved_at
     job.start_landing!
     job.save!
-    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "behind"))
+    allow(client).to receive(:pull_request).and_return(
+      pr(mergeable_state: "behind", base_ref: "syrus/parent", base_sha: "parent-sha")
+    )
     allow(StepDispatcher).to receive(:start_workflow)
 
     expect {
@@ -98,6 +100,9 @@ RSpec.describe Steps::AutoMerge do
     }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
 
     expect(job.reload).to be_approved
+    rebase = job.workflows.where(trigger_kind: "rebase").last
+    expect(rebase.artifact("rebase_base_branch")).to eq("syrus/parent")
+    expect(rebase.artifact("rebase_base_sha")).to eq("parent-sha")
     # Approval persists across the defer — operator doesn't have to re-approve.
     expect(job.approved_at).to eq(original_approved_at)
     expect(job.approved_via).to eq("github_review")

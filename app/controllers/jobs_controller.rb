@@ -295,7 +295,11 @@ class JobsController < ApplicationController
     return unless valid_configured_agent_provider?(agent_provider)
     @job.switch_agent_provider!(agent_provider) if agent_provider.present?
 
-    workflow = Workflows::Rebase.instantiate(job: @job, agent_provider: agent_provider)
+    workflow = Workflows::Rebase.instantiate(
+      job: @job,
+      agent_provider: agent_provider,
+      pr: rebase_pull_request_snapshot(@job)
+    )
     StepDispatcher.start_workflow(workflow)
     notice = agent_provider.present? ? "Rebase workflow enqueued with #{agent_provider.titleize}." : "Rebase workflow enqueued."
     redirect_to job_path(@job), notice: notice
@@ -640,6 +644,17 @@ class JobsController < ApplicationController
 
     redirect_to job_path(@job), alert: "That agent is not configured."
     false
+  end
+
+  def rebase_pull_request_snapshot(job)
+    pr_number = job.pr_number || job.external_pr_number
+    return if pr_number.blank?
+
+    GithubClient.for(repository: job.repository, user: job.user)
+                .pull_request(job.repository.slug, pr_number, bypass_cache: true)
+  rescue StandardError => e
+    Rails.logger.info("[JobsController] failed to load PR ##{pr_number} for rebase job #{job.id}: #{e.class}: #{e.message}")
+    nil
   end
 
   def find_or_create_tag_from_params

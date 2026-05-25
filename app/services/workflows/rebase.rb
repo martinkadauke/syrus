@@ -18,6 +18,14 @@ module Workflows
 
     def self.trigger_kind = "rebase"
 
+    def self.instantiate(job:, artifacts: nil, agent_provider: nil, pr: nil, base_branch: nil)
+      super(
+        job: job,
+        artifacts: RebaseTarget.artifacts(artifacts: artifacts, pr: pr, base_branch: base_branch),
+        agent_provider: agent_provider
+      )
+    end
+
     # When the rebase succeeds AND the Job is still approved
     # (defer_landing preserves approval through the rebase),
     # immediately re-dispatch auto_merge so the merge happens

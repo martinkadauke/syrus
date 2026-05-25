@@ -209,7 +209,7 @@ class WorkflowWorkspace
   end
 
   def base_branch
-    @base_branch ||= @job.effective_base_branch
+    @base_branch ||= RebaseTarget.branch_for(job: @job, workflow: @workflow)
   end
 
   def clone_local_source
