@@ -181,19 +181,22 @@ USER root
 # C++ / CMake / Qt 6 / Xvfb are included so repos like tkadauke/raytracer
 # can run `cmake --preset release && ctest` inside `.syrus.yml` graders
 # without sudo apt-get in `prepare:` (the worker runs as uid 1000 with
-# no sudo capability).
+# no sudo capability). Keep GitHub mutation tools like `gh` out of the
+# worker image; PR operations should go through Syrus service code.
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
-      build-essential pkg-config \
+      build-essential clang clang-format clang-tidy pkg-config \
       libffi-dev libssl-dev libyaml-dev \
       libxml2-dev libxslt-dev \
       zlib1g-dev libreadline-dev \
       default-libmysqlclient-dev libpq-dev libsqlite3-dev \
+      libbenchmark-dev libgtest-dev libxkbcommon-dev libxkbcommon-x11-dev \
       sqlite3 postgresql-client default-mysql-client \
       wget openssh-client jq ripgrep fd-find less vim \
       python3 python3-pip python3-venv \
       cmake ninja-build \
-      qt6-base-dev qt6-declarative-dev libgl1-mesa-dev xvfb \
+      qt6-base-dev qt6-declarative-dev libgl1-mesa-dev xvfb xauth \
+      doxygen graphviz lcov gcovr \
     && rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # Pull pre-compiled runtimes + the mise binary from the runtime-cache
