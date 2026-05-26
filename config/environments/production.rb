@@ -45,8 +45,12 @@ Rails.application.configure do
   config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 
   # Log to STDOUT with the current request id as a default log tag.
+  # MCP sidecars use stdout as the JSON-RPC protocol stream, so any
+  # Rails-side logging in those processes must go to stderr instead.
   config.log_tags = [ :request_id ]
-  config.logger   = ActiveSupport::TaggedLogging.logger(STDOUT)
+  sidecar_process = ENV["SYRUS_MCP_SIDECAR"].present? || ENV["SYRUS_CHAT_MCP_SIDECAR"].present?
+  log_device = sidecar_process ? STDERR : STDOUT
+  config.logger = ActiveSupport::TaggedLogging.logger(log_device)
 
   # Change to "debug" to log everything (including potentially personally-identifiable information!).
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")

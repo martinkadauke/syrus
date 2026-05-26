@@ -20,6 +20,8 @@
 # `mcp__syrus-mcp-sidecar__submit_summary` failing with
 # "No such tool available" because the server never registered.
 ENV["BUNDLE_GEMFILE"] = File.expand_path("../Gemfile", __dir__)
+ENV["SYRUS_MCP_SIDECAR"] = "1"
+ENV.delete("SYRUS_ROLE")
 
 require_relative "../config/environment"
 

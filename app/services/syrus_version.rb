@@ -20,12 +20,16 @@ module SyrusVersion
     Socket.gethostname
   end
 
+  def sidecar_process?
+    ENV["SYRUS_MCP_SIDECAR"].present? || ENV["SYRUS_CHAT_MCP_SIDECAR"].present?
+  end
+
   # True when this Rails process is one whose lifetime is worth tracking
   # in the instance_versions table — i.e. a web pod or a worker pod.
   # Skips rake tasks, console, tests, migrations. Driven by SYRUS_ROLE
   # being set explicitly in K8s manifests rather than guessing from
   # $PROGRAM_NAME.
   def server_process?
-    ENV["SYRUS_ROLE"].present? && !Rails.env.test?
+    ENV["SYRUS_ROLE"].present? && !sidecar_process? && !Rails.env.test?
   end
 end

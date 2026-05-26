@@ -3,6 +3,8 @@ require "json"
 
 class CodexInvocation
   DEFAULT_TIMEOUT_SECONDS = AgentInvocation::DEFAULT_TIMEOUT_SECONDS
+  MCP_STARTUP_TIMEOUT_SECONDS = 60
+  MCP_TOOL_TIMEOUT_SECONDS = 60
 
   def initialize(workspace_path, prompt:, api_key: nil,
                  log_sink: ->(*, **) { },
@@ -139,8 +141,8 @@ class CodexInvocation
       "command = #{toml_string(mcp_server.fetch(:command))}",
       "args = #{toml_array(mcp_server.fetch(:args, []))}",
       "required = true",
-      "startup_timeout_sec = 10",
-      "tool_timeout_sec = 60"
+      "startup_timeout_sec = #{MCP_STARTUP_TIMEOUT_SECONDS}",
+      "tool_timeout_sec = #{MCP_TOOL_TIMEOUT_SECONDS}"
     ]
 
     env = mcp_server.fetch(:env, {}).compact
@@ -247,5 +249,4 @@ class CodexInvocation
     path = File.join(dir, "rollout-restored-#{session_id}.jsonl")
     File.write(path, jsonl)
   end
-
 end

@@ -18,6 +18,8 @@ RSpec.describe "production configuration" do
     expect(production_config).to include('ENV.fetch("SYRUS_ALLOWED_HOSTS", default_allowed_hosts)')
     expect(production_config).to include('env_boolean.call("SYRUS_ASSUME_SSL", "true")')
     expect(production_config).to include('env_boolean.call("SYRUS_FORCE_SSL", "true")')
+    expect(production_config).to include('sidecar_process = ENV["SYRUS_MCP_SIDECAR"].present? || ENV["SYRUS_CHAT_MCP_SIDECAR"].present?')
+    expect(production_config).to include('log_device = sidecar_process ? STDERR : STDOUT')
     expect(production_config).to include('config.action_mailer.default_url_options = { host: app_host, protocol: "https" }')
   end
 end
