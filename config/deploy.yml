@@ -15,7 +15,7 @@ servers:
 
 # The MVP deployment is fronted by the K3s ingress, which terminates TLS
 # before traffic reaches Rails. Production Rails config assumes that proxy
-# boundary by default; set SYRUS_APP_HOST to the public hostname and use
+# boundary by default; set SYRUS_APP_HOST to the canonical app hostname and use
 # SYRUS_ALLOWED_HOSTS only when the ingress serves additional hostnames.
 
 # Where you keep your container images.

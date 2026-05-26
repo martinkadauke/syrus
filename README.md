@@ -26,7 +26,7 @@ and PR-creation boilerplate. When that mechanics layer goes off the rails
 | Credentials | Per-user, encrypted at rest (GitHub token, Claude credential, Codex credential, admin API token) |
 | Workers | Separate container from the web app |
 | Deploy target | K3s via `green_acres`, alongside Winston/Gloria |
-| Domain | `agents.green-acres.estate`, overrideable via `SYRUS_APP_HOST` |
+| Domain | `syrus.internal.green-acres.estate`, overrideable via `SYRUS_APP_HOST` |
 
 Syrus ships these MVP workflows:
 
@@ -71,11 +71,11 @@ bin/rspec    # run the test suite
 
 ## Production Configuration
 
-Production defaults to the MVP public app host and lets the deployment
+Production defaults to the K3s internal app host and lets the deployment
 environment override values that vary by cluster or mail provider:
 
-- `SYRUS_APP_HOST` — optional public app host. Defaults to `agents.green-acres.estate`; used for URL generation, mailer links, and the default host allowlist.
-- `SYRUS_ALLOWED_HOSTS` — optional comma-separated host allowlist. Defaults to `SYRUS_APP_HOST`.
+- `SYRUS_APP_HOST` — optional public app host. Defaults to `syrus.internal.green-acres.estate`; used for URL generation and mailer links.
+- `SYRUS_ALLOWED_HOSTS` — optional comma-separated host allowlist. Defaults to `SYRUS_APP_HOST` plus the internal K3s ingress hostname.
 - `SYRUS_ASSUME_SSL` / `SYRUS_FORCE_SSL` — optional booleans, both default `true` for TLS-terminating ingress/proxy deployments. `/up` is excluded from SSL redirects and host authorization for health checks.
 - `SYRUS_MAILER_FROM` — optional sender address for application mail. Defaults to `Syrus <noreply@SYRUS_APP_HOST>`.
 - `SMTP_ADDRESS`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_AUTHENTICATION`, `SMTP_ENABLE_STARTTLS_AUTO` — optional SMTP settings. When `SMTP_ADDRESS` is absent, Rails keeps its default mail delivery configuration and delivery errors are not raised unless `SYRUS_MAILER_RAISE_DELIVERY_ERRORS=true`.

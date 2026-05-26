@@ -12,8 +12,10 @@ RSpec.describe "production configuration" do
   end
 
   it "documents the environment-owned production host and proxy assumptions in config" do
-    expect(production_config).to include('ENV.fetch("SYRUS_APP_HOST", "agents.green-acres.estate")')
-    expect(production_config).to include('ENV.fetch("SYRUS_ALLOWED_HOSTS", app_host)')
+    expect(production_config).to include('default_app_host = "syrus.internal.green-acres.estate"')
+    expect(production_config).to include('app_host = ENV.fetch("SYRUS_APP_HOST", default_app_host)')
+    expect(production_config).to include('default_allowed_hosts = [ app_host, default_app_host ].uniq.join(",")')
+    expect(production_config).to include('ENV.fetch("SYRUS_ALLOWED_HOSTS", default_allowed_hosts)')
     expect(production_config).to include('env_boolean.call("SYRUS_ASSUME_SSL", "true")')
     expect(production_config).to include('env_boolean.call("SYRUS_FORCE_SSL", "true")')
     expect(production_config).to include('config.action_mailer.default_url_options = { host: app_host, protocol: "https" }')

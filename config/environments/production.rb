@@ -3,8 +3,10 @@ require "active_support/core_ext/integer/time"
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
   env_boolean = ->(key, default) { ActiveModel::Type::Boolean.new.cast(ENV.fetch(key, default)) }
-  app_host = ENV.fetch("SYRUS_APP_HOST", "agents.green-acres.estate")
-  allowed_hosts = ENV.fetch("SYRUS_ALLOWED_HOSTS", app_host)
+  default_app_host = "syrus.internal.green-acres.estate"
+  app_host = ENV.fetch("SYRUS_APP_HOST", default_app_host)
+  default_allowed_hosts = [ app_host, default_app_host ].uniq.join(",")
+  allowed_hosts = ENV.fetch("SYRUS_ALLOWED_HOSTS", default_allowed_hosts)
     .split(",")
     .map(&:strip)
     .reject(&:blank?)
