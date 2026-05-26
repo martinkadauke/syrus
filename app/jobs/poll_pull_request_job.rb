@@ -165,6 +165,8 @@ class PollPullRequestJob < ApplicationJob
   end
 
   def feedback_cutoff
+    return @job.last_feedback_addressed_at if @manual
+
     [ @job.last_seen_comment_at, @job.last_feedback_addressed_at ].compact.max
   end
 

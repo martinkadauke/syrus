@@ -264,6 +264,23 @@ RSpec.describe PollPullRequestJob do
       expect(wf.artifact("feedback_cutoff")).to eq(t2.iso8601)
     end
 
+    it "manual polls retry feedback that was seen but not successfully addressed" do
+      job.update!(last_seen_comment_at: t1)
+      stub_issue_comments([
+        { id: 1, body: "old but still unaddressed feedback",
+          user: { login: "reviewer" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      expect {
+        described_class.perform_now(job.id, manual: true)
+      }.to change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
+
+      wf = job.workflows.where(trigger_kind: "pr_comment").last
+      expect(wf.artifact("pr_comments").map { |c| c["body"] }).to eq([ "old but still unaddressed feedback" ])
+      expect(wf.artifact("feedback_cutoff")).to be_nil
+    end
+
     it "uses an explicitly selected agent provider for PR feedback workflows" do
       stub_issue_comments([
         { id: 1, body: "Could you also handle empty strings?",
