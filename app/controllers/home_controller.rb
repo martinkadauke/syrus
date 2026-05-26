@@ -524,8 +524,8 @@ class HomeController < ApplicationController
 
     @job_kanban_lanes = @job_kanban_lane_defs.to_h { |lane| [ lane.fetch(:key), [] ] }
     kanban_jobs.each do |job|
-      lane = job_kanban_lane_for(job)
-      @job_kanban_lanes[lane] << job if @job_kanban_lanes.key?(lane)
+      lane = job_kanban_lane_for(job, visible_lanes)
+      @job_kanban_lanes[lane] << job if lane && @job_kanban_lanes.key?(lane)
     end
   end
 
@@ -563,20 +563,18 @@ class HomeController < ApplicationController
     states.uniq
   end
 
-  def job_kanban_lane_for(job)
-    if job.approved? || job.landing?
-      "landing"
-    elsif job_blocked_for_kanban?(job)
-      "blocked"
-    elsif job.failed? || job.latest_workflow_state == "failed" || (job.closed? && !job.dependency_succeeded?)
-      "failed"
-    elsif job.running? || job.latest_workflow_state == "running"
-      "running"
-    elsif job.implemented? || job.latest_workflow_state == "succeeded" || job.dependency_succeeded?
-      "succeeded"
-    else
-      "queued"
-    end
+  def job_kanban_lane_for(job, visible_lanes = nil)
+    candidates = []
+    candidates << "landing" if job.approved? || job.landing?
+    candidates << "blocked" if job_blocked_for_kanban?(job)
+    candidates << "failed" if job.failed? || job.latest_workflow_state == "failed" || (job.closed? && !job.dependency_succeeded?)
+    candidates << "running" if job.running? || job.latest_workflow_state == "running"
+    candidates << "succeeded" if job.implemented? || job.latest_workflow_state == "succeeded" || job.dependency_succeeded?
+    candidates << "queued"
+
+    return candidates.first unless visible_lanes
+
+    candidates.find { |lane| visible_lanes.include?(lane) }
   end
 
   def job_blocked_for_kanban?(job)

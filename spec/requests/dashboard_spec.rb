@@ -817,6 +817,28 @@ RSpec.describe "Dashboard", type: :request do
       expect(response.body).not_to include("Wrong province")
     end
 
+    it "keeps running jobs visible when a higher-priority hidden lane also matches" do
+      repo = Factories.repository(user: user, owner: "acme", name: "widgets")
+      job = Factories.job_record(
+        repository: repo,
+        issue_number: 19,
+        issue_title: "March while blocked",
+        state: "running",
+        pr_number: 99,
+        pr_mergeable: false
+      )
+      SmartFolder.ensure_builtins!
+      folder = SmartFolder.find_builtin_by_attention("in_progress")
+
+      get root_path, params: { subject: "job", view: "kanban", smart_folder_id: folder.id }
+
+      document = Nokogiri::HTML(response.body)
+      expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Queued", "Running", "Landing" ])
+      expect(document.at_css("[data-kanban-lane='running']").text).to include("#19", "March while blocked")
+      expect(document.at_css("[data-kanban-lane='blocked']")).to be_nil
+      expect(document.at_css("[data-job-id='#{job.id}']")).to be_present
+    end
+
     it "applies the Kanban limit selector to Job boards" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       11.times do |index|
