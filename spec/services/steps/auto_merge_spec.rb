@@ -283,6 +283,22 @@ RSpec.describe Steps::AutoMerge do
     end
   end
 
+  it "raises StepFailed for GitHub's non-retryable rebase-merge 405" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    allow(client).to receive(:merge_pull_request)
+      .and_raise(octokit_error(Octokit::MethodNotAllowed, status: 405, message: "This branch can't be rebased"))
+
+    expect {
+      described_class.new(run).call
+    }.to raise_error(Steps::Base::StepFailed, /This branch can't be rebased/)
+
+    expect(job.reload).to be_landing
+    expect(run.reload).to be_running
+    expect(workflow.reload).to be_running
+  end
+
   it "raises StepFailed for persistent Octokit merge errors" do
     job.approve!(via: "github_review")
     job.start_landing!

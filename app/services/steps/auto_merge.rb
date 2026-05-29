@@ -1,11 +1,11 @@
 module Steps
   class AutoMerge < Base
     TRANSIENT_MERGE_ERRORS = [
-      Octokit::MethodNotAllowed,
       Octokit::Conflict,
       Octokit::ServiceUnavailable,
       Octokit::InternalServerError
     ].freeze
+    NON_RETRYABLE_REBASE_MERGE_ERROR = /(?:can(?:not|'t)|could not) be rebased/i
 
     def call
       client = GithubClient.for(repository: repository, user: job.user)
@@ -63,14 +63,29 @@ module Steps
         commit_title: "Merge #{repository.slug}##{job.pr_number} via Syrus",
         merge_method: "rebase"
       )
+    rescue Octokit::MethodNotAllowed => e
+      if retryable_method_not_allowed?(e)
+        defer_after_transient_merge_error!(e)
+        nil
+      else
+        raise StepFailed, "auto_merge: GitHub merge failed: #{e.message}"
+      end
     rescue *TRANSIENT_MERGE_ERRORS => e
-      log("auto_merge: deferred - #{transient_error_message(e)}", kind: "system")
-      job.defer_landing! if job.may_defer_landing?
-      job.save! if job.changed?
-      cancel_workflow!
+      defer_after_transient_merge_error!(e)
       nil
     rescue Octokit::Error => e
       raise StepFailed, "auto_merge: GitHub merge failed: #{e.message}"
+    end
+
+    def defer_after_transient_merge_error!(error)
+      log("auto_merge: deferred - #{transient_error_message(error)}", kind: "system")
+      job.defer_landing! if job.may_defer_landing?
+      job.save! if job.changed?
+      cancel_workflow!
+    end
+
+    def retryable_method_not_allowed?(error)
+      !NON_RETRYABLE_REBASE_MERGE_ERROR.match?(error.message.to_s)
     end
 
     def transient_error_message(error)
