@@ -12,7 +12,7 @@ module Admin
     PER_PAGE = 50
 
     def index
-      redirect_to admin_queue_path("active")
+      redirect_to admin_legacy_queue_path("active")
     end
 
     def show
@@ -33,7 +33,7 @@ module Admin
         when "recurring"  then load_recurring
         when "workers"    then load_workers
         else
-          redirect_to admin_queue_path(tab: "active") and return
+          redirect_to admin_legacy_queue_path("active") and return
         end
       end
     end
@@ -44,7 +44,7 @@ module Admin
     # button is for when the recurring job itself is starved.
     def reap_stale_runs
       ReapStaleRunsJob.perform_now
-      redirect_to admin_queue_path("active"),
+      redirect_to stale_runs_reaper_redirect_path,
                   notice: "ReapStaleRunsJob ran inline."
     end
 
@@ -129,6 +129,10 @@ module Admin
 
       SmartFolder.for_subject(:admin_queue).builtin.where(user_id: nil).find_by(id: params[:smart_folder_id]) ||
         SmartFolder.for_subject(:admin_queue).where(user: Current.user).find_by(id: params[:smart_folder_id])
+    end
+
+    def stale_runs_reaper_redirect_path
+      request.path.include?("/legacy/") ? admin_legacy_queue_path("active") : admin_queue_path("active")
     end
 
     def load_smart_folder_counts(base_scope)

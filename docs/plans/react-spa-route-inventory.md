@@ -76,8 +76,8 @@ health/storage internals.
 | `/settings`, `/settings/edit`, `PATCH /settings` | `credentials#edit`, `settings#edit/update` | `spa-core` | Split user credentials vs admin app settings clearly in React nav. |
 | `/invitations` | `invitations#index/create/destroy` | `spa-admin` | Admin/owner signup management. |
 | `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell; legacy ERB fallback lives at `/admin/legacy`. |
-| `/admin/queue`, `/admin/queue/:tab` | `admin/queue#index/show` | `spa-admin` | First real page migration candidate; already mirrored by admin token API. |
-| `POST /admin/queue/reap_stale_runs` | `admin/queue#reap_stale_runs` | `app-api-needed` | Browser admin command; can reuse existing admin service. |
+| `/admin/queue`, `/admin/queue/:tab` | `spa#show` | `spa-admin` | Migrated to the React admin queue shell. Legacy ERB fallback lives at `/admin/queue/legacy` and `/admin/queue/legacy/:tab`. |
+| `POST /admin/queue/reap_stale_runs` | `admin/queue#reap_stale_runs` | `legacy-html` | Kept for existing HTML admin controls; React uses `POST /api/v1/app/admin/queue/reap_stale_runs`. |
 | `/admin/stuck` | `admin/stuck#index` | `spa-admin` | Early admin migration candidate. |
 | `/admin/processes` | `admin/spawned_processes#index/show` | `spa-admin` | Early admin migration candidate. |
 | `POST /admin/processes/:id/kill` | `admin/spawned_processes#kill` | `app-api-needed` | Browser admin command; existing token API shape can inform it. |
@@ -118,8 +118,8 @@ health/storage internals.
 Use admin diagnostics as the first real page migration after the
 scaffolding/bootstrap PR:
 
-1. `/admin`
-2. `/admin/queue/:tab`
+1. `/admin` (migrated)
+2. `/admin/queue/:tab` (migrated)
 3. `/admin/stuck`
 4. `/admin/processes`
 5. `/admin/runs/:run_id/transcript`

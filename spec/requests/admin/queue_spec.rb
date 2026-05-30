@@ -29,19 +29,32 @@ RSpec.describe "Admin queue inspector", type: :request do
       expect(flash[:alert]).to match(/admin/i)
     end
 
-    it "redirects /admin/queue to /admin/queue/active" do
+    it "serves the React queue shell for admins" do
       sign_in_as(admin)
       get "/admin/queue"
-      expect(response).to redirect_to("/admin/queue/active")
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "serves nested queue tabs through the React queue shell" do
+      sign_in_as(admin)
+      get "/admin/queue/active"
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
     end
   end
 
-  describe "GET /admin/queue/:tab" do
+  describe "GET /admin/queue/legacy/:tab" do
     before { sign_in_as(admin) }
 
+    it "redirects the legacy root to the active legacy tab" do
+      get "/admin/queue/legacy"
+      expect(response).to redirect_to("/admin/queue/legacy/active")
+    end
+
     %w[active pending failed recurring workers].each do |tab|
-      it "renders the #{tab} tab successfully (whether SQ tables are reachable or not)" do
-        get "/admin/queue/#{tab}"
+      it "renders the legacy #{tab} tab successfully (whether SQ tables are reachable or not)" do
+        get "/admin/queue/legacy/#{tab}"
         expect(response).to be_successful
         expect(response.body).to include("SolidQueue inspector")
       end
@@ -87,7 +100,7 @@ RSpec.describe "Admin queue inspector", type: :request do
         ]
       )
 
-      get "/admin/queue/active", params: { q: q }
+      get "/admin/queue/legacy/active", params: { q: q }
 
       expect(response).to be_successful
       document = Nokogiri::HTML(response.body)
@@ -111,6 +124,14 @@ RSpec.describe "Admin queue inspector", type: :request do
       expect(ReapStaleRunsJob).to receive(:perform_now)
       post "/admin/queue/reap_stale_runs"
       expect(response).to redirect_to("/admin/queue/active")
+      expect(flash[:notice]).to match(/Reap/)
+    end
+
+    it "keeps the legacy reaper inside the legacy queue fallback" do
+      sign_in_as(admin)
+      expect(ReapStaleRunsJob).to receive(:perform_now)
+      post "/admin/queue/legacy/reap_stale_runs"
+      expect(response).to redirect_to("/admin/queue/legacy/active")
       expect(flash[:notice]).to match(/Reap/)
     end
   end

@@ -233,6 +233,8 @@ Rails.application.routes.draw do
   end
 
   get "admin", to: "spa#show", as: :admin_root
+  get "admin/queue", to: "spa#show", as: :admin_queue_root
+  get "admin/queue/:tab", to: "spa#show", as: :admin_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
 
   namespace :admin do
     # System overview — landing page for the admin area.
@@ -246,9 +248,10 @@ Rails.application.routes.draw do
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 
     # SolidQueue inspector — see docs/plans/complete/admin-diagnostics.md (B).
-    get  "queue",                  to: "queue#index", as: :queue_root
-    get  "queue/:tab",             to: "queue#show",            as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
-    post "queue/reap_stale_runs",  to: "queue#reap_stale_runs", as: :reap_stale_runs
+    get  "queue/legacy",                  to: "queue#index", as: :legacy_queue_root
+    get  "queue/legacy/:tab",             to: "queue#show",            as: :legacy_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
+    post "queue/reap_stale_runs",         to: "queue#reap_stale_runs", as: :reap_stale_runs
+    post "queue/legacy/reap_stale_runs",  to: "queue#reap_stale_runs", as: :legacy_reap_stale_runs
 
     # Stuck-things watchlist — Run heartbeat stale or Workflow
     # nearing prune. See Admin::StuckItems for the definition.
