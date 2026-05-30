@@ -108,6 +108,7 @@ describe("App", () => {
 
     expect(await screen.findByText("Active runs")).toBeInTheDocument()
     expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Active runs/ })).toHaveAttribute("href", "/admin/queue/active")
     expect(screen.getByText("2")).toBeInTheDocument()
     expect(screen.getByText("Run #4 silent for 10m")).toBeInTheDocument()
   })
@@ -140,5 +141,45 @@ describe("App", () => {
 
     expect(await screen.findByText("GitHub rate limits")).toBeInTheDocument()
     expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
+  })
+
+  it("renders the admin queue route from the app admin queue API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          jobs: [
+            {
+              id: 12,
+              class_name: "RunJob",
+              queue_name: "runs",
+              arguments: [42],
+              created_at: "2026-05-30T12:00:00Z",
+              claimed_at: "2026-05-30T12:01:00Z"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/queue/active"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin queue" })).toBeInTheDocument()
+    expect(await screen.findByText("RunJob")).toBeInTheDocument()
+    expect(screen.getByText("runs")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Failed" })).toHaveAttribute("href", "/app-shell/admin/queue/failed")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/queue/active",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
   })
 })

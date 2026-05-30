@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { Link } from "react-router-dom"
 import { fetchAdminOverview } from "../api/adminOverview"
 
 export function AdminOverview() {
@@ -31,11 +32,11 @@ export function AdminOverview() {
       </header>
 
       <section aria-label="System metrics" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric title="Active runs" value={data.active_runs.total} context={triggerContext(data.active_runs.by_trigger, "all idle")} />
-        <Metric title="Queued runs" value={data.queued_runs.total} context={data.queued_runs.total > 0 ? "waiting for a worker" : "queue empty"} />
-        <Metric title="Workers" value={data.workers.unreachable ? "?" : data.workers.total ?? 0} context={workersContext(data.workers)} tone={data.workers.stale ? "alarm" : "ok"} />
-        <Metric title="Recurring jobs" value={overdueRecurring.length} context={overdueRecurring.length > 0 ? overdueRecurring.map((task) => task.key).join(", ") : "all firing"} tone={overdueRecurring.length > 0 ? "alarm" : "ok"} />
-        <Metric title="Failed runs (24h)" value={data.recent_failures_24h.total} context={triggerContext(data.recent_failures_24h.by_trigger, "no failures")} tone={data.recent_failures_24h.total > 0 ? "warn" : "ok"} />
+        <Metric title="Active runs" value={data.active_runs.total} context={triggerContext(data.active_runs.by_trigger, "all idle")} href="/admin/queue/active" />
+        <Metric title="Queued runs" value={data.queued_runs.total} context={data.queued_runs.total > 0 ? "waiting for a worker" : "queue empty"} href="/admin/queue/pending" />
+        <Metric title="Workers" value={data.workers.unreachable ? "?" : data.workers.total ?? 0} context={workersContext(data.workers)} href="/admin/queue/workers" tone={data.workers.stale ? "alarm" : "ok"} />
+        <Metric title="Recurring jobs" value={overdueRecurring.length} context={overdueRecurring.length > 0 ? overdueRecurring.map((task) => task.key).join(", ") : "all firing"} href="/admin/queue/recurring" tone={overdueRecurring.length > 0 ? "alarm" : "ok"} />
+        <Metric title="Failed runs (24h)" value={data.recent_failures_24h.total} context={triggerContext(data.recent_failures_24h.by_trigger, "no failures")} href="/admin/queue/failed" tone={data.recent_failures_24h.total > 0 ? "warn" : "ok"} />
         <Metric title="GitHub rate limits" value={data.github_rate_limits.length} context={data.github_rate_limits.length > 0 ? data.github_rate_limits.map((user) => user.email).join(", ") : "all healthy"} tone={data.github_rate_limits.length > 0 ? "warn" : "ok"} />
         <Metric title="Agent session capture" value={captureRate == null ? "-" : `${Math.round(captureRate * 100)}%`} context={`${data.agent_session_capture_rate.captured} of ${data.agent_session_capture_rate.total}`} tone={captureRate == null || captureRate >= 0.95 ? "ok" : "warn"} />
         <Metric title="Stuck things" value={data.stuck.length} context={data.stuck.length > 0 ? "needs attention" : "nothing flagged"} tone={data.stuck.some((item) => item.severity === "alarm") ? "alarm" : data.stuck.length > 0 ? "warn" : "ok"} />
@@ -62,11 +63,13 @@ function Metric({
   title,
   value,
   context,
+  href,
   tone = "idle"
 }: {
   title: string
   value: number | string
   context: string
+  href?: string
   tone?: "idle" | "ok" | "warn" | "alarm"
 }) {
   const toneClass = {
@@ -75,12 +78,22 @@ function Metric({
     warn: "border-amber-200",
     alarm: "border-red-200"
   }[tone]
-
-  return (
-    <article className={`rounded border ${toneClass} bg-white p-4`}>
+  const className = `rounded border ${toneClass} bg-white p-4 ${href ? "block hover:bg-gray-50" : ""}`
+  const content = (
+    <>
       <h2 className="text-sm font-medium text-gray-700">{title}</h2>
       <p className="mt-2 text-3xl font-semibold text-gray-900">{value}</p>
       <p className="mt-1 text-xs text-gray-500">{context}</p>
+    </>
+  )
+
+  if (href) {
+    return <Link className={className} to={href}>{content}</Link>
+  }
+
+  return (
+    <article className={className}>
+      {content}
     </article>
   )
 }

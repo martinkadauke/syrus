@@ -40,6 +40,41 @@ export async function getJson<T>(path: string): Promise<T> {
   return response.json() as Promise<T>
 }
 
+export async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: "application/json"
+  }
+  const csrfToken = document.querySelector<HTMLMetaElement>("meta[name='csrf-token']")?.content
+
+  if (csrfToken) {
+    headers["X-CSRF-Token"] = csrfToken
+  }
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json"
+  }
+
+  const response = await fetch(path, {
+    method: "POST",
+    credentials: "same-origin",
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body)
+  })
+
+  if (response.status === 401) {
+    window.location.assign("/session/new")
+  }
+
+  if (!response.ok) {
+    const payload = await readErrorPayload(response)
+    throw new ApiError(payload.error?.message || `Request failed with ${response.status}`, {
+      status: response.status,
+      code: payload.error?.code
+    })
+  }
+
+  return response.json() as Promise<T>
+}
+
 async function readErrorPayload(response: Response): Promise<ApiErrorPayload> {
   try {
     return (await response.json()) as ApiErrorPayload
