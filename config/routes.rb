@@ -18,6 +18,8 @@ Rails.application.routes.draw do
 
         namespace :admin do
           get "overview", to: "overview#show"
+          get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
+          post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
         end
       end
 

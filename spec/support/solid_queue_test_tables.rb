@@ -55,19 +55,68 @@ module SolidQueueTestTables
       end
     end
 
-    [ SolidQueue::Job, SolidQueue::ClaimedExecution, SolidQueue::ReadyExecution, SolidQueue::FailedExecution, SolidQueue::Process ].each(&:reset_column_information)
+    unless connection.table_exists?(:solid_queue_recurring_tasks)
+      connection.create_table :solid_queue_recurring_tasks do |t|
+        t.text :arguments
+        t.string :class_name
+        t.string :command, limit: 2048
+        t.datetime :created_at, null: false
+        t.text :description
+        t.string :key, null: false
+        t.integer :priority, default: 0
+        t.string :queue_name
+        t.string :schedule, null: false
+        t.boolean :static, default: true, null: false
+        t.datetime :updated_at, null: false
+      end
+    end
+
+    unless connection.table_exists?(:solid_queue_recurring_executions)
+      connection.create_table :solid_queue_recurring_executions do |t|
+        t.datetime :created_at, null: false
+        t.bigint :job_id, null: false
+        t.datetime :run_at, null: false
+        t.string :task_key, null: false
+      end
+    end
+
+    [
+      SolidQueue::Job,
+      SolidQueue::ClaimedExecution,
+      SolidQueue::ReadyExecution,
+      SolidQueue::FailedExecution,
+      SolidQueue::Process,
+      SolidQueue::RecurringTask,
+      SolidQueue::RecurringExecution
+    ].each(&:reset_column_information)
   end
 
   def clear_solid_queue_test_tables!
     connection = ActiveRecord::Base.connection
-    %i[ solid_queue_failed_executions solid_queue_ready_executions solid_queue_claimed_executions solid_queue_jobs solid_queue_processes ].each do |table|
+    %i[
+      solid_queue_recurring_executions
+      solid_queue_recurring_tasks
+      solid_queue_failed_executions
+      solid_queue_ready_executions
+      solid_queue_claimed_executions
+      solid_queue_jobs
+      solid_queue_processes
+    ].each do |table|
       connection.delete("DELETE FROM #{connection.quote_table_name(table)}") if connection.table_exists?(table)
     end
   end
 
   def drop_solid_queue_test_tables!
     connection = ActiveRecord::Base.connection
-    %i[ solid_queue_failed_executions solid_queue_ready_executions solid_queue_claimed_executions solid_queue_processes solid_queue_jobs ].each do |table|
+    %i[
+      solid_queue_recurring_executions
+      solid_queue_recurring_tasks
+      solid_queue_failed_executions
+      solid_queue_ready_executions
+      solid_queue_claimed_executions
+      solid_queue_processes
+      solid_queue_jobs
+    ].each do |table|
       connection.drop_table(table) if connection.table_exists?(table)
     end
   end

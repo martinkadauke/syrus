@@ -1,0 +1,172 @@
+require "rails_helper"
+
+RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
+  before(:all) { ensure_solid_queue_test_tables! }
+  after(:all) { drop_solid_queue_test_tables! }
+  before { clear_solid_queue_test_tables! }
+
+  def parse_body
+    JSON.parse(response.body)
+  end
+
+  let(:admin) { Factories.user }
+  let(:non_admin) do
+    admin
+    Factories.user
+  end
+
+  it "401s with a JSON error when signed out" do
+    get "/api/v1/app/admin/queue/active"
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(parse_body.dig("error", "code")).to eq("unauthorized")
+  end
+
+  it "403s with a JSON error for non-admin users" do
+    sign_in_as(non_admin)
+
+    get "/api/v1/app/admin/queue/active"
+
+    expect(response).to have_http_status(:forbidden)
+    expect(parse_body.dig("error", "code")).to eq("forbidden")
+  end
+
+  it "returns active claimed executions for admin users" do
+    sign_in_as(admin)
+    process = solid_queue_process(hostname: "worker-a", pid: 101)
+    run_job = solid_queue_job(class_name: "RunJob", queue_name: "runs", arguments: { "arguments" => [ 42 ] })
+    chat_job = solid_queue_job(class_name: "ChatTurnJob", queue_name: "chat", arguments: { "arguments" => [ 7 ] })
+    SolidQueue::ClaimedExecution.create!(job: run_job, process: process, created_at: 2.minutes.ago)
+    SolidQueue::ClaimedExecution.create!(job: chat_job, process: process, created_at: 1.minute.ago)
+
+    get "/api/v1/app/admin/queue/active"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["jobs"].map { |job| job["class_name"] }).to eq([ "ChatTurnJob", "RunJob" ])
+    expect(parse_body["jobs"].first).to include(
+      "queue_name" => "chat",
+      "arguments" => [ 7 ]
+    )
+  end
+
+  it "returns pending ready executions with a total" do
+    sign_in_as(admin)
+    run_job = solid_queue_job(class_name: "RunJob", queue_name: "runs")
+    chat_job = solid_queue_job(class_name: "ChatTurnJob", queue_name: "chat")
+    chat_job.ready_execution.update!(created_at: 2.minutes.ago)
+    run_job.ready_execution.update!(created_at: 1.minute.ago)
+
+    get "/api/v1/app/admin/queue/pending"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["total"]).to eq(2)
+    expect(body["jobs"].map { |job| job["queue_name"] }).to eq([ "chat", "runs" ])
+  end
+
+  it "returns recent failed executions" do
+    sign_in_as(admin)
+    failed_job = solid_queue_job(class_name: "RunJob", queue_name: "runs", arguments: { "arguments" => [ 9 ] })
+    SolidQueue::FailedExecution.create!(
+      job: failed_job,
+      created_at: 5.minutes.ago,
+      error: { "exception_class" => "RuntimeError", "message" => "boom" }
+    )
+
+    get "/api/v1/app/admin/queue/failed"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["failures"].first).to include(
+      "class_name" => "RunJob",
+      "arguments" => [ 9 ],
+      "exception_class" => "RuntimeError",
+      "message" => "boom"
+    )
+  end
+
+  it "returns recurring task status" do
+    sign_in_as(admin)
+    recurring_job = solid_queue_job(class_name: "PollAllRepositoriesJob", queue_name: "default", finished_at: Time.current)
+    SolidQueue::RecurringTask.create!(
+      key: "poll_repositories",
+      class_name: "PollAllRepositoriesJob",
+      schedule: "*/5 * * * *",
+      static: true,
+      created_at: 1.day.ago,
+      updated_at: 1.day.ago
+    )
+    SolidQueue::RecurringExecution.create!(
+      task_key: "poll_repositories",
+      job: recurring_job,
+      run_at: 10.minutes.ago,
+      created_at: 10.minutes.ago
+    )
+
+    get "/api/v1/app/admin/queue/recurring"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["tasks"].first).to include(
+      "key" => "poll_repositories",
+      "class_name" => "PollAllRepositoriesJob",
+      "schedule" => "*/5 * * * *"
+    )
+    expect(parse_body["tasks"].first["last_run_at"]).to be_present
+    expect(parse_body["tasks"].first["last_finished_at"]).to be_present
+  end
+
+  it "returns worker and process inventory" do
+    sign_in_as(admin)
+    solid_queue_process(hostname: "worker-a", pid: 101, metadata: { "queues" => [ "runs" ], "thread_pool_size" => 2 })
+    solid_queue_process(kind: "Dispatcher", hostname: "dispatcher-a", pid: 202)
+
+    get "/api/v1/app/admin/queue/workers"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["workers"].first).to include(
+      "hostname" => "worker-a",
+      "pid" => 101,
+      "queues" => [ "runs" ],
+      "threads" => 2,
+      "stale" => false
+    )
+    expect(body["all_processes"].map { |process| process["kind"] }).to eq([ "Dispatcher", "Worker" ])
+  end
+
+  it "runs ReapStaleRunsJob inline" do
+    sign_in_as(admin)
+    expect(ReapStaleRunsJob).to receive(:perform_now)
+
+    post "/api/v1/app/admin/queue/reap_stale_runs"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include(
+      "ok" => true,
+      "message" => "ReapStaleRunsJob ran inline."
+    )
+  end
+
+  def solid_queue_job(class_name:, queue_name:, arguments: { "arguments" => [] }, finished_at: nil)
+    SolidQueue::Job.create!(
+      class_name: class_name,
+      queue_name: queue_name,
+      priority: 0,
+      arguments: arguments,
+      created_at: Time.current,
+      updated_at: Time.current,
+      finished_at: finished_at
+    )
+  end
+
+  def solid_queue_process(kind: "Worker", hostname:, pid:, metadata: {})
+    SolidQueue::Process.create!(
+      kind: kind,
+      name: "#{kind.downcase}-#{pid}",
+      hostname: hostname,
+      pid: pid,
+      last_heartbeat_at: Time.current,
+      created_at: Time.current,
+      metadata: metadata
+    )
+  end
+end
