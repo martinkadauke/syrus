@@ -120,7 +120,10 @@ module Admin
         age_label: item.age_label,
         run_id: item.run&.id,
         workflow_id: item.workflow&.id,
-        job_id: item.job&.id
+        workflow_trigger_kind: item.workflow&.trigger_kind,
+        step_kind: item.workflow&.current_step&.kind,
+        job_id: item.job&.id,
+        has_transcript: item.run&.claude_session.present?
       }
     end
   end

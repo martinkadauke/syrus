@@ -20,6 +20,7 @@ Rails.application.routes.draw do
           get "overview", to: "overview#show"
           get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
           post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
+          get "stuck", to: "stuck#index"
         end
       end
 

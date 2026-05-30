@@ -8,7 +8,7 @@ describe("queryKeysFor", () => {
     expect(queryKeysFor(event("job", 42))).toEqual([["jobs"], ["jobs", "42"]])
     expect(queryKeysFor(event("workflow", 7))).toEqual([["workflows"], ["workflows", "7"]])
     expect(queryKeysFor(event("repository", 3))).toEqual([["repositories"], ["repositories", "3"]])
-    expect(queryKeysFor(event("admin_overview", null))).toEqual([["admin", "overview"]])
+    expect(queryKeysFor(event("admin_overview", null))).toEqual([["admin", "overview"], ["admin", "stuck"]])
     expect(queryKeysFor(event("unknown", 1))).toEqual([])
   })
 })

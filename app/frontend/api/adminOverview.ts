@@ -48,7 +48,10 @@ export type AdminOverviewPayload = {
     age_label: string
     run_id: number | null
     workflow_id: number | null
+    workflow_trigger_kind?: string | null
+    step_kind?: string | null
     job_id: number | null
+    has_transcript?: boolean
   }>
 }
 

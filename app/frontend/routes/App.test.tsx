@@ -109,6 +109,7 @@ describe("App", () => {
     expect(await screen.findByText("Active runs")).toBeInTheDocument()
     expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Active runs/ })).toHaveAttribute("href", "/admin/queue/active")
+    expect(screen.getByRole("link", { name: /Stuck things/ })).toHaveAttribute("href", "/admin/stuck")
     expect(screen.getByText("2")).toBeInTheDocument()
     expect(screen.getByText("Run #4 silent for 10m")).toBeInTheDocument()
   })
@@ -176,6 +177,51 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Failed" })).toHaveAttribute("href", "/app-shell/admin/queue/failed")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/queue/active",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
+  it("renders the admin stuck route from the app admin stuck API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              kind: "stale_heartbeat",
+              severity: "warn",
+              detail: "Run #4 silent for 10m",
+              age_label: "10m",
+              run_id: 4,
+              workflow_id: 2,
+              workflow_trigger_kind: "initial",
+              step_kind: "implement",
+              job_id: 1,
+              has_transcript: true
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/stuck"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin stuck items" })).toBeInTheDocument()
+    expect(await screen.findByText("Run #4 silent for 10m")).toBeInTheDocument()
+    expect(screen.getByText("stale_heartbeat")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Job" })).toHaveAttribute("href", "/jobs/1")
+    expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/admin/runs/4/transcript")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/stuck",
       expect.objectContaining({
         credentials: "same-origin",
         headers: { Accept: "application/json" }

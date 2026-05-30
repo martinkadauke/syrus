@@ -39,7 +39,7 @@ export function AdminOverview() {
         <Metric title="Failed runs (24h)" value={data.recent_failures_24h.total} context={triggerContext(data.recent_failures_24h.by_trigger, "no failures")} href="/admin/queue/failed" tone={data.recent_failures_24h.total > 0 ? "warn" : "ok"} />
         <Metric title="GitHub rate limits" value={data.github_rate_limits.length} context={data.github_rate_limits.length > 0 ? data.github_rate_limits.map((user) => user.email).join(", ") : "all healthy"} tone={data.github_rate_limits.length > 0 ? "warn" : "ok"} />
         <Metric title="Agent session capture" value={captureRate == null ? "-" : `${Math.round(captureRate * 100)}%`} context={`${data.agent_session_capture_rate.captured} of ${data.agent_session_capture_rate.total}`} tone={captureRate == null || captureRate >= 0.95 ? "ok" : "warn"} />
-        <Metric title="Stuck things" value={data.stuck.length} context={data.stuck.length > 0 ? "needs attention" : "nothing flagged"} tone={data.stuck.some((item) => item.severity === "alarm") ? "alarm" : data.stuck.length > 0 ? "warn" : "ok"} />
+        <Metric title="Stuck things" value={data.stuck.length} context={data.stuck.length > 0 ? "needs attention" : "nothing flagged"} href="/admin/stuck" tone={data.stuck.some((item) => item.severity === "alarm") ? "alarm" : data.stuck.length > 0 ? "warn" : "ok"} />
       </section>
 
       {data.stuck.length > 0 ? (

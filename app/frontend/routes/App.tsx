@@ -4,6 +4,7 @@ import { fetchBootstrap } from "../api/bootstrap"
 import { useAppEvents } from "../lib/useAppEvents"
 import { AdminOverview } from "./AdminOverview"
 import { AdminQueueRoute } from "./AdminQueue"
+import { AdminStuck } from "./AdminStuck"
 
 export function App() {
   useAppEvents()
@@ -13,9 +14,11 @@ export function App() {
       <Route path="/admin" element={<AdminOverview />} />
       <Route path="/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/admin/queue/:tab" element={<AdminQueueRoute />} />
+      <Route path="/admin/stuck" element={<AdminStuck />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
+      <Route path="/app-shell/admin/stuck" element={<AdminStuck />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )
