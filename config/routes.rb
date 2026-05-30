@@ -246,6 +246,7 @@ Rails.application.routes.draw do
   get "admin/processes", to: "spa#show", as: :admin_processes
   get "admin/processes/:id", to: "spa#show", as: :admin_process, constraints: { id: /\d+/ }
   post "admin/processes/:id/kill", to: "admin/spawned_processes#kill", as: :kill_admin_process, constraints: { id: /\d+/ }
+  get "admin/runs/:run_id/transcript", to: "spa#show", as: :admin_run_transcript, constraints: { run_id: /\d+/ }
 
   namespace :admin do
     # System overview — landing page for the admin area.
@@ -255,7 +256,7 @@ Rails.application.routes.draw do
     # Per-Run claude transcript viewer — renders the captured
     # ClaudeSession.transcript_jsonl as a structured event stream.
     # See docs/plans/complete/admin-diagnostics.md (A).
-    get  "runs/:run_id/transcript",          to: "transcripts#show",     as: :run_transcript
+    get  "runs/:run_id/transcript/legacy",   to: "transcripts#show",     as: :legacy_run_transcript
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 
     # SolidQueue inspector — see docs/plans/complete/admin-diagnostics.md (B).

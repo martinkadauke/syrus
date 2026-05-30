@@ -81,7 +81,7 @@ health/storage internals.
 | `/admin/stuck` | `spa#show` | `spa-admin` | Migrated to the React stuck-items shell. Legacy ERB fallback lives at `/admin/stuck/legacy`. |
 | `/admin/processes`, `/admin/processes/:id` | `spa#show` | `spa-admin` | Migrated to the React process inventory/detail shell. Legacy ERB fallback lives at `/admin/processes/legacy` and `/admin/processes/legacy/:id`. |
 | `POST /admin/processes/:id/kill` | `admin/spawned_processes#kill` | `legacy-html` | Kept for existing HTML controls; React uses `POST /api/v1/app/admin/processes/:id/kill`. |
-| `/admin/runs/:run_id/transcript` | `admin/transcripts#show` | `spa-admin` | Early admin migration candidate; high value for React list/filters. |
+| `/admin/runs/:run_id/transcript` | `spa#show` | `spa-admin` | Migrated to the React transcript viewer. Legacy ERB fallback lives at `/admin/runs/:run_id/transcript/legacy`. |
 | `/admin/runs/:run_id/transcript/download` | `admin/transcripts#download` | `legacy-html` | Keep as regular download endpoint. |
 | `/admin/users` | `admin/users#index/show` | `spa-admin` | Migrate after admin diagnostics first slice. |
 | admin user scheduling commands | `admin/users#pause_scheduling`, `#unpause_scheduling` | `app-api-needed` | Browser admin command endpoints. |
@@ -122,7 +122,7 @@ scaffolding/bootstrap PR:
 2. `/admin/queue/:tab` (migrated)
 3. `/admin/stuck` (migrated)
 4. `/admin/processes` (migrated)
-5. `/admin/runs/:run_id/transcript`
+5. `/admin/runs/:run_id/transcript` (migrated)
 
 Rationale:
 

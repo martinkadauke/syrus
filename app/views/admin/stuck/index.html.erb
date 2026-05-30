@@ -63,7 +63,7 @@
                   <%= link_to "Job", job_path(item.job), class: "text-blue-600 underline hover:no-underline" %>
                 <% end %>
                 <% if item.run&.claude_session %>
-                  <%= link_to "Transcript", admin_run_transcript_path(item.run.id), class: "text-indigo-600 underline hover:no-underline" %>
+                  <%= link_to "Transcript", admin_legacy_run_transcript_path(item.run.id), class: "text-indigo-600 underline hover:no-underline" %>
                 <% end %>
               </td>
             </tr>

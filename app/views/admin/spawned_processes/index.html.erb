@@ -66,7 +66,7 @@
                     <%= sp.command %>
                     <% if sp.run_id %>
                       <div class="text-gray-500 mt-0.5">
-                        Run <%= link_to "##{sp.run_id}", admin_run_transcript_path(sp.run_id), class: "text-blue-600 hover:underline" %>
+                        Run <%= link_to "##{sp.run_id}", admin_legacy_run_transcript_path(sp.run_id), class: "text-blue-600 hover:underline" %>
                       </div>
                     <% end %>
                   </td>

@@ -70,7 +70,7 @@
 
       <% if @process.run_id %>
         <dt class="text-gray-500">Run</dt>
-        <dd><%= link_to "##{@process.run_id}", admin_run_transcript_path(@process.run_id), class: "text-blue-600 hover:underline" %></dd>
+        <dd><%= link_to "##{@process.run_id}", admin_legacy_run_transcript_path(@process.run_id), class: "text-blue-600 hover:underline" %></dd>
       <% end %>
 
       <% if @process.workflow_id %>
