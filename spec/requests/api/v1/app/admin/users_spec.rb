@@ -1,0 +1,89 @@
+require "rails_helper"
+
+RSpec.describe "API: /api/v1/app/admin/users", type: :request do
+  let!(:admin) { Factories.user }
+  let(:non_admin) { Factories.user }
+
+  def parse_body
+    JSON.parse(response.body)
+  end
+
+  it "401s with a JSON error when signed out" do
+    get "/api/v1/app/admin/users"
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(parse_body.dig("error", "code")).to eq("unauthorized")
+  end
+
+  it "403s with a JSON error for non-admin users" do
+    sign_in_as(non_admin)
+
+    get "/api/v1/app/admin/users"
+
+    expect(response).to have_http_status(:forbidden)
+    expect(parse_body.dig("error", "code")).to eq("forbidden")
+  end
+
+  it "returns filtered user rows without plaintext tokens" do
+    sign_in_as(admin)
+    low = Factories.user(email_address: "low@example.com",
+                         github_token: "ghp_secret",
+                         gh_rate_limit_remaining: 5,
+                         gh_rate_limit_limit: 5_000)
+    Factories.user(email_address: "ok@example.com",
+                   gh_rate_limit_remaining: 4_500,
+                   gh_rate_limit_limit: 5_000)
+
+    get "/api/v1/app/admin/users", params: { gh_rate: "low" }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["users"].map { |user| user["id"] }).to include(low.id)
+    expect(body["users"].map { |user| user["email_address"] }).not_to include("ok@example.com")
+    expect(body["filters"]).to eq("gh_rate" => "low")
+    expect(response.body).not_to include("ghp_secret")
+  end
+
+  it "returns user detail" do
+    sign_in_as(admin)
+    target = Factories.user(email_address: "target@example.com",
+                            name: "Target User",
+                            gh_rate_limit_remaining: 100,
+                            gh_rate_limit_limit: 5_000,
+                            gh_rate_limit_resource: "core")
+
+    get "/api/v1/app/admin/users/#{target.id}"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include(
+      "id" => target.id,
+      "display_name" => "Target User",
+      "email_address" => "target@example.com",
+      "scheduling_paused" => false
+    )
+    expect(parse_body["github_rate_limit"]).to include(
+      "remaining" => 100,
+      "limit" => 5_000,
+      "resource" => "core"
+    )
+  end
+
+  it "pauses and resumes scheduling for a user" do
+    sign_in_as(admin)
+    target = Factories.user(email_address: "target@example.com")
+
+    expect {
+      post "/api/v1/app/admin/users/#{target.id}/pause_scheduling"
+    }.to change { target.reload.scheduling_paused }.from(false).to(true)
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["scheduling_paused"]).to be true
+    expect(AdminAction.where(action: "pause_user_scheduling").count).to eq(1)
+
+    expect {
+      post "/api/v1/app/admin/users/#{target.id}/unpause_scheduling"
+    }.to change { target.reload.scheduling_paused }.from(true).to(false)
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["scheduling_paused"]).to be false
+    expect(AdminAction.where(action: "unpause_user_scheduling").count).to eq(1)
+  end
+end

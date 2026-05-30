@@ -285,6 +285,71 @@ describe("App", () => {
     )
   })
 
+  it("renders the admin users route from the app admin users API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          filters: { gh_rate: "low" },
+          count: 1,
+          users: [
+            {
+              id: 5,
+              email_address: "operator@example.com",
+              name: "Operator",
+              display_name: "Operator",
+              github_handle: "octo",
+              admin: true,
+              scheduling_paused: false,
+              agent_provider: "codex",
+              codex_auth_mode: "api_key",
+              has_github_token: true,
+              has_claude_token: false,
+              has_codex_token: true,
+              has_codex_api_key: true,
+              has_codex_auth_json: false,
+              has_api_token: true,
+              agent_max_turns: 200,
+              github_api_blocked: false,
+              github_api_blocked_at: null,
+              github_api_blocked_reason: null,
+              github_rate_limit: {
+                remaining: 5,
+                limit: 5000,
+                resource: "core",
+                reset_at: null,
+                observed_at: null,
+                percent: 0.001
+              },
+              created_at: "2026-05-30T12:00:00Z",
+              updated_at: "2026-05-30T12:00:00Z"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/users?gh_rate=low"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin users" })).toBeInTheDocument()
+    expect(await screen.findByText("Operator")).toBeInTheDocument()
+    expect(screen.getByText("operator@example.com")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Operator" })).toHaveAttribute("href", "/app-shell/admin/users/5")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/users?gh_rate=low",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
   it("renders the admin transcript route from the app admin transcript API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
