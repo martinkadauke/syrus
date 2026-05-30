@@ -78,7 +78,7 @@ health/storage internals.
 | `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell; legacy ERB fallback lives at `/admin/legacy`. |
 | `/admin/queue`, `/admin/queue/:tab` | `spa#show` | `spa-admin` | Migrated to the React admin queue shell. Legacy ERB fallback lives at `/admin/queue/legacy` and `/admin/queue/legacy/:tab`. |
 | `POST /admin/queue/reap_stale_runs` | `admin/queue#reap_stale_runs` | `legacy-html` | Kept for existing HTML admin controls; React uses `POST /api/v1/app/admin/queue/reap_stale_runs`. |
-| `/admin/stuck` | `admin/stuck#index` | `spa-admin` | Early admin migration candidate. |
+| `/admin/stuck` | `spa#show` | `spa-admin` | Migrated to the React stuck-items shell. Legacy ERB fallback lives at `/admin/stuck/legacy`. |
 | `/admin/processes` | `admin/spawned_processes#index/show` | `spa-admin` | Early admin migration candidate. |
 | `POST /admin/processes/:id/kill` | `admin/spawned_processes#kill` | `app-api-needed` | Browser admin command; existing token API shape can inform it. |
 | `/admin/runs/:run_id/transcript` | `admin/transcripts#show` | `spa-admin` | Early admin migration candidate; high value for React list/filters. |
@@ -120,7 +120,7 @@ scaffolding/bootstrap PR:
 
 1. `/admin` (migrated)
 2. `/admin/queue/:tab` (migrated)
-3. `/admin/stuck`
+3. `/admin/stuck` (migrated)
 4. `/admin/processes`
 5. `/admin/runs/:run_id/transcript`
 

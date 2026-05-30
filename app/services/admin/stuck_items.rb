@@ -1,6 +1,6 @@
 module Admin
   # Computes the "stuck things" watchlist used by the admin
-  # overview's tile + the dedicated /admin/stuck list page. One
+  # overview's tile + the dedicated stuck list pages. One
   # source of truth so the two views can't drift.
   #
   # Returns Items, each with:

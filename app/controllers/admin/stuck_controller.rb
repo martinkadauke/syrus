@@ -1,7 +1,7 @@
 module Admin
-  # Dedicated /admin/stuck list — same items the overview's tile
-  # links to, with richer per-item context (Step kind, age,
-  # workflow trigger, drill-down links to transcript + job).
+  # Legacy /admin/stuck/legacy list — same items the overview's tile
+  # links to in the React route, with the original ERB auto-refresh
+  # page kept as a fallback during the SPA migration.
   # Source of truth is Admin::StuckItems so the two views can't
   # drift.
   class StuckController < BaseController

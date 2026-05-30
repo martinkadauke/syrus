@@ -15,9 +15,18 @@ RSpec.describe "Admin stuck list", type: :request do
       expect(flash[:alert]).to match(/admin/i)
     end
 
-    it "renders the empty state when nothing is stuck" do
+    it "serves the React stuck-items shell for admins" do
       sign_in_as(admin)
       get "/admin/stuck"
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /admin/stuck/legacy" do
+    it "renders the empty state when nothing is stuck" do
+      sign_in_as(admin)
+      get "/admin/stuck/legacy"
       expect(response).to be_successful
       expect(response.body).to include("Nothing stuck")
     end
@@ -30,7 +39,7 @@ RSpec.describe "Admin stuck list", type: :request do
                          started_at: 10.minutes.ago,
                          last_heartbeat_at: 10.minutes.ago)
 
-      get "/admin/stuck"
+      get "/admin/stuck/legacy"
       expect(response).to be_successful
       expect(response.body).to include("stale_heartbeat")
       expect(response.body).to include("warn")
@@ -46,14 +55,14 @@ RSpec.describe "Admin stuck list", type: :request do
                          started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
                          last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago)
 
-      get "/admin/stuck"
+      get "/admin/stuck/legacy"
       expect(response.body).to include("reaper_starved")
       expect(response.body).to include("alarm")
     end
 
     it "wires the auto-refresh Stimulus controller" do
       sign_in_as(admin)
-      get "/admin/stuck"
+      get "/admin/stuck/legacy"
       expect(response.body).to include('data-controller="auto-refresh"')
     end
   end

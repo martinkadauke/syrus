@@ -95,7 +95,7 @@ module Admin
 
       # Stuck-things watchlist — see Admin::StuckItems for the
       # definition. Inline list below the tile is the at-a-glance
-      # view; the dedicated /admin/stuck page (admin#stuck) shows
+      # view; the dedicated /admin/stuck page shows
       # the same items with richer per-item context + drill-down
       # links.
       @stuck = StuckItems.all

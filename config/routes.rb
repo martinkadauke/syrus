@@ -236,6 +236,7 @@ Rails.application.routes.draw do
   get "admin", to: "spa#show", as: :admin_root
   get "admin/queue", to: "spa#show", as: :admin_queue_root
   get "admin/queue/:tab", to: "spa#show", as: :admin_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
+  get "admin/stuck", to: "spa#show", as: :admin_stuck
 
   namespace :admin do
     # System overview — landing page for the admin area.
@@ -256,7 +257,7 @@ Rails.application.routes.draw do
 
     # Stuck-things watchlist — Run heartbeat stale or Workflow
     # nearing prune. See Admin::StuckItems for the definition.
-    get "stuck", to: "stuck#index", as: :stuck
+    get "stuck/legacy", to: "stuck#index", as: :legacy_stuck
 
     # Subprocess inventory — see Admin::SpawnedProcessesController.
     # Shows every claude/codex/git/grader/prepare subprocess Syrus
