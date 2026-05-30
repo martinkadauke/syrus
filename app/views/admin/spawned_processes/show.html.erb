@@ -106,7 +106,7 @@
   <% end %>
 
   <% if @process.running? && !@process.kill_requested? %>
-    <%= button_to "Kill this process", kill_admin_process_path(@process), method: :post,
+    <%= button_to "Kill this process", admin_legacy_kill_process_path(@process), method: :post,
           data: { turbo_confirm: "Send SIGTERM (then SIGKILL after 5s) to #{@process.kind} ##{@process.id}?" },
           class: "inline-flex items-center rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 cursor-pointer" %>
   <% end %>

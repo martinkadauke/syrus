@@ -18,12 +18,20 @@ RSpec.describe "Admin spawned processes (HTML)", type: :request do
   end
 
   describe "GET /admin/processes" do
+    it "serves the React processes shell" do
+      get admin_processes_path
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /admin/processes/legacy" do
     it "lists active and recently-finished rows" do
       running = fixture
       recent = fixture(started_at: 5.minutes.ago, finished_at: 1.minute.ago, outcome: "succeeded", exit_status: 0)
       ancient = fixture(started_at: 5.hours.ago, finished_at: 4.hours.ago, outcome: "succeeded", exit_status: 0)
 
-      get admin_processes_path
+      get admin_legacy_processes_path
 
       expect(response.body).to include("Process ##{running.id}").or include(running.command)
       expect(response.body).to include(recent.command)
@@ -34,7 +42,7 @@ RSpec.describe "Admin spawned processes (HTML)", type: :request do
       running = fixture
       fixture(started_at: 10.minutes.ago, finished_at: 1.minute.ago, outcome: "succeeded", exit_status: 0)
 
-      get admin_processes_path, params: { state: "running" }
+      get admin_legacy_processes_path, params: { state: "running" }
       doc = Nokogiri::HTML(response.body)
       shown_rows = doc.css("tbody tr").size
       expect(shown_rows).to eq(1)
@@ -45,7 +53,7 @@ RSpec.describe "Admin spawned processes (HTML)", type: :request do
       finished = fixture(command: "finished command", started_at: 10.minutes.ago, finished_at: 1.minute.ago, outcome: "succeeded", exit_status: 0)
       q = Filters::QueryParam.encode("field" => "state", "op" => "is", "value" => "running")
 
-      get admin_processes_path, params: { q: q }
+      get admin_legacy_processes_path, params: { q: q }
 
       expect(response.body).to include(running.command)
       expect(response.body).not_to include(finished.command)
@@ -57,32 +65,41 @@ RSpec.describe "Admin spawned processes (HTML)", type: :request do
       fixture(kind: "agent")
       grader = fixture(kind: "grader", command: "bin/rspec")
 
-      get admin_processes_path, params: { kind: "grader" }
+      get admin_legacy_processes_path, params: { kind: "grader" }
       expect(response.body).to include(grader.command)
       expect(response.body).not_to include("claude --print")
     end
 
     it "renders a Kill button on running rows without a kill request" do
       sp = fixture
-      get admin_processes_path
-      expect(response.body).to include(kill_admin_process_path(sp))
+      get admin_legacy_processes_path
+      expect(response.body).to include(admin_legacy_kill_process_path(sp))
     end
 
     it "hides the Kill button once kill_requested_at is set" do
       sp = fixture(kill_requested_at: Time.current)
-      get admin_processes_path
+      get admin_legacy_processes_path
       expect(response.body).to include("kill requested")
       # The form action should not be rendered as a button for this row
       doc = Nokogiri::HTML(response.body)
       row_actions = doc.at_xpath("//td[contains(., 'Detail')]")
-      expect(row_actions&.css("form[action='#{kill_admin_process_path(sp)}']")).to be_empty
+      expect(row_actions&.css("form[action='#{admin_legacy_kill_process_path(sp)}']")).to be_empty
     end
   end
 
   describe "GET /admin/processes/:id" do
-    it "renders the detail dl" do
+    it "serves the React process detail shell" do
       sp = fixture
       get admin_process_path(sp)
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /admin/processes/legacy/:id" do
+    it "renders the detail dl" do
+      sp = fixture
+      get admin_legacy_process_path(sp)
       expect(response.body).to include("Process ##{sp.id}")
       expect(response.body).to include("syrus-worker-test")
     end
@@ -101,6 +118,13 @@ RSpec.describe "Admin spawned processes (HTML)", type: :request do
       sp = fixture(finished_at: Time.current, outcome: "succeeded", exit_status: 0)
       expect { post kill_admin_process_path(sp) }.not_to change { sp.reload.kill_requested_at }
       expect(flash[:alert]).to include("already finalized")
+    end
+
+    it "keeps the legacy kill action inside the legacy process fallback" do
+      sp = fixture
+      expect { post admin_legacy_kill_process_path(sp) }.to change { sp.reload.kill_requested_at }.from(nil)
+      expect(response).to redirect_to(admin_legacy_processes_path)
+      expect(flash[:notice]).to include("Kill requested for process ##{sp.id}")
     end
   end
 end

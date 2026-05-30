@@ -242,6 +242,9 @@ Rails.application.routes.draw do
   get "admin/queue", to: "spa#show", as: :admin_queue_root
   get "admin/queue/:tab", to: "spa#show", as: :admin_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
   get "admin/stuck", to: "spa#show", as: :admin_stuck
+  get "admin/processes", to: "spa#show", as: :admin_processes
+  get "admin/processes/:id", to: "spa#show", as: :admin_process, constraints: { id: /\d+/ }
+  post "admin/processes/:id/kill", to: "admin/spawned_processes#kill", as: :kill_admin_process, constraints: { id: /\d+/ }
 
   namespace :admin do
     # System overview — landing page for the admin area.
@@ -264,14 +267,10 @@ Rails.application.routes.draw do
     # nearing prune. See Admin::StuckItems for the definition.
     get "stuck/legacy", to: "stuck#index", as: :legacy_stuck
 
-    # Subprocess inventory — see Admin::SpawnedProcessesController.
-    # Shows every claude/codex/git/grader/prepare subprocess Syrus
-    # has spawned, with staleness, timeouts, and a kill button.
-    resources :processes, only: %i[ index show ], controller: "spawned_processes" do
-      member do
-        post :kill
-      end
-    end
+    # Subprocess inventory legacy ERB fallback — see Admin::SpawnedProcessesController.
+    get  "processes/legacy",          to: "spawned_processes#index", as: :legacy_processes
+    get  "processes/legacy/:id",      to: "spawned_processes#show",  as: :legacy_process
+    post "processes/legacy/:id/kill", to: "spawned_processes#kill",  as: :legacy_kill_process
 
     get  "installations",         to: "installations#index",   as: :installations
     post "installations/refresh", to: "installations#refresh", as: :installations_refresh

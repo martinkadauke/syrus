@@ -19,7 +19,7 @@
     </summary>
     <div class="space-y-4 border-t border-gray-200 p-3">
       <%= render "home/smart_folders", subject: :spawned_process, folder_heading: "Processes" %>
-      <%= render "home/chip_bar", subject: :spawned_process, filter: @filter, schema: @schema, action_url: admin_processes_path, class_name: "relative flex flex-col gap-3" %>
+      <%= render "home/chip_bar", subject: :spawned_process, filter: @filter, schema: @schema, action_url: admin_legacy_processes_path, class_name: "relative flex flex-col gap-3" %>
     </div>
   </details>
 
@@ -30,7 +30,7 @@
 
     <div class="space-y-4">
       <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-        <%= render "home/chip_bar", subject: :spawned_process, filter: @filter, schema: @schema, action_url: admin_processes_path, class_name: "relative" %>
+        <%= render "home/chip_bar", subject: :spawned_process, filter: @filter, schema: @schema, action_url: admin_legacy_processes_path, class_name: "relative" %>
         <div class="text-xs text-gray-500">
           <strong><%= @running_count %></strong> running ·
           <strong><%= @processes.size %></strong> shown
@@ -108,9 +108,9 @@
                     <% end %>
                   </td>
                   <td class="px-3 py-2 align-top whitespace-nowrap">
-                    <%= link_to "Detail", admin_process_path(sp), class: "text-blue-600 hover:underline text-xs" %>
+                    <%= link_to "Detail", admin_legacy_process_path(sp), class: "text-blue-600 hover:underline text-xs" %>
                     <% if sp.running? && !sp.kill_requested? %>
-                      <%= button_to "Kill", kill_admin_process_path(sp), method: :post,
+                      <%= button_to "Kill", admin_legacy_kill_process_path(sp), method: :post,
                             data: { turbo_confirm: "Send SIGTERM (then SIGKILL after 5s) to #{sp.kind} ##{sp.id}?" },
                             class: "ml-2 inline-flex items-center rounded bg-red-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-700 cursor-pointer" %>
                     <% end %>

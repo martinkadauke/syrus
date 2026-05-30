@@ -31,12 +31,12 @@ module Admin
     def kill
       process = SpawnedProcess.find(params[:id])
       if process.finished?
-        redirect_to admin_processes_path, alert: "Process ##{process.id} is already finalized (#{process.outcome})."
+        redirect_to processes_redirect_path, alert: "Process ##{process.id} is already finalized (#{process.outcome})."
         return
       end
 
       process.request_kill!(user: Current.user)
-      redirect_to admin_processes_path, notice: "Kill requested for process ##{process.id} (#{process.kind}). Worker will pick it up within ~1s."
+      redirect_to processes_redirect_path, notice: "Kill requested for process ##{process.id} (#{process.kind}). Worker will pick it up within ~1s."
     end
 
     private
@@ -70,6 +70,10 @@ module Admin
       end
 
       [ primary, more ]
+    end
+
+    def processes_redirect_path
+      request.path.include?("/legacy/") ? admin_legacy_processes_path : admin_processes_path
     end
   end
 end

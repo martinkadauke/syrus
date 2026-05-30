@@ -93,7 +93,7 @@ class SmartFoldersController < ApplicationController
     when "epic"
       dashboard_epics_path(query)
     when "spawned_process"
-      admin_processes_path(query)
+      admin_legacy_processes_path(query)
     else
       dashboard_jobs_path(query)
     end
