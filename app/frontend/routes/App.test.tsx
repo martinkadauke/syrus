@@ -461,4 +461,60 @@ describe("App", () => {
       })
     )
   })
+
+  it("renders the admin installations route from the app admin installations API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          github_app_registered: true,
+          github_app_slug: "operator-syrus",
+          pat_owner_groups: [
+            {
+              owner: "globex",
+              repository_count: 1,
+              install_url: "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=101&repository_ids[]=201"
+            }
+          ],
+          repositories: [
+            {
+              id: 2,
+              slug: "globex/pat-repo",
+              owner: "globex",
+              name: "pat-repo",
+              app_credential_active: false,
+              credential_mode: "pat",
+              account_login: "globex",
+              installation_removed_at: null,
+              github_owner_id: 101,
+              github_repository_id: 201
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/installations"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin installations" })).toBeInTheDocument()
+    expect(screen.getByText("GitHub App Installations")).toBeInTheDocument()
+    expect(await screen.findByText("globex/pat-repo")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Install on all PAT-only repos in this account" })).toHaveAttribute(
+      "href",
+      "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=101&repository_ids[]=201"
+    )
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/installations",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
 })

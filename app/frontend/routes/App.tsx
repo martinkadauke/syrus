@@ -3,6 +3,7 @@ import { Route, Routes } from "react-router-dom"
 import { fetchBootstrap } from "../api/bootstrap"
 import { useAppEvents } from "../lib/useAppEvents"
 import { AdminConsole } from "./AdminConsole"
+import { AdminInstallations } from "./AdminInstallations"
 import { AdminOverview } from "./AdminOverview"
 import { AdminQueueRoute } from "./AdminQueue"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
@@ -25,6 +26,7 @@ export function App() {
       <Route path="/admin/users" element={<AdminUsersIndex />} />
       <Route path="/admin/users/:id" element={<AdminUserDetailRoute />} />
       <Route path="/admin/console" element={<AdminConsole />} />
+      <Route path="/admin/installations" element={<AdminInstallations />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
@@ -35,6 +37,7 @@ export function App() {
       <Route path="/app-shell/admin/users" element={<AdminUsersIndex />} />
       <Route path="/app-shell/admin/users/:id" element={<AdminUserDetailRoute />} />
       <Route path="/app-shell/admin/console" element={<AdminConsole />} />
+      <Route path="/app-shell/admin/installations" element={<AdminInstallations />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )

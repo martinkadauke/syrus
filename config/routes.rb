@@ -39,6 +39,8 @@ Rails.application.routes.draw do
           post "console/pause_runs", to: "console#pause_runs"
           post "console/unpause_runs", to: "console#unpause_runs"
           post "console/clear_github_cache", to: "console#clear_github_cache"
+          get "installations", to: "installations#index"
+          post "installations/refresh", to: "installations#refresh"
         end
       end
 
