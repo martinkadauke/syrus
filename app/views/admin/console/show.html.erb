@@ -34,11 +34,11 @@
       </div>
       <div>
         <% if @settings.polling_paused %>
-          <%= button_to "Resume polling", admin_unpause_polling_path, method: :post,
+          <%= button_to "Resume polling", admin_legacy_unpause_polling_path, method: :post,
                 class: "rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium cursor-pointer",
                 form: { class: "inline" } %>
         <% else %>
-          <%= button_to "Pause polling", admin_pause_polling_path, method: :post,
+          <%= button_to "Pause polling", admin_legacy_pause_polling_path, method: :post,
                 class: "rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium cursor-pointer",
                 form: { class: "inline", data: { turbo_confirm: "Stop ingesting new issues / PR feedback / rebase checks / scheduled tasks until resumed?" } } %>
         <% end %>
@@ -70,11 +70,11 @@
       </div>
       <div>
         <% if @settings.runs_paused %>
-          <%= button_to "Resume runs", admin_unpause_runs_path, method: :post,
+          <%= button_to "Resume runs", admin_legacy_unpause_runs_path, method: :post,
                 class: "rounded-md px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium cursor-pointer",
                 form: { class: "inline" } %>
         <% else %>
-          <%= button_to "Pause runs", admin_pause_runs_path, method: :post,
+          <%= button_to "Pause runs", admin_legacy_pause_runs_path, method: :post,
                 class: "rounded-md px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium cursor-pointer",
                 form: { class: "inline", data: { turbo_confirm: "Block new agent invocations system-wide until resumed?" } } %>
         <% end %>
@@ -117,7 +117,7 @@
       <%# Stack the select + submit on mobile so the button doesn't
           clip off the right edge on narrow viewports; back to a
           row at the `sm` breakpoint where there's space. %>
-      <%= form_with url: admin_clear_github_cache_path, method: :post, local: true,
+      <%= form_with url: admin_legacy_clear_github_cache_path, method: :post, local: true,
                     class: "flex flex-col sm:flex-row sm:items-center gap-2" do |f| %>
         <%= f.select :user_id,
               [ [ "All users", "" ] ] + @users.map { |u| [ u.email_address, u.id ] },

@@ -16,6 +16,15 @@ RSpec.describe "Admin operator console", type: :request do
       sign_in_as(admin)
       get "/admin/console"
       expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /admin/console/legacy" do
+    it "renders the legacy console for admins" do
+      sign_in_as(admin)
+      get "/admin/console/legacy"
+      expect(response).to be_successful
       expect(response.body).to include("Operator console")
       expect(response.body).to include("Polling")
       expect(response.body).to include("RunJobs")
@@ -33,6 +42,13 @@ RSpec.describe "Admin operator console", type: :request do
       }.to change { AppSetting.current.tap(&:reload).polling_paused }.from(false).to(true)
         .and change { AdminAction.where(action: "pause_polling").count }.by(1)
       expect(response).to redirect_to(admin_console_path)
+    end
+
+    it "keeps the legacy pause action inside the legacy console fallback" do
+      expect {
+        post "/admin/console/legacy/pause_polling"
+      }.to change { AppSetting.current.tap(&:reload).polling_paused }.from(false).to(true)
+      expect(response).to redirect_to(admin_legacy_console_path)
     end
 
     it "unpause_polling clears the flag" do
@@ -83,6 +99,13 @@ RSpec.describe "Admin operator console", type: :request do
       post "/admin/console/clear_github_cache"
       expect(response).to redirect_to(admin_console_path)
       expect(flash[:notice]).to match(/Cleared 0 GitHub cache entries/)
+    end
+
+    it "keeps the legacy cache clear action inside the legacy console fallback" do
+      expect(Rails.cache).to receive(:delete_matched).with("github_etag/*").and_return(3)
+      post "/admin/console/legacy/clear_github_cache"
+      expect(response).to redirect_to(admin_legacy_console_path)
+      expect(flash[:notice]).to match(/Cleared 3 GitHub cache entries/)
     end
   end
 end

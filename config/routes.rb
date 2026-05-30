@@ -263,6 +263,7 @@ Rails.application.routes.draw do
   get "admin/users/:id", to: "spa#show", as: :admin_user, constraints: { id: /\d+/ }
   post "admin/users/:id/pause_scheduling", to: "admin/users#pause_scheduling", as: :pause_scheduling_admin_user, constraints: { id: /\d+/ }
   post "admin/users/:id/unpause_scheduling", to: "admin/users#unpause_scheduling", as: :unpause_scheduling_admin_user, constraints: { id: /\d+/ }
+  get "admin/console", to: "spa#show", as: :admin_console
 
   namespace :admin do
     # System overview — landing page for the admin area.
@@ -305,12 +306,17 @@ Rails.application.routes.draw do
     post "users/legacy/:id/unpause_scheduling", to: "users#unpause_scheduling", as: :legacy_unpause_user_scheduling
 
     # Operator console — kill switches + audit log (L).
-    get  "console",                    to: "console#show",              as: :console
+    get  "console/legacy",             to: "console#show",              as: :legacy_console
     post "console/pause_polling",      to: "console#pause_polling",     as: :pause_polling
     post "console/unpause_polling",    to: "console#unpause_polling",   as: :unpause_polling
     post "console/pause_runs",         to: "console#pause_runs",        as: :pause_runs
     post "console/unpause_runs",       to: "console#unpause_runs",      as: :unpause_runs
     post "console/clear_github_cache", to: "console#clear_github_cache", as: :clear_github_cache
+    post "console/legacy/pause_polling",      to: "console#pause_polling",     as: :legacy_pause_polling
+    post "console/legacy/unpause_polling",    to: "console#unpause_polling",   as: :legacy_unpause_polling
+    post "console/legacy/pause_runs",         to: "console#pause_runs",        as: :legacy_pause_runs
+    post "console/legacy/unpause_runs",       to: "console#unpause_runs",      as: :legacy_unpause_runs
+    post "console/legacy/clear_github_cache", to: "console#clear_github_cache", as: :legacy_clear_github_cache
 
     get "github_app/register", to: "github_app#register", as: :github_app_register
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback

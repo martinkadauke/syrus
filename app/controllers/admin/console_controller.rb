@@ -15,25 +15,25 @@ module Admin
     def pause_polling
       AppSetting.current.update!(polling_paused: true)
       log_action(:pause_polling)
-      redirect_to admin_console_path, notice: "Polling paused. Recurring fan-out jobs will short-circuit on each tick."
+      redirect_to console_redirect_path, notice: "Polling paused. Recurring fan-out jobs will short-circuit on each tick."
     end
 
     def unpause_polling
       AppSetting.current.update!(polling_paused: false)
       log_action(:unpause_polling)
-      redirect_to admin_console_path, notice: "Polling resumed."
+      redirect_to console_redirect_path, notice: "Polling resumed."
     end
 
     def pause_runs
       AppSetting.current.update!(runs_paused: true)
       log_action(:pause_runs)
-      redirect_to admin_console_path, notice: "RunJobs paused. New attempts re-enqueue themselves until unpaused."
+      redirect_to console_redirect_path, notice: "RunJobs paused. New attempts re-enqueue themselves until unpaused."
     end
 
     def unpause_runs
       AppSetting.current.update!(runs_paused: false)
       log_action(:unpause_runs)
-      redirect_to admin_console_path, notice: "RunJobs resumed."
+      redirect_to console_redirect_path, notice: "RunJobs resumed."
     end
 
     def clear_github_cache
@@ -47,7 +47,7 @@ module Admin
 
       cleared = clear_cache_pattern(pattern)
       log_action(:clear_github_cache, scope: pattern, cleared_count: cleared)
-      redirect_to admin_console_path, notice: "Cleared #{cleared} GitHub cache entries #{summary}."
+      redirect_to console_redirect_path, notice: "Cleared #{cleared} GitHub cache entries #{summary}."
     end
 
     private
@@ -68,6 +68,10 @@ module Admin
       # it doesn't descend from StandardError).
       Rails.logger.warn("[Admin::Console] cache clear failed: #{e.class}: #{e.message}")
       0
+    end
+
+    def console_redirect_path
+      request.path.include?("/legacy/") ? admin_legacy_console_path : admin_console_path
     end
   end
 end
