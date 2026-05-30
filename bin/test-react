@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Runs React/TypeScript unit tests for the SPA migration.
+set -e
+exec npm run test:react

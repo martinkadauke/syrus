@@ -68,15 +68,25 @@ RUN bundle install && \
     # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
     bundle exec bootsnap precompile -j 1 --gemfile
 
+# Install JavaScript dependencies for the React SPA build. node_modules
+# is removed before the final image copy; the runtime image only needs
+# the compiled assets in app/assets/builds.
+COPY package.json package-lock.json ./
+RUN npm ci
+
 # Copy application code
 COPY . .
+
+# Build the React SPA bundle into app/assets/builds for Propshaft.
+RUN npm run build
 
 # Precompile bootsnap code for faster boot times.
 # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
 RUN bundle exec bootsnap precompile -j 1 app/ lib/
 
 # Precompiling assets for production without requiring secret RAILS_MASTER_KEY
-RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
+RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile && \
+    rm -rf node_modules
 
 
 
