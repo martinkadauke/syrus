@@ -13,6 +13,10 @@ Rails.application.routes.draw do
   # See docs/plans/complete/admin-diagnostics.md for the endpoint plan.
   namespace :api do
     namespace :v1 do
+      namespace :app do
+        get "bootstrap", to: "bootstrap#show"
+      end
+
       namespace :admin do
         # `#show` returns the deep-nested Job state (workflows + steps
         # + runs + diagnostics + claude_session metadata). `#index`

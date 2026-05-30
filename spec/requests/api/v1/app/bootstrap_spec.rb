@@ -1,0 +1,56 @@
+require "rails_helper"
+
+RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
+  def parse_body
+    JSON.parse(response.body)
+  end
+
+  it "returns a JSON 401 instead of redirecting when signed out" do
+    get api_v1_app_bootstrap_path
+
+    expect(response).to have_http_status(:unauthorized)
+    expect(response.media_type).to eq("application/json")
+    expect(parse_body).to eq(
+      "error" => {
+        "code" => "unauthorized",
+        "message" => "Sign in to use the app API."
+      }
+    )
+  end
+
+  it "returns the signed-in user's browser bootstrap payload" do
+    user = Factories.user(
+      email_address: "operator@example.com",
+      name: "Operator",
+      scheduling_paused: true,
+      landing_paused: true,
+      agent_provider: "codex",
+      agent_max_turns: 123
+    )
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    expect(response).to have_http_status(:ok)
+    expect(response.media_type).to eq("application/json")
+
+    body = parse_body
+    expect(body["current_user"]).to include(
+      "id" => user.id,
+      "email_address" => "operator@example.com",
+      "name" => "Operator",
+      "display_name" => "Operator",
+      "admin" => true,
+      "scheduling_paused" => true,
+      "landing_paused" => true,
+      "agent_provider" => "codex",
+      "agent_max_turns" => 123
+    )
+    expect(body["app"]).to include(
+      "revision" => "dev",
+      "revision_url" => nil
+    )
+    expect(body["csrf_token"]).to be_present
+    expect(body["feature_flags"]).to eq("migrated_routes" => [])
+  end
+end
