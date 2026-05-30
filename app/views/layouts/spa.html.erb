@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Syrus</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Syrus">
+    <meta name="mobile-web-app-capable" content="yes">
+    <%= csrf_meta_tags %>
+    <%= csp_meta_tag %>
+
+    <link rel="icon" href="/icon.png" type="image/png">
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="/icon.png">
+
+    <%= stylesheet_link_tag :app, "data-turbo-track": "reload" %>
+    <% if Rails.env.production? || Rails.application.assets.load_path.find("spa.js") %>
+      <%= javascript_include_tag "spa", type: "module", "data-turbo-track": "reload" %>
+    <% end %>
+  </head>
+
+  <body class="bg-gray-50 text-gray-900">
+    <%= yield %>
+  </body>
+</html>

@@ -37,6 +37,7 @@ health/storage internals.
 | `POST /dashboard/jobs/bulk` | `home#bulk_jobs` | `app-api-needed` | Browser command endpoint under `/api/v1/app/dashboard/jobs/bulk`. |
 | `POST /dashboard/landing_pause` | `home#toggle_landing_pause` | `app-api-needed` | Browser command endpoint; dashboard state refetch after success. |
 | `PATCH /dashboard/epics/:id/auto_approval` | `home#update_epic_auto_approval` | `app-api-needed` | Browser command endpoint; include capability/status in epic payload. |
+| `/app-shell` | `spa#show` | `spa-core` | Hidden authenticated React shell used to prove the SPA asset, bootstrap API, and client routing path before taking over production routes. |
 | `/jobs/new`, `POST /jobs` | `jobs#new/create` | `spa-core` | Direct job creation form. |
 | `/jobs/:id` | `jobs#show` | `spa-core` | High-risk page. Needs split queries for job detail, logs, workflows, attachments. |
 | `/jobs/:id/source` | `jobs#source` | `spa-core` | Source browser. Needs compact tree API and lazy file loading. |
