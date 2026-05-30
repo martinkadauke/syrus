@@ -410,4 +410,55 @@ describe("App", () => {
       })
     )
   })
+
+  it("renders the admin console route from the app admin console API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          settings: {
+            polling_paused: false,
+            runs_paused: true,
+            signups_open: true,
+            max_job_failures: 3,
+            grade_max_iterations: 2
+          },
+          users: [
+            { id: 1, email_address: "operator@example.com", display_name: "Operator" }
+          ],
+          recent_admin_actions: [
+            {
+              id: 4,
+              action: "pause_runs",
+              performed_at: "2026-05-30T12:00:00Z",
+              user_email: "operator@example.com",
+              params: { source: "test" }
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/console"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin console" })).toBeInTheDocument()
+    expect(screen.getByText("Operator Console")).toBeInTheDocument()
+    expect(await screen.findByText("pause_runs")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Pause polling" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Resume runs" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Reap now" })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/console",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
 })

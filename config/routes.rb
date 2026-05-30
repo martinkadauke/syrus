@@ -33,6 +33,12 @@ Rails.application.routes.draw do
               post :unpause_scheduling
             end
           end
+          get  "console", to: "console#show"
+          post "console/pause_polling", to: "console#pause_polling"
+          post "console/unpause_polling", to: "console#unpause_polling"
+          post "console/pause_runs", to: "console#pause_runs"
+          post "console/unpause_runs", to: "console#unpause_runs"
+          post "console/clear_github_cache", to: "console#clear_github_cache"
         end
       end
 
