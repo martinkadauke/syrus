@@ -4,6 +4,18 @@ import { describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { App } from "./App"
 
+const actionCable = vi.hoisted(() => ({
+  createSubscription: vi.fn(() => ({ unsubscribe: vi.fn() }))
+}))
+
+vi.mock("@rails/actioncable", () => ({
+  createConsumer: () => ({
+    subscriptions: {
+      create: actionCable.createSubscription
+    }
+  })
+}))
+
 describe("App", () => {
   it("loads bootstrap data into the SPA shell", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
@@ -51,6 +63,10 @@ describe("App", () => {
         credentials: "same-origin",
         headers: { Accept: "application/json" }
       })
+    )
+    expect(actionCable.createSubscription).toHaveBeenCalledWith(
+      { channel: "AppUserChannel" },
+      expect.objectContaining({ received: expect.any(Function) })
     )
   })
 
