@@ -11,11 +11,20 @@ RSpec.describe "Admin users", type: :request do
       expect(response).to redirect_to(root_path)
     end
 
+    it "serves the React users shell for admins" do
+      sign_in_as(admin)
+      get "/admin/users"
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /admin/users/legacy" do
     it "lists users for admins" do
       sign_in_as(admin)
       Factories.user(email_address: "low@example.com",
                      gh_rate_limit_remaining: 5, gh_rate_limit_limit: 5000)
-      get "/admin/users"
+      get "/admin/users/legacy"
       expect(response).to be_successful
       expect(response.body).to include(admin.email_address)
       expect(response.body).to include("low@example.com")
@@ -26,10 +35,10 @@ RSpec.describe "Admin users", type: :request do
       target = Factories.user(email_address: "status@example.com", api_token: "syrus_secret")
       target.mark_gh_api_blocked!("Resource not accessible by personal access token")
 
-      get "/admin/users"
+      get "/admin/users/legacy"
 
       document = Nokogiri::HTML(response.body)
-      row = document.at_css("a[href='#{admin_user_path(target)}']").ancestors("tr").first
+      row = document.at_css("a[href='#{admin_legacy_user_path(target)}']").ancestors("tr").first
       expect(row.text).to include("status@example.com")
       expect(row.text).to include("blocked")
       expect(row.text).to include("✓")
@@ -41,11 +50,11 @@ RSpec.describe "Admin users", type: :request do
       named = Factories.user(email_address: "ada@example.com", name: "Ada Lovelace")
       fallback = Factories.user(email_address: "fallback@example.com")
 
-      get "/admin/users"
+      get "/admin/users/legacy"
 
       document = Nokogiri::HTML(response.body)
-      expect(document.at_css("a[href='#{admin_user_path(named)}']").text).to eq("Ada Lovelace")
-      expect(document.at_css("a[href='#{admin_user_path(fallback)}']").text).to eq("fallback@example.com")
+      expect(document.at_css("a[href='#{admin_legacy_user_path(named)}']").text).to eq("Ada Lovelace")
+      expect(document.at_css("a[href='#{admin_legacy_user_path(fallback)}']").text).to eq("fallback@example.com")
       expect(response.body).to include("ada@example.com")
     end
 
@@ -55,7 +64,7 @@ RSpec.describe "Admin users", type: :request do
                                  gh_rate_limit_remaining: 4500, gh_rate_limit_limit: 5000)
       low_user = Factories.user(email_address: "low@example.com",
                                  gh_rate_limit_remaining: 5, gh_rate_limit_limit: 5000)
-      get "/admin/users", params: { gh_rate: "low" }
+      get "/admin/users/legacy", params: { gh_rate: "low" }
       expect(response.body).to include(low_user.email_address)
       expect(response.body).not_to include(ok_user.email_address)
     end
@@ -70,7 +79,7 @@ RSpec.describe "Admin users", type: :request do
         ]
       )
 
-      get "/admin/users", params: { q: q }
+      get "/admin/users/legacy", params: { q: q }
 
       expect(response.body).to include(matching.email_address)
       expect(response.body).not_to include(other.email_address)
@@ -84,7 +93,7 @@ RSpec.describe "Admin users", type: :request do
                                         codex_auth_json: Factories.codex_auth_json(access_token: "access_test"))
       other_user = Factories.user(email_address: "plain@example.com")
 
-      get "/admin/users", params: { has_codex_token: "true" }
+      get "/admin/users/legacy", params: { has_codex_token: "true" }
 
       expect(response.body).to include(codex_user.email_address)
       expect(response.body).to include(codex_login_user.email_address)
@@ -93,14 +102,14 @@ RSpec.describe "Admin users", type: :request do
 
     it "shows the empty-state row when filters don't match anything" do
       sign_in_as(admin)
-      get "/admin/users", params: { email: "absolutely-no-match-#{SecureRandom.hex(4)}" }
+      get "/admin/users/legacy", params: { email: "absolutely-no-match-#{SecureRandom.hex(4)}" }
       expect(response.body).to include("No users match these filters")
     end
 
     it "renders the admin user chip bar and smart folder sidebar" do
       sign_in_as(admin)
 
-      get "/admin/users"
+      get "/admin/users/legacy"
 
       document = Nokogiri::HTML(response.body)
       expect(document.text).to include("Attention", "Missing GitHub token", "Saved")
@@ -113,6 +122,16 @@ RSpec.describe "Admin users", type: :request do
   end
 
   describe "GET /admin/users/:id" do
+    it "serves the React user detail shell for admins" do
+      sign_in_as(admin)
+      target = Factories.user(email_address: "target@example.com")
+      get "/admin/users/#{target.id}"
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /admin/users/legacy/:id" do
     it "renders user detail with token presence indicators (no plaintext)" do
       sign_in_as(admin)
       target = Factories.user(email_address: "target@example.com",
@@ -126,7 +145,7 @@ RSpec.describe "Admin users", type: :request do
                               codex_auth_json: Factories.codex_auth_json(access_token: "codex_access_secretvalue"))
       target.mark_gh_api_blocked!("Resource not accessible by personal access token")
 
-      get "/admin/users/#{target.id}"
+      get "/admin/users/legacy/#{target.id}"
 
       document = Nokogiri::HTML(response.body)
       expect(response).to be_successful
@@ -148,7 +167,7 @@ RSpec.describe "Admin users", type: :request do
       sign_in_as(admin)
       target = Factories.user(email_address: "fallback-title@example.com")
 
-      get "/admin/users/#{target.id}"
+      get "/admin/users/legacy/#{target.id}"
 
       document = Nokogiri::HTML(response.body)
       expect(document.at_css("h1").text).to eq("fallback-title@example.com")
@@ -156,15 +175,15 @@ RSpec.describe "Admin users", type: :request do
 
     it "404s on unknown id" do
       sign_in_as(admin)
-      get "/admin/users/999999"
+      get "/admin/users/legacy/999999"
       expect(response).to have_http_status(:not_found).or have_http_status(:internal_server_error)
     end
   end
 
   describe "the GH rate-limits tile on /admin" do
-    it "links to /admin/users?gh_rate=low" do
+    it "links to /admin/users?gh_rate=low from the legacy overview" do
       sign_in_as(admin)
-      get "/admin"
+      get "/admin/legacy"
       expect(response.body).to include(admin_users_path(gh_rate: "low"))
     end
   end

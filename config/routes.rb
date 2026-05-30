@@ -253,6 +253,10 @@ Rails.application.routes.draw do
   get "admin/processes/:id", to: "spa#show", as: :admin_process, constraints: { id: /\d+/ }
   post "admin/processes/:id/kill", to: "admin/spawned_processes#kill", as: :kill_admin_process, constraints: { id: /\d+/ }
   get "admin/runs/:run_id/transcript", to: "spa#show", as: :admin_run_transcript, constraints: { run_id: /\d+/ }
+  get "admin/users", to: "spa#show", as: :admin_users
+  get "admin/users/:id", to: "spa#show", as: :admin_user, constraints: { id: /\d+/ }
+  post "admin/users/:id/pause_scheduling", to: "admin/users#pause_scheduling", as: :pause_scheduling_admin_user, constraints: { id: /\d+/ }
+  post "admin/users/:id/unpause_scheduling", to: "admin/users#unpause_scheduling", as: :unpause_scheduling_admin_user, constraints: { id: /\d+/ }
 
   namespace :admin do
     # System overview — landing page for the admin area.
@@ -289,12 +293,10 @@ Rails.application.routes.draw do
     # `?email=substr`, `?has_github_token=true|false`,
     # `?has_claude_token=true|false`. Filter logic lives in
     # Admin::UsersFilter so the API mirror reuses it.
-    resources :users, only: %i[ index show ] do
-      member do
-        post :pause_scheduling
-        post :unpause_scheduling
-      end
-    end
+    get  "users/legacy",                         to: "users#index", as: :legacy_users
+    get  "users/legacy/:id",                     to: "users#show",  as: :legacy_user
+    post "users/legacy/:id/pause_scheduling",   to: "users#pause_scheduling", as: :legacy_pause_user_scheduling
+    post "users/legacy/:id/unpause_scheduling", to: "users#unpause_scheduling", as: :legacy_unpause_user_scheduling
 
     # Operator console — kill switches + audit log (L).
     get  "console",                    to: "console#show",              as: :console

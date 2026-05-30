@@ -3,7 +3,7 @@
   <nav class="space-y-1">
     <% @primary_builtin_smart_folders.each do |folder| %>
       <% active = @smart_folder == folder %>
-      <%= link_to admin_users_path(smart_folder_id: folder.id), class: folder_link_classes.call(active) do %>
+      <%= link_to admin_legacy_users_path(smart_folder_id: folder.id), class: folder_link_classes.call(active) do %>
         <span><%= folder.name %></span>
         <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"><%= @smart_folder_counts[folder.id] %></span>
       <% end %>
@@ -20,7 +20,7 @@
       <nav class="mt-1 space-y-1">
         <% @more_builtin_smart_folders.each do |folder| %>
           <% active = @smart_folder == folder %>
-          <%= link_to admin_users_path(smart_folder_id: folder.id), class: folder_link_classes.call(active) do %>
+          <%= link_to admin_legacy_users_path(smart_folder_id: folder.id), class: folder_link_classes.call(active) do %>
             <span><%= folder.name %></span>
             <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"><%= @smart_folder_counts[folder.id] %></span>
           <% end %>
@@ -38,7 +38,7 @@
   <nav class="space-y-1">
     <% @smart_folders.each do |folder| %>
       <% active = @smart_folder == folder %>
-      <%= link_to admin_users_path(smart_folder_id: folder.id), class: folder_link_classes.call(active) do %>
+      <%= link_to admin_legacy_users_path(smart_folder_id: folder.id), class: folder_link_classes.call(active) do %>
         <span class="truncate"><%= folder.name %></span>
         <span class="ml-2 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600"><%= @smart_folder_counts[folder.id] %></span>
       <% end %>

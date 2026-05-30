@@ -142,10 +142,10 @@
         Status: <strong><%= @user.scheduling_paused? ? "paused" : "active" %></strong>
       </span>
       <% if @user.scheduling_paused? %>
-        <%= button_to "Resume scheduling", unpause_scheduling_admin_user_path(@user),
+        <%= button_to "Resume scheduling", admin_legacy_unpause_user_scheduling_path(@user),
               class: "px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-500 text-white text-sm font-medium" %>
       <% else %>
-        <%= button_to "Pause scheduling", pause_scheduling_admin_user_path(@user),
+        <%= button_to "Pause scheduling", admin_legacy_pause_user_scheduling_path(@user),
               class: "px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium" %>
       <% end %>
     </div>

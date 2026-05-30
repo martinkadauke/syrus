@@ -28,14 +28,14 @@ module Admin
       @user = User.find(params[:id])
       @user.update!(scheduling_paused: true)
       AdminAction.log!(user: Current.user, action: :pause_user_scheduling, params: { target_user_id: @user.id })
-      redirect_to admin_user_path(@user), notice: "Scheduling paused for #{@user.email_address}."
+      redirect_to user_redirect_path(@user), notice: "Scheduling paused for #{@user.email_address}."
     end
 
     def unpause_scheduling
       @user = User.find(params[:id])
       @user.update!(scheduling_paused: false)
       AdminAction.log!(user: Current.user, action: :unpause_user_scheduling, params: { target_user_id: @user.id })
-      redirect_to admin_user_path(@user), notice: "Scheduling resumed for #{@user.email_address}."
+      redirect_to user_redirect_path(@user), notice: "Scheduling resumed for #{@user.email_address}."
     end
 
     private
@@ -71,6 +71,10 @@ module Admin
       end
 
       [ primary, more ]
+    end
+
+    def user_redirect_path(user)
+      request.path.include?("/legacy/") ? admin_legacy_user_path(user) : admin_user_path(user)
     end
   end
 end

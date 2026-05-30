@@ -85,7 +85,7 @@ class SmartFoldersController < ApplicationController
   def dashboard_path_for(subject_type, **query)
     case subject_type
     when "admin_user"
-      admin_users_path(query)
+      admin_legacy_users_path(query)
     when "admin_queue"
       admin_legacy_queue_path(params[:admin_queue_tab].to_s.presence_in(%w[ active pending failed ]) || "active", query)
     when "workflow"

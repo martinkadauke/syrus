@@ -17,7 +17,7 @@
     </summary>
     <div class="space-y-4 border-t border-gray-200 p-3">
       <%= render "admin/users/smart_folders", folder_link_classes: folder_link_classes %>
-      <%= render "home/chip_bar", subject: :admin_user, filter: @filter, action_url: admin_users_path, schema: @schema, class_name: "relative flex flex-col gap-3" %>
+      <%= render "home/chip_bar", subject: :admin_user, filter: @filter, action_url: admin_legacy_users_path, schema: @schema, class_name: "relative flex flex-col gap-3" %>
     </div>
   </details>
 
@@ -27,7 +27,7 @@
     </aside>
 
     <div class="space-y-4">
-      <%= render "home/chip_bar", subject: :admin_user, filter: @filter, action_url: admin_users_path, schema: @schema, class_name: "relative hidden lg:block" %>
+      <%= render "home/chip_bar", subject: :admin_user, filter: @filter, action_url: admin_legacy_users_path, schema: @schema, class_name: "relative hidden lg:block" %>
 
       <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
         <table class="min-w-full divide-y divide-gray-200 text-sm">
@@ -57,7 +57,7 @@
                       end %>
               <tr class="hover:bg-gray-50">
                 <td class="px-4 py-2">
-                  <%= link_to user.display_name, admin_user_path(user), class: "text-blue-600 hover:underline" %>
+                  <%= link_to user.display_name, admin_legacy_user_path(user), class: "text-blue-600 hover:underline" %>
                   <% if user.display_name != user.email_address %>
                     <div class="text-xs text-gray-500"><%= user.email_address %></div>
                   <% end %>

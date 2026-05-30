@@ -83,8 +83,8 @@ health/storage internals.
 | `POST /admin/processes/:id/kill` | `admin/spawned_processes#kill` | `legacy-html` | Kept for existing HTML controls; React uses `POST /api/v1/app/admin/processes/:id/kill`. |
 | `/admin/runs/:run_id/transcript` | `spa#show` | `spa-admin` | Migrated to the React transcript viewer. Legacy ERB fallback lives at `/admin/runs/:run_id/transcript/legacy`. |
 | `/admin/runs/:run_id/transcript/download` | `admin/transcripts#download` | `legacy-html` | Keep as regular download endpoint. |
-| `/admin/users` | `admin/users#index/show` | `spa-admin` | Migrate after admin diagnostics first slice. |
-| admin user scheduling commands | `admin/users#pause_scheduling`, `#unpause_scheduling` | `app-api-needed` | Browser admin command endpoints. |
+| `/admin/users`, `/admin/users/:id` | `spa#show` | `spa-admin` | Migrated to the React users list/detail shell. Legacy ERB fallback lives at `/admin/users/legacy` and `/admin/users/legacy/:id`. |
+| admin user scheduling commands | `admin/users#pause_scheduling`, `#unpause_scheduling` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/users/:id/*_scheduling`. |
 | `/admin/console` | `admin/console#show` | `spa-admin` | Migrate after admin diagnostics first slice. |
 | admin console commands | `admin/console#pause_polling`, `#unpause_polling`, `#pause_runs`, `#unpause_runs`, `#clear_github_cache` | `app-api-needed` | Browser admin command endpoints. |
 | `/admin/installations` | `admin/installations#index` | `spa-admin` | Can trail main admin diagnostics. |
