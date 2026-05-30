@@ -6,6 +6,7 @@ import { AdminOverview } from "./AdminOverview"
 import { AdminQueueRoute } from "./AdminQueue"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
 import { AdminStuck } from "./AdminStuck"
+import { AdminTranscript } from "./AdminTranscript"
 
 export function App() {
   useAppEvents()
@@ -18,12 +19,14 @@ export function App() {
       <Route path="/admin/stuck" element={<AdminStuck />} />
       <Route path="/admin/processes" element={<AdminProcessesIndex />} />
       <Route path="/admin/processes/:id" element={<AdminProcessDetail />} />
+      <Route path="/admin/runs/:runId/transcript" element={<AdminTranscript />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/stuck" element={<AdminStuck />} />
       <Route path="/app-shell/admin/processes" element={<AdminProcessesIndex />} />
       <Route path="/app-shell/admin/processes/:id" element={<AdminProcessDetail />} />
+      <Route path="/app-shell/admin/runs/:runId/transcript" element={<AdminTranscript />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )

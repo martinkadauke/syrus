@@ -284,4 +284,65 @@ describe("App", () => {
       })
     )
   })
+
+  it("renders the admin transcript route from the app admin transcript API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          run_id: 4,
+          job_id: 1,
+          step_kind: "implement",
+          workflow_trigger_kind: "initial",
+          session_id: "abc-123",
+          summary: {
+            session_id: "abc-123",
+            model: "claude-sonnet-4-6",
+            cwd: "/workspace",
+            total_turns: 1,
+            total_tool_calls: 1,
+            total_cost_usd: 0.01,
+            exit_reason: "success",
+            tool_call_counts: { Bash: 1 },
+            mcp_tool_called: false,
+            available_tools_at_init: ["Bash"]
+          },
+          pagination: {
+            page: 2,
+            per: 1,
+            total_events: 3,
+            total_pages: 3
+          },
+          events: [
+            {
+              kind: "tool_use",
+              timestamp: "2026-05-30T12:00:00Z",
+              data: { name: "Bash", input: { command: "ls" }, id: "u1" }
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/runs/4/transcript?page=2&per=1"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin transcript" })).toBeInTheDocument()
+    expect(await screen.findByText("Run #4 · transcript")).toBeInTheDocument()
+    expect(screen.getByText(/claude-sonnet-4-6/)).toBeInTheDocument()
+    expect(screen.getAllByText("Bash").length).toBeGreaterThan(0)
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript?page=3&per=1")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/runs/4/transcript?page=2&per=1",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
 })

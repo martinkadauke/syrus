@@ -26,6 +26,7 @@ Rails.application.routes.draw do
               post :kill
             end
           end
+          get "runs/:run_id/transcript", to: "transcripts#show"
         end
       end
 
