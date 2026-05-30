@@ -15,6 +15,10 @@ Rails.application.routes.draw do
     namespace :v1 do
       namespace :app do
         get "bootstrap", to: "bootstrap#show"
+
+        namespace :admin do
+          get "overview", to: "overview#show"
+        end
       end
 
       namespace :admin do
