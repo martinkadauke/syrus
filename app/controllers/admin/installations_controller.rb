@@ -10,7 +10,13 @@ module Admin
 
     def refresh
       SyncInstallationsJob.perform_later(Current.user.id)
-      redirect_to admin_installations_path, notice: "Installation sync queued."
+      redirect_to installations_redirect_path, notice: "Installation sync queued."
+    end
+
+    private
+
+    def installations_redirect_path
+      request.path.include?("/legacy/") ? admin_legacy_installations_path : admin_installations_path
     end
   end
 end

@@ -266,6 +266,8 @@ Rails.application.routes.draw do
   post "admin/users/:id/pause_scheduling", to: "admin/users#pause_scheduling", as: :pause_scheduling_admin_user, constraints: { id: /\d+/ }
   post "admin/users/:id/unpause_scheduling", to: "admin/users#unpause_scheduling", as: :unpause_scheduling_admin_user, constraints: { id: /\d+/ }
   get "admin/console", to: "spa#show", as: :admin_console
+  get "admin/installations", to: "spa#show", as: :admin_installations
+  post "admin/installations/refresh", to: "admin/installations#refresh", as: :admin_installations_refresh
 
   namespace :admin do
     # System overview — landing page for the admin area.
@@ -293,8 +295,8 @@ Rails.application.routes.draw do
     get  "processes/legacy/:id",      to: "spawned_processes#show",  as: :legacy_process
     post "processes/legacy/:id/kill", to: "spawned_processes#kill",  as: :legacy_kill_process
 
-    get  "installations",         to: "installations#index",   as: :installations
-    post "installations/refresh", to: "installations#refresh", as: :installations_refresh
+    get  "installations/legacy",         to: "installations#index",   as: :legacy_installations
+    post "installations/legacy/refresh", to: "installations#refresh", as: :legacy_installations_refresh
 
     # User directory — filterable list + per-user detail page.
     # Drilled into from the GH rate-limits tile on /admin (with

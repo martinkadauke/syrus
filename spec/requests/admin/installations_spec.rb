@@ -5,8 +5,15 @@ RSpec.describe "Admin installations health", type: :request do
 
   before { sign_in_as(admin) }
 
-  it "shows a manifest CTA when the GitHub App is not registered" do
+  it "serves the React installations shell" do
     get admin_installations_path
+
+    expect(response).to be_successful
+    expect(response.body).to include('id="syrus-spa-root"')
+  end
+
+  it "shows a manifest CTA when the GitHub App is not registered" do
+    get admin_legacy_installations_path
 
     expect(response).to be_successful
     expect(response.body).to include("Syrus App is not registered yet.")
@@ -32,7 +39,7 @@ RSpec.describe "Admin installations health", type: :request do
       github_repository_id: 201
     )
 
-    get admin_installations_path
+    get admin_legacy_installations_path
 
     expect(response.body).to include(app_repo.slug)
     expect(response.body).to include(pat_repo.slug)
@@ -49,5 +56,13 @@ RSpec.describe "Admin installations health", type: :request do
     }.to have_enqueued_job(SyncInstallationsJob).with(admin.id)
 
     expect(response).to redirect_to(admin_installations_path)
+  end
+
+  it "keeps the legacy refresh action inside the legacy installations fallback" do
+    expect {
+      post admin_legacy_installations_refresh_path
+    }.to have_enqueued_job(SyncInstallationsJob).with(admin.id)
+
+    expect(response).to redirect_to(admin_legacy_installations_path)
   end
 end
