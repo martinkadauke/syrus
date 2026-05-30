@@ -75,7 +75,7 @@ health/storage internals.
 | `/account/documents` | `account_documents#create/destroy` | `app-api-needed` | Upload/delete endpoints for credential page. |
 | `/settings`, `/settings/edit`, `PATCH /settings` | `credentials#edit`, `settings#edit/update` | `spa-core` | Split user credentials vs admin app settings clearly in React nav. |
 | `/invitations` | `invitations#index/create/destroy` | `spa-admin` | Admin/owner signup management. |
-| `/admin` | `admin/overview#show` | `spa-admin` | First real page migration candidate. |
+| `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell; legacy ERB fallback lives at `/admin/legacy`. |
 | `/admin/queue`, `/admin/queue/:tab` | `admin/queue#index/show` | `spa-admin` | First real page migration candidate; already mirrored by admin token API. |
 | `POST /admin/queue/reap_stale_runs` | `admin/queue#reap_stale_runs` | `app-api-needed` | Browser admin command; can reuse existing admin service. |
 | `/admin/stuck` | `admin/stuck#index` | `spa-admin` | Early admin migration candidate. |

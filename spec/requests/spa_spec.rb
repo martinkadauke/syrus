@@ -30,4 +30,15 @@ RSpec.describe "SPA shell", type: :request do
     expect(response).to have_http_status(:ok)
     expect(response.body).to include('id="syrus-spa-root"')
   end
+
+  it "requires admin access for admin SPA routes" do
+    Factories.user
+    user = Factories.user
+    sign_in_as(user)
+
+    get "/app-shell/admin"
+
+    expect(response).to redirect_to(root_path)
+    expect(flash[:alert]).to match(/admin/i)
+  end
 end

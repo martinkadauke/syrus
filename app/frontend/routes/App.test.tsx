@@ -111,4 +111,34 @@ describe("App", () => {
     expect(screen.getByText("2")).toBeInTheDocument()
     expect(screen.getByText("Run #4 silent for 10m")).toBeInTheDocument()
   })
+
+  it("renders the migrated /admin route from the same admin overview component", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          active_runs: { total: 0, by_trigger: {} },
+          queued_runs: { total: 0 },
+          recent_failures_24h: { total: 0, by_trigger: {} },
+          github_rate_limits: [],
+          github_api_blocked_users: [],
+          agent_session_capture_rate: { total: 0, captured: 0, rate: null },
+          workers: { total: 1, stale: 0 },
+          recurring: { overdue: [] },
+          stuck: []
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/admin"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("GitHub rate limits")).toBeInTheDocument()
+    expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
+  })
 })

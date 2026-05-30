@@ -9,6 +9,7 @@ export function App() {
 
   return (
     <Routes>
+      <Route path="/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>

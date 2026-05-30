@@ -230,10 +230,12 @@ Rails.application.routes.draw do
     end
   end
 
+  get "admin", to: "spa#show", as: :admin_root
+
   namespace :admin do
     # System overview — landing page for the admin area.
     # See docs/plans/complete/admin-diagnostics.md (F).
-    root to: "overview#show"
+    get "legacy", to: "overview#show", as: :legacy_overview
 
     # Per-Run claude transcript viewer — renders the captured
     # ClaudeSession.transcript_jsonl as a structured event stream.

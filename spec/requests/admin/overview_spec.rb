@@ -24,6 +24,17 @@ RSpec.describe "Admin overview", type: :request do
       sign_in_as(admin)
       get "/admin"
       expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+      expect(response.body).to include("<title>Syrus</title>")
+    end
+  end
+
+  describe "GET /admin/legacy" do
+    it "renders the legacy ERB overview for admins" do
+      sign_in_as(admin)
+      get admin_legacy_overview_path
+
+      expect(response).to be_successful
       expect(response.body).to include("Admin overview")
       expect(response.body).to include("Active runs")
       expect(response.body).to include("Workers")
@@ -41,7 +52,7 @@ RSpec.describe "Admin overview", type: :request do
       ClaudeSession.create!(resumable: run, provider: "codex",
                             session_id: "codex-thread", transcript_jsonl: "{}\n")
 
-      get "/admin"
+      get admin_legacy_overview_path
 
       expect(response.body).to include("Agent session capture")
       expect(response.body).to include("100%")
@@ -51,14 +62,14 @@ RSpec.describe "Admin overview", type: :request do
 
     it "wires the auto-refresh Stimulus controller" do
       sign_in_as(admin)
-      get "/admin"
+      get admin_legacy_overview_path
       expect(response.body).to include('data-controller="auto-refresh"')
       expect(response.body).to include('data-auto-refresh-interval-value="30"')
     end
 
     it "links each tile to its drill-down page" do
       sign_in_as(admin)
-      get "/admin"
+      get admin_legacy_overview_path
       expect(response.body).to include('href="/admin/queue/active"')
       expect(response.body).to include('href="/admin/queue/pending"')
       expect(response.body).to include('href="/admin/queue/workers"')
@@ -77,7 +88,7 @@ RSpec.describe "Admin overview", type: :request do
                          started_at: 10.minutes.ago,
                          last_heartbeat_at: 10.minutes.ago)
 
-      get "/admin"
+      get admin_legacy_overview_path
       expect(response.body).to include("stale_heartbeat")
       expect(response.body).to include("Run ##{run.id}")
     end
@@ -92,7 +103,7 @@ RSpec.describe "Admin overview", type: :request do
                          started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
                          last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago)
 
-      get "/admin"
+      get admin_legacy_overview_path
       expect(response.body).to include("reaper_starved")
       expect(response.body).to match(/ReapStaleRunsJob may be starved/)
     end
@@ -105,7 +116,7 @@ RSpec.describe "Admin overview", type: :request do
                          started_at: 10.minutes.ago,
                          last_heartbeat_at: nil)
 
-      get "/admin"
+      get admin_legacy_overview_path
       expect(response.body).to include("stale_heartbeat")
     end
 
@@ -117,7 +128,7 @@ RSpec.describe "Admin overview", type: :request do
                          started_at: 30.seconds.ago,
                          last_heartbeat_at: 30.seconds.ago)
 
-      get "/admin"
+      get admin_legacy_overview_path
       expect(response.body).not_to include("stale_heartbeat")
       expect(response.body).not_to include("reaper_starved")
     end
