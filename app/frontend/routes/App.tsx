@@ -4,6 +4,7 @@ import { fetchBootstrap } from "../api/bootstrap"
 import { useAppEvents } from "../lib/useAppEvents"
 import { AdminOverview } from "./AdminOverview"
 import { AdminQueueRoute } from "./AdminQueue"
+import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
 import { AdminStuck } from "./AdminStuck"
 
 export function App() {
@@ -15,10 +16,14 @@ export function App() {
       <Route path="/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/admin/queue/:tab" element={<AdminQueueRoute />} />
       <Route path="/admin/stuck" element={<AdminStuck />} />
+      <Route path="/admin/processes" element={<AdminProcessesIndex />} />
+      <Route path="/admin/processes/:id" element={<AdminProcessDetail />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/stuck" element={<AdminStuck />} />
+      <Route path="/app-shell/admin/processes" element={<AdminProcessesIndex />} />
+      <Route path="/app-shell/admin/processes/:id" element={<AdminProcessDetail />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )

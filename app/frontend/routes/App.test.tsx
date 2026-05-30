@@ -228,4 +228,60 @@ describe("App", () => {
       })
     )
   })
+
+  it("renders the admin processes route from the app admin processes API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          running_total: 1,
+          processes: [
+            {
+              id: 8,
+              kind: "agent",
+              command: "claude --print",
+              workdir: "/work",
+              hostname: "worker-a",
+              pid: 123,
+              pgid: 123,
+              started_at: "2026-05-30T12:00:00Z",
+              last_chunk_at: "2026-05-30T12:01:00Z",
+              finished_at: null,
+              duration_s: 65,
+              exit_status: null,
+              outcome: null,
+              wall_timeout_s: 1800,
+              silent_timeout_s: 300,
+              run_id: 4,
+              workflow_id: 2,
+              stale: false,
+              kill_requested_at: null,
+              kill_requested_by_user_id: null
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/processes?state=running"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin processes" })).toBeInTheDocument()
+    expect(await screen.findByText("claude --print")).toBeInTheDocument()
+    expect(screen.getByText("worker-a")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Detail" })).toHaveAttribute("href", "/app-shell/admin/processes/8")
+    expect(screen.getByRole("button", { name: "Kill" })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/processes?state=running",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
 })
