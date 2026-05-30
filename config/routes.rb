@@ -156,6 +156,7 @@ Rails.application.routes.draw do
   end
   get "filters/fk_options", to: "filters/fk_options#index"
   get "app-shell", to: "spa#show", as: :app_shell
+  get "app-shell/*path", to: "spa#show", as: :app_shell_route
   get "dashboard", to: "home#index"
   patch "dashboard/preferences", to: "home#update_preferences", as: :dashboard_preferences
   get "dashboard/epics", to: "home#epics", as: :dashboard_epics

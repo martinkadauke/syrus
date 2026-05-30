@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query"
 import { Route, Routes } from "react-router-dom"
 import { fetchBootstrap } from "../api/bootstrap"
+import { AdminOverview } from "./AdminOverview"
 
 export function App() {
   return (
     <Routes>
+      <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )

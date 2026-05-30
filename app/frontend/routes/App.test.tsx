@@ -53,4 +53,46 @@ describe("App", () => {
       })
     )
   })
+
+  it("renders the admin overview route from the app admin API", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          active_runs: { total: 2, by_trigger: { initial: 1, retry: 1 } },
+          queued_runs: { total: 1 },
+          recent_failures_24h: { total: 0, by_trigger: {} },
+          github_rate_limits: [],
+          github_api_blocked_users: [],
+          agent_session_capture_rate: { total: 3, captured: 3, rate: 1.0 },
+          workers: { total: 1, stale: 0 },
+          recurring: { overdue: [] },
+          stuck: [
+            {
+              kind: "stale_heartbeat",
+              severity: "warn",
+              detail: "Run #4 silent for 10m",
+              age_label: "10m",
+              run_id: 4,
+              workflow_id: 2,
+              job_id: 1
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Active runs")).toBeInTheDocument()
+    expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
+    expect(screen.getByText("2")).toBeInTheDocument()
+    expect(screen.getByText("Run #4 silent for 10m")).toBeInTheDocument()
+  })
 })

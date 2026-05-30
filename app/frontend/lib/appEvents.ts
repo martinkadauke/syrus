@@ -25,6 +25,8 @@ export function queryKeysFor(event: AppEvent): QueryKey[] {
       return event.id == null ? [["workflows"]] : [["workflows"], ["workflows", String(event.id)]]
     case "repository":
       return event.id == null ? [["repositories"]] : [["repositories"], ["repositories", String(event.id)]]
+    case "admin_overview":
+      return [["admin", "overview"]]
     default:
       return []
   }

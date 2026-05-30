@@ -20,4 +20,14 @@ RSpec.describe "SPA shell", type: :request do
     expect(response.body).to include("<title>Syrus</title>")
     expect(response.body).not_to include("javascript_importmap")
   end
+
+  it "serves nested React routes through the SPA shell" do
+    user = Factories.user
+    sign_in_as(user)
+
+    get "/app-shell/admin"
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include('id="syrus-spa-root"')
+  end
 end
