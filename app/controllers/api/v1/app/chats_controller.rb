@@ -3,6 +3,7 @@ module Api
     module App
       class ChatsController < BaseController
         PAGE_SIZE = ChatSession::MESSAGE_PAGE_SIZE
+        CHAT_TURN_ENQUEUE_RETRY_DELAYS = [ 0.05, 0.2 ].freeze
 
         def new
           render json: form_payload
@@ -31,12 +32,10 @@ module Api
             redirect_to: chat_path(chat_session),
             chat: chat_json(chat_session)
           }, status: :created
-        rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked
-          render_error(
-            "temporary_lock",
-            "Chat creation was blocked by a temporary database lock. Try again.",
-            status: :service_unavailable
-          )
+        rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked, ActiveRecord::StatementTimeout, SolidQueue::Job::EnqueueError => e
+          raise unless transient_chat_lock_error?(e)
+
+          render_temporary_chat_lock_error
         end
 
         def message
@@ -52,9 +51,13 @@ module Api
             chat_session.update!(last_message_at: Time.current, title: chat_session.title.presence || text.truncate(80))
             user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
           end
-          ChatTurnJob.perform_later(chat_session.id, user_message.id)
+          enqueue_chat_turn(chat_session, user_message)
 
           render json: chat_payload(chat_session.reload, message: "Message sent.")
+        rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked, ActiveRecord::StatementTimeout, SolidQueue::Job::EnqueueError => e
+          raise unless transient_chat_lock_error?(e)
+
+          render_temporary_chat_lock_error
         end
 
         def stop
@@ -377,8 +380,50 @@ module Api
             end
           end
 
-          ChatTurnJob.perform_later(chat_session.id, user_message.id) if user_message
+          enqueue_chat_turn(chat_session, user_message) if user_message
           chat_session
+        end
+
+        def enqueue_chat_turn(chat_session, user_message)
+          retry_delays = CHAT_TURN_ENQUEUE_RETRY_DELAYS.dup
+
+          begin
+            ChatTurnJob.perform_later(chat_session.id, user_message.id)
+          rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked, ActiveRecord::StatementTimeout, SolidQueue::Job::EnqueueError => e
+            raise unless transient_chat_lock_error?(e) && retry_delays.any?
+
+            delay = retry_delays.shift
+            Rails.logger.warn("Retrying ChatTurnJob enqueue after transient database lock: #{e.class}: #{e.message}")
+            sleep(delay) if delay.positive?
+            retry
+          end
+        end
+
+        def render_temporary_chat_lock_error
+          render_error(
+            "temporary_lock",
+            "Chat request was blocked by a temporary database lock. Try again.",
+            status: :service_unavailable
+          )
+        end
+
+        def transient_chat_lock_error?(error)
+          error_chain(error).any? do |candidate|
+            candidate.is_a?(ActiveRecord::LockWaitTimeout) ||
+              candidate.is_a?(ActiveRecord::Deadlocked) ||
+              candidate.is_a?(ActiveRecord::StatementTimeout) ||
+              candidate.class.name == "SQLite3::BusyException" ||
+              candidate.message.match?(/SQLite3::BusyException|database is locked|LockWaitTimeout|Deadlocked|StatementTimeout/i)
+          end
+        end
+
+        def error_chain(error)
+          chain = []
+          while error && !chain.include?(error)
+            chain << error
+            error = error.cause
+          end
+          chain
         end
 
         def find_chat_session

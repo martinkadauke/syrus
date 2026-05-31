@@ -60,6 +60,29 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body).to include("message" => "Message sent.", "redirect_to" => chat_path(chat))
   end
 
+  it "retries a transient Solid Queue lock when creating the first turn" do
+    sign_in_as(user)
+    stub_const("Api::V1::App::ChatsController::CHAT_TURN_ENQUEUE_RETRY_DELAYS", [ 0 ])
+    enqueue_attempts = 0
+    lock_error = SolidQueue::Job::EnqueueError.new("ActiveRecord::StatementTimeout: SQLite3::BusyException: database is locked")
+
+    allow(ChatTurnJob).to receive(:perform_later).and_wrap_original do |method, *args, **kwargs|
+      enqueue_attempts += 1
+      raise lock_error if enqueue_attempts == 1
+
+      method.call(*args, **kwargs)
+    end
+
+    expect {
+      post "/api/v1/app/chats", params: { repository_id: repository.id, chat_message: { text: "Map auth" } }
+    }.to change(ChatSession, :count).by(1)
+      .and change(ChatMessage, :count).by(1)
+      .and have_enqueued_job(ChatTurnJob)
+
+    expect(response).to have_http_status(:created)
+    expect(enqueue_attempts).to eq(2)
+  end
+
   it "creates a chat without a repository attachment" do
     sign_in_as(user)
 
