@@ -91,8 +91,7 @@ health/storage internals.
 | admin user scheduling commands | `admin/users#pause_scheduling`, `#unpause_scheduling` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/users/:id/*_scheduling`. |
 | `/admin/console` | `spa#show` | `spa-admin` | Migrated to the React operator console. Legacy ERB fallback lives at `/admin/console/legacy`. |
 | admin console commands | `admin/console#pause_polling`, `#unpause_polling`, `#pause_runs`, `#unpause_runs`, `#clear_github_cache` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/console/*`. |
-| `/admin/installations` | `spa#show` | `spa-admin` | Migrated to the React GitHub App installations page. Legacy ERB fallback lives at `/admin/installations/legacy`. |
-| `POST /admin/installations/refresh` | `admin/installations#refresh` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/installations/refresh`. |
+| `/admin/installations` | `spa#show` + `/api/v1/app/admin/installations` | `spa-admin` | Migrated to the React GitHub App installations page with app API refresh. Legacy ERB fallback and HTML refresh route are removed. |
 | `/admin/github_app/register`, `/admin/github_app/callback`, `/admin/github_app/confirm` | `admin/github_app` | `external-html` | Third-party manifest/callback flow. Leave server-rendered unless there is a concrete SPA benefit. |
 | `/session/new`, `POST/DELETE /session` | `sessions` resource | `legacy-html` | Keep server-rendered until late. SPA handles 401 by navigating here. |
 | `/users/new`, `POST /users` | `users#new/create` | `legacy-html` | First-user bootstrap path; low value for SPA. |
