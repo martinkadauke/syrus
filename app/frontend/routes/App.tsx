@@ -119,6 +119,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   const user = data?.current_user
   const app = data?.app
   const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
+  const normalizedPath = normalizedAppPath(location.pathname)
   const navItems: Array<{ label: string; to: string; active: boolean; desktopOnly?: boolean }> = [
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: location.pathname === "/" || location.pathname.includes("/dashboard") },
     { label: "Repos", to: `${prefix}/repositories`, active: location.pathname.includes("/repositories") },
@@ -152,14 +153,56 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
           </div>
         </div>
       </header>
+      {showsAdminNavigation(normalizedPath) ? <AdminNavigation normalizedPath={normalizedPath} prefix={prefix} /> : null}
       {children}
       {user ? <BugReportButton context={bugReportContext(location.pathname)} /> : null}
     </div>
   )
 }
 
+function AdminNavigation({ normalizedPath, prefix }: { normalizedPath: string; prefix: string }) {
+  const items: Array<{ label: string; path: string; reload?: boolean; active: (path: string) => boolean }> = [
+    { label: "Overview", path: "/admin", active: (path) => path === "/admin" },
+    { label: "Stuck", path: "/admin/stuck", active: (path) => path === "/admin/stuck" },
+    { label: "Users", path: "/admin/users", active: (path) => path.startsWith("/admin/users") },
+    { label: "Queue", path: "/admin/queue/active", active: (path) => path.startsWith("/admin/queue") },
+    { label: "Processes", path: "/admin/processes", active: (path) => path.startsWith("/admin/processes") },
+    { label: "Console", path: "/admin/console", active: (path) => path === "/admin/console" },
+    { label: "GitHub App", path: "/admin/github_app/register", reload: true, active: (path) => path.startsWith("/admin/github_app") },
+    { label: "Installations", path: "/admin/installations", active: (path) => path === "/admin/installations" },
+    { label: "App settings", path: "/settings/edit", active: (path) => path === "/settings/edit" },
+    { label: "Invitations", path: "/invitations", active: (path) => path === "/invitations" }
+  ]
+
+  return (
+    <div className="border-b border-gray-200 bg-white">
+      <nav aria-label="Admin navigation" className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-2 text-xs">
+        {items.map((item) => {
+          const className = adminNavLinkClass(item.active(normalizedPath))
+          if (item.reload) {
+            return <a className={className} href={item.path} key={item.label}>{item.label}</a>
+          }
+
+          return <Link className={className} key={item.label} to={withRoutePrefix(item.path, prefix)}>{item.label}</Link>
+        })}
+      </nav>
+    </div>
+  )
+}
+
+function showsAdminNavigation(pathname: string) {
+  return pathname === "/admin" ||
+    pathname.startsWith("/admin/") ||
+    pathname === "/settings/edit" ||
+    pathname === "/invitations"
+}
+
+function normalizedAppPath(pathname: string) {
+  return pathname.replace(/^\/app-shell/, "") || "/"
+}
+
 function bugReportContext(pathname: string) {
-  const normalized = pathname.replace(/^\/app-shell/, "") || "/"
+  const normalized = normalizedAppPath(pathname)
   if (normalized === "/" || normalized === "/dashboard") return "Dashboard"
 
   const label = normalized
@@ -232,6 +275,10 @@ function navLinkClass(active: boolean) {
 
 function accountLinkClass() {
   return "rounded border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700 hover:border-gray-300 hover:text-gray-900"
+}
+
+function adminNavLinkClass(active: boolean) {
+  return `rounded px-2.5 py-1.5 font-medium ${active ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"}`
 }
 
 function withRoutePrefix(path: string, prefix: string) {

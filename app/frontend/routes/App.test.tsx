@@ -231,6 +231,17 @@ describe("App", () => {
 
     expect(await screen.findByText("Active runs")).toBeInTheDocument()
     expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
+    const adminNav = screen.getByRole("navigation", { name: "Admin navigation" })
+    expect(within(adminNav).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/admin")
+    expect(within(adminNav).getByRole("link", { name: "Stuck" })).toHaveAttribute("href", "/app-shell/admin/stuck")
+    expect(within(adminNav).getByRole("link", { name: "Users" })).toHaveAttribute("href", "/app-shell/admin/users")
+    expect(within(adminNav).getByRole("link", { name: "Queue" })).toHaveAttribute("href", "/app-shell/admin/queue/active")
+    expect(within(adminNav).getByRole("link", { name: "Processes" })).toHaveAttribute("href", "/app-shell/admin/processes")
+    expect(within(adminNav).getByRole("link", { name: "Console" })).toHaveAttribute("href", "/app-shell/admin/console")
+    expect(within(adminNav).getByRole("link", { name: "GitHub App" })).toHaveAttribute("href", "/admin/github_app/register")
+    expect(within(adminNav).getByRole("link", { name: "Installations" })).toHaveAttribute("href", "/app-shell/admin/installations")
+    expect(within(adminNav).getByRole("link", { name: "App settings" })).toHaveAttribute("href", "/app-shell/settings/edit")
+    expect(within(adminNav).getByRole("link", { name: "Invitations" })).toHaveAttribute("href", "/app-shell/invitations")
     expect(screen.getByRole("link", { name: /Active runs/ })).toHaveAttribute("href", "/app-shell/admin/queue/active")
     expect(screen.getByRole("link", { name: /Stuck things/ })).toHaveAttribute("href", "/app-shell/admin/stuck")
     expect(screen.getByText("2")).toBeInTheDocument()
@@ -949,10 +960,11 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(screen.getByRole("main", { name: "Admin process detail" })).toBeInTheDocument()
-    expect(await screen.findByText("claude --print")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Processes" })).toHaveAttribute("href", "/app-shell/admin/processes")
-    expect(screen.getByRole("link", { name: "#4" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript")
+    const processDetail = screen.getByRole("main", { name: "Admin process detail" })
+    expect(processDetail).toBeInTheDocument()
+    expect(await within(processDetail).findByText("claude --print")).toBeInTheDocument()
+    expect(within(processDetail).getByRole("link", { name: "Processes" })).toHaveAttribute("href", "/app-shell/admin/processes")
+    expect(within(processDetail).getByRole("link", { name: "#4" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/processes/8",
       expect.objectContaining({
