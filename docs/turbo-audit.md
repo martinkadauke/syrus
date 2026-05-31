@@ -1,9 +1,11 @@
-# Turbo audit - current usage, gotchas, defensive defaults
+# Turbo audit - retired architecture notes
 
-Snapshot of Turbo touchpoints after the React SPA migration retired the
-ERB dashboard, repository, Epic, scheduled-task, settings, admin, and chat
-fallback pages. Turbo is now only supporting the remaining legacy HTML
-surfaces, mainly Job detail/source plus auth/static pages.
+Snapshot after the React SPA migration retired the authenticated ERB
+operator pages. Regular operator surfaces now render through
+`SpaController` + React and use `/api/v1/app/*` JSON APIs with
+`AppUserChannel` app events. Turbo remains only as legacy support for
+auth/bootstrap pages, password reset, GitHub App registration, downloads,
+and static/PWA assets.
 
 ## Surface Area
 
@@ -23,26 +25,26 @@ pages. The SPA layout does not enable Turbo refresh morphing.
 
 | Page | Streams |
 |---|---|
-| `jobs/show` legacy fallback | `job`, `[job, "logs"]` |
+| Active application views | none |
 
-All driven by Action Cable. The adapter remains `solid_cable` in both dev
-and prod (`config/cable.yml`) so worker-process broadcasts can reach browser
-subscribers.
+Action Cable remains important for the React app: `AppUserChannel`
+delivers JSON app events to TanStack Query. The adapter remains
+`solid_cable` in both dev and prod (`config/cable.yml`) so worker-process
+events can reach browser subscribers.
 
 ### Models That Broadcast
 
 | Model | Mechanism | Legacy consumers |
 |---|---|---|
-| `Job` | `broadcasts_refreshes` plus dashboard/repository fan-out streams | Job show |
-| `Run` | `broadcasts_refreshes_to job` plus dashboard fan-out stream | Job show |
-| `Epic` | `broadcasts_refreshes` plus dashboard/repository fan-out streams | No active Turbo subscriber after dashboard/Epic fallback removal |
-| `RunHealthSnapshot` | targeted `broadcasts_refreshes_to` | Job show |
+| `Job` | `broadcasts_refreshes` plus dashboard/repository fan-out streams | none |
+| `Run` | `broadcasts_refreshes_to job` plus dashboard fan-out stream | none |
+| `Epic` | `broadcasts_refreshes` plus dashboard/repository fan-out streams | none |
+| `RunHealthSnapshot` | targeted `broadcasts_refreshes_to` | none |
 | `SpawnedProcess` | `broadcasts_refreshes` | No active Turbo subscriber after admin fallback removal |
-| `JobLog` | `broadcasts_to [log.run.job, "logs"]`, append | Job show transcript |
 
-Some fan-out streams remain on models even though their legacy dashboard/admin
-subscribers are gone. They are harmless but can be removed when the final
-legacy HTML cleanup pass deletes Turbo entirely.
+These broadcasts are compatibility leftovers with no active operator-page
+subscribers. Remove them only alongside an explicit app-event replacement
+for any live behavior the React UI still needs.
 
 ### `data-turbo-permanent`
 
@@ -50,8 +52,6 @@ Elements explicitly preserved through morph cycles:
 
 | Element | View | Why |
 |---|---|---|
-| Live transcript container `run_<id>_logs` | `jobs/_step.html.erb` | Holds appended JobLog entries; morph would wipe them between broadcasts |
-| Retry-context dialog | `jobs/show.html.erb` | In-flight form state survives broadcast morphs |
 | Bug-report dialog + button | `shared/_bug_report_button.html.erb` | Typed message + screenshot survive |
 | Footer Syrus quote | `layouts/application.html.erb` | Cosmetic; stops random quote flicker on refresh morphs |
 
@@ -61,12 +61,8 @@ Controllers that listen for Turbo morph/render events:
 
 - `checkbox_persistence_controller.js`
 - `details_persistence_controller.js`
-- `tabs_controller.js`
-- `iteration_tabs_controller.js`
 
-Dashboard-only morph controllers (`chip_bar`, `bulk_jobs`, `column_picker`,
-`sort_select`, `kanban`, `epic_graph_drawer`, `filter_memory`) were removed
-with the ERB dashboard fallback.
+Page-specific operator controllers were removed with their ERB fallbacks.
 
 ## Gotchas
 
@@ -78,10 +74,11 @@ purpose is in-place navigation.
 
 ### Page Morph Wipes Form State
 
-A `broadcasts_refreshes` update can replace form elements while the operator
-is typing or selecting. Use a narrowly scoped `data-turbo-permanent` island
-for one-instance dialogs, or a morph-aware Stimulus controller backed by a
-stable store for repeated controls.
+A `broadcasts_refreshes` update can replace form elements while someone is
+typing or selecting on a legacy HTML page. Use React state for operator
+pages. If a legacy auth/external page needs morphing, use a narrowly scoped
+`data-turbo-permanent` island or a morph-aware Stimulus controller backed by
+a stable store.
 
 ### Cable Adapter Mismatch
 
@@ -96,13 +93,13 @@ morph.
 
 ### Hot Model Broadcast Churn
 
-`Run` and `Job` still broadcast frequently enough to affect legacy Job pages.
-For heartbeat-style updates, prefer targeted append/replace streams or guard
-refresh broadcasts with meaningful state-change predicates.
+`Run` and `Job` still have legacy refresh hooks. Do not use those hooks for
+new live UI. React pages should receive app events and either invalidate
+query keys or apply compact payloads, as chat does for message tails.
 
 ## Defensive Defaults
 
-1. Avoid adding new Turbo frames during the SPA migration.
+1. Do not add new Turbo frames for operator routes.
 2. Keep user-input islands tiny and explicit when legacy morphing is involved.
 3. Prefer app events plus TanStack Query invalidation for React routes.
-4. Remove legacy Turbo broadcasts once the Job fallback is retired.
+4. Remove legacy Turbo broadcasts only after equivalent app events exist.

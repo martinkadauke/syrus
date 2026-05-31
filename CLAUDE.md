@@ -8,8 +8,8 @@ and `ROADMAP.md` for milestone planning.
 ## Stack
 
 Rails 8.1.3 · Ruby 3.2.3 · SQLite (dev/test) / MySQL (prod) ·
-Solid Queue + Solid Cache + Solid Cable · Tailwind via
-`tailwindcss-rails` · Turbo Streams + Stimulus · Octokit for GitHub.
+Solid Queue + Solid Cache + Solid Cable · React + TypeScript via Vite ·
+TanStack Query · Tailwind via `tailwindcss-rails` · Octokit for GitHub.
 
 ## Architecture in 60 seconds
 
@@ -164,39 +164,20 @@ with reason `no_changes`.
 
 ### Live UI
 
-`Job` and `Run` use `broadcasts_refreshes` + Turbo morph (`<%= turbo_refreshes_with method: :morph %>`)
-so the worker's DB writes update the operator's browser without a refresh.
-Dev mode uses `solid_cable` (NOT `async`) so cross-process broadcasts work.
-The transcript element on the show page uses `data-turbo-permanent` to
-preserve scroll position across morphs.
+Authenticated operator pages are React routes rendered by
+`app/views/spa/show.html.erb` and backed by `/api/v1/app/*` JSON
+controllers. React uses TanStack Query for server state and
+`AppUserChannel` app events for live invalidation or compact payload
+updates, notably chat message tails and whiteboard changes.
 
-**Turbo conventions.** Full audit in `docs/turbo-audit.md`. Defaults:
+The legacy `application` layout still exists for auth/bootstrap,
+password reset, GitHub App registration, downloads, and static/PWA
+surfaces. Its Stimulus controllers are legacy-layout support only; do
+not add new operator UI there. See `docs/turbo-audit.md` for the
+remaining Turbo footprint.
 
-- **`turbo_frame_tag` defaults to `target: "_top"`** unless the frame's
-  whole purpose is hosting in-place navigation. Links inside the frame
-  inherit the target; without `_top` you get the "Content missing" bug
-  when an inbound link targets the frame but the response doesn't
-  contain it (commit `b222bd7`). In-frame links override with their
-  own `data-turbo-frame=`.
-- **Form state must survive morph cycles.** Page-level morphs fire on
-  every `broadcasts_refreshes` save; an in-flight checkbox / focus /
-  scroll gets wiped unless protected. Two patterns: (a) wrap a small,
-  one-instance element in `data-turbo-permanent`, or (b) write a
-  morph-aware Stimulus controller that re-syncs from a stable store
-  (sessionStorage, URL params, `data-` on a permanent neighbor) on
-  `turbo:morph` / `turbo:render` events. The morph algorithm does NOT
-  preserve form state via DOM matching.
-- **`data-turbo-permanent` goes on the smallest possible element** —
-  wrapping whole sections silently prevents Stimulus re-init inside
-  them on URL changes. Scope tightly (the dialog itself, the checkbox
-  row, the transcript container).
-- **Hot-path broadcasts that fire on every save** (`Run`, `JobLog`)
-  can fan out into dashboard-wide morphs N times per heartbeat
-  interval. If a page feels chattery, guard the broadcast with
-  `if: -> { saved_change_to_state? }` or downgrade to a targeted
-  `broadcasts_to` for state changes only.
-- **Cable adapter is `solid_cable` in dev AND prod.** Async doesn't
-  cross from `bin/jobs` to `bin/rails server`. Don't switch.
+Dev and prod use `solid_cable` (NOT `async`) so browser app events and
+any remaining legacy broadcasts work across web/worker processes.
 
 ## Conventions
 
@@ -231,7 +212,8 @@ preserve scroll position across morphs.
   so the collision risk is within a Job, not across repos.)
 - **Three SolidQueue queues** — `runs` (dedicated worker) for long agent
   invocations; `chat` (dedicated low-concurrency worker) for ChatTurnJob and
-  ChatWorkspaceJob; `default` for pollers, Turbo broadcasts, and reaper jobs.
+  ChatWorkspaceJob; `default` for pollers, app-event broadcasts, legacy Turbo
+  broadcasts, and reaper jobs.
   Splitting prevents long RunJobs from starving chat, the reaper, and UI
   broadcasts.
 - **Per-user max-turns** — `User#agent_max_turns` (default 200, range
@@ -251,10 +233,10 @@ preserve scroll position across morphs.
 - **GitHub issue actions** — Repository pages can list GitHub issues and
   comment, close, delegate (add the trigger label), or bulk delegate/close
   them through `GithubClient`. Keep single and bulk paths in sync.
-- **Form validation UI** — `form-validation` is mounted globally on
-  `<body>`. Prefer native HTML validity attributes (`required`, etc.); the
-  Stimulus controller renders inline errors, summary alerts, focus, and
-  `aria-invalid`/`aria-describedby`.
+- **Form validation UI** — React forms should use native validity
+  attributes plus route-local error rendering. The legacy
+  `form-validation` Stimulus controller is mounted only by the HTML
+  application layout for auth/external pages.
 - **Per-user scheduling pause** — `User#scheduling_paused` (boolean).
   `PollScheduledTasksJob` skips paused users entirely. Operator can toggle
   via admin UI; user can toggle in `/credentials/edit`.
