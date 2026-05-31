@@ -87,8 +87,7 @@ health/storage internals.
 | `POST /admin/processes/:id/kill` | `admin/spawned_processes#kill` | `legacy-html` | Kept for existing HTML controls; React uses `POST /api/v1/app/admin/processes/:id/kill`. |
 | `/admin/runs/:run_id/transcript` | `spa#show` | `spa-admin` | Migrated to the React transcript viewer with internal React Router back-to-Job navigation. Legacy ERB fallback lives at `/admin/runs/:run_id/transcript/legacy`. |
 | `/admin/runs/:run_id/transcript/download` | `admin/transcripts#download` | `legacy-html` | Keep as regular download endpoint. |
-| `/admin/users`, `/admin/users/:id` | `spa#show` | `spa-admin` | Migrated to the React users list/detail shell. Legacy ERB fallback lives at `/admin/users/legacy` and `/admin/users/legacy/:id`. |
-| admin user scheduling commands | `admin/users#pause_scheduling`, `#unpause_scheduling` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/users/:id/*_scheduling`. |
+| `/admin/users`, `/admin/users/:id` | `spa#show` + `/api/v1/app/admin/users*` | `spa-admin` | Migrated to the React users list/detail shell with app API scheduling commands. Legacy ERB fallback and HTML scheduling command routes are removed. |
 | `/admin/console` | `spa#show` + `/api/v1/app/admin/console*` | `spa-admin` | Migrated to the React operator console with app API kill-switch/cache commands. Legacy ERB fallback and HTML console command routes are removed. |
 | `/admin/installations` | `spa#show` + `/api/v1/app/admin/installations` | `spa-admin` | Migrated to the React GitHub App installations page with app API refresh. Legacy ERB fallback and HTML refresh route are removed. |
 | `/admin/github_app/register`, `/admin/github_app/callback`, `/admin/github_app/confirm` | `admin/github_app` | `external-html` | Third-party manifest/callback flow. Leave server-rendered unless there is a concrete SPA benefit. |

@@ -1,8 +1,8 @@
 module Api
   module V1
     module Admin
-      # Mirror of Admin::UsersController. Same Admin::Users::Filter
-      # so HTML + API never drift.
+      # User directory for external admin API clients. The browser SPA
+      # uses the sibling app API namespace.
       #
       #   GET /api/v1/admin/users          — filtered list
       #   GET /api/v1/admin/users/:id      — full user detail

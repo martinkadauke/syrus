@@ -206,7 +206,7 @@ Rails.application.routes.draw do
         # rolling deploy you'll see both old + new SHAs simultaneously.
         get "version", to: "versions#index"
 
-        # User directory (mirror Admin::UsersController).
+        # User directory for external admin API clients.
         resources :users, only: %i[ index show ]
 
         # Workflow control — the same mutations the HTML admin UI
@@ -416,8 +416,6 @@ Rails.application.routes.draw do
   get "admin/runs/:run_id/transcript", to: "spa#show", as: :admin_run_transcript, constraints: { run_id: /\d+/ }
   get "admin/users", to: "spa#show", as: :admin_users
   get "admin/users/:id", to: "spa#show", as: :admin_user, constraints: { id: /\d+/ }
-  post "admin/users/:id/pause_scheduling", to: "admin/users#pause_scheduling", as: :pause_scheduling_admin_user, constraints: { id: /\d+/ }
-  post "admin/users/:id/unpause_scheduling", to: "admin/users#unpause_scheduling", as: :unpause_scheduling_admin_user, constraints: { id: /\d+/ }
   get "admin/console", to: "spa#show", as: :admin_console
   get "admin/installations", to: "spa#show", as: :admin_installations
 
@@ -446,17 +444,6 @@ Rails.application.routes.draw do
     get  "processes/legacy",          to: "spawned_processes#index", as: :legacy_processes
     get  "processes/legacy/:id",      to: "spawned_processes#show",  as: :legacy_process
     post "processes/legacy/:id/kill", to: "spawned_processes#kill",  as: :legacy_kill_process
-
-    # User directory — filterable list + per-user detail page.
-    # Drilled into from the GH rate-limits tile on /admin (with
-    # `?gh_rate=low`); also supports `?admin=true|false`,
-    # `?email=substr`, `?has_github_token=true|false`,
-    # `?has_claude_token=true|false`. Filter logic lives in
-    # Admin::UsersFilter so the API mirror reuses it.
-    get  "users/legacy",                         to: "users#index", as: :legacy_users
-    get  "users/legacy/:id",                     to: "users#show",  as: :legacy_user
-    post "users/legacy/:id/pause_scheduling",   to: "users#pause_scheduling", as: :legacy_pause_user_scheduling
-    post "users/legacy/:id/unpause_scheduling", to: "users#unpause_scheduling", as: :legacy_unpause_user_scheduling
 
     get "github_app/register", to: "github_app#register", as: :github_app_register
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
