@@ -107,8 +107,123 @@ export type GitHubBranchesPayload = {
   error?: string
 }
 
+export type RepositoryDetailPayload = {
+  message?: string | null
+  repository: RepositoryDetailRecord
+  tabs: RepositoryTab[]
+  counts: {
+    running: number
+    queued: number
+    failed_7d: number
+  }
+  retry_failed_jobs: {
+    count: number
+    agent_provider: string
+    agent_provider_label: string
+  }
+  credential_status: {
+    mode: "app" | "pat"
+    label: string
+    installation_account: string | null
+    github_app_registered: boolean
+    install_url: string | null
+    register_path: string | null
+    previous_installation_removed: boolean
+    missing_github_ids: boolean
+  }
+  notes: RepositoryNote[]
+  jobs: RepositoryDetailJob[]
+  pagination: {
+    page: number
+    per_page: number
+    total_jobs: number
+    total_pages: number
+    first_item: number
+    last_item: number
+    previous_path: string | null
+    next_path: string | null
+  }
+  paths: {
+    new_job_path: string
+    edit_repository_path: string
+    poll_repository_path: string
+    archive_repository_path: string
+    retry_failed_jobs_repository_path: string
+    repository_notes_path: string
+    repositories_path: string
+    repository_documents_path: string
+    repository_scheduled_tasks_path: string
+  }
+}
+
+export type RepositoryDetailRecord = {
+  id: number
+  slug: string
+  owner: string
+  name: string
+  default_branch: string
+  trigger_label: string
+  polling_enabled: boolean
+  archived: boolean
+  agent_provider: string | null
+  agent_provider_label: string | null
+  effective_agent_provider: string
+  effective_agent_provider_label: string
+  github_url: string
+  created_at: string
+  owner_user: {
+    email_address: string
+    admin: boolean
+  }
+  github_rate_limit: {
+    remaining: number
+    limit: number
+    resource: string
+    observed_at: string
+  } | null
+}
+
+export type RepositoryTab = {
+  key: string
+  label: string
+  path: string
+}
+
+export type RepositoryNote = {
+  id: number
+  body: string
+  author: string
+  created_at: string
+  delete_path: string
+}
+
+export type RepositoryDetailJob = {
+  id: number
+  state: string
+  priority: string
+  issue_number: number | null
+  issue_title: string
+  job_path: string
+  source: {
+    label: string
+    path: string | null
+    external: boolean
+  }
+  pr_number: number | null
+  pr_url: string | null
+  external_pr_number: number | null
+  external_pr_url: string | null
+  current_step_caption: string | null
+  runs_count: number
+  updated_at: string
+}
+
 export function fetchRepositories() {
   return getJson<RepositoriesPayload>("/api/v1/app/repositories")
+}
+
+export function fetchRepositoryDetail(id: string, search = "") {
+  return getJson<RepositoryDetailPayload>(`/api/v1/app/repositories/${id}${search}`)
 }
 
 export function fetchNewRepositoryForm() {

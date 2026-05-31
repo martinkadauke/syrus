@@ -1448,6 +1448,31 @@ describe("App", () => {
     expect(await screen.findByText("Trigger label can't be blank")).toBeInTheDocument()
   })
 
+  it("renders a repository detail overview from the app API", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(repositoryDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Repository" })).toBeInTheDocument()
+    expect(await screen.findByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "https://github.com/acme/widgets")
+    expect(screen.getByText("polling enabled")).toBeInTheDocument()
+    expect(screen.getByText("Repository note pinned.")).toBeInTheDocument()
+    expect(screen.getByText("Fix forum")).toBeInTheDocument()
+    expect(screen.getByText("Retry 1 failed with Codex")).toBeInTheDocument()
+    expect(screen.getByText("Install Syrus App on this repository")).toHaveAttribute("href", "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&repository_ids[]=200")
+    expect(screen.getByText("Running").previousElementSibling).toHaveTextContent("1")
+    expect(screen.getByText("Queued").previousElementSibling).toHaveTextContent("1")
+    expect(screen.getByText("Failed (7d)").previousElementSibling).toHaveTextContent("1")
+  })
+
   it("renders the new epic form and submits it to the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -1854,6 +1879,115 @@ function repositoryFormPayload(overrides: Partial<{
       { value: "if_graders_pass_and_tagged_safe", label: "If graders pass and tagged safe", preview: "Jobs using this rule also need the safe tag before landing." }
     ],
     repositories_path: "/repositories"
+  }
+}
+
+function repositoryDetailPayload() {
+  return {
+    message: null,
+    repository: {
+      id: 3,
+      slug: "acme/widgets",
+      owner: "acme",
+      name: "widgets",
+      default_branch: "main",
+      trigger_label: "syrus",
+      polling_enabled: true,
+      archived: false,
+      agent_provider: "codex",
+      agent_provider_label: "Codex",
+      effective_agent_provider: "codex",
+      effective_agent_provider_label: "Codex",
+      github_url: "https://github.com/acme/widgets",
+      created_at: "2026-05-30T12:00:00Z",
+      owner_user: {
+        email_address: "operator@example.com",
+        admin: true
+      },
+      github_rate_limit: {
+        remaining: 4990,
+        limit: 5000,
+        resource: "core",
+        observed_at: "2026-05-30T12:00:00Z"
+      }
+    },
+    tabs: [
+      { key: "overview", label: "Overview", path: "/repositories/3" },
+      { key: "github_issues", label: "GitHub Issues", path: "/repositories/3?tab=github_issues" },
+      { key: "scheduled_tasks", label: "Scheduled Tasks", path: "/repositories/3/scheduled_tasks" }
+    ],
+    counts: {
+      running: 1,
+      queued: 1,
+      failed_7d: 1
+    },
+    retry_failed_jobs: {
+      count: 1,
+      agent_provider: "codex",
+      agent_provider_label: "Codex"
+    },
+    credential_status: {
+      mode: "pat",
+      label: "PAT fallback",
+      installation_account: null,
+      github_app_registered: true,
+      install_url: "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&repository_ids[]=200",
+      register_path: null,
+      previous_installation_removed: false,
+      missing_github_ids: false
+    },
+    notes: [
+      {
+        id: 11,
+        body: "Repository note pinned.",
+        author: "operator",
+        created_at: "2026-05-30T12:00:00Z",
+        delete_path: "/repositories/3/notes/11"
+      }
+    ],
+    jobs: [
+      {
+        id: 44,
+        state: "open",
+        priority: "high",
+        issue_number: 1,
+        issue_title: "Fix forum",
+        job_path: "/jobs/44",
+        source: {
+          label: "#1",
+          path: "https://github.com/acme/widgets/issues/1",
+          external: true
+        },
+        pr_number: 12,
+        pr_url: "https://github.com/acme/widgets/pull/12",
+        external_pr_number: null,
+        external_pr_url: null,
+        current_step_caption: "currently: Implement (workflow: Initial)",
+        runs_count: 2,
+        updated_at: "2026-05-30T12:00:00Z"
+      }
+    ],
+    pagination: {
+      page: 1,
+      per_page: 20,
+      total_jobs: 1,
+      total_pages: 1,
+      first_item: 1,
+      last_item: 1,
+      previous_path: null,
+      next_path: null
+    },
+    paths: {
+      new_job_path: "/jobs/new?repository_id=3",
+      edit_repository_path: "/repositories/3/edit",
+      poll_repository_path: "/repositories/3/poll",
+      archive_repository_path: "/repositories/3/archive",
+      retry_failed_jobs_repository_path: "/repositories/3/retry_failed_jobs",
+      repository_notes_path: "/repositories/3/notes",
+      repositories_path: "/repositories",
+      repository_documents_path: "/repositories/3/documents",
+      repository_scheduled_tasks_path: "/repositories/3/scheduled_tasks"
+    }
   }
 }
 
