@@ -1,5 +1,6 @@
 class ChatMessage < ApplicationRecord
   ROLES = %w[ user assistant tool_use tool_result system ].freeze
+  SPA_EVENT_TAIL_SIZE = 24
 
   belongs_to :chat_session
   belongs_to :proposal, class_name: "ChatProposal", optional: true
@@ -59,12 +60,27 @@ class ChatMessage < ApplicationRecord
   end
 
   def broadcast_app_event
+    chat = chat_session
+    tail = chat.messages
+               .includes(proposal: [ :repository, :job, :epic, :target_epic, dependencies: [], child_proposals: [ :repository, dependencies: [] ] ])
+               .order(created_at: :desc, id: :desc)
+               .limit(SPA_EVENT_TAIL_SIZE)
+               .to_a
+               .reverse
+
     AppEvents.broadcast(
-      user: chat_session.user,
+      user: chat.user,
       type: "updated",
       resource: "chat",
       id: chat_session_id,
-      changed: [ "messages" ]
+      changed: [ "messages" ],
+      payload: {
+        action: "replace_tail",
+        replace_from_id: tail.first&.id,
+        items: ::App::ChatMessagePayload.grouped(tail, repository: chat.repository),
+        turn_in_flight: chat.turn_in_flight?,
+        stop_requested_at: chat.stop_requested_at&.iso8601
+      }
     )
   end
 end

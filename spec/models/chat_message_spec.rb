@@ -82,4 +82,28 @@ RSpec.describe ChatMessage do
       expect(session.reload.turn_in_flight?).to be false
     end
   end
+
+  describe "after_create_commit :broadcast_app_event" do
+    it "broadcasts a typed replace-tail payload for React chat rendering" do
+      described_class.create!(chat_session: session, role: "user", content: { "text" => "Hi" })
+
+      expect(AppEvents).to receive(:broadcast) do |user:, type:, resource:, id:, changed:, payload:|
+        expect(user).to eq(session.user)
+        expect(type).to eq("updated")
+        expect(resource).to eq("chat")
+        expect(id).to eq(session.id)
+        expect(changed).to eq([ "messages" ])
+        expect(payload).to include(action: "replace_tail", turn_in_flight: false)
+        expect(payload[:replace_from_id]).to be_present
+        expect(payload[:items].last).to include(
+          type: "message",
+          role: "assistant",
+          text: "Hello from React."
+        )
+        expect(payload.to_s).not_to include("html")
+      end
+
+      described_class.create!(chat_session: session, role: "assistant", content: { "text" => "Hello from React." })
+    end
+  end
 end
