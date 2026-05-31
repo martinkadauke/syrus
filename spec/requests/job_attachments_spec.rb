@@ -42,17 +42,4 @@ RSpec.describe "Job attachments", type: :request do
     expect(response).to redirect_to(job_path(job, tab: "attachments"))
   end
 
-  it "renders the attachments tab on the Job show page" do
-    job.job_attachments.create!(
-      attachment_type: "google_doc_link",
-      google_doc_url: "https://docs.google.com/document/d/abc/edit"
-    )
-
-    get legacy_job_path(job, tab: "attachments")
-
-    expect(response).to have_http_status(:ok)
-    expect(response.body).to include("Attachments (1)")
-    expect(response.body).to include("https://docs.google.com/document/d/abc/edit")
-    expect(response.body).to include("Drop files here")
-  end
 end

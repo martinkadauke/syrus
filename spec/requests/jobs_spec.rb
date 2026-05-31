@@ -42,384 +42,162 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
-  describe "GET /jobs/:id/legacy" do
-    it "requires authentication" do
-      get legacy_job_path(job)
-      expect(response).to redirect_to(new_session_path)
+  describe "retired legacy Job detail route" do
+    it "does not route /jobs/:id/legacy" do
+      expect {
+        Rails.application.routes.recognize_path("/jobs/#{job.id}/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+    end
+  end
+
+  describe "approval actions" do
+    before { sign_in_as(user) }
+
+    # Regression: approving a Job whose repo has auto_merge_enabled
+    # off used to silently succeed locally, then get wiped on the
+    # next landing tick when AutoMergeGate raised
+    # "repository has not enabled auto-merge" -> fail_landing ->
+    # approved_at cleared. Surface the misconfiguration at approve
+    # time instead.
+    it "refuses to approve a Job whose repository has auto-merge disabled" do
+      no_automerge_repo = Factories.repository(user: user, owner: "acme", name: "lib",
+                                                auto_merge_enabled: false)
+      no_automerge_job = Factories.job(repository: no_automerge_repo, issue_number: 99)
+      no_automerge_job.update!(state: "implemented")
+
+      post approve_job_path(no_automerge_job)
+
+      expect(response).to redirect_to(job_path(no_automerge_job))
+      expect(flash[:alert]).to include("Auto-merge is disabled for acme/lib")
+      expect(no_automerge_job.reload.state).to eq("implemented")
+      expect(no_automerge_job.approved_at).to be_nil
     end
 
-    context "signed in" do
-      before { sign_in_as(user) }
+    it "approves an implemented job" do
+      user.update!(name: "Thomas")
+      job.update!(state: "implemented")
 
-      it "shows the job thread + each Run with its transcript and diff" do
-        run = job.initial_run
-        # Bring the Step out of `queued` too — otherwise the new
-        # _step partial hides the transcript collapsible (queued
-        # steps haven't started, so there's nothing to show).
-        run.step.start!; run.step.save!
-        run.start!; run.succeed!
-        run.step.succeed!; run.step.save!
-        run.update!(agent_diff: "diff --git a/foo b/foo\n+bar", agent_turns: 3, agent_outcome: "success")
-        JobLog.create!(run: run, sequence: 0, chunk: "hello transcript")
-
-        get legacy_job_path(job)
-        expect(response).to be_successful
-        expect(response.body).to include("acme/widgets")
-        expect(response.body).to include("#42")
-        expect(response.body).to include("hello transcript")
-        expect(response.body).to include("diff --git")
-        expect(response.body).to include("initial")  # trigger pill
-      end
-
-      it "renders issue_title next to the issue number in the heading" do
-        job.update!(issue_title: "Add greeting helper")
-        get legacy_job_path(job)
-        expect(response.body).to include("#42")
-        expect(response.body).to include("Add greeting helper")
-        # Both should appear close together — the title follows the issue link in the h1.
-        expect(response.body).to match(/#42.*Add greeting helper/m)
-      end
-
-      it "shows the selected agent as a pill next to the title" do
-        job.update!(agent_provider: "codex")
-
-        get legacy_job_path(job)
-
-        expect(response.body).to include("Codex")
-        expect(response.body).not_to include("Claude Code")
-        expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*Codex/m)
-      end
-
-      # Regression: approving a Job whose repo has auto_merge_enabled
-      # off used to silently succeed locally, then get wiped on the
-      # next landing tick when AutoMergeGate raised
-      # "repository has not enabled auto-merge" → fail_landing →
-      # approved_at cleared. Surface the misconfiguration at approve
-      # time instead.
-      it "refuses to approve a Job whose repository has auto-merge disabled" do
-        no_automerge_repo = Factories.repository(user: user, owner: "acme", name: "lib",
-                                                  auto_merge_enabled: false)
-        no_automerge_job = Factories.job(repository: no_automerge_repo, issue_number: 99)
-        no_automerge_job.update!(state: "implemented")
-
-        post approve_job_path(no_automerge_job)
-
-        expect(response).to redirect_to(job_path(no_automerge_job))
-        expect(flash[:alert]).to include("Auto-merge is disabled for acme/lib")
-        expect(no_automerge_job.reload.state).to eq("implemented")
-        expect(no_automerge_job.approved_at).to be_nil
-      end
-
-      it "approves an implemented job from the job page" do
-        user.update!(name: "Thomas")
-        job.update!(state: "implemented")
-
-        freeze_time do
-          post approve_job_path(job)
-        end
-
-        expect(response).to redirect_to(job_path(job))
-        expect(job.reload.state).to eq("approved")
-        expect(job.approved_at).to be_present
-        expect(job.approved_via).to eq("operator")
-        expect(job.approved_by_user).to eq(user)
-
-        get legacy_job_path(job)
-        expect(response.body).to include("Unapprove")
-        expect(response.body).to include("Approved by Thomas via Syrus")
-      end
-
-      it "unapproves an approved job before landing starts" do
-        job.update!(state: "implemented")
-        job.approve!(via: "operator", by_user: user)
-
-        post unapprove_job_path(job)
-
-        expect(response).to redirect_to(job_path(job))
-        expect(job.reload.state).to eq("implemented")
-        expect(job.approved_at).to be_nil
-        expect(job.approved_via).to be_nil
-        expect(job.approved_by_user).to be_nil
-        expect(job.approval_evidence).to eq({})
-      end
-
-      it "refuses to unapprove a landing job" do
-        job.update!(state: "implemented")
-        job.approve!(via: "operator", by_user: user)
-        job.start_landing!
-
-        post unapprove_job_path(job)
-
-        expect(response).to redirect_to(job_path(job))
-        expect(flash[:alert]).to include("Only approved Jobs")
-        expect(job.reload.state).to eq("landing")
-      end
-
-      it "files an APPROVE review on GitHub when the Job has a PR and the repo opts in" do
-        job.update!(state: "implemented", pr_number: 123)
-        client = instance_double(GithubClient)
-        allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
-        expect(client).to receive(:create_pr_review)
-          .with("acme/widgets", 123, event: "APPROVE", body: a_string_including("Syrus"))
-          .and_return(Struct.new(:id).new(987))
-
+      freeze_time do
         post approve_job_path(job)
-
-        expect(response).to redirect_to(job_path(job))
-        expect(flash[:notice]).to include("GitHub review left")
-        expect(job.reload.approval_evidence).to include("github_review_id" => 987)
       end
 
-      it "skips the GitHub review when the repo opts out" do
-        repository.update!(approval_propagates_to_github: false)
-        job.update!(state: "implemented", pr_number: 123)
-        expect(GithubClient).not_to receive(:for)
+      expect(response).to redirect_to(job_path(job))
+      expect(job.reload.state).to eq("approved")
+      expect(job.approved_at).to be_present
+      expect(job.approved_via).to eq("operator")
+      expect(job.approved_by_user).to eq(user)
+    end
 
-        post approve_job_path(job)
+    it "unapproves an approved job before landing starts" do
+      job.update!(state: "implemented")
+      job.approve!(via: "operator", by_user: user)
 
-        expect(job.reload.state).to eq("approved")
-        expect(flash[:notice]).to eq("Job approved.")
-      end
+      post unapprove_job_path(job)
 
-      it "still approves Syrus-side if the GitHub review write fails" do
-        job.update!(state: "implemented", pr_number: 123)
-        client = instance_double(GithubClient)
-        allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
-        allow(client).to receive(:create_pr_review)
-          .and_raise(Octokit::UnprocessableEntity.new(body: { message: "Pull request author can't approve their own pull request" }))
+      expect(response).to redirect_to(job_path(job))
+      expect(job.reload.state).to eq("implemented")
+      expect(job.approved_at).to be_nil
+      expect(job.approved_via).to be_nil
+      expect(job.approved_by_user).to be_nil
+      expect(job.approval_evidence).to eq({})
+    end
 
-        post approve_job_path(job)
+    it "refuses to unapprove a landing job" do
+      job.update!(state: "implemented")
+      job.approve!(via: "operator", by_user: user)
+      job.start_landing!
 
-        expect(response).to redirect_to(job_path(job))
-        expect(job.reload.state).to eq("approved")
-        expect(flash[:notice]).to include("GitHub review failed")
-      end
+      post unapprove_job_path(job)
 
-      it "dismisses the GitHub review on unapprove" do
-        job.update!(state: "implemented", pr_number: 123)
-        job.approve!(via: "operator", by_user: user, evidence: { "github_review_id" => 555 })
-        client = instance_double(GithubClient)
-        allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
-        expect(client).to receive(:dismiss_pr_review)
-          .with("acme/widgets", 123, 555, message: a_string_including("Syrus"))
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:alert]).to include("Only approved Jobs")
+      expect(job.reload.state).to eq("landing")
+    end
 
-        post unapprove_job_path(job)
+    it "files an APPROVE review on GitHub when the Job has a PR and the repo opts in" do
+      job.update!(state: "implemented", pr_number: 123)
+      client = instance_double(GithubClient)
+      allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+      expect(client).to receive(:create_pr_review)
+        .with("acme/widgets", 123, event: "APPROVE", body: a_string_including("Syrus"))
+        .and_return(Struct.new(:id).new(987))
 
-        expect(response).to redirect_to(job_path(job))
-        expect(job.reload.state).to eq("implemented")
-        expect(flash[:notice]).to include("GitHub review dismissed")
-      end
+      post approve_job_path(job)
 
-      it "renders the current user's pin state in the header" do
-        Factories.job_pin(user: user, job: job)
+      expect(response).to redirect_to(job_path(job))
+      expect(flash[:notice]).to include("GitHub review left")
+      expect(job.reload.approval_evidence).to include("github_review_id" => 987)
+    end
 
-        get legacy_job_path(job)
+    it "skips the GitHub review when the repo opts out" do
+      repository.update!(approval_propagates_to_github: false)
+      job.update!(state: "implemented", pr_number: 123)
+      expect(GithubClient).not_to receive(:for)
 
-        document = Nokogiri::HTML(response.body)
-        pin = document.at_css("a[href='#{job_pin_path(job)}'][aria-label='Unpin job']")
-        actions = document.at_css("[data-job-actions]")
-        expect(pin).to be_present
-        expect(pin["data-turbo-method"]).to eq("delete")
-        expect(actions).to be_present
-        expect(actions.css("a[href='#{job_pin_path(job)}']")).to include(pin)
-        expect(actions.to_html).to match(/Cancel &amp; close.*aria-label="Unpin job"/m)
-      end
+      post approve_job_path(job)
 
-      it "shows the credential mode in the job header" do
-        get legacy_job_path(job)
+      expect(job.reload.state).to eq("approved")
+      expect(flash[:notice]).to eq("Job approved.")
+    end
 
-        expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*PAT/m)
-      end
+    it "still approves Syrus-side if the GitHub review write fails" do
+      job.update!(state: "implemented", pr_number: 123)
+      client = instance_double(GithubClient)
+      allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+      allow(client).to receive(:create_pr_review)
+        .and_raise(Octokit::UnprocessableEntity.new(body: { message: "Pull request author can't approve their own pull request" }))
 
-      it "shows the credential mode captured when the job was created" do
-        AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
-        installation = Factories.installation(user: user, account_login: "acme")
-        repository.update!(installation: installation)
-        app_job = Factories.job(repository: repository, issue_number: 99)
-        repository.update!(installation: nil)
+      post approve_job_path(job)
 
-        get legacy_job_path(app_job)
+      expect(response).to redirect_to(job_path(job))
+      expect(job.reload.state).to eq("approved")
+      expect(flash[:notice]).to include("GitHub review failed")
+    end
 
-        expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*App/m)
-      end
+    it "dismisses the GitHub review on unapprove" do
+      job.update!(state: "implemented", pr_number: 123)
+      job.approve!(via: "operator", by_user: user, evidence: { "github_review_id" => 555 })
+      client = instance_double(GithubClient)
+      allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+      expect(client).to receive(:dismiss_pr_review)
+        .with("acme/widgets", 123, 555, message: a_string_including("Syrus"))
 
-      it "shows elapsed time for a running run without an ETA" do
-        run = job.initial_run
-        run.step.start!; run.step.save!
-        run.start!; run.save!
+      post unapprove_job_path(job)
 
-        get legacy_job_path(job)
+      expect(response).to redirect_to(job_path(job))
+      expect(job.reload.state).to eq("implemented")
+      expect(flash[:notice]).to include("GitHub review dismissed")
+    end
+  end
 
-        expect(response.body).to include('data-controller="run-timer"')
-        expect(response.body).to include("data-run-timer-started-at-value")
-        expect(response.body).not_to include("data-run-timer-estimated-seconds-value")
-        expect(response.body).not_to include("data-run-timer-target=\"remaining\"")
-      end
+  describe "tag actions" do
+    before { sign_in_as(user) }
 
-      it "shows aggregate cost in the header and per-run cost details" do
-        run = job.initial_run
-        run.update!(
-          cost_usd: 1.23,
-          input_tokens: 1000,
-          output_tokens: 200,
-          cache_creation_input_tokens: 300,
-          cache_read_input_tokens: 4000
-        )
+    it "adds an existing tag by name" do
+      tag = Factories.tag(user: user, name: "urgent", color: "red")
 
-        get legacy_job_path(job)
+      post tags_job_path(job), params: { tag_name: "urgent" }
 
-        expect(response.body).to include("Total cost")
-        expect(response.body).to include("$1.23")
-        expect(response.body).to include("Input tokens")
-        expect(response.body).to include("1,000")
-        expect(response.body).to include("Cache hits")
-        expect(response.body).to include("4,000")
-      end
+      expect(job.reload.tags).to contain_exactly(tag)
+      expect(response).to redirect_to(job_path(job))
+    end
 
-      it "renders issue_body when present (no summary → plain block)" do
-        job.update!(issue_title: "Add greeting helper", issue_body: "We need a greeting helper.")
-        get legacy_job_path(job)
-        expect(response.body).to include("Add greeting helper")
-        expect(response.body).to include("We need a greeting helper.")
-      end
+    it "creates a new tag inline when adding it to a job" do
+      expect {
+        post tags_job_path(job), params: { tag_name: "theme:cleanup" }
+      }.to change { user.tags.count }.by(1)
 
-      it "renders nothing for issue body when issue_body is nil" do
-        job.update!(issue_title: nil, issue_body: nil)
-        get legacy_job_path(job)
-        expect(response.body).not_to include("whitespace-pre-wrap")
-      end
+      expect(job.reload.tags.pluck(:name)).to eq([ "theme:cleanup" ])
+    end
 
-      it "shows Summary, Workflows, and Attachments tabs on every job page" do
-        get legacy_job_path(job)
-        expect(response.body).to include("Summary")
-        expect(response.body).to include("Workflows (")
-        expect(response.body).to include("Attachments (")
-        expect(response.body).not_to include("source-browser-")
-        expect(response.body).to include('data-controller="tabs"')
-      end
+    it "removes a tag from the job without deleting the tag" do
+      tag = Factories.tag(user: user, name: "urgent", color: "red")
+      job.tags << tag
 
-      it "leaves a single-iteration workflow on the existing step display" do
-        get legacy_job_path(job, tab: "workflows")
+      delete tag_job_path(job, tag_id: tag.id)
 
-        expect(response.body).not_to include('data-controller="iteration-tabs"')
-        expect(response.body).to include("Step 1/")
-      end
-
-      it "renders iteration tabs and grader rows for a multi-iteration loop" do
-        workflow = job.latest_workflow
-        workflow.steps.destroy_all
-        loop_id = SecureRandom.uuid
-
-        workflow.update!(state: "succeeded")
-        implement1 = Step.create!(workflow: workflow, kind: "implement", position: 0, iteration: 1, loop_id: loop_id, state: "succeeded")
-        grade1 = Step.create!(workflow: workflow, kind: "grade", position: 1, iteration: 1, loop_id: loop_id, state: "failed")
-        implement2 = Step.create!(workflow: workflow, kind: "implement", position: 2, iteration: 2, loop_id: loop_id, state: "succeeded")
-        grade2 = Step.create!(workflow: workflow, kind: "grade", position: 3, iteration: 2, loop_id: loop_id, state: "succeeded")
-        Step.create!(workflow: workflow, kind: "summarize", position: 4, state: "succeeded")
-        Step.create!(workflow: workflow, kind: "pr_open", position: 5, state: "succeeded")
-        Run.create!(job: job, step: implement1, trigger_kind: "initial", iteration: 1, state: "succeeded", agent_turns: 23)
-        grade_run1 = Run.create!(job: job, step: grade1, trigger_kind: "initial", iteration: 1, state: "failed")
-        Run.create!(job: job, step: implement2, trigger_kind: "initial", iteration: 2, state: "succeeded", agent_turns: 5)
-        grade_run2 = Run.create!(job: job, step: grade2, trigger_kind: "initial", iteration: 2, state: "succeeded")
-        workflow.set_artifact!("iterations", [
-          [
-            { "name" => "tests", "required" => true, "status" => "failed", "duration_s" => 1.2, "log_bytes" => 99 }
-          ],
-          [
-            { "name" => "tests", "required" => true, "status" => "passed", "duration_s" => 0.8, "log_bytes" => 12 },
-            { "name" => "lint", "required" => false, "status" => "passed", "duration_s" => 0.1, "log_bytes" => 4 }
-          ]
-        ])
-
-        get legacy_job_path(job, tab: "workflows")
-
-        expect(response.body).to include('data-controller="iteration-tabs"')
-        expect(response.body).to include("Iteration 1")
-        expect(response.body).to include("Iteration 2")
-        expect(response.body).to include("tests")
-        expect(response.body).to include("lint")
-        expect(response.body).to include(run_grade_log_job_path(job, run_id: grade_run1.id, name: "tests"))
-        expect(response.body).to include(run_grade_log_job_path(job, run_id: grade_run2.id, name: "lint"))
-        expect(response.body).to include("border-red-300")
-        expect(response.body).to include("border-green-300")
-      end
-
-      it "shows agent_summary inside the Summary tab when a run has one" do
-        run = job.initial_run
-        run.start!; run.succeed!; run.save!
-        run.update!(agent_summary: "Added the greeting helper method to ApplicationHelper.")
-
-        get legacy_job_path(job)
-        expect(response.body).to include("Summary")
-        expect(response.body).to include("Workflows (")
-        expect(response.body).to include("Added the greeting helper method to ApplicationHelper.")
-      end
-
-      it "shows 'No summary yet' in the Summary tab when no agent_summary and no issue_body" do
-        run = job.initial_run
-        run.start!; run.succeed!; run.save!
-
-        get legacy_job_path(job)
-        expect(response.body).to include("No summary yet")
-      end
-
-      it "shows issue_body inside the Summary tab when summary is present" do
-        job.update!(issue_body: "We need a greeting helper.")
-        run = job.initial_run
-        run.start!; run.succeed!; run.save!
-        run.update!(agent_summary: "Done.")
-
-        get legacy_job_path(job)
-        expect(response.body).to include("We need a greeting helper.")
-        expect(response.body).to include("Done.")
-      end
-
-      it "shows tags and an add-tag datalist" do
-        existing = Factories.tag(user: user, name: "epic:attachments", color: "blue")
-        job.tags << existing
-        Factories.tag(user: user, name: "area:auth", color: "green")
-
-        get legacy_job_path(job)
-
-        expect(response.body).to include("Tags")
-        expect(response.body).to include("epic:attachments")
-        expect(response.body).to include("area:auth")
-        expect(response.body).to include(tags_job_path(job))
-      end
-
-      it "adds an existing tag by name" do
-        tag = Factories.tag(user: user, name: "urgent", color: "red")
-
-        post tags_job_path(job), params: { tag_name: "urgent" }
-
-        expect(job.reload.tags).to contain_exactly(tag)
-        expect(response).to redirect_to(job_path(job))
-      end
-
-      it "creates a new tag inline when adding it to a job" do
-        expect {
-          post tags_job_path(job), params: { tag_name: "theme:cleanup" }
-        }.to change { user.tags.count }.by(1)
-
-        expect(job.reload.tags.pluck(:name)).to eq([ "theme:cleanup" ])
-      end
-
-      it "removes a tag from the job without deleting the tag" do
-        tag = Factories.tag(user: user, name: "urgent", color: "red")
-        job.tags << tag
-
-        delete tag_job_path(job, tag_id: tag.id)
-
-        expect(job.reload.tags).to be_empty
-        expect(Tag.exists?(tag.id)).to be(true)
-      end
-
-      it "404s for another user's job" do
-        foreign_repo = Factories.repository(user: other)
-        foreign_job = Factories.job(repository: foreign_repo, issue_number: 1)
-        get legacy_job_path(foreign_job)
-        expect(response).to have_http_status(:not_found)
-      end
+      expect(job.reload.tags).to be_empty
+      expect(Tag.exists?(tag.id)).to be(true)
     end
   end
 
@@ -973,81 +751,6 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
-  describe "show page button visibility + confirmations" do
-    before { sign_in_as(user) }
-
-    it "puts a turbo_confirm on Cancel & close" do
-      get legacy_job_path(job)
-      expect(response.body).to match(/data-turbo-confirm=.*Cancel any running work/)
-    end
-
-    it "puts a turbo_confirm on Start over" do
-      # The retry split-button is hidden while a Run is in flight,
-      # so finish the initial Run first — Start over only appears
-      # in the dropdown when the Job has no active Run.
-      job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
-      get legacy_job_path(job)
-      expect(response.body).to match(/data-turbo-confirm=.*abandons the existing branch/)
-    end
-
-    it "does NOT put a confirm on Retry (additive, not destructive)" do
-      job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
-      get legacy_job_path(job)
-      expect(response.body).to include("Retry")
-      expect(response.body).not_to match(/data-turbo-confirm=.*Retry/)
-    end
-
-    it "offers Retry with the configured agent not used by the latest run" do
-      user.update!(claude_oauth_token: "oat-test", codex_auth_mode: "api_key", codex_api_key: "sk-test")
-      job.initial_run.update!(
-        state: "succeeded",
-        started_at: 2.minutes.ago,
-        finished_at: 1.minute.ago,
-        agent_provider: "claude"
-      )
-      job.latest_workflow.update!(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
-
-      get legacy_job_path(job)
-
-      expect(response.body).to include("Retry with Codex")
-      expect(response.body).to include("agent_provider=codex")
-      expect(response.body).not_to include("Retry with Claude")
-    end
-
-    it "renders retry context controls without replay wording" do
-      job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
-
-      get legacy_job_path(job)
-
-      expect(response.body).to include("Retry with context")
-      expect(response.body).to include("retry_context")
-      expect(response.body).to include("data-controller=\"retry-context\"")
-      expect(response.body).not_to include("Replay")
-      expect(response.body).not_to include("replay-context")
-    end
-
-    it "offers agent choices for PR feedback and rebase manual actions" do
-      user.update!(claude_oauth_token: "oat-test", codex_auth_mode: "api_key", codex_api_key: "sk-test")
-      job.update!(pr_number: 42, agent_provider: "claude")
-
-      get legacy_job_path(job)
-
-      expect(response.body).to include("Check feedback with Codex")
-      expect(response.body).to include("Rebase with Codex")
-      expect(response.body).not_to include("Check feedback with Claude")
-      expect(response.body).not_to include("Rebase with Claude")
-    end
-
-    it "shows Reopen on closed jobs and hides it on open ones" do
-      get legacy_job_path(job)
-      expect(response.body).not_to include("Reopen")
-
-      job.close_with_reason!("cancelled")
-      get legacy_job_path(job)
-      expect(response.body).to include("Reopen")
-    end
-  end
-
   describe "POST /jobs/:id/rebase" do
     before { sign_in_as(user) }
 
@@ -1213,46 +916,6 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
-  describe "show page mergeability badge + Rebase button" do
-    before { sign_in_as(user) }
-
-    it "shows 'mergeable' when pr_mergeable is true (Rebase button still available — operator may want to pull in upstream changes)" do
-      job.update!(pr_number: 7, pr_mergeable: true, pr_mergeable_checked_at: 2.minutes.ago)
-      get legacy_job_path(job)
-      expect(response.body).to include("mergeable")
-      expect(response.body).to include("Rebase now")
-    end
-
-    it "shows 'needs rebase' + Rebase button when pr_mergeable is false" do
-      job.update!(pr_number: 7, pr_mergeable: false, pr_mergeable_checked_at: 1.minute.ago)
-      get legacy_job_path(job)
-      expect(response.body).to include("needs rebase")
-      expect(response.body).to include("Rebase now")
-    end
-
-    it "shows 'checking…' when pr_mergeable is nil — Rebase button still available" do
-      job.update!(pr_number: 7, pr_mergeable: nil)
-      get legacy_job_path(job)
-      expect(response.body).to include("checking…")
-      expect(response.body).to include("Rebase now")
-    end
-
-    it "hides the Rebase button while an active rebase Workflow exists (avoid stacking)" do
-      job.update!(pr_number: 7, pr_mergeable: false, pr_mergeable_checked_at: 1.minute.ago)
-      Workflow.create!(job: job, trigger_kind: "rebase", state: "queued")
-
-      get legacy_job_path(job)
-      expect(response.body).to include("needs rebase")
-      expect(response.body).not_to include("Rebase now")
-    end
-
-    it "renders no mergeability pill when the Job has no PR" do
-      get legacy_job_path(job)
-      expect(response.body).not_to include("mergeable")
-      expect(response.body).not_to include("Rebase now")
-    end
-  end
-
   describe "job pins" do
     context "signed in" do
       before { sign_in_as(user) }
@@ -1350,99 +1013,6 @@ RSpec.describe "Jobs", type: :request do
       expect(target.reload.dependencies.first.depends_on_job).to eq(prerequisite)
     end
 
-    it "renders dependency and dependent panels" do
-      prerequisite = Job.create!(user: user, repository: repository, issue_number: 41)
-      target = Job.create!(user: user, repository: repository, issue_number: 42)
-      JobDependency.create!(job: target, depends_on_job: prerequisite, source: "manual")
-
-      get legacy_job_path(target)
-
-      document = Nokogiri::HTML(response.body)
-
-      expect(response.body).to include("Dependencies")
-      expect(response.body).to include("waiting on 1 dependency")
-      expect(response.body).to include("Dependency")
-      expect(response.body).not_to include("&lt;a")
-      expect(document.at_css("a[href='https://github.com/acme/widgets/issues/41']").text).to eq("#41")
-
-      get legacy_job_path(prerequisite)
-      document = Nokogiri::HTML(response.body)
-
-      expect(response.body).to include("1 other Job depend on this one")
-      expect(response.body).not_to include("&lt;a")
-      expect(document.at_css("a[href='https://github.com/acme/widgets/issues/42']").text).to eq("#42")
-    end
-
-    it "renders tabs before the summary overview and dependency controls" do
-      target = Job.create!(user: user, repository: repository, issue_number: 42, branch_name: "syrus/42")
-
-      get legacy_job_path(target)
-
-      document = Nokogiri::HTML(response.body)
-      tabs = document.at_css("[data-controller='tabs']")
-      summary_panel = document.css("[data-tabs-target='panel']").first
-
-      expect(response.body.index("data-controller=\"tabs\"")).to be < response.body.index("Priority")
-      expect(response.body.index("data-controller=\"tabs\"")).to be < response.body.index("Dependencies")
-      expect(summary_panel.text).to include("Priority", "Branch", "Dependencies", "Dependency")
-      expect(summary_panel.at_css("select[name='dependency_target']")).to be_present
-      expect(tabs.text).to include("Summary", "Workflows", "Attachments")
-    end
-
-    it "renders dependency targets as a deduplicated dropdown" do
-      older_issue_job = Job.create!(
-        user: user,
-        repository: repository,
-        issue_number: 41,
-        issue_title: "Old attempt"
-      )
-      newer_issue_job = Job.create!(
-        user: user,
-        repository: repository,
-        issue_number: 41,
-        issue_title: "Latest attempt"
-      )
-      direct_job = Job.create!(
-        user: user,
-        repository: repository,
-        kind: "direct",
-        issue_number: nil,
-        issue_title: "One-off cleanup",
-        issue_body: "Tidy the thing."
-      )
-      target = Job.create!(user: user, repository: repository, issue_number: 42)
-      older_issue_job.touch
-
-      get legacy_job_path(target)
-
-      document = Nokogiri::HTML(response.body)
-      select = document.at_css("select[name='dependency_target']")
-      option_values = select.css("option").map { |option| option["value"] }
-      option_text = select.css("option").map(&:text).join("\n")
-
-      expect(select).to be_present
-      expect(select["required"]).to be_present
-      expect(document.at_css("input[type='number'][name='dependency_job_id']")).to be_nil
-      expect(document.at_css("input[type='number'][name='dependency_issue_number']")).to be_nil
-      expect(option_values).to include("issue:#{repository.id}:41", "job:#{direct_job.id}")
-      expect(option_values).not_to include("job:#{older_issue_job.id}", "issue:#{repository.id}:42")
-      expect(option_text.scan("#41").size).to eq(1)
-      expect(option_text).to include("Latest attempt")
-      expect(option_text).to include("One-off cleanup")
-    end
-
-    it "does not offer duplicate attempts for the current issue as dependency targets" do
-      previous_attempt = Job.create!(user: user, repository: repository, issue_number: 41)
-      target = Job.create!(user: user, repository: repository, issue_number: 41)
-
-      get legacy_job_path(target)
-
-      document = Nokogiri::HTML(response.body)
-      option_values = document.css("select[name='dependency_target'] option").map { |option| option["value"] }
-
-      expect(option_values).not_to include("issue:#{repository.id}:41", "job:#{previous_attempt.id}")
-    end
-
     it "does not resolve a selected issue target back to the current job" do
       target = Job.create!(user: user, repository: repository, issue_number: 41)
 
@@ -1496,20 +1066,5 @@ RSpec.describe "Jobs", type: :request do
       expect(direct.reload.runs.first.prompt).to include("Screenshot bug")
     end
 
-    it "renders a Start Run button for unstarted direct jobs" do
-      direct = Job.create!(
-        user: user,
-        repository: repository,
-        kind: "direct",
-        issue_number: nil,
-        issue_title: "Screenshot bug",
-        issue_body: "Screenshot bug"
-      )
-
-      get legacy_job_path(direct)
-
-      expect(response.body).to include("Start Run")
-      expect(response.body).to include(start_job_path(direct))
-    end
   end
 end

@@ -12,20 +12,16 @@ RSpec.describe "Bug reports", type: :request do
   end
 
   describe "layout entry point" do
-    it "renders the floating bug-report control for signed-in app pages" do
+    it "serves signed-in app pages through the React shell that owns bug reports" do
       repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
       job = Factories.job(repository: repository, issue_number: 1)
       sign_in_as(user)
 
-      get legacy_job_path(job)
+      get job_path(job)
 
-      expect(response.body).to match(/data-controller="[^"]*\bform-validation\b/)
-      expect(response.body).to include('data-controller="bug-report"')
-      expect(response.body).to include('data-bug-context="Jobs#show"')
-      expect(response.body).to include("Report a bug")
-      expect(response.body).to include("No screenshot")
-      expect(response.body).to include("bug_reports")
-      expect(response.body).to include('class="fixed inset-0 m-auto max-h-[calc(100vh-2rem)]')
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+      expect(response.body).not_to include('data-controller="bug-report"')
     end
 
     it "does not render the bug-report control on auth pages" do

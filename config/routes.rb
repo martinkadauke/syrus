@@ -305,7 +305,6 @@ Rails.application.routes.draw do
   resources :bug_reports, only: %i[ create ]
   get "jobs/new", to: "spa#show", as: :new_job
   get "jobs/:id/source", to: "spa#show", as: :source_job, constraints: { id: /\d+/ }
-  get "jobs/:id/legacy", to: "jobs#show", as: :legacy_job, constraints: { id: /\d+/ }
   get "jobs/:id", to: "spa#show", as: :job, constraints: { id: /\d+/ }
   resources :jobs, only: [] do
     resource :pin, only: %i[ create destroy ], controller: "job_pins"

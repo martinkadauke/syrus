@@ -123,6 +123,55 @@ RSpec.describe "App API job detail", type: :request do
     ])
   end
 
+  it "returns dependency panels and deduplicated dependency target options for React rendering" do
+    older_issue_job = Job.create!(
+      user: user,
+      repository: repo,
+      issue_number: 41,
+      issue_title: "Old attempt"
+    )
+    newer_issue_job = Job.create!(
+      user: user,
+      repository: repo,
+      issue_number: 41,
+      issue_title: "Latest attempt"
+    )
+    direct_job = Job.create!(
+      user: user,
+      repository: repo,
+      kind: "direct",
+      issue_number: nil,
+      issue_title: "One-off cleanup",
+      issue_body: "Tidy the thing."
+    )
+    target = Job.create!(user: user, repository: repo, issue_number: 42)
+    JobDependency.create!(job: target, depends_on_job: newer_issue_job, source: "manual")
+    older_issue_job.touch
+
+    get "/api/v1/app/jobs/#{target.id}"
+
+    body = parse_body
+    expect(body["dependencies"]).to contain_exactly(include(
+      "source" => "manual",
+      "depends_on_job" => include("id" => newer_issue_job.id, "issue_number" => 41)
+    ))
+    expect(body["dependents"]).to eq([])
+
+    option_values = body["dependency_target_options"].map { |option| option.fetch("value") }
+    option_labels = body["dependency_target_options"].map { |option| option.fetch("label") }.join("\n")
+    expect(option_values).to include("issue:#{repo.id}:41", "job:#{direct_job.id}")
+    expect(option_values).not_to include("job:#{older_issue_job.id}", "issue:#{repo.id}:42")
+    expect(option_labels.scan("#41").size).to eq(1)
+    expect(option_labels).to include("Latest attempt")
+    expect(option_labels).to include("One-off cleanup")
+
+    get "/api/v1/app/jobs/#{newer_issue_job.id}"
+
+    dependent = parse_body["dependents"].first
+    expect(dependent).to include("source" => "manual")
+    expect(dependent["job"]).to include("id" => target.id, "issue_number" => 42)
+  end
+
   it "returns admin-only diagnostic detail to admins" do
     user.update!(admin: true)
     run = job.initial_run

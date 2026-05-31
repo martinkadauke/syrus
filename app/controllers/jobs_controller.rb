@@ -1,13 +1,6 @@
 class JobsController < ApplicationController
   before_action :load_job, except: %i[ grade_log ]
 
-  def show
-    @job_pinned = Current.user.job_pins.exists?(job: @job)
-    @tags = Current.user.tags.ordered
-    @dependency_target_options = dependency_target_options
-    @landing_queue_entry = LandingQueueProcessor.entries(Current.user.jobs).find { |entry| entry.job_id == @job.id }
-  end
-
   def start
     unless @job.direct?
       redirect_to job_path(@job), alert: "Only direct Jobs can be started manually."
@@ -529,39 +522,6 @@ class JobsController < ApplicationController
     when "issue"
       repository = Current.user.repositories.find_by(id: first)
       repository&.jobs&.where(kind: "issue", issue_number: second)&.where.not(id: @job.id)&.order(created_at: :desc, id: :desc)&.first
-    end
-  end
-
-  def dependency_target_options
-    jobs = Current.user.jobs
-                       .includes(:repository)
-                       .where.not(id: @job.id)
-                       .order(created_at: :desc, id: :desc)
-
-    seen_issues = {}
-    current_issue_key = @job.issue? && @job.issue_number.present? ? [ @job.repository_id, @job.issue_number ] : nil
-    jobs.each_with_object([]) do |job, options|
-      if job.issue? && job.issue_number.present?
-        issue_key = [ job.repository_id, job.issue_number ]
-        next if issue_key == current_issue_key
-        next if seen_issues[issue_key]
-
-        seen_issues[issue_key] = true
-        options << [ dependency_target_label(job), "issue:#{job.repository_id}:#{job.issue_number}" ]
-      else
-        options << [ dependency_target_label(job), "job:#{job.id}" ]
-      end
-    end
-  end
-
-  def dependency_target_label(job)
-    if job.issue? && job.issue_number.present?
-      title = job.issue_title.to_s.strip
-      title = " — #{title}" if title.present?
-      "#{job.repository.slug} ##{job.issue_number}#{title} (Job ##{job.id})"
-    else
-      title = job.issue_title.to_s.strip.presence || job.kind.titleize
-      "#{job.repository.slug} Job ##{job.id} — #{title}"
     end
   end
 

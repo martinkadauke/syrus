@@ -8,12 +8,3 @@
  *
  * Consider organizing styles into separate files for maintainability.
  */
-
-/* Transcript-toggle: hides the abbreviated tool_call / tool_result
-   JobLog rows when the operator hasn't asked to see them. Wired up
-   by transcript_toggle_controller — adds .hide-tool-rows to the
-   per-Run log container. */
-.hide-tool-rows > [data-log-kind="tool_call"],
-.hide-tool-rows > [data-log-kind="tool_result"] {
-  display: none;
-}
