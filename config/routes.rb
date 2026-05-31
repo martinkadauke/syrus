@@ -18,6 +18,15 @@ Rails.application.routes.draw do
         resources :tags, only: %i[ index create update destroy ]
         resources :smart_folders, only: %i[ index update destroy ]
         resources :cron_templates, only: %i[ index show create update destroy ]
+        get "repositories/:repository_id/scheduled_tasks/new", to: "scheduled_tasks#new"
+        post "repositories/:repository_id/scheduled_tasks", to: "scheduled_tasks#create"
+        resources :scheduled_tasks, only: %i[ index show update destroy ] do
+          member do
+            post :pause
+            post :resume
+            post :fire_now
+          end
+        end
 
         namespace :admin do
           get "overview", to: "overview#show"
