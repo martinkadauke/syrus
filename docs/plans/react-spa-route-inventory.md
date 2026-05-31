@@ -40,7 +40,7 @@ health/storage internals.
 | `/app-shell` | `spa#show` | `spa-core` | Hidden authenticated React shell used to prove the SPA asset, bootstrap API, and client routing path before taking over production routes. |
 | `/jobs/new` | `spa#show` + `/api/v1/app/jobs/new`, `POST /api/v1/app/jobs` | `spa-core` | Migrated to the React direct-job form with internal React Router navigation after create. Legacy ERB fallback and HTML `POST /jobs` commands are removed. |
 | `/jobs/:id` | `spa#show` + `/api/v1/app/jobs/:id`, `/api/v1/app/jobs/:id/timeline` | `spa-core` | Migrated to the React Job detail page. Internal repository/dependent-Job links use React Router navigation. Legacy ERB fallback lives at `/jobs/:id/legacy`; HTML member commands remain for fallback/dashboard controls. |
-| `/jobs/:id/source` | `spa#show` + `/api/v1/app/jobs/:id/source` | `spa-core` | Migrated to the React source tab. Legacy ERB source browser lives at `/jobs/:id/source/legacy`. |
+| `/jobs/:id/source` | `spa#show` + `/api/v1/app/jobs/:id/source` | `spa-core` | Migrated to the React source tab. Legacy ERB source browser removed. |
 | job lifecycle commands | `/api/v1/app/jobs/:job_id/start`, `/run_again`, `/restart`, `/cancel`, `/approve`, `/unapprove`, `/reopen` | `spa-core` | App API endpoints now cover core lifecycle transitions and emit job app-event invalidation. Legacy HTML commands remain for fallback. |
 | job run/workflow commands | `jobs#poll_feedback`, `#rebase`, `#check_mergeability`, `#resume`, `#stop_run`, `#retry_step`, `#push_commits`, `#diagnose` | `spa-core` | App API mirrors are available under `/api/v1/app/jobs/:job_id/*`, `/runs/:run_id/*`, and `/workflows/:workflow_id/*`; migrate the Job detail page to these before dropping the HTML forms. |
 | job metadata commands | `/api/v1/app/jobs/:job_id/tags`, `/dependencies`, `/dependencies/override`, `/stack_base`, `/mark_valid` | `spa-core` | App API endpoints now cover tag add/remove, manual dependency add/remove, dependency override, stack base update, and invalid-job requeue. Legacy HTML commands remain for fallback. |
@@ -106,7 +106,7 @@ health/storage internals.
 | SPA shell | `split_button`, `flash`, `bug_report`, global `form_validation` compatibility |
 | Admin diagnostics | `auto_refresh`, `tabs` |
 | Dashboard | Retired ERB-only controllers: `chip_bar`, `column_picker`, `sort_select`, `bulk_jobs`, `kanban`, `epic_graph_drawer`, `filter_memory`. Generic `checkbox_persistence` and `details_persistence` remain only in the legacy application layout. |
-| Job detail/source | `approval_review`, `attachment_drop`, `iteration_tabs`, `retry_context`, `run_timer`, `source_highlight`, `source_tree`, `transcript_toggle` |
+| Job detail/source | Legacy detail still owns `approval_review`, `attachment_drop`, `iteration_tabs`, `retry_context`, `run_timer`, `transcript_toggle`. Source-only controllers `source_highlight` and `source_tree` are retired with the source fallback. |
 | Chat/whiteboard | retired with the React chat route |
 | Repository/settings/forms | `credentials_form`, `scheduled_task_form`, `document_upload`, `auto_submit` |
 | Shared visual helpers | `relative_time` can become a React utility as remaining legacy pages migrate. The legacy Mermaid graph drawer has been removed. |

@@ -289,11 +289,12 @@ RSpec.describe "Jobs", type: :request do
         expect(response.body).not_to include("whitespace-pre-wrap")
       end
 
-      it "shows Summary, Workflows, and Source tabs on every job page" do
+      it "shows Summary, Workflows, and Attachments tabs on every job page" do
         get legacy_job_path(job)
         expect(response.body).to include("Summary")
         expect(response.body).to include("Workflows (")
-        expect(response.body).to include("Source")
+        expect(response.body).to include("Attachments (")
+        expect(response.body).not_to include("source-browser-")
         expect(response.body).to include('data-controller="tabs"')
       end
 
@@ -371,13 +372,6 @@ RSpec.describe "Jobs", type: :request do
         get legacy_job_path(job)
         expect(response.body).to include("We need a greeting helper.")
         expect(response.body).to include("Done.")
-      end
-
-      it "includes a lazy Turbo Frame pointing to the legacy source path" do
-        get legacy_job_path(job)
-        expect(response.body).to include('source-browser-')
-        expect(response.body).to include(legacy_source_job_path(job))
-        expect(response.body).to include('loading="lazy"')
       end
 
       it "shows tags and an add-tag datalist" do
@@ -1131,144 +1125,11 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
-  describe "GET /jobs/:id/source" do
-    before { sign_in_as(user) }
-
-    let(:job_with_branch) {
-      Factories.job(repository: repository, issue_number: 42).tap { |j|
-        j.update!(branch_name: "syrus/issue-42-1")
-      }
-    }
-
-    def stub_compare(ahead_commits: [])
-      commits_json = ahead_commits.map { |sha|
-        { sha: sha, commit: { message: "Change #{sha[0, 7]}", committer: { date: "2026-05-01T00:00:00Z" } } }
-      }
-      merge_base_sha = "aabbccdd1234567"
-      stub_request(:get, %r{api\.github\.com/repos/acme/widgets/compare/})
-        .to_return(
-          status: 200,
-          headers: { "Content-Type" => "application/json" },
-          body: {
-            commits: commits_json,
-            merge_base_commit: { sha: merge_base_sha }
-          }.to_json
-        )
-      merge_base_sha
-    end
-
-    def stub_tree(ref)
-      tree_sha = "tree#{ref[0, 8]}"
-      stub_request(:get, %r{api\.github\.com/repos/acme/widgets/commits/#{ref}})
-        .to_return(
-          status: 200,
-          headers: { "Content-Type" => "application/json" },
-          body: { commit: { tree: { sha: tree_sha } } }.to_json
-        )
-      stub_request(:get, %r{api\.github\.com/repos/acme/widgets/git/trees/#{tree_sha}})
-        .to_return(
-          status: 200,
-          headers: { "Content-Type" => "application/json" },
-          body: {
-            tree: [
-              { path: "app/models/user.rb",      type: "blob", size: 512 },
-              { path: "app/models/post.rb",      type: "blob", size: 256 },
-              { path: "lib/tasks/setup.rake",    type: "blob", size: 128 },
-              { path: "app/models",              type: "tree", size: nil }
-            ],
-            truncated: false
-          }.to_json
-        )
-    end
-
-    def stub_file_content(ref, path, content)
-      encoded = Base64.encode64(content)
-      stub_request(:get, %r{api\.github\.com/repos/acme/widgets/contents/#{Regexp.escape(path)}})
-        .with(query: hash_including("ref" => ref))
-        .to_return(
-          status: 200,
-          headers: { "Content-Type" => "application/json" },
-          body: { type: "file", content: encoded, size: content.bytesize, encoding: "base64" }.to_json
-        )
-    end
-
-    it "requires authentication" do
-      sign_in_as(Factories.user)  # sign in as someone else first to clear the cookie
-      get legacy_source_job_path(job)
-      # A different user should get 404 (scoped to current user's jobs)
-      expect(response).to have_http_status(:not_found)
-    end
-
-    it "404s for another user's job" do
-      foreign_repo = Factories.repository(user: other)
-      foreign_job  = Factories.job(repository: foreign_repo, issue_number: 1)
-      get legacy_source_job_path(foreign_job)
-      expect(response).to have_http_status(:not_found)
-    end
-
-    context "when the user has no GitHub token" do
-      before { user.update!(github_token: nil) }
-
-      it "renders an error message instead of crashing" do
-        get legacy_source_job_path(job)
-        expect(response).to be_successful
-        expect(response.body).to include("GitHub token not configured")
-      end
-    end
-
-    context "when the job has no branch yet" do
-      it "shows the source browser at the default branch tree (no compare call)" do
-        # No branch_name → controller skips compare and uses default_branch ("main") directly.
-        stub_tree("main")
-        user.update!(github_token: "ghp_test_token")
-
-        get legacy_source_job_path(job)
-        expect(response).to be_successful
-        expect(response.body).to include("source-browser-#{job.id}")
-        expect(response.body).to include("merge base")
-        expect(response.body).to include("user.rb")
-        expect(response.body).to include("post.rb")
-      end
-    end
-
-    context "when the job has a branch with commits" do
-      it "shows the commit selector and file tree" do
-        commit_sha     = "deadbeef12345678"
-        merge_base_sha = stub_compare(ahead_commits: [ commit_sha ])
-        stub_tree(commit_sha)
-        user.update!(github_token: "ghp_test_token")
-
-        get legacy_source_job_path(job_with_branch)
-        expect(response).to be_successful
-        expect(response.body).to include("deadbeef")
-        expect(response.body).to include("user.rb")
-        expect(response.body).to include("setup.rake")
-      end
-
-      it "uses the ?ref param to select a specific commit" do
-        commit_sha     = "deadbeef12345678"
-        stub_compare(ahead_commits: [ commit_sha ])
-        stub_tree(commit_sha)
-        user.update!(github_token: "ghp_test_token")
-
-        get legacy_source_job_path(job_with_branch, ref: commit_sha)
-        expect(response).to be_successful
-        expect(response.body).to include("user.rb")
-      end
-
-      it "loads and displays file content with syntax-highlight markup when ?path is given" do
-        commit_sha = "deadbeef12345678"
-        stub_compare(ahead_commits: [ commit_sha ])
-        stub_tree(commit_sha)
-        stub_file_content(commit_sha, "app/models/user.rb", "class User; end\n")
-        user.update!(github_token: "ghp_test_token")
-
-        get legacy_source_job_path(job_with_branch, ref: commit_sha, path: "app/models/user.rb")
-        expect(response).to be_successful
-        expect(response.body).to include("class User")
-        expect(response.body).to include('language-ruby')
-        expect(response.body).to include('source-highlight')
-      end
+  describe "GET /jobs/:id/source/legacy" do
+    it "does not route the retired source browser fallback" do
+      expect {
+        Rails.application.routes.recognize_path("/jobs/#{job.id}/source/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
     end
   end
 
@@ -1525,7 +1386,7 @@ RSpec.describe "Jobs", type: :request do
       expect(response.body.index("data-controller=\"tabs\"")).to be < response.body.index("Dependencies")
       expect(summary_panel.text).to include("Priority", "Branch", "Dependencies", "Dependency")
       expect(summary_panel.at_css("select[name='dependency_target']")).to be_present
-      expect(tabs.text).to include("Summary", "Workflows", "Source")
+      expect(tabs.text).to include("Summary", "Workflows", "Attachments")
     end
 
     it "renders dependency targets as a deduplicated dropdown" do
