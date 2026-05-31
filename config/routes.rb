@@ -342,16 +342,16 @@ Rails.application.routes.draw do
   get "dashboard/workflows/legacy", to: "home#workflows", as: :legacy_dashboard_workflows
   get "jobs", to: redirect(status: 302) { |_params, request|
     query = request.query_parameters.except("subject").to_query
-    query.present? ? "/?subject=job&#{query}" : "/?subject=job"
+    query.present? ? "/dashboard/jobs?#{query}" : "/dashboard/jobs"
   }
   get "workflows", to: redirect(status: 302) { |_params, request|
     query = request.query_parameters.except("subject").to_query
-    query.present? ? "/?subject=workflow&#{query}" : "/?subject=workflow"
+    query.present? ? "/dashboard/workflows?#{query}" : "/dashboard/workflows"
   }
 
   get "epics", to: redirect(status: 302) { |_params, request|
     query = request.query_parameters.except("subject").to_query
-    query.present? ? "/?subject=epic&#{query}" : "/?subject=epic"
+    query.present? ? "/dashboard/epics?#{query}" : "/dashboard/epics"
   }, as: :epics
   get "epics/new", to: "spa#show", as: :new_epic
   get "epics/new/legacy", to: "epics#new", as: :legacy_new_epic

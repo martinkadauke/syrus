@@ -643,23 +643,23 @@ RSpec.describe "Dashboard", type: :request do
       expect(response.body).to include('id="syrus-spa-root"')
     end
 
-    it "redirects legacy list URLs to root dashboard subjects" do
+    it "redirects legacy list URLs to canonical dashboard routes" do
       get "/jobs"
       expect(response).to have_http_status(:found)
-      expect(response).to redirect_to("/?subject=job")
+      expect(response).to redirect_to("/dashboard/jobs")
 
       q = Base64.strict_encode64("status:open")
-      get "/jobs", params: { q: q, smart_folder_id: "42" }
+      get "/jobs", params: { q: q, smart_folder_id: "42", subject: "epic" }
       expect(response).to have_http_status(:found)
-      expect(response.location).to eq("http://www.example.com/?subject=job&q=#{CGI.escape(q)}&smart_folder_id=42")
+      expect(response.location).to eq("http://www.example.com/dashboard/jobs?q=#{CGI.escape(q)}&smart_folder_id=42")
 
       get "/epics"
       expect(response).to have_http_status(:found)
-      expect(response).to redirect_to("/?subject=epic")
+      expect(response).to redirect_to("/dashboard/epics")
 
       get "/workflows"
       expect(response).to have_http_status(:found)
-      expect(response).to redirect_to("/?subject=workflow")
+      expect(response).to redirect_to("/dashboard/workflows")
     end
 
     it "lists the current user's recent jobs" do

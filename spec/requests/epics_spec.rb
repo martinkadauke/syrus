@@ -6,20 +6,20 @@ RSpec.describe "Epics", type: :request do
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
 
   describe "GET /epics" do
-    it "redirects to the root Epic dashboard subject" do
+    it "redirects to the canonical Epic dashboard route" do
       get epics_path
 
       expect(response).to have_http_status(:found)
-      expect(response).to redirect_to("/?subject=epic")
+      expect(response).to redirect_to("/dashboard/epics")
     end
 
     it "preserves query params in the compatibility redirect" do
       q = Filters::QueryParam.encode("and" => [ { "field" => "state", "op" => "is", "value" => "ready" } ])
 
-      get epics_path, params: { q: q, smart_folder_id: "12" }
+      get epics_path, params: { q: q, smart_folder_id: "12", subject: "job" }
 
       expect(response).to have_http_status(:found)
-      expect(response.location).to eq("http://www.example.com/?subject=epic&q=#{CGI.escape(q)}&smart_folder_id=12")
+      expect(response.location).to eq("http://www.example.com/dashboard/epics?q=#{CGI.escape(q)}&smart_folder_id=12")
     end
   end
 

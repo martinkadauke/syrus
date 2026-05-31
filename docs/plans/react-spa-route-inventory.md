@@ -52,7 +52,7 @@ health/storage internals.
 | `PATCH /epics/:id/archive` | `/api/v1/app/epics/:id/archive` | `spa-core` | React uses the app API command endpoint; legacy HTML command remains for fallback/dashboard controls. |
 | `PATCH /epics/:id/state` | `/api/v1/app/epics/:id/state` | `spa-core` | React uses the app API command endpoint; legacy HTML/JSON command remains for fallback/dashboard controls. |
 | `/epics/:id/graph` | `epics#graph` | `spa-core` | Graph data endpoint or React route depending current response shape. |
-| `/epics`, `/jobs`, `/workflows` redirects | route redirects | `legacy-html` | Can be removed or changed once React router owns canonical dashboard paths. |
+| `/epics`, `/jobs`, `/workflows` redirects | route redirects | `spa-core` | Compatibility shortcuts now redirect to React-owned `/dashboard/epics`, `/dashboard/jobs`, and `/dashboard/workflows` while preserving non-`subject` query params. |
 | `/repositories` | `spa#show` + `/api/v1/app/repositories` | `spa-core` | Migrated to the React repository list with app API poll/archive/unarchive commands. Legacy ERB fallback lives at `/repositories/legacy`. |
 | `/repositories/new`, `/repositories/:id/edit`, `POST/PATCH /repositories` | `spa#show` + `/api/v1/app/repositories*` | `spa-core` | Migrated to the React repository form with app API GitHub owner/repo/branch selectors. Legacy ERB fallback lives at `/repositories/new/legacy` and `/repositories/:id/edit/legacy`; HTML `POST/PATCH /repositories` remains for fallback. |
 | `/repositories/:id` | `spa#show` + `/api/v1/app/repositories/:id*` | `spa-core` | Migrated to the React repository detail overview and GitHub Issues tab. Legacy ERB fallback lives at `/repositories/:id/legacy`. |
