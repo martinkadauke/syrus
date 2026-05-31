@@ -137,19 +137,19 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
               ))}
             </nav>
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-            {user ? <span>{user.display_name}</span> : null}
-            {app ? <span className="font-mono">{app.revision}</span> : null}
+          <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-gray-500">
             {user ? (
-              <nav aria-label="Account" className="flex items-center gap-3">
-                {user.admin ? <Link className="text-gray-600 underline hover:text-gray-900" to={`${prefix}/admin`}>Admin</Link> : null}
-                <Link className="text-gray-600 underline hover:text-gray-900" to={`${prefix}/settings`}>Settings</Link>
+              <nav aria-label="Account" className="flex items-center gap-2">
+                {user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>Admin</Link> : null}
+                <Link className={accountLinkClass()} to={`${prefix}/settings`}>Settings</Link>
               </nav>
             ) : null}
+            {user ? <span className="hidden sm:inline">{user.display_name}</span> : null}
+            {app ? <span className="hidden font-mono sm:inline">{app.revision}</span> : null}
             <form action="/session" method="post">
               {data?.csrf_token ? <input name="authenticity_token" type="hidden" value={data.csrf_token} /> : null}
               <input name="_method" type="hidden" value="delete" />
-              <button className="text-gray-600 underline hover:text-gray-900" type="submit">Sign out</button>
+              <button className="rounded border border-gray-200 bg-white px-2.5 py-1 text-gray-600 hover:border-gray-300 hover:text-gray-900" type="submit">Sign out</button>
             </form>
           </div>
         </div>
@@ -230,6 +230,10 @@ function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPaylo
 
 function navLinkClass(active: boolean) {
   return `rounded px-2.5 py-1.5 font-medium ${active ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"}`
+}
+
+function accountLinkClass() {
+  return "rounded border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700 hover:border-gray-300 hover:text-gray-900"
 }
 
 function withRoutePrefix(path: string, prefix: string) {
