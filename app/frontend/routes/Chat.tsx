@@ -193,9 +193,12 @@ function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: C
 
 function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const [olderMessages, setOlderMessages] = useState<ChatMessageItem[]>([])
+  const [showSystemMessages, setShowSystemMessages] = useState(false)
   const [hasMoreOlder, setHasMoreOlder] = useState(payload.has_more_older)
   const displayedMessages = mergeChatMessages(olderMessages, payload.messages)
   const displayedItems = renderChatMessages(displayedMessages)
+  const hiddenSystemMessageCount = displayedItems.filter(isLowPrioritySystemMessage).length
+  const visibleItems = showSystemMessages ? displayedItems : displayedItems.filter((item) => !isLowPrioritySystemMessage(item))
   const oldestId = oldestMessageId(displayedMessages)
   const loadOlder = useMutation({
     mutationFn: (before: number) => fetchChatMessages(payload.paths.app_messages_path, before),
@@ -207,6 +210,7 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
 
   useEffect(() => {
     setOlderMessages([])
+    setShowSystemMessages(false)
     setHasMoreOlder(payload.has_more_older)
   }, [payload.chat.id])
 
@@ -239,11 +243,24 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
           {loadOlder.isError ? <div className="mt-2 text-xs text-red-700">{errorMessage(loadOlder.error, "Unable to load older messages.")}</div> : null}
         </div>
       ) : null}
-      {displayedItems.map((item) => item.type === "tool_group" ? (
+      {hiddenSystemMessageCount > 0 ? (
+        <SystemMessagesToggle count={hiddenSystemMessageCount} expanded={showSystemMessages} onToggle={() => setShowSystemMessages((value) => !value)} />
+      ) : null}
+      {visibleItems.map((item) => item.type === "tool_group" ? (
         <ToolGroup item={item} key={renderItemKey(item)} />
       ) : (
         <ChatMessage item={item} key={renderItemKey(item)} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
       ))}
+    </div>
+  )
+}
+
+function SystemMessagesToggle({ count, expanded, onToggle }: { count: number; expanded: boolean; onToggle: () => void }) {
+  return (
+    <div className="flex justify-center">
+      <button className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50" onClick={onToggle} type="button">
+        {expanded ? "Hide system messages" : `Show ${count} hidden system ${count === 1 ? "message" : "messages"}`}
+      </button>
     </div>
   )
 }
@@ -278,6 +295,10 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
   }
 
   return <StructuredTool tool={item.tool} fallback={item.text} />
+}
+
+function isLowPrioritySystemMessage(item: ChatRenderItem) {
+  return item.type === "message" && item.role === "system" && ["neutral", "success"].includes(item.system?.tone || "neutral")
 }
 
 function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
