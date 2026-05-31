@@ -91,9 +91,9 @@ describe("App", () => {
     )
 
     expect(screen.getByRole("main", { name: "Syrus SPA" })).toBeInTheDocument()
-    expect(await screen.findByText("Operator")).toBeInTheDocument()
+    expect((await screen.findAllByText("Operator")).length).toBeGreaterThan(0)
     expect(screen.getByText("operator@example.com")).toBeInTheDocument()
-    expect(screen.getByText("dev")).toBeInTheDocument()
+    expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
     expect(within(screen.getByRole("navigation", { name: "Account" })).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
     expect(within(screen.getByRole("navigation", { name: "Account" })).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app-shell/settings")
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -126,6 +126,10 @@ describe("App", () => {
     )
 
     expect(screen.getByRole("main", { name: "Sign in" })).toBeInTheDocument()
+    expect(screen.queryByRole("navigation", { name: "Account" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "operator@example.com" } })
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "wrong" } })
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }))

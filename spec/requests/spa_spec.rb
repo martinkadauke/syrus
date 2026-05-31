@@ -17,7 +17,8 @@ RSpec.describe "SPA shell", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include('id="syrus-spa-root"')
-      expect(response.body).to include("&quot;current_user&quot;:null")
+      expect(response.body).to include('"current_user":null')
+      expect(response.body).not_to include("&quot;current_user&quot;")
     end
   end
 

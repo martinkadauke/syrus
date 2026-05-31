@@ -116,18 +116,19 @@ function renderAppRoutes() {
 function AppChrome({ children, initialBootstrap }: { children: ReactNode; initialBootstrap: BootstrapPayload | null }) {
   const location = useLocation()
   const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
+  const normalizedPath = normalizedAppPath(location.pathname)
+  const shouldLoadChromeBootstrap = initialBootstrap != null || normalizedPath === "/"
   const bootstrap = useQuery({
     queryKey: ["bootstrap"],
     queryFn: fetchBootstrap,
-    enabled: initialBootstrap != null,
+    enabled: shouldLoadChromeBootstrap,
     initialData: initialBootstrap ?? undefined,
-    staleTime: Number.POSITIVE_INFINITY
+    staleTime: initialBootstrap ? Number.POSITIVE_INFINITY : 0
   })
-  const data = initialBootstrap ? bootstrap.data ?? initialBootstrap : null
+  const data = bootstrap.data ?? initialBootstrap
   const user = data?.current_user
   const app = data?.app
   const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
-  const normalizedPath = normalizedAppPath(location.pathname)
   const navItems: Array<{ label: string; to: string; active: boolean; desktopOnly?: boolean }> = user ? [
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: location.pathname === "/" || location.pathname.includes("/dashboard") },
     { label: "Repos", to: `${prefix}/repositories`, active: location.pathname.includes("/repositories") },
@@ -147,17 +148,21 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
             </nav>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-gray-500">
-            <nav aria-label="Account" className="flex items-center gap-2">
-              {!user || user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>Admin</Link> : null}
-              <Link className={accountLinkClass()} to={`${prefix}/settings`}>Settings</Link>
-            </nav>
-            {user ? <span className="hidden sm:inline">{user.display_name}</span> : null}
-            {app ? <span className="hidden font-mono sm:inline">{app.revision}</span> : null}
-            <form action="/session" method="post">
-              {data?.csrf_token ? <input name="authenticity_token" type="hidden" value={data.csrf_token} /> : null}
-              <input name="_method" type="hidden" value="delete" />
-              <button className="rounded border border-gray-200 bg-white px-2.5 py-1 text-gray-600 hover:border-gray-300 hover:text-gray-900" type="submit">Sign out</button>
-            </form>
+            {user ? (
+              <>
+                <nav aria-label="Account" className="flex items-center gap-2">
+                  {user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>Admin</Link> : null}
+                  <Link className={accountLinkClass()} to={`${prefix}/settings`}>Settings</Link>
+                </nav>
+                <span className="hidden sm:inline">{user.display_name}</span>
+                {app ? <span className="hidden font-mono sm:inline">{app.revision}</span> : null}
+                <form action="/session" method="post">
+                  {data?.csrf_token ? <input name="authenticity_token" type="hidden" value={data.csrf_token} /> : null}
+                  <input name="_method" type="hidden" value="delete" />
+                  <button className="rounded border border-gray-200 bg-white px-2.5 py-1 text-gray-600 hover:border-gray-300 hover:text-gray-900" type="submit">Sign out</button>
+                </form>
+              </>
+            ) : null}
           </div>
         </div>
       </header>
