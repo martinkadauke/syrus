@@ -1,90 +1,11 @@
 class JobsController < ApplicationController
-  before_action :load_job, except: %i[ new create grade_log ]
-  helper_method :direct_job_form_action_path
+  before_action :load_job, except: %i[ grade_log ]
 
   def show
     @job_pinned = Current.user.job_pins.exists?(job: @job)
     @tags = Current.user.tags.ordered
     @dependency_target_options = dependency_target_options
     @landing_queue_entry = LandingQueueProcessor.entries(Current.user.jobs).find { |entry| entry.job_id == @job.id }
-  end
-
-  def new
-    @repositories       = Current.user.repositories.active.order(:owner, :name)
-    @selected_repository_id = params[:repository_id]
-    @configured_agent_providers = Current.user.configured_agent_providers
-    @selected_agent_provider = params[:agent_provider].to_s.presence
-    @create_more        = create_more?
-    @prompt_templates   = PromptTemplate.all
-  end
-
-  # Create a direct Job from a free-form operator prompt — no GitHub
-  # issue, no cron schedule. Behaves like a cron Job fire: the prompt
-  # is pre-rendered at create time and passed to StepDispatcher so
-  # the agent receives it verbatim when RunJob starts.
-  def create
-    @repositories     = Current.user.repositories.active.order(:owner, :name)
-    @configured_agent_providers = Current.user.configured_agent_providers
-    @prompt_templates = PromptTemplate.all
-    @create_more      = create_more?
-    @selected_repository_id = params[:repository_id]
-
-    repository = Current.user.repositories.active.find_by(id: params[:repository_id])
-    @selected_repository_id = params[:repository_id]
-    agent_provider = params[:agent_provider].to_s.presence
-    @selected_agent_provider = agent_provider
-
-    unless repository
-      flash.now[:alert] = "Repository not found or not active."
-      render :new, status: :unprocessable_content
-      return
-    end
-
-    if agent_provider.present? && !Current.user.agent_provider_configured?(agent_provider)
-      flash.now[:alert] = "That agent is not configured."
-      render :new, status: :unprocessable_content
-      return
-    end
-
-    title = params[:title].to_s.strip.presence || "Direct job"
-    prompt_text = params[:prompt].to_s.strip
-
-    if prompt_text.blank?
-      flash.now[:alert] = "Prompt can't be blank."
-      render :new, status: :unprocessable_content
-      return
-    end
-
-    priority = params[:priority].to_s.presence
-    priority = "medium" unless Job::PRIORITIES.include?(priority)
-
-    job = Current.user.jobs.create!(
-      repository: repository,
-      kind: "direct",
-      issue_number: nil,
-      issue_title: title,
-      issue_body: prompt_text,
-      agent_provider: agent_provider || repository.effective_agent_provider,
-      priority: priority
-    )
-
-    attachment_errors = attach_initial_job_attachments(job)
-    if attachment_errors.any?
-      job.destroy!
-      flash.now[:alert] = attachment_errors.to_sentence
-      render :new, status: :unprocessable_content
-      return
-    end
-
-    # advance_after_triage's after-callback creates the initial
-    # workflow + starts it for direct Jobs (Job#create_initial_run_if_needed).
-    job.advance_after_triage!
-
-    if @create_more
-      redirect_to new_direct_job_form_path(repository_id: repository.id, create_more: "1"), notice: "Direct job created."
-    else
-      redirect_to job_path(job), notice: "Direct job created."
-    end
   end
 
   def start
@@ -601,26 +522,6 @@ class JobsController < ApplicationController
 
   private
 
-  def create_more?
-    ActiveModel::Type::Boolean.new.cast(params[:create_more])
-  end
-
-  def direct_job_form_action_path
-    legacy_direct_job_request? ? legacy_jobs_path : jobs_path
-  end
-
-  def new_direct_job_form_path(**params)
-    if legacy_direct_job_request?
-      legacy_new_job_path(**params)
-    else
-      new_job_path(**params)
-    end
-  end
-
-  def legacy_direct_job_request?
-    request.path == legacy_new_job_path || request.path == legacy_jobs_path
-  end
-
   def reopen_notice(prior_reason)
     base = "Thread reopened."
     case prior_reason
@@ -719,27 +620,6 @@ class JobsController < ApplicationController
       title = job.issue_title.to_s.strip.presence || job.kind.titleize
       "#{job.repository.slug} Job ##{job.id} — #{title}"
     end
-  end
-
-  def attach_initial_job_attachments(job)
-    errors = []
-
-    Array(params.dig(:job_attachment, :files)).compact_blank.each do |file|
-      attachment = job.job_attachments.build(attachment_type: "uploaded_file")
-      attachment.file.attach(file)
-      errors.concat(attachment.errors.full_messages) unless attachment.save
-    end
-
-    google_doc_url = params.dig(:job_attachment, :google_doc_url).to_s.strip
-    if google_doc_url.present?
-      attachment = job.job_attachments.build(
-        attachment_type: "google_doc_link",
-        google_doc_url: google_doc_url
-      )
-      errors.concat(attachment.errors.full_messages) unless attachment.save
-    end
-
-    errors
   end
 
   # Converts a flat list of {path:, size:} items into a nested hash

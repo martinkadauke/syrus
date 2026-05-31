@@ -6,21 +6,9 @@ RSpec.describe "Form validation feedback", type: :request do
   before { sign_in_as(user) }
 
   it "mounts global form state controllers on the body" do
-    get legacy_new_job_path
+    get legacy_dashboard_jobs_path
 
     expect(response).to be_successful
     expect(response.body).to include('data-controller="form-validation checkbox-persistence details-persistence"')
-  end
-
-  it "keeps the new job repository and prompt fields browser-validatable" do
-    Factories.repository(user: user, owner: "acme", name: "widgets")
-
-    get legacy_new_job_path
-
-    expect(response.body).to include('name="repository_id"')
-    expect(response.body).to include('id="repository_id" required')
-    expect(response.body).to include('name="prompt"')
-    expect(response.body).to include('id="prompt"')
-    expect(response.body).to include("required")
   end
 end

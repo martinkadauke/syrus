@@ -38,7 +38,7 @@ health/storage internals.
 | `POST /dashboard/landing_pause` | `/api/v1/app/dashboard/landing_pause` | `spa-core` | App API endpoint toggles landing pause and re-enqueues the landing processor on resume; legacy HTML command remains for fallback. |
 | `PATCH /dashboard/epics/:id/auto_approval` | `/api/v1/app/dashboard/epics/:id/auto_approval` | `spa-core` | App API endpoint updates dashboard Epic auto-approval state; legacy HTML command remains for fallback. |
 | `/app-shell` | `spa#show` | `spa-core` | Hidden authenticated React shell used to prove the SPA asset, bootstrap API, and client routing path before taking over production routes. |
-| `/jobs/new` | `spa#show` + `/api/v1/app/jobs/new`, `POST /api/v1/app/jobs` | `spa-core` | Migrated to the React direct-job form with internal React Router navigation after create. Legacy ERB fallback lives at `/jobs/new/legacy` and posts to `/jobs/legacy`; `POST /jobs` remains as HTML command compatibility. |
+| `/jobs/new` | `spa#show` + `/api/v1/app/jobs/new`, `POST /api/v1/app/jobs` | `spa-core` | Migrated to the React direct-job form with internal React Router navigation after create. Legacy ERB fallback and HTML `POST /jobs` commands are removed. |
 | `/jobs/:id` | `spa#show` + `/api/v1/app/jobs/:id`, `/api/v1/app/jobs/:id/timeline` | `spa-core` | Migrated to the React Job detail page. Internal repository/dependent-Job links use React Router navigation. Legacy ERB fallback lives at `/jobs/:id/legacy`; HTML member commands remain for fallback/dashboard controls. |
 | `/jobs/:id/source` | `spa#show` + `/api/v1/app/jobs/:id/source` | `spa-core` | Migrated to the React source tab. Legacy ERB source browser lives at `/jobs/:id/source/legacy`. |
 | job lifecycle commands | `/api/v1/app/jobs/:job_id/start`, `/run_again`, `/restart`, `/cancel`, `/approve`, `/unapprove`, `/reopen` | `spa-core` | App API endpoints now cover core lifecycle transitions and emit job app-event invalidation. Legacy HTML commands remain for fallback. |
@@ -108,7 +108,7 @@ health/storage internals.
 | Dashboard | `chip_bar`, `column_picker`, `sort_select`, `bulk_jobs`, `kanban`, `epic_graph_drawer`, `filter_memory`, `checkbox_persistence`, `details_persistence` |
 | Job detail/source | `approval_review`, `attachment_drop`, `iteration_tabs`, `retry_context`, `run_timer`, `source_highlight`, `source_tree`, `transcript_toggle` |
 | Chat/whiteboard | retired with the React chat route |
-| Repository/settings/forms | `repository_form`, `credentials_form`, `scheduled_task_form`, `prompt_template`, `document_upload`, `issue_comment`, `auto_submit` |
+| Repository/settings/forms | `repository_form`, `credentials_form`, `scheduled_task_form`, `document_upload`, `issue_comment`, `auto_submit` |
 | Shared visual helpers | `mermaid_graph` remains only for legacy ERB graph drawers; React Epic detail renders Mermaid client-side. `relative_time` can become a React utility as remaining legacy pages migrate. |
 
 ## First migration slice

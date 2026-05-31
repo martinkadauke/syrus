@@ -77,6 +77,7 @@ RSpec.describe "API: /api/v1/app/direct_jobs", type: :request do
     expect(new_job.repository).to eq(repository)
     expect(new_job.runs.count).to eq(1)
     expect(new_job.runs.first.trigger_kind).to eq("initial")
+    expect(new_job.runs.first.prompt).to include("Update the Ruby version")
     expect(parse_body).to include(
       "message" => "Direct job created.",
       "create_more" => false,
@@ -93,6 +94,23 @@ RSpec.describe "API: /api/v1/app/direct_jobs", type: :request do
     post "/api/v1/app/jobs", params: {
       repository_id: repository.id,
       agent_provider: "codex",
+      prompt: "Do something."
+    }
+
+    new_job = Job.order(:created_at).last
+    expect(new_job.agent_provider).to eq("codex")
+    expect(new_job.workflows.order(:created_at).last.agent_provider).to eq("codex")
+    expect(new_job.runs.first.agent_provider).to eq("codex")
+  end
+
+  it "defaults direct jobs to the repository's effective agent" do
+    sign_in_as(user)
+    user.update!(agent_provider: "claude", claude_oauth_token: "oat-test",
+                 codex_auth_mode: "api_key", codex_api_key: "sk-test")
+    repository.update!(agent_provider: "codex")
+
+    post "/api/v1/app/jobs", params: {
+      repository_id: repository.id,
       prompt: "Do something."
     }
 
@@ -139,6 +157,23 @@ RSpec.describe "API: /api/v1/app/direct_jobs", type: :request do
     expect(attachments.detect(&:google_doc?)&.google_doc_url).to eq("https://docs.google.com/document/d/context/edit")
   end
 
+  it "parses dependencies from the direct prompt and waits to dispatch" do
+    sign_in_as(user)
+    prerequisite = Job.create!(user: user, repository: repository, issue_number: 41)
+
+    expect {
+      post "/api/v1/app/jobs", params: {
+        repository_id: repository.id,
+        prompt: "Do something useful.\nDepends-on: #41"
+      }
+    }.to change(Job, :count).by(1)
+
+    new_job = Job.order(:created_at).last
+    expect(response).to have_http_status(:created)
+    expect(new_job.dependencies.first.depends_on_job).to eq(prerequisite)
+    expect(new_job.runs).to be_empty
+  end
+
   it "rejects invalid attachments and destroys the draft job" do
     sign_in_as(user)
 
@@ -180,5 +215,20 @@ RSpec.describe "API: /api/v1/app/direct_jobs", type: :request do
       expect(response).to have_http_status(:unprocessable_content)
       expect(parse_body.dig("error", "message")).to include("not configured")
     end
+  end
+
+  it "does not create a direct job for another user's repository" do
+    sign_in_as(user)
+    foreign_repo = Factories.repository(user: Factories.user)
+
+    expect {
+      post "/api/v1/app/jobs", params: {
+        repository_id: foreign_repo.id,
+        prompt: "Do something."
+      }
+    }.not_to change(Job, :count)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to include("Repository not found")
   end
 end

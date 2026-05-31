@@ -325,13 +325,11 @@ Rails.application.routes.draw do
   get "settings/edit", to: "spa#show", as: :edit_settings
   resources :bug_reports, only: %i[ create ]
   get "jobs/new", to: "spa#show", as: :new_job
-  get "jobs/new/legacy", to: "jobs#new", as: :legacy_new_job
-  post "jobs/legacy", to: "jobs#create", as: :legacy_jobs
   get "jobs/:id/source/legacy", to: "jobs#source", as: :legacy_source_job, constraints: { id: /\d+/ }
   get "jobs/:id/source", to: "spa#show", as: :source_job, constraints: { id: /\d+/ }
   get "jobs/:id/legacy", to: "jobs#show", as: :legacy_job, constraints: { id: /\d+/ }
   get "jobs/:id", to: "spa#show", as: :job, constraints: { id: /\d+/ }
-  resources :jobs, only: %i[ create ] do
+  resources :jobs, only: [] do
     resource :pin, only: %i[ create destroy ], controller: "job_pins"
     resources :attachments, only: %i[ create destroy ], controller: "job_attachments"
 

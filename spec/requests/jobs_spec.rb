@@ -1448,218 +1448,22 @@ RSpec.describe "Jobs", type: :request do
     end
   end
 
-  describe "GET /jobs/new/legacy" do
-    context "signed in" do
-      before { sign_in_as(user) }
-
-      it "renders the new direct job form with the user's active repositories" do
-        repository  # ensure it exists
-        get legacy_new_job_path
-        expect(response).to be_successful
-        expect(response.body).to include("New direct job")
-        expect(response.body).to include("acme/widgets")
-      end
-
-      it "renders the Create More checkbox off by default" do
-        get legacy_new_job_path
-        checkbox = Nokogiri::HTML(response.body).at_css('input[type="checkbox"][name="create_more"]')
-
-        expect(checkbox).to be_present
-        expect(checkbox["checked"]).to be_nil
-      end
-
-      it "keeps the Create More checkbox checked when requested" do
-        get legacy_new_job_path(create_more: "1")
-        checkbox = Nokogiri::HTML(response.body).at_css('input[type="checkbox"][name="create_more"]')
-
-        expect(checkbox).to be_present
-        expect(checkbox["checked"]).to eq("checked")
-      end
-
-      it "pre-selects the repository when repository_id is given in params" do
-        repository
-        get legacy_new_job_path(repository_id: repository.id)
-        expect(response.body).to include("selected")
-        expect(response.body).to include(repository.id.to_s)
-      end
-
-      it "offers an agent picker for users with multiple configured agents" do
-        user.update!(claude_oauth_token: "oat-test", codex_auth_mode: "api_key", codex_api_key: "sk-test")
-        repository.update!(agent_provider: "codex")
-
-        get legacy_new_job_path(repository_id: repository.id)
-
-        expect(response.body).to include("Agent")
-        expect(response.body).to include("Repository default (Codex)")
-        expect(response.body).to include('option value="claude"')
-        expect(response.body).to include('option value="codex"')
-      end
-
-      it "hides the agent picker unless multiple agents are configured" do
-        user.update!(claude_oauth_token: "oat-test")
-
-        get legacy_new_job_path(repository_id: repository.id)
-
-        expect(response.body).not_to include('id="agent_provider"')
-      end
-
-      it "renders the prompt template picker with all built-in templates" do
-        get legacy_new_job_path
-        PromptTemplate.all.each do |template|
-          expect(response.body).to include(template.name)
-          expect(response.body).to include(template.description)
-        end
-      end
-
-      it "embeds template data in the Stimulus controller attribute" do
-        get legacy_new_job_path
-        expect(response.body).to include("data-controller=\"prompt-template\"")
-        expect(response.body).to include("configure-syrus-prep")
-      end
+  describe "legacy direct job endpoints" do
+    it "does not route retired direct-job HTML endpoints" do
+      expect {
+        Rails.application.routes.recognize_path("/jobs/new/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/jobs/legacy", method: :post)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/jobs", method: :post)
+      }.to raise_error(ActionController::RoutingError)
     end
   end
 
-  describe "POST /jobs (create direct job)" do
+  describe "job dependency controls" do
     before { sign_in_as(user) }
-
-    it "creates a direct Job, starts the workflow, and redirects to the job page" do
-      repository  # ensure it exists
-      expect {
-        post jobs_path, params: {
-          repository_id: repository.id,
-          title: "Bump Ruby version",
-          prompt: "Update the Ruby version in .ruby-version to 3.3.0."
-        }
-      }.to change(Job, :count).by(1)
-        .and have_enqueued_job(RunJob)
-
-      new_job = Job.order(:created_at).last
-      expect(new_job.kind).to eq("direct")
-      expect(new_job.issue_title).to eq("Bump Ruby version")
-      expect(new_job.issue_body).to eq("Update the Ruby version in .ruby-version to 3.3.0.")
-      expect(new_job.issue_number).to be_nil
-      expect(new_job.repository).to eq(repository)
-      expect(new_job.runs.count).to eq(1)
-      expect(new_job.runs.first.trigger_kind).to eq("initial")
-      expect(response).to redirect_to(job_path(new_job))
-    end
-
-    it "uses an explicitly selected configured agent for the job, workflow, and run" do
-      user.update!(claude_oauth_token: "oat-test", codex_auth_mode: "api_key", codex_api_key: "sk-test")
-      repository.update!(agent_provider: "claude")
-
-      post jobs_path, params: {
-        repository_id: repository.id,
-        agent_provider: "codex",
-        prompt: "Do something."
-      }
-
-      new_job = Job.order(:created_at).last
-      workflow = new_job.workflows.order(:created_at).last
-      expect(new_job.agent_provider).to eq("codex")
-      expect(workflow.agent_provider).to eq("codex")
-      expect(new_job.runs.first.agent_provider).to eq("codex")
-    end
-
-    it "defaults direct jobs to the repository's effective agent" do
-      user.update!(agent_provider: "claude", claude_oauth_token: "oat-test",
-                   codex_auth_mode: "api_key", codex_api_key: "sk-test")
-      repository.update!(agent_provider: "codex")
-
-      post jobs_path, params: {
-        repository_id: repository.id,
-        prompt: "Do something."
-      }
-
-      new_job = Job.order(:created_at).last
-      expect(new_job.agent_provider).to eq("codex")
-      expect(new_job.workflows.order(:created_at).last.agent_provider).to eq("codex")
-      expect(new_job.runs.first.agent_provider).to eq("codex")
-    end
-
-    it "rejects an explicitly selected agent that is not configured" do
-      user.update!(claude_oauth_token: "oat-test")
-
-      expect {
-        post jobs_path, params: {
-          repository_id: repository.id,
-          agent_provider: "codex",
-          prompt: "Do something."
-        }
-      }.not_to change(Job, :count)
-
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.body).to include("That agent is not configured.")
-    end
-
-    it "redirects back to the React new job route when Create More is checked" do
-      repository
-      expect {
-        post jobs_path, params: {
-          repository_id: repository.id,
-          title: "Bump Ruby version",
-          prompt: "Update the Ruby version in .ruby-version to 3.3.0.",
-          create_more: "1"
-        }
-      }.to change(Job, :count).by(1)
-        .and have_enqueued_job(RunJob)
-
-      expect(response).to redirect_to(new_job_path(repository_id: repository.id, create_more: "1"))
-    end
-
-    it "redirects back to the legacy new job form when Create More is checked from the legacy form" do
-      repository
-      expect {
-        post legacy_jobs_path, params: {
-          repository_id: repository.id,
-          title: "Bump Ruby version",
-          prompt: "Update the Ruby version in .ruby-version to 3.3.0.",
-          create_more: "1"
-        }
-      }.to change(Job, :count).by(1)
-        .and have_enqueued_job(RunJob)
-
-      expect(response).to redirect_to(legacy_new_job_path(repository_id: repository.id, create_more: "1"))
-      follow_redirect!
-      checkbox = Nokogiri::HTML(response.body).at_css('input[type="checkbox"][name="create_more"]')
-      selected_repository = Nokogiri::HTML(response.body).at_css("option[selected]")
-
-      expect(checkbox["checked"]).to eq("checked")
-      expect(selected_repository["value"]).to eq(repository.id.to_s)
-    end
-
-    it "uses 'Direct job' as the default title when none is provided" do
-      post jobs_path, params: {
-        repository_id: repository.id,
-        prompt: "Do something."
-      }
-      new_job = Job.order(:created_at).last
-      expect(new_job.issue_title).to eq("Direct job")
-    end
-
-    it "pre-renders the prompt and sets it on the first Run" do
-      post jobs_path, params: {
-        repository_id: repository.id,
-        prompt: "Do something useful."
-      }
-      run = Job.order(:created_at).last.runs.first
-      expect(run.prompt).to include("Do something useful.")
-    end
-
-    it "parses dependencies from the direct prompt and waits to dispatch" do
-      prerequisite = Job.create!(user: user, repository: repository, issue_number: 41)
-
-      expect {
-        post jobs_path, params: {
-          repository_id: repository.id,
-          prompt: "Do something useful.\nDepends-on: #41"
-        }
-      }.to change(Job, :count).by(1)
-
-      new_job = Job.order(:created_at).last
-      expect(new_job.dependencies.first.depends_on_job).to eq(prerequisite)
-      expect(new_job.runs).to be_empty
-    end
 
     it "adds and removes manual dependencies from the job page" do
       prerequisite = Job.create!(user: user, repository: repository, issue_number: 41)
@@ -1805,43 +1609,6 @@ RSpec.describe "Jobs", type: :request do
       expect(prerequisite).to be_present
     end
 
-    it "re-renders the form with an error when the prompt is blank" do
-      expect {
-        post jobs_path, params: { repository_id: repository.id, prompt: "  " }
-      }.not_to change(Job, :count)
-
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.body).to include("blank")
-      expect(response.body).to include("configure-syrus-prep")  # templates survive re-render
-    end
-
-    it "re-renders the form with an error when repository_id is missing" do
-      expect {
-        post jobs_path, params: { repository_id: "", prompt: "Do something." }
-      }.not_to change(Job, :count)
-
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.body).to include("Repository not found")
-    end
-
-    it "refuses to create a job for another user's repository" do
-      foreign_repo = Factories.repository(user: other)
-      expect {
-        post jobs_path, params: {
-          repository_id: foreign_repo.id,
-          prompt: "Do something."
-        }
-      }.not_to change(Job, :count)
-
-      expect(response).to have_http_status(:unprocessable_content)
-    end
-  end
-
-  describe "POST /jobs authentication check" do
-    it "requires authentication" do
-      post jobs_path, params: { repository_id: repository.id, prompt: "Do something." }
-      expect(response).to redirect_to(new_session_path)
-    end
   end
 
   describe "POST /jobs/:id/start" do
