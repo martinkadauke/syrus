@@ -89,6 +89,34 @@ describe("App", () => {
     )
   })
 
+  it("renders shared app chrome from embedded bootstrap data", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload())
+    document.body.appendChild(script)
+    const fetchSpy = vi.spyOn(window, "fetch").mockRejectedValue(new Error("unexpected fetch"))
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("navigation", { name: "Primary" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+      expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
+      expect(screen.getAllByText("Operator").length).toBeGreaterThan(0)
+      expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
+      expect(fetchSpy).not.toHaveBeenCalled()
+    } finally {
+      script.remove()
+    }
+  })
+
   it("renders the admin overview route from the app admin API", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
@@ -2875,6 +2903,30 @@ describe("App", () => {
     expect(await screen.findByText("Repository is not available.")).toBeInTheDocument()
   })
 })
+
+function bootstrapPayload() {
+  return {
+    current_user: {
+      id: 1,
+      email_address: "operator@example.com",
+      name: "Operator",
+      display_name: "Operator",
+      admin: true,
+      scheduling_paused: false,
+      landing_paused: false,
+      agent_provider: "claude",
+      agent_max_turns: 200
+    },
+    app: {
+      revision: "dev",
+      revision_url: null
+    },
+    csrf_token: "csrf-token",
+    feature_flags: {
+      migrated_routes: []
+    }
+  }
+}
 
 function scheduledTaskOptions() {
   return {

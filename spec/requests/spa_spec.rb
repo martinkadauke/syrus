@@ -17,6 +17,8 @@ RSpec.describe "SPA shell", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(response.body).to include('id="syrus-spa-root"')
+    expect(response.body).to include('id="syrus-bootstrap-data"')
+    expect(response.body).to include(user.email_address)
     expect(response.body).to include("<title>Syrus</title>")
     expect(response.body).not_to include("javascript_importmap")
   end

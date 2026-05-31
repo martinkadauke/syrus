@@ -25,3 +25,14 @@ export type BootstrapPayload = {
 export function fetchBootstrap() {
   return getJson<BootstrapPayload>("/api/v1/app/bootstrap")
 }
+
+export function readInitialBootstrap() {
+  const element = document.getElementById("syrus-bootstrap-data")
+  if (!element?.textContent) return null
+
+  try {
+    return JSON.parse(element.textContent) as BootstrapPayload
+  } catch {
+    return null
+  }
+}
