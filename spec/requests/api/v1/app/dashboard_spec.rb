@@ -54,6 +54,11 @@ RSpec.describe "App API dashboard commands", type: :request do
       )
       expect(body["items"].map { |item| item.fetch("id") }).not_to include(archived_job.id, other_job.id)
       expect(body.dig("preferences", "sort")).to include("column" => "title", "direction" => "asc")
+      expect(body["controls"]).to include(
+        "views" => %w[list kanban],
+        "sort_columns" => %w[title state repository created_at started_at],
+        "sort_directions" => %w[asc desc]
+      )
       expect(body.dig("paths", "dashboard_jobs_path")).to eq(dashboard_jobs_path)
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
     end

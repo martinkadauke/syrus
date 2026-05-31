@@ -30,6 +30,7 @@ module App
         total_pages: total_pages(current_result.fetch(:total)),
         counts: counts,
         preferences: preferences_json,
+        controls: controls_json,
         smart_folders: smart_folders_json,
         active_smart_folder_id: active_smart_folder&.id,
         items: current_result.fetch(:items),
@@ -272,6 +273,14 @@ module App
         visible_columns: user.dashboard_visible_columns(subject),
         kanban_lanes: user.dashboard_visible_kanban_lanes(subject),
         raw: user.dashboard_preferences.fetch(table)
+      }
+    end
+
+    def controls_json
+      {
+        views: VIEWS,
+        sort_columns: User::DASHBOARD_SORT_COLUMNS.fetch(subject),
+        sort_directions: User::DASHBOARD_SORT_DIRECTIONS
       }
     end
 

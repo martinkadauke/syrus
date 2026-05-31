@@ -1,4 +1,4 @@
-import { getJson } from "./client"
+import { getJson, patchJson } from "./client"
 
 export type DashboardSubject = "job" | "epic" | "workflow"
 
@@ -105,6 +105,11 @@ export type DashboardPayload = {
     kanban_lanes: string[]
     raw: Record<string, unknown>
   }
+  controls: {
+    views: string[]
+    sort_columns: string[]
+    sort_directions: string[]
+  }
   smart_folders: DashboardSmartFolder[]
   active_smart_folder_id: number | null
   items: DashboardItem[]
@@ -117,6 +122,23 @@ export type DashboardPayload = {
   }
 }
 
+export type DashboardPreferencesInput = {
+  subject: DashboardSubject
+  sort_column?: string
+  sort_direction?: string
+  visible_columns?: string[]
+  kanban_lanes?: string[]
+}
+
+export type DashboardPreferencesPayload = {
+  message: string
+  dashboard_preferences: Record<string, unknown>
+}
+
 export function fetchDashboard(search = "") {
   return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`)
+}
+
+export function updateDashboardPreferences(input: DashboardPreferencesInput) {
+  return patchJson<DashboardPreferencesPayload>("/api/v1/app/dashboard/preferences", input)
 }

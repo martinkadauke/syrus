@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { fetchDashboard, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { fetchDashboard, updateDashboardPreferences, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -33,7 +33,7 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <SmartFolderNav payload={payload} prefix={prefix} />
         <section className="min-w-0 space-y-4">
-          <DashboardToolbar payload={payload} />
+          <DashboardToolbar pathname={pathname} search={search} payload={payload} />
           <DashboardTable payload={payload} />
           <Pagination pathname={pathname} search={search} payload={payload} />
         </section>
@@ -82,17 +82,75 @@ function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix
   )
 }
 
-function DashboardToolbar({ payload }: { payload: DashboardPayload }) {
-  const sortColumn = payload.preferences.sort.column || payload.preferences.sort["column"]
-  const sortDirection = payload.preferences.sort.direction || payload.preferences.sort["direction"]
+function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
+  const queryClient = useQueryClient()
+  const updatePreferences = useMutation({
+    mutationFn: updateDashboardPreferences,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  })
+  const sortColumn = sortValue(payload.preferences.sort, "column") || payload.controls.sort_columns[0] || "title"
+  const sortDirection = sortValue(payload.preferences.sort, "direction") || payload.controls.sort_directions[0] || "desc"
+
+  function updateSort(next: { column?: string; direction?: string }) {
+    updatePreferences.mutate({
+      subject: payload.subject,
+      sort_column: next.column || sortColumn,
+      sort_direction: next.direction || sortDirection
+    })
+  }
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">{capitalize(subjectLabel(payload.subject, 2))}</h2>
         <p className="text-sm text-gray-500">Sorted by {sortColumn || "default"} {sortDirection || "desc"}</p>
+        {updatePreferences.isSuccess ? <p className="mt-1 text-sm text-emerald-700" role="status">{updatePreferences.data.message}</p> : null}
+        {updatePreferences.isError ? <p className="mt-1 text-sm text-red-700" role="alert">{errorMessage(updatePreferences.error, "Unable to update dashboard preferences.")}</p> : null}
       </div>
-      {payload.view === "kanban" ? <span className="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600">Kanban lanes: {payload.preferences.kanban_lanes.join(", ")}</span> : null}
+      <div className="flex flex-wrap items-end gap-3">
+        <nav aria-label="Dashboard view" className="inline-flex overflow-hidden rounded border border-gray-300 bg-white text-sm">
+          {payload.controls.views.map((view) => (
+            <Link
+              className={`px-3 py-1.5 capitalize ${payload.view === view ? "bg-gray-900 text-white" : "text-gray-700 hover:bg-gray-50"}`}
+              key={view}
+              to={dashboardLinkFromSearch(pathname, search, { view, page: null })}
+            >
+              {view}
+            </Link>
+          ))}
+        </nav>
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-sort-column">
+          Sort column
+          <select
+            className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
+            disabled={updatePreferences.isPending}
+            id="dashboard-sort-column"
+            onChange={(event) => updateSort({ column: event.target.value })}
+            value={sortColumn}
+          >
+            {payload.controls.sort_columns.map((column) => (
+              <option key={column} value={column}>{sortColumnLabel(column)}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-sort-direction">
+          Direction
+          <select
+            className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
+            disabled={updatePreferences.isPending}
+            id="dashboard-sort-direction"
+            onChange={(event) => updateSort({ direction: event.target.value })}
+            value={sortDirection}
+          >
+            {payload.controls.sort_directions.map((direction) => (
+              <option key={direction} value={direction}>{sortDirectionLabel(direction)}</option>
+            ))}
+          </select>
+        </label>
+        {payload.view === "kanban" ? <span className="mb-1 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600">Kanban lanes: {payload.preferences.kanban_lanes.join(", ")}</span> : null}
+      </div>
     </div>
   )
 }
@@ -279,6 +337,20 @@ function dashboardLink(path: string, params: Record<string, string | number | nu
   return query ? `${path}?${query}` : path
 }
 
+function dashboardLinkFromSearch(path: string, search: string, updates: Record<string, string | number | null | undefined>) {
+  const params = new URLSearchParams(search)
+  for (const [key, value] of Object.entries(updates)) {
+    if (value == null || String(value).length === 0) {
+      params.delete(key)
+    } else {
+      params.set(key, String(value))
+    }
+  }
+
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
+
 function withRoutePrefix(path: string, prefix: string) {
   if (!prefix || path.startsWith(prefix)) return path
   if (!path.startsWith("/")) return path
@@ -302,8 +374,34 @@ function subjectLabel(subject: DashboardSubject, count: number) {
   return count === 1 ? label : `${label}s`
 }
 
+function sortValue(sort: Record<string, string>, key: string) {
+  return sort[key]
+}
+
+function sortColumnLabel(column: string) {
+  const labels: Record<string, string> = {
+    title: "Title",
+    state: "State",
+    repository: "Repository",
+    created_at: "Created",
+    updated_at: "Updated",
+    started_at: "Started",
+    finished_at: "Finished"
+  }
+
+  return labels[column] || column.replace(/_/g, " ")
+}
+
+function sortDirectionLabel(direction: string) {
+  return direction === "asc" ? "Ascending" : "Descending"
+}
+
 function capitalize(value: string) {
   return value.charAt(0).toUpperCase() + value.slice(1)
+}
+
+function errorMessage(error: Error, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
 }
 
 function formatDate(value: string | null) {

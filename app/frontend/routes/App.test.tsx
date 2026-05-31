@@ -164,8 +164,26 @@ describe("App", () => {
   })
 
   it("renders the app-shell dashboard route from the app dashboard API", async () => {
-    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+    let sortColumn = "created_at"
+    let sortDirection = "desc"
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
+      if (path === "/api/v1/app/dashboard/preferences" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as { sort_column: string; sort_direction: string }
+        sortColumn = body.sort_column
+        sortDirection = body.sort_direction
+
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              message: "Dashboard preferences updated.",
+              dashboard_preferences: {}
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
       if (path === "/api/v1/app/dashboard?view=kanban&subject=job") {
         return Promise.resolve(
           new Response(
@@ -177,6 +195,12 @@ describe("App", () => {
                 per_page: 10,
                 total: 25,
                 total_pages: 3,
+                preferences: {
+                  sort: { column: sortColumn, direction: sortDirection },
+                  visible_columns: ["title", "state", "repository"],
+                  kanban_lanes: ["queued", "running", "succeeded"],
+                  raw: {}
+                },
                 items: [
                   {
                     type: "job",
@@ -222,6 +246,7 @@ describe("App", () => {
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
     expect(screen.getByText("acme/widgets")).toBeInTheDocument()
     expect(screen.getByText("Kanban lanes: queued, running, succeeded")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "list" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
     expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=kanban")
     expect(screen.getByRole("link", { name: "My work" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&smart_folder_id=7")
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
@@ -234,6 +259,28 @@ describe("App", () => {
         headers: { Accept: "application/json" }
       })
     )
+
+    fireEvent.change(screen.getByLabelText("Sort column"), { target: { value: "title" } })
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard/preferences",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            subject: "job",
+            sort_column: "title",
+            sort_direction: "desc"
+          })
+        })
+      )
+    })
+    expect(await screen.findByText("Dashboard preferences updated.")).toBeInTheDocument()
   })
 
   it("renders the admin queue route from the app admin queue API", async () => {
@@ -3078,10 +3125,15 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
       workflows: 6
     },
     preferences: {
-      sort: { column: "updated_at", direction: "desc" },
+      sort: { column: "created_at", direction: "desc" },
       visible_columns: ["title", "state", "repository"],
       kanban_lanes: ["queued", "running", "succeeded"],
       raw: {}
+    },
+    controls: {
+      views: ["list", "kanban"],
+      sort_columns: ["title", "state", "repository", "created_at", "started_at"],
+      sort_directions: ["asc", "desc"]
     },
     smart_folders: [
       {
