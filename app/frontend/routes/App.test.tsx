@@ -1175,6 +1175,7 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Tags" })).toBeInTheDocument()
     expect(await screen.findByText("triage")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
     expect(screen.getByText("3")).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "epic:attachments" } })

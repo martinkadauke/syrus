@@ -45,7 +45,7 @@ function SettingsNav() {
 
   return (
     <nav className="flex gap-6 border-b border-gray-200 text-sm" aria-label="Settings">
-      <Link className={navClass(false)} to="/credentials/edit">My credentials</Link>
+      <Link className={navClass(false)} to={`${prefix}/credentials/edit`}>My credentials</Link>
       <Link className={navClass(false)} to={`${prefix}/cron_templates`}>Templates</Link>
       <Link className={navClass(true)} to={`${prefix}/tags`}>Tags</Link>
     </nav>
