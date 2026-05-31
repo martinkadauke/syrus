@@ -1367,6 +1367,62 @@ describe("App", () => {
     })
     expect(await screen.findByText("Title can't be blank")).toBeInTheDocument()
   })
+
+  it("renders a chat and sends a message from the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/message" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({
+          message: "Message sent.",
+          messages: [
+            ...chatPayload().messages,
+            {
+              type: "message",
+              id: 10,
+              role: "user",
+              text: "Now inspect proposals",
+              html: "<p>Now inspect proposals</p>",
+              bookmarkable: true,
+              bookmark_path: "/chats/8/bookmarks"
+            }
+          ],
+          turnInFlight: true
+        })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Chat" })).toBeInTheDocument()
+    expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
+    expect(screen.getByText("Aqueducts")).toBeInTheDocument()
+    expect(screen.getByText("Launch notes")).toBeInTheDocument()
+    expect(screen.getByText("Version 2")).toBeInTheDocument()
+    expect(screen.getByText("12.4k in", { exact: false })).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText("Ask about this repository..."), { target: { value: "Now inspect proposals" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/message",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ chat_message: { text: "Now inspect proposals" } })
+        })
+      )
+    })
+    expect(await screen.findByText("Message sent.")).toBeInTheDocument()
+    expect(screen.getByText("Now inspect proposals")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1609,5 +1665,70 @@ function epicFormPayload() {
       }
     ],
     dashboard_epics_path: "/dashboard/epics"
+  }
+}
+
+function chatPayload(overrides: {
+  message?: string
+  messages?: Array<Record<string, unknown>>
+  turnInFlight?: boolean
+} = {}) {
+  return {
+    message: overrides.message,
+    chat: {
+      id: 8,
+      title: "Aqueduct planning",
+      chat_path: "/chats/8",
+      repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+      stop_requested_at: null,
+      cumulative_input_tokens: 12400,
+      cumulative_output_tokens: 3200,
+      cumulative_cost_usd: 0.0123
+    },
+    chat_available: true,
+    turn_in_flight: overrides.turnInFlight ?? false,
+    has_more_older: false,
+    messages: overrides.messages || [
+      {
+        type: "message",
+        id: 9,
+        role: "assistant",
+        text: "Discuss aqueducts.",
+        html: "<p>Discuss aqueducts.</p>",
+        bookmarkable: true,
+        bookmark_path: "/chats/8/bookmarks"
+      }
+    ],
+    bookmarks: [
+      { id: 1, label: "Aqueducts", chat_message_id: 9 }
+    ],
+    attachment_groups: {
+      repositories: [
+        { id: 2, label: "acme/widgets", detach_path: "/chats/8/attachments/2" }
+      ],
+      epics: [],
+      jobs: [],
+      documents: []
+    },
+    documents_in_scope: [
+      { id: 5, title: "Launch notes", repository_slug: "acme/widgets" }
+    ],
+    attachment_results: [],
+    whiteboard: {
+      version: 2,
+      elements: [{ id: "box-1", type: "rectangle" }]
+    },
+    paths: {
+      new_chat_path: "/chats/new",
+      credentials_path: "/credentials/edit",
+      repositories_path: "/repositories",
+      app_message_path: "/api/v1/app/chats/8/message",
+      app_stop_path: "/api/v1/app/chats/8/stop",
+      app_refresh_path: "/api/v1/app/chats/8/refresh",
+      app_reset_path: "/api/v1/app/chats/8/reset",
+      chat_messages_path: "/chats/8/messages",
+      chat_attachments_path: "/chats/8/attachments",
+      chat_whiteboard_path: "/chats/8/whiteboard"
+    }
   }
 }

@@ -1,0 +1,173 @@
+import { getJson, postJson } from "./client"
+
+export type ChatRepository = {
+  id: number
+  slug: string
+  repository_path?: string
+}
+
+export type ChatRecord = {
+  id: number
+  title: string | null
+  chat_path: string
+  repository: ChatRepository | null
+  stop_requested_at: string | null
+  cumulative_input_tokens: number
+  cumulative_output_tokens: number
+  cumulative_cost_usd: number
+}
+
+export type ChatSystemMessage = {
+  tone: "success" | "warning" | "error" | "neutral"
+  label: string
+  body: string
+}
+
+export type ChatProposal = {
+  id: number
+  kind: string
+  kind_label: string
+  state: string
+  state_label: string
+  title: string
+  slug: string
+  body: string
+  body_html: string
+  proposed: boolean
+  resolved: boolean
+  epic_bundle: boolean
+  scoped_repository_slug: string | null
+  dependencies: string[]
+  target_epic_label: string | null
+  confirm_path: string
+  reject_path: string
+  materialized_label: string | null
+  materialized_path: string | null
+  active_children_count?: number
+  children?: ChatProposalChild[]
+}
+
+export type ChatProposalChild = {
+  id: number
+  title: string
+  slug: string
+  body: string
+  body_html: string
+  state: string
+  state_label: string
+  proposed: boolean
+  repository_slug: string | null
+  dependencies: string[]
+  reject_path: string
+}
+
+export type ChatStructuredTool = {
+  name: string
+  payload: unknown
+  proposal_id: number | null
+  proposal_state_label: string | null
+}
+
+export type ChatMessageItem = {
+  type: "message"
+  id: number
+  role: "user" | "assistant" | "tool_use" | "tool_result" | "system"
+  text: string
+  html: string
+  bookmarkable: boolean
+  bookmark_path: string
+  proposal?: ChatProposal | null
+  tool?: ChatStructuredTool
+  system?: ChatSystemMessage
+}
+
+export type ChatToolGroupItem = {
+  type: "tool_group"
+  tool: string
+  calls: Array<{
+    message_id: number
+    detail: string
+    result_body: string
+    result_error: boolean
+  }>
+}
+
+export type ChatRenderItem = ChatMessageItem | ChatToolGroupItem
+
+export type ChatBookmark = {
+  id: number
+  label: string
+  chat_message_id: number
+}
+
+export type ChatAttachmentRow = {
+  id: number
+  label: string
+  detach_path: string
+}
+
+export type ChatDocumentScope = {
+  id: number
+  title: string
+  repository_slug: string | null
+}
+
+export type ChatAttachmentResult = {
+  type: string
+  id: number
+  label: string
+}
+
+export type ChatPayload = {
+  message?: string | null
+  chat: ChatRecord
+  chat_available: boolean
+  turn_in_flight: boolean
+  has_more_older: boolean
+  messages: ChatRenderItem[]
+  bookmarks: ChatBookmark[]
+  attachment_groups: {
+    repositories: ChatAttachmentRow[]
+    epics: ChatAttachmentRow[]
+    jobs: ChatAttachmentRow[]
+    documents: ChatAttachmentRow[]
+  }
+  documents_in_scope: ChatDocumentScope[]
+  attachment_results: ChatAttachmentResult[]
+  whiteboard: {
+    version: number
+    elements: unknown[]
+  }
+  paths: {
+    new_chat_path: string
+    credentials_path: string
+    repositories_path: string
+    app_message_path: string
+    app_stop_path: string
+    app_refresh_path: string
+    app_reset_path: string
+    chat_messages_path: string
+    chat_attachments_path: string
+    chat_whiteboard_path: string
+  }
+}
+
+export function fetchChat(id: string) {
+  return getJson<ChatPayload>(`/api/v1/app/chats/${id}`)
+}
+
+export function sendChatMessage(path: string, text: string) {
+  return postJson<ChatPayload>(path, { chat_message: { text } })
+}
+
+export function stopChat(path: string) {
+  return postJson<ChatPayload>(path)
+}
+
+export function refreshChat(path: string) {
+  return postJson<ChatPayload>(path)
+}
+
+export function resetChat(path: string) {
+  return postJson<ChatPayload>(path)
+}
