@@ -66,7 +66,6 @@ Elements explicitly preserved through morph cycles:
 | Chat manual-proposal dialog | `chats/_manual_proposal_dialog.html.erb` | In-flight form state |
 | Chat message input | `chats/_message.html.erb:16` | Preserves user input mid-typing |
 | Footer Syrus quote | `layouts/application.html.erb:143` | Cosmetic — stops random quote from re-rolling on every broadcast (was distracting flicker) |
-| Repo-issues bulk checkboxes | `repositories/issues.html.erb:165` | Selection survives morph during bulk actions |
 
 ### Morph-aware Stimulus controllers
 

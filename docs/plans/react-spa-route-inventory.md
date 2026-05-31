@@ -58,7 +58,7 @@ health/storage internals.
 | `/repositories/:id` | `spa#show` + `/api/v1/app/repositories/:id*` | `spa-core` | Migrated to the React repository detail overview and GitHub Issues tab. Internal tabs/actions/recent Job links use React Router navigation; GitHub links stay external anchors. Legacy ERB detail fallback removed. |
 | repository collection JSON helpers | `/api/v1/app/repositories/owners`, `/repos`, `/branches` | `spa-core` | React repository form uses app API selectors; legacy AJAX helpers removed with the ERB form fallback. |
 | repository commands | `/api/v1/app/repositories/:id/poll`, `/archive`, `/unarchive`, `/retry_failed_jobs` | `spa-core` | React repository list and detail use app API command endpoints for poll, archive/unarchive, and retry failed jobs. Legacy HTML commands remain for fallback. |
-| repository GitHub issues | `/api/v1/app/repositories/:id/issues*` | `spa-core` | React repository detail owns issue listing plus comment/close/delegate/bulk commands. Legacy HTML issue routes remain for fallback. |
+| repository GitHub issues | `/api/v1/app/repositories/:id/issues*` | `spa-core` | React repository detail owns issue listing plus comment/close/delegate/bulk commands. Legacy HTML issue routes are removed. |
 | repository notes | `/api/v1/app/repositories/:id/notes`, `/api/v1/app/repositories/:repository_id/notes/:id` | `spa-core` | React repository overview uses app API mutations for note add/remove. Legacy HTML note routes are removed. |
 | repository documents | `spa#show` + `/api/v1/app/repositories/:id/documents` | `spa-core` | Migrated to the React repository documents page with app API upload/delete. Legacy ERB fallback and HTML document mutation routes are removed. |
 | repository scheduled task helpers | `spa#show` + `/api/v1/app/repositories/:id/scheduled_tasks*` | `spa-core` | Migrated to React for the per-repository scheduled-task tab and repository-scoped new form. Legacy ERB fallback and HTML mutation routes are removed. |
@@ -108,7 +108,7 @@ health/storage internals.
 | Dashboard | `chip_bar`, `column_picker`, `sort_select`, `bulk_jobs`, `kanban`, `epic_graph_drawer`, `filter_memory`, `checkbox_persistence`, `details_persistence` |
 | Job detail/source | `approval_review`, `attachment_drop`, `iteration_tabs`, `retry_context`, `run_timer`, `source_highlight`, `source_tree`, `transcript_toggle` |
 | Chat/whiteboard | retired with the React chat route |
-| Repository/settings/forms | `credentials_form`, `scheduled_task_form`, `document_upload`, `issue_comment`, `auto_submit` |
+| Repository/settings/forms | `credentials_form`, `scheduled_task_form`, `document_upload`, `auto_submit` |
 | Shared visual helpers | `mermaid_graph` remains only for legacy ERB graph drawers; React Epic detail renders Mermaid client-side. `relative_time` can become a React utility as remaining legacy pages migrate. |
 
 ## First migration slice

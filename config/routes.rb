@@ -243,11 +243,6 @@ Rails.application.routes.draw do
       post :archive
       post :unarchive
       post :retry_failed_jobs
-      get  :issues
-      post :comment_issue
-      post :close_issue
-      post :delegate_issue
-      post :bulk_issues
     end
     # Repository-scoped chat routes were retired — the chat surface is
     # the top-level /chats/new and /chats/:id SPA routes, backed by the
