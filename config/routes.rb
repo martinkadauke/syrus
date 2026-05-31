@@ -125,6 +125,8 @@ Rails.application.routes.draw do
           get "queue/:tab", to: "queue#show", as: :queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
           post "queue/reap_stale_runs", to: "queue#reap_stale_runs"
           get "stuck", to: "stuck#index"
+          get "github_app/register", to: "github_app#register"
+          get "github_app/confirm", to: "github_app#confirm"
           resources :processes, only: %i[ index show ], controller: "spawned_processes" do
             member do
               post :kill
@@ -303,14 +305,14 @@ Rails.application.routes.draw do
   get "admin/users/:id", to: "spa#show", as: :admin_user, constraints: { id: /\d+/ }
   get "admin/console", to: "spa#show", as: :admin_console
   get "admin/installations", to: "spa#show", as: :admin_installations
+  get "admin/github_app/register", to: "spa#show", as: :admin_github_app_register
+  get "admin/github_app/confirm", to: "spa#show", as: :admin_github_app_confirm
 
   namespace :admin do
     # Raw transcript download for offline analysis.
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 
-    get "github_app/register", to: "github_app#register", as: :github_app_register
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
-    get "github_app/confirm",  to: "github_app#confirm",  as: :github_app_confirm
   end
 
   root "spa#show"

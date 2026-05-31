@@ -70,7 +70,7 @@ RSpec.describe "SPA shell", type: :request do
     user = Factories.user
     sign_in_as(user)
 
-    [ "/app-shell/invitations", "/app-shell/settings/edit" ].each do |path|
+    [ "/app-shell/invitations", "/app-shell/settings/edit", "/app-shell/admin/github_app/register", "/app-shell/admin/github_app/confirm" ].each do |path|
       get path
 
       expect(response).to redirect_to(root_path)

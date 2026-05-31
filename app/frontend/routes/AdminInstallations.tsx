@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
+import { Link, useLocation } from "react-router-dom"
 import {
   fetchAdminInstallations,
   refreshInstallations,
@@ -10,6 +11,8 @@ import {
 import { ApiError } from "../api/client"
 
 export function AdminInstallations() {
+  const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const installations = useQuery({
     queryKey: ["admin", "installations"],
     queryFn: fetchAdminInstallations
@@ -24,19 +27,19 @@ export function AdminInstallations() {
 
       {installations.isPending ? <PanelMessage>Loading installations...</PanelMessage> : null}
       {installations.isError ? <InstallationsError error={installations.error} /> : null}
-      {installations.isSuccess ? <InstallationsView payload={installations.data} /> : null}
+      {installations.isSuccess ? <InstallationsView payload={installations.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function InstallationsView({ payload }: { payload: AdminInstallationsPayload }) {
+function InstallationsView({ payload, prefix }: { payload: AdminInstallationsPayload; prefix: string }) {
   return (
     <>
       {!payload.github_app_registered ? (
         <section className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <div className="font-semibold">Syrus App is not registered yet.</div>
           <p className="mt-1">Register the GitHub App before installing it on repositories.</p>
-          <a className="mt-3 inline-block rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500" href="/admin/github_app/register">Run manifest flow</a>
+          <Link className="mt-3 inline-block rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-500" to={withRoutePrefix("/admin/github_app/register", prefix)}>Run manifest flow</Link>
         </section>
       ) : null}
 
@@ -176,4 +179,15 @@ function InstallationsError({ error }: { error: Error }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700" : "text-gray-600"}`}>{children}</div>
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }

@@ -5,6 +5,7 @@ import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../
 import { BugReportButton } from "../components/BugReportButton"
 import { useAppEvents } from "../lib/useAppEvents"
 import { AdminConsole } from "./AdminConsole"
+import { AdminGithubAppConfirm, AdminGithubAppRegister } from "./AdminGithubApp"
 import { AdminInvitations } from "./AdminInvitations"
 import { AdminInstallations } from "./AdminInstallations"
 import { AdminOverview } from "./AdminOverview"
@@ -53,6 +54,8 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/admin/users/:id", element: <AdminUserDetailRoute /> },
   { path: "/admin/console", element: <AdminConsole /> },
   { path: "/admin/installations", element: <AdminInstallations /> },
+  { path: "/admin/github_app/register", element: <AdminGithubAppRegister /> },
+  { path: "/admin/github_app/confirm", element: <AdminGithubAppConfirm /> },
   { path: "/invitations", element: <AdminInvitations /> },
   { path: "/settings/edit", element: <AdminSettings /> },
   { path: "/settings", element: <CredentialsRoute /> },
@@ -161,14 +164,14 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
 }
 
 function AdminNavigation({ normalizedPath, prefix }: { normalizedPath: string; prefix: string }) {
-  const items: Array<{ label: string; path: string; reload?: boolean; active: (path: string) => boolean }> = [
+  const items: Array<{ label: string; path: string; active: (path: string) => boolean }> = [
     { label: "Overview", path: "/admin", active: (path) => path === "/admin" },
     { label: "Stuck", path: "/admin/stuck", active: (path) => path === "/admin/stuck" },
     { label: "Users", path: "/admin/users", active: (path) => path.startsWith("/admin/users") },
     { label: "Queue", path: "/admin/queue/active", active: (path) => path.startsWith("/admin/queue") },
     { label: "Processes", path: "/admin/processes", active: (path) => path.startsWith("/admin/processes") },
     { label: "Console", path: "/admin/console", active: (path) => path === "/admin/console" },
-    { label: "GitHub App", path: "/admin/github_app/register", reload: true, active: (path) => path.startsWith("/admin/github_app") },
+    { label: "GitHub App", path: "/admin/github_app/register", active: (path) => path.startsWith("/admin/github_app") },
     { label: "Installations", path: "/admin/installations", active: (path) => path === "/admin/installations" },
     { label: "App settings", path: "/settings/edit", active: (path) => path === "/settings/edit" },
     { label: "Invitations", path: "/invitations", active: (path) => path === "/invitations" }
@@ -179,10 +182,6 @@ function AdminNavigation({ normalizedPath, prefix }: { normalizedPath: string; p
       <nav aria-label="Admin navigation" className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-2 text-xs">
         {items.map((item) => {
           const className = adminNavLinkClass(item.active(normalizedPath))
-          if (item.reload) {
-            return <a className={className} href={item.path} key={item.label}>{item.label}</a>
-          }
-
           return <Link className={className} key={item.label} to={withRoutePrefix(item.path, prefix)}>{item.label}</Link>
         })}
       </nav>

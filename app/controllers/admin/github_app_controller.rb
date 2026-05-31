@@ -1,18 +1,5 @@
 module Admin
   class GithubAppController < BaseController
-    GITHUB_MANIFEST_URL = "https://github.com/settings/apps/new".freeze
-
-    def register
-      @settings = AppSetting.current
-      @state = SecureRandom.urlsafe_base64(24)
-      session[:github_app_manifest_state] = @state
-      @manifest = GithubAppManifest.new(
-        user: Current.user,
-        callback_url: admin_github_app_callback_url
-      ).to_json
-      @github_manifest_url = "#{GITHUB_MANIFEST_URL}?state=#{CGI.escape(@state)}"
-    end
-
     def callback
       return redirect_to admin_github_app_register_path, alert: "GitHub App registration state did not match." unless valid_state?
 
@@ -27,10 +14,6 @@ module Admin
       redirect_to admin_github_app_register_path, alert: "GitHub App registration failed: #{e.message}"
     ensure
       session.delete(:github_app_manifest_state)
-    end
-
-    def confirm
-      @settings = AppSetting.current
     end
 
     private

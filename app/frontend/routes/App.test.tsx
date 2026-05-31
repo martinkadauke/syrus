@@ -238,7 +238,7 @@ describe("App", () => {
     expect(within(adminNav).getByRole("link", { name: "Queue" })).toHaveAttribute("href", "/app-shell/admin/queue/active")
     expect(within(adminNav).getByRole("link", { name: "Processes" })).toHaveAttribute("href", "/app-shell/admin/processes")
     expect(within(adminNav).getByRole("link", { name: "Console" })).toHaveAttribute("href", "/app-shell/admin/console")
-    expect(within(adminNav).getByRole("link", { name: "GitHub App" })).toHaveAttribute("href", "/admin/github_app/register")
+    expect(within(adminNav).getByRole("link", { name: "GitHub App" })).toHaveAttribute("href", "/app-shell/admin/github_app/register")
     expect(within(adminNav).getByRole("link", { name: "Installations" })).toHaveAttribute("href", "/app-shell/admin/installations")
     expect(within(adminNav).getByRole("link", { name: "App settings" })).toHaveAttribute("href", "/app-shell/settings/edit")
     expect(within(adminNav).getByRole("link", { name: "Invitations" })).toHaveAttribute("href", "/app-shell/invitations")
@@ -1202,6 +1202,93 @@ describe("App", () => {
     )
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/installations",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
+  it("renders the GitHub App registration route from the app admin API", async () => {
+    const manifest = JSON.stringify({
+      name: "operator-syrus",
+      default_permissions: {
+        issues: "write",
+        pull_requests: "write",
+        metadata: "read"
+      }
+    })
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          github_app: {
+            registered: true,
+            id: 12345,
+            slug: "operator-syrus",
+            registered_at: "2026-05-30T12:00:00Z"
+          },
+          github_manifest_url: "https://github.com/settings/apps/new?state=abc123",
+          manifest,
+          submit_label: "Re-register GitHub App"
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/github_app/register"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const registration = screen.getByRole("main", { name: "GitHub App registration" })
+    expect(registration).toBeInTheDocument()
+    expect(await within(registration).findByText("operator-syrus")).toBeInTheDocument()
+    const form = within(registration).getByRole("form", { name: "GitHub manifest registration" })
+    expect(form).toHaveAttribute("action", "https://github.com/settings/apps/new?state=abc123")
+    expect(form).toHaveAttribute("method", "post")
+    expect(form).toHaveAttribute("target", "_blank")
+    expect(form.querySelector("input[name='manifest']")).toHaveAttribute("value", manifest)
+    expect(within(form).getByRole("button", { name: "Re-register GitHub App" })).toHaveAttribute("formtarget", "_blank")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/github_app/register",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
+  it("renders the GitHub App confirmation route from the app admin API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          github_app: {
+            registered: true,
+            id: 12345,
+            slug: "operator-syrus",
+            registered_at: "2026-05-30T12:00:00Z"
+          }
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/github_app/confirm"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const confirmation = screen.getByRole("main", { name: "GitHub App registered" })
+    expect(confirmation).toBeInTheDocument()
+    expect(await within(confirmation).findByText("operator-syrus")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/github_app/confirm",
       expect.objectContaining({
         credentials: "same-origin",
         headers: { Accept: "application/json" }

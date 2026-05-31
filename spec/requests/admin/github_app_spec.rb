@@ -6,27 +6,26 @@ RSpec.describe "Admin GitHub App registration", type: :request do
 
   before { sign_in_as(admin) }
 
-  it "renders a GitHub manifest registration form" do
+  def register_manifest
+    get "/api/v1/app/admin/github_app/register"
+    JSON.parse(response.body)
+  end
+
+  it "serves GitHub App pages through the React shell" do
     get "/admin/github_app/register"
 
     expect(response).to be_successful
-    expect(response.body).to include("GitHub App registration")
-    expect(response.body).to include("https://github.com/settings/apps/new?state=")
-    expect(response.body).to include("&quot;issues&quot;:&quot;write&quot;")
-    expect(response.body).to include("&quot;pull_requests&quot;:&quot;write&quot;")
-    expect(response.body).to include("&quot;metadata&quot;:&quot;read&quot;")
-    expect(response.body).not_to include("hook_attributes")
-    expect(response.body).not_to include("github_app/webhook")
+    expect(response.body).to include('id="syrus-spa-root"')
+    expect(response.body).not_to include("https://github.com/settings/apps/new?state=")
 
-    form = Nokogiri::HTML(response.body).at_css("form[action^='https://github.com/settings/apps/new']")
-    expect(form["target"]).to eq("_blank")
-    expect(form["rel"]).to eq("noopener")
-    expect(form.at_css("input[type='submit']")["formtarget"]).to eq("_blank")
+    get "/admin/github_app/confirm"
+
+    expect(response).to be_successful
+    expect(response.body).to include('id="syrus-spa-root"')
   end
 
   it "exchanges the manifest code and persists encrypted credentials" do
-    get "/admin/github_app/register"
-    state = response.body.match(%r{settings/apps/new\?state=([^"]+)})[1]
+    state = register_manifest.fetch("github_manifest_url").match(%r{settings/apps/new\?state=([^"]+)})[1]
     stub_request(:post, "https://api.github.com/app-manifests/temp-code/conversions")
       .to_return(
         status: 201,
@@ -51,7 +50,7 @@ RSpec.describe "Admin GitHub App registration", type: :request do
   end
 
   it "rejects callbacks with a mismatched state" do
-    get "/admin/github_app/register"
+    register_manifest
 
     expect {
       get "/admin/github_app/callback", params: { code: "temp-code", state: "wrong" }
