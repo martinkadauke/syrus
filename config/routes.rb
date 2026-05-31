@@ -303,9 +303,11 @@ Rails.application.routes.draw do
   }, as: :epics
   get "epics/new", to: "spa#show", as: :new_epic
   get "epics/new/legacy", to: "epics#new", as: :legacy_new_epic
+  get "epics/:id", to: "spa#show", as: :epic, constraints: { id: /\d+/ }
+  get "epics/:id/legacy", to: "epics#show", as: :legacy_epic, constraints: { id: /\d+/ }
   get "epics/:id/edit", to: "spa#show", as: :edit_epic, constraints: { id: /\d+/ }
   get "epics/:id/edit/legacy", to: "epics#edit", as: :legacy_edit_epic, constraints: { id: /\d+/ }
-  resources :epics, only: %i[ show create update ] do
+  resources :epics, only: %i[ create update ] do
     member do
       patch :archive
       patch :state, action: :update_state

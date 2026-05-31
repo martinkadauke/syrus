@@ -634,16 +634,14 @@ RSpec.describe "Dashboard", type: :request do
       expect(card_titles.second).to include("Older board")
     end
 
-    it "renders the Epic detail page" do
+    it "serves the React Epic detail page shell" do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       epic = Factories.epic(user: user, repository: repo, title: "Detail shell", state: "ready")
 
       get epic_path(epic)
 
       expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Detail shell")
-      expect(response.body).to include(epic.display_number)
-      expect(response.body).to include("Back to Epics")
+      expect(response.body).to include('id="syrus-spa-root"')
     end
 
     it "redirects legacy list URLs to root dashboard subjects" do

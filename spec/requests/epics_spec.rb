@@ -341,13 +341,26 @@ RSpec.describe "Epics", type: :request do
       expect(response).to redirect_to(new_session_path)
     end
 
+    it "serves the React app shell" do
+      sign_in_as(user)
+      epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
+
+      get epic_path(epic)
+
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /epics/:id/legacy" do
+
     it "shows the dependency graph expanded for small Epics" do
       sign_in_as(user)
       epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
       blocker_epic = Factories.epic(user: user, repository: repo, title: "Deliver marble")
       EpicDependency.create!(epic: epic, depends_on_epic: blocker_epic, derived: false)
 
-      get epic_path(epic)
+      get legacy_epic_path(epic)
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Restore forum")
@@ -362,7 +375,7 @@ RSpec.describe "Epics", type: :request do
       epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
       Factories.job_record(user: user, repository: repo, epic: epic, issue_number: 20, issue_title: "Survey")
 
-      get epic_path(epic)
+      get legacy_epic_path(epic)
 
       expect(response.body).to include("No external dependencies")
       expect(response.body).not_to include("data-controller=\"mermaid-graph\"")
@@ -373,7 +386,7 @@ RSpec.describe "Epics", type: :request do
       epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
       job = Factories.job_record(user: user, repository: repo, epic: epic, issue_number: 20, issue_title: "Survey forum")
 
-      get epic_path(epic)
+      get legacy_epic_path(epic)
 
       document = Nokogiri::HTML(response.body)
       title_link = document.at_css("a[href='#{job_path(job)}']")
@@ -384,7 +397,7 @@ RSpec.describe "Epics", type: :request do
       sign_in_as(user)
       epic = Factories.epic(user: user, repository: repo, title: "Restore forum", state: "ready")
 
-      get epic_path(epic)
+      get legacy_epic_path(epic)
 
       document = Nokogiri::HTML(response.body)
       state_forms = document.css("form[action='#{state_epic_path(epic)}']")
@@ -414,7 +427,7 @@ RSpec.describe "Epics", type: :request do
       epic = Factories.epic(user: other)
       sign_in_as(user)
 
-      get epic_path(epic)
+      get legacy_epic_path(epic)
 
       expect(response).to have_http_status(:not_found)
     end

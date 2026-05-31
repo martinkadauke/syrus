@@ -45,10 +45,10 @@ health/storage internals.
 | `/jobs/:id/runs/:run_id/grade_log` | `jobs#grade_log` | `spa-core` | Either nested detail API or downloadable/log panel endpoint. |
 | `/jobs/:job_id/attachments` | `job_attachments#create/destroy` | `app-api-needed` | Browser upload/delete endpoint with progress/error state. |
 | `/jobs/:job_id/pin` | `job_pins#create/destroy` | `app-api-needed` | Small command endpoint; can be optimistic. |
-| `/epics/:id` | `epics#show` | `spa-core` | Detail page plus child jobs/dependency graph. |
+| `/epics/:id` | `spa#show` + `/api/v1/app/epics/:id` | `spa-core` | Migrated to the React Epic detail page with child Jobs, dependency graph data, and app API state/archive commands. Legacy ERB fallback lives at `/epics/:id/legacy`. |
 | `/epics/new`, `/epics/:id/edit` | `spa#show` + `/api/v1/app/epics*` | `spa-core` | Migrated to the React Epic form. Legacy ERB fallback lives at `/epics/new/legacy` and `/epics/:id/edit/legacy`; HTML `POST/PATCH /epics` remains for fallback. |
-| `PATCH /epics/:id/archive` | `epics#archive` | `app-api-needed` | Command endpoint. |
-| `PATCH /epics/:id/state` | `epics#update_state` | `app-api-needed` | Existing JSON support can inform browser endpoint shape. |
+| `PATCH /epics/:id/archive` | `/api/v1/app/epics/:id/archive` | `spa-core` | React uses the app API command endpoint; legacy HTML command remains for fallback/dashboard controls. |
+| `PATCH /epics/:id/state` | `/api/v1/app/epics/:id/state` | `spa-core` | React uses the app API command endpoint; legacy HTML/JSON command remains for fallback/dashboard controls. |
 | `/epics/:id/graph` | `epics#graph` | `spa-core` | Graph data endpoint or React route depending current response shape. |
 | `/epics`, `/jobs`, `/workflows` redirects | route redirects | `legacy-html` | Can be removed or changed once React router owns canonical dashboard paths. |
 | `/repositories` | `spa#show` + `/api/v1/app/repositories` | `spa-core` | Migrated to the React repository list with app API poll/archive/unarchive commands. Legacy ERB fallback lives at `/repositories/legacy`. |
