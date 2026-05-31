@@ -115,6 +115,76 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     )
   end
 
+  it "returns the repository detail payload" do
+    sign_in_as(user)
+    AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
+    repository = Factories.repository(
+      user: user,
+      owner: "acme",
+      name: "widgets",
+      trigger_label: "syrus",
+      agent_provider: "codex",
+      github_owner_id: 100,
+      github_repository_id: 200
+    )
+    active_note = repository.repository_notes.create!(body: "Use staging for smoke tests.", author: "operator")
+    repository.repository_notes.create!(body: "Removed context.", author: "agent", removed_at: Time.current)
+    failed = Factories.job(repository: repository, issue_number: 1, issue_title: "Fix forum")
+    failed.current_run.update!(state: "failed", finished_at: Time.current)
+    running = Factories.job(repository: repository, issue_number: 2, issue_title: "Survey aqueduct")
+    running.current_run.update!(state: "running", started_at: Time.current)
+    queued = Factories.job(repository: repository, issue_number: 3, issue_title: "Polish marble")
+    queued.current_run.update!(state: "queued")
+    other_repository = Factories.repository(user: user, owner: "acme", name: "other")
+    Factories.job(repository: other_repository, issue_number: 99, issue_title: "Private")
+
+    get "/api/v1/app/repositories/#{repository.id}"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body.dig("repository", "slug")).to eq("acme/widgets")
+    expect(body.dig("repository", "agent_provider_label")).to eq("Codex")
+    expect(body.dig("repository", "github_url")).to eq("https://github.com/acme/widgets")
+    expect(body["tabs"]).to include(
+      { "key" => "overview", "label" => "Overview", "path" => repository_path(repository) },
+      { "key" => "github_issues", "label" => "GitHub Issues", "path" => repository_path(repository, tab: "github_issues") },
+      { "key" => "scheduled_tasks", "label" => "Scheduled Tasks", "path" => repository_scheduled_tasks_path(repository) }
+    )
+    expect(body["counts"]).to include("running" => 1, "queued" => 1, "failed_7d" => 1)
+    expect(body["retry_failed_jobs"]).to include("count" => 1, "agent_provider_label" => "Codex")
+    expect(body["credential_status"]).to include(
+      "mode" => "pat",
+      "github_app_registered" => true,
+      "install_url" => "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&repository_ids[]=200"
+    )
+    expect(body["notes"]).to contain_exactly(include(
+      "id" => active_note.id,
+      "body" => "Use staging for smoke tests.",
+      "delete_path" => repository_note_path(repository, active_note)
+    ))
+    expect(body["jobs"]).to include(
+      include("id" => failed.id, "issue_title" => "Fix forum", "source" => include("label" => "#1")),
+      include("id" => running.id, "issue_title" => "Survey aqueduct"),
+      include("id" => queued.id, "issue_title" => "Polish marble")
+    )
+    expect(body.to_s).not_to include("Private")
+    expect(body["pagination"]).to include("page" => 1, "total_jobs" => 3, "total_pages" => 1)
+    expect(body["paths"]).to include(
+      "new_job_path" => new_job_path(repository_id: repository.id),
+      "edit_repository_path" => edit_repository_path(repository),
+      "repository_notes_path" => repository_notes_path(repository)
+    )
+  end
+
+  it "does not expose another user's repository detail" do
+    sign_in_as(user)
+    foreign = Factories.repository(user: Factories.user)
+
+    get "/api/v1/app/repositories/#{foreign.id}"
+
+    expect(response).to have_http_status(:not_found)
+  end
+
   it "creates repositories" do
     sign_in_as(user)
 

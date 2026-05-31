@@ -6,6 +6,13 @@ module Api
           render json: repositories_payload
         end
 
+        def show
+          repository = find_repository
+          page = [ params.fetch(:page, 1).to_i, 1 ].max
+
+          render json: repository_detail_payload(repository, page: page)
+        end
+
         def new
           render json: form_payload(Current.user.repositories.build(default_branch: "main", trigger_label: "syrus"))
         end
@@ -116,6 +123,40 @@ module Api
           }
         end
 
+        def repository_detail_payload(repository, page:, message: nil)
+          jobs_scope = repository.jobs
+            .includes(:runs, :scheduled_task, workflows: :steps)
+            .order(updated_at: :desc)
+          total_jobs = repository.jobs.count
+          total_pages = [ (total_jobs / ::RepositoriesController::PER_PAGE.to_f).ceil, 1 ].max
+          jobs = jobs_scope
+            .limit(::RepositoriesController::PER_PAGE)
+            .offset((page - 1) * ::RepositoriesController::PER_PAGE)
+
+          {
+            message: message,
+            repository: repository_detail_json(repository),
+            tabs: repository_tabs_json(repository),
+            counts: repository_counts_json(repository),
+            retry_failed_jobs: retry_failed_jobs_json(repository),
+            credential_status: credential_status_json(repository),
+            notes: repository.repository_notes.active.order(created_at: :desc, id: :desc).map { |note| note_json(repository, note) },
+            jobs: jobs.map { |job| job_json(job) },
+            pagination: pagination_json(page: page, total_jobs: total_jobs, total_pages: total_pages, repository: repository),
+            paths: {
+              new_job_path: new_job_path(repository_id: repository.id),
+              edit_repository_path: edit_repository_path(repository),
+              poll_repository_path: poll_repository_path(repository),
+              archive_repository_path: archive_repository_path(repository),
+              retry_failed_jobs_repository_path: retry_failed_jobs_repository_path(repository),
+              repository_notes_path: repository_notes_path(repository),
+              repositories_path: repositories_path,
+              repository_documents_path: repository_documents_path(repository),
+              repository_scheduled_tasks_path: repository_scheduled_tasks_path(repository)
+            }
+          }
+        end
+
         def repositories_payload(message: nil)
           repos = Current.user.repositories.order(:owner, :name)
           {
@@ -147,6 +188,31 @@ module Api
           }
         end
 
+        def repository_detail_json(repository)
+          repo_user = repository.user
+          {
+            id: repository.id,
+            slug: repository.slug,
+            owner: repository.owner,
+            name: repository.name,
+            default_branch: repository.default_branch,
+            trigger_label: repository.trigger_label,
+            polling_enabled: repository.polling_enabled?,
+            archived: repository.archived?,
+            agent_provider: repository.agent_provider,
+            agent_provider_label: repository.agent_provider.present? ? agent_provider_label(repository.agent_provider) : nil,
+            effective_agent_provider: repository.effective_agent_provider,
+            effective_agent_provider_label: agent_provider_label(repository.effective_agent_provider),
+            github_url: "https://github.com/#{repository.slug}",
+            created_at: repository.created_at.iso8601,
+            owner_user: {
+              email_address: repo_user.email_address,
+              admin: repo_user.admin?
+            },
+            github_rate_limit: github_rate_limit_json(repo_user)
+          }
+        end
+
         def repository_form_json(repository)
           {
             id: repository.id,
@@ -164,6 +230,139 @@ module Api
             github_owner_id: repository.github_owner_id,
             github_repository_id: repository.github_repository_id,
             repository_path: repository.persisted? ? repository_path(repository) : nil
+          }
+        end
+
+        def repository_tabs_json(repository)
+          [
+            { key: "overview", label: "Overview", path: repository_path(repository) },
+            { key: "github_issues", label: "GitHub Issues", path: repository_path(repository, tab: "github_issues") },
+            { key: "scheduled_tasks", label: "Scheduled Tasks", path: repository_scheduled_tasks_path(repository) }
+          ]
+        end
+
+        def repository_counts_json(repository)
+          {
+            running: repository.jobs.joins(:runs).where(runs: { state: "running" }).distinct.count,
+            queued: repository.jobs.joins(:runs).where(runs: { state: "queued" }).distinct.count,
+            failed_7d: repository.jobs
+              .joins(:runs)
+              .where(runs: { state: "failed", updated_at: 7.days.ago.. })
+              .distinct
+              .count
+          }
+        end
+
+        def retry_failed_jobs_json(repository)
+          retryable = repository.jobs.open_threads.select { |job| !job.any_active_run? && job.current_run&.failed? }
+          {
+            count: retryable.size,
+            agent_provider: repository.effective_agent_provider,
+            agent_provider_label: agent_provider_label(repository.effective_agent_provider)
+          }
+        end
+
+        def credential_status_json(repository)
+          if repository.app_credential_active?
+            return {
+              mode: "app",
+              label: "Syrus App installed",
+              installation_account: repository.installation.account_login,
+              github_app_registered: AppSetting.github_app_registered?,
+              install_url: nil,
+              register_path: nil,
+              previous_installation_removed: false,
+              missing_github_ids: false
+            }
+          end
+
+          install_url = AppSetting.github_app_registered? ? helpers.github_app_install_url_for(repository) : nil
+          {
+            mode: "pat",
+            label: "PAT fallback",
+            installation_account: nil,
+            github_app_registered: AppSetting.github_app_registered?,
+            install_url: install_url,
+            register_path: Current.user.admin? && !AppSetting.github_app_registered? ? admin_github_app_register_path : nil,
+            previous_installation_removed: repository.installation&.removed_at.present?,
+            missing_github_ids: AppSetting.github_app_registered? && install_url.blank?
+          }
+        end
+
+        def github_rate_limit_json(user)
+          return nil unless user.gh_rate_limit_observed_at
+
+          {
+            remaining: user.gh_rate_limit_remaining,
+            limit: user.gh_rate_limit_limit,
+            resource: user.gh_rate_limit_resource || "core",
+            observed_at: user.gh_rate_limit_observed_at.iso8601
+          }
+        end
+
+        def note_json(repository, note)
+          {
+            id: note.id,
+            body: note.body,
+            author: note.author,
+            created_at: note.created_at.iso8601,
+            delete_path: repository_note_path(repository, note)
+          }
+        end
+
+        def job_json(job)
+          {
+            id: job.id,
+            state: helpers.job_summary_state(job),
+            priority: job.priority,
+            issue_number: job.issue_number,
+            issue_title: job.issue_title.to_s,
+            job_path: job_path(job),
+            source: job_source_json(job),
+            pr_number: job.pr_number,
+            pr_url: helpers.job_pr_url(job),
+            external_pr_number: job.external_pr_number,
+            external_pr_url: helpers.external_pr_url(job),
+            current_step_caption: helpers.current_step_caption(job),
+            runs_count: job.runs.size,
+            updated_at: job.updated_at.iso8601
+          }
+        end
+
+        def job_source_json(job)
+          if job.cron?
+            task = job.scheduled_task
+            return {
+              label: task ? "scheduled: #{task.name}" : "scheduled task ##{job.scheduled_task_id}",
+              path: task ? scheduled_task_path(task) : nil,
+              external: false
+            }
+          end
+
+          if job.direct?
+            return { label: "Direct", path: nil, external: false }
+          end
+
+          {
+            label: "##{job.issue_number}",
+            path: helpers.job_issue_url(job),
+            external: true
+          }
+        end
+
+        def pagination_json(page:, total_jobs:, total_pages:, repository:)
+          first_item = total_jobs.zero? ? 0 : ((page - 1) * ::RepositoriesController::PER_PAGE) + 1
+          last_item = [ page * ::RepositoriesController::PER_PAGE, total_jobs ].min
+
+          {
+            page: page,
+            per_page: ::RepositoriesController::PER_PAGE,
+            total_jobs: total_jobs,
+            total_pages: total_pages,
+            first_item: first_item,
+            last_item: last_item,
+            previous_path: page > 1 ? repository_path(repository, page: page - 1) : nil,
+            next_path: page < total_pages ? repository_path(repository, page: page + 1) : nil
           }
         end
 

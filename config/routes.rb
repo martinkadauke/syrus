@@ -47,7 +47,7 @@ Rails.application.routes.draw do
         get "repositories/owners", to: "repositories#owners"
         get "repositories/repos", to: "repositories#repos"
         get "repositories/branches", to: "repositories#branches"
-        resources :repositories, only: %i[ index create update ] do
+        resources :repositories, only: %i[ index show create update ] do
           member do
             post :poll
             post :archive
