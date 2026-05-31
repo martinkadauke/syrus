@@ -59,21 +59,21 @@ health/storage internals.
 | repository GitHub issues | `repositories#issues`, `#comment_issue`, `#close_issue`, `#delegate_issue`, `#bulk_issues` | `spa-core` + `app-api-needed` | Keep single and bulk behavior in sync. Likely own React subroute under repository detail. |
 | repository notes | `repositories/notes#create/destroy` | `app-api-needed` | Small command endpoints. |
 | repository documents | `repositories/documents#index/create/destroy` | `spa-core` + `app-api-needed` | File/document list and upload/delete. |
-| repository scheduled task helpers | `repositories/scheduled_tasks#index/new/create/update/destroy` | `spa-core` + `app-api-needed` | Can share scheduled-task serializers with top-level scheduled task routes. |
+| repository scheduled task helpers | `spa#show` + `/api/v1/app/repositories/:id/scheduled_tasks*` | `spa-core` | Migrated to React for the per-repository scheduled-task tab and repository-scoped new form. Legacy ERB fallback lives at `/repositories/:id/scheduled_tasks/legacy`. |
 | `/chats/new`, `POST /chats` | `chats#new/create` | `spa-core` | Chat session creation route. |
 | `/chats/:id` | `chats#show` | `spa-core` | High-risk live route. Migrate after realtime foundation is proven. |
 | chat commands | `chats#messages`, `#message`, `#stop`, `#refresh`, `#reset`, `#create_bookmark`, `#add_attachment`, `#destroy_attachment`, `#confirm_proposal`, `#reject_proposal`, `#confirm_pending_action`, `#destroy_pending_action` | `app-api-needed` | Convert current Turbo/HTML responses to typed browser JSON. |
 | chat whiteboard | `chat_whiteboards#show/update` | `spa-core` + `app-api-needed` | Already JSON-shaped. Move under app API or adapt in place when chat migrates. |
-| `/scheduled_tasks` | `scheduled_tasks#index/show/new/edit/create/update/destroy` | `spa-core` | CRUD surface. |
-| scheduled task commands | `scheduled_tasks#pause`, `#resume`, `#fire_now` | `app-api-needed` | Command endpoints with updated scheduled task payload. |
+| `/scheduled_tasks` | `spa#show` + `/api/v1/app/scheduled_tasks*` | `spa-core` | Migrated to the React scheduled-task CRUD shell. Legacy ERB fallback lives at `/scheduled_tasks/legacy`. |
+| scheduled task commands | `/api/v1/app/scheduled_tasks/:id/*` | `spa-core` | React uses app API command endpoints for pause, resume, fire-now, update, and archive. Legacy HTML commands remain for fallback. |
 | `/cron_templates` | `spa#show` | `spa-core` | Migrated to the React cron-template CRUD shell. Legacy ERB fallback lives at `/cron_templates/legacy`. |
 | `/smart_folders` | `spa#show` | `spa-core` | Migrated to the React smart-folder manage shell. Legacy ERB fallback lives at `/smart_folders/legacy`; dashboard save forms still use `POST /smart_folders`. |
 | `/tags` | `spa#show` | `spa-core` | Migrated to the React tags shell. Legacy ERB fallback lives at `/tags/legacy`. |
 | `/filters/fk_options` | `filters/fk_options#index` | `app-api-needed` | Existing JSON-ish helper. Normalize response shape before React forms rely on it. |
-| `/credentials/edit`, `/credentials` | `credentials#edit/update` | `spa-core` | Account credentials/settings page. Needs careful encrypted attribute handling in request specs. |
-| credential token commands | `credentials#rotate_api_token`, `#revoke_api_token` | `app-api-needed` | Command endpoints returning masked token state. |
-| `/account/documents` | `account_documents#create/destroy` | `app-api-needed` | Upload/delete endpoints for credential page. |
-| `/settings` | `credentials#edit` | `spa-core` | Per-user credentials alias. Still migrates with the credentials page. |
+| `/credentials/edit`, `/credentials` | `spa#show` + `/api/v1/app/credentials` | `spa-core` | Migrated to the React credentials/settings page. Legacy ERB fallback lives at `/credentials/edit/legacy`; HTML mutations remain for fallback. |
+| credential token commands | `/api/v1/app/credentials/*api_token` | `spa-core` | React uses app API commands returning masked token state plus one-time plaintext on rotation. Legacy HTML commands remain for fallback. |
+| `/account/documents` | `/api/v1/app/credentials/documents` | `spa-core` | React uses app API upload/delete endpoints for credential-page documents. Legacy HTML controller remains for fallback. |
+| `/settings` | `spa#show` | `spa-core` | Migrated as the per-user credentials alias. `/settings/edit` remains the separate admin app-settings surface. |
 | `/settings/edit` | `spa#show` | `spa-admin` | Migrated to the React app settings shell. Legacy ERB fallback lives at `/settings/edit/legacy`. |
 | `PATCH /settings` | `settings#update` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/settings`. |
 | `/invitations` | `spa#show` | `spa-admin` | Migrated to the React invitations shell. Legacy ERB fallback lives at `/invitations/legacy`. |
