@@ -813,4 +813,48 @@ describe("App", () => {
     })
     expect(await screen.findByText("Smart folder updated.")).toBeInTheDocument()
   })
+
+  it("renders the cron templates route from the app API and links to detail", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          pr_pileup_policies: ["skip", "pile", "replace"],
+          templates: [
+            {
+              id: 5,
+              name: "Weekly dependency bump",
+              description: "Keep dependencies moving.",
+              cron_expression: "0 9 * * 1",
+              pr_pileup_policy: "skip",
+              enabled: true,
+              applied_tasks_count: 2,
+              created_at: "2026-05-30T12:00:00Z",
+              updated_at: "2026-05-30T12:00:00Z"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/cron_templates"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Cron templates" })).toBeInTheDocument()
+    expect(await screen.findByText("Weekly dependency bump")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Weekly dependency bump" })).toHaveAttribute("href", "/app-shell/cron_templates/5")
+    expect(screen.getByText("2 repos")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/cron_templates",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
 })

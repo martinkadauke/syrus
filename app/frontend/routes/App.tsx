@@ -12,6 +12,7 @@ import { AdminSettings } from "./AdminSettings"
 import { AdminStuck } from "./AdminStuck"
 import { AdminTranscript } from "./AdminTranscript"
 import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
+import { CronTemplateDetailRoute, CronTemplateFormRoute, CronTemplatesIndex } from "./CronTemplates"
 import { SmartFolders } from "./SmartFolders"
 import { Tags } from "./Tags"
 
@@ -35,6 +36,10 @@ export function App() {
       <Route path="/settings/edit" element={<AdminSettings />} />
       <Route path="/smart_folders" element={<SmartFolders />} />
       <Route path="/tags" element={<Tags />} />
+      <Route path="/cron_templates" element={<CronTemplatesIndex />} />
+      <Route path="/cron_templates/new" element={<CronTemplateFormRoute mode="new" />} />
+      <Route path="/cron_templates/:id" element={<CronTemplateDetailRoute />} />
+      <Route path="/cron_templates/:id/edit" element={<CronTemplateFormRoute mode="edit" />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
@@ -50,6 +55,10 @@ export function App() {
       <Route path="/app-shell/settings/edit" element={<AdminSettings />} />
       <Route path="/app-shell/smart_folders" element={<SmartFolders />} />
       <Route path="/app-shell/tags" element={<Tags />} />
+      <Route path="/app-shell/cron_templates" element={<CronTemplatesIndex />} />
+      <Route path="/app-shell/cron_templates/new" element={<CronTemplateFormRoute mode="new" />} />
+      <Route path="/app-shell/cron_templates/:id" element={<CronTemplateDetailRoute />} />
+      <Route path="/app-shell/cron_templates/:id/edit" element={<CronTemplateFormRoute mode="edit" />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )
