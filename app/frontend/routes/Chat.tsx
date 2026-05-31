@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useLocation, useNavigate, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
@@ -47,6 +47,7 @@ export function ChatRoute() {
   const location = useLocation()
   const id = params.id || ""
   const queryKey = chatQueryKey(id, location.search)
+  const prefix = routePrefix(location.pathname)
   const chat = useQuery({
     queryKey,
     queryFn: () => fetchChat(id, location.search),
@@ -57,7 +58,7 @@ export function ChatRoute() {
     <main aria-label="Chat" className="mx-auto max-w-7xl space-y-6 p-6">
       {chat.isPending ? <PanelMessage>Loading chat...</PanelMessage> : null}
       {chat.isError ? <PanelMessage tone="error">{errorMessage(chat.error, "Unable to load chat.")}</PanelMessage> : null}
-      {chat.isSuccess ? <ChatView payload={chat.data} queryKey={queryKey} /> : null}
+      {chat.isSuccess ? <ChatView payload={chat.data} prefix={prefix} queryKey={queryKey} /> : null}
     </main>
   )
 }
@@ -72,7 +73,7 @@ function appendSearch(path: string, search: string) {
   return search ? `${path}${search}` : path
 }
 
-function ChatView({ payload, queryKey }: { payload: ChatPayload; queryKey: ChatQueryKey }) {
+function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey }) {
   const queryClient = useQueryClient()
   const search = queryKey[2]
   const [notice, setNotice] = useState<string | null>(payload.message || null)
@@ -95,9 +96,7 @@ function ChatView({ payload, queryKey }: { payload: ChatPayload; queryKey: ChatQ
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="break-words text-3xl font-semibold text-gray-900">{title}</h1>
-          {payload.chat.repository ? (
-            <a className="mt-1 inline-block font-mono text-sm text-blue-600 underline hover:no-underline" href={payload.chat.repository.repository_path}>{payload.chat.repository.slug}</a>
-          ) : null}
+          {payload.chat.repository ? <ChatRepositoryLink prefix={prefix} repository={payload.chat.repository} /> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {payload.chat.repository ? (
@@ -115,7 +114,7 @@ function ChatView({ payload, queryKey }: { payload: ChatPayload; queryKey: ChatQ
               </button>
             </>
           ) : null}
-          <a className="rounded bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200" href={payload.paths.new_chat_path}>New chat</a>
+          <Link className="rounded bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200" to={withRoutePrefix(payload.paths.new_chat_path, prefix)}>New chat</Link>
         </div>
       </header>
 
@@ -126,18 +125,18 @@ function ChatView({ payload, queryKey }: { payload: ChatPayload; queryKey: ChatQ
       {!payload.chat_available ? (
         <section className="rounded border border-amber-200 bg-white p-6 text-sm text-amber-900">
           <div className="font-semibold">Claude credentials are required.</div>
-          <p className="mt-1">Chat uses Claude. Add a Claude OAuth token in <a className="underline hover:no-underline" href={payload.paths.credentials_path}>Credentials</a> to enable chat.</p>
+          <p className="mt-1">Chat uses Claude. Add a Claude OAuth token in <Link className="underline hover:no-underline" to={withRoutePrefix(payload.paths.credentials_path, prefix)}>Credentials</Link> to enable chat.</p>
         </section>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <section className="flex min-h-[34rem] min-w-0 flex-col gap-3">
             <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white">
-              <MessageStream payload={payload} queryKey={queryKey} onNotice={setNotice} />
+              <MessageStream payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
               <UsageOverlay payload={payload} />
             </div>
             <Compose payload={payload} queryKey={queryKey} onNotice={setNotice} />
           </section>
-          <SidePanel payload={payload} queryKey={queryKey} onNotice={setNotice} />
+          <SidePanel payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
         </div>
       )}
     </>
@@ -171,6 +170,14 @@ function PendingActions({ payload, queryKey, onNotice }: { payload: ChatPayload;
   )
 }
 
+function ChatRepositoryLink({ repository, prefix }: { repository: NonNullable<ChatPayload["chat"]["repository"]>; prefix: string }) {
+  if (!repository.repository_path) {
+    return <span className="mt-1 inline-block font-mono text-sm text-gray-600">{repository.slug}</span>
+  }
+
+  return <Link className="mt-1 inline-block font-mono text-sm text-blue-600 underline hover:no-underline" to={withRoutePrefix(repository.repository_path, prefix)}>{repository.slug}</Link>
+}
+
 function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: ChatPendingAction; disabled: boolean; onCancel: () => void; onConfirm: () => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-amber-200 bg-white px-3 py-2 text-sm">
@@ -183,7 +190,7 @@ function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: C
   )
 }
 
-function MessageStream({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const [olderMessages, setOlderMessages] = useState<ChatMessageItem[]>([])
   const [hasMoreOlder, setHasMoreOlder] = useState(payload.has_more_older)
   const displayedMessages = mergeChatMessages(olderMessages, payload.messages)
@@ -234,13 +241,13 @@ function MessageStream({ payload, queryKey, onNotice }: { payload: ChatPayload; 
       {displayedItems.map((item) => item.type === "tool_group" ? (
         <ToolGroup item={item} key={renderItemKey(item)} />
       ) : (
-        <ChatMessage item={item} key={renderItemKey(item)} payload={payload} queryKey={queryKey} onNotice={onNotice} />
+        <ChatMessage item={item} key={renderItemKey(item)} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
       ))}
     </div>
   )
 }
 
-function ChatMessage({ item, payload, queryKey, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   if (item.role === "user") {
     return (
       <article className="group/message relative flex justify-end pt-6" id={`chat_message_${item.id}`}>
@@ -256,7 +263,7 @@ function ChatMessage({ item, payload, queryKey, onNotice }: { item: Extract<Chat
       <article className="group/message relative pt-6" id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
         <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />
-        {item.proposal ? <ProposalCard proposal={item.proposal} queryKey={queryKey} onNotice={onNotice} /> : (
+        {item.proposal ? <ProposalCard proposal={item.proposal} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : (
           <div className="max-w-3xl rounded border border-gray-200 bg-white px-4 py-3">
             <Markdown className="chat-prose text-gray-800" text={item.text} />
           </div>
@@ -369,7 +376,7 @@ function SystemMessage({ item }: { item: ChatSystemMessage }) {
   )
 }
 
-function ProposalCard({ proposal, queryKey, onNotice }: { proposal: ChatProposal; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function ProposalCard({ proposal, prefix, queryKey, onNotice }: { proposal: ChatProposal; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const search = queryKey[2]
   const proposalAction = useMutation({
@@ -387,7 +394,7 @@ function ProposalCard({ proposal, queryKey, onNotice }: { proposal: ChatProposal
     return (
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-500">Confirmed proposal</span>
-        <a className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 hover:bg-blue-100" href={proposal.materialized_path}>{proposal.materialized_label}</a>
+        <Link className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 hover:bg-blue-100" to={withRoutePrefix(proposal.materialized_path, prefix)}>{proposal.materialized_label}</Link>
       </div>
     )
   }
@@ -532,12 +539,12 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
   )
 }
 
-function SidePanel({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function SidePanel({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <aside aria-label="Chat side panel" className="space-y-4 rounded border border-gray-200 bg-white p-4">
       <WhiteboardPanel payload={payload} />
       <Bookmarks payload={payload} />
-      <Attachments payload={payload} queryKey={queryKey} onNotice={onNotice} />
+      <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
     </aside>
   )
 }
@@ -739,7 +746,7 @@ function Bookmarks({ payload }: { payload: ChatPayload }) {
   )
 }
 
-function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function Attachments({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <>
       <div className="flex items-center justify-between gap-3">
@@ -765,7 +772,7 @@ function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayload; qu
           </div>
         ) : <div className="text-xs text-gray-400">No documents in scope.</div>}
       </section>
-      <AddAttachment payload={payload} queryKey={queryKey} onNotice={onNotice} />
+      <AddAttachment payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
     </>
   )
 }
@@ -805,7 +812,7 @@ function AttachmentGroup({ label, rows, queryKey, onNotice }: { label: string; r
   )
 }
 
-function AddAttachment({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function AddAttachment({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
@@ -831,7 +838,7 @@ function AddAttachment({ payload, queryKey, onNotice }: { payload: ChatPayload; 
     const next = new URLSearchParams()
     next.set("attachment_type", type)
     if (query.trim()) next.set("attachment_query", query.trim())
-    navigate(`${payload.chat.chat_path}?${next.toString()}`)
+    navigate(withRoutePrefix(`${payload.chat.chat_path}?${next.toString()}`, prefix))
   }
 
   return (
@@ -1114,6 +1121,17 @@ function stringValue(value: unknown) {
 
 function humanize(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function mergeChatMessages(...groups: ChatMessageItem[][]) {

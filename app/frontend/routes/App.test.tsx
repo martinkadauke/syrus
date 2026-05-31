@@ -2699,6 +2699,8 @@ describe("App", () => {
     expect(screen.getByText("Launch notes")).toBeInTheDocument()
     expect(screen.getByText("Version 2")).toBeInTheDocument()
     expect(screen.getByText("12.4k in", { exact: false })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "New chat" })).toHaveAttribute("href", "/app-shell/chats/new")
     fireEvent.change(screen.getByPlaceholderText("Ask about this repository..."), { target: { value: "Now inspect proposals" } })
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
 
@@ -2957,6 +2959,7 @@ describe("App", () => {
         expect.objectContaining({ method: "POST" })
       )
     })
+    expect(await screen.findByRole("link", { name: "Job #88" })).toHaveAttribute("href", "/app-shell/jobs/88")
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
     await waitFor(() => {
@@ -3031,6 +3034,7 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "New chat" })).toBeInTheDocument()
+    expect(await screen.findByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/app-shell/repositories")
     fireEvent.change(await screen.findByLabelText("Repository"), { target: { value: "3" } })
     fireEvent.change(screen.getByLabelText("First message"), { target: { value: "Map the forum" } })
     fireEvent.click(screen.getByRole("button", { name: "Create chat" }))
@@ -3046,6 +3050,47 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Repository is not available.")).toBeInTheDocument()
+  })
+
+  it("creates a new chat and navigates within the React shell", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Chat created.", redirect_to: "/chats/8", chat: chatPayload().chat }), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/8") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatFormPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(await screen.findByLabelText("Repository"), { target: { value: "3" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create chat" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ repository_id: "3", chat_message: { text: "" } })
+        })
+      )
+    })
+    expect(await screen.findByRole("main", { name: "Chat" })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/chats/8",
+      expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
+    )
   })
 })
 

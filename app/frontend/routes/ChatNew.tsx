@@ -1,10 +1,13 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { createChat, fetchNewChat, type NewChatPayload } from "../api/chats"
 
 export function ChatNewRoute() {
+  const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const form = useQuery({
     queryKey: ["chats", "new"],
     queryFn: fetchNewChat
@@ -14,22 +17,23 @@ export function ChatNewRoute() {
     <main aria-label="New chat" className="mx-auto max-w-3xl space-y-6 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-semibold text-gray-900">New chat</h1>
-        {form.isSuccess ? <a className="text-sm text-blue-600 underline hover:no-underline" href={form.data.repositories_path}>Repositories</a> : null}
+        {form.isSuccess ? <Link className="text-sm text-blue-600 underline hover:no-underline" to={withRoutePrefix(form.data.repositories_path, prefix)}>Repositories</Link> : null}
       </header>
 
       {form.isPending ? <PanelMessage>Loading chat form...</PanelMessage> : null}
       {form.isError ? <PanelMessage tone="error">{errorMessage(form.error, "Unable to load the chat form.")}</PanelMessage> : null}
-      {form.isSuccess ? <ChatForm payload={form.data} /> : null}
+      {form.isSuccess ? <ChatForm payload={form.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function ChatForm({ payload }: { payload: NewChatPayload }) {
+function ChatForm({ payload, prefix }: { payload: NewChatPayload; prefix: string }) {
+  const navigate = useNavigate()
   const [repositoryId, setRepositoryId] = useState("")
   const [text, setText] = useState("")
   const save = useMutation({
     mutationFn: () => createChat({ repositoryId, text }),
-    onSuccess: (created) => window.location.assign(created.redirect_to)
+    onSuccess: (created) => navigate(withRoutePrefix(created.redirect_to, prefix))
   })
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -85,6 +89,17 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 
 function inputClass() {
   return "mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function errorMessage(error: Error, fallback: string) {
