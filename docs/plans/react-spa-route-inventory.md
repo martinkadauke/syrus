@@ -58,7 +58,7 @@ health/storage internals.
 | repository commands | `repositories#poll`, `#archive`, `#unarchive`, `#retry_failed_jobs` | `app-api-needed` | Command endpoints, invalidate repository and dashboard queries. |
 | repository GitHub issues | `repositories#issues`, `#comment_issue`, `#close_issue`, `#delegate_issue`, `#bulk_issues` | `spa-core` + `app-api-needed` | Keep single and bulk behavior in sync. Likely own React subroute under repository detail. |
 | repository notes | `repositories/notes#create/destroy` | `app-api-needed` | Small command endpoints. |
-| repository documents | `repositories/documents#index/create/destroy` | `spa-core` + `app-api-needed` | File/document list and upload/delete. |
+| repository documents | `spa#show` + `/api/v1/app/repositories/:id/documents` | `spa-core` | Migrated to the React repository documents page with app API upload/delete. Legacy ERB fallback lives at `/repositories/:id/documents/legacy`. |
 | repository scheduled task helpers | `spa#show` + `/api/v1/app/repositories/:id/scheduled_tasks*` | `spa-core` | Migrated to React for the per-repository scheduled-task tab and repository-scoped new form. Legacy ERB fallback lives at `/repositories/:id/scheduled_tasks/legacy`. |
 | `/chats/new`, `POST /chats` | `chats#new/create` | `spa-core` | Chat session creation route. |
 | `/chats/:id` | `chats#show` | `spa-core` | High-risk live route. Migrate after realtime foundation is proven. |
