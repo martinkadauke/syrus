@@ -20,6 +20,7 @@ import { DirectJobNewRoute } from "./DirectJobNew"
 import { EpicFormRoute } from "./EpicForm"
 import { RepositoriesIndex } from "./Repositories"
 import { RepositoryDocumentsRoute } from "./RepositoryDocuments"
+import { RepositoryFormRoute } from "./RepositoryForm"
 import { RepositoryScheduledTasksRoute } from "./RepositoryScheduledTasks"
 import { ScheduledTaskDetailRoute, ScheduledTaskFormRoute, ScheduledTasksIndex } from "./ScheduledTasks"
 import { SmartFolders } from "./SmartFolders"
@@ -57,6 +58,8 @@ export function App() {
       <Route path="/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
       <Route path="/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
       <Route path="/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
+      <Route path="/repositories/new" element={<RepositoryFormRoute mode="new" />} />
+      <Route path="/repositories/:id/edit" element={<RepositoryFormRoute mode="edit" />} />
       <Route path="/repositories" element={<RepositoriesIndex />} />
       <Route path="/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="/epics/new" element={<EpicFormRoute mode="new" />} />
@@ -90,6 +93,8 @@ export function App() {
       <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
       <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
       <Route path="/app-shell/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
+      <Route path="/app-shell/repositories/new" element={<RepositoryFormRoute mode="new" />} />
+      <Route path="/app-shell/repositories/:id/edit" element={<RepositoryFormRoute mode="edit" />} />
       <Route path="/app-shell/repositories" element={<RepositoriesIndex />} />
       <Route path="/app-shell/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="/app-shell/epics/new" element={<EpicFormRoute mode="new" />} />
