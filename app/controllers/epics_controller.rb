@@ -1,31 +1,7 @@
 class EpicsController < ApplicationController
   PER_PAGE = 25
 
-  before_action :load_epic, except: %i[ index new create ]
-
-  def index
-    SmartFolder.ensure_builtins!
-    SmartFolder.ensure_epic_builtins!
-    @page = [ params[:page].to_i, 1 ].max
-    @smart_folder = smart_folder_from_params
-    @filter = ::Epics::Filter.from_params(params, smart_folder: @smart_folder, user: Current.user)
-    @schema = ::Filters::Schema.for(subject: :epic, user: Current.user)
-    @smart_folders = SmartFolder.for_subject(:epic).where(user: Current.user).order(:position, :id)
-    @builtin_smart_folders = SmartFolder.for_subject(:epic).built_in_sidebar_order
-    base_scope = Current.user.epics
-    default_scope = @filter.includes_archived_state? ? base_scope : base_scope.where.not(state: "archived")
-    @smart_folder_counts = smart_folder_counts(base_scope)
-    @primary_builtin_smart_folders, @more_builtin_smart_folders = split_builtin_smart_folders
-
-    @epics = @filter.apply(default_scope.includes(:repository))
-    @epics_total = @epics.count
-    @epics = @epics.order(updated_at: :desc, id: :desc).offset((@page - 1) * PER_PAGE).limit(PER_PAGE)
-  end
-
-  def show
-    @graph = EpicDependencyGraphRenderer.new(@epic).render
-    @jobs = @epic.jobs.includes(:repository, :dependencies, :dependent_links).order(:id)
-  end
+  before_action :load_epic
 
   def archive
     if @epic.archived?
@@ -33,31 +9,6 @@ class EpicsController < ApplicationController
     else
       @epic.archive!
       redirect_to epics_path, notice: "Epic archived."
-    end
-  end
-
-  def new
-    @epic = Current.user.epics.new
-  end
-
-  def create
-    @epic = Current.user.epics.new(epic_params)
-
-    if @epic.save
-      redirect_to epic_path(@epic)
-    else
-      render :new, status: :unprocessable_content
-    end
-  end
-
-  def edit
-  end
-
-  def update
-    if @epic.update(epic_params)
-      redirect_to epic_path(@epic)
-    else
-      render :edit, status: :unprocessable_content
     end
   end
 
@@ -108,45 +59,8 @@ class EpicsController < ApplicationController
 
   private
 
-  def smart_folder_from_params
-    return if params[:smart_folder_id].blank?
-
-    SmartFolder.for_subject(:epic).builtin.where(user_id: nil).find_by(id: params[:smart_folder_id]) ||
-      SmartFolder.for_subject(:epic).where(user: Current.user).find_by(id: params[:smart_folder_id])
-  end
-
-  def smart_folder_counts(base_scope)
-    (@builtin_smart_folders + @smart_folders).to_h do |folder|
-      [ folder.id, ::Epics::Filter.from_tree(folder.filter, user: Current.user).apply(base_scope).count ]
-    end
-  end
-
-  def split_builtin_smart_folders
-    primary = []
-    more = []
-
-    @builtin_smart_folders.each do |folder|
-      case folder.visibility
-      when :always
-        primary << folder
-      when :on_demand
-        more << folder
-      when :when_present
-        primary << folder if @smart_folder_counts[folder.id].to_i.positive? || @smart_folder == folder
-      else
-        primary << folder
-      end
-    end
-
-    [ primary, more ]
-  end
-
   def load_epic
     @epic = Current.user.epics.includes(:repository).find(params[:id])
-  end
-
-  def epic_params
-    params.require(:epic).permit(:title, :description, :repository_id, :github_issue_url)
   end
 
   def respond_to_state_update

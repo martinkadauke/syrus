@@ -106,17 +106,6 @@ RSpec.describe "Epics", type: :request do
       expect(response).to be_successful
       expect(response.body).to include('id="syrus-spa-root"')
     end
-
-    it "keeps the legacy form fallback" do
-      sign_in_as(user)
-      repo
-
-      get legacy_new_epic_path
-
-      expect(response).to be_successful
-      expect(response.body).to include("New Epic")
-      expect(response.body).to include("acme/widgets")
-    end
   end
 
   describe "GET /epics/:id/edit" do
@@ -129,16 +118,25 @@ RSpec.describe "Epics", type: :request do
       expect(response).to be_successful
       expect(response.body).to include('id="syrus-spa-root"')
     end
+  end
 
-    it "keeps the legacy form fallback" do
-      sign_in_as(user)
-      epic = Factories.epic(user: user, repository: repo, title: "Raise the forum")
-
-      get legacy_edit_epic_path(epic)
-
-      expect(response).to be_successful
-      expect(response.body).to include("Edit Epic")
-      expect(response.body).to include("Raise the forum")
+  describe "legacy Epic page endpoints" do
+    it "does not route retired HTML page and form endpoints" do
+      expect {
+        Rails.application.routes.recognize_path("/epics/new/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/epics/1/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/epics/1/edit/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/epics", method: :post)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/epics/1", method: :patch)
+      }.to raise_error(ActionController::RoutingError)
     end
   end
 
@@ -352,61 +350,7 @@ RSpec.describe "Epics", type: :request do
     end
   end
 
-  describe "GET /epics/:id/legacy" do
-    it "shows the dependency graph expanded for small Epics" do
-      sign_in_as(user)
-      epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
-      blocker_epic = Factories.epic(user: user, repository: repo, title: "Deliver marble")
-      EpicDependency.create!(epic: epic, depends_on_epic: blocker_epic, derived: false)
-
-      get legacy_epic_path(epic)
-
-      expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Restore forum")
-      expect(response.body).to include("Dependency graph")
-      expect(response.body).to include("data-controller=\"mermaid-graph\"")
-      expect(response.body).to include("(1 epic dep, 0 job blockers)")
-      expect(response.body).to match(/<details[^>]*open[^>]*>.*Dependency graph/m)
-    end
-
-    it "shows the empty state when an Epic has no external dependencies" do
-      sign_in_as(user)
-      epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
-      Factories.job_record(user: user, repository: repo, epic: epic, issue_number: 20, issue_title: "Survey")
-
-      get legacy_epic_path(epic)
-
-      expect(response.body).to include("No external dependencies")
-      expect(response.body).not_to include("data-controller=\"mermaid-graph\"")
-    end
-
-    it "links child Job titles to their Job pages" do
-      sign_in_as(user)
-      epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
-      job = Factories.job_record(user: user, repository: repo, epic: epic, issue_number: 20, issue_title: "Survey forum")
-
-      get legacy_epic_path(epic)
-
-      document = Nokogiri::HTML(response.body)
-      title_link = document.at_css("a[href='#{job_path(job)}']")
-      expect(title_link.text).to eq("Survey forum")
-    end
-
-    it "renders only the currently allowed state transitions" do
-      sign_in_as(user)
-      epic = Factories.epic(user: user, repository: repo, title: "Restore forum", state: "ready")
-
-      get legacy_epic_path(epic)
-
-      document = Nokogiri::HTML(response.body)
-      state_forms = document.css("form[action='#{state_epic_path(epic)}']")
-      target_states = state_forms.css("input[name='target_state']").map { |input| input["value"] }
-      button_labels = state_forms.css("button").map { |button| button.text.squish }
-
-      expect(target_states).to contain_exactly("in_progress", "archived")
-      expect(button_labels).to contain_exactly("Start", "Archive")
-    end
-
+  describe "GET /epics/:id/graph" do
     it "renders a drawer graph frame for Kanban cards" do
       sign_in_as(user)
       epic = Factories.epic(user: user, repository: repo, title: "Restore forum")
@@ -426,92 +370,9 @@ RSpec.describe "Epics", type: :request do
       epic = Factories.epic(user: other)
       sign_in_as(user)
 
-      get legacy_epic_path(epic)
+      get graph_epic_path(epic)
 
       expect(response).to have_http_status(:not_found)
-    end
-  end
-
-  describe "POST /epics" do
-    it "creates an epic belonging to the current user and redirects to its show page" do
-      sign_in_as(user)
-
-      expect {
-        post epics_path, params: {
-          epic: {
-            title: "Raise the forum",
-            description: "Install tasteful columns.",
-            repository_id: repo.id,
-            github_issue_url: "https://github.com/acme/widgets/issues/12"
-          }
-        }
-      }.to change { user.epics.count }.by(1)
-
-      epic = user.epics.order(:id).last
-      expect(epic.title).to eq("Raise the forum")
-      expect(epic.description).to eq("Install tasteful columns.")
-      expect(epic.repository).to eq(repo)
-      expect(epic.github_issue_url).to eq("https://github.com/acme/widgets/issues/12")
-      expect(response).to redirect_to(epic_path(epic))
-    end
-
-    it "re-renders new with an error when title is missing" do
-      sign_in_as(user)
-
-      expect {
-        post epics_path, params: {
-          epic: {
-            title: "",
-            repository_id: repo.id
-          }
-        }
-      }.not_to change { user.epics.count }
-
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.body).to include("New Epic")
-      expect(response.body).to include("Title can&#39;t be blank")
-    end
-  end
-
-  describe "PATCH /epics/:id" do
-    it "updates the epic and redirects to its show page" do
-      sign_in_as(user)
-      epic = Factories.epic(user: user, repository: repo, title: "Raise the forum")
-      other_repo = Factories.repository(user: user, owner: "acme", name: "marble")
-
-      patch epic_path(epic), params: {
-        epic: {
-          title: "Raise the basilica",
-          description: "Install louder columns.",
-          repository_id: other_repo.id,
-          github_issue_url: "https://github.com/acme/marble/issues/7"
-        }
-      }
-
-      expect(response).to redirect_to(epic_path(epic))
-      expect(epic.reload).to have_attributes(
-        title: "Raise the basilica",
-        description: "Install louder columns.",
-        repository_id: other_repo.id,
-        github_issue_url: "https://github.com/acme/marble/issues/7"
-      )
-    end
-
-    it "returns 404 for another user's epic" do
-      other_user = Factories.user
-      other_repo = Factories.repository(user: other_user)
-      epic = Factories.epic(user: other_user, repository: other_repo, title: "Private aqueduct")
-      sign_in_as(user)
-
-      patch epic_path(epic), params: {
-        epic: {
-          title: "Rename it",
-          repository_id: repo.id
-        }
-      }
-
-      expect(response).to have_http_status(:not_found)
-      expect(epic.reload.title).to eq("Private aqueduct")
     end
   end
 end
