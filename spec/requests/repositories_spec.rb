@@ -34,69 +34,22 @@ RSpec.describe "Repositories", type: :request do
       expect(response.body).to include('id="syrus-spa-root"')
     end
 
-    it "keeps repository form legacy fallbacks available" do
-      mine = Factories.repository(user: user, owner: "acme", name: "widgets")
-
-      get legacy_new_repository_path
-
-      expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Add repository")
-
-      get legacy_edit_repository_path(mine)
-
-      expect(response).to have_http_status(:ok)
-      expect(response.body).to include("Edit")
-      expect(response.body).to include("acme/widgets")
-    end
-
-    it "lists only the current user's repositories in the legacy fallback" do
-      mine = Factories.repository(user: user, owner: "acme", name: "widgets")
-      Factories.repository(user: other, owner: "globex", name: "things")
-
-      get legacy_repositories_path
-      expect(response.body).to include("acme/widgets")
-      expect(response.body).not_to include("globex/things")
-    end
-
-    it "creates with valid params" do
+    it "does not route retired repository list and form endpoints" do
       expect {
-        post repositories_path, params: { repository: {
-          owner: "acme", name: "widgets", default_branch: "main",
-          trigger_label: "syrus", polling_enabled: "1", prepare_enabled: "0", agent_provider: "codex",
-          auto_approve_mode: "if_graders_pass",
-          github_owner_id: "123", github_repository_id: "456"
-        } }
-      }.to change(user.repositories, :count).by(1)
-      expect(response).to redirect_to(repositories_path)
-      expect(user.repositories.last.agent_provider).to eq("codex")
-      expect(user.repositories.last.prepare_enabled).to be(false)
-      expect(user.repositories.last.auto_approve_mode).to eq("if_graders_pass")
-      expect(user.repositories.last.github_owner_id).to eq(123)
-      expect(user.repositories.last.github_repository_id).to eq(456)
-    end
-
-    it "updates the repository default agent and shows it on the index" do
-      mine = Factories.repository(user: user, owner: "acme", name: "widgets")
-
-      patch repository_path(mine), params: { repository: {
-        owner: "acme", name: "widgets", default_branch: "main",
-        trigger_label: "syrus", polling_enabled: "1", prepare_enabled: "0", agent_provider: "codex",
-        auto_approve_mode: "if_graders_pass_and_tagged_safe"
-      } }
-
-      expect(response).to redirect_to(repositories_path)
-      expect(mine.reload.agent_provider).to eq("codex")
-      expect(mine.prepare_enabled).to be(false)
-      expect(mine.auto_approve_mode).to eq("if_graders_pass_and_tagged_safe")
-
-      get legacy_repositories_path
-      expect(response.body).to include("agent Codex")
-    end
-
-    it "re-renders new on validation failure" do
-      post repositories_path, params: { repository: { owner: "bad owner", name: "" } }
-      expect(response).to have_http_status(:unprocessable_content)
-      expect(response.body).to include("can")  # error messages present
+        Rails.application.routes.recognize_path("/repositories/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/repositories/new/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/repositories/1/edit/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/repositories", method: :post)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/repositories/1", method: :patch)
+      }.to raise_error(ActionController::RoutingError)
     end
 
     describe "credential mode banner" do
@@ -157,13 +110,6 @@ RSpec.describe "Repositories", type: :request do
       end
     end
 
-    it "scopes edit/update to the current user's repos" do
-      foreign = Factories.repository(user: other, owner: "globex", name: "things")
-
-      get legacy_edit_repository_path(foreign)
-      expect(response).to have_http_status(:not_found).or redirect_to(repositories_path)
-    end
-
     it "has no destroy route — Archive is the only retire path" do
       mine = Factories.repository(user: user)
       # DELETE /repositories/:id is no longer routable (resources
@@ -215,16 +161,6 @@ RSpec.describe "Repositories", type: :request do
         expect(flash[:alert]).to match(/archived/)
       end
 
-      it "index splits active and archived repositories" do
-        active   = Factories.repository(user: user, owner: "active",   name: "one")
-        archived = Factories.repository(user: user, owner: "archived", name: "two")
-        archived.archive!
-
-        get legacy_repositories_path
-        expect(response.body).to include("active/one")
-        expect(response.body).to include("archived/two")
-        expect(response.body).to match(/Archived\s*\(\s*1\s*\)/)
-      end
     end
 
     describe "repository notes" do
@@ -317,49 +253,17 @@ RSpec.describe "Repositories", type: :request do
       end
     end
 
-    describe "GET /repositories/owners" do
-      it "returns user and orgs when token is present" do
-        allow(GithubClient).to receive(:for_user).and_return(
-          instance_double(GithubClient, accessible_owners: { user: "john", orgs: %w[org-a] })
-        )
-        get owners_repositories_path, headers: { "Accept" => "application/json" }
-        expect(response).to have_http_status(:ok)
-        body = JSON.parse(response.body)
-        expect(body["user"]).to eq("john")
-        expect(body["orgs"]).to eq([ "org-a" ])
-      end
-
-      it "returns no_token error when user has no github token" do
-        allow(GithubClient).to receive(:for_user).and_raise(ArgumentError)
-        get owners_repositories_path, headers: { "Accept" => "application/json" }
-        expect(JSON.parse(response.body)["error"]).to eq("no_token")
-      end
-    end
-
-    describe "GET /repositories/repos" do
-      it "returns sorted repo names for a valid owner" do
-        allow(GithubClient).to receive(:for_user).and_return(
-          instance_double(GithubClient, owner_repos: %w[alpha beta])
-        )
-        get repos_repositories_path, params: { owner: "john", owner_type: "user" },
-            headers: { "Accept" => "application/json" }
-        expect(response).to have_http_status(:ok)
-        body = JSON.parse(response.body)
-        expect(body["repos"]).to eq(%w[alpha beta])
-      end
-
-      it "returns missing_params error when owner is blank" do
-        get repos_repositories_path, headers: { "Accept" => "application/json" }
-        expect(JSON.parse(response.body)["error"]).to eq("missing_params")
-      end
-
-      it "returns not_found error when GitHub returns 404" do
-        allow(GithubClient).to receive(:for_user).and_return(
-          instance_double(GithubClient).tap { |d| allow(d).to receive(:owner_repos).and_raise(Octokit::NotFound) }
-        )
-        get repos_repositories_path, params: { owner: "ghost" },
-            headers: { "Accept" => "application/json" }
-        expect(JSON.parse(response.body)["error"]).to eq("not_found")
+    describe "legacy repository selector helpers" do
+      it "does not route retired repository form JSON helpers" do
+        expect {
+          Rails.application.routes.recognize_path("/repositories/owners", method: :get)
+        }.to raise_error(ActionController::RoutingError)
+        expect {
+          Rails.application.routes.recognize_path("/repositories/repos", method: :get)
+        }.to raise_error(ActionController::RoutingError)
+        expect {
+          Rails.application.routes.recognize_path("/repositories/branches", method: :get)
+        }.to raise_error(ActionController::RoutingError)
       end
     end
 

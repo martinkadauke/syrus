@@ -1,16 +1,10 @@
 class RepositoriesController < ApplicationController
   before_action :load_repository, only: %i[
-    show edit update poll archive unarchive retry_failed_jobs
+    show poll archive unarchive retry_failed_jobs
     issues comment_issue close_issue delegate_issue bulk_issues
   ]
 
   PER_PAGE = 20
-
-  def index
-    repos = Current.user.repositories.order(:owner, :name)
-    @active_repositories   = repos.active
-    @archived_repositories = repos.archived
-  end
 
   def show
     @tab = params.fetch(:tab, "overview").presence_in(%w[overview github_issues]) || "overview"
@@ -36,69 +30,6 @@ class RepositoriesController < ApplicationController
       .count
 
     load_github_issues if @tab == "github_issues"
-  end
-
-  def new
-    @repository = Current.user.repositories.build(default_branch: "main", trigger_label: "syrus")
-  end
-
-  def owners
-    result = GithubClient.for_user(Current.user).accessible_owners
-    render json: result
-  rescue ArgumentError
-    render json: { error: "no_token" }
-  rescue Octokit::Unauthorized, Octokit::Forbidden
-    render json: { error: "unauthorized" }
-  rescue StandardError
-    render json: { error: "error" }
-  end
-
-  def repos
-    owner = params[:owner].to_s.strip
-    return render json: { error: "missing_params" } if owner.blank?
-    owner_type = params[:owner_type].to_s.strip
-    result = GithubClient.for_user(Current.user).owner_repos(owner, owner_type: owner_type)
-    render json: { repos: result }
-  rescue ArgumentError
-    render json: { error: "no_token" }
-  rescue Octokit::NotFound, Octokit::Unauthorized, Octokit::Forbidden
-    render json: { error: "not_found" }
-  rescue StandardError
-    render json: { error: "error" }
-  end
-
-  def branches
-    owner = params[:owner].to_s.strip
-    name  = params[:name].to_s.strip
-    if owner.blank? || name.blank?
-      render json: { error: "missing_params" } and return
-    end
-    result = GithubClient.for_user(Current.user).repo_branches("#{owner}/#{name}")
-    render json: result
-  rescue Octokit::NotFound, Octokit::Unauthorized, Octokit::Forbidden
-    render json: { error: "not_found" }
-  rescue StandardError
-    render json: { error: "error" }
-  end
-
-  def create
-    @repository = Current.user.repositories.build(repository_params)
-    if @repository.save
-      redirect_to repositories_path, notice: "Repository #{@repository.slug} added."
-    else
-      render :new, status: :unprocessable_content
-    end
-  end
-
-  def edit
-  end
-
-  def update
-    if @repository.update(repository_params)
-      redirect_to repositories_path, notice: "Repository #{@repository.slug} updated."
-    else
-      render :edit, status: :unprocessable_content
-    end
   end
 
   def poll
@@ -226,15 +157,6 @@ class RepositoriesController < ApplicationController
   rescue Octokit::Error => e
     @issues = []
     flash.now[:alert] = "GitHub error: #{e.message}"
-  end
-
-  def repository_params
-    params.expect(repository: [
-      :owner, :name, :default_branch, :trigger_label,
-      :polling_enabled, :prepare_enabled, :agent_provider,
-      :pr_cost_footer_enabled, :auto_merge_enabled, :auto_approve_mode,
-      :github_repository_id, :github_owner_id
-    ])
   end
 
   def selected_issue_numbers

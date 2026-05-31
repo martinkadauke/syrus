@@ -234,20 +234,11 @@ Rails.application.routes.draw do
     end
   end
   get "repositories", to: "spa#show", as: :repositories
-  post "repositories", to: "repositories#create"
   get "repositories/new", to: "spa#show", as: :new_repository
-  get "repositories/new/legacy", to: "repositories#new", as: :legacy_new_repository
-  get "repositories/legacy", to: "repositories#index", as: :legacy_repositories
   get "repositories/:id/edit", to: "spa#show", as: :edit_repository, constraints: { id: /\d+/ }
-  get "repositories/:id/edit/legacy", to: "repositories#edit", as: :legacy_edit_repository, constraints: { id: /\d+/ }
   get "repositories/:id", to: "spa#show", as: :repository, constraints: { id: /\d+/ }
   get "repositories/:id/legacy", to: "repositories#show", as: :legacy_repository, constraints: { id: /\d+/ }
-  resources :repositories, except: %i[ index create destroy new edit show ] do
-    collection do
-      get :owners
-      get :repos
-      get :branches
-    end
+  resources :repositories, only: [] do
     member do
       post :poll
       post :archive
