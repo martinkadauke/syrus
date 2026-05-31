@@ -161,6 +161,8 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
 }
 
 export function PasswordRequestRoute() {
+  const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const [emailAddress, setEmailAddress] = useState("")
   const [notice, setNotice] = useState<string | null>(null)
   const submit = useMutation({
@@ -190,9 +192,12 @@ export function PasswordRequestRoute() {
             value={emailAddress}
           />
         </Field>
-        <button className={primaryButtonClass()} disabled={submit.isPending} type="submit">
-          {submit.isPending ? "Sending..." : "Email reset instructions"}
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button className={primaryButtonClass()} disabled={submit.isPending} type="submit">
+            {submit.isPending ? "Sending..." : "Email reset instructions"}
+          </button>
+          <Link className="text-sm text-gray-700 underline hover:no-underline" to={`${prefix}/session/new`}>Back to sign in</Link>
+        </div>
       </form>
     </AuthShell>
   )

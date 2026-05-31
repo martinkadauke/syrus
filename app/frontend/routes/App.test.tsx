@@ -207,6 +207,7 @@ describe("App", () => {
     )
 
     expect(screen.getByRole("main", { name: "Forgot your password?" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Back to sign in" })).toHaveAttribute("href", "/app-shell/session/new")
     fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "operator@example.com" } })
     fireEvent.click(screen.getByRole("button", { name: "Email reset instructions" }))
 
