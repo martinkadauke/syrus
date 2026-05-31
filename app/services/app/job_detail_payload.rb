@@ -1,0 +1,457 @@
+module App
+  class JobDetailPayload
+    include Rails.application.routes.url_helpers
+
+    def self.build(job:, user:)
+      new(job: job, user: user).payload
+    end
+
+    def self.timeline(job:)
+      new(job: job, user: job.user).timeline_payload
+    end
+
+    def initialize(job:, user:)
+      @job = job
+      @user = user
+    end
+
+    def payload
+      {
+        job: job_json,
+        repository: repository_json(@job.repository),
+        pinned: @user.job_pins.exists?(job: @job),
+        tags: @job.tags.ordered.map { |tag| tag_json(tag) },
+        tag_options: @user.tags.ordered.map { |tag| tag_json(tag) },
+        dependencies: @job.dependencies.includes(:created_by_user, depends_on_job: :repository).map { |dependency| dependency_json(dependency) },
+        dependents: @job.dependent_links.includes(job: :repository).map { |dependency| dependent_json(dependency) },
+        unsatisfied_dependencies: @job.unsatisfied_dependencies.map { |dependency| dependency_json(dependency) },
+        dependency_target_options: dependency_target_options,
+        attachments: @job.job_attachments.includes(file_attachment: :blob).map { |attachment| attachment_json(attachment) },
+        summary: summary_json,
+        landing_queue_entry: landing_queue_entry_json,
+        workflows: workflows_json,
+        actions: actions_json,
+        paths: paths_json
+      }
+    end
+
+    def timeline_payload
+      {
+        job_id: @job.id,
+        events: Jobs::Timeline.for(@job).map { |event| timeline_event_json(event) }
+      }
+    end
+
+    private
+
+    def job_json
+      {
+        id: @job.id,
+        kind: @job.kind,
+        state: @job.state,
+        summary_state: summary_state(@job),
+        priority: @job.priority,
+        validity: @job.validity,
+        triaging_reason: @job.triaging_reason,
+        credential_mode: @job.credential_mode,
+        agent_provider: @job.agent_provider,
+        stack_base: @job.stack_base,
+        parent_job_id: @job.parent_job_id,
+        effective_base_branch: @job.effective_base_branch,
+        issue_number: @job.issue_number,
+        issue_title: @job.issue_title,
+        issue_body: @job.issue_body,
+        branch_name: @job.branch_name,
+        pr_number: @job.pr_number,
+        pr_url: pr_url(@job.pr_number),
+        external_pr_number: @job.external_pr_number,
+        external_pr_url: pr_url(@job.external_pr_number),
+        pr_mergeable: @job.pr_mergeable,
+        pr_mergeable_checked_at: iso8601(@job.pr_mergeable_checked_at),
+        last_seen_comment_at: iso8601(@job.last_seen_comment_at),
+        last_feedback_addressed_at: iso8601(@job.last_feedback_addressed_at),
+        last_ci_handled_sha: @job.last_ci_handled_sha,
+        closure_reason: @job.closure_reason,
+        failure_count: @job.failure_count,
+        landing_failure_reason: @job.landing_failure_reason,
+        approved_at: iso8601(@job.approved_at),
+        approved_via: @job.approved_via,
+        approved_by_user_id: @job.approved_by_user_id,
+        approval_evidence: @job.approval_evidence,
+        invalidation_reason: @job.invalidation_reason,
+        invalidation_evidence: @job.invalidation_evidence,
+        scheduled_task_id: @job.scheduled_task_id,
+        epic_id: @job.epic_id,
+        total_cost_usd: @job.total_cost_usd.to_f,
+        billed_runs_count: @job.billed_runs_count,
+        workflows_count: @job.workflows.size,
+        runs_count: @job.runs.size,
+        any_active_run: @job.any_active_run?,
+        prepare_skipped: @job.prepare_skip_reason.present?,
+        prepare_skip_reason: @job.prepare_skip_reason,
+        created_at: iso8601(@job.created_at),
+        updated_at: iso8601(@job.updated_at),
+        started_at: iso8601(@job.started_at),
+        finished_at: iso8601(@job.finished_at)
+      }
+    end
+
+    def repository_json(repository)
+      {
+        id: repository.id,
+        slug: repository.slug,
+        owner: repository.owner,
+        name: repository.name,
+        default_branch: repository.default_branch,
+        auto_merge_enabled: repository.auto_merge_enabled,
+        approval_propagates_to_github: repository.approval_propagates_to_github,
+        credential_mode: repository.credential_mode,
+        repository_path: repository_path(repository)
+      }
+    end
+
+    def tag_json(tag)
+      {
+        id: tag.id,
+        name: tag.name,
+        color: tag.color
+      }
+    end
+
+    def dependency_json(dependency)
+      target = dependency.depends_on_job
+      {
+        id: dependency.id,
+        source: dependency.source,
+        manual: dependency.manual?,
+        pending: dependency.pending?,
+        succeeded: dependency.dependency_succeeded?,
+        unresolved_slug: dependency.unresolved_slug,
+        created_by_user_id: dependency.created_by_user_id,
+        depends_on_job: target && dependency_job_json(target)
+      }
+    end
+
+    def dependent_json(dependency)
+      {
+        id: dependency.id,
+        source: dependency.source,
+        job: dependency_job_json(dependency.job)
+      }
+    end
+
+    def dependency_job_json(job)
+      {
+        id: job.id,
+        kind: job.kind,
+        state: job.state,
+        summary_state: summary_state(job),
+        repository_slug: job.repository.slug,
+        issue_number: job.issue_number,
+        issue_title: job.issue_title,
+        branch_name: job.branch_name,
+        pr_number: job.pr_number,
+        job_path: job_path(job)
+      }
+    end
+
+    def dependency_target_options
+      jobs = @user.jobs
+                  .includes(:repository)
+                  .where.not(id: @job.id)
+                  .order(created_at: :desc, id: :desc)
+
+      seen_issues = {}
+      current_issue_key = @job.issue? && @job.issue_number.present? ? [ @job.repository_id, @job.issue_number ] : nil
+      jobs.each_with_object([]) do |job, options|
+        if job.issue? && job.issue_number.present?
+          issue_key = [ job.repository_id, job.issue_number ]
+          next if issue_key == current_issue_key
+          next if seen_issues[issue_key]
+
+          seen_issues[issue_key] = true
+          options << { label: dependency_target_label(job), value: "issue:#{job.repository_id}:#{job.issue_number}" }
+        else
+          options << { label: dependency_target_label(job), value: "job:#{job.id}" }
+        end
+      end
+    end
+
+    def dependency_target_label(job)
+      if job.issue? && job.issue_number.present?
+        title = job.issue_title.to_s.strip
+        title = " - #{title}" if title.present?
+        "#{job.repository.slug} ##{job.issue_number}#{title} (Job ##{job.id})"
+      else
+        title = job.issue_title.to_s.strip.presence || job.kind.titleize
+        "#{job.repository.slug} Job ##{job.id} - #{title}"
+      end
+    end
+
+    def attachment_json(attachment)
+      file = attachment.file if attachment.file.attached?
+      {
+        id: attachment.id,
+        kind: attachment.kind,
+        attachment_type: attachment.attachment_type,
+        title: attachment.title,
+        filename: attachment.filename,
+        content_type: attachment.content_type,
+        byte_size: attachment.byte_size,
+        google_doc_url: attachment.google_doc_url,
+        uploaded_file: attachment.uploaded_file?,
+        file_path: file ? rails_blob_path(file, only_path: true) : nil,
+        created_at: iso8601(attachment.created_at),
+        app_delete_path: "/api/v1/app/jobs/#{@job.id}/attachments/#{attachment.id}"
+      }
+    end
+
+    def summary_json
+      run = @job.runs.select { |candidate| candidate.agent_summary.present? }.last
+      return unless run
+
+      {
+        run_id: run.id,
+        text: run.agent_summary,
+        finished_at: iso8601(run.finished_at)
+      }
+    end
+
+    def landing_queue_entry_json
+      entry = LandingQueueProcessor.entries(@user.jobs).find { |candidate| candidate.job_id == @job.id }
+      return unless entry
+
+      {
+        position: entry.position,
+        blocked_reason: entry.blocked_reason
+      }
+    end
+
+    def workflows_json
+      @job.workflows.includes(steps: { runs: [ :claude_session, :run_diagnostic, :run_health_snapshots, :job_logs ] }).order(:created_at).map do |workflow|
+        {
+          id: workflow.id,
+          trigger_kind: workflow.trigger_kind,
+          agent_provider: workflow.agent_provider,
+          state: workflow.state,
+          failure_count: workflow.failure_count,
+          artifacts: workflow.artifacts,
+          cleaned_up_at: iso8601(workflow.cleaned_up_at),
+          retry_available: workflow.retry_available?,
+          started_at: iso8601(workflow.started_at),
+          finished_at: iso8601(workflow.finished_at),
+          created_at: iso8601(workflow.created_at),
+          updated_at: iso8601(workflow.updated_at),
+          app_retry_step_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/retry_step",
+          app_push_commits_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/push_commits",
+          steps: workflow.steps.order(:position).map { |step| step_json(step, workflow: workflow) }
+        }
+      end
+    end
+
+    def step_json(step, workflow:)
+      {
+        id: step.id,
+        kind: step.kind,
+        position: step.position,
+        iteration: step.iteration,
+        loop_id: step.loop_id,
+        state: step.state,
+        started_at: iso8601(step.started_at),
+        finished_at: iso8601(step.finished_at),
+        created_at: iso8601(step.created_at),
+        updated_at: iso8601(step.updated_at),
+        details: step.details.presence,
+        latest: step == workflow.steps.last,
+        runs: step.runs.order(:created_at).map { |run| run_json(run, workflow: workflow) }
+      }
+    end
+
+    def run_json(run, workflow:)
+      session = run.claude_session
+      {
+        id: run.id,
+        state: run.state,
+        trigger_kind: run.trigger_kind,
+        agent_provider: run.agent_provider,
+        agent_outcome: run.agent_outcome,
+        agent_turns: run.agent_turns,
+        agent_pr_title: run.agent_pr_title,
+        agent_summary: run.agent_summary,
+        parent_session_id: run.parent_session_id,
+        head_sha: run.head_sha,
+        iteration: run.iteration,
+        started_at: iso8601(run.started_at),
+        last_heartbeat_at: iso8601(run.last_heartbeat_at),
+        finished_at: iso8601(run.finished_at),
+        created_at: iso8601(run.created_at),
+        updated_at: iso8601(run.updated_at),
+        cost_usd: run.cost_usd&.to_f,
+        input_tokens: run.input_tokens,
+        output_tokens: run.output_tokens,
+        cache_creation_input_tokens: run.cache_creation_input_tokens,
+        cache_read_input_tokens: run.cache_read_input_tokens,
+        agent_diff_present: run.agent_diff.present?,
+        agent_diff_bytes: run.agent_diff&.bytesize || 0,
+        job_log_count: run.job_logs.size,
+        rate_limited: run.job_logs.any? { |log| log.kind == "rate_limited" },
+        run_diagnostic: run_diagnostic_json(run.run_diagnostic),
+        health_snapshots: run.run_health_snapshots.ordered.map { |snapshot| health_snapshot_json(snapshot) },
+        agent_session: agent_session_json(session),
+        can_stop: run.may_cancel?,
+        can_diagnose: run.queued? || run.running?,
+        can_resume: %w[failed cancelled].include?(run.state) && session.present?,
+        app_stop_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/stop",
+        app_diagnose_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/diagnose",
+        app_resume_path: "/api/v1/app/jobs/#{@job.id}/resume",
+        grade_log_path: grade_log_path(run, workflow: workflow)
+      }
+    end
+
+    def run_diagnostic_json(diagnostic)
+      return unless diagnostic
+
+      base = {
+        id: diagnostic.id,
+        present: true,
+        created_at: iso8601(diagnostic.created_at)
+      }
+      return base unless @user.admin?
+
+      base.merge(
+        error_class: diagnostic.error_class,
+        error_message: diagnostic.error_message,
+        error_backtrace: diagnostic.error_backtrace,
+        repo_snapshot: diagnostic.repo_snapshot,
+        git_snapshot: diagnostic.git_snapshot,
+        environment_snapshot: diagnostic.environment_snapshot
+      )
+    end
+
+    def health_snapshot_json(snapshot)
+      {
+        id: snapshot.id,
+        health_status: snapshot.health_status,
+        hint: snapshot.hint,
+        run_state: snapshot.run_state,
+        heartbeat_age_seconds: snapshot.heartbeat_age_seconds,
+        last_log_at: iso8601(snapshot.last_log_at),
+        log_count: snapshot.log_count,
+        agent_turns: snapshot.agent_turns,
+        agent_diff_bytes: snapshot.agent_diff_bytes,
+        head_sha: snapshot.head_sha,
+        sq_job_state: snapshot.sq_job_state,
+        worktree_exists: snapshot.worktree_exists,
+        claude_process_running: snapshot.claude_process_running,
+        branch_on_origin: snapshot.branch_on_origin,
+        mcp_sidecar_alive: snapshot.mcp_sidecar_alive,
+        last_log_preview: snapshot.last_log_preview,
+        worktree_git_status: snapshot.worktree_git_status,
+        worktree_recent_commits: snapshot.worktree_recent_commits,
+        sq_error_class: snapshot.sq_error_class,
+        sq_error_message: snapshot.sq_error_message,
+        sq_error_backtrace: snapshot.sq_error_backtrace,
+        claude_process_info: snapshot.claude_process_info,
+        created_at: iso8601(snapshot.created_at)
+      }
+    end
+
+    def agent_session_json(session)
+      return unless session
+
+      {
+        session_id: session.session_id,
+        provider: session.provider,
+        transcript_pruned: session.transcript_jsonl.nil?,
+        transcript_bytes: session.transcript_jsonl&.bytesize,
+        transcript_lines: session.transcript_jsonl&.count("\n")
+      }
+    end
+
+    def grade_log_path(run, workflow:)
+      step = run.step
+      return unless step&.kind.in?(%w[grade grader grader_collect])
+
+      name = step.details.is_a?(Hash) ? step.details["name"] : nil
+      run_grade_log_job_path(@job, run_id: run.id, name: name, workflow_id: workflow.id)
+    end
+
+    def actions_json
+      latest_workflow = @job.latest_workflow
+      {
+        can_start: @job.direct? && @job.open? && @job.runs.empty?,
+        can_poll_feedback: @job.open? && @job.pr_number.present?,
+        can_rebase: (@job.pr_number.present? || @job.external_pr_number.present?) && !@job.workflows.active.where(trigger_kind: "rebase").exists?,
+        can_check_mergeability: @job.pr_number.present? || @job.external_pr_number.present?,
+        can_retry: @job.open? && !@job.any_active_run?,
+        can_retry_from_failed_step: latest_workflow&.retry_available? || false,
+        can_restart: !@job.any_active_run?,
+        can_cancel: @job.open?,
+        can_approve: @job.may_approve?,
+        can_unapprove: @job.may_unapprove?,
+        can_reopen: @job.closed?,
+        can_mark_valid: @job.validity_duplicate? || @job.validity_already_implemented?,
+        can_override_dependencies: @user.admin?,
+        feedback_agent_options: @job.alternate_configured_agent_providers,
+        rebase_agent_options: @job.alternate_configured_agent_providers,
+        retry_agent_options: @job.retry_with_agent_providers
+      }
+    end
+
+    def paths_json
+      {
+        job_path: job_path(@job),
+        source_path: source_job_path(@job),
+        app_detail_path: "/api/v1/app/jobs/#{@job.id}",
+        app_timeline_path: "/api/v1/app/jobs/#{@job.id}/timeline",
+        app_start_path: "/api/v1/app/jobs/#{@job.id}/start",
+        app_run_again_path: "/api/v1/app/jobs/#{@job.id}/run_again",
+        app_restart_path: "/api/v1/app/jobs/#{@job.id}/restart",
+        app_cancel_path: "/api/v1/app/jobs/#{@job.id}/cancel",
+        app_approve_path: "/api/v1/app/jobs/#{@job.id}/approve",
+        app_unapprove_path: "/api/v1/app/jobs/#{@job.id}/unapprove",
+        app_reopen_path: "/api/v1/app/jobs/#{@job.id}/reopen",
+        app_poll_feedback_path: "/api/v1/app/jobs/#{@job.id}/poll_feedback",
+        app_rebase_path: "/api/v1/app/jobs/#{@job.id}/rebase",
+        app_check_mergeability_path: "/api/v1/app/jobs/#{@job.id}/check_mergeability",
+        app_resume_path: "/api/v1/app/jobs/#{@job.id}/resume",
+        app_tags_path: "/api/v1/app/jobs/#{@job.id}/tags",
+        app_dependencies_path: "/api/v1/app/jobs/#{@job.id}/dependencies",
+        app_dependency_override_path: "/api/v1/app/jobs/#{@job.id}/dependencies/override",
+        app_stack_base_path: "/api/v1/app/jobs/#{@job.id}/stack_base",
+        app_mark_valid_path: "/api/v1/app/jobs/#{@job.id}/mark_valid",
+        app_attachments_path: "/api/v1/app/jobs/#{@job.id}/attachments",
+        app_pin_path: "/api/v1/app/jobs/#{@job.id}/pin"
+      }
+    end
+
+    def timeline_event_json(event)
+      {
+        at: iso8601(event.at),
+        kind: event.kind.to_s,
+        source: event.source,
+        transition_source: event.transition_source,
+        title: event.title,
+        detail: event.detail,
+        ref: event.ref
+      }
+    end
+
+    def summary_state(job)
+      return "preempted" if job.closure_reason == "preempted"
+      return "preempted" if job.closure_reason&.start_with?("external_pr_")
+
+      job.state
+    end
+
+    def pr_url(number)
+      return if number.blank?
+
+      "https://github.com/#{@job.repository.owner}/#{@job.repository.name}/pull/#{number}"
+    end
+
+    def iso8601(value)
+      value&.iso8601
+    end
+  end
+end
