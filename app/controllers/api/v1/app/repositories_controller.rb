@@ -2,6 +2,8 @@ module Api
   module V1
     module App
       class RepositoriesController < BaseController
+        PER_PAGE = 20
+
         def index
           render json: repositories_payload
         end
@@ -236,10 +238,10 @@ module Api
             .includes(:runs, :scheduled_task, workflows: :steps)
             .order(updated_at: :desc)
           total_jobs = repository.jobs.count
-          total_pages = [ (total_jobs / ::RepositoriesController::PER_PAGE.to_f).ceil, 1 ].max
+          total_pages = [ (total_jobs / PER_PAGE.to_f).ceil, 1 ].max
           jobs = jobs_scope
-            .limit(::RepositoriesController::PER_PAGE)
-            .offset((page - 1) * ::RepositoriesController::PER_PAGE)
+            .limit(PER_PAGE)
+            .offset((page - 1) * PER_PAGE)
 
           {
             message: message,
@@ -254,9 +256,6 @@ module Api
             paths: {
               new_job_path: new_job_path(repository_id: repository.id),
               edit_repository_path: edit_repository_path(repository),
-              poll_repository_path: poll_repository_path(repository),
-              archive_repository_path: archive_repository_path(repository),
-              retry_failed_jobs_repository_path: retry_failed_jobs_repository_path(repository),
               app_poll_repository_path: "/api/v1/app/repositories/#{repository.id}/poll",
               app_archive_repository_path: "/api/v1/app/repositories/#{repository.id}/archive",
               app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
@@ -517,12 +516,12 @@ module Api
         end
 
         def pagination_json(page:, total_jobs:, total_pages:, repository:)
-          first_item = total_jobs.zero? ? 0 : ((page - 1) * ::RepositoriesController::PER_PAGE) + 1
-          last_item = [ page * ::RepositoriesController::PER_PAGE, total_jobs ].min
+          first_item = total_jobs.zero? ? 0 : ((page - 1) * PER_PAGE) + 1
+          last_item = [ page * PER_PAGE, total_jobs ].min
 
           {
             page: page,
-            per_page: ::RepositoriesController::PER_PAGE,
+            per_page: PER_PAGE,
             total_jobs: total_jobs,
             total_pages: total_pages,
             first_item: first_item,

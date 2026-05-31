@@ -3940,9 +3940,6 @@ function repositoryDetailPayload() {
     paths: {
       new_job_path: "/jobs/new?repository_id=3",
       edit_repository_path: "/repositories/3/edit",
-      poll_repository_path: "/repositories/3/poll",
-      archive_repository_path: "/repositories/3/archive",
-      retry_failed_jobs_repository_path: "/repositories/3/retry_failed_jobs",
       app_poll_repository_path: "/api/v1/app/repositories/3/poll",
       app_archive_repository_path: "/api/v1/app/repositories/3/archive",
       app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/3/retry_failed_jobs",

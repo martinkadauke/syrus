@@ -191,6 +191,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "app_retry_failed_jobs_repository_path" => "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
       "app_repository_notes_path" => "/api/v1/app/repositories/#{repository.id}/notes"
     )
+    expect(body["paths"].keys).not_to include("poll_repository_path", "archive_repository_path", "retry_failed_jobs_repository_path")
   end
 
   it "creates and removes repository notes through the app API" do

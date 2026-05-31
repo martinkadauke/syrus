@@ -239,12 +239,6 @@ Rails.application.routes.draw do
   get "repositories/:id/edit", to: "spa#show", as: :edit_repository, constraints: { id: /\d+/ }
   get "repositories/:id", to: "spa#show", as: :repository, constraints: { id: /\d+/ }
   resources :repositories, only: [] do
-    member do
-      post :poll
-      post :archive
-      post :unarchive
-      post :retry_failed_jobs
-    end
     # Repository-scoped chat routes were retired — the chat surface is
     # the top-level /chats/new and /chats/:id SPA routes, backed by the
     # /api/v1/app/chats endpoints.
