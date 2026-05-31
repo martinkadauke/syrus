@@ -31,6 +31,13 @@ Rails.application.routes.draw do
         end
         get "jobs/new", to: "direct_jobs#new"
         post "jobs", to: "direct_jobs#create"
+        resources :repositories, only: %i[ index ] do
+          member do
+            post :poll
+            post :archive
+            post :unarchive
+          end
+        end
         get "repositories/:repository_id/documents", to: "repository_documents#index"
         post "repositories/:repository_id/documents", to: "repository_documents#create"
         delete "repository_documents/:id", to: "repository_documents#destroy"
