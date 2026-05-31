@@ -32,9 +32,12 @@ Rails.application.routes.draw do
         get "jobs/new", to: "direct_jobs#new"
         post "jobs", to: "direct_jobs#create"
         get "epics/new", to: "epics#new"
+        get "epics/:id", to: "epics#show", constraints: { id: /\d+/ }
         get "epics/:id/edit", to: "epics#edit", constraints: { id: /\d+/ }
         post "epics", to: "epics#create"
         patch "epics/:id", to: "epics#update", constraints: { id: /\d+/ }
+        patch "epics/:id/archive", to: "epics#archive", constraints: { id: /\d+/ }
+        patch "epics/:id/state", to: "epics#update_state", constraints: { id: /\d+/ }
         get "chats/new", to: "chats#new"
         post "chats", to: "chats#create"
         get "chats/:id", to: "chats#show", constraints: { id: /\d+/ }

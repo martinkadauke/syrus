@@ -2,6 +2,10 @@ module Api
   module V1
     module App
       class EpicsController < BaseController
+        def show
+          render json: detail_payload(find_epic)
+        end
+
         def new
           render json: form_payload(Current.user.epics.new)
         end
@@ -30,13 +34,69 @@ module Api
           end
         end
 
+        def archive
+          epic = find_epic
+          message = if epic.archived?
+            "Epic already archived."
+          else
+            epic.archive!
+            "Epic archived."
+          end
+
+          render json: detail_payload(epic.reload, message: message)
+        end
+
+        def update_state
+          epic = find_epic
+          transition_epic_state!(epic, params[:target_state].to_s, override: ActiveModel::Type::Boolean.new.cast(params[:override]))
+
+          render json: detail_payload(epic.reload, message: "Epic updated.")
+        rescue ArgumentError
+          render_error("unknown_state", "Unknown Epic state.", status: :unprocessable_content)
+        rescue UnavailableTransition
+          render_error("transition_not_allowed", "That Epic transition is not available.", status: :unprocessable_content)
+        end
+
         private
+
+        class UnavailableTransition < StandardError; end
 
         def form_payload(epic)
           {
             epic: epic_json(epic),
             repositories: Current.user.repositories.order(:name).map { |repository| repository_json(repository) },
             dashboard_epics_path: dashboard_epics_path
+          }
+        end
+
+        def detail_payload(epic, message: nil)
+          jobs = epic.jobs.includes(:repository, :dependencies, :dependent_links).order(:id).to_a
+          graph = EpicDependencyGraphRenderer.new(epic).render
+
+          {
+            message: message,
+            epic: detail_epic_json(epic, jobs: jobs),
+            summary: {
+              done_jobs_count: done_jobs_count(jobs),
+              total_jobs_count: jobs.size,
+              dependency_edge_count: epic.dependencies.size + epic.dependent_links.size,
+              blocked: epic.dependencies.any? { |dependency| !dependency.depends_on_epic.done? }
+            },
+            state_transitions: helpers.epic_state_transition_options(epic).map do |label, target_state|
+              {
+                label: label,
+                target_state: target_state,
+                confirm: target_state == "archived" ? "Archive this Epic?" : nil
+              }
+            end,
+            graph: graph_json(graph),
+            jobs: jobs.map { |job| job_json(job) },
+            paths: {
+              dashboard_epics_path: dashboard_epics_path,
+              edit_epic_path: edit_epic_path(epic),
+              app_state_path: "/api/v1/app/epics/#{epic.id}/state",
+              app_archive_path: "/api/v1/app/epics/#{epic.id}/archive"
+            }
           }
         end
 
@@ -59,6 +119,53 @@ module Api
           }
         end
 
+        def detail_epic_json(epic, jobs:)
+          {
+            id: epic.id,
+            number: epic.number,
+            display_number: epic.display_number,
+            title: epic.title.to_s,
+            description: epic.description.to_s,
+            state: epic.state,
+            github_issue_url: epic.github_issue_url.to_s,
+            updated_at: epic.updated_at&.iso8601,
+            archived: epic.archived?,
+            jobs_count: jobs.size,
+            epic_path: epic_path(epic),
+            repository: repository_json(epic.repository).merge(repository_path: repository_path(epic.repository))
+          }
+        end
+
+        def graph_json(graph)
+          {
+            empty: graph.empty?,
+            definition: graph.definition,
+            node_count: graph.node_count,
+            epic_dependency_count: graph.epic_dependency_count,
+            job_blocker_count: graph.job_blocker_count,
+            initially_open: graph.node_count <= 10
+          }
+        end
+
+        def job_json(job)
+          label = if job.direct?
+            "Direct"
+          elsif job.issue_number.present?
+            "##{job.issue_number}"
+          else
+            "Job ##{job.id}"
+          end
+
+          {
+            id: job.id,
+            label: label,
+            title: job.issue_title.to_s,
+            path: job_path(job),
+            state: job_summary_state(job),
+            repository_slug: job.repository.slug
+          }
+        end
+
         def repository_json(repository)
           {
             id: repository.id,
@@ -68,6 +175,39 @@ module Api
 
         def find_epic
           Current.user.epics.find(params[:id])
+        end
+
+        def transition_epic_state!(epic, target_state, override:)
+          if override
+            epic.override_state!(target_state)
+          elsif epic.backlog? && target_state == "ready" && epic.may_auto_ready?
+            epic.auto_ready!
+          elsif epic.ready? && target_state == "in_progress"
+            epic.start!
+          elsif epic.in_progress? && target_state == "ready"
+            epic.unstart!
+          elsif epic.in_progress? && target_state == "done" && epic.may_auto_complete?
+            epic.auto_complete!
+          elsif target_state == "archived" && epic.may_archive?
+            epic.archive!
+          elsif Epic::STATES.exclude?(target_state)
+            raise ArgumentError, "unknown Epic state: #{target_state}"
+          else
+            raise UnavailableTransition
+          end
+        end
+
+        def done_jobs_count(jobs)
+          jobs.count do |job|
+            job.closed? && Epic::MERGED_JOB_CLOSURE_REASONS.include?(job.closure_reason)
+          end
+        end
+
+        def job_summary_state(job)
+          return "preempted" if job.closure_reason == "preempted"
+          return "preempted" if job.closure_reason&.start_with?("external_pr_")
+
+          job.state
         end
 
         def epic_params

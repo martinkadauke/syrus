@@ -53,6 +53,113 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
     )
   end
 
+  it "returns the Epic detail payload with child Jobs and dependency graph data" do
+    sign_in_as(user)
+    epic = Factories.epic(
+      user: user,
+      repository: repository,
+      title: "Raise the forum",
+      description: "Build **columns**.",
+      state: "ready"
+    )
+    blocker = Factories.epic(user: user, repository: repository, title: "Deliver marble", state: "done")
+    EpicDependency.create!(epic: epic, depends_on_epic: blocker, derived: false)
+    job = Factories.job_record(
+      user: user,
+      repository: repository,
+      epic: epic,
+      issue_number: 12,
+      issue_title: "Survey forum",
+      state: "closed",
+      closure_reason: "pr_merged"
+    )
+
+    get "/api/v1/app/epics/#{epic.id}"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body.dig("epic", "display_number")).to eq(epic.display_number)
+    expect(body.dig("epic", "description")).to eq("Build **columns**.")
+    expect(body.dig("epic", "repository")).to include("slug" => "acme/widgets", "repository_path" => repository_path(repository))
+    expect(body["summary"]).to include(
+      "done_jobs_count" => 1,
+      "total_jobs_count" => 1,
+      "dependency_edge_count" => 1,
+      "blocked" => false
+    )
+    expect(body["state_transitions"]).to contain_exactly(
+      include("label" => "Start", "target_state" => "in_progress"),
+      include("label" => "Archive", "target_state" => "archived", "confirm" => "Archive this Epic?")
+    )
+    expect(body["graph"]).to include(
+      "empty" => false,
+      "node_count" => 2,
+      "epic_dependency_count" => 1,
+      "job_blocker_count" => 0,
+      "initially_open" => true
+    )
+    expect(body.dig("graph", "definition")).to include("flowchart LR", "Deliver marble")
+    expect(body["jobs"]).to contain_exactly(include(
+      "id" => job.id,
+      "label" => "#12",
+      "title" => "Survey forum",
+      "path" => job_path(job),
+      "state" => "closed",
+      "repository_slug" => "acme/widgets"
+    ))
+    expect(body["paths"]).to include(
+      "dashboard_epics_path" => dashboard_epics_path,
+      "edit_epic_path" => edit_epic_path(epic),
+      "app_state_path" => "/api/v1/app/epics/#{epic.id}/state",
+      "app_archive_path" => "/api/v1/app/epics/#{epic.id}/archive"
+    )
+  end
+
+  it "advances Epic state through the app API and returns a refreshed detail payload" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, state: "ready")
+    job = Factories.job_record(user: user, repository: repository, epic: epic, state: "blocked_by_epic")
+
+    expect {
+      patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "in_progress" }
+    }.to change(Run, :count).by(1)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include("message" => "Epic updated.")
+    expect(parse_body.dig("epic", "state")).to eq("in_progress")
+    expect(epic.reload).to be_in_progress
+    expect(job.reload).to be_queued
+  end
+
+  it "rejects unavailable and unknown app API Epic state transitions" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, state: "backlog")
+
+    patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "done" }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("transition_not_allowed")
+    expect(epic.reload).to be_backlog
+
+    patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "defenestrated" }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("unknown_state")
+    expect(epic.reload).to be_backlog
+  end
+
+  it "archives an Epic through the app API" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, state: "ready")
+
+    patch "/api/v1/app/epics/#{epic.id}/archive"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include("message" => "Epic archived.")
+    expect(parse_body.dig("epic", "state")).to eq("archived")
+    expect(epic.reload).to be_archived
+  end
+
   it "creates an epic and returns its redirect path" do
     sign_in_as(user)
 
@@ -131,8 +238,14 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
     get "/api/v1/app/epics/#{epic.id}/edit"
     expect(response).to have_http_status(:not_found)
 
+    get "/api/v1/app/epics/#{epic.id}"
+    expect(response).to have_http_status(:not_found)
+
     patch "/api/v1/app/epics/#{epic.id}", params: { epic: { title: "Rename it", repository_id: repository.id } }
     expect(response).to have_http_status(:not_found)
     expect(epic.reload.title).to eq("Private aqueduct")
+
+    patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "ready" }
+    expect(response).to have_http_status(:not_found)
   end
 end
