@@ -26,7 +26,7 @@ module Api
           private
 
           def payload
-            ::Admin::SpawnedProcesses::Payload.new(params: params)
+            ::Admin::SpawnedProcesses::Payload.new(params: params, user: Current.user)
           end
         end
       end

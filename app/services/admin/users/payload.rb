@@ -7,11 +7,16 @@ module Admin
       end
 
       def index
-        filter = ::Admin::Users::Filter.from_params(params, user: actor)
-        users = filter.apply(User.all).order(:email_address).limit(500)
+        SmartFolder.ensure_admin_user_builtins!
+        active_folder = active_smart_folder
+        filter = ::Admin::Users::Filter.from_params(params, smart_folder: active_folder, user: actor)
+        base_scope = User.all
+        users = filter.apply(base_scope).order(:email_address).limit(500)
         {
           filters: filter.active_filters,
           count: users.size,
+          active_smart_folder_id: active_folder&.id,
+          smart_folders: smart_folders(base_scope, active_folder),
           users: users.map { |user| serialize_user_row(user) }
         }
       end
@@ -37,6 +42,20 @@ module Admin
       private
 
       attr_reader :params, :actor
+
+      def active_smart_folder
+        ::Admin::SmartFolderNavigation.active_folder(subject: :admin_user, user: actor, params: params)
+      end
+
+      def smart_folders(base_scope, active_folder)
+        ::Admin::SmartFolderNavigation.new(
+          subject: :admin_user,
+          user: actor,
+          active_folder: active_folder,
+          base_scope: base_scope,
+          filter_class: ::Admin::Users::Filter
+        ).folders
+      end
 
       def serialize_user_row(user)
         {

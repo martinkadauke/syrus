@@ -1,7 +1,7 @@
 module Admin
   module SpawnedProcesses
     class Filter
-      LEGACY_URL_KEYS = %w[ state kind hostname run_id workflow_id ].freeze
+      LEGACY_URL_KEYS = %w[ state kind hostname run_id workflow_id since ].freeze
 
       def self.from_params(params, smart_folder: nil, user: nil)
         q_tree = Filters::QueryParam.decode(params[Filters::QueryParam::PARAM_NAME])
@@ -9,7 +9,7 @@ module Admin
         folder_tree = smart_folder&.filter.presence
 
         tree = [ folder_tree, q_tree, url_tree ].compact.reduce { |acc, next_tree| merge_and(acc, next_tree) }
-        default = tree.nil?
+        default = tree.nil? && !all_state_param?(params)
         new(tree || Filters::Ast.serialize(Filters::Ast::EMPTY), user: user, default: default)
       end
 
@@ -63,12 +63,19 @@ module Admin
         chips << chip("hostname", "is", params["hostname"]) if params["hostname"].present?
         chips << chip("run_id", "is", params["run_id"]) if params["run_id"].present?
         chips << chip("workflow_id", "is", params["workflow_id"]) if params["workflow_id"].present?
+        chips << chip("started_at", "after", params["since"]) if params["since"].present?
 
         return nil if chips.empty?
 
         { "and" => chips }
       end
       private_class_method :build_tree_from_url_params
+
+      def self.all_state_param?(params)
+        value = params.respond_to?(:[]) ? params[:state] || params["state"] : nil
+        value.to_s == "all"
+      end
+      private_class_method :all_state_param?
 
       def self.chip(field, op, value)
         { "field" => field, "op" => op, "value" => value }

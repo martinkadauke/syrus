@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import {
   fetchAdminUser,
   fetchAdminUsers,
@@ -13,6 +14,7 @@ import {
 
 export function AdminUsersIndex() {
   const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const basePath = location.pathname.startsWith("/app-shell") ? "/app-shell/admin/users" : "/admin/users"
   const users = useQuery({
     queryKey: ["admin", "users", location.search],
@@ -21,27 +23,33 @@ export function AdminUsersIndex() {
 
   return (
     <main aria-label="Admin users" className="mx-auto max-w-7xl space-y-6 p-6">
-      <header className="flex flex-col gap-3 border-b border-gray-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="border-b border-gray-200 pb-4">
         <div>
           <p className="text-xs font-medium uppercase text-gray-500">Admin</p>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">Users</h1>
         </div>
-        <nav aria-label="User filters" className="flex flex-wrap gap-2">
-          <Link className={filterClass(location.search === "")} to={basePath}>All</Link>
-          <Link className={filterClass(location.search.includes("gh_rate=low"))} to={`${basePath}?gh_rate=low`}>Low GH rate</Link>
-        </nav>
       </header>
 
-      <section className="rounded border border-gray-200 bg-white">
-        {users.isPending ? <PanelMessage>Loading users...</PanelMessage> : null}
-        {users.isError ? <UsersError error={users.error} /> : null}
-        {users.isSuccess ? (
-          <>
+      {users.isPending ? <PanelMessage>Loading users...</PanelMessage> : null}
+      {users.isError ? <UsersError error={users.error} /> : null}
+      {users.isSuccess ? (
+        <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <AdminSmartFolderNav
+            activeSmartFolderId={users.data.active_smart_folder_id}
+            allLabel="All users"
+            allPath={basePath}
+            ariaLabel="Admin user smart folders"
+            folders={users.data.smart_folders}
+            heading="Smart folders"
+            prefix={prefix}
+            subjectType="admin_user"
+          />
+          <section className="min-w-0 rounded border border-gray-200 bg-white">
             <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">{users.data.count} matching</div>
             <UsersTable basePath={basePath} users={users.data.users} />
-          </>
-        ) : null}
-      </section>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }
@@ -216,10 +224,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700" : "text-gray-600"}`}>{children}</div>
 }
 
-function filterClass(active: boolean) {
-  return `rounded border px-3 py-1.5 text-sm ${active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`
-}
-
 function tokenSummary(user: AdminUserRow) {
   const tokens = []
   if (user.has_github_token) tokens.push("gh")
@@ -239,4 +243,8 @@ function rateLimitLabel(user: AdminUserRow) {
 function formatDate(value: string | null) {
   if (!value) return "-"
   return new Date(value).toLocaleString()
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }

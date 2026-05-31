@@ -1,30 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
-import { Link, useLocation, useParams, useSearchParams } from "react-router-dom"
+import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import {
   fetchAdminProcess,
   fetchAdminProcesses,
   killAdminProcess,
-  type ProcessStateFilter,
   type SpawnedProcessPayload
 } from "../api/adminProcesses"
 
-const stateOptions: Array<{ label: string; value?: ProcessStateFilter }> = [
-  { label: "Active + recent" },
-  { label: "Running", value: "running" },
-  { label: "Finished", value: "finished" },
-  { label: "All", value: "all" }
-]
-
 export function AdminProcessesIndex() {
-  const [searchParams] = useSearchParams()
-  const state = processState(searchParams.get("state"))
   const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const basePath = location.pathname.startsWith("/app-shell") ? "/app-shell/admin/processes" : "/admin/processes"
   const processes = useQuery({
-    queryKey: ["admin", "processes", { state }],
-    queryFn: () => fetchAdminProcesses({ state })
+    queryKey: ["admin", "processes", location.search],
+    queryFn: () => fetchAdminProcesses(location.search)
   })
 
   return (
@@ -34,37 +26,28 @@ export function AdminProcessesIndex() {
         <h1 className="mt-1 text-2xl font-semibold text-gray-900">Processes</h1>
       </header>
 
-      <nav aria-label="Process state filters" className="flex flex-wrap gap-2">
-        {stateOptions.map((option) => {
-          const active = option.value === state || (!option.value && !state)
-          const to = option.value ? `${basePath}?state=${option.value}` : basePath
-
-          return (
-            <Link
-              className={`rounded border px-3 py-1.5 text-sm ${
-                active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-              }`}
-              key={option.label}
-              to={to}
-            >
-              {option.label}
-            </Link>
-          )
-        })}
-      </nav>
-
-      <section className="rounded border border-gray-200 bg-white">
-        {processes.isPending ? <PanelMessage>Loading processes...</PanelMessage> : null}
-        {processes.isError ? <ProcessError error={processes.error} /> : null}
-        {processes.isSuccess ? (
-          <>
+      {processes.isPending ? <PanelMessage>Loading processes...</PanelMessage> : null}
+      {processes.isError ? <ProcessError error={processes.error} /> : null}
+      {processes.isSuccess ? (
+        <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
+          <AdminSmartFolderNav
+            activeSmartFolderId={processes.data.active_smart_folder_id}
+            allLabel="Active + recent"
+            allPath={basePath}
+            ariaLabel="Admin process smart folders"
+            folders={processes.data.smart_folders}
+            heading="Processes"
+            prefix={prefix}
+            subjectType="spawned_process"
+          />
+          <section className="min-w-0 rounded border border-gray-200 bg-white">
             <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">
               {processes.data.running_total} running · {processes.data.processes.length} shown
             </div>
             <ProcessesTable basePath={basePath} processes={processes.data.processes} />
-          </>
-        ) : null}
-      </section>
+          </section>
+        </div>
+      ) : null}
     </main>
   )
 }
@@ -274,11 +257,6 @@ function withRoutePrefix(path: string, prefix: string) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700" : "text-gray-600"}`}>{children}</div>
-}
-
-function processState(value: string | null): ProcessStateFilter | undefined {
-  if (value === "running" || value === "finished" || value === "all") return value
-  return undefined
 }
 
 function formatDate(value: string | null) {

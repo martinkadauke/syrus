@@ -2,12 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import {
   fetchAdminQueue,
   isQueueTab,
   queueTabs,
   reapStaleRuns,
   type ActiveQueuePayload,
+  type AdminQueuePayload,
   type FailedQueuePayload,
   type PendingQueuePayload,
   type QueueFailure,
@@ -39,8 +41,8 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
   const location = useLocation()
   const queryClient = useQueryClient()
   const queue = useQuery({
-    queryKey: ["admin", "queue", tab],
-    queryFn: () => fetchAdminQueue(tab)
+    queryKey: ["admin", "queue", tab, location.search],
+    queryFn: () => fetchAdminQueue(tab, location.search)
   })
   const reaper = useMutation({
     mutationFn: reapStaleRuns,
@@ -50,6 +52,7 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
     }
   })
   const basePath = location.pathname.startsWith("/app-shell") ? "/app-shell/admin/queue" : "/admin/queue"
+  const prefix = routePrefix(location.pathname)
 
   return (
     <main aria-label="Admin queue" className="mx-auto max-w-7xl space-y-6 p-6">
@@ -91,12 +94,41 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
         <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">Unable to run stale-run reaper.</p>
       ) : null}
 
-      <section className="rounded border border-gray-200 bg-white">
-        {queue.isPending ? <PanelMessage>Loading queue...</PanelMessage> : null}
-        {queue.isError ? <QueueError error={queue.error} /> : null}
-        {queue.isSuccess ? <QueueTabPanel tab={tab} payload={queue.data} /> : null}
-      </section>
+      {queue.isPending ? <PanelMessage>Loading queue...</PanelMessage> : null}
+      {queue.isError ? <QueueError error={queue.error} /> : null}
+      {queue.isSuccess ? (
+        <QueueContent basePath={basePath} payload={queue.data} prefix={prefix} tab={tab} />
+      ) : null}
     </main>
+  )
+}
+
+function QueueContent({ basePath, payload, prefix, tab }: { basePath: string; payload: AdminQueuePayload; prefix: string; tab: QueueTab }) {
+  const smartFolders = "smart_folders" in payload ? payload.smart_folders : []
+  if (smartFolders.length === 0) {
+    return (
+      <section className="rounded border border-gray-200 bg-white">
+        <QueueTabPanel tab={tab} payload={payload} />
+      </section>
+    )
+  }
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
+      <AdminSmartFolderNav
+        activeSmartFolderId={"active_smart_folder_id" in payload ? payload.active_smart_folder_id : null}
+        allLabel="All queue"
+        allPath={`${basePath}/${tab}`}
+        ariaLabel="Admin queue smart folders"
+        folders={smartFolders}
+        heading="Queues"
+        prefix={prefix}
+        subjectType="admin_queue"
+      />
+      <section className="min-w-0 rounded border border-gray-200 bg-white">
+        <QueueTabPanel tab={tab} payload={payload} />
+      </section>
+    </div>
   )
 }
 
@@ -309,4 +341,8 @@ function formatArguments(value: unknown[] | null) {
   if (!value || value.length === 0) return "[]"
 
   return JSON.stringify(value)
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }

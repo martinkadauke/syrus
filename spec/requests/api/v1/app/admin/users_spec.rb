@@ -41,7 +41,31 @@ RSpec.describe "API: /api/v1/app/admin/users", type: :request do
     expect(body["users"].map { |user| user["id"] }).to include(low.id)
     expect(body["users"].map { |user| user["email_address"] }).not_to include("ok@example.com")
     expect(body["filters"]).to eq("gh_rate" => "low")
+    rate_folder = body["smart_folders"].find { |folder| folder["name"] == "Rate limit low" }
+    expect(rate_folder).to include(
+      "subject_type" => "admin_user",
+      "count" => 1,
+      "path" => a_string_matching(%r{\A/admin/users\?smart_folder_id=})
+    )
     expect(response.body).not_to include("ghp_secret")
+  end
+
+  it "applies admin user smart folders" do
+    sign_in_as(admin)
+    SmartFolder.ensure_admin_user_builtins!
+    missing_token = Factories.user(email_address: "missing@example.com", github_token: nil)
+    Factories.user(email_address: "token@example.com", github_token: "ghp_secret")
+    folder = SmartFolder.for_subject(:admin_user).find_by!(name: "Missing GitHub token")
+
+    get "/api/v1/app/admin/users", params: { smart_folder_id: folder.id }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["active_smart_folder_id"]).to eq(folder.id)
+    expect(body["users"].map { |user| user["id"] }).to include(missing_token.id)
+    expect(body["users"].map { |user| user["email_address"] }).not_to include("token@example.com")
+    active_folder = body["smart_folders"].find { |row| row["id"] == folder.id }
+    expect(active_folder).to include("active" => true, "count" => be >= 1)
   end
 
   it "returns user detail" do

@@ -1,4 +1,5 @@
 import { getJson, postJson } from "./client"
+import type { AdminSmartFolderPayload } from "./adminSmartFolders"
 
 export const queueTabs = ["active", "pending", "failed", "recurring", "workers"] as const
 
@@ -46,16 +47,16 @@ export type QueueProcess = {
   last_heartbeat_at: string | null
 }
 
-export type ActiveQueuePayload = {
+export type ActiveQueuePayload = AdminSmartFolderPayload & {
   jobs: QueueJob[]
 }
 
-export type PendingQueuePayload = {
+export type PendingQueuePayload = AdminSmartFolderPayload & {
   jobs: QueueJob[]
   total: number
 }
 
-export type FailedQueuePayload = {
+export type FailedQueuePayload = AdminSmartFolderPayload & {
   since: string
   failures: QueueFailure[]
 }
@@ -80,8 +81,8 @@ export function isQueueTab(value: string | undefined): value is QueueTab {
   return queueTabs.includes(value as QueueTab)
 }
 
-export function fetchAdminQueue(tab: QueueTab) {
-  return getJson<AdminQueuePayload>(`/api/v1/app/admin/queue/${tab}`)
+export function fetchAdminQueue(tab: QueueTab, search = "") {
+  return getJson<AdminQueuePayload>(`/api/v1/app/admin/queue/${tab}${search}`)
 }
 
 export function reapStaleRuns() {

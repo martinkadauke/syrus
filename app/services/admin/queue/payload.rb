@@ -10,33 +10,49 @@ module Admin
       end
 
       def active
-        jobs = SolidQueue::Job
-          .joins(:claimed_execution)
+        SmartFolder.ensure_admin_queue_builtins!
+        base = SolidQueue::Job.joins(:claimed_execution)
+        active_folder = active_smart_folder
+        jobs = queue_filter(:active, active_folder)
+          .apply(base)
           .order("solid_queue_claimed_executions.created_at DESC")
           .limit(@per_page)
 
-        { jobs: jobs.map { |job| serialize_job(job, claimed_at: job.claimed_execution&.created_at) } }
+        smart_folder_payload(:active, base, active_folder).merge(
+          jobs: jobs.map { |job| serialize_job(job, claimed_at: job.claimed_execution&.created_at) }
+        )
       end
 
       def pending
+        SmartFolder.ensure_admin_queue_builtins!
+        active_folder = active_smart_folder
         base = SolidQueue::Job.joins(:ready_execution)
-        jobs = base.order("solid_queue_ready_executions.created_at ASC").limit(@per_page)
+        filtered = queue_filter(:pending, active_folder).apply(base)
+        jobs = filtered.order("solid_queue_ready_executions.created_at ASC").limit(@per_page)
 
-        { jobs: jobs.map { |job| serialize_job(job) }, total: base.count }
+        smart_folder_payload(:pending, base, active_folder).merge(
+          jobs: jobs.map { |job| serialize_job(job) },
+          total: filtered.count
+        )
       end
 
       def failed
+        SmartFolder.ensure_admin_queue_builtins!
         since = failed_since
-        failures = SolidQueue::FailedExecution
+        active_folder = active_smart_folder
+        base = SolidQueue::FailedExecution
           .includes(:job)
-          .where("created_at >= ?", since)
+          .references(:job)
+          .where(SolidQueue::FailedExecution.arel_table[:created_at].gteq(since))
+        failures = queue_filter(:failed, active_folder)
+          .apply(base)
           .order(created_at: :desc)
           .limit(@per_page)
 
-        {
+        smart_folder_payload(:failed, base, active_folder).merge(
           since: since.iso8601,
           failures: failures.map { |failure| serialize_failure(failure) }
-        }
+        )
       end
 
       def recurring
@@ -67,6 +83,28 @@ module Admin
       private
 
       attr_reader :params, :user
+
+      def active_smart_folder
+        ::Admin::SmartFolderNavigation.active_folder(subject: :admin_queue, user: user, params: params)
+      end
+
+      def queue_filter(tab, active_folder)
+        ::Admin::Queue::Filter.from_params(params, smart_folder: active_folder, user: user, tab: tab)
+      end
+
+      def smart_folder_payload(tab, base_scope, active_folder)
+        {
+          active_smart_folder_id: active_folder&.id,
+          smart_folders: ::Admin::SmartFolderNavigation.new(
+            subject: :admin_queue,
+            user: user,
+            active_folder: active_folder,
+            base_scope: base_scope,
+            filter_class: ::Admin::Queue::Filter,
+            path_context: { tab: tab }
+          ).folders
+        }
+      end
 
       def failed_since
         params[:since].present? ? Time.iso8601(params[:since]) : 24.hours.ago

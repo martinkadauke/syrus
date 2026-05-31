@@ -3,23 +3,24 @@ module Admin
     class Payload
       PER_PAGE = 100
 
-      def initialize(params:, per_page: PER_PAGE)
+      def initialize(params:, user:, per_page: PER_PAGE)
         @params = params
+        @user = user
         @per_page = per_page
       end
 
       def index
-        scope = SpawnedProcess.order(started_at: :desc).limit(@per_page)
-        scope = apply_state_filter(scope)
-        scope = scope.where(kind: params[:kind]) if SpawnedProcess::KINDS.include?(params[:kind])
-        scope = scope.where(hostname: params[:hostname]) if params[:hostname].present?
-        scope = scope.where(run_id: params[:run_id]) if params[:run_id].present?
-        scope = scope.where(workflow_id: params[:workflow_id]) if params[:workflow_id].present?
-        scope = scope.where("started_at >= ?", Time.zone.parse(params[:since])) if params[:since].present?
+        SmartFolder.ensure_spawned_process_builtins!
+        active_folder = active_smart_folder
+        base_scope = SpawnedProcess.all
+        filter = ::Admin::SpawnedProcesses::Filter.from_params(params, smart_folder: active_folder, user: user)
+        scope = filter.apply(base_scope).order(started_at: :desc).limit(@per_page)
 
         {
           processes: scope.to_a.map { |process| serialize(process) },
-          running_total: SpawnedProcess.running.count
+          running_total: SpawnedProcess.running.count,
+          active_smart_folder_id: active_folder&.id,
+          smart_folders: smart_folders(base_scope, active_folder)
         }
       end
 
@@ -37,16 +38,20 @@ module Admin
 
       private
 
-      attr_reader :params
+      attr_reader :params, :user
 
-      def apply_state_filter(scope)
-        case params[:state]
-        when "running"  then scope.running
-        when "finished" then scope.finished
-        when "all"      then scope
-        else
-          scope.where("finished_at IS NULL OR finished_at >= ?", 1.hour.ago)
-        end
+      def active_smart_folder
+        ::Admin::SmartFolderNavigation.active_folder(subject: :spawned_process, user: user, params: params)
+      end
+
+      def smart_folders(base_scope, active_folder)
+        ::Admin::SmartFolderNavigation.new(
+          subject: :spawned_process,
+          user: user,
+          active_folder: active_folder,
+          base_scope: base_scope,
+          filter_class: ::Admin::SpawnedProcesses::Filter
+        ).folders
       end
 
       def already_finished_payload(process)

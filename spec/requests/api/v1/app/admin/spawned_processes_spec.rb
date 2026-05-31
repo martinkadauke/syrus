@@ -47,6 +47,10 @@ RSpec.describe "API: /api/v1/app/admin/processes", type: :request do
     expect(response).to have_http_status(:ok)
     expect(parse_body["processes"].map { |process| process["id"] }).to include(running.id)
     expect(parse_body["running_total"]).to eq(SpawnedProcess.running.count)
+    expect(parse_body["smart_folders"].find { |folder| folder["name"] == "Running" }).to include(
+      "count" => 1,
+      "path" => a_string_matching(%r{\A/admin/processes\?smart_folder_id=})
+    )
   end
 
   it "filters the process inventory" do
@@ -58,6 +62,22 @@ RSpec.describe "API: /api/v1/app/admin/processes", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["processes"].map { |process| process["id"] }).to eq([ grader.id ])
+  end
+
+  it "applies spawned process smart folders" do
+    sign_in_as(admin)
+    SmartFolder.ensure_spawned_process_builtins!
+    running = fixture
+    fixture(started_at: 5.hours.ago, finished_at: 4.hours.ago, outcome: "succeeded", exit_status: 0)
+    folder = SmartFolder.for_subject(:spawned_process).find_by!(name: "Running")
+
+    get "/api/v1/app/admin/processes", params: { smart_folder_id: folder.id }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["active_smart_folder_id"]).to eq(folder.id)
+    expect(body["processes"].map { |process| process["id"] }).to eq([ running.id ])
+    expect(body["smart_folders"].find { |row| row["id"] == folder.id }).to include("active" => true, "count" => 1)
   end
 
   it "returns process detail with host metrics key" do

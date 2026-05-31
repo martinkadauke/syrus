@@ -1,4 +1,5 @@
 import { getJson, postJson } from "./client"
+import type { AdminSmartFolderPayload } from "./adminSmartFolders"
 
 export type ProcessStateFilter = "running" | "finished" | "all"
 
@@ -26,21 +27,13 @@ export type SpawnedProcessPayload = {
   host_metrics?: Record<string, unknown> | null
 }
 
-export type AdminProcessesPayload = {
+export type AdminProcessesPayload = AdminSmartFolderPayload & {
   processes: SpawnedProcessPayload[]
   running_total: number
 }
 
-export type ProcessFilters = {
-  state?: ProcessStateFilter
-}
-
-export function fetchAdminProcesses(filters: ProcessFilters = {}) {
-  const search = new URLSearchParams()
-  if (filters.state) search.set("state", filters.state)
-  const query = search.toString()
-
-  return getJson<AdminProcessesPayload>(`/api/v1/app/admin/processes${query ? `?${query}` : ""}`)
+export function fetchAdminProcesses(search = "") {
+  return getJson<AdminProcessesPayload>(`/api/v1/app/admin/processes${search}`)
 }
 
 export function fetchAdminProcess(id: string) {

@@ -785,6 +785,29 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
+          active_smart_folder_id: 1,
+          smart_folders: [
+            {
+              id: 1,
+              name: "Runs",
+              kind: "builtin",
+              subject_type: "admin_queue",
+              visibility: "always",
+              count: 1,
+              active: true,
+              path: "/admin/queue/active?smart_folder_id=1"
+            },
+            {
+              id: 2,
+              name: "Chat",
+              kind: "builtin",
+              subject_type: "admin_queue",
+              visibility: "always",
+              count: 0,
+              active: false,
+              path: "/admin/queue/active?smart_folder_id=2"
+            }
+          ],
           jobs: [
             {
               id: 12,
@@ -811,6 +834,8 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Admin queue" })).toBeInTheDocument()
     expect(await screen.findByText("RunJob")).toBeInTheDocument()
     expect(screen.getByText("runs")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Runs 1" })).toHaveAttribute("href", "/app-shell/admin/queue/active?smart_folder_id=1")
+    expect(screen.getByRole("link", { name: "All queue" })).toHaveAttribute("href", "/app-shell/admin/queue/active")
     expect(screen.getByRole("link", { name: "Failed" })).toHaveAttribute("href", "/app-shell/admin/queue/failed")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/queue/active",
@@ -870,6 +895,19 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
+          active_smart_folder_id: 3,
+          smart_folders: [
+            {
+              id: 3,
+              name: "Running",
+              kind: "builtin",
+              subject_type: "spawned_process",
+              visibility: "always",
+              count: 1,
+              active: true,
+              path: "/admin/processes?smart_folder_id=3"
+            }
+          ],
           running_total: 1,
           processes: [
             {
@@ -911,6 +949,7 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Admin processes" })).toBeInTheDocument()
     expect(await screen.findByText("claude --print")).toBeInTheDocument()
     expect(screen.getByText("worker-a")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Running 1" })).toHaveAttribute("href", "/app-shell/admin/processes?smart_folder_id=3")
     expect(screen.getByRole("link", { name: "Detail" })).toHaveAttribute("href", "/app-shell/admin/processes/8")
     expect(screen.getByRole("button", { name: "Kill" })).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -980,6 +1019,29 @@ describe("App", () => {
         JSON.stringify({
           filters: { gh_rate: "low" },
           count: 1,
+          active_smart_folder_id: 5,
+          smart_folders: [
+            {
+              id: 5,
+              name: "Rate limit low",
+              kind: "builtin",
+              subject_type: "admin_user",
+              visibility: "when_present",
+              count: 1,
+              active: true,
+              path: "/admin/users?smart_folder_id=5"
+            },
+            {
+              id: 6,
+              name: "Admins",
+              kind: "builtin",
+              subject_type: "admin_user",
+              visibility: "on_demand",
+              count: 1,
+              active: false,
+              path: "/admin/users?smart_folder_id=6"
+            }
+          ],
           users: [
             {
               id: 5,
@@ -1030,6 +1092,8 @@ describe("App", () => {
     expect(await screen.findByText("Operator")).toBeInTheDocument()
     expect(screen.getByText("operator@example.com")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Operator" })).toHaveAttribute("href", "/app-shell/admin/users/5")
+    expect(screen.getByRole("link", { name: "Rate limit low 1" })).toHaveAttribute("href", "/app-shell/admin/users?smart_folder_id=5")
+    expect(screen.getByText("More")).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/users?gh_rate=low",
       expect.objectContaining({

@@ -47,6 +47,29 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
       "queue_name" => "chat",
       "arguments" => [ 7 ]
     )
+    expect(parse_body["smart_folders"].find { |folder| folder["name"] == "Runs" }).to include(
+      "count" => 1,
+      "path" => a_string_matching(%r{\A/admin/queue/active\?smart_folder_id=})
+    )
+  end
+
+  it "applies queue smart folders to filter jobs" do
+    sign_in_as(admin)
+    SmartFolder.ensure_admin_queue_builtins!
+    process = solid_queue_process(hostname: "worker-a", pid: 101)
+    run_job = solid_queue_job(class_name: "RunJob", queue_name: "runs")
+    chat_job = solid_queue_job(class_name: "ChatTurnJob", queue_name: "chat")
+    SolidQueue::ClaimedExecution.create!(job: run_job, process: process, created_at: 2.minutes.ago)
+    SolidQueue::ClaimedExecution.create!(job: chat_job, process: process, created_at: 1.minute.ago)
+    folder = SmartFolder.for_subject(:admin_queue).find_by!(name: "Runs")
+
+    get "/api/v1/app/admin/queue/active", params: { smart_folder_id: folder.id }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["active_smart_folder_id"]).to eq(folder.id)
+    expect(body["jobs"].map { |job| job["queue_name"] }).to eq([ "runs" ])
+    expect(body["smart_folders"].find { |row| row["id"] == folder.id }).to include("active" => true, "count" => 1)
   end
 
   it "returns pending ready executions with a total" do
