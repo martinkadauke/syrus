@@ -15,6 +15,7 @@ Rails.application.routes.draw do
     namespace :v1 do
       namespace :app do
         get "bootstrap", to: "bootstrap#show"
+        resources :tags, only: %i[ index create update destroy ]
 
         namespace :admin do
           get "overview", to: "overview#show"
