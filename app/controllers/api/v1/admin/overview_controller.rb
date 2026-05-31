@@ -1,11 +1,9 @@
 module Api
   module V1
     module Admin
-      # Mirror of Admin::OverviewController + Admin::StuckController.
-      # Same data assembly (most of it just reads counts off Run /
-      # Workflow / SolidQueue tables); both UI and API render from
-      # the same Admin::StuckItems source for the watchlist so the
-      # two surfaces can't drift.
+      # Token-auth admin diagnostics API. The app API uses the same
+      # OverviewPayload and Admin::StuckItems source as the React UI
+      # so the surfaces can't drift.
       #
       #   GET /api/v1/admin/overview → tile-shaped rollup
       #   GET /api/v1/admin/stuck    → full StuckItems list

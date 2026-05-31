@@ -12,8 +12,10 @@ module Admin
   #   :job       — Job record, always
   #   :age_label — formatted age ("12m", "2d", "3h")
   #
-  # Two heartbeat thresholds — see comment on
-  # Admin::OverviewController for the rationale.
+  # Two heartbeat thresholds:
+  #   ADMIN_STUCK_THRESHOLD — concerning but not yet dead.
+  #   Run::STALE_HEARTBEAT_THRESHOLD — the reaper's cap; if a Run
+  #     is still running past this point, the reaper may be starved.
   class StuckItems
     ADMIN_STUCK_THRESHOLD = 5.minutes
 

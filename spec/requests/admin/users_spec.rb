@@ -49,12 +49,4 @@ RSpec.describe "Admin users", type: :request do
       Rails.application.routes.recognize_path("/admin/users/1/unpause_scheduling", method: :post)
     }.to raise_error(ActionController::RoutingError)
   end
-
-  it "links to the React users route from the legacy overview" do
-    sign_in_as(admin)
-
-    get "/admin/legacy"
-
-    expect(response.body).to include(admin_users_path(gh_rate: "low"))
-  end
 end

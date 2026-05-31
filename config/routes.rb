@@ -419,19 +419,11 @@ Rails.application.routes.draw do
   get "admin/installations", to: "spa#show", as: :admin_installations
 
   namespace :admin do
-    # System overview — landing page for the admin area.
-    # See docs/plans/complete/admin-diagnostics.md (F).
-    get "legacy", to: "overview#show", as: :legacy_overview
-
     # Per-Run claude transcript viewer — renders the captured
     # ClaudeSession.transcript_jsonl as a structured event stream.
     # See docs/plans/complete/admin-diagnostics.md (A).
     get  "runs/:run_id/transcript/legacy",   to: "transcripts#show",     as: :legacy_run_transcript
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
-
-    # Stuck-things watchlist — Run heartbeat stale or Workflow
-    # nearing prune. See Admin::StuckItems for the definition.
-    get "stuck/legacy", to: "stuck#index", as: :legacy_stuck
 
     get "github_app/register", to: "github_app#register", as: :github_app_register
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
