@@ -17,7 +17,7 @@
     <div class="flex items-center gap-3 mb-3">
       <% if @branch_commits.any? %>
         <%# Form targets the containing frame automatically (link/form inside a turbo-frame). %>
-        <%= form_with url: source_job_path(@job), method: :get,
+        <%= form_with url: legacy_source_job_path(@job), method: :get,
                       data: { controller: "auto-submit" } do |f| %>
           <div class="flex items-center gap-2 text-sm">
             <span class="text-gray-500 text-xs uppercase tracking-wide">Viewing</span>
@@ -111,7 +111,7 @@
           <div class="text-xs text-gray-500 px-4 py-2 border-b border-gray-100 flex items-center gap-2 bg-gray-50 font-mono sticky top-0">
             <%# Mobile-only "back to file tree" — strips the path
                 param so the next render shows the tree pane only. %>
-            <%= link_to source_job_path(@job, ref: @selected_ref),
+            <%= link_to legacy_source_job_path(@job, ref: @selected_ref),
                   class: "sm:hidden shrink-0 text-blue-600 hover:underline normal-case" do %>
               ← Files
             <% end %>

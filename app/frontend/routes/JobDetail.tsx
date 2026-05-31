@@ -33,7 +33,7 @@ export function JobDetailRoute() {
   const location = useLocation()
   const navigate = useNavigate()
   const id = params.id || ""
-  const activeTab = tabFromSearch(location.search)
+  const activeTab = tabFromLocation(location.pathname, location.search)
   const queryKey = jobDetailQueryKey(id)
   const detail = useQuery({
     queryKey,
@@ -62,7 +62,9 @@ function jobDetailQueryKey(id: string | number): JobDetailQueryKey {
   return ["jobs", String(id), "detail"] as const
 }
 
-function tabFromSearch(search: string): JobTab {
+function tabFromLocation(pathname: string, search: string): JobTab {
+  if (pathname.endsWith("/source")) return "source"
+
   const value = new URLSearchParams(search).get("tab")
   return value === "workflows" || value === "attachments" || value === "source" ? value : "summary"
 }

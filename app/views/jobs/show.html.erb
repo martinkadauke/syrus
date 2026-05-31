@@ -510,7 +510,7 @@
         tab is first activated (IntersectionObserver fires when hidden→visible). %>
     <div data-tabs-target="panel" class="hidden pt-4">
       <turbo-frame id="source-browser-<%= @job.id %>"
-                   src="<%= source_job_path(@job) %>"
+                   src="<%= legacy_source_job_path(@job) %>"
                    loading="lazy">
         <div class="text-sm text-gray-400 py-8 text-center">Loading source browser…</div>
       </turbo-frame>

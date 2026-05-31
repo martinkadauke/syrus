@@ -42,7 +42,7 @@
   <%
     active   = item[:path] == selected_path
     filename = File.basename(item[:path])
-    href     = source_job_path(job, ref: ref, path: item[:path])
+    href     = legacy_source_job_path(job, ref: ref, path: item[:path])
   %>
   <a href="<%= href %>"
      class="flex items-center gap-1.5 px-2 py-0.5 text-xs font-mono truncate

@@ -24,9 +24,27 @@ RSpec.describe "Jobs", type: :request do
     Struct.new(:labels, keyword_init: true).new(labels: labels)
   end
 
-  describe "GET /jobs/:id" do
-    it "requires authentication" do
+  describe "SPA job routes" do
+    before { sign_in_as(user) }
+
+    it "renders the React shell for job detail" do
       get job_path(job)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "renders the React shell for the source browser route" do
+      get source_job_path(job)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+  end
+
+  describe "GET /jobs/:id/legacy" do
+    it "requires authentication" do
+      get legacy_job_path(job)
       expect(response).to redirect_to(new_session_path)
     end
 
@@ -44,7 +62,7 @@ RSpec.describe "Jobs", type: :request do
         run.update!(agent_diff: "diff --git a/foo b/foo\n+bar", agent_turns: 3, agent_outcome: "success")
         JobLog.create!(run: run, sequence: 0, chunk: "hello transcript")
 
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response).to be_successful
         expect(response.body).to include("acme/widgets")
         expect(response.body).to include("#42")
@@ -55,7 +73,7 @@ RSpec.describe "Jobs", type: :request do
 
       it "renders issue_title next to the issue number in the heading" do
         job.update!(issue_title: "Add greeting helper")
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).to include("#42")
         expect(response.body).to include("Add greeting helper")
         # Both should appear close together — the title follows the issue link in the h1.
@@ -65,7 +83,7 @@ RSpec.describe "Jobs", type: :request do
       it "shows the selected agent as a pill next to the title" do
         job.update!(agent_provider: "codex")
 
-        get job_path(job)
+        get legacy_job_path(job)
 
         expect(response.body).to include("Codex")
         expect(response.body).not_to include("Claude Code")
@@ -106,7 +124,7 @@ RSpec.describe "Jobs", type: :request do
         expect(job.approved_via).to eq("operator")
         expect(job.approved_by_user).to eq(user)
 
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).to include("Unapprove")
         expect(response.body).to include("Approved by Thomas via Syrus")
       end
@@ -195,7 +213,7 @@ RSpec.describe "Jobs", type: :request do
       it "renders the current user's pin state in the header" do
         Factories.job_pin(user: user, job: job)
 
-        get job_path(job)
+        get legacy_job_path(job)
 
         document = Nokogiri::HTML(response.body)
         pin = document.at_css("a[href='#{job_pin_path(job)}'][aria-label='Unpin job']")
@@ -208,7 +226,7 @@ RSpec.describe "Jobs", type: :request do
       end
 
       it "shows the credential mode in the job header" do
-        get job_path(job)
+        get legacy_job_path(job)
 
         expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*PAT/m)
       end
@@ -220,7 +238,7 @@ RSpec.describe "Jobs", type: :request do
         app_job = Factories.job(repository: repository, issue_number: 99)
         repository.update!(installation: nil)
 
-        get job_path(app_job)
+        get legacy_job_path(app_job)
 
         expect(response.body).to match(/<h1.*acme\/widgets.*<\/h1>.*App/m)
       end
@@ -230,7 +248,7 @@ RSpec.describe "Jobs", type: :request do
         run.step.start!; run.step.save!
         run.start!; run.save!
 
-        get job_path(job)
+        get legacy_job_path(job)
 
         expect(response.body).to include('data-controller="run-timer"')
         expect(response.body).to include("data-run-timer-started-at-value")
@@ -248,7 +266,7 @@ RSpec.describe "Jobs", type: :request do
           cache_read_input_tokens: 4000
         )
 
-        get job_path(job)
+        get legacy_job_path(job)
 
         expect(response.body).to include("Total cost")
         expect(response.body).to include("$1.23")
@@ -260,19 +278,19 @@ RSpec.describe "Jobs", type: :request do
 
       it "renders issue_body when present (no summary → plain block)" do
         job.update!(issue_title: "Add greeting helper", issue_body: "We need a greeting helper.")
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).to include("Add greeting helper")
         expect(response.body).to include("We need a greeting helper.")
       end
 
       it "renders nothing for issue body when issue_body is nil" do
         job.update!(issue_title: nil, issue_body: nil)
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).not_to include("whitespace-pre-wrap")
       end
 
       it "shows Summary, Workflows, and Source tabs on every job page" do
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).to include("Summary")
         expect(response.body).to include("Workflows (")
         expect(response.body).to include("Source")
@@ -280,7 +298,7 @@ RSpec.describe "Jobs", type: :request do
       end
 
       it "leaves a single-iteration workflow on the existing step display" do
-        get job_path(job, tab: "workflows")
+        get legacy_job_path(job, tab: "workflows")
 
         expect(response.body).not_to include('data-controller="iteration-tabs"')
         expect(response.body).to include("Step 1/")
@@ -312,7 +330,7 @@ RSpec.describe "Jobs", type: :request do
           ]
         ])
 
-        get job_path(job, tab: "workflows")
+        get legacy_job_path(job, tab: "workflows")
 
         expect(response.body).to include('data-controller="iteration-tabs"')
         expect(response.body).to include("Iteration 1")
@@ -330,7 +348,7 @@ RSpec.describe "Jobs", type: :request do
         run.start!; run.succeed!; run.save!
         run.update!(agent_summary: "Added the greeting helper method to ApplicationHelper.")
 
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).to include("Summary")
         expect(response.body).to include("Workflows (")
         expect(response.body).to include("Added the greeting helper method to ApplicationHelper.")
@@ -340,7 +358,7 @@ RSpec.describe "Jobs", type: :request do
         run = job.initial_run
         run.start!; run.succeed!; run.save!
 
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).to include("No summary yet")
       end
 
@@ -350,15 +368,15 @@ RSpec.describe "Jobs", type: :request do
         run.start!; run.succeed!; run.save!
         run.update!(agent_summary: "Done.")
 
-        get job_path(job)
+        get legacy_job_path(job)
         expect(response.body).to include("We need a greeting helper.")
         expect(response.body).to include("Done.")
       end
 
-      it "includes a lazy Turbo Frame pointing to the source path" do
-        get job_path(job)
+      it "includes a lazy Turbo Frame pointing to the legacy source path" do
+        get legacy_job_path(job)
         expect(response.body).to include('source-browser-')
-        expect(response.body).to include(source_job_path(job))
+        expect(response.body).to include(legacy_source_job_path(job))
         expect(response.body).to include('loading="lazy"')
       end
 
@@ -367,7 +385,7 @@ RSpec.describe "Jobs", type: :request do
         job.tags << existing
         Factories.tag(user: user, name: "area:auth", color: "green")
 
-        get job_path(job)
+        get legacy_job_path(job)
 
         expect(response.body).to include("Tags")
         expect(response.body).to include("epic:attachments")
@@ -405,7 +423,7 @@ RSpec.describe "Jobs", type: :request do
       it "404s for another user's job" do
         foreign_repo = Factories.repository(user: other)
         foreign_job = Factories.job(repository: foreign_repo, issue_number: 1)
-        get job_path(foreign_job)
+        get legacy_job_path(foreign_job)
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -965,7 +983,7 @@ RSpec.describe "Jobs", type: :request do
     before { sign_in_as(user) }
 
     it "puts a turbo_confirm on Cancel & close" do
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to match(/data-turbo-confirm=.*Cancel any running work/)
     end
 
@@ -974,13 +992,13 @@ RSpec.describe "Jobs", type: :request do
       # so finish the initial Run first — Start over only appears
       # in the dropdown when the Job has no active Run.
       job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to match(/data-turbo-confirm=.*abandons the existing branch/)
     end
 
     it "does NOT put a confirm on Retry (additive, not destructive)" do
       job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to include("Retry")
       expect(response.body).not_to match(/data-turbo-confirm=.*Retry/)
     end
@@ -995,7 +1013,7 @@ RSpec.describe "Jobs", type: :request do
       )
       job.latest_workflow.update!(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
 
-      get job_path(job)
+      get legacy_job_path(job)
 
       expect(response.body).to include("Retry with Codex")
       expect(response.body).to include("agent_provider=codex")
@@ -1005,7 +1023,7 @@ RSpec.describe "Jobs", type: :request do
     it "renders retry context controls without replay wording" do
       job.initial_run.tap { |r| r.start!; r.succeed!; r.save! }
 
-      get job_path(job)
+      get legacy_job_path(job)
 
       expect(response.body).to include("Retry with context")
       expect(response.body).to include("retry_context")
@@ -1018,7 +1036,7 @@ RSpec.describe "Jobs", type: :request do
       user.update!(claude_oauth_token: "oat-test", codex_auth_mode: "api_key", codex_api_key: "sk-test")
       job.update!(pr_number: 42, agent_provider: "claude")
 
-      get job_path(job)
+      get legacy_job_path(job)
 
       expect(response.body).to include("Check feedback with Codex")
       expect(response.body).to include("Rebase with Codex")
@@ -1027,11 +1045,11 @@ RSpec.describe "Jobs", type: :request do
     end
 
     it "shows Reopen on closed jobs and hides it on open ones" do
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).not_to include("Reopen")
 
       job.close_with_reason!("cancelled")
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to include("Reopen")
     end
   end
@@ -1176,7 +1194,7 @@ RSpec.describe "Jobs", type: :request do
 
     it "requires authentication" do
       sign_in_as(Factories.user)  # sign in as someone else first to clear the cookie
-      get source_job_path(job)
+      get legacy_source_job_path(job)
       # A different user should get 404 (scoped to current user's jobs)
       expect(response).to have_http_status(:not_found)
     end
@@ -1184,7 +1202,7 @@ RSpec.describe "Jobs", type: :request do
     it "404s for another user's job" do
       foreign_repo = Factories.repository(user: other)
       foreign_job  = Factories.job(repository: foreign_repo, issue_number: 1)
-      get source_job_path(foreign_job)
+      get legacy_source_job_path(foreign_job)
       expect(response).to have_http_status(:not_found)
     end
 
@@ -1192,7 +1210,7 @@ RSpec.describe "Jobs", type: :request do
       before { user.update!(github_token: nil) }
 
       it "renders an error message instead of crashing" do
-        get source_job_path(job)
+        get legacy_source_job_path(job)
         expect(response).to be_successful
         expect(response.body).to include("GitHub token not configured")
       end
@@ -1204,7 +1222,7 @@ RSpec.describe "Jobs", type: :request do
         stub_tree("main")
         user.update!(github_token: "ghp_test_token")
 
-        get source_job_path(job)
+        get legacy_source_job_path(job)
         expect(response).to be_successful
         expect(response.body).to include("source-browser-#{job.id}")
         expect(response.body).to include("merge base")
@@ -1220,7 +1238,7 @@ RSpec.describe "Jobs", type: :request do
         stub_tree(commit_sha)
         user.update!(github_token: "ghp_test_token")
 
-        get source_job_path(job_with_branch)
+        get legacy_source_job_path(job_with_branch)
         expect(response).to be_successful
         expect(response.body).to include("deadbeef")
         expect(response.body).to include("user.rb")
@@ -1233,7 +1251,7 @@ RSpec.describe "Jobs", type: :request do
         stub_tree(commit_sha)
         user.update!(github_token: "ghp_test_token")
 
-        get source_job_path(job_with_branch, ref: commit_sha)
+        get legacy_source_job_path(job_with_branch, ref: commit_sha)
         expect(response).to be_successful
         expect(response.body).to include("user.rb")
       end
@@ -1245,7 +1263,7 @@ RSpec.describe "Jobs", type: :request do
         stub_file_content(commit_sha, "app/models/user.rb", "class User; end\n")
         user.update!(github_token: "ghp_test_token")
 
-        get source_job_path(job_with_branch, ref: commit_sha, path: "app/models/user.rb")
+        get legacy_source_job_path(job_with_branch, ref: commit_sha, path: "app/models/user.rb")
         expect(response).to be_successful
         expect(response.body).to include("class User")
         expect(response.body).to include('language-ruby')
@@ -1339,21 +1357,21 @@ RSpec.describe "Jobs", type: :request do
 
     it "shows 'mergeable' when pr_mergeable is true (Rebase button still available — operator may want to pull in upstream changes)" do
       job.update!(pr_number: 7, pr_mergeable: true, pr_mergeable_checked_at: 2.minutes.ago)
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to include("mergeable")
       expect(response.body).to include("Rebase now")
     end
 
     it "shows 'needs rebase' + Rebase button when pr_mergeable is false" do
       job.update!(pr_number: 7, pr_mergeable: false, pr_mergeable_checked_at: 1.minute.ago)
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to include("needs rebase")
       expect(response.body).to include("Rebase now")
     end
 
     it "shows 'checking…' when pr_mergeable is nil — Rebase button still available" do
       job.update!(pr_number: 7, pr_mergeable: nil)
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to include("checking…")
       expect(response.body).to include("Rebase now")
     end
@@ -1362,13 +1380,13 @@ RSpec.describe "Jobs", type: :request do
       job.update!(pr_number: 7, pr_mergeable: false, pr_mergeable_checked_at: 1.minute.ago)
       Workflow.create!(job: job, trigger_kind: "rebase", state: "queued")
 
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).to include("needs rebase")
       expect(response.body).not_to include("Rebase now")
     end
 
     it "renders no mergeability pill when the Job has no PR" do
-      get job_path(job)
+      get legacy_job_path(job)
       expect(response.body).not_to include("mergeable")
       expect(response.body).not_to include("Rebase now")
     end
@@ -1672,7 +1690,7 @@ RSpec.describe "Jobs", type: :request do
       target = Job.create!(user: user, repository: repository, issue_number: 42)
       JobDependency.create!(job: target, depends_on_job: prerequisite, source: "manual")
 
-      get job_path(target)
+      get legacy_job_path(target)
 
       document = Nokogiri::HTML(response.body)
 
@@ -1682,7 +1700,7 @@ RSpec.describe "Jobs", type: :request do
       expect(response.body).not_to include("&lt;a")
       expect(document.at_css("a[href='https://github.com/acme/widgets/issues/41']").text).to eq("#41")
 
-      get job_path(prerequisite)
+      get legacy_job_path(prerequisite)
       document = Nokogiri::HTML(response.body)
 
       expect(response.body).to include("1 other Job depend on this one")
@@ -1693,7 +1711,7 @@ RSpec.describe "Jobs", type: :request do
     it "renders tabs before the summary overview and dependency controls" do
       target = Job.create!(user: user, repository: repository, issue_number: 42, branch_name: "syrus/42")
 
-      get job_path(target)
+      get legacy_job_path(target)
 
       document = Nokogiri::HTML(response.body)
       tabs = document.at_css("[data-controller='tabs']")
@@ -1730,7 +1748,7 @@ RSpec.describe "Jobs", type: :request do
       target = Job.create!(user: user, repository: repository, issue_number: 42)
       older_issue_job.touch
 
-      get job_path(target)
+      get legacy_job_path(target)
 
       document = Nokogiri::HTML(response.body)
       select = document.at_css("select[name='dependency_target']")
@@ -1752,7 +1770,7 @@ RSpec.describe "Jobs", type: :request do
       previous_attempt = Job.create!(user: user, repository: repository, issue_number: 41)
       target = Job.create!(user: user, repository: repository, issue_number: 41)
 
-      get job_path(target)
+      get legacy_job_path(target)
 
       document = Nokogiri::HTML(response.body)
       option_values = document.css("select[name='dependency_target'] option").map { |option| option["value"] }
@@ -1766,8 +1784,7 @@ RSpec.describe "Jobs", type: :request do
       post dependencies_job_path(target), params: { dependency_target: "issue:#{repository.id}:41" }
 
       expect(response).to redirect_to(job_path(target))
-      follow_redirect!
-      expect(response.body).to include("Dependency Job not found.")
+      expect(flash[:alert]).to eq("Dependency Job not found.")
       expect(target.reload.dependencies).to be_empty
     end
 
@@ -1861,7 +1878,7 @@ RSpec.describe "Jobs", type: :request do
         issue_body: "Screenshot bug"
       )
 
-      get job_path(direct)
+      get legacy_job_path(direct)
 
       expect(response.body).to include("Start Run")
       expect(response.body).to include(start_job_path(direct))

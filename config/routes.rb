@@ -407,7 +407,11 @@ Rails.application.routes.draw do
   get "jobs/new", to: "spa#show", as: :new_job
   get "jobs/new/legacy", to: "jobs#new", as: :legacy_new_job
   post "jobs/legacy", to: "jobs#create", as: :legacy_jobs
-  resources :jobs, only: %i[ show create ] do
+  get "jobs/:id/source/legacy", to: "jobs#source", as: :legacy_source_job, constraints: { id: /\d+/ }
+  get "jobs/:id/source", to: "spa#show", as: :source_job, constraints: { id: /\d+/ }
+  get "jobs/:id/legacy", to: "jobs#show", as: :legacy_job, constraints: { id: /\d+/ }
+  get "jobs/:id", to: "spa#show", as: :job, constraints: { id: /\d+/ }
+  resources :jobs, only: %i[ create ] do
     resource :pin, only: %i[ create destroy ], controller: "job_pins"
     resources :attachments, only: %i[ create destroy ], controller: "job_attachments"
 
@@ -428,7 +432,6 @@ Rails.application.routes.draw do
       post :push_commits   # push uncommitted/committed local changes from a failed Workflow's workspace
       post :tags, action: :add_tag
       delete "tags/:tag_id", action: :remove_tag, as: :tag
-      get  :source         # browse the repo source at any branch commit or merge base
       post :diagnose       # capture a RunHealthSnapshot for an active Run
       get  "runs/:run_id/grade_log", action: :grade_log, as: :run_grade_log
       post :dependencies, action: :add_dependency

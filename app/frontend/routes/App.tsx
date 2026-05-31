@@ -66,6 +66,7 @@ export function App() {
       <Route path="/repositories/:id" element={<RepositoryDetailRoute />} />
       <Route path="/repositories" element={<RepositoriesIndex />} />
       <Route path="/jobs/new" element={<DirectJobNewRoute />} />
+      <Route path="/jobs/:id/source" element={<JobDetailRoute />} />
       <Route path="/jobs/:id" element={<JobDetailRoute />} />
       <Route path="/epics/new" element={<EpicFormRoute mode="new" />} />
       <Route path="/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
@@ -104,6 +105,7 @@ export function App() {
       <Route path="/app-shell/repositories/:id" element={<RepositoryDetailRoute />} />
       <Route path="/app-shell/repositories" element={<RepositoriesIndex />} />
       <Route path="/app-shell/jobs/new" element={<DirectJobNewRoute />} />
+      <Route path="/app-shell/jobs/:id/source" element={<JobDetailRoute />} />
       <Route path="/app-shell/jobs/:id" element={<JobDetailRoute />} />
       <Route path="/app-shell/epics/new" element={<EpicFormRoute mode="new" />} />
       <Route path="/app-shell/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />

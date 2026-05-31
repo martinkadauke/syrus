@@ -48,7 +48,7 @@ RSpec.describe "Job attachments", type: :request do
       google_doc_url: "https://docs.google.com/document/d/abc/edit"
     )
 
-    get job_path(job, tab: "attachments")
+    get legacy_job_path(job, tab: "attachments")
 
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("Attachments (1)")
