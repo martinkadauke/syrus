@@ -458,19 +458,6 @@ Rails.application.routes.draw do
     post "users/legacy/:id/pause_scheduling",   to: "users#pause_scheduling", as: :legacy_pause_user_scheduling
     post "users/legacy/:id/unpause_scheduling", to: "users#unpause_scheduling", as: :legacy_unpause_user_scheduling
 
-    # Operator console — kill switches + audit log (L).
-    get  "console/legacy",             to: "console#show",              as: :legacy_console
-    post "console/pause_polling",      to: "console#pause_polling",     as: :pause_polling
-    post "console/unpause_polling",    to: "console#unpause_polling",   as: :unpause_polling
-    post "console/pause_runs",         to: "console#pause_runs",        as: :pause_runs
-    post "console/unpause_runs",       to: "console#unpause_runs",      as: :unpause_runs
-    post "console/clear_github_cache", to: "console#clear_github_cache", as: :clear_github_cache
-    post "console/legacy/pause_polling",      to: "console#pause_polling",     as: :legacy_pause_polling
-    post "console/legacy/unpause_polling",    to: "console#unpause_polling",   as: :legacy_unpause_polling
-    post "console/legacy/pause_runs",         to: "console#pause_runs",        as: :legacy_pause_runs
-    post "console/legacy/unpause_runs",       to: "console#unpause_runs",      as: :legacy_unpause_runs
-    post "console/legacy/clear_github_cache", to: "console#clear_github_cache", as: :legacy_clear_github_cache
-
     get "github_app/register", to: "github_app#register", as: :github_app_register
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
     get "github_app/confirm",  to: "github_app#confirm",  as: :github_app_confirm

@@ -7,105 +7,41 @@ RSpec.describe "Admin operator console", type: :request do
   describe "GET /admin/console" do
     it "blocks non-admins" do
       sign_in_as(non_admin)
+
       get "/admin/console"
+
       expect(response).to redirect_to(root_path)
       expect(flash[:alert]).to match(/admin/i)
     end
 
-    it "renders the console for admins" do
+    it "serves the React console shell for admins" do
       sign_in_as(admin)
+
       get "/admin/console"
+
       expect(response).to be_successful
       expect(response.body).to include('id="syrus-spa-root"')
     end
   end
 
-  describe "GET /admin/console/legacy" do
-    it "renders the legacy console for admins" do
-      sign_in_as(admin)
-      get "/admin/console/legacy"
-      expect(response).to be_successful
-      expect(response.body).to include("Operator console")
-      expect(response.body).to include("Polling")
-      expect(response.body).to include("RunJobs")
-      expect(response.body).to include("GitHub HTTP cache")
-      expect(response.body).to include("Recent admin actions")
-    end
-  end
-
-  describe "pause/resume polling" do
-    before { sign_in_as(admin) }
-
-    it "pause_polling sets the flag and logs an AdminAction" do
-      expect {
-        post "/admin/console/pause_polling"
-      }.to change { AppSetting.current.tap(&:reload).polling_paused }.from(false).to(true)
-        .and change { AdminAction.where(action: "pause_polling").count }.by(1)
-      expect(response).to redirect_to(admin_console_path)
-    end
-
-    it "keeps the legacy pause action inside the legacy console fallback" do
-      expect {
-        post "/admin/console/legacy/pause_polling"
-      }.to change { AppSetting.current.tap(&:reload).polling_paused }.from(false).to(true)
-      expect(response).to redirect_to(admin_legacy_console_path)
-    end
-
-    it "unpause_polling clears the flag" do
-      AppSetting.current.update!(polling_paused: true)
-      expect {
-        post "/admin/console/unpause_polling"
-      }.to change { AppSetting.current.tap(&:reload).polling_paused }.from(true).to(false)
-    end
-  end
-
-  describe "pause/resume runs" do
-    before { sign_in_as(admin) }
-
-    it "pause_runs sets the flag" do
-      expect {
-        post "/admin/console/pause_runs"
-      }.to change { AppSetting.current.tap(&:reload).runs_paused }.from(false).to(true)
-    end
-
-    it "unpause_runs clears the flag" do
-      AppSetting.current.update!(runs_paused: true)
-      expect {
-        post "/admin/console/unpause_runs"
-      }.to change { AppSetting.current.tap(&:reload).runs_paused }.from(true).to(false)
-    end
-  end
-
-  describe "clear_github_cache" do
-    before { sign_in_as(admin) }
-
-    it "clears all when no user_id is given" do
-      expect(Rails.cache).to receive(:delete_matched).with("github_etag/*").and_return(7)
-      post "/admin/console/clear_github_cache"
-      expect(response).to redirect_to(admin_console_path)
-      expect(flash[:notice]).to match(/Cleared 7 GitHub cache entries for all users/)
-      expect(AdminAction.where(action: "clear_github_cache").count).to eq(1)
-    end
-
-    it "scopes to a single user when user_id given" do
-      target = Factories.user(email_address: "target@example.com")
-      expect(Rails.cache).to receive(:delete_matched).with("github_etag/u#{target.id}/*").and_return(2)
-      post "/admin/console/clear_github_cache", params: { user_id: target.id }
-      expect(flash[:notice]).to include("for target@example.com")
-    end
-
-    it "shrugs off cache adapters that don't support delete_matched" do
-      allow(Rails.cache).to receive(:delete_matched).and_raise(NotImplementedError)
-      post "/admin/console/clear_github_cache"
-      expect(response).to redirect_to(admin_console_path)
-      expect(flash[:notice]).to match(/Cleared 0 GitHub cache entries/)
-    end
-
-    it "keeps the legacy cache clear action inside the legacy console fallback" do
-      expect(Rails.cache).to receive(:delete_matched).with("github_etag/*").and_return(3)
-      post "/admin/console/legacy/clear_github_cache"
-      expect(response).to redirect_to(admin_legacy_console_path)
-      expect(flash[:notice]).to match(/Cleared 3 GitHub cache entries/)
-    end
+  it "does not route the retired legacy HTML console endpoints" do
+    expect {
+      Rails.application.routes.recognize_path("/admin/console/legacy", method: :get)
+    }.to raise_error(ActionController::RoutingError)
+    expect {
+      Rails.application.routes.recognize_path("/admin/console/pause_polling", method: :post)
+    }.to raise_error(ActionController::RoutingError)
+    expect {
+      Rails.application.routes.recognize_path("/admin/console/unpause_polling", method: :post)
+    }.to raise_error(ActionController::RoutingError)
+    expect {
+      Rails.application.routes.recognize_path("/admin/console/pause_runs", method: :post)
+    }.to raise_error(ActionController::RoutingError)
+    expect {
+      Rails.application.routes.recognize_path("/admin/console/unpause_runs", method: :post)
+    }.to raise_error(ActionController::RoutingError)
+    expect {
+      Rails.application.routes.recognize_path("/admin/console/clear_github_cache", method: :post)
+    }.to raise_error(ActionController::RoutingError)
   end
 end
