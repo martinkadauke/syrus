@@ -637,8 +637,8 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Admin stuck items" })).toBeInTheDocument()
     expect(await screen.findByText("Run #4 silent for 10m")).toBeInTheDocument()
     expect(screen.getByText("stale_heartbeat")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Job" })).toHaveAttribute("href", "/jobs/1")
-    expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/admin/runs/4/transcript")
+    expect(screen.getByRole("link", { name: "Job" })).toHaveAttribute("href", "/app-shell/jobs/1")
+    expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/stuck",
       expect.objectContaining({
@@ -697,6 +697,57 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Kill" })).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/processes?state=running",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
+  it("renders the admin process detail route with React transcript links", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 8,
+          kind: "agent",
+          command: "claude --print",
+          workdir: "/work",
+          hostname: "worker-a",
+          pid: 123,
+          pgid: 123,
+          started_at: "2026-05-30T12:00:00Z",
+          last_chunk_at: "2026-05-30T12:01:00Z",
+          finished_at: null,
+          duration_s: 65,
+          exit_status: null,
+          outcome: null,
+          wall_timeout_s: 1800,
+          silent_timeout_s: 300,
+          run_id: 4,
+          workflow_id: 2,
+          stale: false,
+          kill_requested_at: null,
+          kill_requested_by_user_id: null,
+          host_metrics: null
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/processes/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin process detail" })).toBeInTheDocument()
+    expect(await screen.findByText("claude --print")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Processes" })).toHaveAttribute("href", "/app-shell/admin/processes")
+    expect(screen.getByRole("link", { name: "#4" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/processes/8",
       expect.objectContaining({
         credentials: "same-origin",
         headers: { Accept: "application/json" }
@@ -820,7 +871,9 @@ describe("App", () => {
     expect(await screen.findByText("Run #4 · transcript")).toBeInTheDocument()
     expect(screen.getByText(/claude-sonnet-4-6/)).toBeInTheDocument()
     expect(screen.getAllByText("Bash").length).toBeGreaterThan(0)
+    expect(screen.getByRole("link", { name: "back to job #1" })).toHaveAttribute("href", "/app-shell/jobs/1")
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript?page=3&per=1")
+    expect(screen.getByRole("link", { name: "Download JSONL" })).toHaveAttribute("href", "/admin/runs/4/transcript/download")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/runs/4/transcript?page=2&per=1",
       expect.objectContaining({

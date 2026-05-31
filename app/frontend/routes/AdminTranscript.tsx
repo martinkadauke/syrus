@@ -8,8 +8,10 @@ const DEFAULT_PER_PAGE = 100
 
 export function AdminTranscript() {
   const params = useParams()
+  const location = useLocation()
   const runId = params.runId || ""
   const [searchParams] = useSearchParams()
+  const prefix = routePrefix(location.pathname)
   const page = positiveInteger(searchParams.get("page"), 1)
   const per = positiveInteger(searchParams.get("per"), DEFAULT_PER_PAGE)
   const transcript = useQuery({
@@ -22,18 +24,18 @@ export function AdminTranscript() {
     <main aria-label="Admin transcript" className="mx-auto max-w-6xl space-y-6 p-6">
       {transcript.isPending ? <PanelMessage>Loading transcript...</PanelMessage> : null}
       {transcript.isError ? <TranscriptError error={transcript.error} /> : null}
-      {transcript.isSuccess ? <TranscriptView payload={transcript.data} /> : null}
+      {transcript.isSuccess ? <TranscriptView payload={transcript.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function TranscriptView({ payload }: { payload: TranscriptPayload }) {
+function TranscriptView({ payload, prefix }: { payload: TranscriptPayload; prefix: string }) {
   return (
     <>
       <header className="flex flex-col gap-3 border-b border-gray-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="text-xs uppercase text-gray-500">
-            <a className="underline hover:no-underline" href={`/jobs/${payload.job_id}`}>back to job #{payload.job_id}</a>
+            <Link className="underline hover:no-underline" to={withRoutePrefix(`/jobs/${payload.job_id}`, prefix)}>back to job #{payload.job_id}</Link>
           </div>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">
             Run #{payload.run_id} · transcript
@@ -198,6 +200,17 @@ function TranscriptError({ error }: { error: Error }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`rounded border border-gray-200 bg-white p-4 text-sm ${tone === "error" ? "text-red-700" : "text-gray-600"}`}>{children}</div>
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function positiveInteger(value: string | null, fallback: number) {

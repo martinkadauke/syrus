@@ -82,10 +82,10 @@ health/storage internals.
 | `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell; legacy ERB fallback lives at `/admin/legacy`. |
 | `/admin/queue`, `/admin/queue/:tab` | `spa#show` | `spa-admin` | Migrated to the React admin queue shell. Legacy ERB fallback lives at `/admin/queue/legacy` and `/admin/queue/legacy/:tab`. |
 | `POST /admin/queue/reap_stale_runs` | `admin/queue#reap_stale_runs` | `legacy-html` | Kept for existing HTML admin controls; React uses `POST /api/v1/app/admin/queue/reap_stale_runs`. |
-| `/admin/stuck` | `spa#show` | `spa-admin` | Migrated to the React stuck-items shell. Legacy ERB fallback lives at `/admin/stuck/legacy`. |
-| `/admin/processes`, `/admin/processes/:id` | `spa#show` | `spa-admin` | Migrated to the React process inventory/detail shell. Legacy ERB fallback lives at `/admin/processes/legacy` and `/admin/processes/legacy/:id`. |
+| `/admin/stuck` | `spa#show` | `spa-admin` | Migrated to the React stuck-items shell with internal React Router links to Jobs and transcripts. Legacy ERB fallback lives at `/admin/stuck/legacy`. |
+| `/admin/processes`, `/admin/processes/:id` | `spa#show` | `spa-admin` | Migrated to the React process inventory/detail shell with internal React Router transcript links. Legacy ERB fallback lives at `/admin/processes/legacy` and `/admin/processes/legacy/:id`. |
 | `POST /admin/processes/:id/kill` | `admin/spawned_processes#kill` | `legacy-html` | Kept for existing HTML controls; React uses `POST /api/v1/app/admin/processes/:id/kill`. |
-| `/admin/runs/:run_id/transcript` | `spa#show` | `spa-admin` | Migrated to the React transcript viewer. Legacy ERB fallback lives at `/admin/runs/:run_id/transcript/legacy`. |
+| `/admin/runs/:run_id/transcript` | `spa#show` | `spa-admin` | Migrated to the React transcript viewer with internal React Router back-to-Job navigation. Legacy ERB fallback lives at `/admin/runs/:run_id/transcript/legacy`. |
 | `/admin/runs/:run_id/transcript/download` | `admin/transcripts#download` | `legacy-html` | Keep as regular download endpoint. |
 | `/admin/users`, `/admin/users/:id` | `spa#show` | `spa-admin` | Migrated to the React users list/detail shell. Legacy ERB fallback lives at `/admin/users/legacy` and `/admin/users/legacy/:id`. |
 | admin user scheduling commands | `admin/users#pause_scheduling`, `#unpause_scheduling` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/users/:id/*_scheduling`. |

@@ -73,6 +73,7 @@ export function AdminProcessDetail() {
   const params = useParams()
   const id = params.id || ""
   const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const basePath = location.pathname.startsWith("/app-shell") ? "/app-shell/admin/processes" : "/admin/processes"
   const process = useQuery({
     queryKey: ["admin", "processes", id],
@@ -90,7 +91,7 @@ export function AdminProcessDetail() {
       <section className="rounded border border-gray-200 bg-white">
         {process.isPending ? <PanelMessage>Loading process...</PanelMessage> : null}
         {process.isError ? <ProcessError error={process.error} /> : null}
-        {process.isSuccess ? <ProcessDetail process={process.data} /> : null}
+        {process.isSuccess ? <ProcessDetail prefix={prefix} process={process.data} /> : null}
       </section>
     </main>
   )
@@ -144,7 +145,7 @@ function ProcessesTable({ processes, basePath }: { processes: SpawnedProcessPayl
   )
 }
 
-function ProcessDetail({ process }: { process: SpawnedProcessPayload }) {
+function ProcessDetail({ process, prefix }: { process: SpawnedProcessPayload; prefix: string }) {
   return (
     <div className="space-y-5 p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -182,7 +183,7 @@ function ProcessDetail({ process }: { process: SpawnedProcessPayload }) {
         {process.run_id ? (
           <>
             <dt className="text-gray-500">Run</dt>
-            <dd><a className="text-blue-600 underline hover:no-underline" href={`/admin/runs/${process.run_id}/transcript`}>#{process.run_id}</a></dd>
+            <dd><Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(`/admin/runs/${process.run_id}/transcript`, prefix)}>#{process.run_id}</Link></dd>
           </>
         ) : null}
         {process.workflow_id ? (
@@ -258,6 +259,17 @@ function ProcessError({ error }: { error: Error }) {
   const message = error instanceof ApiError ? error.message : "Unable to load process data."
 
   return <PanelMessage tone="error">{message}</PanelMessage>
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {

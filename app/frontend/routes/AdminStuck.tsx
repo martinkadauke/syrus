@@ -1,10 +1,13 @@
 import { useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
+import { Link, useLocation } from "react-router-dom"
 import { fetchAdminStuck, type StuckItem } from "../api/adminStuck"
 
 const POLL_INTERVAL_MS = 30_000
 
 export function AdminStuck() {
+  const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const stuck = useQuery({
     queryKey: ["admin", "stuck"],
     queryFn: fetchAdminStuck,
@@ -31,13 +34,13 @@ export function AdminStuck() {
       <section className="rounded border border-gray-200 bg-white">
         {stuck.isPending ? <PanelMessage>Loading stuck items...</PanelMessage> : null}
         {stuck.isError ? <PanelMessage tone="error">Unable to load stuck items.</PanelMessage> : null}
-        {stuck.isSuccess ? <StuckTable items={stuck.data.items} /> : null}
+        {stuck.isSuccess ? <StuckTable items={stuck.data.items} prefix={prefix} /> : null}
       </section>
     </main>
   )
 }
 
-function StuckTable({ items }: { items: StuckItem[] }) {
+function StuckTable({ items, prefix }: { items: StuckItem[]; prefix: string }) {
   if (items.length === 0) {
     return (
       <div className="bg-emerald-50 p-6 text-sm text-emerald-800">
@@ -72,9 +75,9 @@ function StuckTable({ items }: { items: StuckItem[] }) {
               <td className="px-4 py-2 text-xs text-gray-600">{contextLabel(item)}</td>
               <td className="px-4 py-2 text-xs text-gray-500">{item.age_label}</td>
               <td className="space-x-3 px-4 py-2 text-right text-xs">
-                {item.job_id ? <a className="text-blue-600 underline hover:no-underline" href={`/jobs/${item.job_id}`}>Job</a> : null}
+                {item.job_id ? <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(`/jobs/${item.job_id}`, prefix)}>Job</Link> : null}
                 {item.run_id && item.has_transcript ? (
-                  <a className="text-indigo-600 underline hover:no-underline" href={`/admin/runs/${item.run_id}/transcript`}>Transcript</a>
+                  <Link className="text-indigo-600 underline hover:no-underline" to={withRoutePrefix(`/admin/runs/${item.run_id}/transcript`, prefix)}>Transcript</Link>
                 ) : null}
               </td>
             </tr>
@@ -87,6 +90,17 @@ function StuckTable({ items }: { items: StuckItem[] }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700" : "text-gray-600"}`}>{children}</div>
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function severityClass(severity: string) {
