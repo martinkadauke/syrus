@@ -36,6 +36,13 @@ Rails.application.routes.draw do
         delete "jobs/:job_id/pin", to: "job_pins#destroy", constraints: { job_id: /\d+/ }
         post "jobs/:job_id/attachments", to: "job_attachments#create", constraints: { job_id: /\d+/ }
         delete "jobs/:job_id/attachments/:id", to: "job_attachments#destroy", constraints: { job_id: /\d+/, id: /\d+/ }
+        post "jobs/:job_id/tags", to: "job_metadata#add_tag", constraints: { job_id: /\d+/ }
+        delete "jobs/:job_id/tags/:tag_id", to: "job_metadata#remove_tag", constraints: { job_id: /\d+/, tag_id: /\d+/ }
+        post "jobs/:job_id/dependencies", to: "job_metadata#add_dependency", constraints: { job_id: /\d+/ }
+        delete "jobs/:job_id/dependencies/:dependency_id", to: "job_metadata#remove_dependency", constraints: { job_id: /\d+/, dependency_id: /\d+/ }
+        post "jobs/:job_id/dependencies/override", to: "job_metadata#override_dependencies", constraints: { job_id: /\d+/ }
+        patch "jobs/:job_id/stack_base", to: "job_metadata#stack_base", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/mark_valid", to: "job_metadata#mark_valid", constraints: { job_id: /\d+/ }
         get "epics/new", to: "epics#new"
         get "epics/:id", to: "epics#show", constraints: { id: /\d+/ }
         get "epics/:id/edit", to: "epics#edit", constraints: { id: /\d+/ }
