@@ -28,6 +28,11 @@ module Api
           render json: scheduled_task_form_payload(task, repository: repository, from_template: from_template)
         end
 
+        def repository_index
+          repository = find_repository
+          render json: repository_scheduled_tasks_payload(repository)
+        end
+
         def create
           repository = find_repository
           task = repository.scheduled_tasks.build(scheduled_task_params)
@@ -43,6 +48,29 @@ module Api
             render_error("validation_failed", task.errors.full_messages.to_sentence,
                          status: :unprocessable_content)
           end
+        end
+
+        def repository_update
+          repository = find_repository
+          task = find_repository_task(repository)
+          enabled = ActiveModel::Type::Boolean.new.cast(params[:enabled])
+          if enabled
+            task.resume!
+            message = "Scheduled task enabled."
+          else
+            task.pause!(reason: "operator")
+            message = "Scheduled task disabled."
+          end
+
+          render json: repository_scheduled_tasks_payload(repository).merge(message: message)
+        end
+
+        def repository_destroy
+          repository = find_repository
+          task = find_repository_task(repository)
+          task.soft_delete!
+
+          render json: repository_scheduled_tasks_payload(repository).merge(message: "Scheduled task deleted.")
         end
 
         def update
@@ -121,6 +149,21 @@ module Api
           }
         end
 
+        def repository_scheduled_tasks_payload(repository)
+          tasks = repository
+            .scheduled_tasks
+            .alive
+            .includes(:repository)
+            .order(Arel.sql("CASE state WHEN 'scheduled' THEN 0 ELSE 1 END"), created_at: :desc)
+
+          {
+            repository: repository_json(repository),
+            tasks: tasks.map { |task| repository_task_json(task) },
+            new_scheduled_task_path: new_repository_scheduled_task_path(repository),
+            options: scheduled_task_options
+          }
+        end
+
         def task_summary_json(task)
           {
             id: task.id,
@@ -153,6 +196,10 @@ module Api
             resumable: task.paused? || task.auto_paused?,
             editable: !task.archived?
           )
+        end
+
+        def repository_task_json(task)
+          task_detail_json(task).merge(active: task.active?)
         end
 
         def task_form_json(task)
@@ -253,6 +300,10 @@ module Api
 
         def find_task
           ScheduledTask.where(user: Current.user).find(params[:id])
+        end
+
+        def find_repository_task(repository)
+          repository.scheduled_tasks.find(params[:id])
         end
 
         def scheduled_task_params

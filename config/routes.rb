@@ -19,7 +19,10 @@ Rails.application.routes.draw do
         resources :smart_folders, only: %i[ index update destroy ]
         resources :cron_templates, only: %i[ index show create update destroy ]
         get "repositories/:repository_id/scheduled_tasks/new", to: "scheduled_tasks#new"
+        get "repositories/:repository_id/scheduled_tasks", to: "scheduled_tasks#repository_index"
         post "repositories/:repository_id/scheduled_tasks", to: "scheduled_tasks#create"
+        patch "repositories/:repository_id/scheduled_tasks/:id", to: "scheduled_tasks#repository_update"
+        delete "repositories/:repository_id/scheduled_tasks/:id", to: "scheduled_tasks#repository_destroy"
         resources :scheduled_tasks, only: %i[ index show update destroy ] do
           member do
             post :pause

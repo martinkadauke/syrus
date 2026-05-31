@@ -79,6 +79,56 @@ RSpec.describe "API: /api/v1/app/scheduled_tasks", type: :request do
     expect(body.dig("task", "cron_template_id")).to eq(template.id)
   end
 
+  it "lists alive scheduled tasks for a repository" do
+    sign_in_as(user)
+    active = repository.scheduled_tasks.create!(user: user, **valid_cron_attrs.merge(name: "Active"))
+    paused = repository.scheduled_tasks.create!(user: user, **valid_cron_attrs.merge(name: "Paused"))
+    paused.pause!(reason: "operator")
+    archived = repository.scheduled_tasks.create!(user: user, **valid_cron_attrs.merge(name: "Archived"))
+    archived.soft_delete!
+    other_repo = Factories.repository(user: user, name: "other")
+    other_repo.scheduled_tasks.create!(user: user, **valid_cron_attrs.merge(name: "Other repo"))
+
+    get "/api/v1/app/repositories/#{repository.id}/scheduled_tasks"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body.dig("repository", "slug")).to eq("acme/widgets")
+    expect(body["tasks"]).to contain_exactly(
+      include("id" => active.id, "name" => "Active", "active" => true, "prompt" => "Write missing tests."),
+      include("id" => paused.id, "name" => "Paused", "active" => false)
+    )
+    expect(response.body).not_to include("Archived")
+    expect(response.body).not_to include("Other repo")
+  end
+
+  it "enables and disables repository-scoped tasks" do
+    sign_in_as(user)
+    task = repository.scheduled_tasks.create!(user: user, **valid_cron_attrs)
+
+    patch "/api/v1/app/repositories/#{repository.id}/scheduled_tasks/#{task.id}", params: { enabled: "false" }
+    expect(response).to have_http_status(:ok)
+    expect(task.reload.state).to eq("paused")
+    expect(parse_body["message"]).to eq("Scheduled task disabled.")
+
+    patch "/api/v1/app/repositories/#{repository.id}/scheduled_tasks/#{task.id}", params: { enabled: "true" }
+    expect(response).to have_http_status(:ok)
+    expect(task.reload.state).to eq("scheduled")
+    expect(parse_body["message"]).to eq("Scheduled task enabled.")
+  end
+
+  it "archives repository-scoped tasks" do
+    sign_in_as(user)
+    task = repository.scheduled_tasks.create!(user: user, **valid_cron_attrs)
+
+    delete "/api/v1/app/repositories/#{repository.id}/scheduled_tasks/#{task.id}"
+
+    expect(response).to have_http_status(:ok)
+    expect(task.reload.archived?).to be true
+    expect(parse_body["message"]).to eq("Scheduled task deleted.")
+    expect(parse_body["tasks"]).to be_empty
+  end
+
   it "creates a cron task for a repository" do
     sign_in_as(user)
 
