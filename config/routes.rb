@@ -169,7 +169,10 @@ Rails.application.routes.draw do
       end
     end
   end
-  resources :repositories, except: [ :destroy ] do
+  get "repositories", to: "spa#show", as: :repositories
+  post "repositories", to: "repositories#create"
+  get "repositories/legacy", to: "repositories#index", as: :legacy_repositories
+  resources :repositories, except: %i[ index create destroy ] do
     collection do
       get :owners
       get :repos

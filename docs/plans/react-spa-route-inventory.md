@@ -51,7 +51,7 @@ health/storage internals.
 | `PATCH /epics/:id/state` | `epics#update_state` | `app-api-needed` | Existing JSON support can inform browser endpoint shape. |
 | `/epics/:id/graph` | `epics#graph` | `spa-core` | Graph data endpoint or React route depending current response shape. |
 | `/epics`, `/jobs`, `/workflows` redirects | route redirects | `legacy-html` | Can be removed or changed once React router owns canonical dashboard paths. |
-| `/repositories` | `repositories#index` | `spa-core` | Repository list. |
+| `/repositories` | `spa#show` + `/api/v1/app/repositories` | `spa-core` | Migrated to the React repository list with app API poll/archive/unarchive commands. Legacy ERB fallback lives at `/repositories/legacy`. |
 | `/repositories/new`, `/repositories/:id/edit`, `POST/PATCH /repositories` | `repositories#new/create/edit/update` | `spa-core` | React repository form; credential/provider branch selectors need app APIs. |
 | `/repositories/:id` | `repositories#show` | `spa-core` | Repository detail, jobs table, notes, install status, issue browser links. |
 | repository collection JSON helpers | `repositories#owners`, `#repos`, `#branches` | `app-api-needed` | Existing endpoints are already AJAX-shaped but should be normalized under `/api/v1/app/repositories/*`. |

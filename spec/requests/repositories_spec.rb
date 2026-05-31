@@ -13,11 +13,18 @@ RSpec.describe "Repositories", type: :request do
   context "signed in" do
     before { sign_in_as(user) }
 
-    it "lists only the current user's repositories" do
+    it "serves the React app shell" do
+      get repositories_path
+
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "lists only the current user's repositories in the legacy fallback" do
       mine = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.repository(user: other, owner: "globex", name: "things")
 
-      get repositories_path
+      get legacy_repositories_path
       expect(response.body).to include("acme/widgets")
       expect(response.body).not_to include("globex/things")
     end
@@ -53,7 +60,7 @@ RSpec.describe "Repositories", type: :request do
       expect(mine.prepare_enabled).to be(false)
       expect(mine.auto_approve_mode).to eq("if_graders_pass_and_tagged_safe")
 
-      follow_redirect!
+      get legacy_repositories_path
       expect(response.body).to include("agent Codex")
     end
 
@@ -184,7 +191,7 @@ RSpec.describe "Repositories", type: :request do
         archived = Factories.repository(user: user, owner: "archived", name: "two")
         archived.archive!
 
-        get repositories_path
+        get legacy_repositories_path
         expect(response.body).to include("active/one")
         expect(response.body).to include("archived/two")
         expect(response.body).to match(/Archived\s*\(\s*1\s*\)/)
