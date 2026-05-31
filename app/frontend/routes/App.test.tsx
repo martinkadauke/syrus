@@ -1204,6 +1204,77 @@ describe("App", () => {
     expect(await screen.findByText("Document added.")).toBeInTheDocument()
     expect(screen.getByText("Design brief")).toBeInTheDocument()
   })
+
+  it("renders the direct job form, applies a template, and creates another job", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/jobs" && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              message: "Direct job created.",
+              create_more: true,
+              redirect_to: "/jobs/new?repository_id=3&create_more=1",
+              job: {
+                id: 44,
+                title: "Configure Syrus build dependencies",
+                state: "queued",
+                repository: {
+                  id: 3,
+                  slug: "acme/widgets",
+                  repository_path: "/repositories/3",
+                  default_agent_provider: "codex",
+                  default_agent_provider_label: "Codex"
+                },
+                job_path: "/jobs/44"
+              }
+            }),
+            { status: 201, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(directJobFormPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/new?repository_id=3&create_more=1"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "New direct job" })).toBeInTheDocument()
+    expect(await screen.findByDisplayValue("acme/widgets")).toBeInTheDocument()
+    expect(screen.getByLabelText("Create More")).toBeChecked()
+    fireEvent.click(screen.getByRole("button", { name: /Configure Syrus build dependencies/ }))
+    expect(screen.getByDisplayValue("Configure Syrus build dependencies")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Write a .syrus.yml setup file.")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Google Doc URL"), { target: { value: "https://docs.google.com/document/d/context/edit" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create job" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: expect.any(FormData)
+        })
+      )
+    })
+    const postCall = fetchSpy.mock.calls.find((call) => call[0] === "/api/v1/app/jobs" && call[1]?.method === "POST")
+    const body = postCall?.[1]?.body as FormData
+    expect(body.get("repository_id")).toBe("3")
+    expect(body.get("agent_provider")).toBe("")
+    expect(body.get("title")).toBe("Configure Syrus build dependencies")
+    expect(body.get("prompt")).toBe("Write a .syrus.yml setup file.")
+    expect(body.get("priority")).toBe("medium")
+    expect(body.get("create_more")).toBe("1")
+    expect(body.get("job_attachment[google_doc_url]")).toBe("https://docs.google.com/document/d/context/edit")
+    expect(await screen.findByText("Direct job created.")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1342,5 +1413,42 @@ function repositoryDocumentsPayload(overrides: {
     documents: overrides.documents || [],
     accepted_file_content_types: ["text/markdown", "application/pdf", "image/png"],
     message: overrides.message
+  }
+}
+
+function directJobFormPayload() {
+  return {
+    repositories: [
+      {
+        id: 3,
+        slug: "acme/widgets",
+        repository_path: "/repositories/3",
+        default_agent_provider: "codex",
+        default_agent_provider_label: "Codex"
+      }
+    ],
+    configured_agent_providers: [
+      { value: "claude", label: "Claude Code" },
+      { value: "codex", label: "Codex" }
+    ],
+    selected_repository_id: "3",
+    selected_agent_provider: null,
+    create_more: true,
+    prompt_templates: [
+      {
+        id: "configure-syrus-prep",
+        name: "Configure Syrus build dependencies",
+        description: "Detect package managers and write .syrus.yml.",
+        prompt: "Write a .syrus.yml setup file."
+      }
+    ],
+    priorities: [
+      { value: "high", label: "High", description: "Runs before medium and low" },
+      { value: "medium", label: "Medium", description: "Default" },
+      { value: "low", label: "Low", description: "Yields to higher-priority jobs" }
+    ],
+    accepted_file_content_types: ["text/markdown", "application/pdf", "image/png"],
+    new_repository_path: "/repositories/new",
+    dashboard_jobs_path: "/dashboard/jobs"
   }
 }
