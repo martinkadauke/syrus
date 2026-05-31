@@ -161,14 +161,6 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
   const sortColumn = sortValue(payload.preferences.sort, "column") || payload.controls.sort_columns[0] || "title"
   const sortDirection = sortValue(payload.preferences.sort, "direction") || payload.controls.sort_directions[0] || "desc"
 
-  function updateSort(next: { column?: string; direction?: string }) {
-    updatePreferences.mutate({
-      subject: payload.subject,
-      sort_column: next.column || sortColumn,
-      sort_direction: next.direction || sortDirection
-    })
-  }
-
   function updateLane(lane: string, checked: boolean) {
     const current = payload.preferences.kanban_lanes
     const next = checked ? [ ...current, lane ].filter(uniqueValue) : current.filter((value) => value !== lane)
@@ -209,34 +201,6 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
             </Link>
           ))}
         </nav>
-        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-sort-column">
-          Sort column
-          <select
-            className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
-            disabled={updatePreferences.isPending}
-            id="dashboard-sort-column"
-            onChange={(event) => updateSort({ column: event.target.value })}
-            value={sortColumn}
-          >
-            {payload.controls.sort_columns.map((column) => (
-              <option key={column} value={column}>{sortColumnLabel(column)}</option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-sort-direction">
-          Direction
-          <select
-            className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
-            disabled={updatePreferences.isPending}
-            id="dashboard-sort-direction"
-            onChange={(event) => updateSort({ direction: event.target.value })}
-            value={sortDirection}
-          >
-            {payload.controls.sort_directions.map((direction) => (
-              <option key={direction} value={direction}>{sortDirectionLabel(direction)}</option>
-            ))}
-          </select>
-        </label>
         {payload.view === "list" ? (
           <div className="relative">
             <button
@@ -1416,20 +1380,6 @@ function subjectLabel(subject: DashboardSubject, count: number) {
 
 function sortValue(sort: Record<string, string>, key: string) {
   return sort[key]
-}
-
-function sortColumnLabel(column: string) {
-  const labels: Record<string, string> = {
-    title: "Title",
-    state: "State",
-    repository: "Repository",
-    created_at: "Created",
-    updated_at: "Updated",
-    started_at: "Started",
-    finished_at: "Finished"
-  }
-
-  return labels[column] || column.replace(/_/g, " ")
 }
 
 function sortDirectionLabel(direction: string) {

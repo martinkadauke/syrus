@@ -438,26 +438,8 @@ describe("App", () => {
       )
     })
 
-    fireEvent.change(screen.getByLabelText("Sort column"), { target: { value: "title" } })
-
-    await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/dashboard/preferences",
-        expect.objectContaining({
-          method: "PATCH",
-          credentials: "same-origin",
-          headers: expect.objectContaining({
-            Accept: "application/json",
-            "Content-Type": "application/json"
-          }),
-          body: JSON.stringify({
-            subject: "job",
-            sort_column: "title",
-            sort_direction: "desc"
-          })
-        })
-      )
-    })
+    expect(screen.queryByLabelText("Sort column")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Direction")).not.toBeInTheDocument()
     await waitFor(() => {
       expect(screen.queryByText("Dashboard preferences updated.")).not.toBeInTheDocument()
     })
