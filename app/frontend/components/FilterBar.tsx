@@ -118,6 +118,7 @@ export function FilterBar({
 
   function openAddMenu(target: PendingAddTarget) {
     setPendingAddTarget(target)
+    setEditingPath(null)
     setAddMenuOpen(true)
     setAddQuery("")
   }
