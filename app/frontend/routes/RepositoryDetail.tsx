@@ -7,6 +7,8 @@ import {
   bulkRepositoryIssues,
   closeRepositoryIssue,
   commentRepositoryIssue,
+  createRepositoryNote,
+  deleteRepositoryNote,
   delegateRepositoryIssue,
   fetchRepositoryDetail,
   fetchRepositoryIssues,
@@ -30,8 +32,9 @@ export function RepositoryDetailRoute() {
   const tab = query.get("tab") === "github_issues" ? "github_issues" : "overview"
   const state = query.get("state") === "closed" ? "closed" : "open"
   const search = pageSearch(location.search)
+  const detailQueryKey = repositoryDetailQueryKey(id, search)
   const detail = useQuery({
-    queryKey: ["repositories", id, "detail", search],
+    queryKey: detailQueryKey,
     queryFn: () => fetchRepositoryDetail(id, search),
     enabled: id.length > 0 && tab === "overview"
   })
@@ -47,7 +50,7 @@ export function RepositoryDetailRoute() {
         <>
           {detail.isPending ? <PanelMessage>Loading repository...</PanelMessage> : null}
           {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, "Unable to load repository.")}</PanelMessage> : null}
-          {detail.isSuccess ? <RepositoryDetail payload={detail.data} /> : null}
+          {detail.isSuccess ? <RepositoryDetail payload={detail.data} queryKey={detailQueryKey} /> : null}
         </>
       ) : (
         <>
@@ -60,7 +63,19 @@ export function RepositoryDetailRoute() {
   )
 }
 
-function RepositoryDetail({ payload }: { payload: RepositoryDetailPayload }) {
+type RepositoryDetailQueryKey = readonly ["repositories", string, "detail", string]
+
+function repositoryDetailQueryKey(id: string | number, search: string): RepositoryDetailQueryKey {
+  return ["repositories", String(id), "detail", search] as const
+}
+
+function appendSearch(path: string, search: string) {
+  return search ? `${path}${search}` : path
+}
+
+function RepositoryDetail({ payload, queryKey }: { payload: RepositoryDetailPayload; queryKey: RepositoryDetailQueryKey }) {
+  const [notice, setNotice] = useState<string | null>(payload.message || null)
+
   return (
     <>
       <header>
@@ -70,11 +85,12 @@ function RepositoryDetail({ payload }: { payload: RepositoryDetailPayload }) {
       </header>
 
       <Tabs active="overview" tabs={payload.tabs} />
+      {notice ? <PanelMessage>{notice}</PanelMessage> : null}
       <Metadata payload={payload} />
       <Actions payload={payload} />
       <CredentialNotice payload={payload} />
       <Counts payload={payload} />
-      <Notes payload={payload} />
+      <Notes payload={payload} queryKey={queryKey} onNotice={setNotice} />
       <RecentJobs payload={payload} />
     </>
   )
@@ -397,7 +413,31 @@ function CountBox({ label, tone, value }: { label: string; tone: "blue" | "gray"
   )
 }
 
-function Notes({ payload }: { payload: RepositoryDetailPayload }) {
+function Notes({ payload, queryKey, onNotice }: { payload: RepositoryDetailPayload; queryKey: RepositoryDetailQueryKey; onNotice: (message: string | null) => void }) {
+  const queryClient = useQueryClient()
+  const search = queryKey[3]
+  const [body, setBody] = useState("")
+  const create = useMutation({
+    mutationFn: () => createRepositoryNote(appendSearch(payload.paths.app_repository_notes_path, search), body),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setBody("")
+      onNotice(updated.message || null)
+    }
+  })
+  const remove = useMutation({
+    mutationFn: (path: string) => deleteRepositoryNote(appendSearch(path, search)),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(updated.message || null)
+    }
+  })
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    create.mutate()
+  }
+
   return (
     <section className="overflow-hidden rounded border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-4 py-3">
@@ -412,21 +452,27 @@ function Notes({ payload }: { payload: RepositoryDetailPayload }) {
                   <p className="whitespace-pre-wrap break-words text-sm text-gray-800">{note.body}</p>
                   <p className="mt-1 text-xs text-gray-500">{note.author} · {formatRelative(note.created_at)}</p>
                 </div>
-                <PostForm action={note.delete_path} method="delete">
-                  <button className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200" type="submit">Delete</button>
-                </PostForm>
+                <button
+                  className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200 disabled:text-gray-300"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate(note.app_delete_path)}
+                  type="button"
+                >
+                  Delete
+                </button>
               </li>
             ))}
           </ul>
         ) : <p className="text-sm text-gray-600">No notes pinned yet.</p>}
 
-        <form action={payload.paths.repository_notes_path} className="flex flex-col gap-2 sm:flex-row" method="post">
-          <CsrfInput />
-          <textarea className="min-h-20 flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" name="repository_note[body]" placeholder="Pin repository context..." required rows={2} />
+        <form className="flex flex-col gap-2 sm:flex-row" onSubmit={submit}>
+          <textarea className="min-h-20 flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" name="repository_note[body]" onChange={(event) => setBody(event.target.value)} placeholder="Pin repository context..." required rows={2} value={body} />
           <div className="sm:self-end">
-            <button className={buttonClass("blue", "w-full sm:w-auto")} type="submit">Add note</button>
+            <button className={buttonClass("blue", "w-full sm:w-auto")} disabled={create.isPending} type="submit">Add note</button>
           </div>
         </form>
+        {create.isError ? <div className="text-sm text-red-700">{errorMessage(create.error, "Repository note could not be added.")}</div> : null}
+        {remove.isError ? <div className="text-sm text-red-700">{errorMessage(remove.error, "Repository note could not be removed.")}</div> : null}
       </div>
     </section>
   )

@@ -1473,6 +1473,69 @@ describe("App", () => {
     expect(screen.getByText("Failed (7d)").previousElementSibling).toHaveTextContent("1")
   })
 
+  it("runs repository note commands through the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories/3/notes/11" && init?.method === "DELETE") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...repositoryDetailPayload(),
+          message: "Repository note removed.",
+          notes: []
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === "/api/v1/app/repositories/3/notes" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...repositoryDetailPayload(),
+          message: "Repository note pinned.",
+          notes: [
+            {
+              id: 12,
+              body: "Use staging for smoke tests.",
+              author: "operator",
+              created_at: "2026-05-30T12:00:00Z",
+              delete_path: "/repositories/3/notes/12",
+              app_delete_path: "/api/v1/app/repositories/3/notes/12"
+            }
+          ]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(repositoryDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/notes/11",
+        expect.objectContaining({ method: "DELETE", credentials: "same-origin" })
+      )
+    })
+    expect(await screen.findByText("Repository note removed.")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText("Pin repository context..."), { target: { value: "Use staging for smoke tests." } })
+    fireEvent.click(screen.getByRole("button", { name: "Add note" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/notes",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ repository_note: { body: "Use staging for smoke tests." } })
+        })
+      )
+    })
+    expect(await screen.findByText("Use staging for smoke tests.")).toBeInTheDocument()
+  })
+
   it("renders repository GitHub issues and delegates one through the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -2232,7 +2295,8 @@ function repositoryDetailPayload() {
         body: "Repository note pinned.",
         author: "operator",
         created_at: "2026-05-30T12:00:00Z",
-        delete_path: "/repositories/3/notes/11"
+        delete_path: "/repositories/3/notes/11",
+        app_delete_path: "/api/v1/app/repositories/3/notes/11"
       }
     ],
     jobs: [
@@ -2274,6 +2338,7 @@ function repositoryDetailPayload() {
       archive_repository_path: "/repositories/3/archive",
       retry_failed_jobs_repository_path: "/repositories/3/retry_failed_jobs",
       repository_notes_path: "/repositories/3/notes",
+      app_repository_notes_path: "/api/v1/app/repositories/3/notes",
       repositories_path: "/repositories",
       repository_documents_path: "/repositories/3/documents",
       repository_scheduled_tasks_path: "/repositories/3/scheduled_tasks"

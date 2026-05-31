@@ -1,4 +1,4 @@
-import { getJson, patchJson, postJson } from "./client"
+import { deleteJson, getJson, patchJson, postJson } from "./client"
 
 export type RepositoryRow = {
   id: number
@@ -150,6 +150,7 @@ export type RepositoryDetailPayload = {
     archive_repository_path: string
     retry_failed_jobs_repository_path: string
     repository_notes_path: string
+    app_repository_notes_path: string
     repositories_path: string
     repository_documents_path: string
     repository_scheduled_tasks_path: string
@@ -195,6 +196,7 @@ export type RepositoryNote = {
   author: string
   created_at: string
   delete_path: string
+  app_delete_path: string
 }
 
 export type RepositoryDetailJob = {
@@ -295,6 +297,14 @@ export function bulkRepositoryIssues(path: string, values: { issueNumbers: numbe
     bulk_action: values.bulkAction,
     state: values.state
   })
+}
+
+export function createRepositoryNote(path: string, body: string) {
+  return postJson<RepositoryDetailPayload>(path, { repository_note: { body } })
+}
+
+export function deleteRepositoryNote(path: string) {
+  return deleteJson<RepositoryDetailPayload>(path)
 }
 
 export function fetchNewRepositoryForm() {

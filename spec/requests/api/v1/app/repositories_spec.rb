@@ -174,7 +174,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body["notes"]).to contain_exactly(include(
       "id" => active_note.id,
       "body" => "Use staging for smoke tests.",
-      "delete_path" => repository_note_path(repository, active_note)
+      "delete_path" => repository_note_path(repository, active_note),
+      "app_delete_path" => "/api/v1/app/repositories/#{repository.id}/notes/#{active_note.id}"
     ))
     expect(body["jobs"]).to include(
       include("id" => failed.id, "issue_title" => "Fix forum", "source" => include("label" => "#1")),
@@ -186,8 +187,48 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body["paths"]).to include(
       "new_job_path" => new_job_path(repository_id: repository.id),
       "edit_repository_path" => edit_repository_path(repository),
-      "repository_notes_path" => repository_notes_path(repository)
+      "repository_notes_path" => repository_notes_path(repository),
+      "app_repository_notes_path" => "/api/v1/app/repositories/#{repository.id}/notes"
     )
+  end
+
+  it "creates and removes repository notes through the app API" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user, owner: "acme", name: "widgets")
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/notes", params: { repository_note: { body: "Use staging for smoke tests." } }
+    }.to change { repository.repository_notes.active.count }.by(1)
+
+    expect(response).to have_http_status(:ok)
+    note = repository.repository_notes.active.sole
+    expect(note.author).to eq("operator")
+    expect(parse_body["message"]).to eq("Repository note pinned.")
+    expect(parse_body["notes"]).to contain_exactly(include(
+      "body" => "Use staging for smoke tests.",
+      "app_delete_path" => "/api/v1/app/repositories/#{repository.id}/notes/#{note.id}"
+    ))
+
+    expect {
+      delete "/api/v1/app/repositories/#{repository.id}/notes/#{note.id}"
+    }.to change { repository.repository_notes.active.count }.from(1).to(0)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Repository note removed.")
+    expect(parse_body["notes"]).to eq([])
+    expect(note.reload).to be_removed
+  end
+
+  it "rejects blank repository notes through the app API" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user)
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/notes", params: { repository_note: { body: " " } }
+    }.not_to change(RepositoryNote, :count)
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to eq("Note cannot be blank.")
   end
 
   it "does not expose another user's repository detail" do

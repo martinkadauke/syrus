@@ -8,9 +8,8 @@ module Api
 
         def show
           repository = find_repository
-          page = [ params.fetch(:page, 1).to_i, 1 ].max
 
-          render json: repository_detail_payload(repository, page: page)
+          render json: repository_detail_payload(repository, page: detail_page)
         end
 
         def issues
@@ -83,6 +82,26 @@ module Api
           else
             render_error("validation_failed", repository.errors.full_messages.to_sentence, status: :unprocessable_content)
           end
+        end
+
+        def create_note
+          repository = find_repository
+          body = params.dig(:repository_note, :body).to_s.strip
+          if body.blank?
+            render_error("validation_failed", "Note cannot be blank.", status: :unprocessable_content)
+            return
+          end
+
+          repository.repository_notes.create!(body: body, author: "operator")
+          render json: repository_detail_payload(repository.reload, page: detail_page, message: "Repository note pinned.")
+        end
+
+        def destroy_note
+          repository = Current.user.repositories.find(params[:repository_id])
+          note = repository.repository_notes.active.find(params[:id])
+          note.remove!
+
+          render json: repository_detail_payload(repository.reload, page: detail_page, message: "Repository note removed.")
         end
 
         def comment_issue
@@ -214,6 +233,7 @@ module Api
               archive_repository_path: archive_repository_path(repository),
               retry_failed_jobs_repository_path: retry_failed_jobs_repository_path(repository),
               repository_notes_path: repository_notes_path(repository),
+              app_repository_notes_path: "/api/v1/app/repositories/#{repository.id}/notes",
               repositories_path: repositories_path,
               repository_documents_path: repository_documents_path(repository),
               repository_scheduled_tasks_path: repository_scheduled_tasks_path(repository)
@@ -425,7 +445,8 @@ module Api
             body: note.body,
             author: note.author,
             created_at: note.created_at.iso8601,
-            delete_path: repository_note_path(repository, note)
+            delete_path: repository_note_path(repository, note),
+            app_delete_path: "/api/v1/app/repositories/#{repository.id}/notes/#{note.id}"
           }
         end
 
@@ -514,6 +535,10 @@ module Api
 
         def find_repository
           Current.user.repositories.find(params[:id])
+        end
+
+        def detail_page
+          [ params.fetch(:page, 1).to_i, 1 ].max
         end
 
         def repository_params

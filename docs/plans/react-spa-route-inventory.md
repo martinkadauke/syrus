@@ -57,7 +57,7 @@ health/storage internals.
 | repository collection JSON helpers | `/api/v1/app/repositories/owners`, `/repos`, `/branches` | `spa-core` | React repository form uses app API selectors; legacy AJAX helpers remain for the ERB fallback. |
 | repository commands | `repositories#poll`, `#archive`, `#unarchive`, `#retry_failed_jobs` | `app-api-needed` | Command endpoints, invalidate repository and dashboard queries. |
 | repository GitHub issues | `/api/v1/app/repositories/:id/issues*` | `spa-core` | React repository detail owns issue listing plus comment/close/delegate/bulk commands. Legacy HTML issue routes remain for fallback. |
-| repository notes | `repositories/notes#create/destroy` | `app-api-needed` | Small command endpoints. |
+| repository notes | `/api/v1/app/repositories/:id/notes`, `/api/v1/app/repositories/:repository_id/notes/:id` | `spa-core` | React repository overview uses app API mutations for note add/remove. Legacy HTML note routes remain for fallback. |
 | repository documents | `spa#show` + `/api/v1/app/repositories/:id/documents` | `spa-core` | Migrated to the React repository documents page with app API upload/delete. Legacy ERB fallback lives at `/repositories/:id/documents/legacy`. |
 | repository scheduled task helpers | `spa#show` + `/api/v1/app/repositories/:id/scheduled_tasks*` | `spa-core` | Migrated to React for the per-repository scheduled-task tab and repository-scoped new form. Legacy ERB fallback lives at `/repositories/:id/scheduled_tasks/legacy`. |
 | `/chats/new`, `POST /chats` | `spa#show` + `/api/v1/app/chats/new`, `POST /api/v1/app/chats` | `spa-core` | Migrated to the React chat creation form. Legacy ERB fallback lives at `/chats/new/legacy`; HTML `POST /chats` remains for fallback. |
