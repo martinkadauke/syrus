@@ -87,6 +87,18 @@ export type ScheduledTaskDetailPayload = {
   }
 }
 
+export type RepositoryScheduledTask = ScheduledTaskDetail & {
+  active: boolean
+}
+
+export type RepositoryScheduledTasksPayload = {
+  repository: ScheduledTaskRepository
+  tasks: RepositoryScheduledTask[]
+  new_scheduled_task_path: string
+  options: ScheduledTaskOptions
+  message?: string
+}
+
 export type ScheduledTaskFormPayload = {
   task: ScheduledTaskInput & { id: number | null; cron_template_id: number | null }
   repository: ScheduledTaskRepository
@@ -105,6 +117,10 @@ export function fetchScheduledTask(id: string) {
 export function fetchNewScheduledTaskForm(repositoryId: string, fromTemplate?: string | null) {
   const query = fromTemplate ? `?${new URLSearchParams({ from_template: fromTemplate }).toString()}` : ""
   return getJson<ScheduledTaskFormPayload>(`/api/v1/app/repositories/${repositoryId}/scheduled_tasks/new${query}`)
+}
+
+export function fetchRepositoryScheduledTasks(repositoryId: string) {
+  return getJson<RepositoryScheduledTasksPayload>(`/api/v1/app/repositories/${repositoryId}/scheduled_tasks`)
 }
 
 export function createScheduledTask(repositoryId: string, values: ScheduledTaskInput, fromTemplate?: string | null) {
@@ -134,4 +150,14 @@ export function resumeScheduledTask(id: number) {
 
 export function fireScheduledTask(id: number) {
   return postJson<ScheduledTaskDetailPayload>(`/api/v1/app/scheduled_tasks/${id}/fire_now`)
+}
+
+export function updateRepositoryScheduledTask(repositoryId: number, id: number, enabled: boolean) {
+  return patchJson<RepositoryScheduledTasksPayload>(`/api/v1/app/repositories/${repositoryId}/scheduled_tasks/${id}`, {
+    enabled
+  })
+}
+
+export function deleteRepositoryScheduledTask(repositoryId: number, id: number) {
+  return deleteJson<RepositoryScheduledTasksPayload>(`/api/v1/app/repositories/${repositoryId}/scheduled_tasks/${id}`)
 }

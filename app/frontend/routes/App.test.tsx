@@ -1002,6 +1002,42 @@ describe("App", () => {
       )
     })
   })
+
+  it("renders the repository scheduled tasks route and disables a task", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories/3/scheduled_tasks/12" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify(repositoryScheduledTasksPayload({ state: "paused", active: false, message: "Scheduled task disabled." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(repositoryScheduledTasksPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3/scheduled_tasks"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toBeInTheDocument()
+    expect(await screen.findByText("Daily review")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "New scheduled task" })).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks/new")
+    fireEvent.click(screen.getByRole("button", { name: "Disable" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/scheduled_tasks/12",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          body: JSON.stringify({ enabled: false })
+        })
+      )
+    })
+    expect(await screen.findByText("Scheduled task disabled.")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1054,6 +1090,24 @@ function scheduledTaskDetailPayload(overrides: { state?: string; message?: strin
         job_path: "/jobs/44"
       }
     ],
+    options: scheduledTaskOptions(),
+    message: overrides.message
+  }
+}
+
+function repositoryScheduledTasksPayload(overrides: { state?: string; active?: boolean; message?: string } = {}) {
+  const detail = scheduledTaskDetailPayload({ state: overrides.state || "scheduled" }).task
+  return {
+    repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+    tasks: [
+      {
+        ...detail,
+        name: "Daily review",
+        prompt: "Review the project.",
+        active: overrides.active ?? true
+      }
+    ],
+    new_scheduled_task_path: "/repositories/3/scheduled_tasks/new",
     options: scheduledTaskOptions(),
     message: overrides.message
   }

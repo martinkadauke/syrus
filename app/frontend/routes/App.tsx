@@ -13,6 +13,7 @@ import { AdminStuck } from "./AdminStuck"
 import { AdminTranscript } from "./AdminTranscript"
 import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
 import { CronTemplateDetailRoute, CronTemplateFormRoute, CronTemplatesIndex } from "./CronTemplates"
+import { RepositoryScheduledTasksRoute } from "./RepositoryScheduledTasks"
 import { ScheduledTaskDetailRoute, ScheduledTaskFormRoute, ScheduledTasksIndex } from "./ScheduledTasks"
 import { SmartFolders } from "./SmartFolders"
 import { Tags } from "./Tags"
@@ -44,6 +45,7 @@ export function App() {
       <Route path="/scheduled_tasks" element={<ScheduledTasksIndex />} />
       <Route path="/scheduled_tasks/:id" element={<ScheduledTaskDetailRoute />} />
       <Route path="/scheduled_tasks/:id/edit" element={<ScheduledTaskFormRoute mode="edit" />} />
+      <Route path="/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
       <Route path="/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
@@ -67,6 +69,7 @@ export function App() {
       <Route path="/app-shell/scheduled_tasks" element={<ScheduledTasksIndex />} />
       <Route path="/app-shell/scheduled_tasks/:id" element={<ScheduledTaskDetailRoute />} />
       <Route path="/app-shell/scheduled_tasks/:id/edit" element={<ScheduledTaskFormRoute mode="edit" />} />
+      <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
       <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
