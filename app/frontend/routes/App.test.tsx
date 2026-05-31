@@ -4136,6 +4136,8 @@ describe("App", () => {
         })
       )
     })
+    expect(await screen.findByRole("link", { name: "Aqueduct marker" })).toHaveAttribute("href", "#message-9")
+    expect(screen.queryByText("Bookmarked Aqueduct marker.")).not.toBeInTheDocument()
 
     fireEvent.click(await screen.findByText("acme/tools"))
     await waitFor(() => {

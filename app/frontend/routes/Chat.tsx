@@ -310,7 +310,7 @@ function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<
     mutationFn: () => createChatBookmark(appendSearch(payload.paths.app_bookmarks_path, search), item.id, label),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
-      onNotice(updated.message || null)
+      onNotice(null)
       setLabel("")
       setOpen(false)
     }
