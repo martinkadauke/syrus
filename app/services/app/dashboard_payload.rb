@@ -43,6 +43,7 @@ module App
         counts: counts,
         preferences: preferences_json,
         controls: controls_json,
+        landing_queue: landing_queue_json,
         smart_folders: smart_folders_json,
         active_smart_folder_id: active_smart_folder&.id,
         items: current_result.fetch(:items),
@@ -461,6 +462,14 @@ module App
         columns: column_options_json,
         kanban_lanes: kanban_lane_options_json,
         filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user)
+      }
+    end
+
+    def landing_queue_json
+      {
+        visible: subject == "job" && active_smart_folder&.attention_preset == "landing_queue",
+        paused: user.landing_paused?,
+        toggle_path: "/api/v1/app/dashboard/landing_pause"
       }
     end
 

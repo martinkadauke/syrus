@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { bulkDashboardJobs, fetchDashboard, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardJobs, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -67,6 +67,14 @@ function SubjectTabs({ payload, prefix }: { payload: DashboardPayload; prefix: s
 }
 
 function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
+  const queryClient = useQueryClient()
+  const landingPause = useMutation({
+    mutationFn: () => toggleDashboardLandingPause(payload.landing_queue.toggle_path),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  })
+
   return (
     <aside className="space-y-2">
       <h2 className="text-xs font-semibold uppercase text-gray-500">Smart folders</h2>
@@ -80,6 +88,20 @@ function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix
           </Link>
         ))}
       </nav>
+      {payload.landing_queue.visible ? (
+        <div className="space-y-2 rounded border border-gray-200 bg-white p-2">
+          <button
+            className="w-full rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:text-gray-300"
+            disabled={landingPause.isPending}
+            onClick={() => landingPause.mutate()}
+            type="button"
+          >
+            {payload.landing_queue.paused ? "Resume landing" : "Pause landing"}
+          </button>
+          {landingPause.isSuccess ? <p className="text-xs text-emerald-700" role="status">{landingPause.data.message}</p> : null}
+          {landingPause.isError ? <p className="text-xs text-red-700" role="alert">{errorMessage(landingPause.error, "Unable to update landing queue.")}</p> : null}
+        </div>
+      ) : null}
     </aside>
   )
 }

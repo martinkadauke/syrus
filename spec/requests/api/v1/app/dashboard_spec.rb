@@ -85,6 +85,11 @@ RSpec.describe "App API dashboard commands", type: :request do
         include("field" => "state", "label" => "State", "values" => include(include("value" => "open", "label" => "Any open"))),
         include("field" => "repository_id", "label" => "Repository", "values" => include(include("value" => repo.id, "label" => "acme/widgets")))
       )
+      expect(body["landing_queue"]).to eq(
+        "visible" => false,
+        "paused" => false,
+        "toggle_path" => "/api/v1/app/dashboard/landing_pause"
+      )
       expect(body["kanban_limit"]).to eq(100)
       expect(body["lanes"]).to include(
         include("key" => "queued", "title" => "Queued", "items" => include(include("id" => first.id, "title" => "Build aqueduct"))),
@@ -92,6 +97,26 @@ RSpec.describe "App API dashboard commands", type: :request do
       )
       expect(body.dig("paths", "dashboard_jobs_path")).to eq(dashboard_jobs_path)
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
+    end
+
+    it "marks the landing queue pause control visible when the landing smart folder is active" do
+      user.update!(landing_paused: true)
+      folder = SmartFolder.create!(
+        user: user,
+        subject_type: "job",
+        name: "Landing queue",
+        kind: "user_defined",
+        filter: SmartFolder.attention_preset_filter("landing_queue")
+      )
+
+      get "/api/v1/app/dashboard", params: { subject: "job", smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body["landing_queue"]).to eq(
+        "visible" => true,
+        "paused" => true,
+        "toggle_path" => "/api/v1/app/dashboard/landing_pause"
+      )
     end
 
     it "applies smart folder filters and returns active folder metadata" do

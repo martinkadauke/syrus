@@ -331,6 +331,78 @@ describe("App", () => {
     expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
   })
 
+  it("toggles landing queue pause from the React dashboard", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/dashboard/landing_pause" && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              message: "Landing paused.",
+              landing_paused: true
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            dashboardPayload({
+              subject: "job",
+              view: "list",
+              active_smart_folder_id: 7,
+              smart_folders: [
+                {
+                  id: 7,
+                  name: "Landing queue",
+                  kind: "builtin",
+                  subject_type: "job",
+                  active: true,
+                  path: "/dashboard/jobs?view=list&smart_folder_id=7"
+                }
+              ],
+              landing_queue: {
+                visible: true,
+                paused: false,
+                toggle_path: "/api/v1/app/dashboard/landing_pause"
+              },
+              items: [dashboardJobItem()]
+            })
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=7"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: "Pause landing" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard/landing_pause",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({})
+        })
+      )
+    })
+    expect(await screen.findByText("Landing paused.")).toBeInTheDocument()
+  })
+
   it("renders app-shell dashboard kanban lanes from the app dashboard API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -3308,6 +3380,11 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
           values: ["issue", "cron", "direct"]
         }
       ]
+    },
+    landing_queue: {
+      visible: false,
+      paused: false,
+      toggle_path: "/api/v1/app/dashboard/landing_pause"
     },
     smart_folders: [
       {

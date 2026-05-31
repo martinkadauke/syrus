@@ -154,6 +154,11 @@ export type DashboardPayload = {
     kanban_lanes: DashboardKanbanLaneOption[]
     filter_schema: DashboardFilterSchemaField[]
   }
+  landing_queue: {
+    visible: boolean
+    paused: boolean
+    toggle_path: string
+  }
   smart_folders: DashboardSmartFolder[]
   active_smart_folder_id: number | null
   items: DashboardItem[]
@@ -197,6 +202,11 @@ export type DashboardBulkJobsPayload = {
   skipped_job_ids: number[]
 }
 
+export type DashboardLandingPausePayload = {
+  message: string
+  landing_paused: boolean
+}
+
 export function fetchDashboard(search = "") {
   return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`)
 }
@@ -207,4 +217,8 @@ export function updateDashboardPreferences(input: DashboardPreferencesInput) {
 
 export function bulkDashboardJobs(input: DashboardBulkJobsInput) {
   return postJson<DashboardBulkJobsPayload>("/api/v1/app/dashboard/jobs/bulk", input)
+}
+
+export function toggleDashboardLandingPause(path: string) {
+  return postJson<DashboardLandingPausePayload>(path, {})
 }
