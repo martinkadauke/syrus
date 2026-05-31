@@ -2206,6 +2206,11 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toHaveClass("max-w-7xl")
+    const scheduledTabs = await screen.findByRole("navigation", { name: "Repository tabs" })
+    expect(within(scheduledTabs).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(within(scheduledTabs).getByRole("link", { name: "Context" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=context")
+    expect(within(scheduledTabs).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/repositories/3/documents")
+    expect(within(scheduledTabs).getByRole("link", { name: "Scheduled Tasks" })).toHaveClass("border-blue-600")
     expect(await screen.findByText("Daily review")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "New scheduled task" })).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks/new")
     fireEvent.click(screen.getByRole("button", { name: "Disable" }))
@@ -2397,7 +2402,13 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Repository documents" })).toBeInTheDocument()
+    expect(await screen.findByRole("main", { name: "Repository documents" })).toHaveClass("max-w-7xl")
+    const repositoryTabs = await screen.findByRole("navigation", { name: "Repository tabs" })
+    expect(within(repositoryTabs).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(within(repositoryTabs).getByRole("link", { name: "GitHub Issues" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=github_issues")
+    expect(within(repositoryTabs).getByRole("link", { name: "Context" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=context")
+    expect(within(repositoryTabs).getByRole("link", { name: "Documents" })).toHaveClass("border-blue-600")
+    expect(within(repositoryTabs).getByRole("link", { name: "Scheduled Tasks" })).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks")
     expect(await screen.findByText("No supporting documents yet. Upload a file or link a Google Doc to give the agent extra context.")).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("URL"), { target: { value: "https://docs.google.com/document/d/design/edit" } })
     fireEvent.change(screen.getByLabelText("Document title"), { target: { value: "Design brief" } })

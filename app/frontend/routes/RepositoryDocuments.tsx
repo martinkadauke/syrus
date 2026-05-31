@@ -11,6 +11,7 @@ import {
   type RepositoryDocumentInput,
   type RepositoryDocumentsPayload
 } from "../api/repositoryDocuments"
+import { RepositoryTabs } from "../components/RepositoryTabs"
 
 export function RepositoryDocumentsRoute() {
   const location = useLocation()
@@ -23,7 +24,7 @@ export function RepositoryDocumentsRoute() {
   })
 
   return (
-    <main aria-label="Repository documents" className="mx-auto max-w-5xl space-y-6 p-6">
+    <main aria-label="Repository documents" className="mx-auto max-w-7xl space-y-6 p-6">
       {documents.isPending ? <PanelMessage>Loading repository documents...</PanelMessage> : null}
       {documents.isError ? <RepositoryDocumentsError error={documents.error} /> : null}
       {documents.isSuccess ? <RepositoryDocumentsView payload={documents.data} prefix={routePrefix(location.pathname)} /> : null}
@@ -45,13 +46,14 @@ function RepositoryDocumentsView({ payload, prefix }: { payload: RepositoryDocum
 
   return (
     <>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-mono text-2xl font-semibold text-gray-900">{payload.repository.slug}</h1>
-          <p className="mt-1 text-sm text-gray-600">Supporting documents available to agent runs for this repository.</p>
-        </div>
-        <Link className="rounded border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50" to={`${prefix}/repositories/${payload.repository.id}`}>Overview</Link>
+      <header>
+        <h1 className="font-mono text-2xl font-semibold text-gray-900">
+          <Link className="hover:underline" to={`${prefix}${payload.repository.repository_path}`}>{payload.repository.slug}</Link>
+        </h1>
+        <p className="mt-1 text-sm text-gray-600">Supporting documents available to agent runs for this repository.</p>
       </header>
+
+      <RepositoryTabs active="documents" prefix={prefix} repositoryId={payload.repository.id} />
 
       {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
       {destroy.isError ? <PanelMessage tone="error">{errorMessage(destroy.error, "Unable to delete document.")}</PanelMessage> : null}
