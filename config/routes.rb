@@ -31,6 +31,10 @@ Rails.application.routes.draw do
         end
         get "jobs/new", to: "direct_jobs#new"
         post "jobs", to: "direct_jobs#create"
+        get "epics/new", to: "epics#new"
+        get "epics/:id/edit", to: "epics#edit", constraints: { id: /\d+/ }
+        post "epics", to: "epics#create"
+        patch "epics/:id", to: "epics#update", constraints: { id: /\d+/ }
         resources :repositories, only: %i[ index ] do
           member do
             post :poll
