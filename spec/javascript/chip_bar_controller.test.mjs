@@ -175,7 +175,7 @@ test("fetches labels for typeahead chip values on initial render", async () => {
     calls.push(url)
     return {
       ok: true,
-      json: async () => [ { value: 123, label: "#42 Add greeting" } ]
+      json: async () => ({ options: [ { value: 123, label: "#42 Add greeting" } ] })
     }
   }
 
@@ -197,7 +197,7 @@ test("fetches labels for typeahead chip values on initial render", async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     assert.equal(calls.length, 1)
-    assert.match(calls[0], /\/filters\/fk_options\?/)
+    assert.match(calls[0], /\/api\/v1\/app\/filters\/fk_options\?/)
     assert.match(calls[0], /field=job_id/)
     assert.match(calls[0], /ids%5B%5D=123/)
     assert.match(controller.chipsTarget.textContent, /#42 Add greeting/)
@@ -326,6 +326,7 @@ test("debounces rapid typeahead input into one search request", async () => {
     await Promise.resolve()
 
     assert.equal(calls.length, 1)
+    assert.match(calls[0], /\/api\/v1\/app\/filters\/fk_options\?/)
     assert.match(calls[0], /q=add/)
   } finally {
     globalThis.fetch = originalFetch

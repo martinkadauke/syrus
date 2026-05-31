@@ -766,11 +766,13 @@ export default class extends Controller {
     if (q !== null) params.set("q", q)
     ids.forEach(id => params.append("ids[]", id))
 
-    return fetch(`/filters/fk_options?${params.toString()}`, {
+    return fetch(`/api/v1/app/filters/fk_options?${params.toString()}`, {
       headers: { Accept: "application/json" }
     }).then(response => {
       if (!response.ok) throw new Error(`typeahead request failed: ${response.status}`)
       return response.json()
+    }).then(payload => {
+      return Array.isArray(payload) ? payload : (payload.options || [])
     })
   }
 
