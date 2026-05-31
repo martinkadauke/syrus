@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { DragEvent, FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   createDirectJob,
@@ -22,6 +22,7 @@ type DirectJobFormState = {
 
 export function DirectJobNewRoute() {
   const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const form = useQuery({
     queryKey: ["direct_jobs", "new", location.search],
     queryFn: () => fetchDirectJobForm(location.search)
@@ -36,12 +37,13 @@ export function DirectJobNewRoute() {
 
       {form.isPending ? <PanelMessage>Loading direct job form...</PanelMessage> : null}
       {form.isError ? <PanelMessage tone="error">{errorMessage(form.error, "Unable to load the direct job form.")}</PanelMessage> : null}
-      {form.isSuccess ? <DirectJobForm payload={form.data} /> : null}
+      {form.isSuccess ? <DirectJobForm payload={form.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function DirectJobForm({ payload }: { payload: DirectJobFormPayload }) {
+function DirectJobForm({ payload, prefix }: { payload: DirectJobFormPayload; prefix: string }) {
+  const navigate = useNavigate()
   const promptRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -55,7 +57,7 @@ function DirectJobForm({ payload }: { payload: DirectJobFormPayload }) {
     mutationFn: () => createDirectJob({ ...values, files }),
     onSuccess: (created) => {
       if (!created.create_more) {
-        window.location.assign(created.redirect_to)
+        navigate(withRoutePrefix(created.redirect_to, prefix))
         return
       }
 
@@ -106,7 +108,7 @@ function DirectJobForm({ payload }: { payload: DirectJobFormPayload }) {
     return (
       <section className="rounded border border-dashed border-gray-300 bg-white p-8 text-center">
         <p className="text-sm text-gray-600">No active repositories.</p>
-        <a className="mt-3 inline-block rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500" href={payload.new_repository_path}>Add one first</a>
+        <Link className="mt-3 inline-block rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500" to={withRoutePrefix(payload.new_repository_path, prefix)}>Add one first</Link>
       </section>
     )
   }
@@ -284,10 +286,21 @@ function DirectJobForm({ payload }: { payload: DirectJobFormPayload }) {
         >
           {save.isPending ? "Creating..." : "Create job"}
         </button>
-        <a className="text-sm text-gray-600 underline hover:no-underline" href={payload.dashboard_jobs_path}>Cancel</a>
+        <Link className="text-sm text-gray-600 underline hover:no-underline" to={withRoutePrefix(payload.dashboard_jobs_path, prefix)}>Cancel</Link>
       </div>
     </form>
   )
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function initialValues(payload: DirectJobFormPayload): DirectJobFormState {
