@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   createRepository,
@@ -23,7 +23,9 @@ type OwnerOption = {
 
 export function RepositoryFormRoute({ mode }: { mode: "new" | "edit" }) {
   const params = useParams()
+  const location = useLocation()
   const id = params.id || ""
+  const prefix = routePrefix(location.pathname)
   const form = useQuery({
     queryKey: ["repositories", mode, id],
     queryFn: () => mode === "new" ? fetchNewRepositoryForm() : fetchEditRepositoryForm(id),
@@ -34,12 +36,13 @@ export function RepositoryFormRoute({ mode }: { mode: "new" | "edit" }) {
     <main aria-label={mode === "new" ? "Add Repository" : "Edit Repository"} className="mx-auto max-w-3xl space-y-6 p-6">
       {form.isPending ? <PanelMessage>Loading repository form...</PanelMessage> : null}
       {form.isError ? <PanelMessage tone="error">{errorMessage(form.error, "Unable to load repository form.")}</PanelMessage> : null}
-      {form.isSuccess ? <RepositoryForm mode={mode} payload={form.data} /> : null}
+      {form.isSuccess ? <RepositoryForm mode={mode} payload={form.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function RepositoryForm({ mode, payload }: { mode: "new" | "edit"; payload: RepositoryFormPayload }) {
+function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; payload: RepositoryFormPayload; prefix: string }) {
+  const navigate = useNavigate()
   const [values, setValues] = useState<RepositoryInput>(() => inputFromPayload(payload))
   const [ownerMode, setOwnerMode] = useState<"select" | "manual">("manual")
   const [repoMode, setRepoMode] = useState<"select" | "manual">("manual")
@@ -54,7 +57,7 @@ function RepositoryForm({ mode, payload }: { mode: "new" | "edit"; payload: Repo
       if (mode === "new") return createRepository(values)
       return updateRepository(Number(payload.repository.id), values)
     },
-    onSuccess: (saved) => window.location.assign(saved.redirect_to)
+    onSuccess: (saved) => navigate(withRoutePrefix(saved.redirect_to, prefix))
   })
 
   const owners = useQuery({
@@ -199,7 +202,7 @@ function RepositoryForm({ mode, payload }: { mode: "new" | "edit"; payload: Repo
     <>
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="break-words text-3xl font-semibold text-gray-900">{title}</h1>
-        {mode === "edit" && payload.repository.repository_path ? <a className="text-sm text-blue-600 underline hover:no-underline" href={payload.repository.repository_path}>Back to repository</a> : null}
+        {mode === "edit" && payload.repository.repository_path ? <Link className="text-sm text-blue-600 underline hover:no-underline" to={withRoutePrefix(payload.repository.repository_path, prefix)}>Back to repository</Link> : null}
       </header>
 
       {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save repository.")}</PanelMessage> : null}
@@ -345,11 +348,22 @@ function RepositoryForm({ mode, payload }: { mode: "new" | "edit"; payload: Repo
           <button className="rounded bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300" disabled={save.isPending} type="submit">
             {save.isPending ? "Saving..." : mode === "new" ? "Create Repository" : "Save Repository"}
           </button>
-          <a className="text-sm text-gray-600 hover:text-gray-900" href={payload.repositories_path}>Cancel</a>
+          <Link className="text-sm text-gray-600 hover:text-gray-900" to={withRoutePrefix(payload.repositories_path, prefix)}>Cancel</Link>
         </div>
       </form>
     </>
   )
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function inputFromPayload(payload: RepositoryFormPayload): RepositoryInput {

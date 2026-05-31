@@ -1891,6 +1891,7 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "Add Repository" })).toBeInTheDocument()
+    expect(await screen.findByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/app-shell/repositories")
     expect(await screen.findByRole("option", { name: "acme" })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Owner"), { target: { value: "acme" } })
     expect(await screen.findByRole("option", { name: "widgets" })).toBeInTheDocument()
@@ -1929,6 +1930,75 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Owner has already been taken")).toBeInTheDocument()
+  })
+
+  it("creates a repository and navigates within the React shell", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          message: "Repository created.",
+          redirect_to: "/repositories/3",
+          repository: {
+            id: 3,
+            slug: "acme/widgets",
+            owner: "acme",
+            name: "widgets",
+            default_branch: "main",
+            trigger_label: "syrus",
+            polling_enabled: true,
+            archived: false,
+            archived_at: null,
+            agent_provider: "codex",
+            agent_provider_label: "Codex",
+            last_poll_status: null,
+            last_poll_started_at: null,
+            last_poll_error: null,
+            repository_path: "/repositories/3",
+            edit_repository_path: "/repositories/3/edit"
+          }
+        }), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/repositories/3") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...repositoryDetailPayload(),
+          message: "Repository created."
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/repositories/owners") {
+        return Promise.resolve(new Response(JSON.stringify({ error: "no_token" }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(repositoryFormPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(await screen.findByLabelText("Owner"), { target: { value: "acme" } })
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "widgets" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create Repository" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: expect.stringContaining('"owner":"acme"')
+        })
+      )
+    })
+    expect(await screen.findByRole("main", { name: "Repository" })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/repositories/3",
+      expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
+    )
   })
 
   it("renders the edit repository form and patches repository settings", async () => {
@@ -1975,6 +2045,8 @@ describe("App", () => {
 
     expect(await screen.findByRole("main", { name: "Edit Repository" })).toBeInTheDocument()
     expect(await screen.findByDisplayValue("acme")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Back to repository" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/app-shell/repositories")
     fireEvent.change(screen.getByLabelText("Trigger label"), { target: { value: "delegate" } })
     fireEvent.click(screen.getByRole("button", { name: "Save Repository" }))
 
