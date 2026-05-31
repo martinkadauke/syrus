@@ -187,6 +187,9 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body["paths"]).to include(
       "new_job_path" => new_job_path(repository_id: repository.id),
       "edit_repository_path" => edit_repository_path(repository),
+      "app_poll_repository_path" => "/api/v1/app/repositories/#{repository.id}/poll",
+      "app_archive_repository_path" => "/api/v1/app/repositories/#{repository.id}/archive",
+      "app_retry_failed_jobs_repository_path" => "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
       "repository_notes_path" => repository_notes_path(repository),
       "app_repository_notes_path" => "/api/v1/app/repositories/#{repository.id}/notes"
     )
@@ -466,6 +469,20 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(parse_body.dig("active_repositories", 0, "slug")).to eq("acme/widgets")
   end
 
+  it "enqueues a forced poll and returns the refreshed detail payload when requested" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user, owner: "acme", name: "widgets")
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/poll", params: { return_to: "detail" }
+    }.to have_enqueued_job(PollRepositoryJob).with(repository.id, force: true)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Polling acme/widgets now.")
+    expect(parse_body.dig("repository", "slug")).to eq("acme/widgets")
+    expect(parse_body).not_to have_key("active_repositories")
+  end
+
   it "rejects polling an archived repository" do
     sign_in_as(user)
     repository = Factories.repository(user: user)
@@ -498,6 +515,41 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.reload).not_to be_archived
     expect(parse_body["message"]).to include("unarchived")
     expect(parse_body.dig("active_repositories", 0, "slug")).to eq("acme/widgets")
+  end
+
+  it "retries failed jobs through the app API" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user, owner: "acme", name: "widgets", agent_provider: "codex")
+    failed_a = Factories.job(repository: repository, issue_number: 1)
+    failed_b = Factories.job(repository: repository, issue_number: 2)
+    succeeded = Factories.job(repository: repository, issue_number: 3)
+    failed_a.current_run.update!(state: "failed", finished_at: Time.current)
+    failed_b.current_run.update!(state: "failed", finished_at: Time.current)
+    succeeded.current_run.update!(state: "succeeded", finished_at: Time.current)
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs"
+    }.to change { Workflow.where(trigger_kind: "retry").count }.by(2)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Retry enqueued for 2 failed jobs with Codex.")
+    expect(parse_body.dig("repository", "slug")).to eq("acme/widgets")
+    expect(parse_body.dig("retry_failed_jobs", "count")).to eq(0)
+    expect(failed_a.reload.agent_provider).to eq("codex")
+    expect(failed_b.reload.workflows.where(trigger_kind: "retry").last.agent_provider).to eq("codex")
+  end
+
+  it "rejects retrying when there are no failed jobs" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user)
+    Factories.job(repository: repository)
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs"
+    }.not_to change { Workflow.where(trigger_kind: "retry").count }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to eq("No failed jobs to retry.")
   end
 
   it "does not expose another user's repository commands" do

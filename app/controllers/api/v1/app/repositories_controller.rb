@@ -171,7 +171,8 @@ module Api
           end
 
           PollRepositoryJob.perform_later(repository.id, force: true)
-          render json: repositories_payload(message: "Polling #{repository.slug} now.")
+          message = "Polling #{repository.slug} now."
+          render json: repository_command_payload(repository, message: message)
         end
 
         def archive
@@ -184,6 +185,30 @@ module Api
           repository = find_repository
           repository.unarchive!
           render json: repositories_payload(message: "#{repository.slug} unarchived. Re-enable polling to start ingestion again.")
+        end
+
+        def retry_failed_jobs
+          repository = find_repository
+          eligible = retryable_failed_jobs(repository)
+          if eligible.empty?
+            render_error("validation_failed", "No failed jobs to retry.", status: :unprocessable_content)
+            return
+          end
+
+          agent_provider = repository.effective_agent_provider
+          retried = eligible.count do |job|
+            RetryWorkflowEnqueuer.call(
+              job: job,
+              agent_provider: agent_provider,
+              provider_validation: :none
+            ).success?
+          end
+
+          render json: repository_detail_payload(
+            repository.reload,
+            page: detail_page,
+            message: "Retry enqueued for #{helpers.pluralize(retried, 'failed job')} with #{agent_provider.titleize}."
+          )
         end
 
         private
@@ -232,6 +257,9 @@ module Api
               poll_repository_path: poll_repository_path(repository),
               archive_repository_path: archive_repository_path(repository),
               retry_failed_jobs_repository_path: retry_failed_jobs_repository_path(repository),
+              app_poll_repository_path: "/api/v1/app/repositories/#{repository.id}/poll",
+              app_archive_repository_path: "/api/v1/app/repositories/#{repository.id}/archive",
+              app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
               repository_notes_path: repository_notes_path(repository),
               app_repository_notes_path: "/api/v1/app/repositories/#{repository.id}/notes",
               repositories_path: repositories_path,
@@ -535,6 +563,20 @@ module Api
 
         def find_repository
           Current.user.repositories.find(params[:id])
+        end
+
+        def repository_command_payload(repository, message:)
+          if params[:return_to] == "detail"
+            repository_detail_payload(repository.reload, page: detail_page, message: message)
+          else
+            repositories_payload(message: message)
+          end
+        end
+
+        def retryable_failed_jobs(repository)
+          repository.jobs.open_threads.select do |job|
+            !job.any_active_run? && job.current_run&.failed?
+          end
         end
 
         def detail_page

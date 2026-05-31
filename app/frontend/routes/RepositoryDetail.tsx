@@ -1,9 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
-import { useLocation, useParams } from "react-router-dom"
+import { useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
+  archiveRepositoryFromPath,
   bulkRepositoryIssues,
   closeRepositoryIssue,
   commentRepositoryIssue,
@@ -12,6 +13,8 @@ import {
   delegateRepositoryIssue,
   fetchRepositoryDetail,
   fetchRepositoryIssues,
+  pollRepositoryDetail,
+  retryFailedRepositoryJobs,
   type RepositoryDetailJob,
   type RepositoryDetailPayload,
   type RepositoryIssue,
@@ -87,7 +90,7 @@ function RepositoryDetail({ payload, queryKey }: { payload: RepositoryDetailPayl
       <Tabs active="overview" tabs={payload.tabs} />
       {notice ? <PanelMessage>{notice}</PanelMessage> : null}
       <Metadata payload={payload} />
-      <Actions payload={payload} />
+      <Actions payload={payload} queryKey={queryKey} onNotice={setNotice} />
       <CredentialNotice payload={payload} />
       <Counts payload={payload} />
       <Notes payload={payload} queryKey={queryKey} onNotice={setNotice} />
@@ -353,24 +356,58 @@ function Metadata({ payload }: { payload: RepositoryDetailPayload }) {
   )
 }
 
-function Actions({ payload }: { payload: RepositoryDetailPayload }) {
+function Actions({ payload, queryKey, onNotice }: { payload: RepositoryDetailPayload; queryKey: RepositoryDetailQueryKey; onNotice: (message: string | null) => void }) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const search = queryKey[3]
   const retry = payload.retry_failed_jobs
+  const poll = useMutation({
+    mutationFn: () => pollRepositoryDetail(appendSearch(payload.paths.app_poll_repository_path, search), payload.pagination.page),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(updated.message || null)
+    }
+  })
+  const retryFailed = useMutation({
+    mutationFn: () => retryFailedRepositoryJobs(appendSearch(payload.paths.app_retry_failed_jobs_repository_path, search), payload.pagination.page),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(updated.message || null)
+    }
+  })
+  const archive = useMutation({
+    mutationFn: () => archiveRepositoryFromPath(payload.paths.app_archive_repository_path),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["repositories"], updated)
+      navigate(payload.paths.repositories_path)
+    }
+  })
+  const disabled = poll.isPending || retryFailed.isPending || archive.isPending
+
+  function archiveRepository() {
+    onNotice(null)
+    if (window.confirm(`Archive ${payload.repository.slug}? Polling stops; existing jobs are unaffected.`)) {
+      archive.mutate()
+    }
+  }
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <a className={buttonClass("green")} href={payload.paths.new_job_path}>New job</a>
-      <PostForm action={payload.paths.poll_repository_path}><button className={buttonClass("blue")} type="submit">Poll now</button></PostForm>
-      {retry.count > 0 ? (
-        <PostForm action={payload.paths.retry_failed_jobs_repository_path}>
-          <button className={buttonClass("amber")} type="submit">Retry {retry.count} failed with {retry.agent_provider_label}</button>
-        </PostForm>
-      ) : null}
-      <a className={buttonClass("gray")} href={payload.paths.edit_repository_path}>Edit</a>
-      <PostForm action={payload.paths.archive_repository_path}>
-        <button className="rounded bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100" type="submit">Archive</button>
-      </PostForm>
-      <a className={buttonClass("gray")} href={payload.paths.repository_documents_path}>Documents</a>
-      <a className={buttonClass("gray")} href={payload.paths.repository_scheduled_tasks_path}>Scheduled Tasks</a>
-    </div>
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <a className={buttonClass("green")} href={payload.paths.new_job_path}>New job</a>
+        <button className={buttonClass("blue")} disabled={disabled} onClick={() => { onNotice(null); poll.mutate() }} type="button">Poll now</button>
+        {retry.count > 0 ? (
+          <button className={buttonClass("amber")} disabled={disabled} onClick={() => { onNotice(null); retryFailed.mutate() }} type="button">Retry {retry.count} failed with {retry.agent_provider_label}</button>
+        ) : null}
+        <a className={buttonClass("gray")} href={payload.paths.edit_repository_path}>Edit</a>
+        <button className="rounded bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:text-gray-300" disabled={disabled} onClick={archiveRepository} type="button">Archive</button>
+        <a className={buttonClass("gray")} href={payload.paths.repository_documents_path}>Documents</a>
+        <a className={buttonClass("gray")} href={payload.paths.repository_scheduled_tasks_path}>Scheduled Tasks</a>
+      </div>
+      {poll.isError ? <PanelMessage tone="error">{errorMessage(poll.error, "Repository poll failed.")}</PanelMessage> : null}
+      {retryFailed.isError ? <PanelMessage tone="error">{errorMessage(retryFailed.error, "Retry failed jobs command failed.")}</PanelMessage> : null}
+      {archive.isError ? <PanelMessage tone="error">{errorMessage(archive.error, "Archive failed.")}</PanelMessage> : null}
+    </>
   )
 }
 
@@ -562,21 +599,6 @@ function Pagination({ payload }: { payload: RepositoryDetailPayload }) {
       </div>
     </div>
   )
-}
-
-function PostForm({ action, children, method = "post" }: { action: string; children: ReactNode; method?: "post" | "delete" }) {
-  return (
-    <form action={action} className="inline" method="post">
-      <CsrfInput />
-      {method !== "post" ? <input name="_method" type="hidden" value={method} /> : null}
-      {children}
-    </form>
-  )
-}
-
-function CsrfInput() {
-  const token = document.querySelector<HTMLMetaElement>("meta[name='csrf-token']")?.content || ""
-  return <input name="authenticity_token" type="hidden" value={token} />
 }
 
 function StatusPill({ children, tone }: { children: ReactNode; tone: "green" | "gray" | "blue" | "red" | "amber" }) {

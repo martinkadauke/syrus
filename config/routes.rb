@@ -68,6 +68,7 @@ Rails.application.routes.draw do
             post :poll
             post :archive
             post :unarchive
+            post :retry_failed_jobs
           end
         end
         post "repositories/:id/notes", to: "repositories#create_note", constraints: { id: /\d+/ }

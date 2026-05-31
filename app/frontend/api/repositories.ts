@@ -149,6 +149,9 @@ export type RepositoryDetailPayload = {
     poll_repository_path: string
     archive_repository_path: string
     retry_failed_jobs_repository_path: string
+    app_poll_repository_path: string
+    app_archive_repository_path: string
+    app_retry_failed_jobs_repository_path: string
     repository_notes_path: string
     app_repository_notes_path: string
     repositories_path: string
@@ -305,6 +308,18 @@ export function createRepositoryNote(path: string, body: string) {
 
 export function deleteRepositoryNote(path: string) {
   return deleteJson<RepositoryDetailPayload>(path)
+}
+
+export function pollRepositoryDetail(path: string, page: number) {
+  return postJson<RepositoryDetailPayload>(path, { return_to: "detail", page })
+}
+
+export function retryFailedRepositoryJobs(path: string, page: number) {
+  return postJson<RepositoryDetailPayload>(path, { page })
+}
+
+export function archiveRepositoryFromPath(path: string) {
+  return postJson<RepositoriesPayload>(path)
 }
 
 export function fetchNewRepositoryForm() {

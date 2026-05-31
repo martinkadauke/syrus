@@ -1536,6 +1536,84 @@ describe("App", () => {
     expect(await screen.findByText("Use staging for smoke tests.")).toBeInTheDocument()
   })
 
+  it("runs repository detail commands through the app API", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories/3/poll" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...repositoryDetailPayload(),
+          message: "Polling acme/widgets now."
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === "/api/v1/app/repositories/3/retry_failed_jobs" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...repositoryDetailPayload(),
+          message: "Retry enqueued for 1 failed job with Codex.",
+          retry_failed_jobs: {
+            count: 0,
+            agent_provider: "codex",
+            agent_provider_label: "Codex"
+          }
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === "/api/v1/app/repositories/3/archive" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(repositoriesPayload({ message: "acme/widgets archived." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === "/api/v1/app/repositories") {
+        return Promise.resolve(new Response(JSON.stringify(repositoriesPayload({ message: "acme/widgets archived." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(repositoryDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: "Poll now" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/poll",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ return_to: "detail", page: 1 })
+        })
+      )
+    })
+    expect(await screen.findByText("Polling acme/widgets now.")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry 1 failed with Codex" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/retry_failed_jobs",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ page: 1 })
+        })
+      )
+    })
+    expect(await screen.findByText("Retry enqueued for 1 failed job with Codex.")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Archive" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/archive",
+        expect.objectContaining({ method: "POST", credentials: "same-origin" })
+      )
+    })
+    expect(await screen.findByRole("main", { name: "Repositories" })).toBeInTheDocument()
+  })
+
   it("renders repository GitHub issues and delegates one through the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -2337,6 +2415,9 @@ function repositoryDetailPayload() {
       poll_repository_path: "/repositories/3/poll",
       archive_repository_path: "/repositories/3/archive",
       retry_failed_jobs_repository_path: "/repositories/3/retry_failed_jobs",
+      app_poll_repository_path: "/api/v1/app/repositories/3/poll",
+      app_archive_repository_path: "/api/v1/app/repositories/3/archive",
+      app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/3/retry_failed_jobs",
       repository_notes_path: "/repositories/3/notes",
       app_repository_notes_path: "/api/v1/app/repositories/3/notes",
       repositories_path: "/repositories",
