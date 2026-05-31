@@ -495,7 +495,7 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
       setText("")
-      onNotice(updated.message || null)
+      onNotice(null)
     }
   })
 

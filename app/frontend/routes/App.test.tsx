@@ -3322,8 +3322,8 @@ describe("App", () => {
         })
       )
     })
-    expect(await screen.findByText("Message sent.")).toBeInTheDocument()
-    expect(screen.getByText("Now inspect proposals")).toBeInTheDocument()
+    expect(await screen.findByText("Now inspect proposals")).toBeInTheDocument()
+    expect(screen.queryByText("Message sent.")).not.toBeInTheDocument()
   })
 
   it("saves chat whiteboard changes through the app API", async () => {
