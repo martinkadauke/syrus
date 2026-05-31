@@ -129,6 +129,7 @@ describe("App", () => {
       const accountNav = screen.getByRole("navigation", { name: "Account" })
       expect(screen.getByRole("link", { name: "Syrus" })).toHaveAttribute("href", "/app-shell/chats/9")
       expect(within(primaryNav).getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+      expect(within(primaryNav).getByRole("link", { name: "Schedules" })).toHaveClass("hidden", "sm:inline-flex")
       expect(within(primaryNav).queryByRole("link", { name: "Jobs" })).toBeNull()
       expect(within(primaryNav).queryByRole("link", { name: "Chat" })).toBeNull()
       expect(within(primaryNav).queryByRole("link", { name: "Admin" })).toBeNull()

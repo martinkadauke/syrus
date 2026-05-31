@@ -119,10 +119,10 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   const user = data?.current_user
   const app = data?.app
   const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
-  const navItems = [
+  const navItems: Array<{ label: string; to: string; active: boolean; desktopOnly?: boolean }> = [
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: location.pathname === "/" || location.pathname.includes("/dashboard") },
     { label: "Repos", to: `${prefix}/repositories`, active: location.pathname.includes("/repositories") },
-    { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: location.pathname.includes("/scheduled_tasks") }
+    { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: location.pathname.includes("/scheduled_tasks"), desktopOnly: true }
   ]
 
   return (
@@ -133,7 +133,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
             <Link className="text-lg font-semibold text-gray-900" to={defaultChatPath}>Syrus</Link>
             <nav aria-label="Primary" className="flex flex-wrap gap-1 text-sm">
               {navItems.map((item) => (
-                <Link className={navLinkClass(item.active)} key={item.label} to={item.to}>{item.label}</Link>
+                <Link className={`${item.desktopOnly ? "hidden sm:inline-flex" : ""} ${navLinkClass(item.active)}`} key={item.label} to={item.to}>{item.label}</Link>
               ))}
             </nav>
           </div>
