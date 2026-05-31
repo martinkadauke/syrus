@@ -27,6 +27,7 @@ const emptyTemplate: CronTemplateInput = {
 export function CronTemplatesIndex() {
   const location = useLocation()
   const basePath = routeBase(location.pathname)
+  const prefix = routePrefix(location.pathname)
   const templates = useQuery({
     queryKey: ["cron_templates"],
     queryFn: fetchCronTemplates
@@ -34,7 +35,7 @@ export function CronTemplatesIndex() {
 
   return (
     <main aria-label="Cron templates" className="mx-auto max-w-6xl space-y-6 p-6">
-      <SettingsNav active="templates" prefix={location.pathname.startsWith("/app-shell") ? "/app-shell" : ""} />
+      <SettingsNav active="templates" prefix={prefix} />
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Cron templates</h1>
@@ -55,6 +56,7 @@ export function CronTemplateDetailRoute() {
   const params = useParams()
   const id = params.id || ""
   const basePath = routeBase(location.pathname)
+  const prefix = routePrefix(location.pathname)
   const detail = useQuery({
     queryKey: ["cron_templates", id],
     queryFn: () => fetchCronTemplate(id),
@@ -63,10 +65,10 @@ export function CronTemplateDetailRoute() {
 
   return (
     <main aria-label="Cron template detail" className="mx-auto max-w-6xl space-y-6 p-6">
-      <SettingsNav active="templates" prefix={location.pathname.startsWith("/app-shell") ? "/app-shell" : ""} />
+      <SettingsNav active="templates" prefix={prefix} />
       {detail.isPending ? <PanelMessage>Loading template...</PanelMessage> : null}
       {detail.isError ? <CronTemplatesError error={detail.error} /> : null}
-      {detail.isSuccess ? <TemplateDetail basePath={basePath} payload={detail.data} /> : null}
+      {detail.isSuccess ? <TemplateDetail basePath={basePath} payload={detail.data} prefix={prefix} /> : null}
     </main>
   )
 }
@@ -76,6 +78,7 @@ export function CronTemplateFormRoute({ mode }: { mode: "new" | "edit" }) {
   const params = useParams()
   const id = params.id || ""
   const basePath = routeBase(location.pathname)
+  const prefix = routePrefix(location.pathname)
   const index = useQuery({
     queryKey: ["cron_templates"],
     queryFn: fetchCronTemplates
@@ -93,7 +96,7 @@ export function CronTemplateFormRoute({ mode }: { mode: "new" | "edit" }) {
 
   return (
     <main aria-label={mode === "new" ? "New cron template" : "Edit cron template"} className="mx-auto max-w-3xl space-y-6 p-6">
-      <SettingsNav active="templates" prefix={location.pathname.startsWith("/app-shell") ? "/app-shell" : ""} />
+      <SettingsNav active="templates" prefix={prefix} />
       <header>
         <h1 className="text-2xl font-semibold text-gray-900">{mode === "new" ? "New cron template" : "Edit template"}</h1>
         <p className="mt-1 text-sm text-gray-600">
@@ -160,7 +163,7 @@ function TemplatesTable({ templates, basePath }: { templates: CronTemplateRow[];
   )
 }
 
-function TemplateDetail({ payload, basePath }: { payload: Awaited<ReturnType<typeof fetchCronTemplate>>; basePath: string }) {
+function TemplateDetail({ payload, basePath, prefix }: { payload: Awaited<ReturnType<typeof fetchCronTemplate>>; basePath: string; prefix: string }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const destroy = useMutation({
@@ -217,8 +220,8 @@ function TemplateDetail({ payload, basePath }: { payload: Awaited<ReturnType<typ
         <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-gray-50 p-3 font-mono text-xs">{payload.template.prompt}</pre>
       </section>
 
-      <AppliedTasks tasks={payload.applied_tasks} />
-      <RepositoryApplyLinks repositories={payload.repositories} />
+      <AppliedTasks prefix={prefix} tasks={payload.applied_tasks} />
+      <RepositoryApplyLinks prefix={prefix} repositories={payload.repositories} />
     </>
   )
 }
@@ -291,7 +294,7 @@ function CronTemplateForm({
   )
 }
 
-function AppliedTasks({ tasks }: { tasks: Awaited<ReturnType<typeof fetchCronTemplate>>["applied_tasks"] }) {
+function AppliedTasks({ tasks, prefix }: { tasks: Awaited<ReturnType<typeof fetchCronTemplate>>["applied_tasks"]; prefix: string }) {
   return (
     <section className="rounded border border-gray-200 bg-white p-4">
       <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500">Applied to repositories</h2>
@@ -310,8 +313,8 @@ function AppliedTasks({ tasks }: { tasks: Awaited<ReturnType<typeof fetchCronTem
           <tbody className="divide-y divide-gray-100 text-sm">
             {tasks.map((task) => (
               <tr key={task.id}>
-                <td className="px-2 py-2 font-mono text-xs"><a className="text-blue-600 underline hover:no-underline" href={task.repository_path}>{task.repository_slug}</a></td>
-                <td className="px-2 py-2"><a className="text-blue-600 underline hover:no-underline" href={task.scheduled_task_path}>{task.name}</a></td>
+                <td className="px-2 py-2 font-mono text-xs"><Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(task.repository_path, prefix)}>{task.repository_slug}</Link></td>
+                <td className="px-2 py-2"><Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(task.scheduled_task_path, prefix)}>{task.name}</Link></td>
                 <td className="px-2 py-2"><StatePill state={task.state} /></td>
                 <td className="px-2 py-2 text-xs text-gray-500">{task.last_fired_at ? new Date(task.last_fired_at).toLocaleString() : "never"}</td>
               </tr>
@@ -323,7 +326,7 @@ function AppliedTasks({ tasks }: { tasks: Awaited<ReturnType<typeof fetchCronTem
   )
 }
 
-function RepositoryApplyLinks({ repositories }: { repositories: Awaited<ReturnType<typeof fetchCronTemplate>>["repositories"] }) {
+function RepositoryApplyLinks({ repositories, prefix }: { repositories: Awaited<ReturnType<typeof fetchCronTemplate>>["repositories"]; prefix: string }) {
   if (repositories.length === 0) return null
 
   return (
@@ -331,7 +334,7 @@ function RepositoryApplyLinks({ repositories }: { repositories: Awaited<ReturnTy
       <h2 className="mb-2 text-sm font-semibold uppercase text-gray-500">Apply to a repository</h2>
       <div className="flex flex-wrap gap-2">
         {repositories.map((repository) => (
-          <a className="inline-block rounded border border-gray-300 px-2.5 py-1 font-mono text-xs hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" href={repository.new_scheduled_task_path} key={repository.id}>{repository.slug}</a>
+          <Link className="inline-block rounded border border-gray-300 px-2.5 py-1 font-mono text-xs hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700" to={withRoutePrefix(repository.new_scheduled_task_path, prefix)} key={repository.id}>{repository.slug}</Link>
         ))}
       </div>
     </section>
@@ -341,7 +344,7 @@ function RepositoryApplyLinks({ repositories }: { repositories: Awaited<ReturnTy
 function SettingsNav({ active, prefix }: { active: "templates" | "tags"; prefix: string }) {
   return (
     <nav className="flex gap-6 border-b border-gray-200 text-sm" aria-label="Settings">
-      <a className={navClass(false)} href="/credentials/edit">My credentials</a>
+      <Link className={navClass(false)} to={`${prefix}/credentials/edit`}>My credentials</Link>
       <Link className={navClass(active === "templates")} to={`${prefix}/cron_templates`}>Templates</Link>
       <Link className={navClass(active === "tags")} to={`${prefix}/tags`}>Tags</Link>
     </nav>
@@ -392,7 +395,18 @@ function inputClass() {
 }
 
 function routeBase(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell/cron_templates" : "/cron_templates"
+  return `${routePrefix(pathname)}/cron_templates`
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function inputFromTemplate(template: CronTemplateDetail): CronTemplateInput {

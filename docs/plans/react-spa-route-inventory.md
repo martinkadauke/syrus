@@ -68,7 +68,7 @@ health/storage internals.
 | chat whiteboard | `/api/v1/app/chats/:id/whiteboard` | `spa-core` | React chat mounts the Excalidraw whiteboard, saves through the app API, and receives app-event invalidation for agent/operator updates. Legacy `chat_whiteboards#show/update` remains for fallback. |
 | `/scheduled_tasks` | `spa#show` + `/api/v1/app/scheduled_tasks*` | `spa-core` | Migrated to the React scheduled-task CRUD shell with internal React Router links to repositories, Jobs, and task detail pages. Legacy ERB fallback lives at `/scheduled_tasks/legacy`. |
 | scheduled task commands | `/api/v1/app/scheduled_tasks/:id/*` | `spa-core` | React uses app API command endpoints for pause, resume, fire-now, update, and archive. Legacy HTML commands remain for fallback. |
-| `/cron_templates` | `spa#show` | `spa-core` | Migrated to the React cron-template CRUD shell. Legacy ERB fallback lives at `/cron_templates/legacy`. |
+| `/cron_templates` | `spa#show` | `spa-core` | Migrated to the React cron-template CRUD shell with internal React Router links for settings nav, applied tasks, and repository apply actions. Legacy ERB fallback lives at `/cron_templates/legacy`. |
 | `/smart_folders` | `spa#show` | `spa-core` | Migrated to the React smart-folder manage shell. Legacy ERB fallback lives at `/smart_folders/legacy`; dashboard save forms still use `POST /smart_folders`. |
 | `/tags` | `spa#show` | `spa-core` | Migrated to the React tags shell. Legacy ERB fallback lives at `/tags/legacy`. |
 | `/filters/fk_options` | `/api/v1/app/filters/fk_options` | `spa-core` | Browser typeahead now uses the app API endpoint with normalized `{ options: [...] }`; legacy JSON helper remains for fallback. |

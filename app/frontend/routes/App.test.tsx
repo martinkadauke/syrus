@@ -1330,6 +1330,70 @@ describe("App", () => {
     )
   })
 
+  it("renders cron template detail with React shell links", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          template: {
+            id: 5,
+            name: "Weekly dependency bump",
+            description: "Keep dependencies moving.",
+            cron_expression: "0 9 * * 1",
+            pr_pileup_policy: "skip",
+            enabled: true,
+            applied_tasks_count: 1,
+            created_at: "2026-05-30T12:00:00Z",
+            updated_at: "2026-05-30T12:00:00Z",
+            prompt: "Update dependencies once a week."
+          },
+          pr_pileup_policies: ["skip", "pile", "replace"],
+          repositories: [
+            {
+              id: 3,
+              slug: "acme/widgets",
+              new_scheduled_task_path: "/repositories/3/scheduled_tasks/new?from_template=5"
+            }
+          ],
+          applied_tasks: [
+            {
+              id: 12,
+              name: "Weekly tests",
+              state: "scheduled",
+              repository_id: 3,
+              repository_slug: "acme/widgets",
+              repository_path: "/repositories/3",
+              scheduled_task_path: "/scheduled_tasks/12",
+              last_fired_at: null
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/cron_templates/5"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Cron template detail" })).toBeInTheDocument()
+    expect(await screen.findByText("Weekly dependency bump")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
+    expect(screen.getByRole("link", { name: "Weekly tests" })).toHaveAttribute("href", "/app-shell/scheduled_tasks/12")
+    expect(screen.getAllByRole("link", { name: "acme/widgets" })[0]).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getAllByRole("link", { name: "acme/widgets" })[1]).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks/new?from_template=5")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/cron_templates/5",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
   it("renders the scheduled tasks route from the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
