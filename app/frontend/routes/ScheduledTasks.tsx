@@ -34,6 +34,7 @@ const fallbackOptions: ScheduledTaskOptions = {
 
 export function ScheduledTasksIndex() {
   const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const tasks = useQuery({
     queryKey: ["scheduled_tasks"],
     queryFn: fetchScheduledTasks
@@ -50,9 +51,9 @@ export function ScheduledTasksIndex() {
       {tasks.isError ? <ScheduledTasksError error={tasks.error} /> : null}
       {tasks.isSuccess ? (
         <>
-          <TaskSection basePath={tasksBase(location.pathname)} empty="No active scheduled tasks." tasks={tasks.data.active_tasks} title="Active" />
-          <TaskSection basePath={tasksBase(location.pathname)} empty="No fired one-shot tasks." tasks={tasks.data.fired_one_shots} title="Fired one-shots" />
-          <TaskSection basePath={tasksBase(location.pathname)} empty="No archived scheduled tasks." tasks={tasks.data.archived_tasks} title="Archived" />
+          <TaskSection basePath={tasksBase(location.pathname)} empty="No active scheduled tasks." prefix={prefix} tasks={tasks.data.active_tasks} title="Active" />
+          <TaskSection basePath={tasksBase(location.pathname)} empty="No fired one-shot tasks." prefix={prefix} tasks={tasks.data.fired_one_shots} title="Fired one-shots" />
+          <TaskSection basePath={tasksBase(location.pathname)} empty="No archived scheduled tasks." prefix={prefix} tasks={tasks.data.archived_tasks} title="Archived" />
         </>
       ) : null}
     </main>
@@ -63,6 +64,7 @@ export function ScheduledTaskDetailRoute() {
   const location = useLocation()
   const params = useParams()
   const id = params.id || ""
+  const prefix = routePrefix(location.pathname)
   const detail = useQuery({
     queryKey: ["scheduled_tasks", id],
     queryFn: () => fetchScheduledTask(id),
@@ -73,7 +75,7 @@ export function ScheduledTaskDetailRoute() {
     <main aria-label="Scheduled task detail" className="mx-auto max-w-6xl space-y-6 p-6">
       {detail.isPending ? <PanelMessage>Loading scheduled task...</PanelMessage> : null}
       {detail.isError ? <ScheduledTasksError error={detail.error} /> : null}
-      {detail.isSuccess ? <TaskDetail basePath={tasksBase(location.pathname)} payload={detail.data} /> : null}
+      {detail.isSuccess ? <TaskDetail basePath={tasksBase(location.pathname)} payload={detail.data} prefix={prefix} /> : null}
     </main>
   )
 }
@@ -129,7 +131,7 @@ export function ScheduledTaskFormRoute({ mode }: { mode: "new" | "edit" }) {
   )
 }
 
-function TaskSection({ title, tasks, empty, basePath }: { title: string; tasks: ScheduledTaskRow[]; empty: string; basePath: string }) {
+function TaskSection({ title, tasks, empty, basePath, prefix }: { title: string; tasks: ScheduledTaskRow[]; empty: string; basePath: string; prefix: string }) {
   return (
     <section className="rounded border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-4 py-3">
@@ -157,7 +159,7 @@ function TaskSection({ title, tasks, empty, basePath }: { title: string; tasks: 
                     <Link className="text-blue-600 underline hover:no-underline" to={`${basePath}/${task.id}`}>{task.name}</Link>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">
-                    <a className="text-blue-600 underline hover:no-underline" href={task.repository.repository_path}>{task.repository.slug}</a>
+                    <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(task.repository.repository_path, prefix)}>{task.repository.slug}</Link>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{task.schedule_label || "none"}</td>
                   <td className="px-4 py-3"><StatePill state={task.state} /></td>
@@ -175,7 +177,7 @@ function TaskSection({ title, tasks, empty, basePath }: { title: string; tasks: 
   )
 }
 
-function TaskDetail({ payload, basePath }: { payload: ScheduledTaskDetailPayload; basePath: string }) {
+function TaskDetail({ payload, basePath, prefix }: { payload: ScheduledTaskDetailPayload; basePath: string; prefix: string }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [notice, setNotice] = useState<string | null>(payload.message || null)
@@ -209,7 +211,7 @@ function TaskDetail({ payload, basePath }: { payload: ScheduledTaskDetailPayload
             <StatePill state={payload.task.state} />
           </div>
           <p className="mt-1 font-mono text-sm text-gray-600">
-            <a className="text-blue-600 underline hover:no-underline" href={payload.task.repository.repository_path}>{payload.task.repository.slug}</a>
+            <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(payload.task.repository.repository_path, prefix)}>{payload.task.repository.slug}</Link>
           </p>
         </div>
         <TaskActions archive={archive} basePath={basePath} command={command} task={payload.task} />
@@ -244,7 +246,7 @@ function TaskDetail({ payload, basePath }: { payload: ScheduledTaskDetailPayload
         <pre className="whitespace-pre-wrap rounded border border-gray-200 bg-gray-50 p-3 font-mono text-xs">{payload.task.prompt}</pre>
       </section>
 
-      <RecentJobs jobs={payload.recent_jobs} />
+      <RecentJobs jobs={payload.recent_jobs} prefix={prefix} />
     </>
   )
 }
@@ -288,7 +290,7 @@ function TaskActions({
   )
 }
 
-function RecentJobs({ jobs }: { jobs: ScheduledTaskDetailPayload["recent_jobs"] }) {
+function RecentJobs({ jobs, prefix }: { jobs: ScheduledTaskDetailPayload["recent_jobs"]; prefix: string }) {
   return (
     <section className="rounded border border-gray-200 bg-white p-4">
       <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500">Recent jobs</h2>
@@ -307,7 +309,7 @@ function RecentJobs({ jobs }: { jobs: ScheduledTaskDetailPayload["recent_jobs"] 
           <tbody className="divide-y divide-gray-100 text-sm">
             {jobs.map((job) => (
               <tr key={job.id}>
-                <td className="px-2 py-2"><a className="text-blue-600 underline hover:no-underline" href={job.job_path}>#{job.id}</a></td>
+                <td className="px-2 py-2"><Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(job.job_path, prefix)}>#{job.id}</Link></td>
                 <td className="px-2 py-2">{job.closure_reason || job.state}</td>
                 <td className="px-2 py-2">{job.pr_number || job.external_pr_number || "none"}</td>
                 <td className="px-2 py-2 text-xs text-gray-500">{formatDate(job.created_at)}</td>
@@ -447,7 +449,18 @@ function secondaryButton() {
 }
 
 function tasksBase(pathname: string) {
-  return pathname.startsWith("/app-shell") ? "/app-shell/scheduled_tasks" : "/scheduled_tasks"
+  return `${routePrefix(pathname)}/scheduled_tasks`
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function formatDate(value: string | null) {

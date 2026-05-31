@@ -1367,7 +1367,7 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Scheduled tasks" })).toBeInTheDocument()
     expect(await screen.findByText("Weekly tests")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Weekly tests" })).toHaveAttribute("href", "/app-shell/scheduled_tasks/12")
-    expect(screen.getByText("acme/widgets")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/scheduled_tasks",
       expect.objectContaining({
@@ -1397,6 +1397,8 @@ describe("App", () => {
 
     expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toBeInTheDocument()
     expect(await screen.findByText("Keep tests moving.")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "#44" })).toHaveAttribute("href", "/app-shell/jobs/44")
     fireEvent.click(screen.getByRole("button", { name: "Pause" }))
 
     await waitFor(() => {
@@ -1416,6 +1418,9 @@ describe("App", () => {
       const path = String(input)
       if (path === "/api/v1/app/repositories/3/scheduled_tasks?from_template=9" && init?.method === "POST") {
         return Promise.resolve(new Response(JSON.stringify(scheduledTaskDetailPayload({ message: "Scheduled task created." })), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/scheduled_tasks/12") {
+        return Promise.resolve(new Response(JSON.stringify(scheduledTaskDetailPayload({ message: "Scheduled task created." })), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
       return Promise.resolve(
@@ -1473,6 +1478,11 @@ describe("App", () => {
         })
       )
     })
+    expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/scheduled_tasks/12",
+      expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
+    )
   })
 
   it("renders the repository scheduled tasks route and disables a task", async () => {
