@@ -18,6 +18,12 @@ Rails.application.routes.draw do
         resources :tags, only: %i[ index create update destroy ]
         resources :smart_folders, only: %i[ index update destroy ]
         resources :cron_templates, only: %i[ index show create update destroy ]
+        resource :credentials, only: %i[ show update ] do
+          post :clear_credential
+          post :rotate_api_token
+          delete :revoke_api_token
+          resources :documents, only: %i[ create destroy ], controller: "credentials/documents"
+        end
         get "repositories/:repository_id/scheduled_tasks/new", to: "scheduled_tasks#new"
         get "repositories/:repository_id/scheduled_tasks", to: "scheduled_tasks#repository_index"
         post "repositories/:repository_id/scheduled_tasks", to: "scheduled_tasks#create"
