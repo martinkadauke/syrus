@@ -426,6 +426,27 @@ describe("App", () => {
     })
     expect(await screen.findByText("Dashboard preferences updated.")).toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Issue ascending" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard/preferences",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            subject: "job",
+            sort_column: "title",
+            sort_direction: "asc"
+          })
+        })
+      )
+    })
+
     fireEvent.click(screen.getByLabelText("Workflows count"))
 
     await waitFor(() => {

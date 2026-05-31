@@ -372,6 +372,33 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
 }
 
 function DashboardTable({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
+  const queryClient = useQueryClient()
+  const updateSort = useMutation({
+    mutationFn: updateDashboardPreferences,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  })
+  const sortState: DashboardSortState = {
+    column: sortValue(payload.preferences.sort, "column") || payload.controls.sort_columns[0] || "title",
+    direction: sortValue(payload.preferences.sort, "direction") || "desc",
+    pending: updateSort.isPending,
+    sortableColumns: payload.controls.sort_columns,
+    onSort: (column) => {
+      const sortColumn = sortableColumnFor(payload.subject, column)
+      if (!sortColumn || !payload.controls.sort_columns.includes(sortColumn)) return
+
+      const currentColumn = sortValue(payload.preferences.sort, "column") || payload.controls.sort_columns[0] || "title"
+      const currentDirection = sortValue(payload.preferences.sort, "direction") || "desc"
+      const nextDirection = currentColumn === sortColumn && currentDirection === "asc" ? "desc" : "asc"
+      updateSort.mutate({
+        subject: payload.subject,
+        sort_column: sortColumn,
+        sort_direction: nextDirection
+      })
+    }
+  }
+
   if (payload.view === "kanban") return <DashboardKanban payload={payload} prefix={prefix} />
 
   if (payload.items.length === 0) {
@@ -379,10 +406,10 @@ function DashboardTable({ payload, prefix }: { payload: DashboardPayload; prefix
   }
 
   const columns = dashboardVisibleColumns(payload)
-  if (payload.subject === "job") return <JobsDashboardTable columns={columns} items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} prefix={prefix} />
-  if (payload.subject === "workflow") return <WorkflowsTable columns={columns} items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} prefix={prefix} />
+  if (payload.subject === "job") return <JobsDashboardTable columns={columns} items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} prefix={prefix} sortState={sortState} />
+  if (payload.subject === "workflow") return <WorkflowsTable columns={columns} items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} prefix={prefix} sortState={sortState} />
 
-  return <EpicsTable columns={columns} items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} prefix={prefix} />
+  return <EpicsTable columns={columns} items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} prefix={prefix} sortState={sortState} />
 }
 
 function DashboardKanban({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
@@ -454,7 +481,15 @@ function KanbanCard({ item, prefix }: { item: DashboardItem; prefix: string }) {
   )
 }
 
-function JobsDashboardTable({ items, columns, prefix }: { items: DashboardJobItem[]; columns: string[]; prefix: string }) {
+type DashboardSortState = {
+  column: string
+  direction: string
+  pending: boolean
+  sortableColumns: string[]
+  onSort: (column: string) => void
+}
+
+function JobsDashboardTable({ items, columns, prefix, sortState }: { items: DashboardJobItem[]; columns: string[]; prefix: string; sortState: DashboardSortState }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const visibleIds = useMemo(() => items.map((item) => item.id), [items])
   const selectedArray = useMemo(() => Array.from(selectedIds), [selectedIds])
@@ -495,6 +530,7 @@ function JobsDashboardTable({ items, columns, prefix }: { items: DashboardJobIte
         onToggleOne={toggleOne}
         prefix={prefix}
         selectedIds={selectedIds}
+        sortState={sortState}
       />
     </div>
   )
@@ -543,7 +579,8 @@ function JobsTable({
   allSelected,
   onToggleAll,
   onToggleOne,
-  prefix
+  prefix,
+  sortState
 }: {
   items: DashboardJobItem[]
   columns: string[]
@@ -552,6 +589,7 @@ function JobsTable({
   onToggleAll: () => void
   onToggleOne: (id: number) => void
   prefix: string
+  sortState: DashboardSortState
 }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
@@ -559,8 +597,8 @@ function JobsTable({
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
             {columns.map((column) => (
-              <th className={column === "checkbox" ? "w-10 px-4 py-2" : "px-4 py-2"} key={column}>
-                {column === "checkbox" ? <input aria-label="Select all jobs" checked={allSelected} onChange={onToggleAll} type="checkbox" /> : dashboardColumnLabel("job", column)}
+              <th aria-sort={columnAriaSort("job", column, sortState)} className={column === "checkbox" ? "w-10 px-4 py-2" : "px-4 py-2"} key={column}>
+                {column === "checkbox" ? <input aria-label="Select all jobs" checked={allSelected} onChange={onToggleAll} type="checkbox" /> : <SortableColumnHeader column={column} sortState={sortState} subject="job" />}
               </th>
             ))}
           </tr>
@@ -601,13 +639,13 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
   return <td className="px-4 py-3 text-gray-500">{formatDate(jobDateValue(job, column))}</td>
 }
 
-function EpicsTable({ items, columns, prefix }: { items: DashboardEpicItem[]; columns: string[]; prefix: string }) {
+function EpicsTable({ items, columns, prefix, sortState }: { items: DashboardEpicItem[]; columns: string[]; prefix: string; sortState: DashboardSortState }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
-            {columns.map((column) => <th className="px-4 py-2" key={column}>{dashboardColumnLabel("epic", column)}</th>)}
+            {columns.map((column) => <th aria-sort={columnAriaSort("epic", column, sortState)} className="px-4 py-2" key={column}><SortableColumnHeader column={column} sortState={sortState} subject="epic" /></th>)}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -638,13 +676,13 @@ function EpicCell({ epic, column, prefix }: { epic: DashboardEpicItem; column: s
   return <td className="px-4 py-3 text-gray-500">{formatDate(epicDateValue(epic, column))}</td>
 }
 
-function WorkflowsTable({ items, columns, prefix }: { items: DashboardWorkflowItem[]; columns: string[]; prefix: string }) {
+function WorkflowsTable({ items, columns, prefix, sortState }: { items: DashboardWorkflowItem[]; columns: string[]; prefix: string; sortState: DashboardSortState }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
-            {columns.map((column) => <th className="px-4 py-2" key={column}>{dashboardColumnLabel("workflow", column)}</th>)}
+            {columns.map((column) => <th aria-sort={columnAriaSort("workflow", column, sortState)} className="px-4 py-2" key={column}><SortableColumnHeader column={column} sortState={sortState} subject="workflow" /></th>)}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
@@ -656,6 +694,28 @@ function WorkflowsTable({ items, columns, prefix }: { items: DashboardWorkflowIt
         </tbody>
       </table>
     </div>
+  )
+}
+
+function SortableColumnHeader({ subject, column, sortState }: { subject: DashboardSubject; column: string; sortState: DashboardSortState }) {
+  const label = dashboardColumnLabel(subject, column)
+  const sortColumn = sortableColumnFor(subject, column)
+  if (!sortColumn || !sortState.sortableColumns.includes(sortColumn)) return <span>{label}</span>
+
+  const active = sortState.column === sortColumn
+  const nextDirection = active && sortState.direction === "asc" ? "desc" : "asc"
+
+  return (
+    <button
+      aria-label={`Sort by ${label} ${sortDirectionLabel(nextDirection).toLowerCase()}`}
+      className={`inline-flex items-center gap-1 text-left font-semibold uppercase ${active ? "text-gray-900" : "text-gray-500 hover:text-gray-900"}`}
+      disabled={sortState.pending}
+      onClick={() => sortState.onSort(column)}
+      type="button"
+    >
+      <span>{label}</span>
+      {active ? <span className="rounded bg-gray-200 px-1 text-[10px] leading-4 text-gray-700">{sortState.direction}</span> : null}
+    </button>
   )
 }
 
@@ -867,6 +927,36 @@ function sortColumnLabel(column: string) {
 
 function sortDirectionLabel(direction: string) {
   return direction === "asc" ? "Ascending" : "Descending"
+}
+
+function sortableColumnFor(subject: DashboardSubject, column: string) {
+  const aliases: Record<DashboardSubject, Record<string, string>> = {
+    epic: {
+      epic: "title",
+      title: "title",
+      updated: "updated_at"
+    },
+    job: {
+      issue: "title",
+      title: "title",
+      started: "started_at"
+    },
+    workflow: {
+      workflow: "title",
+      title: "title",
+      started: "started_at",
+      finished: "finished_at"
+    }
+  }
+
+  return aliases[subject][column] || column
+}
+
+function columnAriaSort(subject: DashboardSubject, column: string, sortState: DashboardSortState) {
+  const sortColumn = sortableColumnFor(subject, column)
+  if (!sortColumn || sortState.column !== sortColumn) return undefined
+
+  return sortState.direction === "asc" ? "ascending" : "descending"
 }
 
 function dashboardColumnLabel(subject: DashboardSubject, column: string) {
