@@ -1738,8 +1738,9 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Repositories" })).toBeInTheDocument()
     expect(await screen.findByText("acme/widgets")).toBeInTheDocument()
     expect(screen.getByText("old/repo")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Add" })).toHaveAttribute("href", "/repositories/new")
-    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/repositories/3")
+    expect(screen.getByRole("link", { name: "Add" })).toHaveAttribute("href", "/app-shell/repositories/new")
+    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/repositories/3/edit")
     fireEvent.click(screen.getByRole("button", { name: "Poll now" }))
 
     await waitFor(() => {
@@ -1890,8 +1891,18 @@ describe("App", () => {
   })
 
   it("renders a repository detail overview from the app API", async () => {
+    const basePayload = repositoryDetailPayload()
+    const detailPayload = {
+      ...basePayload,
+      pagination: {
+        ...basePayload.pagination,
+        total_jobs: 25,
+        total_pages: 2,
+        next_path: "/repositories/3?page=2"
+      }
+    }
     vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(repositoryDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify(detailPayload), { status: 200, headers: { "Content-Type": "application/json" } })
     )
 
     render(
@@ -1909,6 +1920,15 @@ describe("App", () => {
     expect(screen.getByText("Fix forum")).toBeInTheDocument()
     expect(screen.getByText("Retry 1 failed with Codex")).toBeInTheDocument()
     expect(screen.getByText("Install Syrus App on this repository")).toHaveAttribute("href", "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&repository_ids[]=200")
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "GitHub Issues" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=github_issues")
+    expect(screen.getAllByRole("link", { name: "Scheduled Tasks" })[0]).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks")
+    expect(screen.getByRole("link", { name: "New job" })).toHaveAttribute("href", "/app-shell/jobs/new?repository_id=3")
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/repositories/3/edit")
+    expect(screen.getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/repositories/3/documents")
+    expect(screen.getByRole("link", { name: "Fix forum" })).toHaveAttribute("href", "/app-shell/jobs/44")
+    expect(screen.getByRole("link", { name: "View" })).toHaveAttribute("href", "/app-shell/jobs/44")
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/repositories/3?page=2")
     expect(screen.getByText("Running").previousElementSibling).toHaveTextContent("1")
     expect(screen.getByText("Queued").previousElementSibling).toHaveTextContent("1")
     expect(screen.getByText("Failed (7d)").previousElementSibling).toHaveTextContent("1")
@@ -2080,6 +2100,10 @@ describe("App", () => {
     expect(await screen.findByText("Fix the forum")).toBeInTheDocument()
     expect(screen.getByText("Trigger label:")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "View on GitHub" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues")
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "GitHub Issues" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=github_issues")
+    expect(screen.getByRole("link", { name: "Open" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=github_issues&state=open")
+    expect(screen.getByRole("link", { name: "Closed" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=github_issues&state=closed")
     fireEvent.click(screen.getByRole("button", { name: "Delegate" }))
 
     await waitFor(() => {

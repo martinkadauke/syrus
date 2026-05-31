@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
-import { useLocation, useNavigate, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   archiveRepositoryFromPath,
@@ -35,6 +35,7 @@ export function RepositoryDetailRoute() {
   const tab = query.get("tab") === "github_issues" ? "github_issues" : "overview"
   const state = query.get("state") === "closed" ? "closed" : "open"
   const search = pageSearch(location.search)
+  const prefix = routePrefix(location.pathname)
   const detailQueryKey = repositoryDetailQueryKey(id, search)
   const detail = useQuery({
     queryKey: detailQueryKey,
@@ -53,13 +54,13 @@ export function RepositoryDetailRoute() {
         <>
           {detail.isPending ? <PanelMessage>Loading repository...</PanelMessage> : null}
           {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, "Unable to load repository.")}</PanelMessage> : null}
-          {detail.isSuccess ? <RepositoryDetail payload={detail.data} queryKey={detailQueryKey} /> : null}
+          {detail.isSuccess ? <RepositoryDetail payload={detail.data} prefix={prefix} queryKey={detailQueryKey} /> : null}
         </>
       ) : (
         <>
           {issues.isPending ? <PanelMessage>Loading GitHub issues...</PanelMessage> : null}
           {issues.isError ? <PanelMessage tone="error">{errorMessage(issues.error, "Unable to load GitHub issues.")}</PanelMessage> : null}
-          {issues.isSuccess ? <RepositoryIssues payload={issues.data} /> : null}
+          {issues.isSuccess ? <RepositoryIssues payload={issues.data} prefix={prefix} /> : null}
         </>
       )}
     </main>
@@ -76,7 +77,7 @@ function appendSearch(path: string, search: string) {
   return search ? `${path}${search}` : path
 }
 
-function RepositoryDetail({ payload, queryKey }: { payload: RepositoryDetailPayload; queryKey: RepositoryDetailQueryKey }) {
+function RepositoryDetail({ payload, prefix, queryKey }: { payload: RepositoryDetailPayload; prefix: string; queryKey: RepositoryDetailQueryKey }) {
   const [notice, setNotice] = useState<string | null>(payload.message || null)
 
   return (
@@ -87,19 +88,19 @@ function RepositoryDetail({ payload, queryKey }: { payload: RepositoryDetailPayl
         </h1>
       </header>
 
-      <Tabs active="overview" tabs={payload.tabs} />
+      <Tabs active="overview" prefix={prefix} tabs={payload.tabs} />
       {notice ? <PanelMessage>{notice}</PanelMessage> : null}
       <Metadata payload={payload} />
-      <Actions payload={payload} queryKey={queryKey} onNotice={setNotice} />
+      <Actions payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
       <CredentialNotice payload={payload} />
       <Counts payload={payload} />
       <Notes payload={payload} queryKey={queryKey} onNotice={setNotice} />
-      <RecentJobs payload={payload} />
+      <RecentJobs payload={payload} prefix={prefix} />
     </>
   )
 }
 
-function RepositoryIssues({ payload }: { payload: RepositoryIssuesPayload }) {
+function RepositoryIssues({ payload, prefix }: { payload: RepositoryIssuesPayload; prefix: string }) {
   const queryClient = useQueryClient()
   const queryKey = ["repositories", String(payload.repository.id), "issues", payload.state] as const
   const [notice, setNotice] = useState<string | null>(payload.message || null)
@@ -146,7 +147,7 @@ function RepositoryIssues({ payload }: { payload: RepositoryIssuesPayload }) {
         </h1>
       </header>
 
-      <Tabs active="github_issues" tabs={payload.tabs} />
+      <Tabs active="github_issues" prefix={prefix} tabs={payload.tabs} />
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
         <span>Trigger label: <code className="rounded bg-gray-100 px-1">{payload.repository.trigger_label}</code></span>
@@ -166,8 +167,8 @@ function RepositoryIssues({ payload }: { payload: RepositoryIssuesPayload }) {
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex gap-1">
-          <a className={stateFilterClass(payload.state === "open")} href={payload.state_paths.open}>Open</a>
-          <a className={stateFilterClass(payload.state === "closed")} href={payload.state_paths.closed}>Closed</a>
+          <Link className={stateFilterClass(payload.state === "open")} to={withRoutePrefix(payload.state_paths.open, prefix)}>Open</Link>
+          <Link className={stateFilterClass(payload.state === "closed")} to={withRoutePrefix(payload.state_paths.closed, prefix)}>Closed</Link>
         </div>
         {payload.issues.length > 0 ? (
           <div className="flex flex-wrap justify-end gap-2">
@@ -312,17 +313,17 @@ function IssueLabel({ color, name }: { color: string; name: string }) {
   )
 }
 
-function Tabs({ active, tabs }: { active: string; tabs: Array<{ key: string; label: string; path: string }> }) {
+function Tabs({ active, prefix, tabs }: { active: string; prefix: string; tabs: Array<{ key: string; label: string; path: string }> }) {
   return (
     <nav className="flex flex-wrap border-b border-gray-200" aria-label="Repository tabs">
       {tabs.map((tab) => (
-        <a
+        <Link
           className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab.key === active ? "border-blue-600 text-blue-600" : "border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900"}`}
-          href={tab.path}
           key={tab.key}
+          to={withRoutePrefix(tab.path, prefix)}
         >
           {tab.label}
-        </a>
+        </Link>
       ))}
     </nav>
   )
@@ -356,7 +357,7 @@ function Metadata({ payload }: { payload: RepositoryDetailPayload }) {
   )
 }
 
-function Actions({ payload, queryKey, onNotice }: { payload: RepositoryDetailPayload; queryKey: RepositoryDetailQueryKey; onNotice: (message: string | null) => void }) {
+function Actions({ payload, prefix, queryKey, onNotice }: { payload: RepositoryDetailPayload; prefix: string; queryKey: RepositoryDetailQueryKey; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const search = queryKey[3]
@@ -379,7 +380,7 @@ function Actions({ payload, queryKey, onNotice }: { payload: RepositoryDetailPay
     mutationFn: () => archiveRepositoryFromPath(payload.paths.app_archive_repository_path),
     onSuccess: (updated) => {
       queryClient.setQueryData(["repositories"], updated)
-      navigate(payload.paths.repositories_path)
+      navigate(withRoutePrefix(payload.paths.repositories_path, prefix))
     }
   })
   const disabled = poll.isPending || retryFailed.isPending || archive.isPending
@@ -394,15 +395,15 @@ function Actions({ payload, queryKey, onNotice }: { payload: RepositoryDetailPay
   return (
     <>
       <div className="flex flex-wrap items-center gap-2">
-        <a className={buttonClass("green")} href={payload.paths.new_job_path}>New job</a>
+        <Link className={buttonClass("green")} to={withRoutePrefix(payload.paths.new_job_path, prefix)}>New job</Link>
         <button className={buttonClass("blue")} disabled={disabled} onClick={() => { onNotice(null); poll.mutate() }} type="button">Poll now</button>
         {retry.count > 0 ? (
           <button className={buttonClass("amber")} disabled={disabled} onClick={() => { onNotice(null); retryFailed.mutate() }} type="button">Retry {retry.count} failed with {retry.agent_provider_label}</button>
         ) : null}
-        <a className={buttonClass("gray")} href={payload.paths.edit_repository_path}>Edit</a>
+        <Link className={buttonClass("gray")} to={withRoutePrefix(payload.paths.edit_repository_path, prefix)}>Edit</Link>
         <button className="rounded bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:text-gray-300" disabled={disabled} onClick={archiveRepository} type="button">Archive</button>
-        <a className={buttonClass("gray")} href={payload.paths.repository_documents_path}>Documents</a>
-        <a className={buttonClass("gray")} href={payload.paths.repository_scheduled_tasks_path}>Scheduled Tasks</a>
+        <Link className={buttonClass("gray")} to={withRoutePrefix(payload.paths.repository_documents_path, prefix)}>Documents</Link>
+        <Link className={buttonClass("gray")} to={withRoutePrefix(payload.paths.repository_scheduled_tasks_path, prefix)}>Scheduled Tasks</Link>
       </div>
       {poll.isError ? <PanelMessage tone="error">{errorMessage(poll.error, "Repository poll failed.")}</PanelMessage> : null}
       {retryFailed.isError ? <PanelMessage tone="error">{errorMessage(retryFailed.error, "Retry failed jobs command failed.")}</PanelMessage> : null}
@@ -515,7 +516,7 @@ function Notes({ payload, queryKey, onNotice }: { payload: RepositoryDetailPaylo
   )
 }
 
-function RecentJobs({ payload }: { payload: RepositoryDetailPayload }) {
+function RecentJobs({ payload, prefix }: { payload: RepositoryDetailPayload; prefix: string }) {
   if (payload.jobs.length === 0) {
     return (
       <section>
@@ -542,16 +543,16 @@ function RecentJobs({ payload }: { payload: RepositoryDetailPayload }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 text-sm">
-            {payload.jobs.map((job) => <JobRow job={job} key={job.id} />)}
+            {payload.jobs.map((job) => <JobRow job={job} key={job.id} prefix={prefix} />)}
           </tbody>
         </table>
       </div>
-      <Pagination payload={payload} />
+      <Pagination payload={payload} prefix={prefix} />
     </section>
   )
 }
 
-function JobRow({ job }: { job: RepositoryDetailJob }) {
+function JobRow({ job, prefix }: { job: RepositoryDetailJob; prefix: string }) {
   return (
     <tr>
       <td className="px-4 py-3 align-top">
@@ -559,8 +560,8 @@ function JobRow({ job }: { job: RepositoryDetailJob }) {
         {job.priority !== "medium" ? <span className="ml-1"><StatusPill tone="gray">{job.priority}</StatusPill></span> : null}
       </td>
       <td className="px-4 py-3">
-        <SourceLink job={job} />
-        {job.issue_title ? <a className="ml-1 text-gray-700 hover:underline" href={job.job_path}>{job.issue_title}</a> : null}
+        <SourceLink job={job} prefix={prefix} />
+        {job.issue_title ? <Link className="ml-1 text-gray-700 hover:underline" to={withRoutePrefix(job.job_path, prefix)}>{job.issue_title}</Link> : null}
         {job.pr_number && job.pr_url ? <a className="ml-1 text-xs text-indigo-700 underline hover:no-underline" href={job.pr_url} rel="noopener" target="_blank">PR #{job.pr_number}</a> : null}
         {job.external_pr_number && job.external_pr_url ? <a className="ml-1 text-xs text-violet-700 underline hover:no-underline" href={job.external_pr_url} rel="noopener" target="_blank">PR #{job.external_pr_number}</a> : null}
         {job.current_step_caption ? <div className="mt-0.5 text-xs italic text-gray-500">{job.current_step_caption}</div> : null}
@@ -572,21 +573,29 @@ function JobRow({ job }: { job: RepositoryDetailJob }) {
       </td>
       <td className="hidden px-4 py-3 text-gray-600 sm:table-cell">{job.runs_count}</td>
       <td className="hidden px-4 py-3 text-gray-500 sm:table-cell">{formatRelative(job.updated_at)}</td>
-      <td className="hidden px-4 py-3 text-right sm:table-cell"><a className="text-blue-600 underline hover:no-underline" href={job.job_path}>View</a></td>
+      <td className="hidden px-4 py-3 text-right sm:table-cell"><Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(job.job_path, prefix)}>View</Link></td>
     </tr>
   )
 }
 
-function SourceLink({ job }: { job: RepositoryDetailJob }) {
+function SourceLink({ job, prefix }: { job: RepositoryDetailJob; prefix: string }) {
   if (!job.source.path) return <span className="text-gray-600">{job.source.label}</span>
+  if (!job.source.external) {
+    return (
+      <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(job.source.path, prefix)}>
+        {job.source.label}
+      </Link>
+    )
+  }
+
   return (
-    <a className="text-blue-600 underline hover:no-underline" href={job.source.path} rel={job.source.external ? "noopener" : undefined} target={job.source.external ? "_blank" : undefined}>
+    <a className="text-blue-600 underline hover:no-underline" href={job.source.path} rel="noopener" target="_blank">
       {job.source.label}
     </a>
   )
 }
 
-function Pagination({ payload }: { payload: RepositoryDetailPayload }) {
+function Pagination({ payload, prefix }: { payload: RepositoryDetailPayload; prefix: string }) {
   const pagination = payload.pagination
   if (pagination.total_pages <= 1) return null
 
@@ -594,8 +603,8 @@ function Pagination({ payload }: { payload: RepositoryDetailPayload }) {
     <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
       <span>Showing {pagination.first_item}-{pagination.last_item} of {pagination.total_jobs}</span>
       <div className="flex gap-2">
-        {pagination.previous_path ? <a className={paginationLinkClass()} href={pagination.previous_path}>Previous</a> : <span className={disabledPaginationClass()}>Previous</span>}
-        {pagination.next_path ? <a className={paginationLinkClass()} href={pagination.next_path}>Next</a> : <span className={disabledPaginationClass()}>Next</span>}
+        {pagination.previous_path ? <Link className={paginationLinkClass()} to={withRoutePrefix(pagination.previous_path, prefix)}>Previous</Link> : <span className={disabledPaginationClass()}>Previous</span>}
+        {pagination.next_path ? <Link className={paginationLinkClass()} to={withRoutePrefix(pagination.next_path, prefix)}>Next</Link> : <span className={disabledPaginationClass()}>Next</span>}
       </div>
     </div>
   )
@@ -655,6 +664,17 @@ function pageSearch(search: string) {
   const params = new URLSearchParams(search)
   const page = params.get("page")
   return page ? `?${new URLSearchParams({ page }).toString()}` : ""
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function formatDate(value: string) {

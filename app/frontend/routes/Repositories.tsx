@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
+import { Link, useLocation } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   archiveRepository,
@@ -17,21 +18,23 @@ type RepositoryAction = {
 }
 
 export function RepositoriesIndex() {
+  const location = useLocation()
   const repositories = useQuery({
     queryKey: ["repositories"],
     queryFn: fetchRepositories
   })
+  const prefix = routePrefix(location.pathname)
 
   return (
     <main aria-label="Repositories" className="mx-auto max-w-6xl space-y-6 p-6">
       {repositories.isPending ? <PanelMessage>Loading repositories...</PanelMessage> : null}
       {repositories.isError ? <PanelMessage tone="error">{errorMessage(repositories.error, "Unable to load repositories.")}</PanelMessage> : null}
-      {repositories.isSuccess ? <RepositoriesView payload={repositories.data} /> : null}
+      {repositories.isSuccess ? <RepositoriesView payload={repositories.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function RepositoriesView({ payload }: { payload: RepositoriesPayload }) {
+function RepositoriesView({ payload, prefix }: { payload: RepositoriesPayload; prefix: string }) {
   const queryClient = useQueryClient()
   const [notice, setNotice] = useState<string | null>(payload.message || null)
   const command = useMutation({
@@ -58,7 +61,7 @@ function RepositoriesView({ payload }: { payload: RepositoriesPayload }) {
     <>
       <header className="flex items-center justify-between gap-3">
         <h1 className="text-3xl font-semibold text-gray-900">Repositories</h1>
-        <a className="rounded bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white hover:bg-blue-500" href={payload.new_repository_path}>Add</a>
+        <Link className="rounded bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white hover:bg-blue-500" to={withRoutePrefix(payload.new_repository_path, prefix)}>Add</Link>
       </header>
 
       {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
@@ -69,6 +72,7 @@ function RepositoriesView({ payload }: { payload: RepositoriesPayload }) {
           <RepositoryTable
             disabled={command.isPending}
             onAction={runAction}
+            prefix={prefix}
             repositories={payload.active_repositories}
           />
         </section>
@@ -97,11 +101,13 @@ function RepositoriesView({ payload }: { payload: RepositoriesPayload }) {
 function RepositoryTable({
   repositories,
   disabled,
-  onAction
+  onAction,
+  prefix
 }: {
   repositories: RepositoryRow[]
   disabled: boolean
   onAction: (action: RepositoryAction, repository?: RepositoryRow) => void
+  prefix: string
 }) {
   return (
     <table className="min-w-full divide-y divide-gray-200">
@@ -118,7 +124,7 @@ function RepositoryTable({
           <tr key={repository.id}>
             <td className="px-4 py-3">
               <div className="font-mono">
-                <a className="text-blue-600 underline hover:no-underline" href={repository.repository_path}>{repository.slug}</a>
+                <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(repository.repository_path, prefix)}>{repository.slug}</Link>
               </div>
               <div className="mt-0.5 text-xs text-gray-500">
                 <span className="font-mono">{repository.default_branch}</span>
@@ -144,7 +150,7 @@ function RepositoryTable({
                 >
                   Poll now
                 </button>
-                <a className="text-blue-600 underline hover:no-underline" href={repository.edit_repository_path}>Edit</a>
+                <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(repository.edit_repository_path, prefix)}>Edit</Link>
                 <button
                   className="text-amber-700 underline hover:no-underline disabled:text-gray-300"
                   disabled={disabled}
@@ -239,6 +245,17 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 function formatDate(value: string | null) {
   if (!value) return "-"
   return new Date(value).toLocaleString()
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function errorMessage(error: Error, fallback: string) {
