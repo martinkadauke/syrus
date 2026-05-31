@@ -49,58 +49,22 @@ RSpec.describe "Smart folders", type: :request do
       expect(response.body).to include('id="syrus-spa-root"')
     end
 
-    it "lists only Epic smart folders when subject_type is epic" do
-      job_folder = create_smart_folder(name: "Job folder", subject_type: "job")
-      epic_folder = create_smart_folder(name: "Epic folder", subject_type: "epic")
-      workflow_folder = create_smart_folder(name: "Workflow folder", subject_type: "workflow")
-
-      get legacy_smart_folders_path, params: { subject_type: "epic" }
-
-      expect(response).to have_http_status(:ok)
-      expect(response.body).to include(epic_folder.name)
-      expect(response.body).not_to include(job_folder.name)
-      expect(response.body).not_to include(workflow_folder.name)
-    end
-
-    it "defaults to listing only Job smart folders" do
-      job_folder = create_smart_folder(name: "Job folder", subject_type: "job")
-      epic_folder = create_smart_folder(name: "Epic folder", subject_type: "epic")
-      workflow_folder = create_smart_folder(name: "Workflow folder", subject_type: "workflow")
-
-      get legacy_smart_folders_path
-
-      expect(response).to have_http_status(:ok)
-      expect(response.body).to include(job_folder.name)
-      expect(response.body).not_to include(epic_folder.name)
-      expect(response.body).not_to include(workflow_folder.name)
-    end
-
-    it "keeps legacy update and delete actions inside the legacy fallback" do
-      folder = create_smart_folder(name: "Old", subject_type: "epic")
-
-      patch legacy_smart_folder_path(folder), params: {
-        subject_type: "epic",
-        smart_folder: { name: "New", position: 3 }
-      }
-
-      expect(folder.reload.name).to eq("New")
-      expect(folder.position).to eq(3)
-      expect(response).to redirect_to(legacy_smart_folders_path(subject_type: "epic"))
-
+    it "does not route the retired legacy HTML management endpoints" do
       expect {
-        delete legacy_smart_folder_path(folder), params: { subject_type: "epic" }
-      }.to change { user.smart_folders.count }.by(-1)
-      expect(response).to redirect_to(legacy_smart_folders_path(subject_type: "epic"))
+        Rails.application.routes.recognize_path("/smart_folders/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/smart_folders/legacy/1", method: :patch)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/smart_folders/legacy/1", method: :delete)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/smart_folders/1", method: :patch)
+      }.to raise_error(ActionController::RoutingError)
+      expect {
+        Rails.application.routes.recognize_path("/smart_folders/1", method: :delete)
+      }.to raise_error(ActionController::RoutingError)
     end
-  end
-
-  def create_smart_folder(name:, subject_type:)
-    user.smart_folders.create!(
-      name: name,
-      kind: "user_defined",
-      subject_type: subject_type,
-      filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "open" } ] },
-      position: 0
-    )
   end
 end

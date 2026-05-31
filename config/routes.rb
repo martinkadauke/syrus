@@ -342,11 +342,6 @@ Rails.application.routes.draw do
   end
   get "smart_folders", to: "spa#show", as: :smart_folders
   post "smart_folders", to: "smart_folders#create"
-  patch "smart_folders/:id", to: "smart_folders#update", as: :smart_folder, constraints: { id: /\d+/ }
-  delete "smart_folders/:id", to: "smart_folders#destroy", constraints: { id: /\d+/ }
-  get "smart_folders/legacy", to: "smart_folders#index", as: :legacy_smart_folders
-  patch "smart_folders/legacy/:id", to: "smart_folders#update", as: :legacy_smart_folder, constraints: { id: /\d+/ }
-  delete "smart_folders/legacy/:id", to: "smart_folders#destroy", constraints: { id: /\d+/ }
   get "tags", to: "spa#show", as: :tags
   get "cron_templates", to: "spa#show", as: :cron_templates
   get "cron_templates/new", to: "spa#show", as: :new_cron_template
