@@ -42,6 +42,9 @@ Rails.application.routes.draw do
         patch "epics/:id/archive", to: "epics#archive", constraints: { id: /\d+/ }
         patch "epics/:id/state", to: "epics#update_state", constraints: { id: /\d+/ }
         get "filters/fk_options", to: "filters#fk_options"
+        patch "dashboard/preferences", to: "dashboard#preferences"
+        post "dashboard/landing_pause", to: "dashboard#landing_pause"
+        patch "dashboard/epics/:id/auto_approval", to: "dashboard#epic_auto_approval", constraints: { id: /\d+/ }
         get "chats/new", to: "chats#new"
         post "chats", to: "chats#create"
         get "chats/:id", to: "chats#show", constraints: { id: /\d+/ }

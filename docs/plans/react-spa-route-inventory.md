@@ -33,10 +33,10 @@ health/storage internals.
 | `/dashboard/epics` | `home#epics` | `spa-core` | Move into React dashboard route tree. |
 | `/dashboard/jobs` | `home#jobs` | `spa-core` | Move into React dashboard route tree. |
 | `/dashboard/workflows` | `home#workflows` | `spa-core` | Move into React dashboard route tree. |
-| `PATCH /dashboard/preferences` | `home#update_preferences` | `app-api-needed` | Browser command endpoint under `/api/v1/app/dashboard/preferences`. |
+| `PATCH /dashboard/preferences` | `/api/v1/app/dashboard/preferences` | `spa-core` | App API endpoint persists sort, visible-column, and Kanban lane preferences; legacy Turbo/HTML command remains for fallback. |
 | `POST /dashboard/jobs/bulk` | `home#bulk_jobs` | `app-api-needed` | Browser command endpoint under `/api/v1/app/dashboard/jobs/bulk`. |
-| `POST /dashboard/landing_pause` | `home#toggle_landing_pause` | `app-api-needed` | Browser command endpoint; dashboard state refetch after success. |
-| `PATCH /dashboard/epics/:id/auto_approval` | `home#update_epic_auto_approval` | `app-api-needed` | Browser command endpoint; include capability/status in epic payload. |
+| `POST /dashboard/landing_pause` | `/api/v1/app/dashboard/landing_pause` | `spa-core` | App API endpoint toggles landing pause and re-enqueues the landing processor on resume; legacy HTML command remains for fallback. |
+| `PATCH /dashboard/epics/:id/auto_approval` | `/api/v1/app/dashboard/epics/:id/auto_approval` | `spa-core` | App API endpoint updates dashboard Epic auto-approval state; legacy HTML command remains for fallback. |
 | `/app-shell` | `spa#show` | `spa-core` | Hidden authenticated React shell used to prove the SPA asset, bootstrap API, and client routing path before taking over production routes. |
 | `/jobs/new` | `spa#show` + `/api/v1/app/jobs/new`, `POST /api/v1/app/jobs` | `spa-core` | Migrated to the React direct-job form. Legacy ERB fallback lives at `/jobs/new/legacy` and posts to `/jobs/legacy`; `POST /jobs` remains as HTML command compatibility. |
 | `/jobs/:id` | `jobs#show` | `spa-core` | High-risk page. Needs split queries for job detail, logs, workflows, attachments. |
