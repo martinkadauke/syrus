@@ -3072,8 +3072,7 @@ describe("App", () => {
               id: 10,
               role: "user",
               text: "Now inspect proposals",
-              bookmarkable: true,
-              bookmark_path: "/chats/8/bookmarks"
+              bookmarkable: true
             }
           ],
           turnInFlight: true
@@ -3166,8 +3165,7 @@ describe("App", () => {
             tool_name: "Read",
             content: { input: { file_path: "app/models/chat.rb" } },
             text: "",
-            bookmarkable: false,
-            bookmark_path: "/chats/8/bookmarks"
+            bookmarkable: false
           },
           {
             type: "message",
@@ -3176,8 +3174,7 @@ describe("App", () => {
             tool_name: "Read",
             content: { result: [{ type: "text", text: "class Chat\nend" }] },
             text: "",
-            bookmarkable: false,
-            bookmark_path: "/chats/8/bookmarks"
+            bookmarkable: false
           },
           {
             type: "message",
@@ -3186,8 +3183,7 @@ describe("App", () => {
             tool_name: null,
             content: { text: "[result] subtype=success, is_error=false, turns=4, duration_ms=170223, total_cost_usd=0.37236969999999997" },
             text: "[result] subtype=success, is_error=false, turns=4, duration_ms=170223, total_cost_usd=0.37236969999999997",
-            bookmarkable: false,
-            bookmark_path: "/chats/8/bookmarks"
+            bookmarkable: false
           }
         ]
       })), { status: 200, headers: { "Content-Type": "application/json" } })
@@ -3216,7 +3212,6 @@ describe("App", () => {
       role: "assistant",
       text: "Proposal proposed.",
       bookmarkable: true,
-      bookmark_path: "/chats/8/bookmarks",
       proposal: {
         id: 5,
         kind: "syrus_issue",
@@ -3232,8 +3227,6 @@ describe("App", () => {
         scoped_repository_slug: "acme/widgets",
         dependencies: [],
         target_epic_label: null,
-        confirm_path: "/chats/8/proposals/5/confirm",
-        reject_path: "/chats/8/proposals/5/reject",
         app_confirm_path: "/api/v1/app/chats/8/proposals/5/confirm",
         app_reject_path: "/api/v1/app/chats/8/proposals/5/reject",
         materialized_label: null,
@@ -3272,7 +3265,7 @@ describe("App", () => {
             ...initialPayload.attachment_groups,
             repositories: [
               ...initialPayload.attachment_groups.repositories,
-              { id: 4, label: "acme/tools", detach_path: "/chats/8/attachments/4", app_detach_path: "/api/v1/app/chats/8/attachments/4" }
+              { id: 4, label: "acme/tools", app_detach_path: "/api/v1/app/chats/8/attachments/4" }
             ]
           },
           attachment_results: []
@@ -3380,8 +3373,7 @@ describe("App", () => {
               id: 4,
               role: "assistant",
               text: "Earlier **aqueduct** note.",
-              bookmarkable: true,
-              bookmark_path: "/chats/8/bookmarks"
+              bookmarkable: true
             }
           ]
         }), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -4430,8 +4422,7 @@ function chatPayload(overrides: {
         tool_name: null,
         content: { text: "Discuss aqueducts." },
         text: "Discuss aqueducts.",
-        bookmarkable: true,
-        bookmark_path: "/chats/8/bookmarks"
+        bookmarkable: true
       }
     ],
     bookmarks: [
@@ -4440,7 +4431,7 @@ function chatPayload(overrides: {
     pending_actions: [],
     attachment_groups: {
       repositories: [
-        { id: 2, label: "acme/widgets", detach_path: "/chats/8/attachments/2", app_detach_path: "/api/v1/app/chats/8/attachments/2" }
+        { id: 2, label: "acme/widgets", app_detach_path: "/api/v1/app/chats/8/attachments/2" }
       ],
       epics: [],
       jobs: [],
@@ -4465,10 +4456,7 @@ function chatPayload(overrides: {
       app_reset_path: "/api/v1/app/chats/8/reset",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
       app_attachments_path: "/api/v1/app/chats/8/attachments",
-      app_whiteboard_path: "/api/v1/app/chats/8/whiteboard",
-      chat_messages_path: "/chats/8/messages",
-      chat_attachments_path: "/chats/8/attachments",
-      chat_whiteboard_path: "/chats/8/whiteboard"
+      app_whiteboard_path: "/api/v1/app/chats/8/whiteboard"
     }
   }
 }

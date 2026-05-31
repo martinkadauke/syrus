@@ -112,6 +112,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       "text" => "Discuss **aqueducts**."
     ))
     expect(body["messages"].first).not_to have_key("html")
+    expect(body["messages"].first).not_to have_key("bookmark_path")
     expect(body["documents_in_scope"]).to contain_exactly(include("title" => document.title, "repository_slug" => "acme/widgets"))
     expect(body.dig("whiteboard", "version")).to eq(2)
     expect(body.dig("whiteboard", "elements", 0, "id")).to eq("box-1")
@@ -119,6 +120,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("paths", "app_message_path")).to eq("/api/v1/app/chats/#{chat.id}/message")
     expect(body.dig("paths", "app_attachments_path")).to eq("/api/v1/app/chats/#{chat.id}/attachments")
     expect(body.dig("paths", "app_whiteboard_path")).to eq("/api/v1/app/chats/#{chat.id}/whiteboard")
+    expect(body["paths"].keys).not_to include("chat_messages_path", "chat_attachments_path", "chat_whiteboard_path")
   end
 
   it "returns older messages as typed JSON for frontend rendering" do
@@ -207,7 +209,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     proposal_message = parse_body["messages"].first
     expect(proposal_message.dig("proposal", "title")).to eq("Map auth flow")
-    expect(proposal_message.dig("proposal", "confirm_path")).to eq(chat_proposal_confirm_path(chat, proposal))
+    expect(proposal_message.dig("proposal")).not_to have_key("confirm_path")
+    expect(proposal_message.dig("proposal")).not_to have_key("reject_path")
     expect(proposal_message.dig("proposal", "app_confirm_path")).to eq("/api/v1/app/chats/#{chat.id}/proposals/#{proposal.id}/confirm")
     system_message = parse_body["messages"].second
     expect(system_message).to include(
@@ -247,6 +250,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       "label" => "acme/widgets",
       "app_detach_path" => "/api/v1/app/chats/#{chat.id}/attachments/#{attachment.id}"
     ))
+    expect(parse_body.dig("attachment_groups", "repositories").first).not_to have_key("detach_path")
 
     expect {
       delete "/api/v1/app/chats/#{chat.id}/attachments/#{attachment.id}"

@@ -38,8 +38,6 @@ export type ChatProposal = {
   scoped_repository_slug: string | null
   dependencies: string[]
   target_epic_label: string | null
-  confirm_path: string
-  reject_path: string
   app_confirm_path: string
   app_reject_path: string
   materialized_label: string | null
@@ -58,7 +56,6 @@ export type ChatProposalChild = {
   proposed: boolean
   repository_slug: string | null
   dependencies: string[]
-  reject_path: string
   app_reject_path: string
 }
 
@@ -77,7 +74,6 @@ export type ChatMessageItem = {
   content?: unknown
   text: string
   bookmarkable: boolean
-  bookmark_path: string
   proposal?: ChatProposal | null
 }
 
@@ -117,7 +113,6 @@ export type ChatPendingAction = {
 export type ChatAttachmentRow = {
   id: number
   label: string
-  detach_path: string
   app_detach_path: string
 }
 
@@ -191,9 +186,6 @@ export type ChatPayload = {
     app_bookmarks_path: string
     app_attachments_path: string
     app_whiteboard_path: string
-    chat_messages_path: string
-    chat_attachments_path: string
-    chat_whiteboard_path: string
   }
 }
 

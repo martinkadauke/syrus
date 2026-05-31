@@ -25,8 +25,7 @@ module App
         tool_name: message.tool_name,
         content: message.content,
         text: text,
-        bookmarkable: message.bookmarkable?,
-        bookmark_path: chat_bookmarks_path(message.chat_session)
+        bookmarkable: message.bookmarkable?
       }
 
       payload[:proposal] = proposal_json(message.proposal, chat_session: message.chat_session) if message.proposal_id.present?
@@ -55,8 +54,6 @@ module App
         scoped_repository_slug: scoped_repository&.slug,
         dependencies: dependencies,
         target_epic_label: proposal.target_epic&.display_number,
-        confirm_path: chat_proposal_confirm_path(chat_session, proposal),
-        reject_path: chat_proposal_reject_path(chat_session, proposal),
         app_confirm_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/confirm",
         app_reject_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/reject",
         materialized_label: proposal.materialized_label,
@@ -86,7 +83,6 @@ module App
         proposed: proposal.proposed?,
         repository_slug: proposal.repository&.slug || @repository&.slug,
         dependencies: proposal.dependencies.order(:slug).map(&:slug),
-        reject_path: chat_proposal_reject_path(chat_session, proposal),
         app_reject_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/reject"
       }
     end

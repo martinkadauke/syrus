@@ -128,7 +128,6 @@ function message(id: number, role: "user" | "assistant" | "tool_use" | "tool_res
     content: { text },
     text,
     bookmarkable: true,
-    bookmark_path: `/chats/9/bookmarks`,
     ...overrides
   }
 }
@@ -167,10 +166,7 @@ function chatPayload(messages: Array<ReturnType<typeof message>>) {
       app_reset_path: "/api/v1/app/chats/9/reset",
       app_bookmarks_path: "/api/v1/app/chats/9/bookmarks",
       app_attachments_path: "/api/v1/app/chats/9/attachments",
-      app_whiteboard_path: "/api/v1/app/chats/9/whiteboard",
-      chat_messages_path: "/chats/9/messages",
-      chat_attachments_path: "/chats/9/attachments",
-      chat_whiteboard_path: "/chats/9/whiteboard"
+      app_whiteboard_path: "/api/v1/app/chats/9/whiteboard"
     }
   }
 }
