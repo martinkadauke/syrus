@@ -1,25 +1,61 @@
-import { useQuery } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { FormEvent, ReactNode } from "react"
+import { useState } from "react"
 import { useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { fetchRepositoryDetail, type RepositoryDetailJob, type RepositoryDetailPayload } from "../api/repositories"
+import {
+  bulkRepositoryIssues,
+  closeRepositoryIssue,
+  commentRepositoryIssue,
+  delegateRepositoryIssue,
+  fetchRepositoryDetail,
+  fetchRepositoryIssues,
+  type RepositoryDetailJob,
+  type RepositoryDetailPayload,
+  type RepositoryIssue,
+  type RepositoryIssuesPayload
+} from "../api/repositories"
+
+type IssueCommand =
+  | { kind: "close"; issueNumber: number }
+  | { kind: "delegate"; issueNumber: number }
+  | { kind: "bulk"; bulkAction: "close" | "delegate"; issueNumbers: number[] }
+  | { kind: "comment"; issueNumber: number; commentBody: string }
 
 export function RepositoryDetailRoute() {
   const params = useParams()
   const location = useLocation()
   const id = params.id || ""
+  const query = new URLSearchParams(location.search)
+  const tab = query.get("tab") === "github_issues" ? "github_issues" : "overview"
+  const state = query.get("state") === "closed" ? "closed" : "open"
   const search = pageSearch(location.search)
-  const repository = useQuery({
+  const detail = useQuery({
     queryKey: ["repositories", id, "detail", search],
     queryFn: () => fetchRepositoryDetail(id, search),
-    enabled: id.length > 0
+    enabled: id.length > 0 && tab === "overview"
+  })
+  const issues = useQuery({
+    queryKey: ["repositories", id, "issues", state],
+    queryFn: () => fetchRepositoryIssues(id, state),
+    enabled: id.length > 0 && tab === "github_issues"
   })
 
   return (
     <main aria-label="Repository" className="mx-auto max-w-7xl space-y-6 p-6">
-      {repository.isPending ? <PanelMessage>Loading repository...</PanelMessage> : null}
-      {repository.isError ? <PanelMessage tone="error">{errorMessage(repository.error, "Unable to load repository.")}</PanelMessage> : null}
-      {repository.isSuccess ? <RepositoryDetail payload={repository.data} /> : null}
+      {tab === "overview" ? (
+        <>
+          {detail.isPending ? <PanelMessage>Loading repository...</PanelMessage> : null}
+          {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, "Unable to load repository.")}</PanelMessage> : null}
+          {detail.isSuccess ? <RepositoryDetail payload={detail.data} /> : null}
+        </>
+      ) : (
+        <>
+          {issues.isPending ? <PanelMessage>Loading GitHub issues...</PanelMessage> : null}
+          {issues.isError ? <PanelMessage tone="error">{errorMessage(issues.error, "Unable to load GitHub issues.")}</PanelMessage> : null}
+          {issues.isSuccess ? <RepositoryIssues payload={issues.data} /> : null}
+        </>
+      )}
     </main>
   )
 }
@@ -33,7 +69,7 @@ function RepositoryDetail({ payload }: { payload: RepositoryDetailPayload }) {
         </h1>
       </header>
 
-      <Tabs payload={payload} />
+      <Tabs active="overview" tabs={payload.tabs} />
       <Metadata payload={payload} />
       <Actions payload={payload} />
       <CredentialNotice payload={payload} />
@@ -44,12 +80,225 @@ function RepositoryDetail({ payload }: { payload: RepositoryDetailPayload }) {
   )
 }
 
-function Tabs({ payload }: { payload: RepositoryDetailPayload }) {
+function RepositoryIssues({ payload }: { payload: RepositoryIssuesPayload }) {
+  const queryClient = useQueryClient()
+  const queryKey = ["repositories", String(payload.repository.id), "issues", payload.state] as const
+  const [notice, setNotice] = useState<string | null>(payload.message || null)
+  const [selected, setSelected] = useState<number[]>([])
+  const [commentingOn, setCommentingOn] = useState<RepositoryIssue | null>(null)
+  const [commentBody, setCommentBody] = useState("")
+  const command = useMutation({
+    mutationFn: (action: IssueCommand) => {
+      switch (action.kind) {
+        case "close":
+          return closeRepositoryIssue(payload.paths.app_close_issue_path, { issueNumber: action.issueNumber, state: payload.state })
+        case "delegate":
+          return delegateRepositoryIssue(payload.paths.app_delegate_issue_path, { issueNumber: action.issueNumber, state: payload.state })
+        case "comment":
+          return commentRepositoryIssue(payload.paths.app_comment_issue_path, { issueNumber: action.issueNumber, commentBody: action.commentBody, state: payload.state })
+        case "bulk":
+          return bulkRepositoryIssues(payload.paths.app_bulk_issues_path, { issueNumbers: action.issueNumbers, bulkAction: action.bulkAction, state: payload.state })
+      }
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setNotice(updated.message || null)
+      setSelected([])
+      setCommentingOn(null)
+      setCommentBody("")
+    }
+  })
+
+  function toggleIssue(number: number) {
+    setSelected((current) => current.includes(number) ? current.filter((value) => value !== number) : [...current, number])
+  }
+
+  function submitComment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!commentingOn) return
+    command.mutate({ kind: "comment", issueNumber: commentingOn.number, commentBody })
+  }
+
+  return (
+    <>
+      <header>
+        <h1 className="break-words font-mono text-3xl font-semibold text-gray-900">
+          <a className="hover:underline" href={payload.repository.github_url} rel="noopener" target="_blank">{payload.repository.slug}</a>
+        </h1>
+      </header>
+
+      <Tabs active="github_issues" tabs={payload.tabs} />
+
+      <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
+        <span>Trigger label: <code className="rounded bg-gray-100 px-1">{payload.repository.trigger_label}</code></span>
+        <span>Showing: <StatusPill tone={payload.state === "open" ? "green" : "gray"}>{payload.state}</StatusPill></span>
+        <span><strong>{payload.issue_count}</strong> {payload.issue_count === 1 ? "issue" : "issues"}</span>
+        {payload.repository.github_rate_limit ? (
+          <span>
+            GitHub quota: <strong>{payload.repository.github_rate_limit.remaining.toLocaleString()}</strong> / {payload.repository.github_rate_limit.limit.toLocaleString()} ({payload.repository.github_rate_limit.resource})
+          </span>
+        ) : null}
+        <a className="text-blue-600 hover:underline" href={payload.paths.github_issues_path} rel="noopener" target="_blank">View on GitHub</a>
+      </div>
+
+      {notice ? <PanelMessage>{notice}</PanelMessage> : null}
+      {payload.error_message ? <PanelMessage tone="error">{payload.error_message}</PanelMessage> : null}
+      {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "GitHub issue command failed.")}</PanelMessage> : null}
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex gap-1">
+          <a className={stateFilterClass(payload.state === "open")} href={payload.state_paths.open}>Open</a>
+          <a className={stateFilterClass(payload.state === "closed")} href={payload.state_paths.closed}>Closed</a>
+        </div>
+        {payload.issues.length > 0 ? (
+          <div className="flex flex-wrap justify-end gap-2">
+            {payload.state === "open" ? (
+              <button
+                className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50"
+                disabled={selected.length === 0 || command.isPending}
+                onClick={() => command.mutate({ kind: "bulk", bulkAction: "close", issueNumbers: selected })}
+                type="button"
+              >
+                Close selected
+              </button>
+            ) : null}
+            <button
+              className="rounded border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+              disabled={selected.length === 0 || command.isPending}
+              onClick={() => command.mutate({ kind: "bulk", bulkAction: "delegate", issueNumbers: selected })}
+              type="button"
+            >
+              Delegate selected
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {payload.issues.length > 0 ? (
+        <div className="overflow-hidden rounded border border-gray-200 bg-white">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50 text-left text-xs uppercase text-gray-500">
+              <tr>
+                <th className="w-10 px-4 py-2"><span className="sr-only">Select</span></th>
+                <th className="px-4 py-2">Issue</th>
+                <th className="w-36 px-4 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 text-sm">
+              {payload.issues.map((issue) => (
+                <RepositoryIssueRow
+                  commandPending={command.isPending}
+                  issue={issue}
+                  key={issue.number}
+                  onClose={() => command.mutate({ kind: "close", issueNumber: issue.number })}
+                  onComment={() => {
+                    setCommentingOn(issue)
+                    setCommentBody("")
+                  }}
+                  onDelegate={() => command.mutate({ kind: "delegate", issueNumber: issue.number })}
+                  onToggle={() => toggleIssue(issue.number)}
+                  selected={selected.includes(issue.number)}
+                  state={payload.state}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-600">No {payload.state} issues found.</div>
+      )}
+
+      {commentingOn ? (
+        <section className="rounded border border-gray-200 bg-white p-4">
+          <h2 className="text-base font-semibold text-gray-900">Comment on <span className="font-mono text-sm font-normal text-gray-600">#{commentingOn.number}</span></h2>
+          <form className="mt-3 space-y-3" onSubmit={submitComment}>
+            <textarea
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              onChange={(event) => setCommentBody(event.target.value)}
+              rows={5}
+              value={commentBody}
+            />
+            <div className="flex justify-end gap-2">
+              <button className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setCommentingOn(null)} type="button">Cancel</button>
+              <button className={buttonClass("blue")} disabled={command.isPending} type="submit">Post comment</button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+    </>
+  )
+}
+
+function RepositoryIssueRow({
+  commandPending,
+  issue,
+  onClose,
+  onComment,
+  onDelegate,
+  onToggle,
+  selected,
+  state
+}: {
+  commandPending: boolean
+  issue: RepositoryIssue
+  onClose: () => void
+  onComment: () => void
+  onDelegate: () => void
+  onToggle: () => void
+  selected: boolean
+  state: "open" | "closed"
+}) {
+  return (
+    <tr>
+      <td className="px-4 py-3 align-top">
+        <input aria-label={`Select issue #${issue.number}`} checked={selected} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" onChange={onToggle} type="checkbox" />
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <a className="font-mono text-gray-500 hover:underline" href={issue.html_url} rel="noopener" target="_blank">#{issue.number}</a>
+          {issue.labels.map((label) => <IssueLabel color={label.color} key={label.name} name={label.name} />)}
+          <a className="font-medium text-gray-900 hover:underline" href={issue.html_url} rel="noopener" target="_blank">{issue.title}</a>
+        </div>
+        <div className="mt-1 text-xs text-gray-500">{issue.user_login ? `${issue.user_login} · ` : ""}{issue.created_at ? formatRelative(issue.created_at) : ""}</div>
+        {issue.body_excerpt ? <p className="mt-1 line-clamp-2 text-xs text-gray-400">{issue.body_excerpt}</p> : null}
+      </td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-col items-stretch gap-1.5">
+          <button className="rounded bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-200" disabled={commandPending} onClick={onComment} type="button">Comment</button>
+          {state === "open" ? <button className="rounded bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100" disabled={commandPending} onClick={onClose} type="button">Close</button> : null}
+          {issue.delegated ? (
+            <span className="rounded border border-green-200 bg-green-50 px-2 py-1 text-center text-xs font-medium text-green-700">Delegated</span>
+          ) : (
+            <button className="rounded bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100" disabled={commandPending} onClick={onDelegate} type="button">Delegate</button>
+          )}
+        </div>
+      </td>
+    </tr>
+  )
+}
+
+function IssueLabel({ color, name }: { color: string; name: string }) {
+  const safeColor = color.match(/^[0-9a-fA-F]{6}$/) ? color : "6b7280"
+  return (
+    <span
+      className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium"
+      style={{
+        backgroundColor: `#${safeColor}22`,
+        border: `1px solid #${safeColor}44`,
+        color: `#${safeColor}`
+      }}
+    >
+      {name}
+    </span>
+  )
+}
+
+function Tabs({ active, tabs }: { active: string; tabs: Array<{ key: string; label: string; path: string }> }) {
   return (
     <nav className="flex flex-wrap border-b border-gray-200" aria-label="Repository tabs">
-      {payload.tabs.map((tab) => (
+      {tabs.map((tab) => (
         <a
-          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab.key === "overview" ? "border-blue-600 text-blue-600" : "border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900"}`}
+          className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${tab.key === active ? "border-blue-600 text-blue-600" : "border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900"}`}
           href={tab.path}
           key={tab.key}
         >
@@ -328,6 +577,10 @@ function paginationLinkClass() {
 
 function disabledPaginationClass() {
   return "rounded border border-gray-200 px-3 py-1 text-gray-300"
+}
+
+function stateFilterClass(active: boolean) {
+  return `rounded border px-3 py-1.5 text-sm font-medium ${active ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`
 }
 
 function pageSearch(search: string) {

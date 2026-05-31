@@ -1473,6 +1473,47 @@ describe("App", () => {
     expect(screen.getByText("Failed (7d)").previousElementSibling).toHaveTextContent("1")
   })
 
+  it("renders repository GitHub issues and delegates one through the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories/3/issues/delegate" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(repositoryIssuesPayload({
+          message: "Issue #7 delegated to Syrus.",
+          delegated: true
+        })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(repositoryIssuesPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3?tab=github_issues&state=open"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Repository" })).toBeInTheDocument()
+    expect(await screen.findByText("Fix the forum")).toBeInTheDocument()
+    expect(screen.getByText("Trigger label:")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "View on GitHub" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues")
+    fireEvent.click(screen.getByRole("button", { name: "Delegate" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/issues/delegate",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ issue_number: 7, state: "open" })
+        })
+      )
+    })
+    expect(await screen.findByText("Issue #7 delegated to Syrus.")).toBeInTheDocument()
+    expect(screen.getByText("Delegated")).toBeInTheDocument()
+  })
+
   it("renders the new epic form and submits it to the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -1987,6 +2028,44 @@ function repositoryDetailPayload() {
       repositories_path: "/repositories",
       repository_documents_path: "/repositories/3/documents",
       repository_scheduled_tasks_path: "/repositories/3/scheduled_tasks"
+    }
+  }
+}
+
+function repositoryIssuesPayload(overrides: { message?: string; delegated?: boolean } = {}) {
+  const detail = repositoryDetailPayload()
+  return {
+    message: overrides.message || null,
+    error_message: null,
+    repository: detail.repository,
+    tabs: detail.tabs,
+    state: "open",
+    issue_count: 1,
+    issues: [
+      {
+        number: 7,
+        title: "Fix the forum",
+        state: "open",
+        html_url: "https://github.com/acme/widgets/issues/7",
+        body_excerpt: "The forum is missing tasteful columns.",
+        user_login: "alice",
+        created_at: "2026-05-30T12:00:00Z",
+        labels: [
+          { name: "bug", color: "0075ca" }
+        ],
+        delegated: overrides.delegated || false
+      }
+    ],
+    state_paths: {
+      open: "/repositories/3?tab=github_issues&state=open",
+      closed: "/repositories/3?tab=github_issues&state=closed"
+    },
+    paths: {
+      github_issues_path: "https://github.com/acme/widgets/issues",
+      app_comment_issue_path: "/api/v1/app/repositories/3/issues/comment",
+      app_close_issue_path: "/api/v1/app/repositories/3/issues/close",
+      app_delegate_issue_path: "/api/v1/app/repositories/3/issues/delegate",
+      app_bulk_issues_path: "/api/v1/app/repositories/3/issues/bulk"
     }
   }
 }
