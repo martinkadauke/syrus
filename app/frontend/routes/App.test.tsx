@@ -94,6 +94,8 @@ describe("App", () => {
     expect(await screen.findByText("Operator")).toBeInTheDocument()
     expect(screen.getByText("operator@example.com")).toBeInTheDocument()
     expect(screen.getByText("dev")).toBeInTheDocument()
+    expect(within(screen.getByRole("navigation", { name: "Account" })).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
+    expect(within(screen.getByRole("navigation", { name: "Account" })).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app-shell/settings")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/bootstrap",
       expect.objectContaining({

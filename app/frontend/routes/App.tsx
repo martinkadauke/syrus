@@ -138,12 +138,10 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
             </nav>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-gray-500">
-            {user ? (
-              <nav aria-label="Account" className="flex items-center gap-2">
-                {user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>Admin</Link> : null}
-                <Link className={accountLinkClass()} to={`${prefix}/settings`}>Settings</Link>
-              </nav>
-            ) : null}
+            <nav aria-label="Account" className="flex items-center gap-2">
+              {!user || user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>Admin</Link> : null}
+              <Link className={accountLinkClass()} to={`${prefix}/settings`}>Settings</Link>
+            </nav>
             {user ? <span className="hidden sm:inline">{user.display_name}</span> : null}
             {app ? <span className="hidden font-mono sm:inline">{app.revision}</span> : null}
             <form action="/session" method="post">
