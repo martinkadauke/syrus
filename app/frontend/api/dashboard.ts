@@ -207,6 +207,23 @@ export type DashboardLandingPausePayload = {
   landing_paused: boolean
 }
 
+export type DashboardSmartFolderCreateInput = {
+  subject: DashboardSubject
+  name: string
+  filters: Record<string, string>
+}
+
+export type DashboardSmartFolderCreatePayload = {
+  message: string
+  redirect_to: string
+  smart_folder: {
+    id: number
+    name: string
+    position: number
+    filter: unknown
+  }
+}
+
 export function fetchDashboard(search = "") {
   return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`)
 }
@@ -221,4 +238,12 @@ export function bulkDashboardJobs(input: DashboardBulkJobsInput) {
 
 export function toggleDashboardLandingPause(path: string) {
   return postJson<DashboardLandingPausePayload>(path, {})
+}
+
+export function createDashboardSmartFolder(input: DashboardSmartFolderCreateInput) {
+  return postJson<DashboardSmartFolderCreatePayload>("/api/v1/app/smart_folders", {
+    ...input.filters,
+    subject_type: input.subject,
+    smart_folder: { name: input.name }
+  })
 }

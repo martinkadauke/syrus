@@ -13,7 +13,7 @@ Rails.application.routes.draw do
         get "bootstrap", to: "bootstrap#show"
         post "bug_reports", to: "bug_reports#create"
         resources :tags, only: %i[ index create update destroy ]
-        resources :smart_folders, only: %i[ index update destroy ]
+        resources :smart_folders, only: %i[ index create update destroy ]
         resources :cron_templates, only: %i[ index show create update destroy ]
         resource :credentials, only: %i[ show update ] do
           post :clear_credential
@@ -277,14 +277,7 @@ Rails.application.routes.draw do
   get "epics/new", to: "spa#show", as: :new_epic
   get "epics/:id", to: "spa#show", as: :epic, constraints: { id: /\d+/ }
   get "epics/:id/edit", to: "spa#show", as: :edit_epic, constraints: { id: /\d+/ }
-  resources :epics, only: [] do
-    member do
-      patch :archive
-      patch :state, action: :update_state
-    end
-  end
   get "smart_folders", to: "spa#show", as: :smart_folders
-  post "smart_folders", to: "smart_folders#create"
   get "tags", to: "spa#show", as: :tags
   get "cron_templates", to: "spa#show", as: :cron_templates
   get "cron_templates/new", to: "spa#show", as: :new_cron_template

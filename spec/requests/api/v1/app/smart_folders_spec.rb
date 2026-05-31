@@ -51,6 +51,43 @@ RSpec.describe "API: /api/v1/app/smart_folders", type: :request do
     )
   end
 
+  it "creates a smart folder from dashboard filter params" do
+    sign_in_as(user)
+
+    expect {
+      post "/api/v1/app/smart_folders", params: {
+        subject_type: "epic",
+        state: "ready",
+        smart_folder: { name: "Ready Epics" }
+      }
+    }.to change { user.smart_folders.count }.by(1)
+
+    folder = user.smart_folders.find_by!(name: "Ready Epics")
+    expect(response).to have_http_status(:created)
+    expect(folder).to have_attributes(subject_type: "epic", position: 0)
+    expect(folder.filter).to eq("and" => [ { "field" => "state", "op" => "is", "value" => "ready" } ])
+    expect(parse_body).to include(
+      "message" => "Smart folder saved.",
+      "redirect_to" => dashboard_epics_path(smart_folder_id: folder.id),
+      "subject_type" => "epic"
+    )
+    expect(parse_body["smart_folder"]).to include("id" => folder.id, "name" => "Ready Epics")
+  end
+
+  it "rejects smart folder creation without filters" do
+    sign_in_as(user)
+
+    expect {
+      post "/api/v1/app/smart_folders", params: {
+        subject_type: "job",
+        smart_folder: { name: "Everything" }
+      }
+    }.not_to change { user.smart_folders.count }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to include("Choose at least one filter")
+  end
+
   it "updates a smart folder" do
     sign_in_as(user)
     folder = create_smart_folder(user: user, name: "Old", subject_type: "workflow", position: 1)

@@ -281,7 +281,24 @@ describe("App", () => {
         )
       }
 
-      if (path === "/api/v1/app/dashboard?view=list&subject=job" || path === "/api/v1/app/dashboard?view=list&state=open&subject=job") {
+      if (path === "/api/v1/app/smart_folders" && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              message: "Smart folder saved.",
+              redirect_to: "/dashboard/jobs?smart_folder_id=11",
+              smart_folder: { id: 11, name: "Open work", position: 1, filter: { and: [{ field: "state", op: "is", value: "open" }] } }
+            }),
+            { status: 201, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      if (
+        path === "/api/v1/app/dashboard?view=list&subject=job" ||
+        path === "/api/v1/app/dashboard?view=list&state=open&subject=job" ||
+        path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job"
+      ) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -349,6 +366,34 @@ describe("App", () => {
     })
     expect(await screen.findByText("State: Any open")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+
+    fireEvent.change(screen.getByLabelText("Folder name"), { target: { value: "Open work" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save folder" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/smart_folders",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            state: "open",
+            subject_type: "job",
+            smart_folder: { name: "Open work" }
+          })
+        })
+      )
+    })
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard?smart_folder_id=11&subject=job",
+        expect.objectContaining({ credentials: "same-origin" })
+      )
+    })
 
     fireEvent.change(screen.getByLabelText("Sort column"), { target: { value: "title" } })
 

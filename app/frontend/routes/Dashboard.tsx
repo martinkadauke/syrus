@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { FormEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { bulkDashboardJobs, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -234,16 +235,37 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
 }
 
 function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
+  const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const prefix = pathname.startsWith("/app-shell") ? "/app-shell" : ""
+  const [folderName, setFolderName] = useState("")
   const controls = filterControlsFor(payload)
   if (controls.length === 0) return null
 
   const params = new URLSearchParams(search)
   const activeControls = controls.filter((control) => params.get(control.param))
   const hasFilters = activeControls.length > 0 || params.has("q") || params.has("smart_folder_id")
+  const canSaveFilter = activeControls.length > 0 || params.has("q")
+  const createFolder = useMutation({
+    mutationFn: () => createDashboardSmartFolder({
+      subject: payload.subject,
+      name: folderName,
+      filters: smartFolderFiltersFromSearch(search)
+    }),
+    onSuccess: (created) => {
+      setFolderName("")
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      navigate(withRoutePrefix(created.redirect_to, prefix))
+    }
+  })
 
   function changeFilter(param: string, value: string) {
     navigate(dashboardLinkFromSearch(pathname, search, { [param]: value || null, page: null }))
+  }
+
+  function saveFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    createFolder.mutate()
   }
 
   return (
@@ -271,6 +293,28 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
           </Link>
         ) : null}
       </div>
+
+      {canSaveFilter ? (
+        <form className="flex flex-wrap items-end gap-2 border-t border-gray-100 pt-2" onSubmit={saveFolder}>
+          <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-smart-folder-name">
+            Folder name
+            <input
+              className="mt-1 block w-56 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
+              disabled={createFolder.isPending}
+              id="dashboard-smart-folder-name"
+              maxLength={120}
+              onChange={(event) => setFolderName(event.target.value)}
+              required
+              type="text"
+              value={folderName}
+            />
+          </label>
+          <button className="mb-0.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:bg-gray-300" disabled={createFolder.isPending} type="submit">
+            Save folder
+          </button>
+          {createFolder.isError ? <p className="basis-full text-xs text-red-700" role="alert">{errorMessage(createFolder.error, "Unable to save smart folder.")}</p> : null}
+        </form>
+      ) : null}
 
       {activeControls.length > 0 ? (
         <div className="flex flex-wrap gap-2 text-xs">
@@ -684,6 +728,17 @@ function clearFiltersLink(path: string, search: string) {
   }
   const query = params.toString()
   return query ? `${path}?${query}` : path
+}
+
+function smartFolderFiltersFromSearch(search: string) {
+  const params = new URLSearchParams(search)
+  const filters: Record<string, string> = {}
+  for (const [key, value] of params.entries()) {
+    if (["page", "view", "smart_folder_id"].includes(key)) continue
+    if (value.length > 0) filters[key] = value
+  }
+
+  return filters
 }
 
 function withRoutePrefix(path: string, prefix: string) {
