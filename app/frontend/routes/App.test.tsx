@@ -265,7 +265,7 @@ describe("App", () => {
   })
 
   it("renders the app-shell dashboard route from the app dashboard API", async () => {
-    let sortColumn = "created_at"
+    let sortColumn = "title"
     let sortDirection = "desc"
     let latestFilterTree: unknown = null
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
@@ -365,6 +365,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "New Epic" })).toHaveAttribute("href", "/app-shell/epics/new")
     expect(screen.getByRole("link", { name: "New Job" })).toHaveAttribute("href", "/app-shell/jobs/new")
     expect(screen.getByRole("link", { name: "My work 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
+    expect(within(screen.getByRole("button", { name: "Sort by Issue ascending" })).getByText("↓")).toBeInTheDocument()
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=1")
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=3")
@@ -464,6 +465,7 @@ describe("App", () => {
         })
       )
     })
+    expect(within(await screen.findByRole("button", { name: "Sort by Issue descending" })).getByText("↑")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Columns" }))
     expect(screen.getByRole("group", { name: "Visible columns" })).toBeInTheDocument()

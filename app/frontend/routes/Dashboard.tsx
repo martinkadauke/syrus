@@ -1034,7 +1034,7 @@ function SortableColumnHeader({ subject, column, sortState }: { subject: Dashboa
       type="button"
     >
       <span>{label}</span>
-      {active ? <span className="rounded bg-gray-200 px-1 text-[10px] leading-4 text-gray-700">{sortState.direction}</span> : null}
+      {active ? <span aria-hidden="true" className="text-[11px] leading-none text-gray-700">{sortState.direction === "asc" ? "↑" : "↓"}</span> : null}
     </button>
   )
 }
