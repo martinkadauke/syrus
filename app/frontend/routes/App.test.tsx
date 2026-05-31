@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
@@ -1855,6 +1855,324 @@ describe("App", () => {
     expect(await screen.findByText(/class User/)).toBeInTheDocument()
   })
 
+  it("dispatches Job header commands through the app API", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+    const commandPaths = new Map([
+      ["/api/v1/app/jobs/42/start", "Initial workflow enqueued."],
+      ["/api/v1/app/jobs/42/rebase", "Rebase workflow enqueued."],
+      ["/api/v1/app/jobs/42/check_mergeability", "Checking mergeability now..."],
+      ["/api/v1/app/jobs/42/run_again", "Retry workflow enqueued."],
+      ["/api/v1/app/jobs/42/restart", "Started over."],
+      ["/api/v1/app/jobs/42/approve", "Job approved."],
+      ["/api/v1/app/jobs/42/unapprove", "Job unapproved."],
+      ["/api/v1/app/jobs/42/cancel", "Cancellation requested."],
+      ["/api/v1/app/jobs/42/reopen", "Thread reopened."],
+      ["/api/v1/app/jobs/42/mark_valid", "Job marked valid and re-queued."],
+      ["/api/v1/app/jobs/42/pin", "Job unpinned."]
+    ])
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (commandPaths.has(path)) {
+        return Promise.resolve(new Response(JSON.stringify({ message: commandPaths.get(path) }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/timeline") {
+        return Promise.resolve(new Response(JSON.stringify(jobTimelinePayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload({
+        pinned: true,
+        actions: {
+          can_start: true,
+          can_poll_feedback: false,
+          can_rebase: true,
+          can_check_mergeability: true,
+          can_retry: true,
+          can_restart: true,
+          can_cancel: true,
+          can_approve: true,
+          can_unapprove: true,
+          can_reopen: true,
+          can_mark_valid: true
+        }
+      })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const commands = [
+      ["Start Run", "POST", "/api/v1/app/jobs/42/start"],
+      ["Rebase now", "POST", "/api/v1/app/jobs/42/rebase"],
+      ["Check mergeability", "POST", "/api/v1/app/jobs/42/check_mergeability"],
+      ["Retry", "POST", "/api/v1/app/jobs/42/run_again"],
+      ["Start over", "POST", "/api/v1/app/jobs/42/restart"],
+      ["Approve", "POST", "/api/v1/app/jobs/42/approve"],
+      ["Unapprove", "POST", "/api/v1/app/jobs/42/unapprove"],
+      ["Cancel", "POST", "/api/v1/app/jobs/42/cancel"],
+      ["Reopen", "POST", "/api/v1/app/jobs/42/reopen"],
+      ["Mark valid", "POST", "/api/v1/app/jobs/42/mark_valid"],
+      ["Unpin", "DELETE", "/api/v1/app/jobs/42/pin"]
+    ]
+
+    expect(await screen.findByRole("button", { name: "Start Run" })).toBeInTheDocument()
+    for (const [label, method, path] of commands) {
+      fireEvent.click(screen.getByRole("button", { name: label }))
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(path, expect.objectContaining({ method }))
+      })
+    }
+  })
+
+  it("dispatches Job metadata controls through the app API", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/jobs/42/tags" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Tag added." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/tags/4" && init?.method === "DELETE") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Tag removed." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/stack_base" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Stack base updated." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/dependencies" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Dependency added." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/dependencies/9" && init?.method === "DELETE") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Dependency removed." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/dependencies/override" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Dependency gate overridden." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/timeline") {
+        return Promise.resolve(new Response(JSON.stringify(jobTimelinePayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload({
+        actions: { can_override_dependencies: true },
+        dependencies: [
+          {
+            id: 9,
+            source: "manual",
+            manual: true,
+            pending: false,
+            succeeded: false,
+            unresolved_slug: null,
+            depends_on_job: {
+              id: 41,
+              kind: "issue",
+              state: "open",
+              summary_state: "open",
+              repository_slug: "acme/widgets",
+              issue_number: 11,
+              issue_title: "Build hill",
+              branch_name: "syrus/issue-11",
+              pr_number: null,
+              job_path: "/jobs/41"
+            }
+          }
+        ],
+        unsatisfied_dependencies: [
+          {
+            id: 9,
+            source: "manual",
+            manual: true,
+            pending: false,
+            succeeded: false,
+            unresolved_slug: null,
+            depends_on_job: {
+              id: 41,
+              kind: "issue",
+              state: "open",
+              summary_state: "open",
+              repository_slug: "acme/widgets",
+              issue_number: 11,
+              issue_title: "Build hill",
+              branch_name: "syrus/issue-11",
+              pr_number: null,
+              job_path: "/jobs/41"
+            }
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(await screen.findByPlaceholderText("Add tag"), { target: { value: "urgent" } })
+    fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0])
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/tags",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ tag_name: "urgent" }) })
+      )
+    })
+
+    fireEvent.click(screen.getByTitle("Remove priority:forum"))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/jobs/42/tags/4", expect.objectContaining({ method: "DELETE" }))
+    })
+
+    fireEvent.change(screen.getByDisplayValue("auto"), { target: { value: "main" } })
+    fireEvent.click(screen.getByRole("button", { name: "Update" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/stack_base",
+        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ stack_base: "main" }) })
+      )
+    })
+
+    fireEvent.change(screen.getByLabelText("Dependency"), { target: { value: "issue:3:11" } })
+    fireEvent.click(screen.getAllByRole("button", { name: "Add" })[1])
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/dependencies",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ dependency_target: "issue:3:11" }) })
+      )
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/jobs/42/dependencies/9", expect.objectContaining({ method: "DELETE" }))
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Override and force-run" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/jobs/42/dependencies/override", expect.objectContaining({ method: "POST" }))
+    })
+  })
+
+  it("dispatches Job workflow and run commands through the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/jobs/42/workflows/5/retry_step" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Retrying implement for workflow #5..." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/workflows/5/push_commits" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Pushing commits to GitHub..." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/runs/9/stop" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Run stopped." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/runs/9/diagnose" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Diagnostic queued." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/resume" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Resume workflow enqueued." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload({
+        workflows: [
+          {
+            ...jobDetailPayload().workflows[0],
+            state: "failed",
+            cleaned_up_at: null,
+            retry_available: true,
+            steps: [
+              {
+                ...jobDetailPayload().workflows[0].steps[0],
+                state: "failed",
+                runs: [
+                  {
+                    ...jobDetailPayload().workflows[0].steps[0].runs[0],
+                    state: "failed",
+                    can_stop: true,
+                    can_diagnose: true,
+                    can_resume: true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42?tab=workflows"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    const commands = [
+      ["Retry failed step", "POST", "/api/v1/app/jobs/42/workflows/5/retry_step"],
+      ["Push commits", "POST", "/api/v1/app/jobs/42/workflows/5/push_commits"],
+      ["Stop", "POST", "/api/v1/app/jobs/42/runs/9/stop"],
+      ["Diagnose", "POST", "/api/v1/app/jobs/42/runs/9/diagnose"]
+    ]
+    for (const [label, method, path] of commands) {
+      fireEvent.click(screen.getByRole("button", { name: label }))
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(path, expect.objectContaining({ method }))
+      })
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/resume",
+        expect.objectContaining({ method: "POST", body: JSON.stringify({ source_run_id: 9 }) })
+      )
+    })
+  })
+
+  it("adds and removes Job attachments through the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/jobs/42/attachments" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Attachment added." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/attachments/8" && init?.method === "DELETE") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Attachment removed." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42?tab=attachments"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const file = new File(["notes"], "notes.md", { type: "text/markdown" })
+    fireEvent.change(await screen.findByLabelText("Files"), { target: { files: [file] } })
+    fireEvent.change(screen.getByLabelText("Google Doc URL"), { target: { value: "https://docs.google.com/document/d/context/edit" } })
+    fireEvent.click(within(screen.getByRole("heading", { name: "Add attachment" }).closest("form")!).getByRole("button", { name: "Add" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/attachments",
+        expect.objectContaining({ method: "POST", body: expect.any(FormData) })
+      )
+    })
+    const formData = fetchSpy.mock.calls.find(([path, init]) => path === "/api/v1/app/jobs/42/attachments" && init?.method === "POST")?.[1]?.body as FormData
+    expect(formData.get("job_attachment[google_doc_url]")).toBe("https://docs.google.com/document/d/context/edit")
+    expect(formData.get("job_attachment[files][]")).toBe(file)
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/jobs/42/attachments/8", expect.objectContaining({ method: "DELETE" }))
+    })
+  })
+
   it("renders a chat and sends a message from the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -2682,8 +3000,8 @@ function epicDetailPayload(overrides: {
   }
 }
 
-function jobDetailPayload() {
-  return {
+function jobDetailPayload(overrides: Record<string, unknown> = {}) {
+  const payload = {
     job: {
       id: 42,
       kind: "issue",
@@ -2872,6 +3190,21 @@ function jobDetailPayload() {
       app_pin_path: "/api/v1/app/jobs/42/pin"
     }
   }
+
+  return {
+    ...payload,
+    ...overrides,
+    job: { ...payload.job, ...objectOverrides(overrides.job) },
+    repository: { ...payload.repository, ...objectOverrides(overrides.repository) },
+    summary: overrides.summary === undefined ? payload.summary : overrides.summary,
+    landing_queue_entry: overrides.landing_queue_entry === undefined ? payload.landing_queue_entry : overrides.landing_queue_entry,
+    actions: { ...payload.actions, ...objectOverrides(overrides.actions) },
+    paths: { ...payload.paths, ...objectOverrides(overrides.paths) }
+  }
+}
+
+function objectOverrides(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 
 function jobTimelinePayload() {
