@@ -1,28 +1,25 @@
 require "rails_helper"
 
 RSpec.describe "Invitations", type: :request do
-  let(:admin) { Factories.user }              # first user → admin
-  let(:non_admin) { Factories.user }          # second user → not admin
+  let(:admin) { Factories.user }
+  let(:non_admin) { Factories.user }
 
   it "requires authentication" do
-    admin  # force a User to exist; first-run setup redirects to new_user instead
+    admin
+
     get invitations_path
+
     expect(response).to redirect_to(new_session_path)
   end
 
   context "as a non-admin" do
-    before { admin; sign_in_as(non_admin) }  # force admin to be created first
+    before { admin; sign_in_as(non_admin) }
 
-    it "blocks index" do
+    it "blocks the React invitations shell" do
       get invitations_path
+
       expect(response).to redirect_to(root_path)
       expect(flash[:alert]).to match(/Admin access/)
-    end
-
-    it "blocks create" do
-      expect {
-        post invitations_path, params: { invitation: { email_address: "x@example.com" } }
-      }.not_to change(Invitation, :count)
     end
   end
 
@@ -36,40 +33,16 @@ RSpec.describe "Invitations", type: :request do
       expect(response.body).to include('id="syrus-spa-root"')
     end
 
-    it "lists pending invitations in the legacy fallback" do
-      pending = Invitation.create!(invited_by: admin, email_address: "guest@example.com")
-      get legacy_invitations_path
-      expect(response.body).to include("guest@example.com")
-      expect(response.body).to include(pending.token)
-    end
-
-    it "creates an invitation tied to the current admin from the SPA command path" do
+    it "does not route the retired legacy HTML invitation endpoints" do
       expect {
-        post invitations_path, params: { invitation: { email_address: "guest@example.com" } }
-      }.to change(Invitation, :count).by(1)
-      expect(Invitation.last.invited_by).to eq(admin)
-      expect(response).to redirect_to(invitations_path)
-    end
-
-    it "keeps legacy create and destroy actions inside the legacy fallback" do
+        Rails.application.routes.recognize_path("/invitations/legacy", method: :get)
+      }.to raise_error(ActionController::RoutingError)
       expect {
-        post legacy_invitations_path, params: { invitation: { email_address: "guest@example.com" } }
-      }.to change(Invitation, :count).by(1)
-      expect(response).to redirect_to(legacy_invitations_path)
-
-      inv = Invitation.last
+        Rails.application.routes.recognize_path("/invitations", method: :post)
+      }.to raise_error(ActionController::RoutingError)
       expect {
-        delete legacy_invitation_path(inv)
-      }.to change(Invitation, :count).by(-1)
-      expect(response).to redirect_to(legacy_invitations_path)
-    end
-
-    it "revokes (destroys) an invitation from the SPA command path" do
-      inv = Invitation.create!(invited_by: admin, email_address: "guest@example.com")
-      expect {
-        delete invitation_path(inv)
-      }.to change(Invitation, :count).by(-1)
-      expect(response).to redirect_to(invitations_path)
+        Rails.application.routes.recognize_path("/invitations/1", method: :delete)
+      }.to raise_error(ActionController::RoutingError)
     end
   end
 end

@@ -78,7 +78,7 @@ health/storage internals.
 | `/settings` | `spa#show` | `spa-core` | Migrated as the per-user credentials alias. `/settings/edit` remains the separate admin app-settings surface. |
 | `/settings/edit` | `spa#show` | `spa-admin` | Migrated to the React app settings shell. Legacy ERB fallback lives at `/settings/edit/legacy`. |
 | `PATCH /settings` | `settings#update` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/settings`. |
-| `/invitations` | `spa#show` | `spa-admin` | Migrated to the React invitations shell. Legacy ERB fallback lives at `/invitations/legacy`. |
+| `/invitations` | `spa#show` + `/api/v1/app/admin/invitations` | `spa-admin` | Migrated to the React invitations shell with app API create/revoke. Legacy ERB fallback and HTML invitation mutation routes are removed. |
 | `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell with internal React Router metric links; legacy ERB fallback lives at `/admin/legacy`. |
 | `/admin/queue`, `/admin/queue/:tab` | `spa#show` | `spa-admin` | Migrated to the React admin queue shell. Legacy ERB fallback lives at `/admin/queue/legacy` and `/admin/queue/legacy/:tab`. |
 | `POST /admin/queue/reap_stale_runs` | `admin/queue#reap_stale_runs` | `legacy-html` | Kept for existing HTML admin controls; React uses `POST /api/v1/app/admin/queue/reap_stale_runs`. |

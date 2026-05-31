@@ -363,11 +363,6 @@ Rails.application.routes.draw do
   get "cron_templates/:id", to: "spa#show", as: :cron_template, constraints: { id: /\d+/ }
   get "cron_templates/:id/edit", to: "spa#show", as: :edit_cron_template, constraints: { id: /\d+/ }
   get "invitations", to: "spa#show", as: :invitations
-  post "invitations", to: "invitations#create"
-  delete "invitations/:id", to: "invitations#destroy", as: :invitation, constraints: { id: /\d+/ }
-  get "invitations/legacy", to: "invitations#index", as: :legacy_invitations
-  post "invitations/legacy", to: "invitations#create"
-  delete "invitations/legacy/:id", to: "invitations#destroy", as: :legacy_invitation, constraints: { id: /\d+/ }
   # Legacy compatibility: the account menu's `/settings` entry is the
   # per-user credentials page. App-wide settings live at `/settings/edit`
   # and remain admin-only.
