@@ -101,11 +101,10 @@ describe("App", () => {
     )
 
     expect(screen.getByRole("main", { name: "Syrus SPA" })).toBeInTheDocument()
-    expect((await screen.findAllByText("Operator")).length).toBeGreaterThan(0)
-    expect(screen.getByText("operator@example.com")).toBeInTheDocument()
+    expect(await screen.findByRole("link", { name: "operator@example.com" })).toHaveAttribute("href", "/app-shell/settings")
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
     expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
     expect(within(screen.getByRole("navigation", { name: "Account" })).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
-    expect(within(screen.getByRole("navigation", { name: "Account" })).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app-shell/settings")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/bootstrap",
       expect.objectContaining({
@@ -251,9 +250,8 @@ describe("App", () => {
       expect(within(primaryNav).queryByRole("link", { name: "Admin" })).toBeNull()
       expect(within(accountNav).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
       expect(within(accountNav).getByRole("link", { name: "Admin" })).toHaveClass("rounded")
-      expect(within(accountNav).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app-shell/settings")
-      expect(within(accountNav).getByRole("link", { name: "Settings" })).toHaveClass("rounded")
-      expect(screen.getAllByText("Operator").length).toBeGreaterThan(0)
+      expect(within(accountNav).getByRole("link", { name: "operator@example.com" })).toHaveAttribute("href", "/app-shell/settings")
+      expect(within(accountNav).queryByRole("link", { name: "Settings" })).toBeNull()
       expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
       expect(fetchSpy).not.toHaveBeenCalled()
     } finally {

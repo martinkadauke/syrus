@@ -154,9 +154,8 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
               <>
                 <nav aria-label="Account" className="flex items-center gap-2">
                   {user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>Admin</Link> : null}
-                  <Link className={accountLinkClass()} to={`${prefix}/settings`}>Settings</Link>
+                  <Link className="max-w-[14rem] truncate text-gray-600 hover:text-gray-900" to={`${prefix}/settings`}>{user.email_address}</Link>
                 </nav>
-                <span className="hidden sm:inline">{user.display_name}</span>
                 {app ? <span className="hidden font-mono sm:inline">{app.revision}</span> : null}
                 <form action="/session" method="post">
                   {data?.csrf_token ? <input name="authenticity_token" type="hidden" value={data.csrf_token} /> : null}
