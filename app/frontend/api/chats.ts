@@ -1,4 +1,4 @@
-import { getJson, postJson } from "./client"
+import { deleteJson, getJson, postJson } from "./client"
 
 export type ChatRepository = {
   id: number
@@ -40,6 +40,8 @@ export type ChatProposal = {
   target_epic_label: string | null
   confirm_path: string
   reject_path: string
+  app_confirm_path: string
+  app_reject_path: string
   materialized_label: string | null
   materialized_path: string | null
   active_children_count?: number
@@ -57,6 +59,7 @@ export type ChatProposalChild = {
   repository_slug: string | null
   dependencies: string[]
   reject_path: string
+  app_reject_path: string
 }
 
 export type ChatStructuredTool = {
@@ -97,10 +100,20 @@ export type ChatBookmark = {
   chat_message_id: number
 }
 
+export type ChatPendingAction = {
+  id: number
+  label: string
+  action: string | null
+  action_type: string | null
+  app_confirm_path: string
+  app_cancel_path: string
+}
+
 export type ChatAttachmentRow = {
   id: number
   label: string
   detach_path: string
+  app_detach_path: string
 }
 
 export type ChatDocumentScope = {
@@ -139,6 +152,7 @@ export type ChatPayload = {
   has_more_older: boolean
   messages: ChatRenderItem[]
   bookmarks: ChatBookmark[]
+  pending_actions: ChatPendingAction[]
   attachment_groups: {
     repositories: ChatAttachmentRow[]
     epics: ChatAttachmentRow[]
@@ -160,6 +174,8 @@ export type ChatPayload = {
     app_stop_path: string
     app_refresh_path: string
     app_reset_path: string
+    app_bookmarks_path: string
+    app_attachments_path: string
     chat_messages_path: string
     chat_attachments_path: string
     chat_whiteboard_path: string
@@ -171,8 +187,8 @@ export type ChatMessagesPayload = {
   messages: ChatRenderItem[]
 }
 
-export function fetchChat(id: string) {
-  return getJson<ChatPayload>(`/api/v1/app/chats/${id}`)
+export function fetchChat(id: string, search = "") {
+  return getJson<ChatPayload>(`/api/v1/app/chats/${id}${search}`)
 }
 
 export function fetchChatMessages(path: string, before: number) {
@@ -204,4 +220,38 @@ export function refreshChat(path: string) {
 
 export function resetChat(path: string) {
   return postJson<ChatPayload>(path)
+}
+
+export function createChatBookmark(path: string, messageId: number, label: string) {
+  return postJson<ChatPayload>(path, {
+    message_id: messageId,
+    chat_bookmark: { label }
+  })
+}
+
+export function addChatAttachment(path: string, record: ChatAttachmentResult) {
+  return postJson<ChatPayload>(path, {
+    attachable_type: record.type,
+    attachable_id: record.id
+  })
+}
+
+export function deleteChatAttachment(path: string) {
+  return deleteJson<ChatPayload>(path)
+}
+
+export function confirmChatProposal(path: string) {
+  return postJson<ChatPayload>(path)
+}
+
+export function rejectChatProposal(path: string) {
+  return postJson<ChatPayload>(path)
+}
+
+export function confirmPendingAction(path: string) {
+  return postJson<ChatPayload>(path)
+}
+
+export function cancelPendingAction(path: string) {
+  return deleteJson<ChatPayload>(path)
 }

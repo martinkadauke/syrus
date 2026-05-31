@@ -1673,6 +1673,165 @@ describe("App", () => {
     expect(screen.getByText("Now inspect proposals")).toBeInTheDocument()
   })
 
+  it("runs chat commands through the app API", async () => {
+    const search = "?attachment_type=Repository&attachment_query=tools"
+    const proposalMessage = {
+      type: "message",
+      id: 10,
+      role: "assistant",
+      text: "Proposal proposed.",
+      bookmarkable: true,
+      bookmark_path: "/chats/8/bookmarks",
+      proposal: {
+        id: 5,
+        kind: "syrus_issue",
+        kind_label: "Syrus issue",
+        state: "proposed",
+        state_label: "Proposed",
+        title: "Map auth",
+        slug: "auth-map",
+        body: "Map the auth flow.",
+        proposed: true,
+        resolved: false,
+        epic_bundle: false,
+        scoped_repository_slug: "acme/widgets",
+        dependencies: [],
+        target_epic_label: null,
+        confirm_path: "/chats/8/proposals/5/confirm",
+        reject_path: "/chats/8/proposals/5/reject",
+        app_confirm_path: "/api/v1/app/chats/8/proposals/5/confirm",
+        app_reject_path: "/api/v1/app/chats/8/proposals/5/reject",
+        materialized_label: null,
+        materialized_path: null
+      }
+    }
+    const initialPayload = {
+      ...chatPayload({ messages: [...chatPayload().messages, proposalMessage] }),
+      attachment_results: [{ type: "Repository", id: 4, label: "acme/tools" }],
+      pending_actions: [
+        {
+          id: 7,
+          label: "Cancel Job #44",
+          action: "cancel_job",
+          action_type: null,
+          app_confirm_path: "/api/v1/app/chats/8/pending_actions/7/confirm",
+          app_cancel_path: "/api/v1/app/chats/8/pending_actions/7"
+        }
+      ]
+    }
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === `/api/v1/app/chats/8/bookmarks${search}` && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...initialPayload,
+          message: "Bookmarked Aqueduct marker.",
+          bookmarks: [...initialPayload.bookmarks, { id: 2, label: "Aqueduct marker", chat_message_id: 9 }]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === `/api/v1/app/chats/8/attachments${search}` && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...initialPayload,
+          message: "acme/tools attached.",
+          attachment_groups: {
+            ...initialPayload.attachment_groups,
+            repositories: [
+              ...initialPayload.attachment_groups.repositories,
+              { id: 4, label: "acme/tools", detach_path: "/chats/8/attachments/4", app_detach_path: "/api/v1/app/chats/8/attachments/4" }
+            ]
+          },
+          attachment_results: []
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === `/api/v1/app/chats/8/attachments/2${search}` && init?.method === "DELETE") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...initialPayload,
+          message: "acme/widgets detached.",
+          attachment_groups: { ...initialPayload.attachment_groups, repositories: [] }
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === `/api/v1/app/chats/8/proposals/5/confirm${search}` && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...initialPayload,
+          message: "Proposal confirmed and filed as Job #88.",
+          messages: [initialPayload.messages[0], {
+            ...proposalMessage,
+            proposal: { ...proposalMessage.proposal, proposed: false, state: "confirmed", state_label: "Confirmed", materialized_label: "Job #88", materialized_path: "/jobs/88" }
+          }]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      if (path === `/api/v1/app/chats/8/pending_actions/7/confirm${search}` && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          ...initialPayload,
+          message: "Pending action confirmed.",
+          pending_actions: []
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(initialPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={[`/app-shell/chats/8${search}`]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Map auth")).toBeInTheDocument()
+    fireEvent.click(screen.getAllByRole("button", { name: "Bookmark" })[0])
+    fireEvent.change(screen.getByLabelText("Label"), { target: { value: "Aqueduct marker" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `/api/v1/app/chats/8/bookmarks${search}`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ message_id: 9, chat_bookmark: { label: "Aqueduct marker" } })
+        })
+      )
+    })
+
+    fireEvent.click(await screen.findByText("acme/tools"))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `/api/v1/app/chats/8/attachments${search}`,
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ attachable_type: "Repository", attachable_id: 4 })
+        })
+      )
+    })
+
+    fireEvent.click(screen.getByTitle("Detach acme/widgets"))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `/api/v1/app/chats/8/attachments/2${search}`,
+        expect.objectContaining({ method: "DELETE" })
+      )
+    })
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Confirm" })[1])
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `/api/v1/app/chats/8/proposals/5/confirm${search}`,
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        `/api/v1/app/chats/8/pending_actions/7/confirm${search}`,
+        expect.objectContaining({ method: "POST" })
+      )
+    })
+  })
+
   it("loads older chat messages from the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
@@ -2276,9 +2435,10 @@ function chatPayload(overrides: {
     bookmarks: [
       { id: 1, label: "Aqueducts", chat_message_id: 9 }
     ],
+    pending_actions: [],
     attachment_groups: {
       repositories: [
-        { id: 2, label: "acme/widgets", detach_path: "/chats/8/attachments/2" }
+        { id: 2, label: "acme/widgets", detach_path: "/chats/8/attachments/2", app_detach_path: "/api/v1/app/chats/8/attachments/2" }
       ],
       epics: [],
       jobs: [],
@@ -2301,6 +2461,8 @@ function chatPayload(overrides: {
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_refresh_path: "/api/v1/app/chats/8/refresh",
       app_reset_path: "/api/v1/app/chats/8/reset",
+      app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
+      app_attachments_path: "/api/v1/app/chats/8/attachments",
       chat_messages_path: "/chats/8/messages",
       chat_attachments_path: "/chats/8/attachments",
       chat_whiteboard_path: "/chats/8/whiteboard"
