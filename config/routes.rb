@@ -212,7 +212,13 @@ Rails.application.routes.draw do
       patch :state, action: :update_state
     end
   end
-  resources :smart_folders, only: %i[ index create update destroy ]
+  get "smart_folders", to: "spa#show", as: :smart_folders
+  post "smart_folders", to: "smart_folders#create"
+  patch "smart_folders/:id", to: "smart_folders#update", as: :smart_folder, constraints: { id: /\d+/ }
+  delete "smart_folders/:id", to: "smart_folders#destroy", constraints: { id: /\d+/ }
+  get "smart_folders/legacy", to: "smart_folders#index", as: :legacy_smart_folders
+  patch "smart_folders/legacy/:id", to: "smart_folders#update", as: :legacy_smart_folder, constraints: { id: /\d+/ }
+  delete "smart_folders/legacy/:id", to: "smart_folders#destroy", constraints: { id: /\d+/ }
   get "tags", to: "spa#show", as: :tags
   post "tags", to: "tags#create"
   patch "tags/:id", to: "tags#update", as: :tag, constraints: { id: /\d+/ }

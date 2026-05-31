@@ -1,5 +1,6 @@
 class SmartFoldersController < ApplicationController
   before_action :set_smart_folder, only: %i[ update destroy ]
+  helper_method :smart_folder_action_path
 
   def index
     @subject_type = smart_folder_subject
@@ -40,15 +41,15 @@ class SmartFoldersController < ApplicationController
 
   def update
     if @smart_folder.update(smart_folder_params)
-      redirect_to smart_folders_path(subject_type: smart_folder_subject), notice: "Smart folder updated."
+      redirect_to smart_folders_redirect_path, notice: "Smart folder updated."
     else
-      redirect_to smart_folders_path(subject_type: smart_folder_subject), alert: @smart_folder.errors.full_messages.to_sentence
+      redirect_to smart_folders_redirect_path, alert: @smart_folder.errors.full_messages.to_sentence
     end
   end
 
   def destroy
     @smart_folder.destroy!
-    redirect_to smart_folders_path(subject_type: smart_folder_subject), notice: "Smart folder deleted."
+    redirect_to smart_folders_redirect_path, notice: "Smart folder deleted."
   end
 
   private
@@ -110,5 +111,18 @@ class SmartFoldersController < ApplicationController
 
   def next_position(subject_type)
     (Current.user.smart_folders.where(subject_type: subject_type).maximum(:position) || -1) + 1
+  end
+
+  def smart_folder_action_path(folder, **query)
+    legacy_smart_folders_request? ? legacy_smart_folder_path(folder, query) : smart_folder_path(folder, query)
+  end
+
+  def smart_folders_redirect_path
+    query = { subject_type: smart_folder_subject }
+    legacy_smart_folders_request? ? legacy_smart_folders_path(query) : smart_folders_path(query)
+  end
+
+  def legacy_smart_folders_request?
+    request.path.start_with?("/smart_folders/legacy")
   end
 end
