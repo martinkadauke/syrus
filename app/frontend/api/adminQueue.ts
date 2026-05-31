@@ -1,5 +1,5 @@
 import { getJson, postJson } from "./client"
-import type { AdminSmartFolderPayload } from "./adminSmartFolders"
+import type { AdminFilteredPayload } from "./adminSmartFolders"
 
 export const queueTabs = ["active", "pending", "failed", "recurring", "workers"] as const
 
@@ -47,16 +47,16 @@ export type QueueProcess = {
   last_heartbeat_at: string | null
 }
 
-export type ActiveQueuePayload = AdminSmartFolderPayload & {
+export type ActiveQueuePayload = AdminFilteredPayload & {
   jobs: QueueJob[]
 }
 
-export type PendingQueuePayload = AdminSmartFolderPayload & {
+export type PendingQueuePayload = AdminFilteredPayload & {
   jobs: QueueJob[]
   total: number
 }
 
-export type FailedQueuePayload = AdminSmartFolderPayload & {
+export type FailedQueuePayload = AdminFilteredPayload & {
   since: string
   failures: QueueFailure[]
 }

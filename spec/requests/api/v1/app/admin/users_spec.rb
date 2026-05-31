@@ -41,6 +41,12 @@ RSpec.describe "API: /api/v1/app/admin/users", type: :request do
     expect(body["users"].map { |user| user["id"] }).to include(low.id)
     expect(body["users"].map { |user| user["email_address"] }).not_to include("ok@example.com")
     expect(body["filters"]).to eq("gh_rate" => "low")
+    expect(body["filter"]).to eq(
+      "and" => [
+        { "field" => "gh_rate", "op" => "is", "value" => "low" }
+      ]
+    )
+    expect(body.dig("controls", "filter_schema").map { |field| field["field"] }).to include("email", "gh_rate")
     rate_folder = body["smart_folders"].find { |folder| folder["name"] == "Rate limit low" }
     expect(rate_folder).to include(
       "subject_type" => "admin_user",

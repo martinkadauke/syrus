@@ -45,9 +45,12 @@ RSpec.describe "API: /api/v1/app/admin/processes", type: :request do
     get "/api/v1/app/admin/processes"
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["processes"].map { |process| process["id"] }).to include(running.id)
-    expect(parse_body["running_total"]).to eq(SpawnedProcess.running.count)
-    expect(parse_body["smart_folders"].find { |folder| folder["name"] == "Running" }).to include(
+    body = parse_body
+    expect(body["processes"].map { |process| process["id"] }).to include(running.id)
+    expect(body["running_total"]).to eq(SpawnedProcess.running.count)
+    expect(body["filter"]).to eq("and" => [])
+    expect(body.dig("controls", "filter_schema").map { |field| field["field"] }).to include("state", "kind", "hostname")
+    expect(body["smart_folders"].find { |folder| folder["name"] == "Running" }).to include(
       "count" => 1,
       "path" => a_string_matching(%r{\A/admin/processes\?smart_folder_id=})
     )
@@ -61,7 +64,14 @@ RSpec.describe "API: /api/v1/app/admin/processes", type: :request do
     get "/api/v1/app/admin/processes", params: { kind: "grader", state: "running" }
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["processes"].map { |process| process["id"] }).to eq([ grader.id ])
+    body = parse_body
+    expect(body["processes"].map { |process| process["id"] }).to eq([ grader.id ])
+    expect(body["filter"]).to eq(
+      "and" => [
+        { "field" => "state", "op" => "is", "value" => "running" },
+        { "field" => "kind", "op" => "is", "value" => "grader" }
+      ]
+    )
   end
 
   it "applies spawned process smart folders" do

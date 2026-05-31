@@ -42,12 +42,15 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
     get "/api/v1/app/admin/queue/active"
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["jobs"].map { |job| job["class_name"] }).to eq([ "ChatTurnJob", "RunJob" ])
-    expect(parse_body["jobs"].first).to include(
+    body = parse_body
+    expect(body["jobs"].map { |job| job["class_name"] }).to eq([ "ChatTurnJob", "RunJob" ])
+    expect(body["jobs"].first).to include(
       "queue_name" => "chat",
       "arguments" => [ 7 ]
     )
-    expect(parse_body["smart_folders"].find { |folder| folder["name"] == "Runs" }).to include(
+    expect(body["filter"]).to eq("and" => [])
+    expect(body.dig("controls", "filter_schema").map { |field| field["field"] }).to include("queue_name", "job_class")
+    expect(body["smart_folders"].find { |folder| folder["name"] == "Runs" }).to include(
       "count" => 1,
       "path" => a_string_matching(%r{\A/admin/queue/active\?smart_folder_id=})
     )
@@ -69,6 +72,11 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
     body = parse_body
     expect(body["active_smart_folder_id"]).to eq(folder.id)
     expect(body["jobs"].map { |job| job["queue_name"] }).to eq([ "runs" ])
+    expect(body["filter"]).to eq(
+      "and" => [
+        { "field" => "queue_name", "op" => "is", "value" => "runs" }
+      ]
+    )
     expect(body["smart_folders"].find { |row| row["id"] == folder.id }).to include("active" => true, "count" => 1)
   end
 
@@ -104,6 +112,11 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
       "arguments" => [ 9 ],
       "exception_class" => "RuntimeError",
       "message" => "boom"
+    )
+    expect(parse_body["filter"]).to eq(
+      "and" => [
+        { "field" => "failed_since", "op" => "within_last", "value" => { "n" => 1, "unit" => "days" } }
+      ]
     )
   end
 

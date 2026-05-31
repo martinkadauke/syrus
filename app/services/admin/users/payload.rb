@@ -14,6 +14,8 @@ module Admin
         users = filter.apply(base_scope).order(:email_address).limit(500)
         {
           filters: filter.active_filters,
+          filter: filter.to_h,
+          controls: controls_json,
           count: users.size,
           active_smart_folder_id: active_folder&.id,
           smart_folders: smart_folders(base_scope, active_folder),
@@ -55,6 +57,12 @@ module Admin
           base_scope: base_scope,
           filter_class: ::Admin::Users::Filter
         ).folders
+      end
+
+      def controls_json
+        {
+          filter_schema: Filters::Schema.for(subject: :admin_user, user: actor)
+        }
       end
 
       def serialize_user_row(user)

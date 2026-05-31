@@ -1,5 +1,5 @@
 import { getJson, postJson } from "./client"
-import type { AdminSmartFolderPayload } from "./adminSmartFolders"
+import type { AdminFilteredPayload } from "./adminSmartFolders"
 
 export type GithubRateLimit = {
   remaining: number
@@ -63,7 +63,7 @@ export type AdminUserDetail = AdminUserRow & {
   recent_admin_actions: RecentAdminAction[]
 }
 
-export type AdminUsersPayload = AdminSmartFolderPayload & {
+export type AdminUsersPayload = AdminFilteredPayload & {
   filters: Record<string, string>
   count: number
   users: AdminUserRow[]

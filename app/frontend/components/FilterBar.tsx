@@ -1,0 +1,637 @@
+import { useEffect, useMemo, useRef, useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
+
+export type FilterOption = {
+  value: string | number
+  label: string
+}
+
+export type FilterSchemaField = {
+  field: string
+  label: string
+  bucket: string
+  operators: string[]
+  values?: Array<FilterOption | string>
+  typeahead?: boolean
+  expansions?: Record<string, unknown>
+}
+
+export type FilterChip = {
+  field: string
+  op: string
+  value?: unknown
+}
+
+export type FilterGroup = {
+  and?: FilterNode[]
+  or?: FilterNode[]
+  not?: FilterNode
+}
+
+export type FilterNode = FilterChip | FilterGroup
+export type FilterTree = FilterGroup
+
+type FilterPath = number[]
+type PendingAddTarget = { kind: "and" } | { kind: "or"; index: number }
+
+export function FilterBar({
+  filter,
+  filterSchema,
+  pathname,
+  search,
+  legacyFilterKeys = [],
+  className = "space-y-2 rounded border border-gray-200 bg-white px-3 py-2"
+}: {
+  filter?: Record<string, unknown> | null
+  filterSchema: FilterSchemaField[]
+  pathname: string
+  search: string
+  legacyFilterKeys?: string[]
+  className?: string
+}) {
+  const navigate = useNavigate()
+  const [draftTree, setDraftTree] = useState<FilterTree>(() => filterTreeFromPayload(filter))
+  const [editingPath, setEditingPath] = useState<FilterPath | null>(null)
+  const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [addQuery, setAddQuery] = useState("")
+  const [pendingAddTarget, setPendingAddTarget] = useState<PendingAddTarget>({ kind: "and" })
+  const addMenuRef = useRef<HTMLDivElement | null>(null)
+  const params = new URLSearchParams(search)
+  const appliedTree = useMemo(() => filterTreeFromPayload(filter), [filter])
+  const draftChildren = topFilterChildren(draftTree)
+  const hasFilters = draftChildren.length > 0 || params.has("q") || params.has("smart_folder_id") || legacyFilterKeys.some((key) => params.has(key))
+  const filteredSchema = filterSchema.filter((field) => {
+    const query = addQuery.trim().toLowerCase()
+    return !query || field.field.toLowerCase().includes(query) || field.label.toLowerCase().includes(query)
+  })
+  const editingChip = editingPath ? filterNodeAtPath(draftTree, editingPath) : null
+  const editingMeta = editingChip && "field" in editingChip ? filterMetaFor(filterSchema, editingChip.field) : null
+
+  useEffect(() => {
+    setDraftTree(appliedTree)
+    setEditingPath(null)
+    setAddMenuOpen(false)
+    setAddQuery("")
+  }, [appliedTree])
+
+  useEffect(() => {
+    if (!addMenuOpen) return
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setAddMenuOpen(false)
+    }
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target
+      if (target instanceof Node && addMenuRef.current?.contains(target)) return
+
+      setAddMenuOpen(false)
+    }
+
+    window.addEventListener("keydown", closeOnEscape)
+    window.addEventListener("pointerdown", closeOnOutsidePointer)
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape)
+      window.removeEventListener("pointerdown", closeOnOutsidePointer)
+    }
+  }, [addMenuOpen])
+
+  if (filterSchema.length === 0) return null
+
+  function updateTree(nextTree: FilterTree, nextEditingPath = editingPath) {
+    setDraftTree(normalizedFilterTree(nextTree))
+    setEditingPath(nextEditingPath)
+  }
+
+  function applyTree(tree = draftTree) {
+    const normalized = normalizedFilterTree(tree)
+    const nextQ = topFilterChildren(normalized).length > 0 ? encodeFilterTree(normalized) : null
+    const updates: Record<string, string | number | null | undefined> = {
+      q: nextQ,
+      page: null,
+      smart_folder_id: null
+    }
+    for (const key of legacyFilterKeys) updates[key] = null
+
+    navigate(linkFromSearch(pathname, search, updates))
+  }
+
+  function openAddMenu(target: PendingAddTarget) {
+    setPendingAddTarget(target)
+    setAddMenuOpen(true)
+    setAddQuery("")
+  }
+
+  function addFilter(meta: FilterSchemaField) {
+    const chip = defaultFilterChip(meta)
+    const children = topFilterChildren(draftTree).slice()
+    let nextPath: FilterPath
+
+    if (pendingAddTarget.kind === "or") {
+      const index = pendingAddTarget.index
+      const slot = children[index]
+      const negated = filterSlotIsNegated(slot)
+      const inner = filterSlotInner(slot)
+      const currentOr = inner && "or" in inner && Array.isArray(inner.or) ? inner.or : [inner].filter(Boolean) as FilterNode[]
+      const nextOr = [...currentOr, chip]
+      children[index] = negated ? { not: { or: nextOr } } : { or: nextOr }
+      nextPath = [index, nextOr.length - 1]
+    } else {
+      children.push(chip)
+      nextPath = [children.length - 1]
+    }
+
+    updateTree({ and: children }, nextPath)
+    setAddMenuOpen(false)
+  }
+
+  function editChip(path: FilterPath, nextChip: FilterChip) {
+    updateTree(replaceFilterNodeAtPath(draftTree, path, nextChip), path)
+  }
+
+  function removeChip(path: FilterPath) {
+    const nextTree = removeFilterNodeAtPath(draftTree, path)
+    updateTree(nextTree, null)
+    applyTree(nextTree)
+  }
+
+  function toggleNegation(index: number) {
+    const nextTree = toggleFilterNegation(draftTree, index)
+    updateTree(nextTree, null)
+    applyTree(nextTree)
+  }
+
+  return (
+    <div className={className}>
+      <div className="relative flex flex-wrap items-center gap-2">
+        {draftChildren.map((node, index) => (
+          <FilterNodeChip
+            controls={filterSchema}
+            index={index}
+            key={index}
+            node={node}
+            onAddOr={(targetIndex) => openAddMenu({ kind: "or", index: targetIndex })}
+            onEdit={setEditingPath}
+            onRemove={removeChip}
+            onToggleNegation={toggleNegation}
+          />
+        ))}
+        {draftChildren.length > 0 ? null : <span className="text-sm text-gray-400">No filters</span>}
+        <button
+          className="inline-flex items-center gap-1 rounded border border-dashed border-gray-300 px-2 py-1.5 text-sm text-gray-600 hover:border-gray-400 hover:text-gray-900"
+          onClick={() => openAddMenu({ kind: "and" })}
+          type="button"
+        >
+          + Add filter
+        </button>
+        {hasFilters ? (
+          <Link className="text-sm text-gray-500 underline hover:text-gray-700" to={clearFiltersLink(pathname, search, legacyFilterKeys)}>
+            Clear filters
+          </Link>
+        ) : null}
+        {addMenuOpen ? (
+          <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-gray-200 bg-white shadow-lg" ref={addMenuRef}>
+            <input
+              autoFocus
+              className="block w-full rounded-t border-b border-gray-200 px-3 py-2 text-sm focus:outline-none"
+              onChange={(event) => setAddQuery(event.target.value)}
+              placeholder="Search filters..."
+              type="search"
+              value={addQuery}
+            />
+            <div className="max-h-72 overflow-y-auto py-1">
+              {filteredSchema.map((field) => (
+                <button
+                  aria-label={`${field.label} ${field.bucket}`}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                  key={field.field}
+                  onClick={() => addFilter(field)}
+                  type="button"
+                >
+                  <span>{field.label}</span>
+                  <span className="text-xs text-gray-400">{field.bucket}</span>
+                </button>
+              ))}
+              {filteredSchema.length === 0 ? <div className="px-3 py-2 text-sm text-gray-400">No matching filters</div> : null}
+            </div>
+          </div>
+        ) : null}
+
+        {editingChip && editingMeta && "field" in editingChip ? (
+          <FilterChipEditor
+            chip={editingChip}
+            meta={editingMeta}
+            onApply={() => applyTree()}
+            onChange={(nextChip) => editChip(editingPath!, nextChip)}
+            onClose={() => setEditingPath(null)}
+          />
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function FilterNodeChip({
+  node,
+  index,
+  controls,
+  onEdit,
+  onRemove,
+  onAddOr,
+  onToggleNegation
+}: {
+  node: FilterNode
+  index: number
+  controls: FilterSchemaField[]
+  onEdit: (path: FilterPath) => void
+  onRemove: (path: FilterPath) => void
+  onAddOr: (index: number) => void
+  onToggleNegation: (index: number) => void
+}) {
+  const negated = filterSlotIsNegated(node)
+  const inner = filterSlotInner(node)
+  if (isFilterChip(inner)) {
+    return (
+      <span className={filterChipClass(negated)}>
+        <button className={filterNotClass(negated)} onClick={() => onToggleNegation(index)} title={negated ? "Remove NOT" : "Wrap in NOT"} type="button">NOT</button>
+        <FilterChipButton chip={inner} controls={controls} negated={negated} onClick={() => onEdit([index])} />
+        <button aria-label={`Remove ${filterChipLabel(inner, controls)} filter`} className="text-gray-400 hover:text-gray-700" onClick={() => onRemove([index])} type="button">x</button>
+        <button aria-label={`Add OR filter to ${filterChipLabel(inner, controls)}`} className="rounded border border-dashed border-indigo-300 px-1.5 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50" onClick={() => onAddOr(index)} type="button">+ or</button>
+      </span>
+    )
+  }
+
+  if (inner && "or" in inner && Array.isArray(inner.or)) {
+    return (
+      <span className={negated ? "inline-flex flex-wrap items-center gap-1 rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-sm" : "inline-flex flex-wrap items-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-sm"}>
+        <button className={filterNotClass(negated)} onClick={() => onToggleNegation(index)} title={negated ? "Remove NOT" : "Wrap in NOT"} type="button">NOT</button>
+        <span className={negated ? "text-xs font-semibold text-rose-700" : "text-xs font-semibold text-indigo-700"}>(</span>
+        {inner.or.map((child, childIndex) => (
+          <span className="inline-flex items-center gap-1" key={childIndex}>
+            {childIndex > 0 ? <span className="text-xs font-semibold uppercase text-indigo-500">or</span> : null}
+            {isFilterChip(child) ? (
+              <span className="inline-flex items-center gap-1 rounded border border-gray-300 bg-gray-50 px-2 py-1">
+                <FilterChipButton chip={child} controls={controls} onClick={() => onEdit([index, childIndex])} />
+                <button aria-label={`Remove ${filterChipLabel(child, controls)} filter`} className="text-gray-400 hover:text-gray-700" onClick={() => onRemove([index, childIndex])} type="button">x</button>
+              </span>
+            ) : (
+              <span className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800">complex filter</span>
+            )}
+          </span>
+        ))}
+        <button className="rounded border border-dashed border-indigo-400 px-1.5 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100" onClick={() => onAddOr(index)} type="button">+ or</button>
+        <span className={negated ? "text-xs font-semibold text-rose-700" : "text-xs font-semibold text-indigo-700"}>)</span>
+      </span>
+    )
+  }
+
+  return <span className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-sm text-amber-800">complex filter</span>
+}
+
+function FilterChipButton({ chip, controls, negated = false, onClick }: { chip: FilterChip; controls: FilterSchemaField[]; negated?: boolean; onClick: () => void }) {
+  const meta = filterMetaFor(controls, chip.field)
+  const label = `${negated ? "NOT " : ""}${meta?.label || chip.field} ${humanizeOp(chip.op)}${isPredicateOp(chip.op) ? "" : ` ${formatFilterValue(chip, meta)}`}`
+  return (
+    <button aria-label={label} className="inline-flex items-baseline gap-1 text-left" onClick={onClick} type="button">
+      <span className="font-medium text-gray-700">{negated ? "NOT " : ""}{meta?.label || chip.field}</span>
+      <span className="text-xs text-gray-500">{humanizeOp(chip.op)}</span>
+      {isPredicateOp(chip.op) ? null : <span className="font-mono text-gray-900">{formatFilterValue(chip, meta)}</span>}
+    </button>
+  )
+}
+
+function FilterChipEditor({ chip, meta, onChange, onApply, onClose }: { chip: FilterChip; meta: FilterSchemaField; onChange: (chip: FilterChip) => void; onApply: () => void; onClose: () => void }) {
+  function updateOp(op: string) {
+    onChange({ field: chip.field, op, value: defaultFilterValue(meta, op) })
+  }
+
+  return (
+    <div aria-label={`${meta.label} filter settings`} className="absolute left-0 top-full z-30 mt-2 w-[min(28rem,calc(100vw-3rem))] space-y-3 rounded border border-gray-200 bg-white p-3 shadow-lg" role="dialog">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase text-gray-500">{meta.label}</div>
+        <button className="text-xs text-gray-500 underline hover:text-gray-700" onClick={onClose} type="button">Done</button>
+      </div>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-op-${meta.field}`}>
+          Operator
+          <select className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id={`filter-op-${meta.field}`} onChange={(event) => updateOp(event.target.value)} value={chip.op}>
+            {meta.operators.map((op) => <option key={op} value={op}>{humanizeOp(op)}</option>)}
+          </select>
+        </label>
+        <FilterValueEditor chip={chip} meta={meta} onChange={onChange} />
+        <button className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500" onClick={onApply} type="button">Apply filter</button>
+      </div>
+    </div>
+  )
+}
+
+function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: FilterSchemaField; onChange: (chip: FilterChip) => void }) {
+  if (isPredicateOp(chip.op)) return <span className="pb-1.5 text-sm text-gray-500">No value needed</span>
+
+  const options = filterOptions(meta)
+  const multi = isMultiValueOp(chip.op)
+  if (options.length > 0 && !meta.typeahead) {
+    const selected = multi ? Array.isArray(chip.value) ? chip.value.map(String) : [] : [String(chip.value ?? "")]
+    return (
+      <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-value-${meta.field}`}>
+        Value
+        <select
+          className="mt-1 block min-w-44 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
+          id={`filter-value-${meta.field}`}
+          multiple={multi}
+          onChange={(event) => {
+            const value = multi ? Array.from(event.target.selectedOptions).map((option) => option.value) : event.target.value
+            onChange({ ...chip, value })
+          }}
+          size={multi ? Math.min(Math.max(options.length, 2), 5) : undefined}
+          value={multi ? selected : selected[0]}
+        >
+          {options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
+        </select>
+      </label>
+    )
+  }
+
+  if (meta.bucket === "date") return <DateFilterValueEditor chip={chip} onChange={onChange} />
+  if (meta.bucket === "number") return <NumberFilterValueEditor chip={chip} onChange={onChange} />
+
+  return (
+    <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-value-${meta.field}`}>
+      Value
+      <input
+        className="mt-1 block w-56 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
+        id={`filter-value-${meta.field}`}
+        onChange={(event) => onChange({ ...chip, value: event.target.value })}
+        type="text"
+        value={String(chip.value ?? "")}
+      />
+    </label>
+  )
+}
+
+function DateFilterValueEditor({ chip, onChange }: { chip: FilterChip; onChange: (chip: FilterChip) => void }) {
+  if (chip.op === "within_last" || chip.op === "more_than_ago") {
+    const value = isObjectValue(chip.value) ? chip.value : { n: 7, unit: "days" }
+    return (
+      <div className="flex items-end gap-2">
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-date-amount">
+          Amount
+          <input className="mt-1 block w-20 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-date-amount" min="0" onChange={(event) => onChange({ ...chip, value: { ...value, n: Number(event.target.value || 0) } })} type="number" value={Number(value.n || 0)} />
+        </label>
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-date-unit">
+          Unit
+          <select className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-date-unit" onChange={(event) => onChange({ ...chip, value: { ...value, unit: event.target.value } })} value={String(value.unit || "days")}>
+            {["minutes", "hours", "days", "weeks", "months"].map((unit) => <option key={unit} value={unit}>{unit}</option>)}
+          </select>
+        </label>
+      </div>
+    )
+  }
+
+  if (chip.op === "between") {
+    const value = Array.isArray(chip.value) ? chip.value : ["", ""]
+    return (
+      <div className="flex items-end gap-2">
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-date-from">
+          From
+          <input className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-date-from" onChange={(event) => onChange({ ...chip, value: [event.target.value, value[1] || ""] })} type="date" value={String(value[0] || "").slice(0, 10)} />
+        </label>
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-date-to">
+          To
+          <input className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-date-to" onChange={(event) => onChange({ ...chip, value: [value[0] || "", event.target.value] })} type="date" value={String(value[1] || "").slice(0, 10)} />
+        </label>
+      </div>
+    )
+  }
+
+  return (
+    <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-date-value">
+      Value
+      <input className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-date-value" onChange={(event) => onChange({ ...chip, value: event.target.value })} type="date" value={String(chip.value || "").slice(0, 10)} />
+    </label>
+  )
+}
+
+function NumberFilterValueEditor({ chip, onChange }: { chip: FilterChip; onChange: (chip: FilterChip) => void }) {
+  if (chip.op === "between") {
+    const value = Array.isArray(chip.value) ? chip.value : [null, null]
+    return (
+      <div className="flex items-end gap-2">
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-number-min">
+          Min
+          <input className="mt-1 block w-28 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-number-min" onChange={(event) => onChange({ ...chip, value: [event.target.value === "" ? null : Number(event.target.value), value[1] ?? null] })} type="number" value={typeof value[0] === "number" ? value[0] : ""} />
+        </label>
+        <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-number-max">
+          Max
+          <input className="mt-1 block w-28 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-number-max" onChange={(event) => onChange({ ...chip, value: [value[0] ?? null, event.target.value === "" ? null : Number(event.target.value)] })} type="number" value={typeof value[1] === "number" ? value[1] : ""} />
+        </label>
+      </div>
+    )
+  }
+
+  return (
+    <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="filter-number-value">
+      Value
+      <input className="mt-1 block w-32 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id="filter-number-value" onChange={(event) => onChange({ ...chip, value: event.target.value === "" ? null : Number(event.target.value) })} type="number" value={typeof chip.value === "number" ? chip.value : ""} />
+    </label>
+  )
+}
+
+export function smartFolderFiltersFromTree(tree: FilterTree) {
+  const normalized = normalizedFilterTree(tree)
+  const filters: Record<string, string> = {}
+  if (topFilterChildren(normalized).length > 0) filters.filter = JSON.stringify(normalized)
+  return filters
+}
+
+export function filterTreeFromPayload(filter: Record<string, unknown> | null | undefined): FilterTree {
+  return normalizedFilterTree(filter && typeof filter === "object" ? filter as FilterTree : null)
+}
+
+function encodeFilterTree(tree: FilterTree) {
+  const json = JSON.stringify(normalizedFilterTree(tree))
+  return btoa(unescape(encodeURIComponent(json))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+function normalizedFilterTree(tree: FilterTree | null): FilterTree {
+  const children = topFilterChildren(tree).filter(Boolean)
+  return { and: children }
+}
+
+export function topFilterChildren(tree: FilterTree | FilterNode | null): FilterNode[] {
+  if (!tree || typeof tree !== "object") return []
+  if ("and" in tree && Array.isArray(tree.and)) return tree.and
+  if (isFilterChip(tree) || ("or" in tree && Array.isArray(tree.or)) || ("not" in tree && tree.not)) return [tree as FilterNode]
+  return []
+}
+
+function isFilterChip(node: unknown): node is FilterChip {
+  return Boolean(node && typeof node === "object" && "field" in node && typeof (node as FilterChip).field === "string")
+}
+
+function filterSlotInner(node: FilterNode | undefined): FilterNode | undefined {
+  if (node && "not" in node && node.not) return node.not
+  return node
+}
+
+function filterSlotIsNegated(node: FilterNode | undefined) {
+  return Boolean(node && "not" in node && node.not)
+}
+
+function filterNodeAtPath(tree: FilterTree, path: FilterPath): FilterNode | null {
+  const slot = topFilterChildren(tree)[path[0]]
+  const inner = filterSlotInner(slot)
+  if (path.length === 1) return inner || null
+  if (!inner || !("or" in inner) || !Array.isArray(inner.or)) return null
+  return inner.or[path[1]] || null
+}
+
+function replaceFilterNodeAtPath(tree: FilterTree, path: FilterPath, node: FilterNode): FilterTree {
+  const children = topFilterChildren(tree).slice()
+  const slot = children[path[0]]
+  const negated = filterSlotIsNegated(slot)
+  if (path.length === 1) {
+    children[path[0]] = negated ? { not: node } : node
+    return { and: children }
+  }
+
+  const inner = filterSlotInner(slot)
+  if (!inner || !("or" in inner) || !Array.isArray(inner.or)) return tree
+  const nextOr = inner.or.slice()
+  nextOr[path[1]] = node
+  children[path[0]] = negated ? { not: { or: nextOr } } : { or: nextOr }
+  return { and: children }
+}
+
+function removeFilterNodeAtPath(tree: FilterTree, path: FilterPath): FilterTree {
+  const children = topFilterChildren(tree).slice()
+  if (path.length === 1) {
+    children.splice(path[0], 1)
+    return { and: children }
+  }
+
+  const slot = children[path[0]]
+  const negated = filterSlotIsNegated(slot)
+  const inner = filterSlotInner(slot)
+  if (!inner || !("or" in inner) || !Array.isArray(inner.or)) return tree
+  const nextOr = inner.or.slice()
+  nextOr.splice(path[1], 1)
+  if (nextOr.length === 0) children.splice(path[0], 1)
+  else if (nextOr.length === 1) children[path[0]] = negated ? { not: nextOr[0] } : nextOr[0]
+  else children[path[0]] = negated ? { not: { or: nextOr } } : { or: nextOr }
+  return { and: children }
+}
+
+function toggleFilterNegation(tree: FilterTree, index: number): FilterTree {
+  const children = topFilterChildren(tree).slice()
+  const slot = children[index]
+  if (!slot) return tree
+  children[index] = filterSlotIsNegated(slot) && "not" in slot && slot.not ? slot.not : { not: slot }
+  return { and: children }
+}
+
+function filterMetaFor(schema: FilterSchemaField[], field: string) {
+  return schema.find((candidate) => candidate.field === field) || null
+}
+
+function defaultFilterChip(meta: FilterSchemaField): FilterChip {
+  const op = meta.operators[0] || "is"
+  return { field: meta.field, op, value: defaultFilterValue(meta, op) }
+}
+
+function defaultFilterValue(meta: FilterSchemaField, op: string): unknown {
+  if (isPredicateOp(op)) return null
+  if (isMultiValueOp(op)) return []
+  if (meta.bucket === "date") {
+    if (op === "within_last" || op === "more_than_ago") return { n: 7, unit: "days" }
+    if (op === "between") return ["", ""]
+    return ""
+  }
+  if (meta.bucket === "number") return op === "between" ? [null, null] : null
+  return filterOptions(meta)[0]?.value ?? ""
+}
+
+function filterOptions(meta: FilterSchemaField): FilterOption[] {
+  return normalizedOptions(meta)
+}
+
+function filterChipLabel(chip: FilterChip, controls: FilterSchemaField[]) {
+  return filterMetaFor(controls, chip.field)?.label || chip.field
+}
+
+function formatFilterValue(chip: FilterChip, meta: FilterSchemaField | null) {
+  if (chip.value === null || chip.value === undefined || chip.value === "") return "(unset)"
+  if (Array.isArray(chip.value)) return chip.value.map((value) => labelForOption(value, meta)).join(", ")
+  if (isObjectValue(chip.value)) {
+    if ("n" in chip.value && "unit" in chip.value) return `${chip.value.n} ${chip.value.unit}${chip.op === "more_than_ago" ? " ago" : ""}`
+    return JSON.stringify(chip.value)
+  }
+  return labelForOption(chip.value, meta)
+}
+
+function labelForOption(value: unknown, meta: FilterSchemaField | null) {
+  if (!meta) return String(value)
+  return filterOptions(meta).find((option) => String(option.value) === String(value))?.label || String(value)
+}
+
+function isPredicateOp(op: string) {
+  return ["is_set", "is_unset", "is_true", "is_false"].includes(op)
+}
+
+function isMultiValueOp(op: string) {
+  return ["is_one_of", "is_none_of", "contains_any", "contains_all", "contains_none"].includes(op)
+}
+
+function isObjectValue(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value))
+}
+
+function humanizeOp(op: string) {
+  return op.replace(/_/g, " ")
+}
+
+function filterChipClass(negated: boolean) {
+  return negated
+    ? "inline-flex flex-wrap items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-sm"
+    : "inline-flex flex-wrap items-center gap-1 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-sm"
+}
+
+function filterNotClass(negated: boolean) {
+  return negated
+    ? "rounded bg-rose-200 px-1 py-0.5 text-[10px] font-bold text-rose-900"
+    : "rounded border border-gray-300 px-1 py-0.5 text-[10px] font-bold text-gray-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+}
+
+function clearFiltersLink(path: string, search: string, legacyFilterKeys: string[]) {
+  const params = new URLSearchParams(search)
+  for (const key of ["q", "smart_folder_id", "page", ...legacyFilterKeys]) {
+    params.delete(key)
+  }
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
+
+function linkFromSearch(path: string, search: string, updates: Record<string, string | number | null | undefined>) {
+  const params = new URLSearchParams(search)
+  for (const [key, value] of Object.entries(updates)) {
+    if (value == null || String(value).length === 0) {
+      params.delete(key)
+    } else {
+      params.set(key, String(value))
+    }
+  }
+
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
+
+function normalizedOptions(field: FilterSchemaField): FilterOption[] {
+  return (field.values || []).map((option) => {
+    if (typeof option === "string") return { value: option, label: humanizeOption(option) }
+    return option
+  })
+}
+
+function humanizeOption(value: string) {
+  return value.replace(/_/g, " ").replace(/^\w/, (match) => match.toUpperCase())
+}

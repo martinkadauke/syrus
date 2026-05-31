@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
+import { FilterBar } from "../components/FilterBar"
 import {
   fetchAdminUser,
   fetchAdminUsers,
@@ -44,15 +45,26 @@ export function AdminUsersIndex() {
             prefix={prefix}
             subjectType="admin_user"
           />
-          <section className="min-w-0 rounded border border-gray-200 bg-white">
-            <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">{users.data.count} matching</div>
-            <UsersTable basePath={basePath} users={users.data.users} />
-          </section>
+          <div className="min-w-0 space-y-3">
+            <FilterBar
+              filter={users.data.filter}
+              filterSchema={users.data.controls.filter_schema}
+              legacyFilterKeys={adminUserLegacyFilterKeys}
+              pathname={location.pathname}
+              search={location.search}
+            />
+            <section className="rounded border border-gray-200 bg-white">
+              <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">{users.data.count} matching</div>
+              <UsersTable basePath={basePath} users={users.data.users} />
+            </section>
+          </div>
         </div>
       ) : null}
     </main>
   )
 }
+
+const adminUserLegacyFilterKeys = ["email", "admin", "has_github_token", "has_claude_token", "has_codex_token", "gh_rate"]
 
 export function AdminUserDetailRoute() {
   const params = useParams()

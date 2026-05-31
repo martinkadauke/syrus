@@ -17,6 +17,8 @@ module Admin
         scope = filter.apply(base_scope).order(started_at: :desc).limit(@per_page)
 
         {
+          filter: filter.to_h,
+          controls: controls_json,
           processes: scope.to_a.map { |process| serialize(process) },
           running_total: SpawnedProcess.running.count,
           active_smart_folder_id: active_folder&.id,
@@ -52,6 +54,12 @@ module Admin
           base_scope: base_scope,
           filter_class: ::Admin::SpawnedProcesses::Filter
         ).folders
+      end
+
+      def controls_json
+        {
+          filter_schema: Filters::Schema.for(subject: :spawned_process, user: user)
+        }
       end
 
       def already_finished_payload(process)

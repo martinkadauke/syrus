@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
+import { FilterBar } from "../components/FilterBar"
 import {
   fetchAdminQueue,
   isQueueTab,
@@ -97,19 +98,31 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
       {queue.isPending ? <PanelMessage>Loading queue...</PanelMessage> : null}
       {queue.isError ? <QueueError error={queue.error} /> : null}
       {queue.isSuccess ? (
-        <QueueContent basePath={basePath} payload={queue.data} prefix={prefix} tab={tab} />
+        <QueueContent basePath={basePath} pathname={location.pathname} payload={queue.data} prefix={prefix} search={location.search} tab={tab} />
       ) : null}
     </main>
   )
 }
 
-function QueueContent({ basePath, payload, prefix, tab }: { basePath: string; payload: AdminQueuePayload; prefix: string; tab: QueueTab }) {
+function QueueContent({ basePath, pathname, payload, prefix, search, tab }: { basePath: string; pathname: string; payload: AdminQueuePayload; prefix: string; search: string; tab: QueueTab }) {
   const smartFolders = "smart_folders" in payload ? payload.smart_folders : []
+  const filterBar = isFilteredQueuePayload(payload) ? (
+    <FilterBar
+      filter={payload.filter}
+      filterSchema={payload.controls.filter_schema}
+      pathname={pathname}
+      search={search}
+    />
+  ) : null
+
   if (smartFolders.length === 0) {
     return (
-      <section className="rounded border border-gray-200 bg-white">
-        <QueueTabPanel tab={tab} payload={payload} />
-      </section>
+      <div className="space-y-3">
+        {filterBar}
+        <section className="rounded border border-gray-200 bg-white">
+          <QueueTabPanel tab={tab} payload={payload} />
+        </section>
+      </div>
     )
   }
 
@@ -125,11 +138,18 @@ function QueueContent({ basePath, payload, prefix, tab }: { basePath: string; pa
         prefix={prefix}
         subjectType="admin_queue"
       />
-      <section className="min-w-0 rounded border border-gray-200 bg-white">
-        <QueueTabPanel tab={tab} payload={payload} />
-      </section>
+      <div className="min-w-0 space-y-3">
+        {filterBar}
+        <section className="rounded border border-gray-200 bg-white">
+          <QueueTabPanel tab={tab} payload={payload} />
+        </section>
+      </div>
     </div>
   )
+}
+
+function isFilteredQueuePayload(payload: AdminQueuePayload): payload is ActiveQueuePayload | PendingQueuePayload | FailedQueuePayload {
+  return "filter" in payload && "controls" in payload
 }
 
 function QueueTabPanel({ tab, payload }: { tab: QueueTab; payload: unknown }) {

@@ -951,6 +951,23 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
+          filter: { and: [ { field: "queue_name", op: "is", value: "runs" } ] },
+          controls: {
+            filter_schema: [
+              {
+                field: "queue_name",
+                label: "Queue",
+                bucket: "enum",
+                operators: ["is", "is_one_of"],
+                values: [
+                  { value: "runs", label: "Runs" },
+                  { value: "chat", label: "Chat" },
+                  { value: "default", label: "Default" }
+                ]
+              },
+              { field: "job_class", label: "Job class", bucket: "string", operators: ["contains", "is"], values: [] }
+            ]
+          },
           active_smart_folder_id: 1,
           smart_folders: [
             {
@@ -1000,6 +1017,9 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Admin queue" })).toBeInTheDocument()
     expect(await screen.findByText("RunJob")).toBeInTheDocument()
     expect(screen.getByText("runs")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Queue is Runs/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+    expect(screen.getByRole("button", { name: "Job class string" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Runs 1" })).toHaveAttribute("href", "/app-shell/admin/queue/active?smart_folder_id=1")
     expect(screen.getByRole("link", { name: "All queue" })).toHaveAttribute("href", "/app-shell/admin/queue/active")
     expect(screen.getByRole("link", { name: "Failed" })).toHaveAttribute("href", "/app-shell/admin/queue/failed")
@@ -1061,6 +1081,23 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
+          filter: { and: [ { field: "state", op: "is", value: "running" } ] },
+          controls: {
+            filter_schema: [
+              {
+                field: "state",
+                label: "State",
+                bucket: "enum",
+                operators: ["is", "is_one_of"],
+                values: [
+                  { value: "running", label: "Running" },
+                  { value: "finished", label: "Finished" }
+                ]
+              },
+              { field: "kind", label: "Kind", bucket: "enum", operators: ["is"], values: [ { value: "agent", label: "Agent" } ] },
+              { field: "hostname", label: "Hostname", bucket: "enum", operators: ["is"], values: [ { value: "worker-a", label: "worker-a" } ] }
+            ]
+          },
           active_smart_folder_id: 3,
           smart_folders: [
             {
@@ -1115,6 +1152,9 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Admin processes" })).toBeInTheDocument()
     expect(await screen.findByText("claude --print")).toBeInTheDocument()
     expect(screen.getByText("worker-a")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /State is Running/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+    expect(screen.getByRole("button", { name: "Hostname enum" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Running 1" })).toHaveAttribute("href", "/app-shell/admin/processes?smart_folder_id=3")
     expect(screen.getByRole("link", { name: "Detail" })).toHaveAttribute("href", "/app-shell/admin/processes/8")
     expect(screen.getByRole("button", { name: "Kill" })).toBeInTheDocument()
@@ -1184,6 +1224,22 @@ describe("App", () => {
       new Response(
         JSON.stringify({
           filters: { gh_rate: "low" },
+          filter: { and: [ { field: "gh_rate", op: "is", value: "low" } ] },
+          controls: {
+            filter_schema: [
+              { field: "email", label: "Email", bucket: "string", operators: ["contains", "not_contains"], values: [] },
+              {
+                field: "gh_rate",
+                label: "GH rate",
+                bucket: "enum",
+                operators: ["is"],
+                values: [
+                  { value: "low", label: "Low (<10%)" },
+                  { value: "exhausted", label: "Exhausted" }
+                ]
+              }
+            ]
+          },
           count: 1,
           active_smart_folder_id: 5,
           smart_folders: [
@@ -1257,6 +1313,9 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Admin users" })).toBeInTheDocument()
     expect(await screen.findByText("Operator")).toBeInTheDocument()
     expect(screen.getByText("operator@example.com")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /GH rate is Low/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+    expect(screen.getByRole("button", { name: "Email string" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Operator" })).toHaveAttribute("href", "/app-shell/admin/users/5")
     expect(screen.getByRole("link", { name: "Rate limit low 1" })).toHaveAttribute("href", "/app-shell/admin/users?smart_folder_id=5")
     expect(screen.getByText("More")).toBeInTheDocument()

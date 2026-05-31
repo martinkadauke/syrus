@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
+import { FilterBar } from "../components/FilterBar"
 import {
   fetchAdminProcess,
   fetchAdminProcesses,
@@ -40,17 +41,28 @@ export function AdminProcessesIndex() {
             prefix={prefix}
             subjectType="spawned_process"
           />
-          <section className="min-w-0 rounded border border-gray-200 bg-white">
-            <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">
-              {processes.data.running_total} running · {processes.data.processes.length} shown
-            </div>
-            <ProcessesTable basePath={basePath} processes={processes.data.processes} />
-          </section>
+          <div className="min-w-0 space-y-3">
+            <FilterBar
+              filter={processes.data.filter}
+              filterSchema={processes.data.controls.filter_schema}
+              legacyFilterKeys={adminProcessLegacyFilterKeys}
+              pathname={location.pathname}
+              search={location.search}
+            />
+            <section className="rounded border border-gray-200 bg-white">
+              <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">
+                {processes.data.running_total} running · {processes.data.processes.length} shown
+              </div>
+              <ProcessesTable basePath={basePath} processes={processes.data.processes} />
+            </section>
+          </div>
         </div>
       ) : null}
     </main>
   )
 }
+
+const adminProcessLegacyFilterKeys = ["state", "kind", "hostname", "run_id", "workflow_id", "since"]
 
 export function AdminProcessDetail() {
   const params = useParams()

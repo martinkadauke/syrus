@@ -1,5 +1,5 @@
 import { getJson, postJson } from "./client"
-import type { AdminSmartFolderPayload } from "./adminSmartFolders"
+import type { AdminFilteredPayload } from "./adminSmartFolders"
 
 export type ProcessStateFilter = "running" | "finished" | "all"
 
@@ -27,7 +27,7 @@ export type SpawnedProcessPayload = {
   host_metrics?: Record<string, unknown> | null
 }
 
-export type AdminProcessesPayload = AdminSmartFolderPayload & {
+export type AdminProcessesPayload = AdminFilteredPayload & {
   processes: SpawnedProcessPayload[]
   running_total: number
 }

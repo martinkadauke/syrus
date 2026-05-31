@@ -13,12 +13,13 @@ module Admin
         SmartFolder.ensure_admin_queue_builtins!
         base = SolidQueue::Job.joins(:claimed_execution)
         active_folder = active_smart_folder
-        jobs = queue_filter(:active, active_folder)
+        filter = queue_filter(:active, active_folder)
+        jobs = filter
           .apply(base)
           .order("solid_queue_claimed_executions.created_at DESC")
           .limit(@per_page)
 
-        smart_folder_payload(:active, base, active_folder).merge(
+        smart_folder_payload(:active, base, active_folder, filter: filter).merge(
           jobs: jobs.map { |job| serialize_job(job, claimed_at: job.claimed_execution&.created_at) }
         )
       end
@@ -27,10 +28,11 @@ module Admin
         SmartFolder.ensure_admin_queue_builtins!
         active_folder = active_smart_folder
         base = SolidQueue::Job.joins(:ready_execution)
-        filtered = queue_filter(:pending, active_folder).apply(base)
+        filter = queue_filter(:pending, active_folder)
+        filtered = filter.apply(base)
         jobs = filtered.order("solid_queue_ready_executions.created_at ASC").limit(@per_page)
 
-        smart_folder_payload(:pending, base, active_folder).merge(
+        smart_folder_payload(:pending, base, active_folder, filter: filter).merge(
           jobs: jobs.map { |job| serialize_job(job) },
           total: filtered.count
         )
@@ -44,12 +46,13 @@ module Admin
           .includes(:job)
           .references(:job)
           .where(SolidQueue::FailedExecution.arel_table[:created_at].gteq(since))
-        failures = queue_filter(:failed, active_folder)
+        filter = queue_filter(:failed, active_folder)
+        failures = filter
           .apply(base)
           .order(created_at: :desc)
           .limit(@per_page)
 
-        smart_folder_payload(:failed, base, active_folder).merge(
+        smart_folder_payload(:failed, base, active_folder, filter: filter).merge(
           since: since.iso8601,
           failures: failures.map { |failure| serialize_failure(failure) }
         )
@@ -92,8 +95,10 @@ module Admin
         ::Admin::Queue::Filter.from_params(params, smart_folder: active_folder, user: user, tab: tab)
       end
 
-      def smart_folder_payload(tab, base_scope, active_folder)
+      def smart_folder_payload(tab, base_scope, active_folder, filter:)
         {
+          filter: filter.to_h,
+          controls: controls_json,
           active_smart_folder_id: active_folder&.id,
           smart_folders: ::Admin::SmartFolderNavigation.new(
             subject: :admin_queue,
@@ -103,6 +108,12 @@ module Admin
             filter_class: ::Admin::Queue::Filter,
             path_context: { tab: tab }
           ).folders
+        }
+      end
+
+      def controls_json
+        {
+          filter_schema: Filters::Schema.for(subject: :admin_queue, user: user)
         }
       end
 
