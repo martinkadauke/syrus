@@ -655,4 +655,80 @@ describe("App", () => {
     })
     expect(await screen.findByText("Settings updated.")).toBeInTheDocument()
   })
+
+  it("renders the tags route from the app tags API and creates tags", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      const palette = [
+        { key: "gray", label: "Gray", bg: "#f3f4f6", text: "#374151" },
+        { key: "blue", label: "Blue", bg: "#dbeafe", text: "#1d4ed8" },
+        { key: "indigo", label: "Indigo", bg: "#e0e7ff", text: "#3730a3" }
+      ]
+
+      if (path === "/api/v1/app/tags" && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              palette,
+              tags: [
+                { id: 4, name: "epic:attachments", color: "indigo", jobs_count: 0 }
+              ],
+              message: "Tag created."
+            }),
+            { status: 201, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            palette,
+            tags: [
+              { id: 2, name: "triage", color: "blue", jobs_count: 3 }
+            ]
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/tags"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Tags" })).toBeInTheDocument()
+    expect(await screen.findByText("triage")).toBeInTheDocument()
+    expect(screen.getByText("3")).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "epic:attachments" } })
+    fireEvent.change(screen.getByLabelText("Color"), { target: { value: "indigo" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/tags",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            tag: {
+              name: "epic:attachments",
+              color: "indigo"
+            }
+          })
+        })
+      )
+    })
+    expect(await screen.findByText("Tag created.")).toBeInTheDocument()
+    expect(screen.getByText("epic:attachments")).toBeInTheDocument()
+  })
 })
