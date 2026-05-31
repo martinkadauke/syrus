@@ -37,6 +37,11 @@ Rails.application.routes.draw do
         patch "epics/:id", to: "epics#update", constraints: { id: /\d+/ }
         get "chats/new", to: "chats#new"
         post "chats", to: "chats#create"
+        get "chats/:id", to: "chats#show", constraints: { id: /\d+/ }
+        post "chats/:id/message", to: "chats#message", constraints: { id: /\d+/ }
+        post "chats/:id/stop", to: "chats#stop", constraints: { id: /\d+/ }
+        post "chats/:id/refresh", to: "chats#refresh", constraints: { id: /\d+/ }
+        post "chats/:id/reset", to: "chats#reset", constraints: { id: /\d+/ }
         resources :repositories, only: %i[ index ] do
           member do
             post :poll

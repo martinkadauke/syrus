@@ -8,6 +8,7 @@ class ChatMessage < ApplicationRecord
 
   after_create_commit :broadcast_to_chat
   after_create_commit :broadcast_controls_update
+  after_create_commit :broadcast_app_event
 
   validates :role, presence: true, inclusion: { in: ROLES }
   validate :content_is_present
@@ -55,5 +56,15 @@ class ChatMessage < ApplicationRecord
   # its disabled state matches.
   def broadcast_controls_update
     chat_session.broadcast_controls
+  end
+
+  def broadcast_app_event
+    AppEvents.broadcast(
+      user: chat_session.user,
+      type: "updated",
+      resource: "chat",
+      id: chat_session_id,
+      changed: [ "messages" ]
+    )
   end
 end
