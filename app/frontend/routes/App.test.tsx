@@ -1778,6 +1778,83 @@ describe("App", () => {
     expect(screen.getByText("In Progress")).toBeInTheDocument()
   })
 
+  it("renders a Job detail page and runs commands through the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/jobs/42/poll_feedback" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Checking PR feedback now..." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/timeline") {
+        return Promise.resolve(new Response(JSON.stringify(jobTimelinePayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Job" })).toBeInTheDocument()
+    expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.getByText("Water should climb the hill.")).toBeInTheDocument()
+    expect(screen.getByText("Moved the uphill water simulation.")).toBeInTheDocument()
+    expect(await screen.findByText("Workflow created")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Check feedback" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/poll_feedback",
+        expect.objectContaining({ method: "POST", credentials: "same-origin" })
+      )
+    })
+    expect(await screen.findByText("Checking PR feedback now...")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
+    expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    expect(screen.getByText("Run #9")).toBeInTheDocument()
+  })
+
+  it("renders the Job source browser from the app source API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path.startsWith("/api/v1/app/jobs/42/source?")) {
+        return Promise.resolve(new Response(JSON.stringify(jobSourcePayload({ withFile: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/source") {
+        return Promise.resolve(new Response(JSON.stringify(jobSourcePayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/jobs/42/timeline") {
+        return Promise.resolve(new Response(JSON.stringify(jobTimelinePayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42?tab=source"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("app/models/user.rb")).toBeInTheDocument()
+    fireEvent.click(screen.getByTitle("app/models/user.rb (512 B)"))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/source?ref=deadbeef12345678&path=app%2Fmodels%2Fuser.rb",
+        expect.objectContaining({ credentials: "same-origin" })
+      )
+    })
+    expect(await screen.findByText(/class User/)).toBeInTheDocument()
+  })
+
   it("renders a chat and sends a message from the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -2601,6 +2678,243 @@ function epicDetailPayload(overrides: {
       edit_epic_path: "/epics/7/edit",
       app_state_path: "/api/v1/app/epics/7/state",
       app_archive_path: "/api/v1/app/epics/7/archive"
+    }
+  }
+}
+
+function jobDetailPayload() {
+  return {
+    job: {
+      id: 42,
+      kind: "issue",
+      state: "open",
+      summary_state: "implemented",
+      priority: "medium",
+      validity: "valid",
+      credential_mode: "pat",
+      agent_provider: "codex",
+      stack_base: "auto",
+      issue_number: 12,
+      issue_title: "Repair aqueduct",
+      issue_body: "Water should climb the hill.",
+      branch_name: "syrus/issue-12",
+      pr_number: 77,
+      pr_url: "https://github.com/acme/widgets/pull/77",
+      external_pr_number: null,
+      external_pr_url: null,
+      pr_mergeable: true,
+      pr_mergeable_checked_at: "2026-05-30T12:00:00Z",
+      closure_reason: null,
+      landing_failure_reason: null,
+      approved_at: null,
+      approved_via: null,
+      total_cost_usd: 0.1234,
+      billed_runs_count: 1,
+      workflows_count: 1,
+      runs_count: 1,
+      any_active_run: false,
+      prepare_skipped: false,
+      prepare_skip_reason: null,
+      created_at: "2026-05-30T10:00:00Z",
+      updated_at: "2026-05-30T12:00:00Z",
+      started_at: "2026-05-30T10:01:00Z",
+      finished_at: null
+    },
+    repository: {
+      id: 3,
+      slug: "acme/widgets",
+      owner: "acme",
+      name: "widgets",
+      default_branch: "main",
+      repository_path: "/repositories/3"
+    },
+    pinned: false,
+    tags: [{ id: 4, name: "priority:forum", color: "gray" }],
+    tag_options: [{ id: 4, name: "priority:forum", color: "gray" }],
+    dependencies: [],
+    dependents: [],
+    unsatisfied_dependencies: [],
+    dependency_target_options: [{ label: "acme/widgets #11 - Build hill (Job #41)", value: "issue:3:11" }],
+    attachments: [
+      {
+        id: 8,
+        kind: "google_doc",
+        attachment_type: "google_doc_link",
+        title: "Hydraulic notes",
+        filename: null,
+        content_type: null,
+        byte_size: null,
+        google_doc_url: "https://docs.google.com/document/d/aqueduct/edit",
+        uploaded_file: false,
+        file_path: null,
+        created_at: "2026-05-30T10:02:00Z",
+        app_delete_path: "/api/v1/app/jobs/42/attachments/8"
+      }
+    ],
+    summary: {
+      run_id: 9,
+      text: "Moved the uphill water simulation.",
+      finished_at: "2026-05-30T12:00:00Z"
+    },
+    landing_queue_entry: null,
+    workflows: [
+      {
+        id: 5,
+        trigger_kind: "initial",
+        agent_provider: "codex",
+        state: "succeeded",
+        failure_count: 0,
+        artifacts: {},
+        cleaned_up_at: null,
+        retry_available: false,
+        started_at: "2026-05-30T10:01:00Z",
+        finished_at: "2026-05-30T12:00:00Z",
+        created_at: "2026-05-30T10:00:00Z",
+        updated_at: "2026-05-30T12:00:00Z",
+        app_retry_step_path: "/api/v1/app/jobs/42/workflows/5/retry_step",
+        app_push_commits_path: "/api/v1/app/jobs/42/workflows/5/push_commits",
+        steps: [
+          {
+            id: 6,
+            kind: "implement",
+            position: 1,
+            iteration: null,
+            loop_id: null,
+            state: "succeeded",
+            started_at: "2026-05-30T10:01:00Z",
+            finished_at: "2026-05-30T12:00:00Z",
+            created_at: "2026-05-30T10:00:00Z",
+            updated_at: "2026-05-30T12:00:00Z",
+            details: null,
+            latest: true,
+            runs: [
+              {
+                id: 9,
+                state: "succeeded",
+                trigger_kind: "initial",
+                agent_provider: "codex",
+                agent_outcome: "success",
+                agent_turns: 4,
+                agent_pr_title: "Repair aqueduct",
+                agent_summary: "Moved the uphill water simulation.",
+                parent_session_id: null,
+                head_sha: "deadbeef",
+                iteration: null,
+                started_at: "2026-05-30T10:01:00Z",
+                last_heartbeat_at: "2026-05-30T11:59:00Z",
+                finished_at: "2026-05-30T12:00:00Z",
+                created_at: "2026-05-30T10:00:00Z",
+                updated_at: "2026-05-30T12:00:00Z",
+                cost_usd: 0.1234,
+                input_tokens: 1200,
+                output_tokens: 300,
+                agent_diff_present: true,
+                agent_diff_bytes: 2048,
+                job_log_count: 12,
+                rate_limited: false,
+                run_diagnostic: null,
+                health_snapshots: [],
+                agent_session: { session_id: "session-9", provider: "codex", transcript_pruned: false, transcript_bytes: 1024, transcript_lines: 12 },
+                can_stop: false,
+                can_diagnose: false,
+                can_resume: false,
+                app_stop_path: "/api/v1/app/jobs/42/runs/9/stop",
+                app_diagnose_path: "/api/v1/app/jobs/42/runs/9/diagnose",
+                app_resume_path: "/api/v1/app/jobs/42/resume",
+                grade_log_path: null
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    actions: {
+      can_start: false,
+      can_poll_feedback: true,
+      can_rebase: true,
+      can_check_mergeability: true,
+      can_retry: true,
+      can_retry_from_failed_step: false,
+      can_restart: true,
+      can_cancel: true,
+      can_approve: true,
+      can_unapprove: false,
+      can_reopen: false,
+      can_mark_valid: false,
+      can_override_dependencies: false,
+      feedback_agent_options: [],
+      rebase_agent_options: [],
+      retry_agent_options: []
+    },
+    paths: {
+      job_path: "/jobs/42",
+      source_path: "/jobs/42/source",
+      app_detail_path: "/api/v1/app/jobs/42",
+      app_source_path: "/api/v1/app/jobs/42/source",
+      app_timeline_path: "/api/v1/app/jobs/42/timeline",
+      app_start_path: "/api/v1/app/jobs/42/start",
+      app_run_again_path: "/api/v1/app/jobs/42/run_again",
+      app_restart_path: "/api/v1/app/jobs/42/restart",
+      app_cancel_path: "/api/v1/app/jobs/42/cancel",
+      app_approve_path: "/api/v1/app/jobs/42/approve",
+      app_unapprove_path: "/api/v1/app/jobs/42/unapprove",
+      app_reopen_path: "/api/v1/app/jobs/42/reopen",
+      app_poll_feedback_path: "/api/v1/app/jobs/42/poll_feedback",
+      app_rebase_path: "/api/v1/app/jobs/42/rebase",
+      app_check_mergeability_path: "/api/v1/app/jobs/42/check_mergeability",
+      app_resume_path: "/api/v1/app/jobs/42/resume",
+      app_tags_path: "/api/v1/app/jobs/42/tags",
+      app_dependencies_path: "/api/v1/app/jobs/42/dependencies",
+      app_dependency_override_path: "/api/v1/app/jobs/42/dependencies/override",
+      app_stack_base_path: "/api/v1/app/jobs/42/stack_base",
+      app_mark_valid_path: "/api/v1/app/jobs/42/mark_valid",
+      app_attachments_path: "/api/v1/app/jobs/42/attachments",
+      app_pin_path: "/api/v1/app/jobs/42/pin"
+    }
+  }
+}
+
+function jobTimelinePayload() {
+  return {
+    job_id: 42,
+    events: [
+      {
+        at: "2026-05-30T10:00:00Z",
+        kind: "created",
+        source: "workflow",
+        transition_source: null,
+        title: "Workflow created",
+        detail: "Initial workflow queued.",
+        ref: "5"
+      }
+    ]
+  }
+}
+
+function jobSourcePayload(overrides: { withFile?: boolean } = {}) {
+  return {
+    job_id: 42,
+    repository: { id: 3, slug: "acme/widgets", default_branch: "main", repository_path: "/repositories/3" },
+    branch_name: "syrus/issue-12",
+    default_ref: "main",
+    selected_ref: "deadbeef12345678",
+    selected_path: overrides.withFile ? "app/models/user.rb" : null,
+    merge_base_sha: "aabbccdd1234567",
+    branch_commits: [
+      { sha: "deadbeef12345678", short_sha: "deadbee", message: "Repair aqueduct", date: "2026-05-30T11:00:00Z" }
+    ],
+    tree_items: [
+      { path: "app/models/user.rb", name: "user.rb", size: 512, language: "ruby" },
+      { path: "README.md", name: "README.md", size: 128, language: "markdown" }
+    ],
+    tree_truncated: false,
+    file: overrides.withFile ? { path: "app/models/user.rb", name: "user.rb", size: 15, language: "ruby", content: "class User\nend\n" } : null,
+    source_error: null,
+    file_error: null,
+    paths: {
+      job_path: "/jobs/42",
+      source_path: "/jobs/42/source",
+      app_source_path: "/api/v1/app/jobs/42/source"
     }
   }
 }
