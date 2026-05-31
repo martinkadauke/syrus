@@ -133,6 +133,19 @@ function SmartFolderNav({ payload, prefix, search }: { payload: DashboardPayload
           </details>
         ) : null}
       </nav>
+      <div className="space-y-1 pt-3">
+        <div className="flex items-center justify-between gap-2 px-2">
+          <h3 className="text-xs font-semibold uppercase text-gray-500">Saved</h3>
+          <Link className="text-xs font-medium text-blue-700 hover:text-blue-900" to={withRoutePrefix(`/smart_folders?subject_type=${payload.subject}`, prefix)}>Manage</Link>
+        </div>
+        {savedFolders.length > 0 ? (
+          <nav aria-label="Saved smart folders" className="space-y-1">
+            {savedFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} prefix={prefix} />)}
+          </nav>
+        ) : (
+          <p className="px-2 py-1.5 text-sm text-gray-400">No saved folders</p>
+        )}
+      </div>
       {canSaveFilter ? (
         <form className="space-y-2 px-2 pt-3" onSubmit={saveFolder}>
           <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-smart-folder-name">
@@ -154,19 +167,6 @@ function SmartFolderNav({ payload, prefix, search }: { payload: DashboardPayload
           {createFolder.isError ? <p className="text-xs text-red-700" role="alert">{errorMessage(createFolder.error, "Unable to save smart folder.")}</p> : null}
         </form>
       ) : null}
-      <div className="space-y-1 pt-3">
-        <div className="flex items-center justify-between gap-2 px-2">
-          <h3 className="text-xs font-semibold uppercase text-gray-500">Saved</h3>
-          <Link className="text-xs font-medium text-blue-700 hover:text-blue-900" to={withRoutePrefix(`/smart_folders?subject_type=${payload.subject}`, prefix)}>Manage</Link>
-        </div>
-        {savedFolders.length > 0 ? (
-          <nav aria-label="Saved smart folders" className="space-y-1">
-            {savedFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} prefix={prefix} />)}
-          </nav>
-        ) : (
-          <p className="px-2 py-1.5 text-sm text-gray-400">No saved folders</p>
-        )}
-      </div>
       {payload.landing_queue.visible ? (
         <div className="space-y-2 rounded border border-gray-200 bg-white p-2">
           <button

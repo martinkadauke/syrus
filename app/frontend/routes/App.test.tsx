@@ -626,7 +626,9 @@ describe("App", () => {
     expect(screen.queryByText("No value needed")).not.toBeInTheDocument()
 
     const smartFoldersPanel = await screen.findByRole("complementary", { name: "Dashboard smart folders panel" })
-    fireEvent.change(within(smartFoldersPanel).getByLabelText("Folder name"), { target: { value: "Open work" } })
+    const folderNameInput = within(smartFoldersPanel).getByLabelText("Folder name")
+    expect(within(smartFoldersPanel).getByRole("heading", { name: "Saved" }).compareDocumentPosition(folderNameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    fireEvent.change(folderNameInput, { target: { value: "Open work" } })
     fireEvent.click(within(smartFoldersPanel).getByRole("button", { name: "Save folder" }))
 
     await waitFor(() => {
