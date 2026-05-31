@@ -1,36 +1,10 @@
 class RepositoriesController < ApplicationController
   before_action :load_repository, only: %i[
-    show poll archive unarchive retry_failed_jobs
+    poll archive unarchive retry_failed_jobs
     issues comment_issue close_issue delegate_issue bulk_issues
   ]
 
   PER_PAGE = 20
-
-  def show
-    @tab = params.fetch(:tab, "overview").presence_in(%w[overview github_issues]) || "overview"
-    @page = [ params.fetch(:page, 1).to_i, 1 ].max
-    # Eager-load workflows+steps so the mirrored dashboard layout's
-    # `current_step_caption(job)` and `job_source_label_html(job)`
-    # helpers don't N+1 against every row.
-    @jobs = @repository.jobs
-      .includes(:runs, :scheduled_task, workflows: :steps)
-      .order(updated_at: :desc)
-      .limit(PER_PAGE)
-      .offset((@page - 1) * PER_PAGE)
-    @total_jobs = @repository.jobs.count
-    @total_pages = [ (@total_jobs / PER_PAGE.to_f).ceil, 1 ].max
-    @repository_notes = @repository.repository_notes.active.order(created_at: :desc, id: :desc)
-
-    @running_count = @repository.jobs.joins(:runs).where(runs: { state: "running" }).distinct.count
-    @queued_count  = @repository.jobs.joins(:runs).where(runs: { state: "queued" }).distinct.count
-    @failed_7d_count = @repository.jobs
-      .joins(:runs)
-      .where(runs: { state: "failed", updated_at: 7.days.ago.. })
-      .distinct
-      .count
-
-    load_github_issues if @tab == "github_issues"
-  end
 
   def poll
     if @repository.archived?

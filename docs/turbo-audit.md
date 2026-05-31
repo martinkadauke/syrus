@@ -35,7 +35,6 @@ page-level morph for subscribed pages.
 | Page | Streams |
 |---|---|
 | `home/index` (dashboard) | `[user, "jobs"]` |
-| `repositories/show` | `repo`, `[repo, "jobs"]` |
 | `chats/show` legacy fallback | `chat_session_<id>_whiteboard` |
 | `jobs/show` | `job`, `[job, "logs"]` |
 | `epics/show` | `epic` |
@@ -48,9 +47,9 @@ worker-process broadcasts wouldn't cross to the browser's WebSocket subscriber.
 
 | Model | Mechanism | Streams to | Notes |
 |---|---|---|---|
-| `Job` | `broadcasts_refreshes` (self) + `broadcasts_refreshes_to [user,"jobs"]` + `[repo,"jobs"]` | `job` show, dashboard, repo show | Refreshes on every save |
+| `Job` | `broadcasts_refreshes` (self) + `broadcasts_refreshes_to [user,"jobs"]` + `[repo,"jobs"]` | `job` show, dashboard | Refreshes on every save |
 | `Run` | `broadcasts_refreshes_to job` + `[user,"jobs"]` | Job show, dashboard | **High traffic** — heartbeat updates trigger morphs on the dashboard. See "Latent risks" below. |
-| `Epic` | `broadcasts_refreshes` + `[user,"jobs"]` + `[repo,"jobs"]` | Epic show, dashboard, repo show | |
+| `Epic` | `broadcasts_refreshes` + `[user,"jobs"]` + `[repo,"jobs"]` | Epic show, dashboard | |
 | `RunHealthSnapshot` | `broadcasts_refreshes_to` (lambda) | Targeted | |
 | `SpawnedProcess` | `broadcasts_refreshes` | Admin pages | |
 | `JobLog` | `broadcasts_to [log.run.job, "logs"]`, `inserts_by: :append` | Job show transcript | **Append**, not morph — different mechanism, no whole-page churn |
@@ -67,7 +66,7 @@ Elements explicitly preserved through morph cycles:
 | Chat manual-proposal dialog | `chats/_manual_proposal_dialog.html.erb` | In-flight form state |
 | Chat message input | `chats/_message.html.erb:16` | Preserves user input mid-typing |
 | Footer Syrus quote | `layouts/application.html.erb:143` | Cosmetic — stops random quote from re-rolling on every broadcast (was distracting flicker) |
-| Repo-show + repo-issues bulk checkboxes | `repositories/show.html.erb:477`, `repositories/issues.html.erb:165` | Selection survives morph during bulk actions |
+| Repo-issues bulk checkboxes | `repositories/issues.html.erb:165` | Selection survives morph during bulk actions |
 
 ### Morph-aware Stimulus controllers
 

@@ -52,64 +52,6 @@ RSpec.describe "Repositories", type: :request do
       }.to raise_error(ActionController::RoutingError)
     end
 
-    describe "credential mode banner" do
-      it "shows installed App status without a warning banner" do
-        AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
-        installation = Factories.installation(user: user, account_login: "acme")
-        repo = Factories.repository(user: user, owner: "acme", name: "widgets", installation: installation)
-
-        get legacy_repository_path(repo)
-
-        expect(response.body).to include("✓ Syrus App installed (via acme)")
-        expect(response.body).not_to include("This repository is using personal-token fallback.")
-      end
-
-      it "shows a one-click install link when the App is registered but not installed" do
-        AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
-        repo = Factories.repository(
-          user: user,
-          owner: "acme",
-          name: "widgets",
-          github_owner_id: 100,
-          github_repository_id: 200
-        )
-
-        get legacy_repository_path(repo)
-
-        expect(response.body).to include("This repository is using personal-token fallback.")
-        expect(response.body).to include(
-          "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&amp;repository_ids[]=200"
-        )
-      end
-
-      it "shows the manifest CTA when the App is not registered" do
-        repo = Factories.repository(user: user)
-
-        get legacy_repository_path(repo)
-
-        expect(response.body).to include("Syrus App is not registered.")
-        expect(response.body).to include("Register Syrus App")
-      end
-
-      it "shows PAT fallback when the recorded installation was removed" do
-        AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
-        installation = Factories.installation(user: user, account_login: "acme", removed_at: Time.current)
-        repo = Factories.repository(
-          user: user,
-          owner: "acme",
-          name: "widgets",
-          github_owner_id: 100,
-          github_repository_id: 200
-        )
-        repo.update_column(:installation_id, installation.id)
-
-        get legacy_repository_path(repo)
-
-        expect(response.body).to include("Its previous installation was removed.")
-        expect(response.body).to include("Install Syrus App on this repository")
-      end
-    end
-
     it "has no destroy route — Archive is the only retire path" do
       mine = Factories.repository(user: user)
       # DELETE /repositories/:id is no longer routable (resources
@@ -272,174 +214,25 @@ RSpec.describe "Repositories", type: :request do
         # tested via the outer unauthenticated context below
       end
 
-      it "renders the show page" do
+      it "serves the React app shell" do
         mine = Factories.repository(user: user, owner: "acme", name: "widgets")
         get repository_path(mine)
         expect(response).to have_http_status(:ok)
         expect(response.body).to include('id="syrus-spa-root"')
       end
 
-      it "keeps the legacy show page available" do
-        mine = Factories.repository(user: user, owner: "acme", name: "widgets")
-        get legacy_repository_path(mine)
-        expect(response).to have_http_status(:ok)
-        expect(response.body).to include("acme/widgets")
+      it "does not route the retired legacy detail page" do
+        expect {
+          Rails.application.routes.recognize_path("/repositories/1/legacy", method: :get)
+        }.to raise_error(ActionController::RoutingError)
       end
 
-      it "renders active repository notes on the overview tab" do
+      it "does not route repository-scoped proposals" do
         mine = Factories.repository(user: user)
-        mine.repository_notes.create!(body: "Pinned deployment context.", author: "operator")
-        mine.repository_notes.create!(body: "Removed context.", author: "agent", removed_at: Time.current)
 
-        get legacy_repository_path(mine)
-
-        expect(response.body).to include("Notes")
-        expect(response.body).to include("Pinned deployment context.")
-        expect(response.body).not_to include("Removed context.")
-        expect(response.body).not_to include("Add note")
-        expect(response.body).not_to include("Delete this repository note?")
-      end
-
-      it "shows the repository default agent on the show page" do
-        mine = Factories.repository(user: user, agent_provider: "codex")
-        get legacy_repository_path(mine)
-        expect(response.body).to include("Agent:")
-        expect(response.body).to include("Codex")
-      end
-
-      it "labels retry failed with the repository default agent" do
-        mine = Factories.repository(user: user, agent_provider: "codex")
-        failed = Factories.job(repository: mine)
-        failed.current_run.update!(state: "failed", finished_at: Time.current)
-
-        get legacy_repository_path(mine)
-
-        expect(response.body).to include("Retry 1 failed with Codex")
-        expect(response.body).to include("Retry 1 failed job(s) with Codex?")
-      end
-
-      it "shows only jobs belonging to this repository" do
-        mine  = Factories.repository(user: user, owner: "acme", name: "widgets")
-        other = Factories.repository(user: user, owner: "acme", name: "other")
-        job_mine  = Factories.job(repository: mine)
-        job_other = Factories.job(repository: other)
-
-        get legacy_repository_path(mine)
-        expect(response.body).to include(job_path(job_mine))
-        expect(response.body).not_to include(job_path(job_other))
-      end
-
-      it "does not show another user's repository" do
-        foreign = Factories.repository(user: other, owner: "globex", name: "things")
-        get legacy_repository_path(foreign)
-        expect(response).to have_http_status(:not_found)
-      end
-
-      it "links the slug to GitHub" do
-        mine = Factories.repository(user: user, owner: "acme", name: "widgets")
-        get legacy_repository_path(mine)
-        expect(response.body).to include("https://github.com/acme/widgets")
-      end
-
-      describe "tabs" do
-        let(:repo) { Factories.repository(user: user) }
-
-        it "defaults to the overview tab" do
-          get legacy_repository_path(repo)
-          expect(response).to have_http_status(:ok)
-          expect(response.body).to include("Overview")
-          expect(response.body).to include("GitHub Issues")
-          expect(response.body).not_to include(">Proposals</a>")
-          # repository_chats_path is gone with the Repositories::ChatsController
-          # retirement; the assertion that the overview tab didn't link to it
-          # is also gone.
-          expect(response.body).to include("Recent jobs")
-        end
-
-        it "does not route repository-scoped proposals" do
-          expect {
-            Rails.application.routes.recognize_path("/repositories/#{repo.id}/proposals", method: :get)
-          }.to raise_error(ActionController::RoutingError)
-        end
-
-        it "renders the github_issues tab and fetches issues" do
-          fake_issue = double("issue",
-            number: 42, title: "Fix the thing", html_url: "https://github.com/test/repo/issues/42",
-            body: "description", state: "open", labels: [], user: nil,
-            created_at: 1.day.ago)
-          allow(GithubClient).to receive(:for).and_return(
-            instance_double(GithubClient, list_all_issues: [ fake_issue ])
-          )
-
-          get legacy_repository_path(repo, tab: "github_issues")
-          expect(response).to have_http_status(:ok)
-          expect(response.body).to include("Fix the thing")
-          expect(response.body).not_to include("Recent jobs")
-        end
-
-        it "shows an alert on the github_issues tab when no token is configured" do
-          allow(GithubClient).to receive(:for).and_raise(ArgumentError)
-
-          get legacy_repository_path(repo, tab: "github_issues")
-          expect(response).to have_http_status(:ok)
-          expect(flash[:alert]).to match(/No GitHub token/)
-        end
-
-        it "shows an alert on the github_issues tab when GitHub returns an error" do
-          allow(GithubClient).to receive(:for).and_return(
-            instance_double(GithubClient).tap { |d|
-              allow(d).to receive(:list_all_issues).and_raise(Octokit::Forbidden)
-            }
-          )
-
-          get legacy_repository_path(repo, tab: "github_issues")
-          expect(response).to have_http_status(:ok)
-          expect(flash[:alert]).to match(/GitHub error/)
-        end
-
-        it "ignores unknown tab values and falls back to overview" do
-          get legacy_repository_path(repo, tab: "hax")
-          expect(response).to have_http_status(:ok)
-          expect(response.body).to include("Recent jobs")
-        end
-      end
-
-      describe "pagination" do
-        let(:repo) { Factories.repository(user: user) }
-
-        it "shows no pagination controls when jobs fit on one page" do
-          3.times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get legacy_repository_path(repo)
-          expect(response.body).not_to include("← Previous")
-          expect(response.body).not_to include("Next →")
-        end
-
-        it "shows 'Showing X–Y of Z' counter and navigation when jobs exceed one page" do
-          (RepositoriesController::PER_PAGE + 2).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get legacy_repository_path(repo)
-          total = RepositoriesController::PER_PAGE + 2
-          expect(response.body).to include("Showing 1–#{RepositoriesController::PER_PAGE} of #{total}")
-          expect(response.body).to include("Next →")
-        end
-
-        it "renders a disabled Previous button on page 1" do
-          (RepositoriesController::PER_PAGE + 1).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get legacy_repository_path(repo)
-          expect(response.body).to match(/class="px-3 py-1 border border-gray-200 rounded text-gray-300"[^>]*>← Previous/)
-        end
-
-        it "renders a disabled Next button on the last page" do
-          (RepositoriesController::PER_PAGE + 1).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get legacy_repository_path(repo, page: 2)
-          expect(response.body).to match(/class="px-3 py-1 border border-gray-200 rounded text-gray-300"[^>]*>Next →/)
-        end
-
-        it "shows the correct range on page 2" do
-          (RepositoriesController::PER_PAGE + 3).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get legacy_repository_path(repo, page: 2)
-          total = RepositoriesController::PER_PAGE + 3
-          expect(response.body).to include("Showing #{RepositoriesController::PER_PAGE + 1}–#{total} of #{total}")
-        end
+        expect {
+          Rails.application.routes.recognize_path("/repositories/#{mine.id}/proposals", method: :get)
+        }.to raise_error(ActionController::RoutingError)
       end
     end
   end

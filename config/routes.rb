@@ -237,7 +237,6 @@ Rails.application.routes.draw do
   get "repositories/new", to: "spa#show", as: :new_repository
   get "repositories/:id/edit", to: "spa#show", as: :edit_repository, constraints: { id: /\d+/ }
   get "repositories/:id", to: "spa#show", as: :repository, constraints: { id: /\d+/ }
-  get "repositories/:id/legacy", to: "repositories#show", as: :legacy_repository, constraints: { id: /\d+/ }
   resources :repositories, only: [] do
     member do
       post :poll
