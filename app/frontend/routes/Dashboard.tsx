@@ -198,6 +198,8 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
   const queryClient = useQueryClient()
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [lanesOpen, setLanesOpen] = useState(false)
+  const columnsMenuRef = useRef<HTMLDivElement>(null)
+  const lanesMenuRef = useRef<HTMLDivElement>(null)
   const updatePreferences = useMutation({
     mutationFn: updateDashboardPreferences,
     onSuccess: () => {
@@ -226,6 +228,35 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
     })
   }
 
+  useEffect(() => {
+    if (!columnsOpen && !lanesOpen) return
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key !== "Escape") return
+
+      setColumnsOpen(false)
+      setLanesOpen(false)
+    }
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target
+      if (target instanceof Node) {
+        if (columnsOpen && columnsMenuRef.current?.contains(target)) return
+        if (lanesOpen && lanesMenuRef.current?.contains(target)) return
+      }
+
+      setColumnsOpen(false)
+      setLanesOpen(false)
+    }
+
+    window.addEventListener("keydown", closeOnEscape)
+    window.addEventListener("pointerdown", closeOnOutsidePointer)
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape)
+      window.removeEventListener("pointerdown", closeOnOutsidePointer)
+    }
+  }, [columnsOpen, lanesOpen])
+
   return (
     <div className="shrink-0">
       <div className="flex flex-wrap items-center justify-end gap-3">
@@ -241,7 +272,7 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
           ))}
         </nav>
         {payload.view === "list" ? (
-          <div className="relative">
+          <div className="relative" ref={columnsMenuRef}>
             <button
               aria-label="Columns"
               aria-controls="dashboard-columns-menu"
@@ -274,7 +305,7 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
           </div>
         ) : null}
         {payload.view === "kanban" ? (
-          <div className="relative">
+          <div className="relative" ref={lanesMenuRef}>
             <button
               aria-label="Kanban lanes"
               aria-controls="dashboard-kanban-lanes-menu"
