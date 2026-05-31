@@ -1,0 +1,529 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import type { FormEvent, ReactNode } from "react"
+import { useEffect, useState } from "react"
+import { Link, useLocation } from "react-router-dom"
+import { ApiError } from "../api/client"
+import {
+  addCredentialDocuments,
+  clearCredential,
+  deleteCredentialDocument,
+  fetchCredentials,
+  revokeApiToken,
+  rotateApiToken,
+  updateCredentials,
+  type CredentialsInput,
+  type CredentialsPayload,
+  type PersonalDocument
+} from "../api/credentials"
+
+const queryKey = ["credentials"] as const
+
+export function CredentialsRoute() {
+  const credentials = useQuery({
+    queryKey,
+    queryFn: fetchCredentials
+  })
+
+  return (
+    <main aria-label="My credentials" className="mx-auto max-w-4xl space-y-6 p-6">
+      <SettingsNav />
+      <header>
+        <h1 className="text-2xl font-semibold text-gray-900">My credentials</h1>
+        <p className="mt-1 text-sm text-gray-600">Encrypted credentials and account-scoped context for Syrus runs.</p>
+      </header>
+
+      {credentials.isPending ? <PanelMessage>Loading credentials...</PanelMessage> : null}
+      {credentials.isError ? <CredentialsError error={credentials.error} /> : null}
+      {credentials.isSuccess ? <CredentialsView payload={credentials.data} /> : null}
+    </main>
+  )
+}
+
+function CredentialsView({ payload }: { payload: CredentialsPayload }) {
+  const [notice, setNotice] = useState<string | null>(payload.message || null)
+
+  return (
+    <>
+      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <CredentialsForm onNotice={setNotice} payload={payload} />
+      <DocumentsPanel onNotice={setNotice} payload={payload} />
+      {payload.user.admin ? <ApiTokenPanel onNotice={setNotice} payload={payload} /> : null}
+    </>
+  )
+}
+
+function CredentialsForm({ payload, onNotice }: { payload: CredentialsPayload; onNotice: (message: string | null) => void }) {
+  const queryClient = useQueryClient()
+  const [values, setValues] = useState<CredentialsInput>(inputFromPayload(payload))
+  const save = useMutation({
+    mutationFn: () => updateCredentials(values),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setValues(inputFromPayload(updated))
+      onNotice(updated.message || "Credentials updated.")
+    }
+  })
+  const clear = useMutation({
+    mutationFn: (credential: string) => clearCredential(credential),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setValues(inputFromPayload(updated))
+      onNotice(updated.message || "Credential cleared.")
+    }
+  })
+
+  useEffect(() => {
+    setValues(inputFromPayload(payload))
+  }, [payload])
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onNotice(null)
+    save.mutate()
+  }
+
+  const codexSelected = values.agent_provider === "codex"
+  const claudeSelected = values.agent_provider === "claude"
+  const codexApiKeySelected = codexSelected && values.codex_auth_mode === "api_key"
+  const codexAuthJsonSelected = codexSelected && values.codex_auth_mode === "chatgpt_login"
+  const selectedAutoApprove = payload.options.auto_approve_modes.find((option) => option.value === values.auto_approve_mode)
+
+  return (
+    <section className="rounded border border-gray-200 bg-white p-5">
+      <form className="space-y-5" onSubmit={submit}>
+        {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save credentials.")}</PanelMessage> : null}
+        {clear.isError ? <PanelMessage tone="error">{errorMessage(clear.error, "Unable to clear credential.")}</PanelMessage> : null}
+
+        <Field label="Display name">
+          <input className={inputClass()} onChange={(event) => setValues({ ...values, name: event.target.value })} type="text" value={values.name} />
+        </Field>
+
+        <Field label="GitHub handle">
+          <input className={inputClass()} onChange={(event) => setValues({ ...values, github_handle: event.target.value })} type="text" value={values.github_handle} />
+        </Field>
+
+        <Field label="Agent provider">
+          <select className={inputClass()} onChange={(event) => setValues({ ...values, agent_provider: event.target.value })} value={values.agent_provider}>
+            {payload.options.agent_providers.map((provider) => <option key={provider} value={provider}>{titleize(provider)}</option>)}
+          </select>
+        </Field>
+
+        {claudeSelected ? (
+          <SecretField
+            clearPending={clear.isPending}
+            label="Claude OAuth token"
+            name="claude_oauth_token"
+            onChange={(value) => setValues({ ...values, claude_oauth_token: value })}
+            onClear={() => clear.mutate("claude_oauth_token")}
+            set={payload.credential_status.claude_oauth_token}
+            value={values.claude_oauth_token}
+          />
+        ) : null}
+
+        {codexSelected ? (
+          <Field label="Codex authentication">
+            <select className={inputClass()} onChange={(event) => setValues({ ...values, codex_auth_mode: event.target.value })} value={values.codex_auth_mode}>
+              <option value="api_key">API key</option>
+              <option value="chatgpt_login">ChatGPT auth.json</option>
+            </select>
+          </Field>
+        ) : null}
+
+        {codexApiKeySelected ? (
+          <SecretField
+            clearPending={clear.isPending}
+            label="Codex API key"
+            name="codex_api_key"
+            onChange={(value) => setValues({ ...values, codex_api_key: value })}
+            onClear={() => clear.mutate("codex_api_key")}
+            set={payload.credential_status.codex_api_key}
+            value={values.codex_api_key}
+          />
+        ) : null}
+
+        {codexAuthJsonSelected ? (
+          <SecretTextArea
+            clearPending={clear.isPending}
+            label="Codex ChatGPT auth.json"
+            name="codex_auth_json"
+            onChange={(value) => setValues({ ...values, codex_auth_json: value })}
+            onClear={() => clear.mutate("codex_auth_json")}
+            set={payload.credential_status.codex_auth_json}
+            value={values.codex_auth_json}
+          />
+        ) : null}
+
+        <SecretField
+          clearPending={clear.isPending}
+          label="GitHub token"
+          name="github_token"
+          onChange={(value) => setValues({ ...values, github_token: value })}
+          onClear={() => clear.mutate("github_token")}
+          set={payload.credential_status.github_token}
+          value={values.github_token}
+        />
+
+        <GithubRateLimit payload={payload} />
+
+        <Field label="Max turns">
+          <input
+            className={inputClass()}
+            max={payload.options.agent_max_turns.max}
+            min={payload.options.agent_max_turns.min}
+            onChange={(event) => setValues({ ...values, agent_max_turns: Number(event.target.value) })}
+            type="number"
+            value={values.agent_max_turns}
+          />
+        </Field>
+
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            checked={values.scheduling_paused}
+            className="mt-1 rounded border-gray-400"
+            onChange={(event) => setValues({ ...values, scheduling_paused: event.target.checked })}
+            type="checkbox"
+          />
+          <span>
+            <span className="block font-medium text-gray-700">Pause scheduling</span>
+            <span className="mt-1 block text-xs text-gray-500">Prevents your scheduled tasks from firing automatically.</span>
+          </span>
+        </label>
+
+        <Field label="Auto-approval fallback">
+          <select className={inputClass()} onChange={(event) => setValues({ ...values, auto_approve_mode: event.target.value })} value={values.auto_approve_mode}>
+            {payload.options.auto_approve_modes.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">{selectedAutoApprove?.preview}</p>
+        </Field>
+
+        <button className="rounded bg-blue-600 px-3.5 py-2.5 font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300" disabled={save.isPending} type="submit">
+          {save.isPending ? "Saving..." : "Save"}
+        </button>
+      </form>
+    </section>
+  )
+}
+
+function SecretField({
+  label,
+  name,
+  value,
+  set,
+  clearPending,
+  onChange,
+  onClear
+}: {
+  label: string
+  name: string
+  value: string
+  set: boolean
+  clearPending: boolean
+  onChange: (value: string) => void
+  onClear: () => void
+}) {
+  return (
+    <Field label={label}>
+      <StatusLine set={set} />
+      <div className="mt-2 flex gap-2">
+        <input aria-label={label} autoComplete="off" className={inputClass()} name={name} onChange={(event) => onChange(event.target.value)} type="password" value={value} />
+        {set ? (
+          <button className="rounded border border-gray-300 px-3 text-sm text-red-700 hover:bg-red-50 disabled:text-red-300" disabled={clearPending} onClick={onClear} type="button">
+            Clear
+          </button>
+        ) : null}
+      </div>
+    </Field>
+  )
+}
+
+function SecretTextArea({
+  label,
+  name,
+  value,
+  set,
+  clearPending,
+  onChange,
+  onClear
+}: {
+  label: string
+  name: string
+  value: string
+  set: boolean
+  clearPending: boolean
+  onChange: (value: string) => void
+  onClear: () => void
+}) {
+  return (
+    <Field label={label}>
+      <StatusLine set={set} />
+      <div className="mt-2 space-y-2">
+        <textarea aria-label={label} className={`${inputClass()} font-mono text-xs`} name={name} onChange={(event) => onChange(event.target.value)} rows={6} value={value} />
+        {set ? (
+          <button className="rounded border border-gray-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:text-red-300" disabled={clearPending} onClick={onClear} type="button">
+            Clear
+          </button>
+        ) : null}
+      </div>
+    </Field>
+  )
+}
+
+function DocumentsPanel({ payload, onNotice }: { payload: CredentialsPayload; onNotice: (message: string | null) => void }) {
+  const queryClient = useQueryClient()
+  const [files, setFiles] = useState<File[]>([])
+  const [googleDocUrl, setGoogleDocUrl] = useState("")
+  const upload = useMutation({
+    mutationFn: () => addCredentialDocuments(files, googleDocUrl),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setFiles([])
+      setGoogleDocUrl("")
+      onNotice(updated.message || "Document added.")
+    }
+  })
+  const destroy = useMutation({
+    mutationFn: (document: PersonalDocument) => deleteCredentialDocument(document.id),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(updated.message || "Document removed.")
+    }
+  })
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    onNotice(null)
+    upload.mutate()
+  }
+
+  return (
+    <section className="rounded border border-gray-200 bg-white p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Personal documents</h2>
+          <p className="mt-1 text-xs text-gray-500">Context attached to your account.</p>
+        </div>
+        <span className="text-xs text-gray-500">{payload.documents.length}</span>
+      </div>
+
+      <div className="mt-4 divide-y divide-gray-200 rounded border border-gray-200">
+        {payload.documents.length === 0 ? (
+          <p className="p-4 text-sm text-gray-500">No personal documents yet.</p>
+        ) : payload.documents.map((document) => (
+          <div className="flex items-center justify-between gap-3 p-3" key={document.id}>
+            <DocumentSummary document={document} />
+            <button
+              className="text-xs font-medium text-red-600 hover:text-red-700 disabled:text-red-300"
+              disabled={destroy.isPending}
+              onClick={() => {
+                if (window.confirm("Delete this document?")) destroy.mutate(document)
+              }}
+              type="button"
+            >
+              Delete
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <form className="mt-4 space-y-3" onSubmit={submit}>
+        {upload.isError ? <PanelMessage tone="error">{errorMessage(upload.error, "Unable to add document.")}</PanelMessage> : null}
+        {destroy.isError ? <PanelMessage tone="error">{errorMessage(destroy.error, "Unable to delete document.")}</PanelMessage> : null}
+        <Field label="Upload files">
+          <input
+            className="block w-full text-sm text-gray-700"
+            multiple
+            onChange={(event) => setFiles(Array.from(event.currentTarget.files || []))}
+            type="file"
+          />
+        </Field>
+        <Field label="Google Doc URL">
+          <input className={inputClass()} onChange={(event) => setGoogleDocUrl(event.target.value)} placeholder="https://docs.google.com/document/d/..." type="url" value={googleDocUrl} />
+        </Field>
+        <button className="rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:bg-gray-400" disabled={upload.isPending} type="submit">
+          {upload.isPending ? "Adding..." : "Add document"}
+        </button>
+      </form>
+    </section>
+  )
+}
+
+function ApiTokenPanel({ payload, onNotice }: { payload: CredentialsPayload; onNotice: (message: string | null) => void }) {
+  const queryClient = useQueryClient()
+  const [newToken, setNewToken] = useState(payload.new_api_token || "")
+  const rotate = useMutation({
+    mutationFn: rotateApiToken,
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setNewToken(updated.new_api_token || "")
+      onNotice(updated.message || "API token rotated.")
+    }
+  })
+  const revoke = useMutation({
+    mutationFn: revokeApiToken,
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setNewToken("")
+      onNotice(updated.message || "API token revoked.")
+    }
+  })
+
+  return (
+    <section className="rounded border border-gray-200 bg-white p-5">
+      <h2 className="text-base font-semibold text-gray-900">API token</h2>
+      <p className="mt-1 text-xs text-gray-500">Admin token for `/api/v1/admin/*` automation. Plaintext is shown once after rotation.</p>
+
+      {newToken ? (
+        <div className="mt-3 rounded border border-emerald-200 bg-emerald-50 p-3">
+          <div className="text-xs font-medium uppercase text-emerald-700">New token</div>
+          <code className="mt-1 block break-all font-mono text-sm">{newToken}</code>
+        </div>
+      ) : payload.credential_status.api_token ? (
+        <p className="mt-3 text-xs text-gray-500">A token is set.</p>
+      ) : (
+        <p className="mt-3 text-xs text-amber-600">No token issued yet.</p>
+      )}
+
+      {rotate.isError ? <PanelMessage tone="error">{errorMessage(rotate.error, "Unable to rotate API token.")}</PanelMessage> : null}
+      {revoke.isError ? <PanelMessage tone="error">{errorMessage(revoke.error, "Unable to revoke API token.")}</PanelMessage> : null}
+
+      <div className="mt-3 flex gap-2">
+        <button
+          className="rounded bg-gray-200 px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-300 disabled:bg-gray-100"
+          disabled={rotate.isPending}
+          onClick={() => {
+            if (!payload.credential_status.api_token || window.confirm("Rotate the API token? Existing scripts using the old token will stop working immediately.")) {
+              rotate.mutate()
+            }
+          }}
+          type="button"
+        >
+          {payload.credential_status.api_token ? "Rotate token" : "Generate token"}
+        </button>
+        {payload.credential_status.api_token ? (
+          <button
+            className="rounded bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-100 disabled:text-red-300"
+            disabled={revoke.isPending}
+            onClick={() => {
+              if (window.confirm("Revoke the API token? All API calls using it will start returning 401.")) revoke.mutate()
+            }}
+            type="button"
+          >
+            Revoke
+          </button>
+        ) : null}
+      </div>
+    </section>
+  )
+}
+
+function SettingsNav() {
+  const location = useLocation()
+  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
+
+  return (
+    <nav className="flex gap-6 border-b border-gray-200 text-sm" aria-label="Settings">
+      <Link className={navClass(true)} to={`${prefix}/credentials/edit`}>My credentials</Link>
+      <Link className={navClass(false)} to={`${prefix}/cron_templates`}>Templates</Link>
+      <Link className={navClass(false)} to={`${prefix}/tags`}>Tags</Link>
+    </nav>
+  )
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block text-sm font-medium text-gray-700">
+      {label}
+      <div className="mt-2">{children}</div>
+    </label>
+  )
+}
+
+function StatusLine({ set }: { set: boolean }) {
+  return set ? (
+    <p className="mt-1 text-xs text-gray-500">Currently set. Submit a new value to replace.</p>
+  ) : (
+    <p className="mt-1 text-xs text-amber-600">Not set.</p>
+  )
+}
+
+function GithubRateLimit({ payload }: { payload: CredentialsPayload }) {
+  if (!payload.github_rate_limit) {
+    return <p className="text-xs text-gray-400">GitHub quota not yet recorded.</p>
+  }
+
+  return (
+    <p className="text-xs text-gray-500">
+      GitHub API quota: <strong>{payload.github_rate_limit.remaining}</strong> / {payload.github_rate_limit.limit} remaining ({payload.github_rate_limit.resource} bucket).
+    </p>
+  )
+}
+
+function DocumentSummary({ document }: { document: PersonalDocument }) {
+  if (document.kind === "google_doc" && document.google_doc_url) {
+    return (
+      <div className="min-w-0">
+        <a className="block truncate text-sm font-medium text-blue-700 hover:underline" href={document.google_doc_url} rel="noopener" target="_blank">{document.google_doc_url}</a>
+        <div className="mt-1 text-xs text-gray-500">Google Doc</div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="truncate text-sm font-medium text-gray-900">{document.filename || "File"}</div>
+      <div className="mt-1 text-xs text-gray-500">{document.content_type || "unknown"} · {formatBytes(document.byte_size)}</div>
+    </div>
+  )
+}
+
+function CredentialsError({ error }: { error: Error }) {
+  return <PanelMessage tone="error">{errorMessage(error, "Unable to load credentials.")}</PanelMessage>
+}
+
+function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" | "success" }) {
+  const colors = {
+    error: "border-red-200 bg-red-50 text-red-700",
+    success: "border-green-200 bg-green-50 text-green-700",
+    muted: "border-gray-200 bg-white text-gray-600"
+  }
+  return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
+}
+
+function inputClass() {
+  return "block w-full rounded border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-blue-600"
+}
+
+function navClass(active: boolean) {
+  return `border-b-2 pb-3 ${active ? "border-blue-600 font-medium text-blue-600" : "border-transparent text-gray-600 hover:text-gray-900"}`
+}
+
+function inputFromPayload(payload: CredentialsPayload): CredentialsInput {
+  return {
+    name: payload.user.name || "",
+    github_handle: payload.user.github_handle || "",
+    agent_provider: payload.user.agent_provider,
+    claude_oauth_token: "",
+    codex_auth_mode: payload.user.codex_auth_mode,
+    codex_api_key: "",
+    codex_auth_json: "",
+    github_token: "",
+    agent_max_turns: payload.user.agent_max_turns,
+    scheduling_paused: payload.user.scheduling_paused,
+    auto_approve_mode: payload.user.auto_approve_mode
+  }
+}
+
+function titleize(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase())
+}
+
+function formatBytes(value: number | null) {
+  if (!value) return "unknown size"
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function errorMessage(error: Error, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
+}

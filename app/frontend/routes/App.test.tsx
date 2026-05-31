@@ -1038,6 +1038,119 @@ describe("App", () => {
     })
     expect(await screen.findByText("Scheduled task disabled.")).toBeInTheDocument()
   })
+
+  it("renders the credentials route and updates account settings", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/credentials" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ name: "Ada Lovelace", message: "Credentials updated." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/credentials/edit"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "My credentials" })).toBeInTheDocument()
+    fireEvent.change(await screen.findByLabelText("Display name"), { target: { value: "Ada Lovelace" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/credentials",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin"
+        })
+      )
+    })
+    const patchCall = fetchSpy.mock.calls.find((call) => call[0] === "/api/v1/app/credentials" && call[1]?.method === "PATCH")
+    const patchBody = JSON.parse(String(patchCall?.[1]?.body))
+    expect(patchBody.user).toEqual(expect.objectContaining({
+      name: "Ada Lovelace",
+      claude_oauth_token: "",
+      codex_api_key: "",
+      codex_auth_json: "",
+      github_token: ""
+    }))
+    expect(await screen.findByText("Credentials updated.")).toBeInTheDocument()
+  })
+
+  it("rotates an admin API token from the credentials route", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/credentials/rotate_api_token" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ apiToken: true, newApiToken: "syrus_newtoken", message: "API token rotated." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ apiToken: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/credentials/edit"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("button", { name: "Rotate token" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Rotate token" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/credentials/rotate_api_token",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin"
+        })
+      )
+    })
+    expect(await screen.findByText("syrus_newtoken")).toBeInTheDocument()
+  })
+
+  it("uploads a personal document from the credentials route", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/credentials/documents" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ documents: [{ id: 8, kind: "google_doc", google_doc_url: "https://docs.google.com/document/d/user/edit", filename: null, content_type: null, byte_size: null, created_at: "2026-05-30T12:00:00Z" }], message: "Document added." })), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/credentials/edit"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "My credentials" })).toBeInTheDocument()
+    fireEvent.change(await screen.findByLabelText("Google Doc URL"), { target: { value: "https://docs.google.com/document/d/user/edit" } })
+    fireEvent.click(screen.getByRole("button", { name: "Add document" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/credentials/documents",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: expect.any(FormData)
+        })
+      )
+    })
+    expect(await screen.findByText("Document added.")).toBeInTheDocument()
+    expect(screen.getByText("https://docs.google.com/document/d/user/edit")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1110,5 +1223,59 @@ function repositoryScheduledTasksPayload(overrides: { state?: string; active?: b
     new_scheduled_task_path: "/repositories/3/scheduled_tasks/new",
     options: scheduledTaskOptions(),
     message: overrides.message
+  }
+}
+
+function credentialsPayload(overrides: {
+  name?: string
+  apiToken?: boolean
+  newApiToken?: string
+  message?: string
+  documents?: Array<Record<string, unknown>>
+} = {}) {
+  return {
+    user: {
+      id: 1,
+      email_address: "operator@example.com",
+      name: overrides.name ?? "Operator",
+      display_name: overrides.name ?? "Operator",
+      github_handle: "operator",
+      admin: true,
+      agent_provider: "claude",
+      codex_auth_mode: "api_key",
+      agent_max_turns: 200,
+      scheduling_paused: false,
+      auto_approve_mode: "never"
+    },
+    credential_status: {
+      github_token: true,
+      claude_oauth_token: true,
+      codex_api_key: false,
+      codex_auth_json: false,
+      api_token: overrides.apiToken ?? false
+    },
+    github_rate_limit: {
+      remaining: 4999,
+      limit: 5000,
+      resource: "core",
+      reset_at: "2026-05-30T13:00:00Z",
+      observed_at: "2026-05-30T12:00:00Z"
+    },
+    documents: overrides.documents || [],
+    options: {
+      agent_providers: ["claude", "codex"],
+      codex_auth_modes: ["api_key", "chatgpt_login"],
+      agent_max_turns: { min: 0, max: 1000 },
+      clearable_credentials: [
+        { value: "github_token", label: "GitHub token" },
+        { value: "claude_oauth_token", label: "Claude OAuth token" }
+      ],
+      auto_approve_modes: [
+        { value: "never", label: "Never", preview: "No direct rule; Jobs can still inherit a repository or user default." },
+        { value: "if_graders_pass", label: "If graders pass", preview: "Jobs using this rule enter landing after repo-committed graders pass." }
+      ]
+    },
+    message: overrides.message,
+    new_api_token: overrides.newApiToken
   }
 }
