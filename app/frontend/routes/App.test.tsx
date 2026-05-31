@@ -857,4 +857,204 @@ describe("App", () => {
       })
     )
   })
+
+  it("renders the scheduled tasks route from the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          active_tasks: [
+            {
+              id: 12,
+              name: "Weekly tests",
+              kind: "cron",
+              state: "scheduled",
+              repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+              schedule_label: "17 9 * * 1",
+              last_fired_at: null,
+              archived_at: null,
+              consecutive_failure_count: 0,
+              scheduled_task_path: "/scheduled_tasks/12"
+            }
+          ],
+          fired_one_shots: [],
+          archived_tasks: [],
+          options: scheduledTaskOptions()
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/scheduled_tasks"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Scheduled tasks" })).toBeInTheDocument()
+    expect(await screen.findByText("Weekly tests")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Weekly tests" })).toHaveAttribute("href", "/app-shell/scheduled_tasks/12")
+    expect(screen.getByText("acme/widgets")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/scheduled_tasks",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
+  it("renders scheduled task detail and pauses the task", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/scheduled_tasks/12/pause" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(scheduledTaskDetailPayload({ state: "paused", message: "Paused." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(scheduledTaskDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/scheduled_tasks/12"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toBeInTheDocument()
+    expect(await screen.findByText("Keep tests moving.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/scheduled_tasks/12/pause",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin"
+        })
+      )
+    })
+    expect(await screen.findByText("Paused.")).toBeInTheDocument()
+  })
+
+  it("renders the repository scheduled task form and creates a task", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories/3/scheduled_tasks?from_template=9" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(scheduledTaskDetailPayload({ message: "Scheduled task created." })), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            task: {
+              id: null,
+              name: "Weekly tests",
+              kind: "cron",
+              cron_expression: "0 9 * * 1",
+              fire_at: null,
+              pr_pileup_policy: "skip",
+              auto_approve_mode: "never",
+              prompt: "Keep tests moving.",
+              cron_template_id: 9
+            },
+            repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+            from_template: { id: 9, name: "Template", cron_template_path: "/cron_templates/9" },
+            options: scheduledTaskOptions()
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3/scheduled_tasks/new?from_template=9"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "New scheduled task" })).toBeInTheDocument()
+    expect(await screen.findByDisplayValue("Weekly tests")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Create task" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/scheduled_tasks?from_template=9",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({
+            scheduled_task: {
+              name: "Weekly tests",
+              prompt: "Keep tests moving.",
+              kind: "cron",
+              cron_expression: "0 9 * * 1",
+              fire_at: "",
+              pr_pileup_policy: "skip",
+              auto_approve_mode: "never"
+            }
+          })
+        })
+      )
+    })
+  })
 })
+
+function scheduledTaskOptions() {
+  return {
+    kinds: ["cron", "one_shot"],
+    pr_pileup_policies: ["skip", "pile", "replace"],
+    auto_approve_modes: [
+      { value: "never", label: "Never", preview: "No direct rule; Jobs can still inherit a repository or user default." },
+      { value: "if_graders_pass", label: "If graders pass", preview: "Jobs using this rule enter landing after repo-committed graders pass." }
+    ]
+  }
+}
+
+function scheduledTaskDetailPayload(overrides: { state?: string; message?: string } = {}) {
+  return {
+    task: {
+      id: 12,
+      name: "Weekly tests",
+      kind: "cron",
+      state: overrides.state || "scheduled",
+      repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+      schedule_label: "17 9 * * 1",
+      last_fired_at: null,
+      archived_at: null,
+      consecutive_failure_count: 0,
+      scheduled_task_path: "/scheduled_tasks/12",
+      prompt: "Keep tests moving.",
+      cron_expression: "0 9 * * 1",
+      hourly_cron_expression: "17 9 * * 1",
+      fire_at: null,
+      next_fire_at: "2026-05-31T09:17:00Z",
+      pr_pileup_policy: "skip",
+      auto_approve_mode: "never",
+      auto_approve_preview: "No direct rule; Jobs can still inherit a repository or user default.",
+      last_successful_fire_at: null,
+      archived: false,
+      fireable: true,
+      pausable: overrides.state !== "paused",
+      resumable: overrides.state === "paused",
+      editable: true
+    },
+    recent_jobs: [
+      {
+        id: 44,
+        state: "open",
+        closure_reason: null,
+        pr_number: 101,
+        external_pr_number: null,
+        created_at: "2026-05-30T12:00:00Z",
+        job_path: "/jobs/44"
+      }
+    ],
+    options: scheduledTaskOptions(),
+    message: overrides.message
+  }
+}
