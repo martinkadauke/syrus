@@ -125,6 +125,8 @@ export type DashboardFilterSchemaField = {
   bucket: string
   operators: string[]
   values?: Array<DashboardFilterOption | string>
+  typeahead?: boolean
+  expansions?: Record<string, unknown>
 }
 
 export type DashboardPayload = {

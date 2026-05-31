@@ -256,6 +256,7 @@ describe("App", () => {
   it("renders the app-shell dashboard route from the app dashboard API", async () => {
     let sortColumn = "created_at"
     let sortDirection = "desc"
+    let latestFilterTree: unknown = null
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/dashboard/preferences" && init?.method === "PATCH") {
@@ -303,9 +304,12 @@ describe("App", () => {
 
       if (
         path === "/api/v1/app/dashboard?view=list&subject=job" ||
-        path === "/api/v1/app/dashboard?view=list&state=open&subject=job" ||
+        path.startsWith("/api/v1/app/dashboard?view=list&q=") ||
         path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job"
       ) {
+        const q = new URL(path, "https://syrus.test").searchParams.get("q")
+        if (q) latestFilterTree = decodeFilterQ(q)
+
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -346,7 +350,6 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
-    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("")
     expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
     expect(screen.getByRole("link", { name: "New Epic" })).toHaveAttribute("href", "/app-shell/epics/new")
     expect(screen.getByRole("link", { name: "New Job" })).toHaveAttribute("href", "/app-shell/jobs/new")
@@ -362,21 +365,41 @@ describe("App", () => {
       })
     )
 
-    fireEvent.change(screen.getByRole("combobox", { name: "State" }), { target: { value: "open" } })
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+    fireEvent.change(screen.getByPlaceholderText("Search filters..."), { target: { value: "state" } })
+    fireEvent.click(screen.getByRole("button", { name: "State enum" }))
+    fireEvent.click(screen.getByRole("button", { name: "Apply filter" }))
 
     await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/dashboard?view=list&state=open&subject=job",
-        expect.objectContaining({
-          credentials: "same-origin",
-          headers: { Accept: "application/json" }
-        })
-      )
+      expect(latestFilterTree).toEqual({ and: [ { field: "state", op: "is", value: "open" } ] })
     })
-    expect(await screen.findByText("State: Any open")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringMatching(/^\/api\/v1\/app\/dashboard\?view=list&q=/),
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+    expect(await screen.findByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
 
-    fireEvent.change(screen.getByLabelText("Folder name"), { target: { value: "Open work" } })
+    fireEvent.click(await screen.findByRole("button", { name: "Add OR filter to State" }))
+    fireEvent.click(screen.getByRole("button", { name: "Kind enum" }))
+    fireEvent.click(screen.getByRole("button", { name: "Apply filter" }))
+
+    await waitFor(() => {
+      expect(latestFilterTree).toEqual({
+        and: [
+          {
+            or: [
+              { field: "state", op: "is", value: "open" },
+              { field: "kind", op: "is", value: "issue" }
+            ]
+          }
+        ]
+      })
+    })
+
+    fireEvent.change(await screen.findByLabelText("Folder name"), { target: { value: "Open work" } })
     fireEvent.click(screen.getByRole("button", { name: "Save folder" }))
 
     await waitFor(() => {
@@ -390,7 +413,7 @@ describe("App", () => {
             "Content-Type": "application/json"
           }),
           body: JSON.stringify({
-            state: "open",
+            filter: JSON.stringify(latestFilterTree),
             subject_type: "job",
             smart_folder: { name: "Open work" }
           })
@@ -4281,6 +4304,11 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
     ...payload,
     ...overrides
   }
+}
+
+function decodeFilterQ(q: string) {
+  const padded = q.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(q.length / 4) * 4, "=")
+  return JSON.parse(decodeURIComponent(escape(atob(padded))))
 }
 
 function dashboardJobItem(overrides: Record<string, unknown> = {}) {
