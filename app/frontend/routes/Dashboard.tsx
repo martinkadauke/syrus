@@ -36,7 +36,7 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
         <section className="min-w-0 space-y-4">
           <DashboardToolbar pathname={pathname} search={search} payload={payload} />
           <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
-          <DashboardTable payload={payload} />
+          <DashboardTable payload={payload} prefix={prefix} />
           {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
         </section>
       </div>
@@ -285,21 +285,21 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
   )
 }
 
-function DashboardTable({ payload }: { payload: DashboardPayload }) {
-  if (payload.view === "kanban") return <DashboardKanban payload={payload} />
+function DashboardTable({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
+  if (payload.view === "kanban") return <DashboardKanban payload={payload} prefix={prefix} />
 
   if (payload.items.length === 0) {
     return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">No {subjectLabel(payload.subject, 2)} match this view.</div>
   }
 
   const columns = dashboardVisibleColumns(payload)
-  if (payload.subject === "job") return <JobsDashboardTable columns={columns} items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} />
-  if (payload.subject === "workflow") return <WorkflowsTable columns={columns} items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} />
+  if (payload.subject === "job") return <JobsDashboardTable columns={columns} items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} prefix={prefix} />
+  if (payload.subject === "workflow") return <WorkflowsTable columns={columns} items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} prefix={prefix} />
 
-  return <EpicsTable columns={columns} items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} />
+  return <EpicsTable columns={columns} items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} prefix={prefix} />
 }
 
-function DashboardKanban({ payload }: { payload: DashboardPayload }) {
+function DashboardKanban({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
   if (payload.lanes.length === 0) {
     return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">No kanban lanes are configured.</div>
   }
@@ -308,14 +308,14 @@ function DashboardKanban({ payload }: { payload: DashboardPayload }) {
     <div className="overflow-x-auto pb-2">
       <div className="grid min-w-[56rem] gap-3" style={{ gridTemplateColumns: `repeat(${payload.lanes.length}, minmax(14rem, 1fr))` }}>
         {payload.lanes.map((lane) => (
-          <KanbanLane key={lane.key} lane={lane} subject={payload.subject} />
+          <KanbanLane key={lane.key} lane={lane} prefix={prefix} subject={payload.subject} />
         ))}
       </div>
     </div>
   )
 }
 
-function KanbanLane({ lane, subject }: { lane: DashboardLane; subject: DashboardSubject }) {
+function KanbanLane({ lane, prefix, subject }: { lane: DashboardLane; prefix: string; subject: DashboardSubject }) {
   return (
     <section className="min-h-64 rounded border border-gray-200 bg-gray-50">
       <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
@@ -324,17 +324,17 @@ function KanbanLane({ lane, subject }: { lane: DashboardLane; subject: Dashboard
       </header>
       <div className="space-y-2 p-2">
         {lane.items.length === 0 ? <p className="px-1 py-2 text-sm text-gray-400">No {subjectLabel(subject, 2)}</p> : null}
-        {lane.items.map((item) => <KanbanCard item={item} key={`${item.type}-${item.id}`} />)}
+        {lane.items.map((item) => <KanbanCard item={item} key={`${item.type}-${item.id}`} prefix={prefix} />)}
       </div>
     </section>
   )
 }
 
-function KanbanCard({ item }: { item: DashboardItem }) {
+function KanbanCard({ item, prefix }: { item: DashboardItem; prefix: string }) {
   if (item.type === "job") {
     return (
       <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
-        <a className="text-sm font-medium text-blue-600 hover:underline" href={item.paths.job_path}>{item.title}</a>
+        <Link className="text-sm font-medium text-blue-600 hover:underline" to={withRoutePrefix(item.paths.job_path, prefix)}>{item.title}</Link>
         <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
           <StatePill state={item.summary_state} />
           <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.repository.slug}</span>
@@ -348,7 +348,7 @@ function KanbanCard({ item }: { item: DashboardItem }) {
     return (
       <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
         <div className="text-sm font-medium text-gray-900">Workflow #{item.id}</div>
-        <a className="mt-1 block text-sm text-blue-600 hover:underline" href={item.job.path}>{item.job.title}</a>
+        <Link className="mt-1 block text-sm text-blue-600 hover:underline" to={withRoutePrefix(item.job.path, prefix)}>{item.job.title}</Link>
         <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
           <StatePill state={item.state} />
           <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.trigger_kind}</span>
@@ -359,7 +359,7 @@ function KanbanCard({ item }: { item: DashboardItem }) {
 
   return (
     <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
-      <a className="text-sm font-medium text-blue-600 hover:underline" href={item.paths.epic_path}>{item.title}</a>
+      <Link className="text-sm font-medium text-blue-600 hover:underline" to={withRoutePrefix(item.paths.epic_path, prefix)}>{item.title}</Link>
       <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
         <StatePill state={item.state} />
         <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.repository.slug}</span>
@@ -368,7 +368,7 @@ function KanbanCard({ item }: { item: DashboardItem }) {
   )
 }
 
-function JobsDashboardTable({ items, columns }: { items: DashboardJobItem[]; columns: string[] }) {
+function JobsDashboardTable({ items, columns, prefix }: { items: DashboardJobItem[]; columns: string[]; prefix: string }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const visibleIds = useMemo(() => items.map((item) => item.id), [items])
   const selectedArray = useMemo(() => Array.from(selectedIds), [selectedIds])
@@ -407,6 +407,7 @@ function JobsDashboardTable({ items, columns }: { items: DashboardJobItem[]; col
         items={items}
         onToggleAll={toggleAll}
         onToggleOne={toggleOne}
+        prefix={prefix}
         selectedIds={selectedIds}
       />
     </div>
@@ -455,7 +456,8 @@ function JobsTable({
   selectedIds,
   allSelected,
   onToggleAll,
-  onToggleOne
+  onToggleOne,
+  prefix
 }: {
   items: DashboardJobItem[]
   columns: string[]
@@ -463,6 +465,7 @@ function JobsTable({
   allSelected: boolean
   onToggleAll: () => void
   onToggleOne: (id: number) => void
+  prefix: string
 }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
@@ -479,7 +482,7 @@ function JobsTable({
         <tbody className="divide-y divide-gray-100">
           {items.map((job) => (
             <tr key={job.id}>
-              {columns.map((column) => <JobCell column={column} job={job} key={column} onToggleOne={onToggleOne} selected={selectedIds.has(job.id)} />)}
+              {columns.map((column) => <JobCell column={column} job={job} key={column} onToggleOne={onToggleOne} prefix={prefix} selected={selectedIds.has(job.id)} />)}
             </tr>
           ))}
         </tbody>
@@ -488,14 +491,14 @@ function JobsTable({
   )
 }
 
-function JobCell({ job, column, selected, onToggleOne }: { job: DashboardJobItem; column: string; selected: boolean; onToggleOne: (id: number) => void }) {
+function JobCell({ job, column, selected, onToggleOne, prefix }: { job: DashboardJobItem; column: string; selected: boolean; onToggleOne: (id: number) => void; prefix: string }) {
   if (column === "checkbox") {
     return <td className="px-4 py-3 align-top"><input aria-label={`Select ${job.title}`} checked={selected} onChange={() => onToggleOne(job.id)} type="checkbox" /></td>
   }
   if (column === "issue" || column === "title") {
     return (
       <td className="max-w-md px-4 py-3">
-        <a className="font-medium text-blue-600 hover:underline" href={job.paths.job_path}>{job.title}</a>
+        <Link className="font-medium text-blue-600 hover:underline" to={withRoutePrefix(job.paths.job_path, prefix)}>{job.title}</Link>
         <div className="mt-1 flex flex-wrap gap-1 text-xs text-gray-500">
           <span>#{job.issue_number || job.id}</span>
           {job.pr_number ? <span>PR #{job.pr_number}</span> : null}
@@ -512,7 +515,7 @@ function JobCell({ job, column, selected, onToggleOne }: { job: DashboardJobItem
   return <td className="px-4 py-3 text-gray-500">{formatDate(jobDateValue(job, column))}</td>
 }
 
-function EpicsTable({ items, columns }: { items: DashboardEpicItem[]; columns: string[] }) {
+function EpicsTable({ items, columns, prefix }: { items: DashboardEpicItem[]; columns: string[]; prefix: string }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -524,7 +527,7 @@ function EpicsTable({ items, columns }: { items: DashboardEpicItem[]; columns: s
         <tbody className="divide-y divide-gray-100">
           {items.map((epic) => (
             <tr key={epic.id}>
-              {columns.map((column) => <EpicCell column={column} epic={epic} key={column} />)}
+              {columns.map((column) => <EpicCell column={column} epic={epic} key={column} prefix={prefix} />)}
             </tr>
           ))}
         </tbody>
@@ -533,11 +536,11 @@ function EpicsTable({ items, columns }: { items: DashboardEpicItem[]; columns: s
   )
 }
 
-function EpicCell({ epic, column }: { epic: DashboardEpicItem; column: string }) {
+function EpicCell({ epic, column, prefix }: { epic: DashboardEpicItem; column: string; prefix: string }) {
   if (column === "epic") {
     return (
       <td className="max-w-md px-4 py-3">
-        <a className="font-medium text-blue-600 hover:underline" href={epic.paths.epic_path}>{epic.title}</a>
+        <Link className="font-medium text-blue-600 hover:underline" to={withRoutePrefix(epic.paths.epic_path, prefix)}>{epic.title}</Link>
         <div className="mt-1 font-mono text-xs text-gray-500">{epic.display_number}</div>
       </td>
     )
@@ -549,7 +552,7 @@ function EpicCell({ epic, column }: { epic: DashboardEpicItem; column: string })
   return <td className="px-4 py-3 text-gray-500">{formatDate(epicDateValue(epic, column))}</td>
 }
 
-function WorkflowsTable({ items, columns }: { items: DashboardWorkflowItem[]; columns: string[] }) {
+function WorkflowsTable({ items, columns, prefix }: { items: DashboardWorkflowItem[]; columns: string[]; prefix: string }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -561,7 +564,7 @@ function WorkflowsTable({ items, columns }: { items: DashboardWorkflowItem[]; co
         <tbody className="divide-y divide-gray-100">
           {items.map((workflow) => (
             <tr key={workflow.id}>
-              {columns.map((column) => <WorkflowCell column={column} key={column} workflow={workflow} />)}
+              {columns.map((column) => <WorkflowCell column={column} key={column} prefix={prefix} workflow={workflow} />)}
             </tr>
           ))}
         </tbody>
@@ -570,13 +573,13 @@ function WorkflowsTable({ items, columns }: { items: DashboardWorkflowItem[]; co
   )
 }
 
-function WorkflowCell({ workflow, column }: { workflow: DashboardWorkflowItem; column: string }) {
+function WorkflowCell({ workflow, column, prefix }: { workflow: DashboardWorkflowItem; column: string; prefix: string }) {
   if (column === "workflow" || column === "title") return <td className="px-4 py-3 font-medium text-gray-900">Workflow #{workflow.id}</td>
   if (column === "state") return <td className="px-4 py-3"><StatePill state={workflow.state} /></td>
   if (column === "job") {
     return (
       <td className="max-w-md px-4 py-3">
-        <a className="font-medium text-blue-600 hover:underline" href={workflow.job.path}>{workflow.job.title}</a>
+        <Link className="font-medium text-blue-600 hover:underline" to={withRoutePrefix(workflow.job.path, prefix)}>{workflow.job.title}</Link>
         <div className="mt-1 font-mono text-xs text-gray-500">{workflow.job.repository.slug}</div>
       </td>
     )

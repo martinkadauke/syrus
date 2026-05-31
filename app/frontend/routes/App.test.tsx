@@ -319,6 +319,7 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Dashboard" })).toBeInTheDocument()
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
     expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("")
@@ -531,6 +532,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Running" })).toBeInTheDocument()
     expect(screen.getByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.queryByText(/Showing/)).not.toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/dashboard?view=kanban&subject=job",
