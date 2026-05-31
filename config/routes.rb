@@ -41,6 +41,7 @@ Rails.application.routes.draw do
           post "console/clear_github_cache", to: "console#clear_github_cache"
           get "installations", to: "installations#index"
           post "installations/refresh", to: "installations#refresh"
+          resources :invitations, only: %i[ index create destroy ]
         end
       end
 
