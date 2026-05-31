@@ -199,14 +199,15 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
         {payload.view === "list" ? (
           <div className="relative">
             <button
+              aria-label="Columns"
               aria-controls="dashboard-columns-menu"
               aria-expanded={columnsOpen}
               aria-haspopup="menu"
-              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              className="inline-flex h-9 w-9 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
               onClick={() => setColumnsOpen((open) => !open)}
               type="button"
             >
-              Columns
+              <ColumnsIcon />
             </button>
             {columnsOpen ? (
               <div className="absolute right-0 z-20 mt-2 w-64 rounded border border-gray-200 bg-white p-3 shadow-lg" id="dashboard-columns-menu" role="menu">
@@ -248,6 +249,14 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
       </div>
       {updatePreferences.isError ? <p className="mt-1 text-right text-sm text-red-700" role="alert">{errorMessage(updatePreferences.error, "Unable to update dashboard preferences.")}</p> : null}
     </div>
+  )
+}
+
+function ColumnsIcon() {
+  return (
+    <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+      <path d="M7 4v16M17 4v16M5 5h14M5 12h14M5 19h14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+    </svg>
   )
 }
 

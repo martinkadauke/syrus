@@ -484,7 +484,10 @@ describe("App", () => {
     })
     expect(within(await screen.findByRole("button", { name: "Sort by Issue descending" })).getByText("↑")).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "Columns" }))
+    const columnsButton = screen.getByRole("button", { name: "Columns" })
+    expect(columnsButton).toHaveClass("h-9", "w-9")
+    expect(columnsButton).not.toHaveTextContent("Columns")
+    fireEvent.click(columnsButton)
     expect(screen.getByRole("group", { name: "Visible columns" })).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText("Workflows count"))
 
