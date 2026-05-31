@@ -16,6 +16,7 @@ Rails.application.routes.draw do
       namespace :app do
         get "bootstrap", to: "bootstrap#show"
         resources :tags, only: %i[ index create update destroy ]
+        resources :smart_folders, only: %i[ index update destroy ]
 
         namespace :admin do
           get "overview", to: "overview#show"
