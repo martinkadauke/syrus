@@ -1312,6 +1312,61 @@ describe("App", () => {
     })
     expect(await screen.findByText("Polling acme/widgets now.")).toBeInTheDocument()
   })
+
+  it("renders the new epic form and submits it to the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/epics" && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              error: {
+                code: "validation_failed",
+                message: "Title can't be blank"
+              }
+            }),
+            { status: 422, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(epicFormPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/epics/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "New Epic" })).toBeInTheDocument()
+    fireEvent.change(await screen.findByLabelText("Title"), { target: { value: "Raise the forum" } })
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Install tasteful columns." } })
+    fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "3" } })
+    fireEvent.change(screen.getByLabelText("GitHub issue URL"), { target: { value: "https://github.com/acme/widgets/issues/12" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create Epic" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/epics",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({
+            epic: {
+              title: "Raise the forum",
+              description: "Install tasteful columns.",
+              repository_id: "3",
+              github_issue_url: "https://github.com/acme/widgets/issues/12"
+            }
+          })
+        })
+      )
+    })
+    expect(await screen.findByText("Title can't be blank")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1534,5 +1589,25 @@ function repositoriesPayload(overrides: { message?: string } = {}) {
     ],
     new_repository_path: "/repositories/new",
     message: overrides.message
+  }
+}
+
+function epicFormPayload() {
+  return {
+    epic: {
+      id: null,
+      title: "",
+      description: "",
+      repository_id: null,
+      github_issue_url: "",
+      epic_path: null
+    },
+    repositories: [
+      {
+        id: 3,
+        slug: "acme/widgets"
+      }
+    ],
+    dashboard_epics_path: "/dashboard/epics"
   }
 }

@@ -1,0 +1,153 @@
+import { useMutation, useQuery } from "@tanstack/react-query"
+import type { FormEvent, ReactNode } from "react"
+import { useEffect, useState } from "react"
+import { useParams } from "react-router-dom"
+import { ApiError } from "../api/client"
+import {
+  createEpic,
+  fetchEditEpicForm,
+  fetchNewEpicForm,
+  type EpicFormPayload,
+  type EpicInput,
+  updateEpic
+} from "../api/epics"
+
+export function EpicFormRoute({ mode }: { mode: "new" | "edit" }) {
+  const params = useParams()
+  const id = params.id || ""
+  const form = useQuery({
+    queryKey: ["epics", mode, id],
+    queryFn: () => mode === "new" ? fetchNewEpicForm() : fetchEditEpicForm(id),
+    enabled: mode === "new" || id.length > 0
+  })
+
+  return (
+    <main aria-label={mode === "new" ? "New Epic" : "Edit Epic"} className="mx-auto max-w-2xl space-y-6 p-6">
+      {form.isPending ? <PanelMessage>Loading epic form...</PanelMessage> : null}
+      {form.isError ? <PanelMessage tone="error">{errorMessage(form.error, "Unable to load epic form.")}</PanelMessage> : null}
+      {form.isSuccess ? <EpicForm mode={mode} payload={form.data} /> : null}
+    </main>
+  )
+}
+
+function EpicForm({ mode, payload }: { mode: "new" | "edit"; payload: EpicFormPayload }) {
+  const [values, setValues] = useState<EpicInput>(() => inputFromPayload(payload))
+  const save = useMutation({
+    mutationFn: () => {
+      if (mode === "new") return createEpic(values)
+      return updateEpic(Number(payload.epic.id), values)
+    },
+    onSuccess: (saved) => {
+      window.location.assign(saved.redirect_to)
+    }
+  })
+
+  useEffect(() => {
+    setValues(inputFromPayload(payload))
+  }, [payload])
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    save.mutate()
+  }
+
+  return (
+    <>
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <h1 className="text-2xl font-semibold text-gray-900">{mode === "new" ? "New Epic" : "Edit Epic"}</h1>
+        {mode === "edit" && payload.epic.epic_path ? <a className="text-sm text-blue-600 underline hover:no-underline" href={payload.epic.epic_path}>Back to Epic</a> : null}
+      </header>
+
+      {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save Epic.")}</PanelMessage> : null}
+
+      <form className="space-y-5" onSubmit={submit}>
+        <Field label="Title">
+          <input
+            className={inputClass()}
+            onChange={(event) => setValues({ ...values, title: event.target.value })}
+            required
+            type="text"
+            value={values.title}
+          />
+        </Field>
+
+        <Field label="Description">
+          <textarea
+            className={inputClass()}
+            onChange={(event) => setValues({ ...values, description: event.target.value })}
+            rows={8}
+            value={values.description}
+          />
+        </Field>
+
+        <Field label="Repository">
+          <select
+            className={inputClass()}
+            onChange={(event) => setValues({ ...values, repository_id: event.target.value })}
+            required
+            value={values.repository_id}
+          >
+            <option value="">Select a repository</option>
+            {payload.repositories.map((repository) => (
+              <option key={repository.id} value={repository.id}>{repository.slug}</option>
+            ))}
+          </select>
+        </Field>
+
+        <Field label="GitHub issue URL">
+          <input
+            className={`${inputClass()} font-mono`}
+            onChange={(event) => setValues({ ...values, github_issue_url: event.target.value })}
+            type="text"
+            value={values.github_issue_url}
+          />
+        </Field>
+
+        <div className="flex items-center gap-3">
+          <button
+            className="rounded bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300"
+            disabled={save.isPending}
+            type="submit"
+          >
+            {save.isPending ? "Saving..." : mode === "new" ? "Create Epic" : "Save Epic"}
+          </button>
+          <a className="text-sm text-gray-600 hover:text-gray-900" href={mode === "new" ? payload.dashboard_epics_path : payload.epic.epic_path || payload.dashboard_epics_path}>Cancel</a>
+        </div>
+      </form>
+    </>
+  )
+}
+
+function inputFromPayload(payload: EpicFormPayload): EpicInput {
+  return {
+    title: payload.epic.title,
+    description: payload.epic.description,
+    repository_id: payload.epic.repository_id ? String(payload.epic.repository_id) : "",
+    github_issue_url: payload.epic.github_issue_url
+  }
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="block text-sm font-medium text-gray-700">
+      {label}
+      <div className="mt-2">{children}</div>
+    </label>
+  )
+}
+
+function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
+  const colors = {
+    error: "border-red-200 bg-red-50 text-red-700",
+    muted: "border-gray-200 bg-white text-gray-600"
+  }
+  return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
+}
+
+function inputClass() {
+  return "block w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:outline-blue-600"
+}
+
+function errorMessage(error: Error, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
+}

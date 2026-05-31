@@ -15,6 +15,7 @@ import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
 import { CredentialsRoute } from "./Credentials"
 import { CronTemplateDetailRoute, CronTemplateFormRoute, CronTemplatesIndex } from "./CronTemplates"
 import { DirectJobNewRoute } from "./DirectJobNew"
+import { EpicFormRoute } from "./EpicForm"
 import { RepositoriesIndex } from "./Repositories"
 import { RepositoryDocumentsRoute } from "./RepositoryDocuments"
 import { RepositoryScheduledTasksRoute } from "./RepositoryScheduledTasks"
@@ -56,6 +57,8 @@ export function App() {
       <Route path="/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
       <Route path="/repositories" element={<RepositoriesIndex />} />
       <Route path="/jobs/new" element={<DirectJobNewRoute />} />
+      <Route path="/epics/new" element={<EpicFormRoute mode="new" />} />
+      <Route path="/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
@@ -85,6 +88,8 @@ export function App() {
       <Route path="/app-shell/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
       <Route path="/app-shell/repositories" element={<RepositoriesIndex />} />
       <Route path="/app-shell/jobs/new" element={<DirectJobNewRoute />} />
+      <Route path="/app-shell/epics/new" element={<EpicFormRoute mode="new" />} />
+      <Route path="/app-shell/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )
