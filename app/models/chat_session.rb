@@ -1,4 +1,6 @@
 class ChatSession < ApplicationRecord
+  MESSAGE_PAGE_SIZE = 30
+
   belongs_to :user
 
   has_many :chat_attachments, dependent: :destroy

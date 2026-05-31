@@ -1,5 +1,5 @@
 class ChatsController < ApplicationController
-  PAGE_SIZE = 30
+  PAGE_SIZE = ChatSession::MESSAGE_PAGE_SIZE
 
   before_action :load_chat_session, except: %i[ new create ]
   before_action :load_pending_action, only: %i[ confirm_pending_action destroy_pending_action ]

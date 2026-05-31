@@ -2,7 +2,7 @@ module Api
   module V1
     module App
       class ChatsController < BaseController
-        PAGE_SIZE = ::ChatsController::PAGE_SIZE
+        PAGE_SIZE = ChatSession::MESSAGE_PAGE_SIZE
 
         def new
           render json: form_payload
