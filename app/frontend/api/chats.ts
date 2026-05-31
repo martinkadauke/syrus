@@ -32,7 +32,6 @@ export type ChatProposal = {
   title: string
   slug: string
   body: string
-  body_html: string
   proposed: boolean
   resolved: boolean
   epic_bundle: boolean
@@ -52,7 +51,6 @@ export type ChatProposalChild = {
   title: string
   slug: string
   body: string
-  body_html: string
   state: string
   state_label: string
   proposed: boolean
@@ -73,7 +71,6 @@ export type ChatMessageItem = {
   id: number
   role: "user" | "assistant" | "tool_use" | "tool_result" | "system"
   text: string
-  html: string
   bookmarkable: boolean
   bookmark_path: string
   proposal?: ChatProposal | null
@@ -158,6 +155,7 @@ export type ChatPayload = {
     new_chat_path: string
     credentials_path: string
     repositories_path: string
+    app_messages_path: string
     app_message_path: string
     app_stop_path: string
     app_refresh_path: string
@@ -168,8 +166,17 @@ export type ChatPayload = {
   }
 }
 
+export type ChatMessagesPayload = {
+  has_more_older: boolean
+  messages: ChatRenderItem[]
+}
+
 export function fetchChat(id: string) {
   return getJson<ChatPayload>(`/api/v1/app/chats/${id}`)
+}
+
+export function fetchChatMessages(path: string, before: number) {
+  return getJson<ChatMessagesPayload>(`${path}?before=${encodeURIComponent(String(before))}`)
 }
 
 export function fetchNewChat() {

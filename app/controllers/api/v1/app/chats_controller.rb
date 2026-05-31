@@ -15,6 +15,17 @@ module Api
           render json: chat_payload(find_chat_session)
         end
 
+        def messages
+          chat_session = find_chat_session
+          before_id = Integer(params[:before], exception: false)
+          messages, has_more_older = paginated_before(chat_session, before_id)
+
+          render json: {
+            has_more_older: has_more_older,
+            messages: grouped_messages_json(messages, repository: chat_session.repository)
+          }
+        end
+
         def create
           chat_session = create_chat_session
 
@@ -113,6 +124,7 @@ module Api
               new_chat_path: new_chat_path,
               credentials_path: edit_credentials_path,
               repositories_path: repositories_path,
+              app_messages_path: "/api/v1/app/chats/#{chat_session.id}/messages",
               app_message_path: "/api/v1/app/chats/#{chat_session.id}/message",
               app_stop_path: "/api/v1/app/chats/#{chat_session.id}/stop",
               app_refresh_path: "/api/v1/app/chats/#{chat_session.id}/refresh",
@@ -125,10 +137,22 @@ module Api
         end
 
         def paginated_tail(chat_session)
-          scope = chat_session.messages.includes(proposal: [ :repository, :job, :epic, :target_epic, dependencies: [], child_proposals: [ :repository, dependencies: [] ] ])
+          scope = message_scope(chat_session)
           fetched = scope.order(created_at: :desc, id: :desc).limit(PAGE_SIZE + 1).to_a
           has_more = fetched.size > PAGE_SIZE
           [ fetched.first(PAGE_SIZE).reverse, has_more ]
+        end
+
+        def paginated_before(chat_session, before_id)
+          scope = message_scope(chat_session)
+          scope = scope.where("id < ?", before_id) if before_id&.positive?
+          fetched = scope.order(created_at: :desc, id: :desc).limit(PAGE_SIZE + 1).to_a
+          has_more = fetched.size > PAGE_SIZE
+          [ fetched.first(PAGE_SIZE).reverse, has_more ]
+        end
+
+        def message_scope(chat_session)
+          chat_session.messages.includes(proposal: [ :repository, :job, :epic, :target_epic, dependencies: [], child_proposals: [ :repository, dependencies: [] ] ])
         end
 
         def grouped_messages_json(messages, repository:)
@@ -165,7 +189,6 @@ module Api
             id: message.id,
             role: message.role,
             text: text,
-            html: markdown_html(text),
             bookmarkable: message.bookmarkable?,
             bookmark_path: chat_bookmarks_path(message.chat_session)
           }
@@ -197,7 +220,6 @@ module Api
             title: proposal.title,
             slug: proposal.slug,
             body: proposal.body,
-            body_html: markdown_html(proposal.body),
             proposed: proposal.proposed?,
             resolved: proposal.resolved?,
             epic_bundle: proposal.epic_bundle?,
@@ -228,7 +250,6 @@ module Api
             title: proposal.title,
             slug: proposal.slug,
             body: proposal.body,
-            body_html: markdown_html(proposal.body),
             state: proposal.state,
             state_label: proposal.state.humanize,
             proposed: proposal.proposed?,
@@ -475,9 +496,6 @@ module Api
           end
         end
 
-        def markdown_html(text)
-          helpers.render_markdown(text).to_s
-        end
       end
     end
   end

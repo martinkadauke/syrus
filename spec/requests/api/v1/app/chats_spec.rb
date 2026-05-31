@@ -107,12 +107,51 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       "type" => "message",
       "id" => message.id,
       "role" => "assistant",
-      "html" => include("<strong>aqueducts</strong>")
+      "text" => "Discuss **aqueducts**."
     ))
+    expect(body["messages"].first).not_to have_key("html")
     expect(body["documents_in_scope"]).to contain_exactly(include("title" => document.title, "repository_slug" => "acme/widgets"))
     expect(body.dig("whiteboard", "version")).to eq(2)
     expect(body.dig("whiteboard", "elements", 0, "id")).to eq("box-1")
+    expect(body.dig("paths", "app_messages_path")).to eq("/api/v1/app/chats/#{chat.id}/messages")
     expect(body.dig("paths", "app_message_path")).to eq("/api/v1/app/chats/#{chat.id}/message")
+  end
+
+  it "returns older messages as typed JSON for frontend rendering" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    messages = 40.times.map { |i| chat.messages.create!(role: "user", content: { "text" => "msg-#{i}" }) }
+
+    get "/api/v1/app/chats/#{chat.id}/messages", params: { before: messages[30].id }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["has_more_older"]).to eq(false)
+    expect(body["messages"].map { |message| message.fetch("id") }).to eq(messages.first(30).map(&:id))
+    expect(body["messages"].first).to include(
+      "type" => "message",
+      "role" => "user",
+      "text" => "msg-0"
+    )
+    expect(body["messages"].first).not_to have_key("html")
+  end
+
+  it "keeps proposal bodies as text instead of pre-rendered HTML" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    proposal = ChatProposal.create!(
+      chat_session: chat,
+      slug: "auth-map",
+      title: "Map auth flow",
+      body: "Trace **auth** and `<script>`."
+    )
+    chat.messages.create!(role: "assistant", proposal: proposal, content: { "text" => "Proposal proposed." })
+
+    get "/api/v1/app/chats/#{chat.id}"
+
+    proposal_payload = parse_body["messages"].first.fetch("proposal")
+    expect(proposal_payload).to include("body" => "Trace **auth** and `<script>`.")
+    expect(proposal_payload).not_to have_key("body_html")
   end
 
   it "groups tool calls in the chat rendering payload" do

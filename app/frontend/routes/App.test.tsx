@@ -1582,7 +1582,6 @@ describe("App", () => {
               id: 10,
               role: "user",
               text: "Now inspect proposals",
-              html: "<p>Now inspect proposals</p>",
               bookmarkable: true,
               bookmark_path: "/chats/8/bookmarks"
             }
@@ -1623,6 +1622,48 @@ describe("App", () => {
     })
     expect(await screen.findByText("Message sent.")).toBeInTheDocument()
     expect(screen.getByText("Now inspect proposals")).toBeInTheDocument()
+  })
+
+  it("loads older chat messages from the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/messages?before=9") {
+        return Promise.resolve(new Response(JSON.stringify({
+          has_more_older: false,
+          messages: [
+            {
+              type: "message",
+              id: 4,
+              role: "assistant",
+              text: "Earlier **aqueduct** note.",
+              bookmarkable: true,
+              bookmark_path: "/chats/8/bookmarks"
+            }
+          ]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload({ hasMoreOlder: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: "Load older messages" }))
+
+    expect(await screen.findByText("aqueduct")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/chats/8/messages?before=9",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
   })
 
   it("renders the new chat route and posts to the app API", async () => {
@@ -2094,6 +2135,7 @@ function chatPayload(overrides: {
   message?: string
   messages?: Array<Record<string, unknown>>
   turnInFlight?: boolean
+  hasMoreOlder?: boolean
 } = {}) {
   return {
     message: overrides.message,
@@ -2109,14 +2151,13 @@ function chatPayload(overrides: {
     },
     chat_available: true,
     turn_in_flight: overrides.turnInFlight ?? false,
-    has_more_older: false,
+    has_more_older: overrides.hasMoreOlder ?? false,
     messages: overrides.messages || [
       {
         type: "message",
         id: 9,
         role: "assistant",
         text: "Discuss aqueducts.",
-        html: "<p>Discuss aqueducts.</p>",
         bookmarkable: true,
         bookmark_path: "/chats/8/bookmarks"
       }
@@ -2144,6 +2185,7 @@ function chatPayload(overrides: {
       new_chat_path: "/chats/new",
       credentials_path: "/credentials/edit",
       repositories_path: "/repositories",
+      app_messages_path: "/api/v1/app/chats/8/messages",
       app_message_path: "/api/v1/app/chats/8/message",
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_refresh_path: "/api/v1/app/chats/8/refresh",

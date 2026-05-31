@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   fetchChat,
+  fetchChatMessages,
   refreshChat,
   resetChat,
   sendChatMessage,
@@ -18,6 +19,7 @@ import {
   type ChatSystemMessage,
   type ChatToolGroupItem
 } from "../api/chats"
+import { Markdown } from "../lib/Markdown"
 
 export function ChatRoute() {
   const params = useParams()
@@ -109,7 +111,28 @@ function ChatView({ payload }: { payload: ChatPayload }) {
 }
 
 function MessageStream({ payload }: { payload: ChatPayload }) {
-  if (payload.messages.length === 0) {
+  const [olderItems, setOlderItems] = useState<ChatRenderItem[]>([])
+  const [hasMoreOlder, setHasMoreOlder] = useState(payload.has_more_older)
+  const displayedItems = mergeRenderItems(olderItems, payload.messages)
+  const oldestId = oldestMessageId(displayedItems)
+  const loadOlder = useMutation({
+    mutationFn: (before: number) => fetchChatMessages(payload.paths.app_messages_path, before),
+    onSuccess: (page) => {
+      setOlderItems((current) => mergeRenderItems(page.messages, current))
+      setHasMoreOlder(page.has_more_older)
+    }
+  })
+
+  useEffect(() => {
+    setOlderItems([])
+    setHasMoreOlder(payload.has_more_older)
+  }, [payload.chat.id])
+
+  useEffect(() => {
+    if (olderItems.length === 0) setHasMoreOlder(payload.has_more_older)
+  }, [olderItems.length, payload.has_more_older])
+
+  if (displayedItems.length === 0) {
     return (
       <div className="flex h-full min-h-[28rem] items-center justify-center p-4 text-sm text-gray-500">
         {payload.chat.repository ? "Start a chat with this repository." : "Attach a repository to start chatting."}
@@ -119,8 +142,22 @@ function MessageStream({ payload }: { payload: ChatPayload }) {
 
   return (
     <div className="min-h-[28rem] space-y-4 overflow-y-auto p-4">
-      {payload.has_more_older ? <div className="text-center text-xs text-gray-500">Older messages are available from the chat history endpoint.</div> : null}
-      {payload.messages.map((item) => item.type === "tool_group" ? <ToolGroup item={item} key={`tool-${item.calls.map((call) => call.message_id).join("-")}`} /> : <ChatMessage item={item} key={item.id} />)}
+      {hasMoreOlder ? (
+        <div className="text-center">
+          <button
+            className={secondaryButton()}
+            disabled={loadOlder.isPending || oldestId == null}
+            onClick={() => {
+              if (oldestId != null) loadOlder.mutate(oldestId)
+            }}
+            type="button"
+          >
+            {loadOlder.isPending ? "Loading..." : "Load older messages"}
+          </button>
+          {loadOlder.isError ? <div className="mt-2 text-xs text-red-700">{errorMessage(loadOlder.error, "Unable to load older messages.")}</div> : null}
+        </div>
+      ) : null}
+      {displayedItems.map((item) => item.type === "tool_group" ? <ToolGroup item={item} key={renderItemKey(item)} /> : <ChatMessage item={item} key={renderItemKey(item)} />)}
     </div>
   )
 }
@@ -130,7 +167,7 @@ function ChatMessage({ item }: { item: Extract<ChatRenderItem, { type: "message"
     return (
       <article className="relative flex justify-end" id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
-        <div className="chat-prose chat-prose-invert max-w-[min(42rem,85%)] rounded bg-blue-600 px-4 py-2 text-white" dangerouslySetInnerHTML={{ __html: item.html }} />
+        <Markdown className="chat-prose chat-prose-invert max-w-[min(42rem,85%)] rounded bg-blue-600 px-4 py-2 text-white" text={item.text} />
       </article>
     )
   }
@@ -141,7 +178,7 @@ function ChatMessage({ item }: { item: Extract<ChatRenderItem, { type: "message"
         <span className="absolute -top-4" id={`message-${item.id}`} />
         {item.proposal ? <ProposalCard proposal={item.proposal} /> : (
           <div className="max-w-3xl rounded border border-gray-200 bg-white px-4 py-3">
-            <div className="chat-prose text-gray-800" dangerouslySetInnerHTML={{ __html: item.html }} />
+            <Markdown className="chat-prose text-gray-800" text={item.text} />
           </div>
         )}
       </article>
@@ -231,7 +268,7 @@ function ProposalCard({ proposal }: { proposal: ChatProposal }) {
           <p className="mt-1 font-mono text-xs text-gray-500">{proposal.slug}</p>
         </div>
       </div>
-      <div className="chat-prose mt-3 text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: proposal.body_html }} />
+      <Markdown className="chat-prose mt-3 text-sm text-gray-800" text={proposal.body} />
       {proposal.epic_bundle ? <ProposalChildren children={proposal.children || []} /> : <ProposalMeta proposal={proposal} />}
       {proposal.proposed ? (
         <div className="mt-4 flex flex-wrap gap-2">
@@ -270,7 +307,7 @@ function ProposalChildren({ children }: { children: ChatProposalChild[] }) {
           </summary>
           <div className="border-t border-gray-100 px-8 py-3 text-sm text-gray-700">
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500"><span className="font-mono">{child.slug}</span><span>{child.repository_slug || "No repository attached"}</span></div>
-            <div className="chat-prose mt-2 text-sm text-gray-800" dangerouslySetInnerHTML={{ __html: child.body_html }} />
+            <Markdown className="chat-prose mt-2 text-sm text-gray-800" text={child.body} />
             {child.proposed ? <div className="mt-3"><PostForm action={child.reject_path}><button className="rounded border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50" type="submit">Reject child Job</button></PostForm></div> : null}
           </div>
         </details>
@@ -492,6 +529,32 @@ function formatThousands(value: number) {
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(value)
+}
+
+function mergeRenderItems(...groups: ChatRenderItem[][]) {
+  const seen = new Set<string>()
+  const items: ChatRenderItem[] = []
+
+  for (const item of groups.flat()) {
+    const key = renderItemKey(item)
+    if (seen.has(key)) continue
+
+    seen.add(key)
+    items.push(item)
+  }
+
+  return items
+}
+
+function renderItemKey(item: ChatRenderItem) {
+  if (item.type === "message") return `message-${item.id}`
+
+  return `tool-${item.calls.map((call) => call.message_id).join("-")}`
+}
+
+function oldestMessageId(items: ChatRenderItem[]) {
+  const ids = items.flatMap((item) => item.type === "message" ? [item.id] : item.calls.map((call) => call.message_id))
+  return ids.length > 0 ? Math.min(...ids) : null
 }
 
 function errorMessage(error: Error, fallback: string) {
