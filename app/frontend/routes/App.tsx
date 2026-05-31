@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
+import { BugReportButton } from "../components/BugReportButton"
 import { useAppEvents } from "../lib/useAppEvents"
 import { AdminConsole } from "./AdminConsole"
 import { AdminInvitations } from "./AdminInvitations"
@@ -177,8 +178,27 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
         </div>
       </header>
       {children}
+      {user ? <BugReportButton context={bugReportContext(location.pathname)} /> : null}
     </div>
   )
+}
+
+function bugReportContext(pathname: string) {
+  const normalized = pathname.replace(/^\/app-shell/, "") || "/"
+  if (normalized === "/" || normalized === "/dashboard") return "Dashboard"
+
+  const label = normalized
+    .split("/")
+    .filter(Boolean)
+    .filter((segment) => !/^\d+$/.test(segment))
+    .map((segment) => segment.replace(/_/g, " "))
+    .join(" ")
+
+  return label ? titleize(label) : "Syrus"
+}
+
+function titleize(value: string) {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPayload | null }) {

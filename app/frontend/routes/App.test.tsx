@@ -117,6 +117,52 @@ describe("App", () => {
     }
   })
 
+  it("submits bug reports from the shared app chrome", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload())
+    document.body.appendChild(script)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/bug_reports" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Bug report queued.", job_id: 44 }), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      fireEvent.click(await screen.findByRole("button", { name: "Report a bug" }))
+      expect(screen.getByRole("dialog", { name: "Report a bug" })).toBeInTheDocument()
+      expect(screen.getByLabelText("Title")).toHaveValue("Dashboard bug")
+      fireEvent.change(screen.getByLabelText("Description"), { target: { value: "The aqueduct counter is off by one." } })
+      fireEvent.click(screen.getByRole("button", { name: "Create Job" }))
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/bug_reports",
+          expect.objectContaining({ method: "POST", credentials: "same-origin", body: expect.any(FormData) })
+        )
+      })
+      const form = fetchSpy.mock.calls[0]?.[1]?.body as FormData
+      expect(form.get("title")).toBe("Dashboard bug")
+      expect(form.get("description")).toBe("The aqueduct counter is off by one.")
+      expect(await screen.findByRole("status")).toHaveTextContent("Bug report queued.")
+      expect(screen.queryByRole("dialog", { name: "Report a bug" })).not.toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
+  })
+
   it("renders the admin overview route from the app admin API", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
