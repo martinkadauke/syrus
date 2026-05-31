@@ -35,7 +35,28 @@ default: &default
       polling_interval: 0.1
 
 development:
-  <<: *default
+  dispatchers:
+    - polling_interval: 1
+      batch_size: 100
+  workers:
+    # SQLite has a single writer. Keep the production queue separation,
+    # but avoid the high local thread fanout that can wedge the dev queue DB.
+    - queues: "runs"
+      threads: <%= ENV.fetch("DEV_RUN_CONCURRENCY", 1) %>
+      processes: 1
+      polling_interval: 0.5
+    - queues: "merges"
+      threads: <%= ENV.fetch("DEV_MERGE_CONCURRENCY", 1) %>
+      processes: 1
+      polling_interval: 0.5
+    - queues: "chat"
+      threads: <%= ENV.fetch("DEV_CHAT_CONCURRENCY", 1) %>
+      processes: 1
+      polling_interval: 0.5
+    - queues: "default"
+      threads: <%= ENV.fetch("DEV_DEFAULT_CONCURRENCY", 1) %>
+      processes: 1
+      polling_interval: 0.5
 
 test:
   <<: *default
