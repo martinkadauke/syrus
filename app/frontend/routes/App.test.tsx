@@ -570,11 +570,16 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
     fireEvent.change(screen.getByPlaceholderText("Search filters..."), { target: { value: "state" } })
     fireEvent.click(screen.getByRole("button", { name: "State enum" }))
-    expect(screen.getByRole("dialog", { name: "State filter settings" })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Apply filter" }))
+    expect(await screen.findByRole("dialog", { name: "State filter settings" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Apply filter" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument()
 
     await waitFor(() => {
       expect(latestFilterTree).toEqual({ and: [ { field: "state", op: "is", value: "open" } ] })
+    })
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "closed" } })
+    await waitFor(() => {
+      expect(latestFilterTree).toEqual({ and: [ { field: "state", op: "is", value: "closed" } ] })
     })
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/^\/api\/v1\/app\/dashboard\?view=list&q=/),
@@ -587,14 +592,13 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Add OR filter to State" }))
     fireEvent.click(screen.getByRole("button", { name: "Kind enum" }))
-    fireEvent.click(screen.getByRole("button", { name: "Apply filter" }))
 
     await waitFor(() => {
       expect(latestFilterTree).toEqual({
         and: [
           {
             or: [
-              { field: "state", op: "is", value: "open" },
+              { field: "state", op: "is", value: "closed" },
               { field: "kind", op: "is", value: "issue" }
             ]
           }

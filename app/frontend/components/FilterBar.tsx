@@ -1,3 +1,4 @@
+import type { RefObject } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 
@@ -56,6 +57,7 @@ export function FilterBar({
   const [addQuery, setAddQuery] = useState("")
   const [pendingAddTarget, setPendingAddTarget] = useState<PendingAddTarget>({ kind: "and" })
   const addMenuRef = useRef<HTMLDivElement | null>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
   const params = new URLSearchParams(search)
   const appliedTree = useMemo(() => filterTreeFromPayload(filter), [filter])
   const draftChildren = topFilterChildren(draftTree)
@@ -69,7 +71,7 @@ export function FilterBar({
 
   useEffect(() => {
     setDraftTree(appliedTree)
-    setEditingPath(null)
+    setEditingPath((path) => path && filterNodeAtPath(appliedTree, path) ? path : null)
     setAddMenuOpen(false)
     setAddQuery("")
   }, [appliedTree])
@@ -95,6 +97,28 @@ export function FilterBar({
       window.removeEventListener("pointerdown", closeOnOutsidePointer)
     }
   }, [addMenuOpen])
+
+  useEffect(() => {
+    if (!editingPath) return
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setEditingPath(null)
+    }
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target
+      if (target instanceof Node && editorRef.current?.contains(target)) return
+
+      setEditingPath(null)
+    }
+
+    window.addEventListener("keydown", closeOnEscape)
+    window.addEventListener("pointerdown", closeOnOutsidePointer)
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape)
+      window.removeEventListener("pointerdown", closeOnOutsidePointer)
+    }
+  }, [editingPath])
 
   if (filterSchema.length === 0) return null
 
@@ -142,12 +166,16 @@ export function FilterBar({
       nextPath = [children.length - 1]
     }
 
-    updateTree({ and: children }, nextPath)
+    const nextTree = { and: children }
+    updateTree(nextTree, nextPath)
     setAddMenuOpen(false)
+    applyTree(nextTree)
   }
 
   function editChip(path: FilterPath, nextChip: FilterChip) {
-    updateTree(replaceFilterNodeAtPath(draftTree, path, nextChip), path)
+    const nextTree = replaceFilterNodeAtPath(draftTree, path, nextChip)
+    updateTree(nextTree, path)
+    applyTree(nextTree)
   }
 
   function removeChip(path: FilterPath) {
@@ -221,10 +249,9 @@ export function FilterBar({
         {editingChip && editingMeta && "field" in editingChip ? (
           <FilterChipEditor
             chip={editingChip}
+            editorRef={editorRef}
             meta={editingMeta}
-            onApply={() => applyTree()}
             onChange={(nextChip) => editChip(editingPath!, nextChip)}
-            onClose={() => setEditingPath(null)}
           />
         ) : null}
       </div>
@@ -301,17 +328,14 @@ function FilterChipButton({ chip, controls, negated = false, onClick }: { chip: 
   )
 }
 
-function FilterChipEditor({ chip, meta, onChange, onApply, onClose }: { chip: FilterChip; meta: FilterSchemaField; onChange: (chip: FilterChip) => void; onApply: () => void; onClose: () => void }) {
+function FilterChipEditor({ chip, editorRef, meta, onChange }: { chip: FilterChip; editorRef: RefObject<HTMLDivElement>; meta: FilterSchemaField; onChange: (chip: FilterChip) => void }) {
   function updateOp(op: string) {
     onChange({ field: chip.field, op, value: defaultFilterValue(meta, op) })
   }
 
   return (
-    <div aria-label={`${meta.label} filter settings`} className="absolute left-0 top-full z-30 mt-2 w-[min(28rem,calc(100vw-3rem))] space-y-3 rounded border border-gray-200 bg-white p-3 shadow-lg" role="dialog">
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-semibold uppercase text-gray-500">{meta.label}</div>
-        <button className="text-xs text-gray-500 underline hover:text-gray-700" onClick={onClose} type="button">Done</button>
-      </div>
+    <div aria-label={`${meta.label} filter settings`} className="absolute left-0 top-full z-30 mt-2 w-[min(28rem,calc(100vw-3rem))] space-y-3 rounded border border-gray-200 bg-white p-3 shadow-lg" ref={editorRef} role="dialog">
+      <div className="text-xs font-semibold uppercase text-gray-500">{meta.label}</div>
       <div className="flex flex-wrap items-end gap-3">
         <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-op-${meta.field}`}>
           Operator
@@ -320,7 +344,6 @@ function FilterChipEditor({ chip, meta, onChange, onApply, onClose }: { chip: Fi
           </select>
         </label>
         <FilterValueEditor chip={chip} meta={meta} onChange={onChange} />
-        <button className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500" onClick={onApply} type="button">Apply filter</button>
       </div>
     </div>
   )
