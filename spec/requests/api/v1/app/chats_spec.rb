@@ -115,6 +115,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("whiteboard", "elements", 0, "id")).to eq("box-1")
     expect(body.dig("paths", "app_messages_path")).to eq("/api/v1/app/chats/#{chat.id}/messages")
     expect(body.dig("paths", "app_message_path")).to eq("/api/v1/app/chats/#{chat.id}/message")
+    expect(body.dig("paths", "app_attachments_path")).to eq("/api/v1/app/chats/#{chat.id}/attachments")
   end
 
   it "returns older messages as typed JSON for frontend rendering" do
@@ -194,9 +195,116 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     proposal_message = parse_body["messages"].first
     expect(proposal_message.dig("proposal", "title")).to eq("Map auth flow")
     expect(proposal_message.dig("proposal", "confirm_path")).to eq(chat_proposal_confirm_path(chat, proposal))
+    expect(proposal_message.dig("proposal", "app_confirm_path")).to eq("/api/v1/app/chats/#{chat.id}/proposals/#{proposal.id}/confirm")
     system_message = parse_body["messages"].second
     expect(system_message.dig("system", "body")).to include("Agent run succeeded", "$0.37")
     expect(system_message.dig("system", "body")).not_to include("0.37236969999999997")
+  end
+
+  it "creates a manual bookmark through the app API" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    message = chat.messages.create!(role: "assistant", content: { "text" => "Build aqueducts." })
+
+    expect {
+      post "/api/v1/app/chats/#{chat.id}/bookmarks", params: { message_id: message.id, chat_bookmark: { label: "Aqueducts" } }
+    }.to change(ChatBookmark, :count).by(1)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Bookmarked Aqueducts.")
+    expect(parse_body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id))
+  end
+
+  it "adds and removes attachments through the app API" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, last_message_at: Time.current)
+
+    expect {
+      post "/api/v1/app/chats/#{chat.id}/attachments", params: { attachable_type: "Repository", attachable_id: repository.id }
+    }.to change(ChatAttachment, :count).by(1)
+
+    expect(response).to have_http_status(:ok)
+    attachment = chat.reload.chat_attachments.sole
+    expect(attachment.attachable).to eq(repository)
+    expect(parse_body["message"]).to eq("acme/widgets attached.")
+    expect(parse_body.dig("attachment_groups", "repositories")).to contain_exactly(include(
+      "label" => "acme/widgets",
+      "app_detach_path" => "/api/v1/app/chats/#{chat.id}/attachments/#{attachment.id}"
+    ))
+
+    expect {
+      delete "/api/v1/app/chats/#{chat.id}/attachments/#{attachment.id}"
+    }.to change(ChatAttachment, :count).by(-1)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("acme/widgets detached.")
+    expect(parse_body.dig("attachment_groups", "repositories")).to eq([])
+  end
+
+  it "does not attach another user's repository through the app API" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, last_message_at: Time.current)
+    foreign = Factories.repository(user: Factories.user)
+
+    expect {
+      post "/api/v1/app/chats/#{chat.id}/attachments", params: { attachable_type: "Repository", attachable_id: foreign.id }
+    }.not_to change(ChatAttachment, :count)
+
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it "confirms and rejects proposals through the app API" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    confirmed = chat.proposals.create!(slug: "auth-map", title: "Map auth", body: "Map it.")
+    rejected = chat.proposals.create!(slug: "cleanup", title: "Clean up", body: "Sweep it.")
+    chat.messages.create!(role: "assistant", proposal: confirmed, content: { "text" => "Proposal proposed." })
+    chat.messages.create!(role: "assistant", proposal: rejected, content: { "text" => "Another proposal." })
+
+    expect {
+      post "/api/v1/app/chats/#{chat.id}/proposals/#{confirmed.id}/confirm"
+    }.to change(Job, :count).by(1)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to match(/\AProposal confirmed and filed as Job #\d+\.\z/)
+    expect(confirmed.reload).to be_confirmed
+    expect(parse_body["messages"].first.dig("proposal", "materialized_label")).to eq("Job ##{confirmed.job.id}")
+
+    post "/api/v1/app/chats/#{chat.id}/proposals/#{rejected.id}/reject"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Proposal rejected.")
+    expect(rejected.reload).to be_rejected
+  end
+
+  it "confirms and rejects pending actions through the app API" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    job_to_cancel = Factories.job(repository: repository)
+    job_to_keep = Factories.job(repository: repository, issue_number: 43)
+    confirm_action = chat.pending_actions.create!(action: "cancel_job", payload: { "job_id" => job_to_cancel.id })
+    reject_action = chat.pending_actions.create!(action: "cancel_job", payload: { "job_id" => job_to_keep.id })
+
+    get "/api/v1/app/chats/#{chat.id}"
+
+    expect(parse_body["pending_actions"]).to contain_exactly(
+      include("id" => confirm_action.id, "label" => "Cancel Job ##{job_to_cancel.id}", "app_confirm_path" => "/api/v1/app/chats/#{chat.id}/pending_actions/#{confirm_action.id}/confirm"),
+      include("id" => reject_action.id, "label" => "Cancel Job ##{job_to_keep.id}", "app_cancel_path" => "/api/v1/app/chats/#{chat.id}/pending_actions/#{reject_action.id}")
+    )
+
+    post "/api/v1/app/chats/#{chat.id}/pending_actions/#{confirm_action.id}/confirm"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Pending action confirmed.")
+    expect(confirm_action.reload).to be_confirmed
+    expect(job_to_cancel.reload).to be_closed
+
+    delete "/api/v1/app/chats/#{chat.id}/pending_actions/#{reject_action.id}"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["message"]).to eq("Pending action rejected.")
+    expect(reject_action.reload).to be_rejected
+    expect(job_to_keep.reload).to be_open
   end
 
   it "appends a message through the app API and returns the refreshed payload" do

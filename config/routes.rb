@@ -46,6 +46,13 @@ Rails.application.routes.draw do
         post "chats/:id/stop", to: "chats#stop", constraints: { id: /\d+/ }
         post "chats/:id/refresh", to: "chats#refresh", constraints: { id: /\d+/ }
         post "chats/:id/reset", to: "chats#reset", constraints: { id: /\d+/ }
+        post "chats/:id/bookmarks", to: "chats#create_bookmark", constraints: { id: /\d+/ }
+        post "chats/:id/attachments", to: "chats#add_attachment", constraints: { id: /\d+/ }
+        delete "chats/:id/attachments/:attachment_id", to: "chats#destroy_attachment", constraints: { id: /\d+/, attachment_id: /\d+/ }
+        post "chats/:id/proposals/:proposal_id/confirm", to: "chats#confirm_proposal", constraints: { id: /\d+/, proposal_id: /\d+/ }
+        post "chats/:id/proposals/:proposal_id/reject", to: "chats#reject_proposal", constraints: { id: /\d+/, proposal_id: /\d+/ }
+        post "chats/:id/pending_actions/:pending_action_id/confirm", to: "chats#confirm_pending_action", constraints: { id: /\d+/, pending_action_id: /\d+/ }
+        delete "chats/:id/pending_actions/:pending_action_id", to: "chats#destroy_pending_action", constraints: { id: /\d+/, pending_action_id: /\d+/ }
         get "repositories/new", to: "repositories#new"
         get "repositories/:id/edit", to: "repositories#edit", constraints: { id: /\d+/ }
         get "repositories/owners", to: "repositories#owners"

@@ -90,6 +90,106 @@ module Api
           render json: chat_payload(chat_session.reload, message: "Workspace reset queued.")
         end
 
+        def add_attachment
+          chat_session = find_chat_session
+          attachable = attachable_from_params(chat_session)
+          unless attachable
+            render_error("validation_failed", "Choose an attachment to add.", status: :unprocessable_content)
+            return
+          end
+
+          chat_session.chat_attachments.find_or_create_by!(attachable: attachable)
+          render json: chat_payload(chat_session.reload, message: "#{attachment_label(attachable)} attached.")
+        rescue ActiveRecord::RecordInvalid => e
+          render_error("validation_failed", e.record.errors.full_messages.to_sentence, status: :unprocessable_content)
+        end
+
+        def destroy_attachment
+          chat_session = find_chat_session
+          attachment = chat_session.chat_attachments.find(params[:attachment_id])
+          label = attachment_label(attachment.attachable)
+          attachment.destroy!
+
+          render json: chat_payload(chat_session.reload, message: "#{label} detached.")
+        end
+
+        def create_bookmark
+          chat_session = find_chat_session
+          message = chat_session.messages.find(params[:message_id])
+          bookmark = message.bookmarks.create!(label: bookmark_label, kind: "manual")
+
+          render json: chat_payload(chat_session.reload, message: "Bookmarked #{bookmark.label}.")
+        rescue ActiveRecord::RecordInvalid => e
+          render_error("validation_failed", e.record.errors.full_messages.to_sentence, status: :unprocessable_content)
+        end
+
+        def confirm_pending_action
+          chat_session = find_chat_session
+          pending_action = find_pending_action(chat_session)
+
+          if pending_action.confirm!(user: Current.user)
+            render json: chat_payload(chat_session.reload, message: pending_action_confirmed_notice(pending_action))
+          else
+            render_error("validation_failed", "Pending action is no longer active.", status: :unprocessable_content)
+          end
+        rescue ActiveRecord::RecordInvalid => e
+          message = e.record.errors.full_messages.to_sentence.presence || "Pending action could not be confirmed."
+          render_error("validation_failed", message, status: :unprocessable_content)
+        rescue ArgumentError => e
+          render_error("validation_failed", e.message, status: :unprocessable_content)
+        end
+
+        def destroy_pending_action
+          chat_session = find_chat_session
+          pending_action = find_pending_action(chat_session)
+          rejection = pending_action.action_type != "schedule_recurring"
+          result = rejection ? pending_action.reject! : pending_action.cancel!(user: Current.user)
+
+          if result
+            render json: chat_payload(chat_session.reload, message: rejection ? "Pending action rejected." : "Pending action cancelled.")
+          else
+            render_error("validation_failed", "Pending action is no longer active.", status: :unprocessable_content)
+          end
+        end
+
+        def confirm_proposal
+          chat_session = find_chat_session
+          proposal = find_proposal(chat_session)
+          if proposal.confirmed?
+            render_error("validation_failed", "Proposal is already confirmed.", status: :unprocessable_content)
+            return
+          end
+
+          unless proposal.proposed?
+            render_error("validation_failed", "Proposal is no longer proposed.", status: :unprocessable_content)
+            return
+          end
+
+          result = if proposal.epic_bundle?
+            ChatEpicProposalMaterializer.new(user: Current.user).file!(proposal)
+          else
+            ChatProposalFiler.new(user: Current.user, repository: proposal.effective_repository).file!([ proposal ])
+          end
+
+          render json: chat_payload(chat_session.reload, message: proposal_confirmed_notice(proposal, result))
+        rescue ActiveRecord::RecordInvalid => e
+          render_error("validation_failed", e.record.errors.full_messages.to_sentence, status: :unprocessable_content)
+        rescue ArgumentError => e
+          render_error("validation_failed", e.message, status: :unprocessable_content)
+        end
+
+        def reject_proposal
+          chat_session = find_chat_session
+          proposal = find_proposal(chat_session)
+
+          if proposal.proposed?
+            proposal.update!(state: "rejected", rejected_at: Time.current)
+            render json: chat_payload(chat_session.reload, message: "Proposal rejected.")
+          else
+            render_error("validation_failed", "Proposal is no longer proposed.", status: :unprocessable_content)
+          end
+        end
+
         private
 
         def form_payload
@@ -113,6 +213,7 @@ module Api
             has_more_older: has_more_older,
             messages: grouped_messages_json(messages, repository: repository),
             bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },
+            pending_actions: pending_actions_json(chat_session),
             attachment_groups: attachment_groups_json(attachment_groups),
             documents_in_scope: chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) },
             attachment_results: attachment_search_results(chat_session).map { |record| attachable_result_json(record) },
@@ -129,6 +230,8 @@ module Api
               app_stop_path: "/api/v1/app/chats/#{chat_session.id}/stop",
               app_refresh_path: "/api/v1/app/chats/#{chat_session.id}/refresh",
               app_reset_path: "/api/v1/app/chats/#{chat_session.id}/reset",
+              app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
+              app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
               chat_messages_path: chat_messages_path(chat_session),
               chat_attachments_path: chat_attachments_path(chat_session),
               chat_whiteboard_path: chat_whiteboard_path(chat_session)
@@ -228,6 +331,8 @@ module Api
             target_epic_label: proposal.target_epic&.display_number,
             confirm_path: chat_proposal_confirm_path(chat_session, proposal),
             reject_path: chat_proposal_reject_path(chat_session, proposal),
+            app_confirm_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/confirm",
+            app_reject_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/reject",
             materialized_label: proposal.materialized_label,
             materialized_path: materialized_path(materialized)
           }
@@ -255,7 +360,8 @@ module Api
             proposed: proposal.proposed?,
             repository_slug: proposal.repository&.slug || repository&.slug,
             dependencies: proposal.dependencies.order(:slug).map(&:slug),
-            reject_path: chat_proposal_reject_path(chat_session, proposal)
+            reject_path: chat_proposal_reject_path(chat_session, proposal),
+            app_reject_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/reject"
           }
         end
 
@@ -340,6 +446,19 @@ module Api
           }
         end
 
+        def pending_actions_json(chat_session)
+          chat_session.pending_actions.where(state: "pending").order(:created_at, :id).map do |action|
+            {
+              id: action.id,
+              label: pending_action_label(action),
+              action: action.action,
+              action_type: action.action_type,
+              app_confirm_path: "/api/v1/app/chats/#{chat_session.id}/pending_actions/#{action.id}/confirm",
+              app_cancel_path: "/api/v1/app/chats/#{chat_session.id}/pending_actions/#{action.id}"
+            }
+          end
+        end
+
         def attachment_groups_json(groups)
           {
             repositories: attachment_group_json(groups["Repository"]),
@@ -354,7 +473,8 @@ module Api
             {
               id: attachment.id,
               label: attachment_label(attachment.attachable),
-              detach_path: chat_attachment_path(attachment.chat_session, attachment)
+              detach_path: chat_attachment_path(attachment.chat_session, attachment),
+              app_detach_path: "/api/v1/app/chats/#{attachment.chat_session_id}/attachments/#{attachment.id}"
             }
           end
         end
@@ -447,8 +567,20 @@ module Api
           Current.user.chat_sessions.find(params[:id])
         end
 
+        def find_pending_action(chat_session)
+          chat_session.pending_actions.find(params[:pending_action_id])
+        end
+
+        def find_proposal(chat_session)
+          chat_session.proposals.find(params[:proposal_id])
+        end
+
         def message_text
           params.dig(:chat_message, :text).to_s.strip
+        end
+
+        def bookmark_label
+          params.dig(:chat_bookmark, :label).to_s.strip
         end
 
         def repository_from_params
@@ -456,6 +588,37 @@ module Api
           return unless id
 
           Current.user.repositories.find(id)
+        end
+
+        def attachable_from_params(chat_session)
+          type = normalized_attachable_type
+          return unless type
+
+          id = params[:attachable_id].presence || params.dig(:chat_attachment, :attachable_id).presence
+          return find_attachable_by_id(type, id) if id.present?
+
+          attachment_search_results(chat_session).first
+        end
+
+        def normalized_attachable_type
+          raw = params[:attachable_type].presence || params.dig(:chat_attachment, :attachable_type).presence
+          return unless raw
+
+          type = %w[Document RepositoryDocument].include?(raw.to_s) ? "Document" : raw.to_s
+          ChatAttachment::ATTACHABLE_TYPES.include?(type) ? type : nil
+        end
+
+        def find_attachable_by_id(type, id)
+          case type
+          when "Repository"
+            Current.user.repositories.find(id)
+          when "Job"
+            Current.user.jobs.find(id)
+          when "Document"
+            Document.where(user: Current.user, attachable_type: "Repository").find(id)
+          when "Epic"
+            Current.user.epics.find(id)
+          end
         end
 
         def chat_json(chat_session)
@@ -496,6 +659,47 @@ module Api
           end
         end
 
+        def pending_action_label(action)
+          payload = action.payload || {}
+          case action.action
+          when "add_repo_note"
+            "Pin repository note"
+          when "remove_repo_note"
+            "Remove repository note ##{payload['id']}"
+          when "cancel_job"
+            "Cancel Job ##{payload['job_id']}"
+          when "retry_job"
+            "Retry Job ##{payload['job_id']}"
+          when "rebase_job"
+            "Rebase Job ##{payload['job_id']}"
+          when "reopen_epic_and_attach_job"
+            "Reopen Epic ##{payload['epic_id']} and attach Job ##{payload['job_id']}"
+          else
+            payload["label"].presence || action.action_type.to_s.humanize
+          end
+        end
+
+        def pending_action_confirmed_notice(action)
+          record = action.result
+          case record
+          when ScheduledTask
+            "Scheduled task created: #{record.name}."
+          else
+            "Pending action confirmed."
+          end
+        end
+
+        def proposal_confirmed_notice(proposal, result)
+          record = result.respond_to?(:epic) && result.epic ? result.epic : result.jobs.first || proposal.reload.materialized_record
+          case record
+          when Job
+            "Proposal confirmed and filed as Job ##{record.id}."
+          when Epic
+            "Proposal confirmed and filed as #{record.display_number}."
+          else
+            "Proposal confirmed."
+          end
+        end
       end
     end
   end
