@@ -12,6 +12,12 @@ const excalidrawMock = vi.hoisted(() => ({
   throwOnRender: false
 }))
 
+const html2canvasMock = vi.hoisted(() => vi.fn(async () => ({
+  toBlob(callback: (blob: Blob | null) => void) {
+    callback(new Blob(["screenshot"], { type: "image/png" }))
+  }
+})))
+
 vi.mock("@rails/actioncable", () => ({
   createConsumer: () => ({
     subscriptions: {
@@ -39,6 +45,10 @@ vi.mock("@excalidraw/excalidraw", () => ({
       </button>
     )
   }
+}))
+
+vi.mock("html2canvas-pro", () => ({
+  default: html2canvasMock
 }))
 
 vi.mock("mermaid", () => ({
@@ -275,8 +285,13 @@ describe("App", () => {
       )
 
       fireEvent.click(await screen.findByRole("button", { name: "Report a bug" }))
-      expect(screen.getByRole("dialog", { name: "Report a bug" })).toBeInTheDocument()
+      expect(await screen.findByRole("dialog", { name: "Report a bug" })).toBeInTheDocument()
       expect(screen.getByLabelText("Title")).toHaveValue("Dashboard bug")
+      expect(html2canvasMock).toHaveBeenCalledTimes(2)
+      expect(screen.getByRole("radio", { name: "Viewport" })).toBeChecked()
+      expect(screen.getByRole("radio", { name: "Full page" })).toBeInTheDocument()
+      expect(screen.getByRole("radio", { name: "No screenshot" })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("radio", { name: "Full page" }))
       fireEvent.change(screen.getByLabelText("Description"), { target: { value: "The aqueduct counter is off by one." } })
       fireEvent.click(screen.getByRole("button", { name: "Create Job" }))
 
@@ -289,8 +304,51 @@ describe("App", () => {
       const form = fetchSpy.mock.calls[0]?.[1]?.body as FormData
       expect(form.get("title")).toBe("Dashboard bug")
       expect(form.get("description")).toBe("The aqueduct counter is off by one.")
+      expect((form.get("screenshot") as File).name).toBe("bug-report-full-page.png")
       expect(await screen.findByRole("status")).toHaveTextContent("Bug report queued.")
       expect(screen.queryByRole("dialog", { name: "Report a bug" })).not.toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
+  })
+
+  it("submits bug reports without a screenshot when that option is selected", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload())
+    document.body.appendChild(script)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/bug_reports" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Bug report queued.", job_id: 45 }), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      fireEvent.click(await screen.findByRole("button", { name: "Report a bug" }))
+      await screen.findByRole("dialog", { name: "Report a bug" })
+      fireEvent.click(screen.getByRole("radio", { name: "No screenshot" }))
+      fireEvent.click(screen.getByRole("button", { name: "Create Job" }))
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/bug_reports",
+          expect.objectContaining({ method: "POST", credentials: "same-origin", body: expect.any(FormData) })
+        )
+      })
+      const form = fetchSpy.mock.calls[0]?.[1]?.body as FormData
+      expect(form.get("screenshot")).toBeNull()
     } finally {
       script.remove()
     }
