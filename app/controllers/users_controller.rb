@@ -15,7 +15,9 @@ class UsersController < ApplicationController
       start_new_session_for(@user)
       redirect_to root_url, notice: signup_notice
     else
-      render :new, status: :unprocessable_content
+      redirect_to new_user_path(token: @invitation&.token),
+                  alert: @user.errors.full_messages.to_sentence,
+                  status: :see_other
     end
   end
 

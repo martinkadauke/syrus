@@ -109,6 +109,105 @@ describe("App", () => {
     )
   })
 
+  it("renders the sign-in route and submits credentials through the auth API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ error: { code: "invalid_credentials", message: "Try another email address or password." } }),
+        { status: 422, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/session/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Sign in" })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "operator@example.com" } })
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "wrong" } })
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/auth/session",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ email_address: "operator@example.com", password: "wrong" })
+        })
+      )
+    })
+    expect(await screen.findByText("Try another email address or password.")).toBeInTheDocument()
+  })
+
+  it("renders the sign-up route from the public signup payload", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          allowed: true,
+          first_signup: true,
+          signups_open: false,
+          invitation: null
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/users/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Sign up" })).toBeInTheDocument()
+    expect(await screen.findByText("You're the first user; this account will become the admin.")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Already have an account? Sign in" })).toHaveAttribute("href", "/app-shell/session/new")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/auth/signup",
+      expect.objectContaining({ credentials: "same-origin" })
+    )
+  })
+
+  it("renders the password request route and shows the API response message", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          message: "Password reset instructions sent (if user with that email address exists).",
+          redirect_to: "/session/new"
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/passwords/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Forgot your password?" })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Email address"), { target: { value: "operator@example.com" } })
+    fireEvent.click(screen.getByRole("button", { name: "Email reset instructions" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/auth/passwords",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ email_address: "operator@example.com" })
+        })
+      )
+    })
+    expect(await screen.findByText("Password reset instructions sent (if user with that email address exists).")).toBeInTheDocument()
+  })
+
   it("renders shared app chrome from embedded bootstrap data", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"

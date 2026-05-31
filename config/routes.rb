@@ -1,7 +1,12 @@
 Rails.application.routes.draw do
-  resource :session
-  resources :passwords, param: :token
-  resources :users, only: %i[ new create ]
+  get "session/new", to: "spa#show", as: :new_session
+  resource :session, only: %i[ create destroy ]
+  get "passwords/new", to: "spa#show", as: :new_password
+  post "passwords", to: "passwords#create", as: :passwords
+  get "passwords/:token/edit", to: "spa#show", as: :edit_password
+  match "passwords/:token", to: "passwords#update", as: :password, via: %i[ patch put ]
+  get "users/new", to: "spa#show", as: :new_user
+  resources :users, only: %i[ create ]
 
   get "credentials/edit", to: "spa#show", as: :edit_credentials
 
@@ -11,6 +16,11 @@ Rails.application.routes.draw do
     namespace :v1 do
       namespace :app do
         get "bootstrap", to: "bootstrap#show"
+        get "auth/signup", to: "auth#signup"
+        post "auth/session", to: "auth#create_session"
+        post "auth/users", to: "auth#create_user"
+        post "auth/passwords", to: "auth#create_password"
+        patch "auth/passwords/:token", to: "auth#update_password"
         post "bug_reports", to: "bug_reports#create"
         resources :tags, only: %i[ index create update destroy ]
         resources :smart_folders, only: %i[ index create update destroy ]
@@ -310,7 +320,7 @@ Rails.application.routes.draw do
 
   namespace :admin do
     # Raw transcript download for offline analysis.
-    get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
+    get "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
   end

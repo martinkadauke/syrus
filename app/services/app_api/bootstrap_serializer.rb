@@ -2,10 +2,11 @@ module AppApi
   class BootstrapSerializer
     GITHUB_REPO = "tkadauke/syrus".freeze
 
-    def initialize(user:, csrf_token:, default_chat_path:)
+    def initialize(user:, csrf_token:, default_chat_path:, flash: {})
       @user = user
       @csrf_token = csrf_token
       @default_chat_path = default_chat_path
+      @flash = flash
     end
 
     def as_json(*)
@@ -13,6 +14,7 @@ module AppApi
         current_user: user_payload,
         app: app_payload,
         navigation: navigation_payload,
+        flash: flash_payload,
         csrf_token: @csrf_token,
         feature_flags: {
           migrated_routes: []
@@ -25,6 +27,8 @@ module AppApi
     attr_reader :user
 
     def user_payload
+      return nil unless user
+
       {
         id: user.id,
         email_address: user.email_address,
@@ -48,6 +52,13 @@ module AppApi
     def navigation_payload
       {
         default_chat_path: @default_chat_path
+      }
+    end
+
+    def flash_payload
+      {
+        alert: @flash[:alert].presence,
+        notice: @flash[:notice].presence
       }
     end
 

@@ -11,13 +11,17 @@ export type BootstrapPayload = {
     landing_paused: boolean
     agent_provider: "claude" | "codex"
     agent_max_turns: number
-  }
+  } | null
   app: {
     revision: string
     revision_url: string | null
   }
   navigation?: {
     default_chat_path: string
+  }
+  flash?: {
+    alert?: string | null
+    notice?: string | null
   }
   csrf_token: string
   feature_flags: {

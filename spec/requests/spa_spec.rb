@@ -9,6 +9,27 @@ RSpec.describe "SPA shell", type: :request do
     expect(response).to redirect_to(new_session_path)
   end
 
+  it "serves public auth routes through the SPA shell" do
+    Factories.user
+
+    [ new_session_path, new_password_path ].each do |path|
+      get path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+      expect(response.body).to include("&quot;current_user&quot;:null")
+    end
+  end
+
+  it "serves password reset routes through the SPA shell" do
+    user = Factories.user
+
+    get edit_password_path(user.password_reset_token)
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include('id="syrus-spa-root"')
+  end
+
   it "renders the React mount for signed-in users" do
     user = Factories.user
     sign_in_as(user)

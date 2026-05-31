@@ -15,6 +15,7 @@ import { AdminSettings } from "./AdminSettings"
 import { AdminStuck } from "./AdminStuck"
 import { AdminTranscript } from "./AdminTranscript"
 import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
+import { PasswordRequestRoute, PasswordResetRoute, SignInRoute, SignUpRoute } from "./Auth"
 import { ChatNewRoute } from "./ChatNew"
 import { ChatRoute } from "./Chat"
 import { CredentialsRoute } from "./Credentials"
@@ -39,6 +40,10 @@ type AppRouteDefinition = {
 }
 
 const appRouteDefinitions: AppRouteDefinition[] = [
+  { path: "/session/new", element: <SignInRoute /> },
+  { path: "/users/new", element: <SignUpRoute /> },
+  { path: "/passwords/new", element: <PasswordRequestRoute /> },
+  { path: "/passwords/:token/edit", element: <PasswordResetRoute /> },
   { path: "/dashboard", element: <DashboardRoute /> },
   { path: "/dashboard/epics", element: <DashboardRoute /> },
   { path: "/dashboard/jobs", element: <DashboardRoute /> },
@@ -123,11 +128,11 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   const app = data?.app
   const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
   const normalizedPath = normalizedAppPath(location.pathname)
-  const navItems: Array<{ label: string; to: string; active: boolean; desktopOnly?: boolean }> = [
+  const navItems: Array<{ label: string; to: string; active: boolean; desktopOnly?: boolean }> = user ? [
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: location.pathname === "/" || location.pathname.includes("/dashboard") },
     { label: "Repos", to: `${prefix}/repositories`, active: location.pathname.includes("/repositories") },
     { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: location.pathname.includes("/scheduled_tasks"), desktopOnly: true }
-  ]
+  ] : []
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
@@ -158,8 +163,21 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
       </header>
       {showsAdminNavigation(normalizedPath) ? <AdminNavigation normalizedPath={normalizedPath} prefix={prefix} /> : null}
       {showsSettingsNavigation(normalizedPath) ? <SettingsNavigation normalizedPath={normalizedPath} prefix={prefix} /> : null}
+      <FlashBanner flash={data?.flash} />
       {children}
       {user ? <BugReportButton context={bugReportContext(location.pathname)} /> : null}
+    </div>
+  )
+}
+
+function FlashBanner({ flash }: { flash?: BootstrapPayload["flash"] }) {
+  const message = flash?.alert || flash?.notice
+  if (!message) return null
+
+  const tone = flash?.alert ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"
+  return (
+    <div className="mx-auto max-w-7xl px-6 pt-4">
+      <p className={`inline-block rounded border px-3 py-2 text-sm ${tone}`}>{message}</p>
     </div>
   )
 }
@@ -277,8 +295,8 @@ function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPaylo
       <section className="grid gap-4 sm:grid-cols-2">
         <div className="rounded border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-medium text-gray-900">Signed in</h2>
-          <p className="mt-2 text-sm text-gray-700">{user.display_name}</p>
-          <p className="text-xs text-gray-500">{user.email_address}</p>
+          <p className="mt-2 text-sm text-gray-700">{user?.display_name || "Not signed in"}</p>
+          {user ? <p className="text-xs text-gray-500">{user.email_address}</p> : null}
         </div>
 
         <div className="rounded border border-gray-200 bg-white p-4">

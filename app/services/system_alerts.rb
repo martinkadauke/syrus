@@ -10,9 +10,7 @@
 #
 # Add a new alert source by writing a private method here that
 # returns a `SystemAlerts::Alert` (or nil) and calling it from
-# `.active_for`. The view layer doesn't change — the
-# `shared/_alert_banner` partial renders any Alert by its severity,
-# title, message, and action_steps.
+# `.active_for`. The React shell owns rendering for app pages.
 module SystemAlerts
   Alert = Data.define(:id, :severity, :title, :message, :action_steps, :cta) do
     # Severity drives color in the banner partial:

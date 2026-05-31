@@ -20,7 +20,7 @@ RSpec.describe "User signup", type: :request do
     it "renders the signup form" do
       get new_user_path
       expect(response).to be_successful
-      expect(response.body).to include("Sign up")
+      expect(response.body).to include('id="syrus-spa-root"')
     end
   end
 
@@ -67,7 +67,7 @@ RSpec.describe "User signup", type: :request do
     it "allows GET /users/new?token=...even when signups are closed" do
       get new_user_path(token: invitation.token)
       expect(response).to be_successful
-      expect(response.body).to include("Accepting an invitation")
+      expect(response.body).to include('id="syrus-spa-root"')
     end
 
     it "creates the user and marks the invitation accepted on POST" do
