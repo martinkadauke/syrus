@@ -2250,6 +2250,7 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "New Epic" })).toBeInTheDocument()
+    expect(await screen.findByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/app-shell/dashboard/epics")
     fireEvent.change(await screen.findByLabelText("Title"), { target: { value: "Raise the forum" } })
     fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Install tasteful columns." } })
     fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "3" } })
@@ -2274,6 +2275,98 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Title can't be blank")).toBeInTheDocument()
+  })
+
+  it("creates an Epic and navigates within the React shell", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/epics" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          message: "Epic created.",
+          redirect_to: "/epics/7",
+          epic: {
+            id: 7,
+            title: "Raise the forum",
+            description: "Install tasteful columns.",
+            repository_id: 3,
+            github_issue_url: "https://github.com/acme/widgets/issues/12",
+            epic_path: "/epics/7"
+          }
+        }), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/epics/7") {
+        return Promise.resolve(new Response(JSON.stringify(epicDetailPayload({
+          message: "Epic created."
+        })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(epicFormPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/epics/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.change(await screen.findByLabelText("Title"), { target: { value: "Raise the forum" } })
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "Install tasteful columns." } })
+    fireEvent.change(screen.getByLabelText("Repository"), { target: { value: "3" } })
+    fireEvent.change(screen.getByLabelText("GitHub issue URL"), { target: { value: "https://github.com/acme/widgets/issues/12" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create Epic" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/epics",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({
+            epic: {
+              title: "Raise the forum",
+              description: "Install tasteful columns.",
+              repository_id: "3",
+              github_issue_url: "https://github.com/acme/widgets/issues/12"
+            }
+          })
+        })
+      )
+    })
+    expect(await screen.findByRole("main", { name: "Epic" })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/epics/7",
+      expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
+    )
+  })
+
+  it("renders the edit Epic form with React shell links", async () => {
+    const basePayload = epicFormPayload()
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        ...basePayload,
+        epic: {
+          ...basePayload.epic,
+          id: 7,
+          title: "Raise the forum",
+          repository_id: 3,
+          epic_path: "/epics/7"
+        }
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/epics/7/edit"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Edit Epic" })).toBeInTheDocument()
+    expect(await screen.findByRole("link", { name: "Back to Epic" })).toHaveAttribute("href", "/app-shell/epics/7")
+    expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/app-shell/epics/7")
   })
 
   it("renders an Epic detail page and updates state through the app API", async () => {
@@ -2304,6 +2397,10 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Epic" })).toBeInTheDocument()
     expect(await screen.findByText("EPIC-7")).toBeInTheDocument()
     expect(screen.getByText("Raise the forum")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Back to Epics" })).toHaveAttribute("href", "/app-shell/dashboard/epics")
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/epics/7/edit")
+    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "Survey forum" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.getByText("columns")).toBeInTheDocument()
     expect(screen.getByText("(1 epic dep, 0 job blockers)")).toBeInTheDocument()
     expect(await screen.findByRole("img", { name: "Dependency graph" })).toBeInTheDocument()

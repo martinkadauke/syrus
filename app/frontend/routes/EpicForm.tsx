@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   createEpic,
@@ -14,7 +14,9 @@ import {
 
 export function EpicFormRoute({ mode }: { mode: "new" | "edit" }) {
   const params = useParams()
+  const location = useLocation()
   const id = params.id || ""
+  const prefix = routePrefix(location.pathname)
   const form = useQuery({
     queryKey: ["epics", mode, id],
     queryFn: () => mode === "new" ? fetchNewEpicForm() : fetchEditEpicForm(id),
@@ -25,12 +27,13 @@ export function EpicFormRoute({ mode }: { mode: "new" | "edit" }) {
     <main aria-label={mode === "new" ? "New Epic" : "Edit Epic"} className="mx-auto max-w-2xl space-y-6 p-6">
       {form.isPending ? <PanelMessage>Loading epic form...</PanelMessage> : null}
       {form.isError ? <PanelMessage tone="error">{errorMessage(form.error, "Unable to load epic form.")}</PanelMessage> : null}
-      {form.isSuccess ? <EpicForm mode={mode} payload={form.data} /> : null}
+      {form.isSuccess ? <EpicForm mode={mode} payload={form.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function EpicForm({ mode, payload }: { mode: "new" | "edit"; payload: EpicFormPayload }) {
+function EpicForm({ mode, payload, prefix }: { mode: "new" | "edit"; payload: EpicFormPayload; prefix: string }) {
+  const navigate = useNavigate()
   const [values, setValues] = useState<EpicInput>(() => inputFromPayload(payload))
   const save = useMutation({
     mutationFn: () => {
@@ -38,7 +41,7 @@ function EpicForm({ mode, payload }: { mode: "new" | "edit"; payload: EpicFormPa
       return updateEpic(Number(payload.epic.id), values)
     },
     onSuccess: (saved) => {
-      window.location.assign(saved.redirect_to)
+      navigate(withRoutePrefix(saved.redirect_to, prefix))
     }
   })
 
@@ -55,7 +58,7 @@ function EpicForm({ mode, payload }: { mode: "new" | "edit"; payload: EpicFormPa
     <>
       <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">{mode === "new" ? "New Epic" : "Edit Epic"}</h1>
-        {mode === "edit" && payload.epic.epic_path ? <a className="text-sm text-blue-600 underline hover:no-underline" href={payload.epic.epic_path}>Back to Epic</a> : null}
+        {mode === "edit" && payload.epic.epic_path ? <Link className="text-sm text-blue-600 underline hover:no-underline" to={withRoutePrefix(payload.epic.epic_path, prefix)}>Back to Epic</Link> : null}
       </header>
 
       {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save Epic.")}</PanelMessage> : null}
@@ -111,11 +114,22 @@ function EpicForm({ mode, payload }: { mode: "new" | "edit"; payload: EpicFormPa
           >
             {save.isPending ? "Saving..." : mode === "new" ? "Create Epic" : "Save Epic"}
           </button>
-          <a className="text-sm text-gray-600 hover:text-gray-900" href={mode === "new" ? payload.dashboard_epics_path : payload.epic.epic_path || payload.dashboard_epics_path}>Cancel</a>
+          <Link className="text-sm text-gray-600 hover:text-gray-900" to={withRoutePrefix(mode === "new" ? payload.dashboard_epics_path : payload.epic.epic_path || payload.dashboard_epics_path, prefix)}>Cancel</Link>
         </div>
       </form>
     </>
   )
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function inputFromPayload(payload: EpicFormPayload): EpicInput {

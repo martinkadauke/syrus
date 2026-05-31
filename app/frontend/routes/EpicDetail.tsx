@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
-import { useParams } from "react-router-dom"
+import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   archiveEpic,
@@ -23,7 +23,9 @@ type EpicCommand =
 
 export function EpicDetailRoute() {
   const params = useParams()
+  const location = useLocation()
   const id = params.id || ""
+  const prefix = routePrefix(location.pathname)
   const epic = useQuery({
     queryKey: ["epics", id],
     queryFn: () => fetchEpicDetail(id),
@@ -34,12 +36,12 @@ export function EpicDetailRoute() {
     <main aria-label="Epic" className="mx-auto max-w-6xl space-y-6 p-6">
       {epic.isPending ? <PanelMessage>Loading Epic...</PanelMessage> : null}
       {epic.isError ? <PanelMessage tone="error">{errorMessage(epic.error, "Unable to load Epic.")}</PanelMessage> : null}
-      {epic.isSuccess ? <EpicDetail payload={epic.data} /> : null}
+      {epic.isSuccess ? <EpicDetail payload={epic.data} prefix={prefix} /> : null}
     </main>
   )
 }
 
-function EpicDetail({ payload }: { payload: EpicDetailPayload }) {
+function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: string }) {
   const queryClient = useQueryClient()
   const queryKey = ["epics", String(payload.epic.id)] as const
   const [notice, setNotice] = useState<string | null>(payload.message || null)
@@ -62,8 +64,8 @@ function EpicDetail({ payload }: { payload: EpicDetailPayload }) {
   return (
     <>
       <nav className="flex flex-wrap items-center gap-3 text-sm">
-        <a className="text-blue-600 underline hover:no-underline" href={payload.paths.dashboard_epics_path}>Back to Epics</a>
-        {!payload.epic.archived ? <a className="text-blue-600 underline hover:no-underline" href={payload.paths.edit_epic_path}>Edit</a> : null}
+        <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(payload.paths.dashboard_epics_path, prefix)}>Back to Epics</Link>
+        {!payload.epic.archived ? <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(payload.paths.edit_epic_path, prefix)}>Edit</Link> : null}
       </nav>
 
       <header className="space-y-3">
@@ -76,7 +78,7 @@ function EpicDetail({ payload }: { payload: EpicDetailPayload }) {
           <StatePill state={payload.epic.state} />
         </div>
         <p className="text-sm text-gray-500">
-          <a className="font-mono hover:underline" href={payload.epic.repository.repository_path}>{payload.epic.repository.slug}</a>
+          <Link className="font-mono hover:underline" to={withRoutePrefix(payload.epic.repository.repository_path, prefix)}>{payload.epic.repository.slug}</Link>
           <span> · {payload.epic.jobs_count} {payload.epic.jobs_count === 1 ? "Job" : "Jobs"}</span>
           <span> · updated {formatRelative(payload.epic.updated_at)}</span>
         </p>
@@ -120,7 +122,7 @@ function EpicDetail({ payload }: { payload: EpicDetailPayload }) {
         </section>
       ) : null}
 
-      <JobsSection jobs={payload.jobs} />
+      <JobsSection jobs={payload.jobs} prefix={prefix} />
     </>
   )
 }
@@ -184,7 +186,7 @@ function MermaidGraph({ definition }: { definition: string }) {
   )
 }
 
-function JobsSection({ jobs }: { jobs: EpicDetailJob[] }) {
+function JobsSection({ jobs, prefix }: { jobs: EpicDetailJob[]; prefix: string }) {
   return (
     <section className="rounded border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-4 py-3">
@@ -198,10 +200,10 @@ function JobsSection({ jobs }: { jobs: EpicDetailJob[] }) {
                 {job.title ? (
                   <>
                     <span className="font-medium text-gray-600">{job.label}</span>
-                    <a className="ml-1 text-gray-700 hover:underline" href={job.path}>{job.title}</a>
+                    <Link className="ml-1 text-gray-700 hover:underline" to={withRoutePrefix(job.path, prefix)}>{job.title}</Link>
                   </>
                 ) : (
-                  <a className="font-medium text-blue-600 underline hover:no-underline" href={job.path}>{job.label}</a>
+                  <Link className="font-medium text-blue-600 underline hover:no-underline" to={withRoutePrefix(job.path, prefix)}>{job.label}</Link>
                 )}
               </div>
               <StatePill state={job.state} />
@@ -213,6 +215,17 @@ function JobsSection({ jobs }: { jobs: EpicDetailJob[] }) {
       )}
     </section>
   )
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function StatePill({ state }: { state: string }) {
