@@ -18,6 +18,79 @@ RSpec.describe "App API dashboard commands", type: :request do
     job.latest_workflow.update!(state: "succeeded", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
   end
 
+  describe "GET /api/v1/app/dashboard" do
+    it "returns a subject-aware dashboard read payload for the current user" do
+      user.update_dashboard_sort!(subject: "job", column: "title", direction: "asc")
+      tag = Factories.tag(user: user, name: "aqueduct", color: "blue")
+      first = Factories.job_record(repository: repo, issue_number: 1, issue_title: "Build aqueduct", state: "queued")
+      second = Factories.job_record(repository: repo, issue_number: 2, issue_title: "Chart forum", state: "running")
+      first.tags << tag
+      archived_repo = Factories.repository(user: user, owner: "acme", name: "archived", archived_at: Time.current)
+      archived_job = Factories.job_record(repository: archived_repo, issue_number: 3, issue_title: "Hide archive", state: "queued")
+      other_repo = Factories.repository(user: Factories.user, owner: "globex", name: "private")
+      other_job = Factories.job_record(repository: other_repo, issue_number: 4, issue_title: "Hide private", state: "queued")
+
+      get "/api/v1/app/dashboard", params: { subject: "job", view: "kanban" }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(body).to include(
+        "subject" => "job",
+        "view" => "kanban",
+        "page" => 1,
+        "per_page" => 25,
+        "total" => 2
+      )
+      expect(body.dig("counts", "jobs")).to eq(2)
+      expect(body["items"].map { |item| item.fetch("id") }).to eq([ first.id, second.id ])
+      expect(body["items"].first).to include(
+        "type" => "job",
+        "title" => "Build aqueduct",
+        "state" => "queued",
+        "latest_workflow_state" => "queued",
+        "repository" => include("slug" => "acme/widgets"),
+        "tags" => [ include("name" => "aqueduct", "color" => "blue") ],
+        "paths" => include("job_path" => job_path(first), "source_path" => source_job_path(first))
+      )
+      expect(body["items"].map { |item| item.fetch("id") }).not_to include(archived_job.id, other_job.id)
+      expect(body.dig("preferences", "sort")).to include("column" => "title", "direction" => "asc")
+      expect(body.dig("paths", "dashboard_jobs_path")).to eq(dashboard_jobs_path)
+      expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
+    end
+
+    it "applies smart folder filters and returns active folder metadata" do
+      ready = Factories.epic(user: user, repository: repo, title: "Ready aqueduct", state: "ready")
+      Factories.epic(user: user, repository: repo, title: "Backlog forum", state: "backlog")
+      folder = SmartFolder.create!(
+        user: user,
+        subject_type: "epic",
+        name: "Ready work",
+        kind: "user_defined",
+        filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "ready" } ] }
+      )
+
+      get "/api/v1/app/dashboard", params: { subject: "epic", smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(body["subject"]).to eq("epic")
+      expect(body["total"]).to eq(1)
+      expect(body["items"].sole).to include(
+        "type" => "epic",
+        "id" => ready.id,
+        "display_number" => ready.display_number,
+        "title" => "Ready aqueduct",
+        "paths" => include("epic_path" => epic_path(ready))
+      )
+      expect(body["active_smart_folder_id"]).to eq(folder.id)
+      expect(body["smart_folders"]).to include(include(
+        "id" => folder.id,
+        "name" => "Ready work",
+        "active" => true
+      ))
+    end
+  end
+
   describe "PATCH /api/v1/app/dashboard/preferences" do
     it "updates dashboard sort, visible columns, and Kanban lanes" do
       patch "/api/v1/app/dashboard/preferences",

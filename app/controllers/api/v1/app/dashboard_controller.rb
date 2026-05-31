@@ -2,6 +2,10 @@ module Api
   module V1
     module App
       class DashboardController < BaseController
+        def show
+          render json: ::App::DashboardPayload.call(user: Current.user, params: params)
+        end
+
         def preferences
           subject = params.require(:subject)
 

@@ -69,6 +69,7 @@ Rails.application.routes.draw do
         patch "epics/:id/archive", to: "epics#archive", constraints: { id: /\d+/ }
         patch "epics/:id/state", to: "epics#update_state", constraints: { id: /\d+/ }
         get "filters/fk_options", to: "filters#fk_options"
+        get "dashboard", to: "dashboard#show"
         patch "dashboard/preferences", to: "dashboard#preferences"
         post "dashboard/landing_pause", to: "dashboard#landing_pause"
         post "dashboard/jobs/bulk", to: "dashboard#bulk_jobs"
