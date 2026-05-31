@@ -1,4 +1,5 @@
 require "rails_helper"
+require "tmpdir"
 
 RSpec.describe "App API job detail", type: :request do
   let(:user) { Factories.user }
@@ -18,7 +19,23 @@ RSpec.describe "App API job detail", type: :request do
 
   before { sign_in_as(user) }
 
+  around do |example|
+    old_data_root = ENV["SYRUS_DATA_ROOT"]
+    Dir.mktmpdir("syrus-app-api-jobs") do |data_root|
+      ENV["SYRUS_DATA_ROOT"] = data_root
+      example.run
+    end
+  ensure
+    ENV["SYRUS_DATA_ROOT"] = old_data_root
+  end
+
   def parse_body = JSON.parse(response.body)
+
+  def write_grade_log(run, name, contents)
+    path = WorkflowWorkspace.path_for(run.workflow).join(".syrus", "grade-output", "iteration-#{run.iteration}", "#{name}.log")
+    FileUtils.mkdir_p(path.dirname)
+    path.write(contents)
+  end
 
   it "returns a structured job detail payload for React rendering" do
     user.update!(admin: false)
@@ -120,6 +137,57 @@ RSpec.describe "App API job detail", type: :request do
       include("source" => "run", "title" => "Run ##{run.id} failed")
     )
     expect(body["events"].first).to include("at", "kind", "source", "title", "ref")
+  end
+
+  it "returns grade logs as JSON for React rendering" do
+    workflow = job.latest_workflow
+    collect = workflow.steps.find_by!(kind: "grader_collect")
+    collect.update!(position: collect.position + 1)
+    grade_step = Step.create!(
+      workflow: workflow,
+      kind: "grader",
+      position: collect.position - 1,
+      loop_id: collect.loop_id,
+      iteration: collect.iteration,
+      details: { "name" => "tests", "command" => "bin/rspec" }
+    )
+    grade_run = Run.create!(job: job, step: grade_step, trigger_kind: "initial", iteration: 1, state: "failed")
+    write_grade_log(grade_run, "tests", "rspec output\n")
+
+    get "/api/v1/app/jobs/#{job.id}"
+
+    run_payload = parse_body["workflows"].flat_map { |payload| payload["steps"] }.flat_map { |payload| payload["runs"] }.find { |payload| payload["id"] == grade_run.id }
+    expect(run_payload["app_grade_log_path"]).to include("/api/v1/app/jobs/#{job.id}/runs/#{grade_run.id}/grade_log", "name=tests")
+
+    get "/api/v1/app/jobs/#{job.id}/runs/#{grade_run.id}/grade_log", params: { name: "tests" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include(
+      "job_id" => job.id,
+      "run_id" => grade_run.id,
+      "name" => "tests",
+      "contents" => "rspec output\n"
+    )
+  end
+
+  it "returns a JSON error when a grade log was pruned" do
+    workflow = job.latest_workflow
+    collect = workflow.steps.find_by!(kind: "grader_collect")
+    collect.update!(position: collect.position + 1)
+    grade_step = Step.create!(
+      workflow: workflow,
+      kind: "grader",
+      position: collect.position - 1,
+      loop_id: collect.loop_id,
+      iteration: collect.iteration,
+      details: { "name" => "tests", "command" => "bin/rspec" }
+    )
+    grade_run = Run.create!(job: job, step: grade_step, trigger_kind: "initial", iteration: 1, state: "failed")
+
+    get "/api/v1/app/jobs/#{job.id}/runs/#{grade_run.id}/grade_log", params: { name: "tests" }
+
+    expect(response).to have_http_status(:not_found)
+    expect(parse_body.dig("error", "message")).to include("no longer available")
   end
 
   it "does not expose another user's job" do

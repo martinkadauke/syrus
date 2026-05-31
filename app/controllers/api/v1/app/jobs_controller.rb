@@ -14,9 +14,39 @@ module Api
           render json: ::App::JobDetailPayload.timeline(job: find_job)
         end
 
+        def grade_log
+          job = find_job_by_param(:job_id)
+          run = job.runs.includes(:step).find_by(id: params[:run_id])
+          unless run && %w[grade grader grader_collect].include?(run.step&.kind)
+            render_error("not_found", "Grade log is not available for this run.", status: :not_found)
+            return
+          end
+
+          contents = WorkflowWorkspace.grade_log_for(run, params[:name].to_s)
+          unless contents
+            render_error(
+              "not_found",
+              "Grade log is no longer available. The workflow workspace may have been pruned.",
+              status: :not_found
+            )
+            return
+          end
+
+          render json: {
+            job_id: job.id,
+            run_id: run.id,
+            name: params[:name].to_s,
+            contents: contents
+          }
+        end
+
         private
 
         def find_job
+          find_job_by_param(:id)
+        end
+
+        def find_job_by_param(key)
           Current.user.jobs
                       .includes(
                         :repository,
@@ -27,7 +57,7 @@ module Api
                         workflows: { steps: { runs: [ :claude_session, :run_diagnostic, :run_health_snapshots, :job_logs ] } },
                         runs: [ :job_logs, :run_health_snapshots, :claude_session, :run_diagnostic ]
                       )
-                      .find(params[:id])
+                      .find(params[key])
         end
       end
     end

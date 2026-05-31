@@ -180,6 +180,7 @@ export type JobRun = {
   app_diagnose_path: string
   app_resume_path: string
   grade_log_path: string | null
+  app_grade_log_path: string | null
 }
 
 export type JobActions = {
@@ -281,6 +282,13 @@ export type JobCommandPayload = {
   redirect_to?: string
 }
 
+export type JobGradeLogPayload = {
+  job_id: number
+  run_id: number
+  name: string
+  contents: string
+}
+
 export function fetchJobDetail(id: string) {
   return getJson<JobDetailPayload>(`/api/v1/app/jobs/${id}`)
 }
@@ -291,6 +299,10 @@ export function fetchJobTimeline(id: string) {
 
 export function fetchJobSource(id: string, search = "") {
   return getJson<JobSourcePayload>(`/api/v1/app/jobs/${id}/source${search}`)
+}
+
+export function fetchJobGradeLog(path: string) {
+  return getJson<JobGradeLogPayload>(path)
 }
 
 export function postJobCommand(path: string, body?: unknown) {

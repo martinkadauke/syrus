@@ -2201,6 +2201,12 @@ describe("App", () => {
   })
 
   it("renders a Job detail page and runs commands through the app API", async () => {
+    const payload = jobDetailPayload()
+    const gradeStep = payload.workflows[0].steps[0] as { kind: string; details: unknown; runs: Array<{ grade_log_path: string | null; app_grade_log_path: string | null }> }
+    gradeStep.kind = "grader"
+    gradeStep.details = { name: "tests", command: "bin/rspec" }
+    gradeStep.runs[0].grade_log_path = "/jobs/42/runs/9/grade_log?name=tests&workflow_id=5"
+    gradeStep.runs[0].app_grade_log_path = "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5"
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/jobs/42/poll_feedback" && init?.method === "POST") {
@@ -2209,8 +2215,11 @@ describe("App", () => {
       if (path === "/api/v1/app/jobs/42/timeline") {
         return Promise.resolve(new Response(JSON.stringify(jobTimelinePayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
+      if (path === "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5") {
+        return Promise.resolve(new Response(JSON.stringify({ job_id: 42, run_id: 9, name: "tests", contents: "rspec output\n" }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
 
-      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
     render(
@@ -2239,6 +2248,16 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
     expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
     expect(screen.getByText("Run #9")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Grade log" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5",
+        expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
+      )
+    })
+    expect(await screen.findByText("tests grade log")).toBeInTheDocument()
+    expect(screen.getByText("rspec output")).toBeInTheDocument()
   })
 
   it("renders the Job source browser from the app source API", async () => {
@@ -3778,7 +3797,8 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
                 app_stop_path: "/api/v1/app/jobs/42/runs/9/stop",
                 app_diagnose_path: "/api/v1/app/jobs/42/runs/9/diagnose",
                 app_resume_path: "/api/v1/app/jobs/42/resume",
-                grade_log_path: null
+                grade_log_path: null,
+                app_grade_log_path: null
               }
             ]
           }

@@ -304,7 +304,8 @@ module App
         app_stop_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/stop",
         app_diagnose_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/diagnose",
         app_resume_path: "/api/v1/app/jobs/#{@job.id}/resume",
-        grade_log_path: grade_log_path(run, workflow: workflow)
+        grade_log_path: grade_log_path(run, workflow: workflow),
+        app_grade_log_path: app_grade_log_path(run, workflow: workflow)
       }
     end
 
@@ -374,6 +375,16 @@ module App
 
       name = step.details.is_a?(Hash) ? step.details["name"] : nil
       run_grade_log_job_path(@job, run_id: run.id, name: name, workflow_id: workflow.id)
+    end
+
+    def app_grade_log_path(run, workflow:)
+      step = run.step
+      return unless step&.kind.in?(%w[grade grader grader_collect])
+
+      name = step.details.is_a?(Hash) ? step.details["name"] : nil
+      query = { name: name, workflow_id: workflow.id }.compact.to_query
+      path = "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/grade_log"
+      query.present? ? "#{path}?#{query}" : path
     end
 
     def actions_json

@@ -7,6 +7,7 @@ import {
   createJobAttachments,
   deleteJobCommand,
   fetchJobDetail,
+  fetchJobGradeLog,
   fetchJobSource,
   fetchJobTimeline,
   patchJobCommand,
@@ -465,6 +466,12 @@ function StepCard({ step, payload, command }: { step: JobStep; payload: JobDetai
 }
 
 function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+  const [gradeLogOpen, setGradeLogOpen] = useState(false)
+  const gradeLog = useMutation({
+    mutationFn: (path: string) => fetchJobGradeLog(path),
+    onSuccess: () => setGradeLogOpen(true)
+  })
+
   return (
     <div className="rounded border border-gray-200 bg-white p-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -485,9 +492,23 @@ function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayl
           {run.can_stop ? <CommandButton command={command} input={{ method: "post", path: run.app_stop_path }} tone="danger">Stop</CommandButton> : null}
           {run.can_diagnose ? <CommandButton command={command} input={{ method: "post", path: run.app_diagnose_path }} tone="secondary">Diagnose</CommandButton> : null}
           {run.can_resume ? <CommandButton command={command} input={{ method: "post", path: payload.paths.app_resume_path, body: { source_run_id: run.id } }} tone="secondary">Resume</CommandButton> : null}
-          {run.grade_log_path ? <a className={buttonClass("secondary")} href={run.grade_log_path}>Grade log</a> : null}
+          {run.app_grade_log_path ? (
+            <button className={buttonClass("secondary")} disabled={gradeLog.isPending} onClick={() => gradeLog.mutate(run.app_grade_log_path!)} type="button">
+              {gradeLog.isPending ? "Loading log..." : "Grade log"}
+            </button>
+          ) : null}
         </div>
       </div>
+      {gradeLog.isError ? <p className="mt-3 text-xs text-red-700">{errorMessage(gradeLog.error, "Grade log failed.")}</p> : null}
+      {gradeLogOpen && gradeLog.data ? (
+        <section className="mt-3 rounded border border-gray-200 bg-gray-50">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-3 py-2">
+            <h4 className="text-xs font-semibold uppercase text-gray-500">{gradeLog.data.name || `Run #${gradeLog.data.run_id}`} grade log</h4>
+            <button className="text-xs text-gray-500 underline hover:text-gray-700" onClick={() => setGradeLogOpen(false)} type="button">Hide</button>
+          </div>
+          <pre className="max-h-96 overflow-auto p-3 font-mono text-xs text-gray-800 whitespace-pre-wrap">{gradeLog.data.contents}</pre>
+        </section>
+      ) : null}
     </div>
   )
 }
