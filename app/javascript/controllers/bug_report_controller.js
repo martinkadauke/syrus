@@ -72,7 +72,7 @@ export default class extends Controller {
         this.close()
         this.showFlash(payload.message || "Bug report queued.", "notice")
       } else {
-        window.alert(payload.error || "Bug report could not be queued.")
+        window.alert(payload.error?.message || payload.error || "Bug report could not be queued.")
       }
     } catch (error) {
       window.alert("Bug report could not be queued.")

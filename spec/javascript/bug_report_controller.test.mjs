@@ -33,7 +33,7 @@ function buildController(Controller, { capture = { name: "bug-report-viewport.pn
   let closed = false
   const controller = new Controller()
   controller.captures = { viewport: capture }
-  controller.formTarget = { action: "/bug_reports", method: "post" }
+  controller.formTarget = { action: "/api/v1/app/bug_reports", method: "post" }
   controller.dialogTarget = {
     close() {
       closed = true
@@ -129,7 +129,7 @@ test("submits a valid bug report without navigating away", async () => {
   assert.equal(prevented, true)
   assert.equal(wasClosed(), true)
   assert.equal(controller.screenshotInputTarget.files.length, 1)
-  assert.equal(request.url, "/bug_reports")
+  assert.equal(request.url, "/api/v1/app/bug_reports")
   assert.equal(request.options.method, "POST")
   assert.equal(request.options.headers.Accept, "application/json")
   assert.equal(request.options.headers["X-CSRF-Token"], "csrf-token")

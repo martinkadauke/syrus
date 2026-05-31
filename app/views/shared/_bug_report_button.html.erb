@@ -20,7 +20,7 @@
         data-turbo-permanent
         data-bug-report-target="dialog"
         class="fixed inset-0 m-auto max-h-[calc(100vh-2rem)] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto rounded-lg p-0 shadow-xl backdrop:bg-black/50">
-  <%= form_with url: bug_reports_path,
+  <%= form_with url: api_v1_app_bug_reports_path,
         method: :post,
         multipart: true,
         data: { bug_report_target: "form", action: "submit->bug-report#submit" },

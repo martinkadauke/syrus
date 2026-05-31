@@ -95,7 +95,7 @@ health/storage internals.
 | `/session/new`, `POST/DELETE /session` | `sessions` resource | `legacy-html` | Keep server-rendered until late. SPA handles 401 by navigating here. |
 | `/users/new`, `POST /users` | `users#new/create` | `legacy-html` | First-user bootstrap path; low value for SPA. |
 | `/passwords/new`, `/passwords/:token/edit`, password mutations | `passwords` resource | `legacy-html` | Keep server-rendered unless auth UX gets a dedicated pass. |
-| `/bug_reports` | `bug_reports#create` | `app-api-needed` | Current controller already supports JSON. SPA chrome can call JSON path. |
+| `/bug_reports` | `/api/v1/app/bug_reports` | `spa-core` | Floating bug-report chrome posts to the app API; legacy HTML route remains for fallback. |
 | `/pwa/*` | `app/views/pwa/*` | `legacy-html` | Static/dynamic manifest assets. |
 | `/up` | `rails/health#show` | `engine` | Health check; unrelated. |
 | `/api/v1/admin/*` | `api/v1/admin/*` | `api-existing` | Token-auth external/admin API. Keep stable; do not repurpose for session-cookie SPA if the browser needs different contracts. |

@@ -20,6 +20,7 @@ Rails.application.routes.draw do
     namespace :v1 do
       namespace :app do
         get "bootstrap", to: "bootstrap#show"
+        post "bug_reports", to: "bug_reports#create"
         resources :tags, only: %i[ index create update destroy ]
         resources :smart_folders, only: %i[ index update destroy ]
         resources :cron_templates, only: %i[ index show create update destroy ]
