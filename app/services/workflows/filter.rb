@@ -11,7 +11,6 @@ module Workflows
       folder_tree = smart_folder&.filter.presence
 
       tree = [ folder_tree, q_tree, url_tree ].compact.reduce { |acc, next_tree| merge_and(acc, next_tree) }
-      tree ||= default_tree unless params.key?(Filters::QueryParam::PARAM_NAME) || smart_folder
       tree ||= Filters::Ast.serialize(Filters::Ast::EMPTY)
 
       new(tree, user: user)
@@ -35,7 +34,7 @@ module Workflows
     end
 
     def default?
-      to_h == self.class.default_tree
+      to_h == Filters::Ast.serialize(Filters::Ast::EMPTY)
     end
 
     def pinned?
@@ -84,15 +83,6 @@ module Workflows
       { "field" => field, "op" => op, "value" => value }
     end
     private_class_method :chip
-
-    def self.default_tree
-      {
-        "or" => [
-          { "field" => "state", "op" => "is_one_of", "value" => %w[ queued running ] },
-          { "field" => "finished_at", "op" => "within_last", "value" => { "n" => 7, "unit" => "days" } }
-        ]
-      }
-    end
 
     def self.merge_and(left_tree, right_tree)
       children = [ left_tree, right_tree ].flat_map do |tree|

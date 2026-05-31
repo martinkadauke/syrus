@@ -202,6 +202,31 @@ RSpec.describe "App API dashboard commands", type: :request do
         "active" => true
       ))
     end
+
+    it "returns all workflows for the workflow subject without a hidden recency filter" do
+      job = Factories.job_record(repository: repo, issue_number: 10, issue_title: "Old aqueduct")
+      old_workflow = Workflow.create!(
+        job: job,
+        trigger_kind: "initial",
+        agent_provider: "claude",
+        state: "succeeded",
+        started_at: 30.days.ago,
+        finished_at: 29.days.ago
+      )
+
+      get "/api/v1/app/dashboard", params: { subject: "workflow", view: "list" }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(body["subject"]).to eq("workflow")
+      expect(body["total"]).to eq(1)
+      expect(body["items"].sole).to include(
+        "type" => "workflow",
+        "id" => old_workflow.id,
+        "state" => "succeeded",
+        "job" => include("title" => "Old aqueduct")
+      )
+    end
   end
 
   describe "PATCH /api/v1/app/dashboard/preferences" do
