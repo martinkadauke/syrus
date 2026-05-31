@@ -358,9 +358,6 @@ Rails.application.routes.draw do
   # and remain admin-only.
   get "settings", to: "spa#show"
   get "settings/edit", to: "spa#show", as: :edit_settings
-  patch "settings", to: "settings#update"
-  get "settings/edit/legacy", to: "settings#edit", as: :legacy_edit_settings
-  patch "settings/legacy", to: "settings#update", as: :legacy_settings
   resources :bug_reports, only: %i[ create ]
   get "jobs/new", to: "spa#show", as: :new_job
   get "jobs/new/legacy", to: "jobs#new", as: :legacy_new_job

@@ -76,8 +76,7 @@ health/storage internals.
 | credential token commands | `/api/v1/app/credentials/*api_token` | `spa-core` | React uses app API commands returning masked token state plus one-time plaintext on rotation. Legacy HTML token command routes are removed. |
 | `/account/documents` | `/api/v1/app/credentials/documents` | `spa-core` | React uses app API upload/delete endpoints for credential-page documents. Legacy HTML document routes are removed. |
 | `/settings` | `spa#show` | `spa-core` | Migrated as the per-user credentials alias. `/settings/edit` remains the separate admin app-settings surface. |
-| `/settings/edit` | `spa#show` | `spa-admin` | Migrated to the React app settings shell. Legacy ERB fallback lives at `/settings/edit/legacy`. |
-| `PATCH /settings` | `settings#update` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/settings`. |
+| `/settings/edit` | `spa#show` + `/api/v1/app/admin/settings` | `spa-admin` | Migrated to the React app settings shell. Legacy ERB fallback and HTML settings mutation route are removed. |
 | `/invitations` | `spa#show` + `/api/v1/app/admin/invitations` | `spa-admin` | Migrated to the React invitations shell with app API create/revoke. Legacy ERB fallback and HTML invitation mutation routes are removed. |
 | `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell with internal React Router metric links; legacy ERB fallback is removed. |
 | `/admin/queue`, `/admin/queue/:tab` | `spa#show` + `/api/v1/app/admin/queue*` | `spa-admin` | Migrated to the React admin queue shell with app API reaper command. Legacy ERB fallback and HTML reaper route are removed. |
