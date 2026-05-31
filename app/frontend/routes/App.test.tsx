@@ -312,24 +312,39 @@ describe("App", () => {
   })
 
   it("renders app-shell dashboard kanban lanes from the app dashboard API", async () => {
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "kanban",
-            total: 1,
-            lanes: [
-              { key: "queued", title: "Queued", count: 0, items: [] },
-              { key: "running", title: "Running", count: 1, items: [dashboardJobItem()] },
-              { key: "succeeded", title: "Succeeded", count: 0, items: [] }
-            ],
-            kanban_limit: 100
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/dashboard/preferences" && init?.method === "PATCH") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              message: "Dashboard preferences updated.",
+              dashboard_preferences: {}
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            dashboardPayload({
+              subject: "job",
+              view: "kanban",
+              total: 1,
+              lanes: [
+                { key: "queued", title: "Queued", count: 0, items: [] },
+                { key: "running", title: "Running", count: 1, items: [dashboardJobItem()] },
+                { key: "succeeded", title: "Succeeded", count: 0, items: [] }
+              ],
+              kanban_limit: 100
+            })
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
       )
-    )
+    })
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -349,6 +364,26 @@ describe("App", () => {
         headers: { Accept: "application/json" }
       })
     )
+
+    fireEvent.click(screen.getByLabelText("Succeeded"))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard/preferences",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            subject: "job",
+            kanban_lanes: ["queued", "running"]
+          })
+        })
+      )
+    })
   })
 
   it("renders the admin queue route from the app admin queue API", async () => {
@@ -3202,6 +3237,14 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
       views: ["list", "kanban"],
       sort_columns: ["title", "state", "repository", "created_at", "started_at"],
       sort_directions: ["asc", "desc"],
+      kanban_lanes: [
+        { key: "blocked", title: "Blocked" },
+        { key: "queued", title: "Queued" },
+        { key: "running", title: "Running" },
+        { key: "succeeded", title: "Succeeded" },
+        { key: "landing", title: "Landing" },
+        { key: "failed", title: "Failed" }
+      ],
       filter_schema: [
         {
           field: "state",

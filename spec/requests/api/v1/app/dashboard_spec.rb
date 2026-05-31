@@ -57,7 +57,15 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["controls"]).to include(
         "views" => %w[list kanban],
         "sort_columns" => %w[title state repository created_at started_at],
-        "sort_directions" => %w[asc desc]
+        "sort_directions" => %w[asc desc],
+        "kanban_lanes" => [
+          { "key" => "blocked", "title" => "Blocked" },
+          { "key" => "queued", "title" => "Queued" },
+          { "key" => "running", "title" => "Running" },
+          { "key" => "succeeded", "title" => "Succeeded" },
+          { "key" => "landing", "title" => "Landing" },
+          { "key" => "failed", "title" => "Failed" }
+        ]
       )
       expect(body.dig("controls", "filter_schema")).to include(
         include("field" => "state", "label" => "State", "values" => include(include("value" => "open", "label" => "Any open"))),

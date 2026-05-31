@@ -449,8 +449,24 @@ module App
         views: VIEWS,
         sort_columns: User::DASHBOARD_SORT_COLUMNS.fetch(subject),
         sort_directions: User::DASHBOARD_SORT_DIRECTIONS,
+        kanban_lanes: kanban_lane_options_json,
         filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user)
       }
+    end
+
+    def kanban_lane_options_json
+      User::DASHBOARD_KANBAN_LANES.fetch(subject.pluralize).map do |lane|
+        {
+          key: lane,
+          title: kanban_lane_title(lane)
+        }
+      end
+    end
+
+    def kanban_lane_title(lane)
+      return JOB_KANBAN_LANES.find { |definition| definition.fetch(:key) == lane }&.fetch(:title) || lane.humanize if subject == "job"
+
+      lane.humanize
     end
 
     def paths_json

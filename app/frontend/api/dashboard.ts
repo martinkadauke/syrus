@@ -85,6 +85,11 @@ export type DashboardLane = {
   items: DashboardItem[]
 }
 
+export type DashboardKanbanLaneOption = {
+  key: string
+  title: string
+}
+
 export type DashboardSmartFolder = {
   id: number
   name: string
@@ -129,6 +134,7 @@ export type DashboardPayload = {
     views: string[]
     sort_columns: string[]
     sort_directions: string[]
+    kanban_lanes: DashboardKanbanLaneOption[]
     filter_schema: DashboardFilterSchemaField[]
   }
   smart_folders: DashboardSmartFolder[]

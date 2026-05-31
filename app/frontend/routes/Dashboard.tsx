@@ -103,6 +103,15 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
     })
   }
 
+  function updateLane(lane: string, checked: boolean) {
+    const current = payload.preferences.kanban_lanes
+    const next = checked ? [ ...current, lane ].filter(uniqueValue) : current.filter((value) => value !== lane)
+    updatePreferences.mutate({
+      subject: payload.subject,
+      kanban_lanes: next
+    })
+  }
+
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -151,7 +160,23 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
             ))}
           </select>
         </label>
-        {payload.view === "kanban" ? <span className="mb-1 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600">Kanban lanes: {payload.preferences.kanban_lanes.join(", ")}</span> : null}
+        {payload.view === "kanban" ? (
+          <fieldset className="flex max-w-xl flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1">
+            <legend className="sr-only">Kanban lanes</legend>
+            <span className="mr-1 text-xs font-medium uppercase text-gray-500">Lanes</span>
+            {payload.controls.kanban_lanes.map((lane) => (
+              <label className="inline-flex items-center gap-1 text-xs text-gray-700" key={lane.key}>
+                <input
+                  checked={payload.preferences.kanban_lanes.includes(lane.key)}
+                  disabled={updatePreferences.isPending}
+                  onChange={(event) => updateLane(lane.key, event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{lane.title}</span>
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
       </div>
     </div>
   )
@@ -606,6 +631,10 @@ function bulkButtonClass(disabled: boolean, tone: "default" | "danger" = "defaul
   if (tone === "danger") return "rounded border border-red-300 px-3 py-1 text-red-700 hover:bg-red-50"
 
   return "rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-white"
+}
+
+function uniqueValue(value: string, index: number, values: string[]) {
+  return values.indexOf(value) === index
 }
 
 function filterControlsFor(payload: DashboardPayload) {
