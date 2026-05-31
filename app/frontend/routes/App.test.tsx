@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
@@ -516,5 +516,67 @@ describe("App", () => {
         headers: { Accept: "application/json" }
       })
     )
+  })
+
+  it("renders the invitations route from the app admin invitations API and revokes invitations", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/admin/invitations/9" && init?.method === "DELETE") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              invitations: [],
+              message: "Invitation revoked."
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            invitations: [
+              {
+                id: 9,
+                email_address: "guest@example.com",
+                token: "abc123",
+                share_url: "http://example.test/users/new?token=abc123",
+                expires_at: "2026-06-06T12:00:00Z",
+                created_at: "2026-05-30T12:00:00Z",
+                invited_by_email_address: "operator@example.com"
+              }
+            ]
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/invitations"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin invitations" })).toBeInTheDocument()
+    expect(await screen.findByText("guest@example.com")).toBeInTheDocument()
+    expect(screen.getByText("http://example.test/users/new?token=abc123")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Revoke" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/admin/invitations/9",
+        expect.objectContaining({
+          method: "DELETE",
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
+    })
+    expect(await screen.findByText("No pending invitations.")).toBeInTheDocument()
   })
 })
