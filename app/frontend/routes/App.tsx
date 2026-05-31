@@ -12,6 +12,7 @@ import { AdminSettings } from "./AdminSettings"
 import { AdminStuck } from "./AdminStuck"
 import { AdminTranscript } from "./AdminTranscript"
 import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
+import { SmartFolders } from "./SmartFolders"
 import { Tags } from "./Tags"
 
 export function App() {
@@ -32,6 +33,7 @@ export function App() {
       <Route path="/admin/installations" element={<AdminInstallations />} />
       <Route path="/invitations" element={<AdminInvitations />} />
       <Route path="/settings/edit" element={<AdminSettings />} />
+      <Route path="/smart_folders" element={<SmartFolders />} />
       <Route path="/tags" element={<Tags />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
@@ -46,6 +48,7 @@ export function App() {
       <Route path="/app-shell/admin/installations" element={<AdminInstallations />} />
       <Route path="/app-shell/invitations" element={<AdminInvitations />} />
       <Route path="/app-shell/settings/edit" element={<AdminSettings />} />
+      <Route path="/app-shell/smart_folders" element={<SmartFolders />} />
       <Route path="/app-shell/tags" element={<Tags />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
