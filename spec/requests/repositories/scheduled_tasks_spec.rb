@@ -21,10 +21,17 @@ RSpec.describe "Repository scheduled tasks", type: :request do
     }.merge(overrides))
   end
 
-  it "lists scheduled tasks for the repository" do
+  it "serves the React repository scheduled tasks shell" do
+    get repository_scheduled_tasks_path(repo)
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include('id="syrus-spa-root"')
+  end
+
+  it "lists scheduled tasks for the repository in the legacy fallback" do
     task = scheduled_task
 
-    get repository_scheduled_tasks_path(repo)
+    get repository_legacy_scheduled_tasks_path(repo)
 
     expect(response).to have_http_status(:ok)
     expect(response.body).to include(task.name)
@@ -50,5 +57,13 @@ RSpec.describe "Repository scheduled tasks", type: :request do
     }.to change { ScheduledTask.alive.count }.by(-1)
 
     expect(task.reload.archived_at).to be_present
+  end
+
+  it "keeps legacy mutations inside the legacy fallback" do
+    task = scheduled_task
+
+    patch repository_legacy_scheduled_task_path(repo, task), params: { enabled: "false" }
+    expect(response).to redirect_to(repository_legacy_scheduled_tasks_path(repo))
+    expect(task.reload.state).to eq("paused")
   end
 end

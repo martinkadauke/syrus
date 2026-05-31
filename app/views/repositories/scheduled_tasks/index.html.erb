@@ -9,7 +9,7 @@
 
   <%= render "repositories/tabs", repository: @repository, active: :scheduled_tasks do %>
     <%= link_to "New scheduled task",
-          new_repository_scheduled_task_path(@repository),
+          new_repository_scheduled_task_entry_path,
           class: "rounded-md px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium" %>
   <% end %>
 
@@ -55,12 +55,12 @@
               <td class="px-4 py-3">
                 <div class="flex justify-end gap-2">
                   <%= button_to(active ? "Disable" : "Enable",
-                        repository_scheduled_task_path(@repository, task),
+                        repository_scheduled_task_mutation_path(task),
                         method: :patch,
                         params: { enabled: (!active).to_s },
                         class: "rounded border border-gray-300 px-3 py-1 text-sm text-gray-700 hover:bg-gray-50") %>
                   <%= button_to "Delete",
-                        repository_scheduled_task_path(@repository, task),
+                        repository_scheduled_task_mutation_path(task),
                         method: :delete,
                         class: "rounded border border-red-200 px-3 py-1 text-sm text-red-700 hover:bg-red-50",
                         form: { data: { turbo_confirm: "Delete this scheduled task?" } } %>

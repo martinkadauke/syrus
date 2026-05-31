@@ -169,10 +169,15 @@ Rails.application.routes.draw do
     # the per-repo controller was pure duplication of ChatsController.
     resources :notes, only: %i[ create destroy ], controller: "repositories/notes"
     resources :documents, only: %i[ index create destroy ], controller: "repositories/documents", shallow: true
-    resources :scheduled_tasks, only: %i[ index update destroy ], controller: "repositories/scheduled_tasks"
+    get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks
+    patch "scheduled_tasks/:id", to: "repositories/scheduled_tasks#update", as: :scheduled_task
+    delete "scheduled_tasks/:id", to: "repositories/scheduled_tasks#destroy"
+    get "scheduled_tasks/legacy", to: "repositories/scheduled_tasks#index", as: :legacy_scheduled_tasks
+    patch "scheduled_tasks/legacy/:id", to: "repositories/scheduled_tasks#update", as: :legacy_scheduled_task
+    delete "scheduled_tasks/legacy/:id", to: "repositories/scheduled_tasks#destroy"
     post "scheduled_tasks", to: "scheduled_tasks#create"
     get "scheduled_tasks/legacy/new", to: "scheduled_tasks#new", as: :legacy_new_scheduled_task
-    post "scheduled_tasks/legacy", to: "scheduled_tasks#create", as: :legacy_scheduled_tasks
+    post "scheduled_tasks/legacy", to: "scheduled_tasks#create"
   end
   get "repositories/:repository_id/scheduled_tasks/new", to: "spa#show", as: :new_repository_scheduled_task
 

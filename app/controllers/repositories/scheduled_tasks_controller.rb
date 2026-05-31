@@ -1,6 +1,9 @@
 class Repositories::ScheduledTasksController < ApplicationController
   before_action :load_repository
   before_action :load_task, only: %i[ update destroy ]
+  helper_method :repository_scheduled_tasks_index_path,
+                :repository_scheduled_task_mutation_path,
+                :new_repository_scheduled_task_entry_path
 
   # Per-repo lightweight view of ScheduledTask. The full operator
   # CRUD UI lives at the top-level /scheduled_tasks; this tab is a
@@ -23,12 +26,12 @@ class Repositories::ScheduledTasksController < ApplicationController
       @scheduled_task.pause!(reason: "operator")
       notice = "Scheduled task disabled."
     end
-    redirect_to repository_scheduled_tasks_path(@repository), notice: notice
+    redirect_to repository_scheduled_tasks_redirect_path, notice: notice
   end
 
   def destroy
     @scheduled_task.soft_delete!
-    redirect_to repository_scheduled_tasks_path(@repository), notice: "Scheduled task deleted."
+    redirect_to repository_scheduled_tasks_redirect_path, notice: "Scheduled task deleted."
   end
 
   private
@@ -39,5 +42,33 @@ class Repositories::ScheduledTasksController < ApplicationController
 
   def load_task
     @scheduled_task = @repository.scheduled_tasks.find(params[:id])
+  end
+
+  def repository_scheduled_tasks_index_path
+    legacy_repository_scheduled_tasks_request? ? repository_legacy_scheduled_tasks_path(@repository) : repository_scheduled_tasks_path(@repository)
+  end
+
+  def repository_scheduled_task_mutation_path(task)
+    if legacy_repository_scheduled_tasks_request?
+      repository_legacy_scheduled_task_path(@repository, task)
+    else
+      repository_scheduled_task_path(@repository, task)
+    end
+  end
+
+  def new_repository_scheduled_task_entry_path
+    if legacy_repository_scheduled_tasks_request?
+      repository_legacy_new_scheduled_task_path(@repository)
+    else
+      new_repository_scheduled_task_path(@repository)
+    end
+  end
+
+  def repository_scheduled_tasks_redirect_path
+    legacy_repository_scheduled_tasks_request? ? repository_legacy_scheduled_tasks_path(@repository) : repository_scheduled_tasks_path(@repository)
+  end
+
+  def legacy_repository_scheduled_tasks_request?
+    request.path.include?("/scheduled_tasks/legacy")
   end
 end
