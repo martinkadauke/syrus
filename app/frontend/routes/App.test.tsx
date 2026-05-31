@@ -35,6 +35,15 @@ vi.mock("@excalidraw/excalidraw", () => ({
   }
 }))
 
+vi.mock("mermaid", () => ({
+  default: {
+    initialize: vi.fn(),
+    render: vi.fn(async (_id: string, definition: string) => ({
+      svg: `<svg role="img" aria-label="Dependency graph"><text>${definition}</text></svg>`
+    }))
+  }
+}))
+
 describe("App", () => {
   it("loads bootstrap data into the SPA shell", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
@@ -2170,6 +2179,8 @@ describe("App", () => {
     expect(screen.getByText("Raise the forum")).toBeInTheDocument()
     expect(screen.getByText("columns")).toBeInTheDocument()
     expect(screen.getByText("(1 epic dep, 0 job blockers)")).toBeInTheDocument()
+    expect(await screen.findByRole("img", { name: "Dependency graph" })).toBeInTheDocument()
+    expect(document.querySelector("[data-controller='mermaid-graph']")).toBeNull()
     expect(screen.getByText("Survey forum")).toBeInTheDocument()
     expect(screen.getByText("1/1 done")).toBeInTheDocument()
 

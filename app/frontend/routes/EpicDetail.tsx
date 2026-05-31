@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
@@ -13,6 +13,9 @@ import {
   type EpicStateTransition
 } from "../api/epics"
 import { Markdown } from "../lib/Markdown"
+
+let mermaidInitialized = false
+let mermaidRenderSequence = 0
 
 type EpicCommand =
   | { kind: "state"; transition: EpicStateTransition }
@@ -135,12 +138,49 @@ function DependencyGraph({ graph }: { graph: EpicGraph }) {
         </span>
       </summary>
       <div className="border-t border-gray-100 p-3">
-        <div className="overflow-x-auto rounded bg-gray-50 p-3" data-controller="mermaid-graph">
-          <pre className="hidden" data-mermaid-graph-target="source">{graph.definition}</pre>
-          <div className="min-w-[28rem] text-center text-gray-700" data-mermaid-graph-target="output" />
-        </div>
+        <MermaidGraph definition={graph.definition} />
       </div>
     </details>
+  )
+}
+
+function MermaidGraph({ definition }: { definition: string }) {
+  const [svg, setSvg] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setSvg(null)
+    setError(null)
+
+    void import("mermaid")
+      .then(async (module) => {
+        const mermaid = module.default
+        if (!mermaidInitialized) {
+          mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "base" })
+          mermaidInitialized = true
+        }
+
+        return mermaid.render(`epic-dependency-graph-${++mermaidRenderSequence}`, definition)
+      })
+      .then(({ svg: renderedSvg }) => {
+        if (!cancelled) setSvg(renderedSvg)
+      })
+      .catch((caught: unknown) => {
+        if (!cancelled) setError(`Dependency graph could not render: ${caught instanceof Error ? caught.message : String(caught)}`)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [definition])
+
+  return (
+    <div className="overflow-x-auto rounded bg-gray-50 p-3">
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+      {!error && !svg ? <p className="text-sm text-gray-500">Rendering dependency graph...</p> : null}
+      {svg ? <div className="min-w-[28rem] text-center text-gray-700" dangerouslySetInnerHTML={{ __html: svg }} /> : null}
+    </div>
   )
 }
 

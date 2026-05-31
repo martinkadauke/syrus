@@ -51,7 +51,7 @@ health/storage internals.
 | `/epics/new`, `/epics/:id/edit` | `spa#show` + `/api/v1/app/epics*` | `spa-core` | Migrated to the React Epic form. Legacy ERB fallback lives at `/epics/new/legacy` and `/epics/:id/edit/legacy`; HTML `POST/PATCH /epics` remains for fallback. |
 | `PATCH /epics/:id/archive` | `/api/v1/app/epics/:id/archive` | `spa-core` | React uses the app API command endpoint; legacy HTML command remains for fallback/dashboard controls. |
 | `PATCH /epics/:id/state` | `/api/v1/app/epics/:id/state` | `spa-core` | React uses the app API command endpoint; legacy HTML/JSON command remains for fallback/dashboard controls. |
-| `/epics/:id/graph` | `epics#graph` | `spa-core` | Graph data endpoint or React route depending current response shape. |
+| `/epics/:id/graph` | `epics#graph` | `legacy-html` | Legacy Turbo drawer endpoint for ERB dashboard cards. React Epic detail renders the Mermaid dependency graph client-side from `/api/v1/app/epics/:id` graph data and does not mount `mermaid_graph`. |
 | `/epics`, `/jobs`, `/workflows` redirects | route redirects | `spa-core` | Compatibility shortcuts now redirect to React-owned `/dashboard/epics`, `/dashboard/jobs`, and `/dashboard/workflows` while preserving non-`subject` query params. |
 | `/repositories` | `spa#show` + `/api/v1/app/repositories` | `spa-core` | Migrated to the React repository list with app API poll/archive/unarchive commands. Legacy ERB fallback lives at `/repositories/legacy`. |
 | `/repositories/new`, `/repositories/:id/edit`, `POST/PATCH /repositories` | `spa#show` + `/api/v1/app/repositories*` | `spa-core` | Migrated to the React repository form with app API GitHub owner/repo/branch selectors. Legacy ERB fallback lives at `/repositories/new/legacy` and `/repositories/:id/edit/legacy`; HTML `POST/PATCH /repositories` remains for fallback. |
@@ -115,7 +115,7 @@ health/storage internals.
 | Job detail/source | `approval_review`, `attachment_drop`, `iteration_tabs`, `retry_context`, `run_timer`, `source_highlight`, `source_tree`, `transcript_toggle` |
 | Chat/whiteboard | `chat`, `chat_layout`, `chat_side_panel`, `bookmark_modal`, `whiteboard` |
 | Repository/settings/forms | `repository_form`, `credentials_form`, `scheduled_task_form`, `prompt_template`, `document_upload`, `issue_comment`, `auto_submit` |
-| Shared visual helpers | `mermaid_graph`, `relative_time` can become React components or small standalone utilities |
+| Shared visual helpers | `mermaid_graph` remains only for legacy ERB graph drawers; React Epic detail renders Mermaid client-side. `relative_time` can become a React utility as remaining legacy pages migrate. |
 
 ## First migration slice
 
