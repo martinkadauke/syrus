@@ -174,7 +174,6 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body["notes"]).to contain_exactly(include(
       "id" => active_note.id,
       "body" => "Use staging for smoke tests.",
-      "delete_path" => repository_note_path(repository, active_note),
       "app_delete_path" => "/api/v1/app/repositories/#{repository.id}/notes/#{active_note.id}"
     ))
     expect(body["jobs"]).to include(
@@ -190,7 +189,6 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "app_poll_repository_path" => "/api/v1/app/repositories/#{repository.id}/poll",
       "app_archive_repository_path" => "/api/v1/app/repositories/#{repository.id}/archive",
       "app_retry_failed_jobs_repository_path" => "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
-      "repository_notes_path" => repository_notes_path(repository),
       "app_repository_notes_path" => "/api/v1/app/repositories/#{repository.id}/notes"
     )
   end

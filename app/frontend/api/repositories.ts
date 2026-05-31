@@ -152,7 +152,6 @@ export type RepositoryDetailPayload = {
     app_poll_repository_path: string
     app_archive_repository_path: string
     app_retry_failed_jobs_repository_path: string
-    repository_notes_path: string
     app_repository_notes_path: string
     repositories_path: string
     repository_documents_path: string
@@ -198,7 +197,6 @@ export type RepositoryNote = {
   body: string
   author: string
   created_at: string
-  delete_path: string
   app_delete_path: string
 }
 

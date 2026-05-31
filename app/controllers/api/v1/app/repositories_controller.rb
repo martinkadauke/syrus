@@ -260,7 +260,6 @@ module Api
               app_poll_repository_path: "/api/v1/app/repositories/#{repository.id}/poll",
               app_archive_repository_path: "/api/v1/app/repositories/#{repository.id}/archive",
               app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
-              repository_notes_path: repository_notes_path(repository),
               app_repository_notes_path: "/api/v1/app/repositories/#{repository.id}/notes",
               repositories_path: repositories_path,
               repository_documents_path: repository_documents_path(repository),
@@ -473,7 +472,6 @@ module Api
             body: note.body,
             author: note.author,
             created_at: note.created_at.iso8601,
-            delete_path: repository_note_path(repository, note),
             app_delete_path: "/api/v1/app/repositories/#{repository.id}/notes/#{note.id}"
           }
         end

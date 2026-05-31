@@ -264,7 +264,6 @@ Rails.application.routes.draw do
     # /api/v1/app/chats endpoints.
     # The repository chat home (no tab, no UI entry point) is gone;
     # the per-repo controller was pure duplication of the top-level chat flow.
-    resources :notes, only: %i[ create destroy ], controller: "repositories/notes"
     get "documents", to: "spa#show", as: :documents
     get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks
   end

@@ -2256,7 +2256,6 @@ describe("App", () => {
               body: "Use staging for smoke tests.",
               author: "operator",
               created_at: "2026-05-30T12:00:00Z",
-              delete_path: "/repositories/3/notes/12",
               app_delete_path: "/api/v1/app/repositories/3/notes/12"
             }
           ]
@@ -3826,7 +3825,6 @@ function repositoryDetailPayload() {
         body: "Repository note pinned.",
         author: "operator",
         created_at: "2026-05-30T12:00:00Z",
-        delete_path: "/repositories/3/notes/11",
         app_delete_path: "/api/v1/app/repositories/3/notes/11"
       }
     ],
@@ -3871,7 +3869,6 @@ function repositoryDetailPayload() {
       app_poll_repository_path: "/api/v1/app/repositories/3/poll",
       app_archive_repository_path: "/api/v1/app/repositories/3/archive",
       app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/3/retry_failed_jobs",
-      repository_notes_path: "/repositories/3/notes",
       app_repository_notes_path: "/api/v1/app/repositories/3/notes",
       repositories_path: "/repositories",
       repository_documents_path: "/repositories/3/documents",
