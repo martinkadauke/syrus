@@ -8,6 +8,10 @@ const actionCable = vi.hoisted(() => ({
   createSubscription: vi.fn(() => ({ unsubscribe: vi.fn() }))
 }))
 
+const excalidrawMock = vi.hoisted(() => ({
+  throwOnRender: false
+}))
+
 vi.mock("@rails/actioncable", () => ({
   createConsumer: () => ({
     subscriptions: {
@@ -22,6 +26,8 @@ vi.mock("@excalidraw/excalidraw", () => ({
     initialData?: { elements?: unknown[] }
     onChange?: (elements: unknown[]) => void
   }) => {
+    if (excalidrawMock.throwOnRender) throw new Error("Canvas crashed")
+
     excalidrawAPI?.({ updateScene: () => {} })
 
     return (
@@ -3359,6 +3365,35 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Version 3")).toBeInTheDocument()
+  })
+
+  it("keeps the chat visible when the whiteboard render fails", async () => {
+    excalidrawMock.throwOnRender = true
+    vi.spyOn(console, "error").mockImplementation(() => {})
+    const preventExpectedCanvasError = (event: ErrorEvent) => {
+      if (event.error instanceof Error && event.error.message === "Canvas crashed") event.preventDefault()
+    }
+    window.addEventListener("error", preventExpectedCanvasError)
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
+      expect(await screen.findByText("Whiteboard unavailable.")).toBeInTheDocument()
+      expect(screen.getByPlaceholderText("Ask about this repository...")).toBeInTheDocument()
+    } finally {
+      excalidrawMock.throwOnRender = false
+      window.removeEventListener("error", preventExpectedCanvasError)
+    }
   })
 
   it("renders raw chat messages on the frontend", async () => {

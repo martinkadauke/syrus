@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
-import type { FormEvent, ReactNode } from "react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import type { ErrorInfo, FormEvent, ReactNode } from "react"
+import { Component, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
@@ -542,11 +542,44 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
 function SidePanel({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <aside aria-label="Chat side panel" className="space-y-4 rounded border border-gray-200 bg-white p-4">
-      <WhiteboardPanel payload={payload} />
+      <WhiteboardBoundary>
+        <WhiteboardPanel payload={payload} />
+      </WhiteboardBoundary>
       <Bookmarks payload={payload} />
       <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
     </aside>
   )
+}
+
+type WhiteboardBoundaryState = {
+  failed: boolean
+}
+
+class WhiteboardBoundary extends Component<{ children: ReactNode }, WhiteboardBoundaryState> {
+  state: WhiteboardBoundaryState = { failed: false }
+
+  static getDerivedStateFromError(): WhiteboardBoundaryState {
+    return { failed: true }
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("Whiteboard render failed.", error, errorInfo)
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <section>
+          <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Whiteboard</div>
+          <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            Whiteboard unavailable.
+          </div>
+        </section>
+      )
+    }
+
+    return this.props.children
+  }
 }
 
 function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
