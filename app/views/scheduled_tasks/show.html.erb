@@ -13,22 +13,22 @@
 
     <div class="flex items-center gap-2">
       <% if @task.state == "scheduled" %>
-        <%= button_to "Pause", pause_scheduled_task_path(@task), method: :post,
+        <%= button_to "Pause", scheduled_task_pause_path(@task), method: :post,
               class: "rounded-md px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 cursor-pointer",
               form: { class: "inline" } %>
       <% elsif @task.paused? || @task.auto_paused? %>
-        <%= button_to "Resume", resume_scheduled_task_path(@task), method: :post,
+        <%= button_to "Resume", scheduled_task_resume_path(@task), method: :post,
               class: "rounded-md px-3 py-1.5 text-sm bg-green-600 hover:bg-green-500 text-white cursor-pointer",
               form: { class: "inline" } %>
       <% end %>
       <% if @task.cron? && !@task.archived? %>
-        <%= button_to "Fire now", fire_now_scheduled_task_path(@task), method: :post,
+        <%= button_to "Fire now", scheduled_task_fire_now_path(@task), method: :post,
               class: "rounded-md px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white cursor-pointer",
               form: { class: "inline" } %>
       <% end %>
-      <%= link_to "Edit", edit_scheduled_task_path(@task),
+      <%= link_to "Edit", scheduled_task_edit_path(@task),
             class: "rounded-md px-3 py-1.5 text-sm border border-gray-300 hover:bg-gray-50" %>
-      <%= button_to "Archive", scheduled_task_path(@task), method: :delete,
+      <%= button_to "Archive", scheduled_task_mutation_path(@task), method: :delete,
             data: { turbo_confirm: "Archive this scheduled task?" },
             class: "rounded-md px-3 py-1.5 text-sm border border-gray-300 hover:bg-red-50 text-red-700 cursor-pointer",
             form: { class: "inline" } %>

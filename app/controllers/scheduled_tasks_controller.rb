@@ -1,6 +1,14 @@
 class ScheduledTasksController < ApplicationController
   before_action :load_repository, only: %i[ new create ]
   before_action :load_task,       only: %i[ show edit update destroy pause resume fire_now ]
+  helper_method :scheduled_tasks_index_path,
+                :scheduled_task_detail_path,
+                :scheduled_task_edit_path,
+                :scheduled_task_mutation_path,
+                :scheduled_task_pause_path,
+                :scheduled_task_resume_path,
+                :scheduled_task_fire_now_path,
+                :repository_scheduled_task_form_path
 
   def index
     tasks = ScheduledTask.alive.where(user: Current.user).includes(:repository)
@@ -41,7 +49,7 @@ class ScheduledTasksController < ApplicationController
       @task.cron_template = template if template
     end
     if @task.save
-      redirect_to scheduled_task_path(@task), notice: "Scheduled task created."
+      redirect_to scheduled_task_redirect_path(@task), notice: "Scheduled task created."
     else
       render :new, status: :unprocessable_content
     end
@@ -52,7 +60,7 @@ class ScheduledTasksController < ApplicationController
 
   def update
     if @task.update(scheduled_task_params)
-      redirect_to scheduled_task_path(@task), notice: "Scheduled task updated."
+      redirect_to scheduled_task_redirect_path(@task), notice: "Scheduled task updated."
     else
       render :edit, status: :unprocessable_content
     end
@@ -60,17 +68,17 @@ class ScheduledTasksController < ApplicationController
 
   def destroy
     @task.soft_delete!
-    redirect_to scheduled_tasks_path, notice: "Scheduled task archived."
+    redirect_to scheduled_tasks_redirect_path, notice: "Scheduled task archived."
   end
 
   def pause
     @task.pause!(reason: "operator")
-    redirect_to scheduled_task_path(@task), notice: "Paused."
+    redirect_to scheduled_task_redirect_path(@task), notice: "Paused."
   end
 
   def resume
     @task.resume!
-    redirect_to scheduled_task_path(@task), notice: "Resumed."
+    redirect_to scheduled_task_redirect_path(@task), notice: "Resumed."
   end
 
   # Operator-triggered fire that bypasses the cron schedule. Useful
@@ -79,18 +87,18 @@ class ScheduledTasksController < ApplicationController
   # existing recurring task on demand. Honors pr_pileup_policy.
   def fire_now
     if @task.archived? || @task.fired?
-      redirect_to scheduled_task_path(@task), alert: "Task isn't fireable in its current state."
+      redirect_to scheduled_task_redirect_path(@task), alert: "Task isn't fireable in its current state."
       return
     end
     result = ScheduledTaskFire.new(@task).call
     if result.fired?
-      redirect_to scheduled_task_path(@task), notice: "Fired (job ##{result.job.id})."
+      redirect_to scheduled_task_redirect_path(@task), notice: "Fired (job ##{result.job.id})."
     else
-      redirect_to scheduled_task_path(@task), notice: "Fire skipped: #{result.reason}."
+      redirect_to scheduled_task_redirect_path(@task), notice: "Fire skipped: #{result.reason}."
     end
   rescue StandardError => e
     Rails.logger.warn("[ScheduledTasksController#fire_now] task ##{@task.id}: #{e.class}: #{e.message}")
-    redirect_to scheduled_task_path(@task), alert: "Fire failed: #{e.message}"
+    redirect_to scheduled_task_redirect_path(@task), alert: "Fire failed: #{e.message}"
   end
 
   private
@@ -106,5 +114,55 @@ class ScheduledTasksController < ApplicationController
   def scheduled_task_params
     permitted = %i[ name prompt kind cron_expression fire_at pr_pileup_policy auto_approve_mode ]
     params.expect(scheduled_task: permitted)
+  end
+
+  def scheduled_tasks_index_path
+    legacy_scheduled_tasks_request? ? legacy_scheduled_tasks_path : scheduled_tasks_path
+  end
+
+  def scheduled_task_detail_path(task)
+    legacy_scheduled_tasks_request? ? legacy_scheduled_task_path(task) : scheduled_task_path(task)
+  end
+
+  def scheduled_task_edit_path(task)
+    legacy_scheduled_tasks_request? ? legacy_edit_scheduled_task_path(task) : edit_scheduled_task_path(task)
+  end
+
+  def scheduled_task_mutation_path(task)
+    scheduled_task_detail_path(task)
+  end
+
+  def scheduled_task_pause_path(task)
+    legacy_scheduled_tasks_request? ? legacy_pause_scheduled_task_path(task) : pause_scheduled_task_path(task)
+  end
+
+  def scheduled_task_resume_path(task)
+    legacy_scheduled_tasks_request? ? legacy_resume_scheduled_task_path(task) : resume_scheduled_task_path(task)
+  end
+
+  def scheduled_task_fire_now_path(task)
+    legacy_scheduled_tasks_request? ? legacy_fire_now_scheduled_task_path(task) : fire_now_scheduled_task_path(task)
+  end
+
+  def repository_scheduled_task_form_path(repository, from_template: nil)
+    query = {}
+    query[:from_template] = from_template if from_template.present?
+    if legacy_scheduled_tasks_request?
+      repository_legacy_scheduled_tasks_path(repository, query)
+    else
+      repository_scheduled_tasks_path(repository, query)
+    end
+  end
+
+  def scheduled_task_redirect_path(task)
+    legacy_scheduled_tasks_request? ? legacy_scheduled_task_path(task) : scheduled_task_path(task)
+  end
+
+  def scheduled_tasks_redirect_path
+    legacy_scheduled_tasks_request? ? legacy_scheduled_tasks_path : scheduled_tasks_path
+  end
+
+  def legacy_scheduled_tasks_request?
+    request.path.start_with?("/scheduled_tasks/legacy") || request.path.include?("/scheduled_tasks/legacy")
   end
 end

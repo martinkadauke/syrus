@@ -7,8 +7,8 @@
   <div class="mt-6">
     <%= render "form",
           task: @task,
-          form_url: scheduled_task_path(@task),
+          form_url: scheduled_task_mutation_path(@task),
           submit_label: "Save",
-          cancel_url: scheduled_task_path(@task) %>
+          cancel_url: scheduled_task_detail_path(@task) %>
   </div>
 </div>

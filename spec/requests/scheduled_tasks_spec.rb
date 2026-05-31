@@ -24,8 +24,14 @@ RSpec.describe "Scheduled tasks", type: :request do
     before { sign_in_as(user) }
 
     describe "GET /repositories/:id/scheduled_tasks/new" do
-      it "shows the cron section and hides fire_at for the default cron kind" do
+      it "serves the React scheduled task form shell" do
         get new_repository_scheduled_task_path(repository)
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
+      it "shows the cron section and hides fire_at in the legacy fallback" do
+        get repository_legacy_new_scheduled_task_path(repository)
         expect(response).to be_successful
         expect(response.body).to include('data-scheduled-task-form-target="cronSection" class=""')
         expect(response.body).to include('data-scheduled-task-form-target="oneShotSection" class="hidden"')
@@ -33,13 +39,21 @@ RSpec.describe "Scheduled tasks", type: :request do
     end
 
     describe "GET /scheduled_tasks/:id/edit" do
+      it "serves the React scheduled task edit shell" do
+        task = repository.scheduled_tasks.create!(user: user, **valid_cron_attrs)
+        get edit_scheduled_task_path(task)
+
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
       it "hides cron section and shows fire_at for a one_shot task" do
         task = repository.scheduled_tasks.create!(
           user: user, name: "Once", kind: "one_shot",
           fire_at: 2.days.from_now, pr_pileup_policy: "skip",
           prompt: "Do something."
         )
-        get edit_scheduled_task_path(task)
+        get legacy_edit_scheduled_task_path(task)
         expect(response).to be_successful
         expect(response.body).to include('data-scheduled-task-form-target="cronSection" class="hidden"')
         expect(response.body).to include('data-scheduled-task-form-target="oneShotSection" class=""')
@@ -47,7 +61,7 @@ RSpec.describe "Scheduled tasks", type: :request do
 
       it "shows cron section and hides fire_at for a cron task" do
         task = repository.scheduled_tasks.create!(user: user, **valid_cron_attrs)
-        get edit_scheduled_task_path(task)
+        get legacy_edit_scheduled_task_path(task)
         expect(response).to be_successful
         expect(response.body).to include('data-scheduled-task-form-target="cronSection" class=""')
         expect(response.body).to include('data-scheduled-task-form-target="oneShotSection" class="hidden"')
@@ -55,17 +69,23 @@ RSpec.describe "Scheduled tasks", type: :request do
     end
 
     describe "GET /scheduled_tasks" do
-      it "lists the user's active tasks" do
-        repository.scheduled_tasks.create!(user: user, **valid_cron_attrs)
+      it "serves the React scheduled tasks shell" do
         get scheduled_tasks_path
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
+      it "lists the user's active tasks in the legacy fallback" do
+        repository.scheduled_tasks.create!(user: user, **valid_cron_attrs)
+        get legacy_scheduled_tasks_path
         expect(response).to be_successful
         expect(response.body).to include("Weekly tests")
       end
 
-      it "doesn't show another user's tasks" do
+      it "doesn't show another user's tasks in the legacy fallback" do
         other_repo = Factories.repository(user: other_user)
         other_repo.scheduled_tasks.create!(user: other_user, **valid_cron_attrs.merge(name: "Their task"))
-        get scheduled_tasks_path
+        get legacy_scheduled_tasks_path
         expect(response.body).not_to include("Their task")
       end
     end
@@ -83,6 +103,16 @@ RSpec.describe "Scheduled tasks", type: :request do
         expect(task.repository).to eq(repository)
         expect(task.minute_offset).to be_between(0, 59)
         expect(task.auto_approve_mode).to eq("if_graders_pass")
+      end
+
+      it "keeps legacy creates inside the legacy fallback" do
+        expect {
+          post repository_legacy_scheduled_tasks_path(repository), params: {
+            scheduled_task: valid_cron_attrs
+          }
+        }.to change { ScheduledTask.count }.by(1)
+        task = ScheduledTask.last
+        expect(response).to redirect_to(legacy_scheduled_task_path(task))
       end
 
       it "rejects malformed cron expressions" do
@@ -126,7 +156,7 @@ RSpec.describe "Scheduled tasks", type: :request do
           **valid_cron_attrs.merge(auto_approve_mode: "if_graders_pass")
         )
 
-        get edit_scheduled_task_path(task)
+        get legacy_edit_scheduled_task_path(task)
 
         expect(response.body).to include("Auto-approval")
         expect(response.body).to include("If graders pass")

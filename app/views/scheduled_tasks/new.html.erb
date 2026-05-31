@@ -14,7 +14,7 @@
   <div class="mt-6">
     <%= render "form",
           task: @task,
-          form_url: repository_scheduled_tasks_path(@repository, from_template: @from_template&.id),
+          form_url: repository_scheduled_task_form_path(@repository, from_template: @from_template&.id),
           submit_label: "Create",
           cancel_url: repository_path(@repository) %>
   </div>

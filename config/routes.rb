@@ -167,8 +167,11 @@ Rails.application.routes.draw do
     resources :notes, only: %i[ create destroy ], controller: "repositories/notes"
     resources :documents, only: %i[ index create destroy ], controller: "repositories/documents", shallow: true
     resources :scheduled_tasks, only: %i[ index update destroy ], controller: "repositories/scheduled_tasks"
-    resources :scheduled_tasks, only: %i[ new create ]
+    post "scheduled_tasks", to: "scheduled_tasks#create"
+    get "scheduled_tasks/legacy/new", to: "scheduled_tasks#new", as: :legacy_new_scheduled_task
+    post "scheduled_tasks/legacy", to: "scheduled_tasks#create", as: :legacy_scheduled_tasks
   end
+  get "repositories/:repository_id/scheduled_tasks/new", to: "spa#show", as: :new_repository_scheduled_task
 
   resources :chats, only: %i[ new create show ] do
     get  :messages
@@ -186,13 +189,22 @@ Rails.application.routes.draw do
     resource :whiteboard, only: %i[ show update ], controller: "chat_whiteboards"
   end
 
-  resources :scheduled_tasks, only: %i[ index show edit update destroy ] do
-    member do
-      post :pause
-      post :resume
-      post :fire_now    # manually fire an active task without waiting for cron
-    end
-  end
+  get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks
+  get "scheduled_tasks/:id", to: "spa#show", as: :scheduled_task, constraints: { id: /\d+/ }
+  get "scheduled_tasks/:id/edit", to: "spa#show", as: :edit_scheduled_task, constraints: { id: /\d+/ }
+  patch "scheduled_tasks/:id", to: "scheduled_tasks#update", constraints: { id: /\d+/ }
+  delete "scheduled_tasks/:id", to: "scheduled_tasks#destroy", constraints: { id: /\d+/ }
+  post "scheduled_tasks/:id/pause", to: "scheduled_tasks#pause", as: :pause_scheduled_task, constraints: { id: /\d+/ }
+  post "scheduled_tasks/:id/resume", to: "scheduled_tasks#resume", as: :resume_scheduled_task, constraints: { id: /\d+/ }
+  post "scheduled_tasks/:id/fire_now", to: "scheduled_tasks#fire_now", as: :fire_now_scheduled_task, constraints: { id: /\d+/ }
+  get "scheduled_tasks/legacy", to: "scheduled_tasks#index", as: :legacy_scheduled_tasks
+  get "scheduled_tasks/legacy/:id", to: "scheduled_tasks#show", as: :legacy_scheduled_task, constraints: { id: /\d+/ }
+  get "scheduled_tasks/legacy/:id/edit", to: "scheduled_tasks#edit", as: :legacy_edit_scheduled_task, constraints: { id: /\d+/ }
+  patch "scheduled_tasks/legacy/:id", to: "scheduled_tasks#update", constraints: { id: /\d+/ }
+  delete "scheduled_tasks/legacy/:id", to: "scheduled_tasks#destroy", constraints: { id: /\d+/ }
+  post "scheduled_tasks/legacy/:id/pause", to: "scheduled_tasks#pause", as: :legacy_pause_scheduled_task, constraints: { id: /\d+/ }
+  post "scheduled_tasks/legacy/:id/resume", to: "scheduled_tasks#resume", as: :legacy_resume_scheduled_task, constraints: { id: /\d+/ }
+  post "scheduled_tasks/legacy/:id/fire_now", to: "scheduled_tasks#fire_now", as: :legacy_fire_now_scheduled_task, constraints: { id: /\d+/ }
   get "filters/fk_options", to: "filters/fk_options#index"
   get "app-shell", to: "spa#show", as: :app_shell
   get "app-shell/*path", to: "spa#show", as: :app_shell_route
