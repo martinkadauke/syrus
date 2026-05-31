@@ -52,9 +52,9 @@ health/storage internals.
 | `/epics/:id/graph` | `epics#graph` | `spa-core` | Graph data endpoint or React route depending current response shape. |
 | `/epics`, `/jobs`, `/workflows` redirects | route redirects | `legacy-html` | Can be removed or changed once React router owns canonical dashboard paths. |
 | `/repositories` | `spa#show` + `/api/v1/app/repositories` | `spa-core` | Migrated to the React repository list with app API poll/archive/unarchive commands. Legacy ERB fallback lives at `/repositories/legacy`. |
-| `/repositories/new`, `/repositories/:id/edit`, `POST/PATCH /repositories` | `repositories#new/create/edit/update` | `spa-core` | React repository form; credential/provider branch selectors need app APIs. |
+| `/repositories/new`, `/repositories/:id/edit`, `POST/PATCH /repositories` | `spa#show` + `/api/v1/app/repositories*` | `spa-core` | Migrated to the React repository form with app API GitHub owner/repo/branch selectors. Legacy ERB fallback lives at `/repositories/new/legacy` and `/repositories/:id/edit/legacy`; HTML `POST/PATCH /repositories` remains for fallback. |
 | `/repositories/:id` | `repositories#show` | `spa-core` | Repository detail, jobs table, notes, install status, issue browser links. |
-| repository collection JSON helpers | `repositories#owners`, `#repos`, `#branches` | `app-api-needed` | Existing endpoints are already AJAX-shaped but should be normalized under `/api/v1/app/repositories/*`. |
+| repository collection JSON helpers | `/api/v1/app/repositories/owners`, `/repos`, `/branches` | `spa-core` | React repository form uses app API selectors; legacy AJAX helpers remain for the ERB fallback. |
 | repository commands | `repositories#poll`, `#archive`, `#unarchive`, `#retry_failed_jobs` | `app-api-needed` | Command endpoints, invalidate repository and dashboard queries. |
 | repository GitHub issues | `repositories#issues`, `#comment_issue`, `#close_issue`, `#delegate_issue`, `#bulk_issues` | `spa-core` + `app-api-needed` | Keep single and bulk behavior in sync. Likely own React subroute under repository detail. |
 | repository notes | `repositories/notes#create/destroy` | `app-api-needed` | Small command endpoints. |

@@ -20,6 +20,35 @@ RSpec.describe "Repositories", type: :request do
       expect(response.body).to include('id="syrus-spa-root"')
     end
 
+    it "serves the React app shell for new and edit forms" do
+      mine = Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      get new_repository_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+
+      get edit_repository_path(mine)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "keeps repository form legacy fallbacks available" do
+      mine = Factories.repository(user: user, owner: "acme", name: "widgets")
+
+      get legacy_new_repository_path
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Add repository")
+
+      get legacy_edit_repository_path(mine)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include("Edit")
+      expect(response.body).to include("acme/widgets")
+    end
+
     it "lists only the current user's repositories in the legacy fallback" do
       mine = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.repository(user: other, owner: "globex", name: "things")
@@ -131,7 +160,7 @@ RSpec.describe "Repositories", type: :request do
     it "scopes edit/update to the current user's repos" do
       foreign = Factories.repository(user: other, owner: "globex", name: "things")
 
-      get edit_repository_path(foreign)
+      get legacy_edit_repository_path(foreign)
       expect(response).to have_http_status(:not_found).or redirect_to(repositories_path)
     end
 
