@@ -5,7 +5,8 @@
  * (user + assistant). We don't ship @tailwindcss/typography in this
  * standalone-binary setup, so a dedicated class with the handful of
  * tags Commonmarker actually emits is simpler than dragging in the
- * plugin. Used by repositories/chats/_message.html.erb. The
+ * plugin. Legacy Rails surfaces still use the class; React chat has
+ * its own Markdown renderer. The
  * `chat-prose-invert` variant flips colors for the user bubble's
  * dark background.
  */

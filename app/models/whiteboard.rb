@@ -39,19 +39,7 @@ class Whiteboard < ApplicationRecord
     broadcast_scene
   end
 
-  # Replace the small `data-whiteboard-target="broadcast"` element on the
-  # chat page so the next render's data-version + data-elements-json
-  # carry the new state. The Stimulus controller's
-  # `broadcastTargetConnected` reads those dataset values and applies
-  # them via Excalidraw's programmatic API. Target id matches what the
-  # view renders for the chat session.
   def broadcast_scene
-    Turbo::StreamsChannel.broadcast_replace_later_to(
-      broadcast_channel,
-      target: "chat_session_#{chat_session_id}_whiteboard_broadcast",
-      partial: "chats/whiteboard_broadcast",
-      locals: { chat_session: chat_session, whiteboard: self }
-    )
     AppEvents.broadcast(
       user: chat_session.user,
       type: "updated",
@@ -60,10 +48,6 @@ class Whiteboard < ApplicationRecord
       changed: [ "whiteboard" ],
       payload: current_state
     )
-  end
-
-  def broadcast_channel
-    "chat_session_#{chat_session_id}_whiteboard"
   end
 
   def self.element_limit_message

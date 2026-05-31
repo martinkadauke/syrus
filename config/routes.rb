@@ -270,9 +270,10 @@ Rails.application.routes.draw do
       post :bulk_issues
     end
     # Repository-scoped chat routes were retired — the chat surface is
-    # the top-level /chats/* resource (see `resources :chats` below).
+    # the top-level /chats/new and /chats/:id SPA routes, backed by the
+    # /api/v1/app/chats endpoints.
     # The repository chat home (no tab, no UI entry point) is gone;
-    # the per-repo controller was pure duplication of ChatsController.
+    # the per-repo controller was pure duplication of the top-level chat flow.
     resources :notes, only: %i[ create destroy ], controller: "repositories/notes"
     get "documents", to: "spa#show", as: :documents
     post "documents", to: "repositories/documents#create"
@@ -292,24 +293,7 @@ Rails.application.routes.draw do
   get "repositories/:repository_id/scheduled_tasks/new", to: "spa#show", as: :new_repository_scheduled_task
 
   get "chats/new", to: "spa#show", as: :new_chat
-  get "chats/new/legacy", to: "chats#new", as: :legacy_new_chat
   get "chats/:id", to: "spa#show", as: :chat, constraints: { id: /\d+/ }
-  get "chats/:id/legacy", to: "chats#show", as: :legacy_chat, constraints: { id: /\d+/ }
-  resources :chats, only: %i[ create ] do
-    get  :messages
-    post :message
-    post :stop
-    post :refresh
-    post :reset
-    post :bookmarks, action: :create_bookmark
-    post :attachments, action: :add_attachment
-    delete "attachments/:attachment_id", action: :destroy_attachment, as: :attachment
-    post "proposals/:proposal_id/confirm", action: :confirm_proposal, as: :proposal_confirm
-    post "proposals/:proposal_id/reject", action: :reject_proposal, as: :proposal_reject
-    post "pending_actions/:pending_action_id/confirm", action: :confirm_pending_action, as: :pending_action_confirm
-    delete "pending_actions/:pending_action_id", action: :destroy_pending_action, as: :pending_action
-    resource :whiteboard, only: %i[ show update ], controller: "chat_whiteboards"
-  end
 
   get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks
   get "scheduled_tasks/:id", to: "spa#show", as: :scheduled_task, constraints: { id: /\d+/ }

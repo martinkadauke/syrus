@@ -41,13 +41,6 @@ RSpec.describe "App API chat whiteboards", type: :request do
     it "creates a missing whiteboard, updates matching versions, and emits UI updates" do
       elements = [ { "id" => "box-1", "type" => "rectangle", "x" => 12 } ]
 
-      expect(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to).with(
-        "chat_session_#{chat.id}_whiteboard",
-        hash_including(
-          target: "chat_session_#{chat.id}_whiteboard_broadcast",
-          partial: "chats/whiteboard_broadcast"
-        )
-      )
       expect(AppEvents).to receive(:broadcast).with(
         user: user,
         type: "updated",
@@ -74,7 +67,6 @@ RSpec.describe "App API chat whiteboards", type: :request do
     it "rejects updates beyond the element limit with a structured error" do
       elements = Array.new(Whiteboard::MAX_ELEMENTS + 1) { |index| element("shape-#{index}") }
 
-      expect(Turbo::StreamsChannel).not_to receive(:broadcast_replace_later_to)
       expect(AppEvents).not_to receive(:broadcast)
 
       expect {
@@ -98,7 +90,6 @@ RSpec.describe "App API chat whiteboards", type: :request do
         version: 3
       )
 
-      expect(Turbo::StreamsChannel).not_to receive(:broadcast_replace_later_to)
       expect(AppEvents).not_to receive(:broadcast)
 
       patch whiteboard_path(chat),

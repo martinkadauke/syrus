@@ -36,14 +36,17 @@ RSpec.describe "SyrusChatMcp canvas tools" do
   end
 
   def expect_canvas_broadcast
-    # Each canvas mutation also writes a tool_use ChatMessage, which
-    # itself broadcasts a controls partial replace. Set up a permissive
-    # allow so the controls broadcast passes through and the strict
-    # expect below still asserts the whiteboard broadcast specifically.
-    allow(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to)
-    expect(Turbo::StreamsChannel).to receive(:broadcast_replace_later_to).with(
-      "chat_session_#{chat_session.id}_whiteboard",
-      hash_including(target: "chat_session_#{chat_session.id}_whiteboard_broadcast")
+    # Each canvas mutation may also write a ChatMessage. Set up a
+    # permissive allow so message-tail events pass through and the
+    # strict expect below still asserts the whiteboard event.
+    allow(AppEvents).to receive(:broadcast)
+    expect(AppEvents).to receive(:broadcast).with(
+      user: user,
+      type: "updated",
+      resource: "chat",
+      id: chat_session.id,
+      changed: [ "whiteboard" ],
+      payload: hash_including("elements" => kind_of(Array), "version" => kind_of(Integer))
     )
   end
 

@@ -214,12 +214,9 @@ module ApplicationHelper
            theme: theme, disabled: disabled
   end
 
-  # GFM-style markdown → HTML for chat messages and similar UGC + agent
-  # output surfaces. Commonmarker's defaults escape raw HTML, so a chat
-  # user pasting `<script>` doesn't get to execute it. Used by
-  # repositories/chats/_message.html.erb for `user` and `assistant`
-  # role text; tool_use / tool_result / system messages have their own
-  # rendering paths and don't go through this.
+  # GFM-style markdown -> HTML for legacy Rails UGC + agent output
+  # surfaces. Commonmarker's defaults escape raw HTML, so a user
+  # pasting `<script>` doesn't get to execute it.
   def render_markdown(text)
     return "".html_safe if text.blank?
     Commonmarker.to_html(text.to_s).html_safe

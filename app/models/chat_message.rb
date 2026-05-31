@@ -12,19 +12,6 @@ class ChatMessage < ApplicationRecord
   validates :role, presence: true, inclusion: { in: ROLES }
   validate :content_is_present
 
-  # Proposal-bearing rows render as inline proposal cards in the
-  # legacy ERB fallback. All other tool_use messages flow through
-  # ChatMessageGrouper there on initial/history renders; the React
-  # chat receives raw message records and does its own grouping and
-  # Markdown rendering client-side.
-  def proposal_tool_use?
-    role == "tool_use" && proposal_id.present?
-  end
-
-  def proposal_card?
-    role == "assistant" && proposal_id.present?
-  end
-
   def bookmarkable?
     role.in?(%w[user assistant])
   end

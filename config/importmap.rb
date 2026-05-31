@@ -9,7 +9,6 @@ pin "react", to: "https://esm.sh/react@18.3.1"
 pin "react/jsx-runtime", to: "https://esm.sh/react@18.3.1/jsx-runtime"
 pin "react-dom", to: "https://esm.sh/react-dom@18.3.1"
 pin "react-dom/client", to: "https://esm.sh/react-dom@18.3.1/client"
-pin "@excalidraw/excalidraw", to: "https://esm.sh/@excalidraw/excalidraw@0.18.1?external=react,react-dom"
 # html2canvas-pro is the actively-maintained fork that supports
 # modern CSS color functions (oklch, lab, lch, color()). The original
 # `html2canvas` package is unmaintained and throws on Tailwind v4's
