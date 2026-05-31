@@ -24,20 +24,19 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
 
   return (
     <main aria-label="Dashboard" className="mx-auto max-w-7xl space-y-5 p-6">
-      <header className="flex flex-wrap items-end justify-between gap-3 border-b border-gray-200 pb-4">
-        <div>
-          <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">{payload.total} {subjectLabel(payload.subject, payload.total)} in this view</p>
-        </div>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
         <DashboardCreateActions payload={payload} prefix={prefix} />
       </header>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+      <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-center">
         <SubjectTabs payload={payload} prefix={prefix} />
-        <div className="min-w-0 flex-1">
-          <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
+        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="min-w-0 flex-1">
+            <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
+          </div>
+          <DashboardToolbar pathname={pathname} search={search} payload={payload} />
         </div>
-        <DashboardToolbar pathname={pathname} search={search} payload={payload} />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">

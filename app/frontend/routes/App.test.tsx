@@ -359,6 +359,9 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Dashboard" })).toBeInTheDocument()
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.queryByText("25 jobs in this view")).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Dashboard" }).closest("header")).not.toHaveClass("border-b")
+    expect(screen.getByRole("navigation", { name: "Dashboard subjects" }).parentElement).toHaveClass("lg:grid-cols-[16rem_minmax(0,1fr)]")
     expect(screen.getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
