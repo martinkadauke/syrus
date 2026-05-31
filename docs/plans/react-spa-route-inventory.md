@@ -74,7 +74,7 @@ health/storage internals.
 | credential token commands | `credentials#rotate_api_token`, `#revoke_api_token` | `app-api-needed` | Command endpoints returning masked token state. |
 | `/account/documents` | `account_documents#create/destroy` | `app-api-needed` | Upload/delete endpoints for credential page. |
 | `/settings`, `/settings/edit`, `PATCH /settings` | `credentials#edit`, `settings#edit/update` | `spa-core` | Split user credentials vs admin app settings clearly in React nav. |
-| `/invitations` | `invitations#index/create/destroy` | `spa-admin` | Admin/owner signup management. |
+| `/invitations` | `spa#show` | `spa-admin` | Migrated to the React invitations shell. Legacy ERB fallback lives at `/invitations/legacy`. |
 | `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell; legacy ERB fallback lives at `/admin/legacy`. |
 | `/admin/queue`, `/admin/queue/:tab` | `spa#show` | `spa-admin` | Migrated to the React admin queue shell. Legacy ERB fallback lives at `/admin/queue/legacy` and `/admin/queue/legacy/:tab`. |
 | `POST /admin/queue/reap_stale_runs` | `admin/queue#reap_stale_runs` | `legacy-html` | Kept for existing HTML admin controls; React uses `POST /api/v1/app/admin/queue/reap_stale_runs`. |

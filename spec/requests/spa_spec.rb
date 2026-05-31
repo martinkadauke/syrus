@@ -41,4 +41,15 @@ RSpec.describe "SPA shell", type: :request do
     expect(response).to redirect_to(root_path)
     expect(flash[:alert]).to match(/admin/i)
   end
+
+  it "requires admin access for non-/admin admin SPA routes" do
+    Factories.user
+    user = Factories.user
+    sign_in_as(user)
+
+    get "/app-shell/invitations"
+
+    expect(response).to redirect_to(root_path)
+    expect(flash[:alert]).to match(/admin/i)
+  end
 end

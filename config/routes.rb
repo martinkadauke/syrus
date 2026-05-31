@@ -210,7 +210,12 @@ Rails.application.routes.draw do
   resources :smart_folders, only: %i[ index create update destroy ]
   resources :tags, only: %i[ index create update destroy ]
   resources :cron_templates
-  resources :invitations, only: %i[ index create destroy ]
+  get "invitations", to: "spa#show", as: :invitations
+  post "invitations", to: "invitations#create"
+  delete "invitations/:id", to: "invitations#destroy", as: :invitation, constraints: { id: /\d+/ }
+  get "invitations/legacy", to: "invitations#index", as: :legacy_invitations
+  post "invitations/legacy", to: "invitations#create"
+  delete "invitations/legacy/:id", to: "invitations#destroy", as: :legacy_invitation, constraints: { id: /\d+/ }
   # Legacy compatibility: the account menu's `/settings` entry is the
   # per-user credentials page. App-wide settings live at `/settings/edit`
   # and remain admin-only.

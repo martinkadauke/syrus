@@ -29,25 +29,47 @@ RSpec.describe "Invitations", type: :request do
   context "as an admin" do
     before { admin; sign_in_as(admin) }
 
-    it "lists pending invitations" do
-      pending = Invitation.create!(invited_by: admin, email_address: "guest@example.com")
+    it "serves the React invitations shell" do
       get invitations_path
+
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "lists pending invitations in the legacy fallback" do
+      pending = Invitation.create!(invited_by: admin, email_address: "guest@example.com")
+      get legacy_invitations_path
       expect(response.body).to include("guest@example.com")
       expect(response.body).to include(pending.token)
     end
 
-    it "creates an invitation tied to the current admin" do
+    it "creates an invitation tied to the current admin from the SPA command path" do
       expect {
         post invitations_path, params: { invitation: { email_address: "guest@example.com" } }
       }.to change(Invitation, :count).by(1)
       expect(Invitation.last.invited_by).to eq(admin)
+      expect(response).to redirect_to(invitations_path)
     end
 
-    it "revokes (destroys) an invitation" do
+    it "keeps legacy create and destroy actions inside the legacy fallback" do
+      expect {
+        post legacy_invitations_path, params: { invitation: { email_address: "guest@example.com" } }
+      }.to change(Invitation, :count).by(1)
+      expect(response).to redirect_to(legacy_invitations_path)
+
+      inv = Invitation.last
+      expect {
+        delete legacy_invitation_path(inv)
+      }.to change(Invitation, :count).by(-1)
+      expect(response).to redirect_to(legacy_invitations_path)
+    end
+
+    it "revokes (destroys) an invitation from the SPA command path" do
       inv = Invitation.create!(invited_by: admin, email_address: "guest@example.com")
       expect {
         delete invitation_path(inv)
       }.to change(Invitation, :count).by(-1)
+      expect(response).to redirect_to(invitations_path)
     end
   end
 end

@@ -12,7 +12,7 @@
 
   <div class="bg-white border border-gray-200 rounded-lg p-6">
     <h2 class="font-semibold text-lg">New invitation</h2>
-    <%= form_with model: @invitation, class: "mt-4 flex items-end gap-3" do |form| %>
+    <%= form_with model: @invitation, url: invitations_form_path, class: "mt-4 flex items-end gap-3" do |form| %>
       <div class="flex-1">
         <%= form.label :email_address, class: "block text-sm font-medium text-gray-700" %>
         <%= form.email_field :email_address, required: true, autocomplete: "off",
@@ -49,7 +49,7 @@
                 <td class="px-4 py-3 font-mono text-xs break-all"><%= new_user_url(token: inv.token) %></td>
                 <td class="px-4 py-3 text-gray-500">expires <%= relative_timestamp(inv.expires_at) %></td>
                 <td class="px-4 py-3 text-right">
-                  <%= button_to "Revoke", invitation_path(inv), method: :delete,
+                  <%= button_to "Revoke", invitation_destroy_path(inv), method: :delete,
                         class: "text-red-600 underline hover:no-underline cursor-pointer",
                         form: { class: "inline", data: { turbo_confirm: "Revoke invitation for #{inv.email_address}?" } } %>
                 </td>
