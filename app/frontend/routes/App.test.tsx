@@ -346,7 +346,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
     expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("")
     expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
-    expect(screen.getByRole("link", { name: "My work" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
+    expect(screen.getByRole("link", { name: "My work 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=1")
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=3")
@@ -493,6 +493,8 @@ describe("App", () => {
                   name: "Landing queue",
                   kind: "builtin",
                   subject_type: "job",
+                  visibility: "when_present",
+                  count: 0,
                   active: true,
                   path: "/dashboard/jobs?view=list&smart_folder_id=7"
                 }
@@ -535,6 +537,85 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Landing paused.")).toBeInTheDocument()
+  })
+
+  it("renders dashboard smart folder visibility groups and badges", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=3&subject=job") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                active_smart_folder_id: 3,
+                smart_folders: [
+                  {
+                    id: 1,
+                    name: "Inbox",
+                    kind: "builtin",
+                    subject_type: "job",
+                    visibility: "always",
+                    count: 3,
+                    active: false,
+                    path: "/dashboard/jobs?view=list&smart_folder_id=1"
+                  },
+                  {
+                    id: 2,
+                    name: "Stale",
+                    kind: "builtin",
+                    subject_type: "job",
+                    visibility: "when_present",
+                    count: 1,
+                    active: false,
+                    path: "/dashboard/jobs?view=list&smart_folder_id=2"
+                  },
+                  {
+                    id: 3,
+                    name: "Merged this week",
+                    kind: "builtin",
+                    subject_type: "job",
+                    visibility: "on_demand",
+                    count: 0,
+                    active: true,
+                    path: "/dashboard/jobs?view=list&smart_folder_id=3"
+                  },
+                  {
+                    id: 4,
+                    name: "Saved review",
+                    kind: "user_defined",
+                    subject_type: "job",
+                    visibility: "user_defined",
+                    count: 2,
+                    active: false,
+                    path: "/dashboard/jobs?view=list&smart_folder_id=4"
+                  }
+                ],
+                items: [dashboardJobItem()]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=3"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("link", { name: "Inbox 3" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=1")
+    expect(screen.getByRole("link", { name: "Stale 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=2")
+    expect(screen.getByText("More")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Merged this week 0" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=3")
+    expect(screen.getByRole("link", { name: "Saved review 2" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=4")
+    expect(screen.getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/app-shell/smart_folders?subject_type=job")
   })
 
   it("renders app-shell dashboard kanban lanes from the app dashboard API", async () => {
@@ -4146,8 +4227,10 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
       {
         id: 7,
         name: "My work",
-        kind: "custom",
+        kind: "user_defined",
         subject_type: "job",
+        visibility: "user_defined",
+        count: 1,
         active: false,
         path: "/dashboard/jobs?view=list&smart_folder_id=7"
       }

@@ -475,15 +475,42 @@ module App
                            .where("user_id IS NULL OR user_id = ?", user.id)
                            .order(Arel.sql("CASE WHEN user_id IS NULL THEN 0 ELSE 1 END"), :position, :id)
 
-      folders.map do |folder|
+      folders.filter_map do |folder|
+        count = smart_folder_count(folder)
+        next unless smart_folder_visible?(folder, count)
+
         {
           id: folder.id,
           name: folder.name,
           kind: folder.kind,
           subject_type: folder.subject_type,
+          visibility: folder.visibility.to_s,
+          count: count,
           active: active_smart_folder&.id == folder.id,
           path: dashboard_path_for(subject, smart_folder_id: folder.id)
         }
+      end
+    end
+
+    def smart_folder_visible?(folder, count)
+      return true unless folder.builtin?
+      return true if active_smart_folder&.id == folder.id
+      return count.positive? if folder.visibility == :when_present
+
+      true
+    end
+
+    def smart_folder_count(folder)
+      case subject
+      when "job"
+        Jobs::Filter.from_tree(folder.filter, user: user).apply(user.jobs.where(repository_id: active_repo_ids)).count
+      when "workflow"
+        Workflows::Filter.from_tree(folder.filter, user: user).apply(Workflow.joins(:job).where(jobs: { user_id: user.id, repository_id: active_repo_ids })).count
+      else
+        filter = Epics::Filter.from_tree(folder.filter, user: user)
+        scope = user.epics.where(repository_id: active_repo_ids)
+        scope = scope.where.not(state: Epic::ARCHIVED_STATE) unless filter.includes_archived_state?
+        filter.apply(scope).count
       end
     end
 

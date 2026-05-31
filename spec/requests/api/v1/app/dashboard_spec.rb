@@ -147,6 +147,56 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["smart_folders"]).to include(include(
         "id" => folder.id,
         "name" => "Ready work",
+        "visibility" => "user_defined",
+        "count" => 1,
+        "active" => true
+      ))
+    end
+
+    it "returns smart folder counts and hides empty when-present built-ins" do
+      pinned = Factories.job_record(repository: repo, issue_number: 1, issue_title: "Pinned aqueduct", state: "queued")
+      Factories.job_pin(user: user, job: pinned)
+      SmartFolder.create!(
+        user: user,
+        subject_type: "job",
+        name: "Running jobs",
+        kind: "user_defined",
+        filter: { "and" => [ { "field" => "state", "op" => "is", "value" => "running" } ] }
+      )
+
+      get "/api/v1/app/dashboard", params: { subject: "job" }
+
+      expect(response).to have_http_status(:ok)
+      folders_by_name = parse_body["smart_folders"].index_by { |folder| folder.fetch("name") }
+      expect(folders_by_name.fetch("Pinned")).to include(
+        "kind" => "builtin",
+        "visibility" => "when_present",
+        "count" => 1
+      )
+      expect(folders_by_name).not_to have_key("Landing queue")
+      expect(folders_by_name.fetch("Merged this week")).to include(
+        "visibility" => "on_demand",
+        "count" => 0
+      )
+      expect(folders_by_name.fetch("Running jobs")).to include(
+        "kind" => "user_defined",
+        "visibility" => "user_defined",
+        "count" => 0
+      )
+    end
+
+    it "keeps an active empty when-present smart folder visible" do
+      SmartFolder.ensure_builtins!
+      folder = SmartFolder.find_by!(user_id: nil, subject_type: "job", name: "Landing queue")
+
+      get "/api/v1/app/dashboard", params: { subject: "job", smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body["smart_folders"]).to include(include(
+        "id" => folder.id,
+        "name" => "Landing queue",
+        "visibility" => "when_present",
+        "count" => 0,
         "active" => true
       ))
     end

@@ -3,7 +3,7 @@ import type { FormEvent } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -69,6 +69,10 @@ function SubjectTabs({ payload, prefix }: { payload: DashboardPayload; prefix: s
 
 function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
   const queryClient = useQueryClient()
+  const builtinFolders = payload.smart_folders.filter((folder) => folder.kind !== "user_defined")
+  const primaryFolders = builtinFolders.filter((folder) => folder.visibility !== "on_demand")
+  const moreFolders = builtinFolders.filter((folder) => folder.visibility === "on_demand")
+  const savedFolders = payload.smart_folders.filter((folder) => folder.kind === "user_defined")
   const landingPause = useMutation({
     mutationFn: () => toggleDashboardLandingPause(payload.landing_queue.toggle_path),
     onSuccess: () => {
@@ -83,12 +87,29 @@ function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix
         <Link className={folderClass(payload.active_smart_folder_id == null)} to={dashboardLink(`${prefix}${subjectPath(payload.subject)}`, { view: payload.view })}>
           All {subjectLabel(payload.subject, 2)}
         </Link>
-        {payload.smart_folders.map((folder) => (
-          <Link className={folderClass(folder.active)} key={folder.id} to={withRoutePrefix(folder.path, prefix)}>
-            <span className="truncate">{folder.name}</span>
-          </Link>
-        ))}
+        {primaryFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} prefix={prefix} />)}
+        {moreFolders.length > 0 ? (
+          <details className="space-y-1" open={moreFolders.some((folder) => folder.active) || undefined}>
+            <summary className="cursor-pointer rounded px-2 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-100">More</summary>
+            <div className="space-y-1 pl-2">
+              {moreFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} prefix={prefix} />)}
+            </div>
+          </details>
+        ) : null}
       </nav>
+      <div className="space-y-1 pt-3">
+        <div className="flex items-center justify-between gap-2 px-2">
+          <h3 className="text-xs font-semibold uppercase text-gray-500">Saved</h3>
+          <Link className="text-xs font-medium text-blue-700 hover:text-blue-900" to={withRoutePrefix(`/smart_folders?subject_type=${payload.subject}`, prefix)}>Manage</Link>
+        </div>
+        {savedFolders.length > 0 ? (
+          <nav aria-label="Saved smart folders" className="space-y-1">
+            {savedFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} prefix={prefix} />)}
+          </nav>
+        ) : (
+          <p className="px-2 py-1.5 text-sm text-gray-400">No saved folders</p>
+        )}
+      </div>
       {payload.landing_queue.visible ? (
         <div className="space-y-2 rounded border border-gray-200 bg-white p-2">
           <button
@@ -104,6 +125,15 @@ function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix
         </div>
       ) : null}
     </aside>
+  )
+}
+
+function SmartFolderLink({ folder, prefix }: { folder: DashboardSmartFolder; prefix: string }) {
+  return (
+    <Link aria-label={`${folder.name} ${folder.count}`} className={folderClass(folder.active)} to={withRoutePrefix(folder.path, prefix)}>
+      <span className="truncate">{folder.name}</span>
+      <span className={`ml-auto inline-flex min-w-6 justify-center rounded-full px-1.5 py-0.5 text-xs ${folder.active ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-600"}`}>{folder.count}</span>
+    </Link>
   )
 }
 
@@ -756,7 +786,7 @@ function pageLink(pathname: string, search: string, page: number) {
 }
 
 function folderClass(active: boolean) {
-  return `flex min-w-0 rounded px-2 py-1.5 text-sm ${active ? "bg-blue-50 font-medium text-blue-700" : "text-gray-700 hover:bg-gray-100"}`
+  return `flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1.5 text-sm ${active ? "bg-blue-50 font-medium text-blue-700" : "text-gray-700 hover:bg-gray-100"}`
 }
 
 function bulkButtonClass(disabled: boolean, tone: "default" | "danger" = "default") {

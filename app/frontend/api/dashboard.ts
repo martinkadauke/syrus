@@ -108,6 +108,8 @@ export type DashboardSmartFolder = {
   name: string
   kind: string
   subject_type: string
+  visibility: string
+  count: number
   active: boolean
   path: string
 }
