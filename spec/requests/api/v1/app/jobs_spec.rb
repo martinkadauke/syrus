@@ -63,6 +63,7 @@ RSpec.describe "App API job detail", type: :request do
     expect(body.dig("actions", "can_poll_feedback")).to eq(true)
     expect(body.dig("actions", "can_check_mergeability")).to eq(true)
     expect(body.dig("paths", "app_poll_feedback_path")).to eq("/api/v1/app/jobs/#{job.id}/poll_feedback")
+    expect(body.dig("paths", "app_source_path")).to eq("/api/v1/app/jobs/#{job.id}/source")
     expect(body.dig("paths", "app_timeline_path")).to eq("/api/v1/app/jobs/#{job.id}/timeline")
 
     workflow = body["workflows"].first

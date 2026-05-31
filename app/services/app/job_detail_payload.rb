@@ -403,6 +403,7 @@ module App
         job_path: job_path(@job),
         source_path: source_job_path(@job),
         app_detail_path: "/api/v1/app/jobs/#{@job.id}",
+        app_source_path: "/api/v1/app/jobs/#{@job.id}/source",
         app_timeline_path: "/api/v1/app/jobs/#{@job.id}/timeline",
         app_start_path: "/api/v1/app/jobs/#{@job.id}/start",
         app_run_again_path: "/api/v1/app/jobs/#{@job.id}/run_again",

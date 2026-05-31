@@ -6,6 +6,10 @@ module Api
           render json: ::App::JobDetailPayload.build(job: find_job, user: Current.user)
         end
 
+        def source
+          render json: ::App::JobSourcePayload.build(job: find_job, user: Current.user, params: params)
+        end
+
         def timeline
           render json: ::App::JobDetailPayload.timeline(job: find_job)
         end
