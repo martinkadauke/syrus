@@ -602,8 +602,9 @@ describe("App", () => {
       })
     })
 
-    fireEvent.change(await screen.findByLabelText("Folder name"), { target: { value: "Open work" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save folder" }))
+    const smartFoldersPanel = await screen.findByRole("complementary", { name: "Dashboard smart folders panel" })
+    fireEvent.change(within(smartFoldersPanel).getByLabelText("Folder name"), { target: { value: "Open work" } })
+    fireEvent.click(within(smartFoldersPanel).getByRole("button", { name: "Save folder" }))
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(

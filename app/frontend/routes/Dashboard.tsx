@@ -40,7 +40,7 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
-        <SmartFolderNav payload={payload} prefix={prefix} />
+        <SmartFolderNav payload={payload} prefix={prefix} search={search} />
         <section className="min-w-0 space-y-4">
           <DashboardTable payload={payload} prefix={prefix} />
           {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
@@ -81,21 +81,43 @@ function SubjectTabs({ payload, prefix }: { payload: DashboardPayload; prefix: s
   )
 }
 
-function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
+function SmartFolderNav({ payload, prefix, search }: { payload: DashboardPayload; prefix: string; search: string }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const [folderName, setFolderName] = useState("")
   const builtinFolders = payload.smart_folders.filter((folder) => folder.kind !== "user_defined")
   const primaryFolders = builtinFolders.filter((folder) => folder.visibility !== "on_demand")
   const moreFolders = builtinFolders.filter((folder) => folder.visibility === "on_demand")
   const savedFolders = payload.smart_folders.filter((folder) => folder.kind === "user_defined")
+  const params = new URLSearchParams(search)
+  const appliedChildren = topFilterChildren(filterTreeFromSearch(search))
+  const canSaveFilter = appliedChildren.length > 0 || legacyFilterKeys.some((key) => params.has(key))
   const landingPause = useMutation({
     mutationFn: () => toggleDashboardLandingPause(payload.landing_queue.toggle_path),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     }
   })
+  const createFolder = useMutation({
+    mutationFn: () => createDashboardSmartFolder({
+      subject: payload.subject,
+      name: folderName,
+      filters: smartFolderFiltersFromSearch(search)
+    }),
+    onSuccess: (created) => {
+      setFolderName("")
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+      navigate(withRoutePrefix(created.redirect_to, prefix))
+    }
+  })
+
+  function saveFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    createFolder.mutate()
+  }
 
   return (
-    <aside className="space-y-2">
+    <aside aria-label="Dashboard smart folders panel" className="space-y-2">
       <h2 className="text-xs font-semibold uppercase text-gray-500">Smart folders</h2>
       <nav aria-label="Dashboard smart folders" className="space-y-1">
         <Link className={folderClass(payload.active_smart_folder_id == null)} to={dashboardLink(`${prefix}${subjectPath(payload.subject)}`, { view: payload.view })}>
@@ -111,6 +133,27 @@ function SmartFolderNav({ payload, prefix }: { payload: DashboardPayload; prefix
           </details>
         ) : null}
       </nav>
+      {canSaveFilter ? (
+        <form className="space-y-2 px-2 pt-3" onSubmit={saveFolder}>
+          <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-smart-folder-name">
+            Folder name
+            <input
+              className="mt-1 block w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
+              disabled={createFolder.isPending}
+              id="dashboard-smart-folder-name"
+              maxLength={120}
+              onChange={(event) => setFolderName(event.target.value)}
+              required
+              type="text"
+              value={folderName}
+            />
+          </label>
+          <button className="w-full rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:bg-gray-300" disabled={createFolder.isPending} type="submit">
+            Save folder
+          </button>
+          {createFolder.isError ? <p className="text-xs text-red-700" role="alert">{errorMessage(createFolder.error, "Unable to save smart folder.")}</p> : null}
+        </form>
+      ) : null}
       <div className="space-y-1 pt-3">
         <div className="flex items-center justify-between gap-2 px-2">
           <h3 className="text-xs font-semibold uppercase text-gray-500">Saved</h3>
@@ -278,10 +321,7 @@ function ColumnsIcon() {
 }
 
 function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
-  const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const prefix = pathname.startsWith("/app-shell") ? "/app-shell" : ""
-  const [folderName, setFolderName] = useState("")
   const [draftTree, setDraftTree] = useState<FilterTree>(() => filterTreeFromSearch(search))
   const [editingPath, setEditingPath] = useState<FilterPath | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
@@ -292,9 +332,7 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
   const params = new URLSearchParams(search)
   const appliedTree = useMemo(() => filterTreeFromSearch(search), [search])
   const draftChildren = topFilterChildren(draftTree)
-  const appliedChildren = topFilterChildren(appliedTree)
   const hasFilters = draftChildren.length > 0 || legacyFilterKeys.some((key) => params.has(key)) || params.has("smart_folder_id")
-  const canSaveFilter = appliedChildren.length > 0 || legacyFilterKeys.some((key) => params.has(key))
   const filteredControls = controls.filter((control) => {
     const query = addQuery.trim().toLowerCase()
     return !query || control.field.toLowerCase().includes(query) || control.label.toLowerCase().includes(query)
@@ -330,19 +368,6 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
       window.removeEventListener("pointerdown", closeOnOutsidePointer)
     }
   }, [addMenuOpen])
-
-  const createFolder = useMutation({
-    mutationFn: () => createDashboardSmartFolder({
-      subject: payload.subject,
-      name: folderName,
-      filters: smartFolderFiltersFromSearch(search)
-    }),
-    onSuccess: (created) => {
-      setFolderName("")
-      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
-      navigate(withRoutePrefix(created.redirect_to, prefix))
-    }
-  })
 
   if (controls.length === 0) return null
 
@@ -415,11 +440,6 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
     applyTree(nextTree)
   }
 
-  function saveFolder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    createFolder.mutate()
-  }
-
   return (
     <div className="space-y-2 rounded border border-gray-200 bg-white px-3 py-2">
       <div className="relative flex flex-wrap items-center gap-2">
@@ -487,27 +507,6 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
         ) : null}
       </div>
 
-      {canSaveFilter ? (
-        <form className="flex flex-wrap items-end gap-2 border-t border-gray-100 pt-2" onSubmit={saveFolder}>
-          <label className="block text-xs font-medium uppercase text-gray-500" htmlFor="dashboard-smart-folder-name">
-            Folder name
-            <input
-              className="mt-1 block w-56 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
-              disabled={createFolder.isPending}
-              id="dashboard-smart-folder-name"
-              maxLength={120}
-              onChange={(event) => setFolderName(event.target.value)}
-              required
-              type="text"
-              value={folderName}
-            />
-          </label>
-          <button className="mb-0.5 rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:bg-gray-300" disabled={createFolder.isPending} type="submit">
-            Save folder
-          </button>
-          {createFolder.isError ? <p className="basis-full text-xs text-red-700" role="alert">{errorMessage(createFolder.error, "Unable to save smart folder.")}</p> : null}
-        </form>
-      ) : null}
     </div>
   )
 }
