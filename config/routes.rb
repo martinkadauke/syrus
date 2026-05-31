@@ -43,6 +43,13 @@ Rails.application.routes.draw do
         post "jobs/:job_id/dependencies/override", to: "job_metadata#override_dependencies", constraints: { job_id: /\d+/ }
         patch "jobs/:job_id/stack_base", to: "job_metadata#stack_base", constraints: { job_id: /\d+/ }
         post "jobs/:job_id/mark_valid", to: "job_metadata#mark_valid", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/start", to: "job_lifecycle#start", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/run_again", to: "job_lifecycle#run_again", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/restart", to: "job_lifecycle#restart", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/cancel", to: "job_lifecycle#cancel", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/approve", to: "job_lifecycle#approve", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/unapprove", to: "job_lifecycle#unapprove", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/reopen", to: "job_lifecycle#reopen", constraints: { job_id: /\d+/ }
         get "epics/new", to: "epics#new"
         get "epics/:id", to: "epics#show", constraints: { id: /\d+/ }
         get "epics/:id/edit", to: "epics#edit", constraints: { id: /\d+/ }

@@ -1,0 +1,136 @@
+require "rails_helper"
+
+RSpec.describe "App API job lifecycle commands", type: :request do
+  let(:user) { Factories.user }
+  let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets", auto_merge_enabled: true) }
+  let(:job) { Factories.job(repository: repo, issue_number: 42) }
+
+  before { sign_in_as(user) }
+
+  def parse_body = JSON.parse(response.body)
+  def app_job_path(job_record, action) = "/api/v1/app/jobs/#{job_record.id}/#{action}"
+
+  it "starts an unstarted direct job" do
+    direct = Job.create!(
+      user: user,
+      repository: repo,
+      kind: "direct",
+      issue_number: nil,
+      issue_title: "Direct repair",
+      issue_body: "Repair the forum."
+    )
+
+    expect {
+      post app_job_path(direct, "start"), as: :json
+    }.to change { direct.reload.runs.count }.from(0).to(1)
+      .and have_enqueued_job(RunJob)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include("message" => "Initial workflow enqueued.")
+    expect(parse_body.dig("job", "runs_count")).to eq(1)
+    expect(parse_body.dig("paths", "job_path")).to eq(job_path(direct, tab: "workflows"))
+  end
+
+  it "retries a completed job" do
+    job.initial_run.tap { |run| run.start!; run.succeed!; run.save! }
+
+    expect {
+      post app_job_path(job, "run_again"), params: { retry_context: "Try the marble route." }, as: :json
+    }.to change { job.reload.workflows.where(trigger_kind: "retry").count }.by(1)
+      .and have_enqueued_job(RunJob)
+
+    workflow = job.workflows.where(trigger_kind: "retry").last
+    expect(response).to have_http_status(:ok)
+    expect(workflow.artifacts["replay_context"]).to eq("Try the marble route.")
+    expect(parse_body).to include("message" => "Retry workflow enqueued.")
+    expect(parse_body.dig("paths", "job_path")).to eq(job_path(job, tab: "workflows"))
+  end
+
+  it "restarts a job with a replacement job" do
+    job.initial_run.tap { |run| run.start!; run.succeed!; run.save! }
+    original_id = job.id
+
+    expect {
+      post app_job_path(job, "restart"), as: :json
+    }.to change(Job, :count).by(1)
+      .and have_enqueued_job(RunJob)
+
+    new_job = Job.where(repository_id: repo.id, issue_number: 42).order(:created_at).last
+    expect(response).to have_http_status(:created)
+    expect(job.reload).to be_closed
+    expect(job.closure_reason).to eq("replaced")
+    expect(new_job.id).not_to eq(original_id)
+    expect(parse_body.dig("job", "id")).to eq(new_job.id)
+    expect(parse_body.dig("old_job", "id")).to eq(original_id)
+    expect(parse_body["redirect_to"]).to eq(job_path(new_job))
+  end
+
+  it "cancels active runs and closes the job" do
+    run = job.initial_run
+    run.start!
+    run.save!
+
+    post app_job_path(job, "cancel"), as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(run.reload).to be_cancelled
+    expect(job.reload).to be_closed
+    expect(job.closure_reason).to eq("cancelled")
+    expect(parse_body).to include("message" => "Cancellation requested.")
+    expect(parse_body.dig("job", "state")).to eq("closed")
+  end
+
+  it "approves and unapproves an implemented job" do
+    job.update!(state: "implemented")
+
+    post app_job_path(job, "approve"), as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(job.reload).to be_approved
+    expect(job.approved_via).to eq("operator")
+    expect(job.approved_by_user).to eq(user)
+    expect(parse_body).to include("message" => "Job approved.")
+    expect(parse_body.dig("job", "approved_by_user_id")).to eq(user.id)
+
+    post app_job_path(job, "unapprove"), as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(job.reload).to be_implemented
+    expect(job.approved_at).to be_nil
+    expect(job.approved_via).to be_nil
+    expect(parse_body).to include("message" => "Job unapproved.")
+  end
+
+  it "rejects approval when auto-merge is disabled" do
+    repo.update!(auto_merge_enabled: false)
+    job.update!(state: "implemented")
+
+    post app_job_path(job, "approve"), as: :json
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(job.reload).to be_implemented
+    expect(parse_body.dig("error", "message")).to include("Auto-merge is disabled")
+  end
+
+  it "reopens a closed job" do
+    job.close_with_reason!("cancelled")
+
+    post app_job_path(job, "reopen"), as: :json
+
+    expect(response).to have_http_status(:ok)
+    expect(job.reload).to be_open
+    expect(parse_body).to include("message" => "Thread reopened.")
+    expect(parse_body.dig("job", "state")).to eq(job.state)
+  end
+
+  it "does not expose another user's job" do
+    other_user = Factories.user
+    other_repo = Factories.repository(user: other_user, owner: "globex", name: "private")
+    other_job = Factories.job(repository: other_repo, issue_number: 99)
+
+    post app_job_path(other_job, "cancel"), as: :json
+
+    expect(response).to have_http_status(:not_found)
+    expect(other_job.reload).to be_open
+  end
+end

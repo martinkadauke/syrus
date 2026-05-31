@@ -1,0 +1,188 @@
+module Api
+  module V1
+    module App
+      class JobLifecycleController < BaseController
+        def start
+          job = find_job
+          unless job.direct?
+            render_error("validation_failed", "Only direct Jobs can be started manually.", status: :unprocessable_content)
+            return
+          end
+          if job.closed?
+            render_error("validation_failed", "Thread is closed - reopen it before starting work.", status: :unprocessable_content)
+            return
+          end
+          if job.any_active_run?
+            render_error("validation_failed", "A Run is already in progress - wait for it to finish.", status: :unprocessable_content)
+            return
+          end
+          if job.runs.exists?
+            render_error("validation_failed", "This Job has already been started - use Retry instead.", status: :unprocessable_content)
+            return
+          end
+
+          workflow = job.workflows.where(state: "queued", trigger_kind: "initial").order(:created_at).first ||
+                     Workflows::Initial.instantiate(job: job, agent_provider: job.agent_provider)
+          rendered_prompt = Prompts::DirectJob.new(prompt: job.issue_body.to_s).to_s
+          StepDispatcher.start_workflow(workflow, prompt: rendered_prompt)
+
+          render_job(job.reload, message: "Initial workflow enqueued.", changed: [ "workflows", "runs" ], tab: "workflows")
+        end
+
+        def run_again
+          job = find_job
+          ctx = params[:retry_context].presence || params[:replay_context]
+          ctx = ctx.to_s.strip
+          artifacts = ctx.present? ? { "replay_context" => ctx } : nil
+          agent_provider = params[:agent_provider].to_s.presence
+
+          result = RetryWorkflowEnqueuer.call(
+            job: job,
+            artifacts: artifacts,
+            agent_provider: agent_provider,
+            provider_validation: :retry_alternate
+          )
+          unless result.success?
+            render_error("validation_failed", result.error, status: :unprocessable_content)
+            return
+          end
+
+          notice = agent_provider.present? ? "Retry workflow enqueued with #{agent_provider.titleize}." : "Retry workflow enqueued."
+          render_job(job.reload, message: notice, changed: [ "workflows", "runs" ], tab: "workflows")
+        end
+
+        def restart
+          job = find_job
+          job.cancel_active_runs_and_close!("replaced") if job.open?
+          skip_prepare = job.sync_skip_prepare_from_source!
+          new_job = Current.user.jobs.create!(
+            repository: job.repository,
+            issue_number: job.issue_number,
+            skip_prepare: skip_prepare
+          )
+          new_job.advance_after_triage!
+          broadcast_job_change(job.reload, [ "state" ])
+          broadcast_job_change(new_job.reload, [ "created" ])
+
+          render json: job_payload(
+            new_job,
+            message: "Started over - new branch and PR will be created.",
+            tab: nil
+          ).merge(
+            old_job: job_json(job.reload),
+            redirect_to: job_path(new_job)
+          ), status: :created
+        end
+
+        def cancel
+          job = find_job
+          if job.closed?
+            render_error("validation_failed", "Job is already closed.", status: :unprocessable_content)
+            return
+          end
+
+          job.cancel_active_runs_and_close!("cancelled")
+          render_job(job.reload, message: "Cancellation requested.", changed: [ "state", "runs" ])
+        end
+
+        def approve
+          job = find_job
+          unless job.may_approve?
+            render_error("validation_failed", "Only implemented Jobs can be approved.", status: :unprocessable_content)
+            return
+          end
+          unless job.repository.auto_merge_enabled?
+            render_error("validation_failed", "Auto-merge is disabled for #{job.repository.slug}; enable it in repository settings before approving.", status: :unprocessable_content)
+            return
+          end
+
+          job.approve!(via: "operator", by_user: Current.user)
+          github_note = Job::ApprovalPropagator.approve(job, user: Current.user).message
+          render_job(job.reload, message: [ "Job approved.", github_note ].compact.join(" "), changed: [ "state", "approval" ])
+        end
+
+        def unapprove
+          job = find_job
+          unless job.may_unapprove?
+            render_error("validation_failed", "Only approved Jobs that have not started landing can be unapproved.", status: :unprocessable_content)
+            return
+          end
+
+          review_id = job.approval_evidence&.dig("github_review_id")
+          job.unapprove!
+          github_note = Job::ApprovalPropagator.dismiss(job, review_id, user: Current.user).message
+          render_job(job.reload, message: [ "Job unapproved.", github_note ].compact.join(" "), changed: [ "state", "approval" ])
+        end
+
+        def reopen
+          job = find_job
+          unless job.may_reopen?
+            render_error("validation_failed", "Job isn't closed.", status: :unprocessable_content)
+            return
+          end
+
+          prior_reason = job.closure_reason
+          job.reopen!
+          job.save!
+          render_job(job.reload, message: reopen_notice(prior_reason), changed: [ "state" ])
+        end
+
+        private
+
+        def find_job
+          Current.user.jobs.includes(:repository, :runs, :workflows).find(params[:job_id])
+        end
+
+        def render_job(job, message:, changed:, tab: nil)
+          broadcast_job_change(job, changed)
+          render json: job_payload(job, message: message, tab: tab)
+        end
+
+        def broadcast_job_change(job, changed)
+          AppEvents.broadcast(
+            user: Current.user,
+            type: "updated",
+            resource: "job",
+            id: job.id,
+            changed: changed
+          )
+        end
+
+        def job_payload(job, message:, tab:)
+          {
+            message: message,
+            job: job_json(job),
+            paths: {
+              job_path: tab ? job_path(job, tab: tab) : job_path(job)
+            }
+          }
+        end
+
+        def job_json(job)
+          {
+            id: job.id,
+            state: job.state,
+            closure_reason: job.closure_reason,
+            approved_at: job.approved_at&.iso8601,
+            approved_via: job.approved_via,
+            approved_by_user_id: job.approved_by_user_id,
+            runs_count: job.runs.size,
+            workflows_count: job.workflows.size
+          }
+        end
+
+        def reopen_notice(prior_reason)
+          base = "Thread reopened."
+          case prior_reason
+          when "syrus_stop"
+            "#{base} Heads up: the next poll will re-close it if the syrus-stop label is still on the PR."
+          when "pr_merged", "pr_closed"
+            "#{base} Heads up: the next poll will check the PR state and may re-close it."
+          else
+            base
+          end
+        end
+      end
+    end
+  end
+end
