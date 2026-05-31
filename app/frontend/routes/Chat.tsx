@@ -55,7 +55,7 @@ export function ChatRoute() {
   })
 
   return (
-    <main aria-label="Chat" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Chat" className="mx-auto flex max-w-7xl flex-col gap-6 p-6 lg:h-[calc(100vh-4rem)] lg:overflow-hidden">
       {chat.isPending ? <PanelMessage>Loading chat...</PanelMessage> : null}
       {chat.isError ? <PanelMessage tone="error">{errorMessage(chat.error, "Unable to load chat.")}</PanelMessage> : null}
       {chat.isSuccess ? <ChatView payload={chat.data} prefix={prefix} queryKey={queryKey} /> : null}
@@ -92,7 +92,7 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
   const title = payload.chat.title || payload.chat.repository?.slug || "New chat"
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="break-words text-3xl font-semibold text-gray-900">{title}</h1>
@@ -128,8 +128,8 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
           <p className="mt-1">Chat uses Claude. Add a Claude OAuth token in <Link className="underline hover:no-underline" to={withRoutePrefix(payload.paths.credentials_path, prefix)}>Credentials</Link> to enable chat.</p>
         </section>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="flex min-h-[34rem] min-w-0 flex-col gap-3">
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
+          <section className="flex min-h-[34rem] min-w-0 flex-col gap-3 lg:min-h-0">
             <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white">
               <MessageStream payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
               <UsageOverlay payload={payload} />
@@ -139,7 +139,7 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
           <SidePanel payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
         </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -215,14 +215,14 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
 
   if (displayedItems.length === 0) {
     return (
-      <div className="flex h-full min-h-[28rem] items-center justify-center p-4 text-sm text-gray-500">
+      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto p-4 text-sm text-gray-500" data-testid="chat-message-stream">
         {payload.chat.repository ? "Start a chat with this repository." : "Attach a repository to start chatting."}
       </div>
     )
   }
 
   return (
-    <div className="min-h-[28rem] space-y-4 overflow-y-auto p-4">
+    <div className="h-full min-h-0 space-y-4 overflow-y-auto p-4" data-testid="chat-message-stream">
       {hasMoreOlder ? (
         <div className="text-center">
           <button
@@ -541,7 +541,7 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
 
 function SidePanel({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
-    <aside aria-label="Chat side panel" className="space-y-4 rounded border border-gray-200 bg-white p-4">
+    <aside aria-label="Chat side panel" className="space-y-4 rounded border border-gray-200 bg-white p-4 lg:min-h-0 lg:overflow-y-auto">
       <WhiteboardBoundary>
         <WhiteboardPanel payload={payload} />
       </WhiteboardBoundary>

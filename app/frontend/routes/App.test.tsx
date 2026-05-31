@@ -3715,8 +3715,12 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Chat" })).toBeInTheDocument()
+    const chatMain = await screen.findByRole("main", { name: "Chat" })
+    expect(chatMain).toBeInTheDocument()
+    expect(chatMain).toHaveClass("lg:h-[calc(100vh-4rem)]", "lg:overflow-hidden")
     expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
+    expect(screen.getByTestId("chat-message-stream")).toHaveClass("h-full", "min-h-0", "overflow-y-auto")
+    expect(screen.getByRole("complementary", { name: "Chat side panel" })).toHaveClass("lg:min-h-0", "lg:overflow-y-auto")
     expect(screen.getByText("Aqueducts")).toBeInTheDocument()
     expect(screen.getByText("Launch notes")).toBeInTheDocument()
     expect(screen.getByText("Version 2")).toBeInTheDocument()
