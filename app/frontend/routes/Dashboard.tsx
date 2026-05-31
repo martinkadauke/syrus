@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
@@ -265,6 +265,7 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [addQuery, setAddQuery] = useState("")
   const [pendingAddTarget, setPendingAddTarget] = useState<PendingAddTarget>({ kind: "and" })
+  const addMenuRef = useRef<HTMLDivElement | null>(null)
   const controls = payload.controls.filter_schema
   const params = new URLSearchParams(search)
   const appliedTree = useMemo(() => filterTreeFromSearch(search), [search])
@@ -285,6 +286,28 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
     setAddMenuOpen(false)
     setAddQuery("")
   }, [appliedTree])
+
+  useEffect(() => {
+    if (!addMenuOpen) return
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setAddMenuOpen(false)
+    }
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target
+      if (target instanceof Node && addMenuRef.current?.contains(target)) return
+
+      setAddMenuOpen(false)
+    }
+
+    window.addEventListener("keydown", closeOnEscape)
+    window.addEventListener("pointerdown", closeOnOutsidePointer)
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape)
+      window.removeEventListener("pointerdown", closeOnOutsidePointer)
+    }
+  }, [addMenuOpen])
 
   const createFolder = useMutation({
     mutationFn: () => createDashboardSmartFolder({
@@ -404,7 +427,7 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
           </Link>
         ) : null}
         {addMenuOpen ? (
-          <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-gray-200 bg-white shadow-lg">
+          <div className="absolute left-0 top-full z-20 mt-1 w-72 rounded border border-gray-200 bg-white shadow-lg" ref={addMenuRef}>
             <input
               autoFocus
               className="block w-full rounded-t border-b border-gray-200 px-3 py-2 text-sm focus:outline-none"
