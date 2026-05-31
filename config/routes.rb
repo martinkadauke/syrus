@@ -301,7 +301,6 @@ Rails.application.routes.draw do
   post "scheduled_tasks/legacy/:id/pause", to: "scheduled_tasks#pause", as: :legacy_pause_scheduled_task, constraints: { id: /\d+/ }
   post "scheduled_tasks/legacy/:id/resume", to: "scheduled_tasks#resume", as: :legacy_resume_scheduled_task, constraints: { id: /\d+/ }
   post "scheduled_tasks/legacy/:id/fire_now", to: "scheduled_tasks#fire_now", as: :legacy_fire_now_scheduled_task, constraints: { id: /\d+/ }
-  get "filters/fk_options", to: "filters/fk_options#index"
   get "app-shell", to: "spa#show", as: :app_shell
   get "app-shell/*path", to: "spa#show", as: :app_shell_route
   get "dashboard", to: "spa#show", as: :dashboard

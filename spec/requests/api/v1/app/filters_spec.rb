@@ -47,6 +47,65 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
     )
   end
 
+  it "searches jobs by title, exact issue number, and branch name" do
+    user = Factories.user
+    repo = Factories.repository(user:)
+    by_title = Factories.job_record(user:, repository: repo, issue_number: 10, issue_title: "Add typeahead")
+    by_number = Factories.job_record(user:, repository: repo, issue_number: 99, issue_title: "Unrelated")
+    by_branch = Factories.job_record(user:, repository: repo, issue_number: 11, issue_title: "Branch match", branch_name: "syrus/fk-options")
+    Factories.job_record(user:, repository: repo, issue_number: 100, issue_title: "99 bottles")
+    sign_in_as(user)
+
+    get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: "typeahead" }
+    expect(parse_body["options"].map { |row| row["value"] }).to eq([ by_title.id ])
+
+    get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: "99" }
+    expect(parse_body["options"].map { |row| row["value"] }).to include(by_number.id)
+
+    get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: "fk-options" }
+    expect(parse_body["options"].map { |row| row["value"] }).to eq([ by_branch.id ])
+  end
+
+  it "caps search responses at 50 results" do
+    user = Factories.user
+    repo = Factories.repository(user:)
+    60.times do |i|
+      Factories.job_record(user:, repository: repo, issue_number: i + 1, issue_title: "Bulk searchable #{i}")
+    end
+    sign_in_as(user)
+
+    get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: "Bulk searchable" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["options"].size).to eq(50)
+  end
+
+  it "searches repositories, epics, tags, and hostnames through their label columns" do
+    user = Factories.user
+    repo = Factories.repository(user:, owner: "acme", name: "widgets")
+    epic = Factories.epic(user:, repository: repo, title: "Typeahead migration")
+    tag = Factories.tag(user:, name: "backend")
+    SpawnedProcess.create!(
+      kind: "agent",
+      command: "claude --print",
+      hostname: "syrus-worker-alpha",
+      started_at: 1.minute.ago
+    )
+    sign_in_as(user)
+
+    get "/api/v1/app/filters/fk_options", params: { field: "repository_id", q: "widg" }
+    expect(parse_body["options"]).to eq([{ "value" => repo.id, "label" => "acme/widgets" }])
+
+    get "/api/v1/app/filters/fk_options", params: { field: "epic_id", q: "migration" }
+    expect(parse_body["options"]).to eq([{ "value" => epic.id, "label" => "EPIC-#{epic.number} Typeahead migration" }])
+
+    get "/api/v1/app/filters/fk_options", params: { field: "tags", q: "back" }
+    expect(parse_body["options"]).to eq([{ "value" => tag.id, "label" => "backend" }])
+
+    get "/api/v1/app/filters/fk_options", params: { field: "hostname", q: "alpha" }
+    expect(parse_body["options"]).to eq([{ "value" => "syrus-worker-alpha", "label" => "syrus-worker-alpha" }])
+  end
+
   it "returns a structured error for unknown fields" do
     sign_in_as(Factories.user)
 
