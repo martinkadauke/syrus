@@ -2188,6 +2188,11 @@ describe("App", () => {
   })
 
   it("renders the repository scheduled tasks route and disables a task", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload())
+    document.body.appendChild(script)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/repositories/3/scheduled_tasks/12" && init?.method === "PATCH") {
@@ -2197,35 +2202,42 @@ describe("App", () => {
       return Promise.resolve(new Response(JSON.stringify(repositoryScheduledTasksPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/repositories/3/scheduled_tasks"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
-
-    expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toHaveClass("max-w-7xl")
-    const scheduledTabs = await screen.findByRole("navigation", { name: "Repository tabs" })
-    expect(within(scheduledTabs).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
-    expect(within(scheduledTabs).getByRole("link", { name: "Context" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=context")
-    expect(within(scheduledTabs).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/repositories/3/documents")
-    expect(within(scheduledTabs).getByRole("link", { name: "Scheduled Tasks" })).toHaveClass("border-blue-600")
-    expect(await screen.findByText("Daily review")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "New scheduled task" })).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks/new")
-    fireEvent.click(screen.getByRole("button", { name: "Disable" }))
-
-    await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/repositories/3/scheduled_tasks/12",
-        expect.objectContaining({
-          method: "PATCH",
-          credentials: "same-origin",
-          body: JSON.stringify({ enabled: false })
-        })
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/repositories/3/scheduled_tasks"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
       )
-    })
-    expect(await screen.findByText("Scheduled task disabled.")).toBeInTheDocument()
+
+      const primaryNav = await screen.findByRole("navigation", { name: "Primary" })
+      expect(within(primaryNav).getByRole("link", { name: "Repos" })).toHaveClass("bg-blue-50", "text-blue-700")
+      expect(within(primaryNav).getByRole("link", { name: "Schedules" })).not.toHaveClass("bg-blue-50")
+      expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toHaveClass("max-w-7xl")
+      const scheduledTabs = await screen.findByRole("navigation", { name: "Repository tabs" })
+      expect(within(scheduledTabs).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
+      expect(within(scheduledTabs).getByRole("link", { name: "Context" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=context")
+      expect(within(scheduledTabs).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/repositories/3/documents")
+      expect(within(scheduledTabs).getByRole("link", { name: "Scheduled Tasks" })).toHaveClass("border-blue-600")
+      expect(await screen.findByText("Daily review")).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "New scheduled task" })).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks/new")
+      fireEvent.click(screen.getByRole("button", { name: "Disable" }))
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/repositories/3/scheduled_tasks/12",
+          expect.objectContaining({
+            method: "PATCH",
+            credentials: "same-origin",
+            body: JSON.stringify({ enabled: false })
+          })
+        )
+      })
+      expect(await screen.findByText("Scheduled task disabled.")).toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
   })
 
   it("renders the credentials route and updates account settings", async () => {
