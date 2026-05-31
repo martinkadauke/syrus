@@ -32,7 +32,8 @@ export function RepositoryDetailRoute() {
   const location = useLocation()
   const id = params.id || ""
   const query = new URLSearchParams(location.search)
-  const tab = query.get("tab") === "github_issues" ? "github_issues" : "overview"
+  const tabParam = query.get("tab")
+  const tab = tabParam === "github_issues" ? "github_issues" : tabParam === "context" || tabParam === "notes" ? "context" : "overview"
   const state = query.get("state") === "closed" ? "closed" : "open"
   const search = pageSearch(location.search)
   const prefix = routePrefix(location.pathname)
@@ -40,7 +41,7 @@ export function RepositoryDetailRoute() {
   const detail = useQuery({
     queryKey: detailQueryKey,
     queryFn: () => fetchRepositoryDetail(id, search),
-    enabled: id.length > 0 && tab === "overview"
+    enabled: id.length > 0 && tab !== "github_issues"
   })
   const issues = useQuery({
     queryKey: ["repositories", id, "issues", state],
@@ -50,11 +51,11 @@ export function RepositoryDetailRoute() {
 
   return (
     <main aria-label="Repository" className="mx-auto max-w-7xl space-y-6 p-6">
-      {tab === "overview" ? (
+      {tab !== "github_issues" ? (
         <>
           {detail.isPending ? <PanelMessage>Loading repository...</PanelMessage> : null}
           {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, "Unable to load repository.")}</PanelMessage> : null}
-          {detail.isSuccess ? <RepositoryDetail payload={detail.data} prefix={prefix} queryKey={detailQueryKey} /> : null}
+          {detail.isSuccess ? <RepositoryDetail activeTab={tab} payload={detail.data} prefix={prefix} queryKey={detailQueryKey} /> : null}
         </>
       ) : (
         <>
@@ -77,7 +78,7 @@ function appendSearch(path: string, search: string) {
   return search ? `${path}${search}` : path
 }
 
-function RepositoryDetail({ payload, prefix, queryKey }: { payload: RepositoryDetailPayload; prefix: string; queryKey: RepositoryDetailQueryKey }) {
+function RepositoryDetail({ activeTab, payload, prefix, queryKey }: { activeTab: "overview" | "context"; payload: RepositoryDetailPayload; prefix: string; queryKey: RepositoryDetailQueryKey }) {
   const [notice, setNotice] = useState<string | null>(payload.message || null)
 
   return (
@@ -88,14 +89,18 @@ function RepositoryDetail({ payload, prefix, queryKey }: { payload: RepositoryDe
         </h1>
       </header>
 
-      <Tabs active="overview" prefix={prefix} tabs={payload.tabs} />
+      <Tabs active={activeTab} prefix={prefix} tabs={payload.tabs} />
       {notice ? <PanelMessage>{notice}</PanelMessage> : null}
-      <Metadata payload={payload} />
-      <Actions payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
-      <CredentialNotice payload={payload} />
-      <Counts payload={payload} />
-      <Notes payload={payload} queryKey={queryKey} onNotice={setNotice} />
-      <RecentJobs payload={payload} prefix={prefix} />
+      {activeTab === "context" ? (
+        <PinnedContext payload={payload} queryKey={queryKey} onNotice={setNotice} />
+      ) : (
+        <>
+          <RepositorySummary payload={payload} />
+          <Actions payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
+          <CredentialNotice payload={payload} />
+          <RecentJobs payload={payload} prefix={prefix} />
+        </>
+      )}
     </>
   )
 }
@@ -329,31 +334,41 @@ function Tabs({ active, prefix, tabs }: { active: string; prefix: string; tabs: 
   )
 }
 
-function Metadata({ payload }: { payload: RepositoryDetailPayload }) {
+function RepositorySummary({ payload }: { payload: RepositoryDetailPayload }) {
   const repository = payload.repository
+  const nonzeroCounts = [
+    { label: "running", value: payload.counts.running, tone: "blue" as const },
+    { label: "queued", value: payload.counts.queued, tone: "gray" as const },
+    { label: "failed 7d", value: payload.counts.failed_7d, tone: "red" as const }
+  ].filter((count) => count.value > 0)
+
   return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-gray-600">
-      <span>Branch: <span className="font-mono">{repository.default_branch}</span></span>
-      <span>
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
         <StatusPill tone={repository.polling_enabled ? "green" : "gray"}>{repository.polling_enabled ? "polling enabled" : "polling paused"}</StatusPill>
-        <span className="mx-1 text-gray-300">·</span>
-        label <code className="rounded bg-gray-100 px-1">{repository.trigger_label}</code>
-      </span>
-      <span>
-        Owner: {repository.owner_user.email_address}
-        {repository.owner_user.admin ? <span className="ml-1 rounded bg-purple-100 px-1.5 py-0.5 text-xs text-purple-700">admin</span> : null}
-      </span>
-      <span>
-        Agent: {repository.agent_provider_label || `user default (${repository.effective_agent_provider_label})`}
-      </span>
-      {repository.github_rate_limit ? (
-        <span>
-          GitHub quota: <strong>{repository.github_rate_limit.remaining.toLocaleString()}</strong> / {repository.github_rate_limit.limit.toLocaleString()} ({repository.github_rate_limit.resource})
-        </span>
-      ) : null}
-      <span>Added: {formatDate(repository.created_at)}</span>
-      <span>{payload.credential_status.mode === "app" ? `Syrus App installed (via ${payload.credential_status.installation_account})` : "PAT fallback"}</span>
-    </div>
+        <span>{payload.credential_status.label}</span>
+        <span className="text-gray-300">·</span>
+        <span>Agent: {repository.agent_provider_label || `user default (${repository.effective_agent_provider_label})`}</span>
+        {nonzeroCounts.map((count) => (
+          <StatusPill key={count.label} tone={count.tone}>{count.value} {count.label}</StatusPill>
+        ))}
+      </div>
+      <details className="text-sm text-gray-600">
+        <summary className="cursor-pointer select-none text-gray-500 hover:text-gray-900">Repository details</summary>
+        <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div><dt className="text-xs uppercase text-gray-400">Branch</dt><dd className="font-mono text-gray-700">{repository.default_branch}</dd></div>
+          <div><dt className="text-xs uppercase text-gray-400">Trigger label</dt><dd><code className="rounded bg-gray-100 px-1">{repository.trigger_label}</code></dd></div>
+          <div><dt className="text-xs uppercase text-gray-400">Owner</dt><dd>{repository.owner_user.email_address}</dd></div>
+          <div><dt className="text-xs uppercase text-gray-400">Added</dt><dd>{formatDate(repository.created_at)}</dd></div>
+          {repository.github_rate_limit ? (
+            <div><dt className="text-xs uppercase text-gray-400">GitHub quota</dt><dd><strong>{repository.github_rate_limit.remaining.toLocaleString()}</strong> / {repository.github_rate_limit.limit.toLocaleString()} ({repository.github_rate_limit.resource})</dd></div>
+          ) : null}
+          {payload.credential_status.mode === "app" && payload.credential_status.installation_account ? (
+            <div><dt className="text-xs uppercase text-gray-400">Credential</dt><dd>Syrus App via {payload.credential_status.installation_account}</dd></div>
+          ) : null}
+        </dl>
+      </details>
+    </section>
   )
 }
 
@@ -400,10 +415,13 @@ function Actions({ payload, prefix, queryKey, onNotice }: { payload: RepositoryD
         {retry.count > 0 ? (
           <button className={buttonClass("amber")} disabled={disabled} onClick={() => { onNotice(null); retryFailed.mutate() }} type="button">Retry {retry.count} failed with {retry.agent_provider_label}</button>
         ) : null}
-        <Link className={buttonClass("gray")} to={withRoutePrefix(payload.paths.edit_repository_path, prefix)}>Edit</Link>
-        <button className="rounded bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:text-gray-300" disabled={disabled} onClick={archiveRepository} type="button">Archive</button>
-        <Link className={buttonClass("gray")} to={withRoutePrefix(payload.paths.repository_documents_path, prefix)}>Documents</Link>
-        <Link className={buttonClass("gray")} to={withRoutePrefix(payload.paths.repository_scheduled_tasks_path, prefix)}>Scheduled Tasks</Link>
+        <details className="relative">
+          <summary className={buttonClass("gray", "cursor-pointer list-none")}>More</summary>
+          <div className="absolute left-0 z-20 mt-2 min-w-40 rounded border border-gray-200 bg-white p-1 text-sm shadow-lg">
+            <Link className="block rounded px-3 py-2 text-gray-700 hover:bg-gray-100" to={withRoutePrefix(payload.paths.edit_repository_path, prefix)}>Edit</Link>
+            <button className="block w-full rounded px-3 py-2 text-left text-amber-800 hover:bg-amber-50 disabled:text-gray-300" disabled={disabled} onClick={archiveRepository} type="button">Archive</button>
+          </div>
+        </details>
       </div>
       {poll.isError ? <PanelMessage tone="error">{errorMessage(poll.error, "Repository poll failed.")}</PanelMessage> : null}
       {retryFailed.isError ? <PanelMessage tone="error">{errorMessage(retryFailed.error, "Retry failed jobs command failed.")}</PanelMessage> : null}
@@ -417,41 +435,22 @@ function CredentialNotice({ payload }: { payload: RepositoryDetailPayload }) {
   if (status.mode === "app") return null
 
   return (
-    <section className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-      <div className="font-semibold">{status.github_app_registered ? "This repository is using personal-token fallback." : "Syrus App is not registered."}</div>
-      {status.previous_installation_removed ? <p className="mt-1">Its previous installation was removed.</p> : null}
-      {status.install_url ? <a className={buttonClass("amber", "mt-3 inline-block")} href={status.install_url} rel="noopener" target="_blank">Install Syrus App on this repository</a> : null}
-      {status.missing_github_ids ? <p className="mt-2 text-xs">GitHub numeric IDs are missing; edit this repository and select it from the GitHub-backed picker to generate a one-click install link.</p> : null}
-      {status.register_path ? <a className={buttonClass("amber", "mt-3 inline-block")} href={status.register_path}>Register Syrus App</a> : null}
+    <section className="rounded border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <span className="font-medium">Connection:</span> PAT fallback.
+          <span className="ml-1">{status.github_app_registered ? "Syrus App can be installed for this repository." : "Syrus App is not registered."}</span>
+          {status.previous_installation_removed ? <span className="ml-1">Previous installation was removed.</span> : null}
+        </div>
+        {status.install_url ? <a className={buttonClass("gray")} href={status.install_url} rel="noopener" target="_blank">Install Syrus App</a> : null}
+        {status.register_path ? <a className={buttonClass("gray")} href={status.register_path}>Register Syrus App</a> : null}
+      </div>
+      {status.missing_github_ids ? <p className="mt-1 text-xs text-gray-500">GitHub numeric IDs are missing; edit this repository and select it from the GitHub-backed picker to generate a one-click install link.</p> : null}
     </section>
   )
 }
 
-function Counts({ payload }: { payload: RepositoryDetailPayload }) {
-  return (
-    <section className="grid grid-cols-3 gap-4">
-      <CountBox label="Running" tone="blue" value={payload.counts.running} />
-      <CountBox label="Queued" tone="gray" value={payload.counts.queued} />
-      <CountBox label="Failed (7d)" tone="red" value={payload.counts.failed_7d} />
-    </section>
-  )
-}
-
-function CountBox({ label, tone, value }: { label: string; tone: "blue" | "gray" | "red"; value: number }) {
-  const colors = {
-    blue: "text-blue-600",
-    gray: "text-gray-600",
-    red: "text-red-600"
-  }
-  return (
-    <div className="rounded border border-gray-200 bg-white p-4 text-center">
-      <div className={`text-2xl font-bold ${colors[tone]}`}>{value}</div>
-      <div className="mt-1 text-xs uppercase text-gray-500">{label}</div>
-    </div>
-  )
-}
-
-function Notes({ payload, queryKey, onNotice }: { payload: RepositoryDetailPayload; queryKey: RepositoryDetailQueryKey; onNotice: (message: string | null) => void }) {
+function PinnedContext({ payload, queryKey, onNotice }: { payload: RepositoryDetailPayload; queryKey: RepositoryDetailQueryKey; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const search = queryKey[3]
   const [body, setBody] = useState("")
@@ -479,7 +478,7 @@ function Notes({ payload, queryKey, onNotice }: { payload: RepositoryDetailPaylo
   return (
     <section className="overflow-hidden rounded border border-gray-200 bg-white">
       <div className="border-b border-gray-200 px-4 py-3">
-        <h2 className="text-lg font-semibold text-gray-900">Notes</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Pinned context</h2>
       </div>
       <div className="space-y-4 p-4">
         {payload.notes.length > 0 ? (
@@ -501,7 +500,7 @@ function Notes({ payload, queryKey, onNotice }: { payload: RepositoryDetailPaylo
               </li>
             ))}
           </ul>
-        ) : <p className="text-sm text-gray-600">No notes pinned yet.</p>}
+        ) : <p className="text-sm text-gray-600">No context pinned yet.</p>}
 
         <form className="flex flex-col gap-2 sm:flex-row" onSubmit={submit}>
           <textarea className="min-h-20 flex-1 rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" name="repository_note[body]" onChange={(event) => setBody(event.target.value)} placeholder="Pin repository context..." required rows={2} value={body} />
@@ -509,8 +508,8 @@ function Notes({ payload, queryKey, onNotice }: { payload: RepositoryDetailPaylo
             <button className={buttonClass("blue", "w-full sm:w-auto")} disabled={create.isPending} type="submit">Add note</button>
           </div>
         </form>
-        {create.isError ? <div className="text-sm text-red-700">{errorMessage(create.error, "Repository note could not be added.")}</div> : null}
-        {remove.isError ? <div className="text-sm text-red-700">{errorMessage(remove.error, "Repository note could not be removed.")}</div> : null}
+        {create.isError ? <div className="text-sm text-red-700">{errorMessage(create.error, "Repository context could not be added.")}</div> : null}
+        {remove.isError ? <div className="text-sm text-red-700">{errorMessage(remove.error, "Repository context could not be removed.")}</div> : null}
       </div>
     </section>
   )

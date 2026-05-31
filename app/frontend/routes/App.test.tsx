@@ -2860,22 +2860,24 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Repository" })).toBeInTheDocument()
     expect(await screen.findByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "https://github.com/acme/widgets")
     expect(screen.getByText("polling enabled")).toBeInTheDocument()
-    expect(screen.getByText("Repository note pinned.")).toBeInTheDocument()
+    expect(screen.queryByText("Repository context pinned.")).not.toBeInTheDocument()
     expect(screen.getByText("Fix forum")).toBeInTheDocument()
     expect(screen.getByText("Retry 1 failed with Codex")).toBeInTheDocument()
-    expect(screen.getByText("Install Syrus App on this repository")).toHaveAttribute("href", "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&repository_ids[]=200")
+    expect(screen.getByText("Install Syrus App")).toHaveAttribute("href", "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&repository_ids[]=200")
     expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(screen.getByRole("link", { name: "GitHub Issues" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=github_issues")
-    expect(screen.getAllByRole("link", { name: "Scheduled Tasks" })[0]).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks")
-    expect(screen.getByRole("link", { name: "New job" })).toHaveAttribute("href", "/app-shell/jobs/new?repository_id=3")
-    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/repositories/3/edit")
+    expect(screen.getByRole("link", { name: "Context" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=context")
     expect(screen.getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/repositories/3/documents")
+    expect(screen.getByRole("link", { name: "Scheduled Tasks" })).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks")
+    expect(screen.getByRole("link", { name: "New job" })).toHaveAttribute("href", "/app-shell/jobs/new?repository_id=3")
+    fireEvent.click(screen.getByText("More"))
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/repositories/3/edit")
     expect(screen.getByRole("link", { name: "Fix forum" })).toHaveAttribute("href", "/app-shell/jobs/44")
     expect(screen.getByRole("link", { name: "View" })).toHaveAttribute("href", "/app-shell/jobs/44")
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/repositories/3?page=2")
-    expect(screen.getByText("Running").previousElementSibling).toHaveTextContent("1")
-    expect(screen.getByText("Queued").previousElementSibling).toHaveTextContent("1")
-    expect(screen.getByText("Failed (7d)").previousElementSibling).toHaveTextContent("1")
+    expect(screen.getByText("1 running")).toBeInTheDocument()
+    expect(screen.getByText("1 queued")).toBeInTheDocument()
+    expect(screen.getByText("1 failed 7d")).toBeInTheDocument()
   })
 
   it("runs repository note commands through the app API", async () => {
@@ -2884,7 +2886,7 @@ describe("App", () => {
       if (path === "/api/v1/app/repositories/3/notes/11" && init?.method === "DELETE") {
         return Promise.resolve(new Response(JSON.stringify({
           ...repositoryDetailPayload(),
-          message: "Repository note removed.",
+          message: "Repository context removed.",
           notes: []
         }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
@@ -2892,7 +2894,7 @@ describe("App", () => {
       if (path === "/api/v1/app/repositories/3/notes" && init?.method === "POST") {
         return Promise.resolve(new Response(JSON.stringify({
           ...repositoryDetailPayload(),
-          message: "Repository note pinned.",
+          message: "Repository context pinned.",
           notes: [
             {
               id: 12,
@@ -2910,7 +2912,7 @@ describe("App", () => {
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/repositories/3"]}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3?tab=context"]}>
           <App />
         </MemoryRouter>
       </QueryClientProvider>
@@ -2923,7 +2925,7 @@ describe("App", () => {
         expect.objectContaining({ method: "DELETE", credentials: "same-origin" })
       )
     })
-    expect(await screen.findByText("Repository note removed.")).toBeInTheDocument()
+    expect(await screen.findByText("Repository context removed.")).toBeInTheDocument()
 
     fireEvent.change(screen.getByPlaceholderText("Pin repository context..."), { target: { value: "Use staging for smoke tests." } })
     fireEvent.click(screen.getByRole("button", { name: "Add note" }))
@@ -3008,6 +3010,7 @@ describe("App", () => {
     })
     expect(await screen.findByText("Retry enqueued for 1 failed job with Codex.")).toBeInTheDocument()
 
+    fireEvent.click(screen.getByText("More"))
     fireEvent.click(screen.getByRole("button", { name: "Archive" }))
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -4753,6 +4756,8 @@ function repositoryDetailPayload() {
     tabs: [
       { key: "overview", label: "Overview", path: "/repositories/3" },
       { key: "github_issues", label: "GitHub Issues", path: "/repositories/3?tab=github_issues" },
+      { key: "context", label: "Context", path: "/repositories/3?tab=context" },
+      { key: "documents", label: "Documents", path: "/repositories/3/documents" },
       { key: "scheduled_tasks", label: "Scheduled Tasks", path: "/repositories/3/scheduled_tasks" }
     ],
     counts: {
@@ -4778,7 +4783,7 @@ function repositoryDetailPayload() {
     notes: [
       {
         id: 11,
-        body: "Repository note pinned.",
+        body: "Repository context pinned.",
         author: "operator",
         created_at: "2026-05-30T12:00:00Z",
         app_delete_path: "/api/v1/app/repositories/3/notes/11"

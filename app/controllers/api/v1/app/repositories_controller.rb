@@ -90,12 +90,12 @@ module Api
           repository = find_repository
           body = params.dig(:repository_note, :body).to_s.strip
           if body.blank?
-            render_error("validation_failed", "Note cannot be blank.", status: :unprocessable_content)
+            render_error("validation_failed", "Context cannot be blank.", status: :unprocessable_content)
             return
           end
 
           repository.repository_notes.create!(body: body, author: "operator")
-          render json: repository_detail_payload(repository.reload, page: detail_page, message: "Repository note pinned.")
+          render json: repository_detail_payload(repository.reload, page: detail_page, message: "Repository context pinned.")
         end
 
         def destroy_note
@@ -103,7 +103,7 @@ module Api
           note = repository.repository_notes.active.find(params[:id])
           note.remove!
 
-          render json: repository_detail_payload(repository.reload, page: detail_page, message: "Repository note removed.")
+          render json: repository_detail_payload(repository.reload, page: detail_page, message: "Repository context removed.")
         end
 
         def comment_issue
@@ -402,6 +402,8 @@ module Api
           [
             { key: "overview", label: "Overview", path: repository_path(repository) },
             { key: "github_issues", label: "GitHub Issues", path: repository_path(repository, tab: "github_issues") },
+            { key: "context", label: "Context", path: repository_path(repository, tab: "context") },
+            { key: "documents", label: "Documents", path: repository_documents_path(repository) },
             { key: "scheduled_tasks", label: "Scheduled Tasks", path: repository_scheduled_tasks_path(repository) }
           ]
         end

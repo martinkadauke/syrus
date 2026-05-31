@@ -162,6 +162,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body["tabs"]).to include(
       { "key" => "overview", "label" => "Overview", "path" => repository_path(repository) },
       { "key" => "github_issues", "label" => "GitHub Issues", "path" => repository_path(repository, tab: "github_issues") },
+      { "key" => "context", "label" => "Context", "path" => repository_path(repository, tab: "context") },
+      { "key" => "documents", "label" => "Documents", "path" => repository_documents_path(repository) },
       { "key" => "scheduled_tasks", "label" => "Scheduled Tasks", "path" => repository_scheduled_tasks_path(repository) }
     )
     expect(body["counts"]).to include("running" => 1, "queued" => 1, "failed_7d" => 1)
@@ -205,7 +207,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(response).to have_http_status(:ok)
     note = repository.repository_notes.active.sole
     expect(note.author).to eq("operator")
-    expect(parse_body["message"]).to eq("Repository note pinned.")
+    expect(parse_body["message"]).to eq("Repository context pinned.")
     expect(parse_body["notes"]).to contain_exactly(include(
       "body" => "Use staging for smoke tests.",
       "app_delete_path" => "/api/v1/app/repositories/#{repository.id}/notes/#{note.id}"
@@ -216,7 +218,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     }.to change { repository.repository_notes.active.count }.from(1).to(0)
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["message"]).to eq("Repository note removed.")
+    expect(parse_body["message"]).to eq("Repository context removed.")
     expect(parse_body["notes"]).to eq([])
     expect(note.reload).to be_removed
   end
@@ -230,7 +232,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     }.not_to change(RepositoryNote, :count)
 
     expect(response).to have_http_status(:unprocessable_content)
-    expect(parse_body.dig("error", "message")).to eq("Note cannot be blank.")
+    expect(parse_body.dig("error", "message")).to eq("Context cannot be blank.")
   end
 
   it "does not expose another user's repository detail" do
