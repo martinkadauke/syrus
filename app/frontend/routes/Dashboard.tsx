@@ -154,6 +154,7 @@ function SmartFolderLink({ folder, prefix }: { folder: DashboardSmartFolder; pre
 function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
   const queryClient = useQueryClient()
   const [columnsOpen, setColumnsOpen] = useState(false)
+  const [lanesOpen, setLanesOpen] = useState(false)
   const updatePreferences = useMutation({
     mutationFn: updateDashboardPreferences,
     onSuccess: () => {
@@ -230,21 +231,37 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
           </div>
         ) : null}
         {payload.view === "kanban" ? (
-          <fieldset className="flex max-w-xl flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1">
-            <legend className="sr-only">Kanban lanes</legend>
-            <span className="mr-1 text-xs font-medium uppercase text-gray-500">Lanes</span>
-            {payload.controls.kanban_lanes.map((lane) => (
-              <label className="inline-flex items-center gap-1 text-xs text-gray-700" key={lane.key}>
-                <input
-                  checked={payload.preferences.kanban_lanes.includes(lane.key)}
-                  disabled={updatePreferences.isPending}
-                  onChange={(event) => updateLane(lane.key, event.target.checked)}
-                  type="checkbox"
-                />
-                <span>{lane.title}</span>
-              </label>
-            ))}
-          </fieldset>
+          <div className="relative">
+            <button
+              aria-label="Kanban lanes"
+              aria-controls="dashboard-kanban-lanes-menu"
+              aria-expanded={lanesOpen}
+              aria-haspopup="menu"
+              className="inline-flex h-9 w-9 items-center justify-center rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              onClick={() => setLanesOpen((open) => !open)}
+              type="button"
+            >
+              <ColumnsIcon />
+            </button>
+            {lanesOpen ? (
+              <div className="absolute right-0 z-20 mt-2 w-64 rounded border border-gray-200 bg-white p-3 shadow-lg" id="dashboard-kanban-lanes-menu" role="menu">
+                <fieldset className="space-y-2">
+                  <legend className="text-xs font-semibold uppercase text-gray-500">Kanban lanes</legend>
+                  {payload.controls.kanban_lanes.map((lane) => (
+                    <label className="flex items-center gap-2 text-sm text-gray-700" key={lane.key}>
+                      <input
+                        checked={payload.preferences.kanban_lanes.includes(lane.key)}
+                        disabled={updatePreferences.isPending}
+                        onChange={(event) => updateLane(lane.key, event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>{lane.title}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
       {updatePreferences.isError ? <p className="mt-1 text-right text-sm text-red-700" role="alert">{errorMessage(updatePreferences.error, "Unable to update dashboard preferences.")}</p> : null}

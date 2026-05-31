@@ -741,6 +741,12 @@ describe("App", () => {
       })
     )
 
+    const lanesButton = screen.getByRole("button", { name: "Kanban lanes" })
+    expect(lanesButton).toHaveClass("h-9", "w-9")
+    expect(lanesButton).not.toHaveTextContent("Kanban lanes")
+    expect(screen.queryByRole("group", { name: "Kanban lanes" })).not.toBeInTheDocument()
+    fireEvent.click(lanesButton)
+    expect(screen.getByRole("group", { name: "Kanban lanes" })).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText("Succeeded"))
 
     await waitFor(() => {
