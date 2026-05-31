@@ -2660,6 +2660,19 @@ describe("App", () => {
       if (path === "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5") {
         return Promise.resolve(new Response(JSON.stringify({ job_id: 42, run_id: 9, name: "tests", contents: "rspec output\n" }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
+      if (path === "/api/v1/app/jobs/42/runs/9/artifacts") {
+        return Promise.resolve(new Response(JSON.stringify({
+          job_id: 42,
+          run_id: 9,
+          agent_diff: "diff --git a/app.rb b/app.rb\n+puts 'forum'\n",
+          agent_diff_bytes: 44,
+          logs_count: 2,
+          logs: [
+            { id: 1, sequence: 0, kind: "stdout", chunk: "digging trench", created_at: "2026-05-30T10:02:00Z" },
+            { id: 2, sequence: 1, kind: "stderr", chunk: "found marble", created_at: "2026-05-30T10:03:00Z" }
+          ]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
 
       return Promise.resolve(new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
@@ -2692,6 +2705,18 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
     expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
     expect(screen.getByText("Run #9")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Transcript" }))
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/jobs/42/runs/9/artifacts",
+        expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
+      )
+    })
+    expect(await screen.findByText("digging trench")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Diff" }))
+    expect(await screen.findByText(/diff --git a\/app.rb b\/app.rb/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Grade log" }))
     await waitFor(() => {
@@ -4273,6 +4298,7 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
                 can_stop: false,
                 can_diagnose: false,
                 can_resume: false,
+                app_artifacts_path: "/api/v1/app/jobs/42/runs/9/artifacts",
                 app_stop_path: "/api/v1/app/jobs/42/runs/9/stop",
                 app_diagnose_path: "/api/v1/app/jobs/42/runs/9/diagnose",
                 app_resume_path: "/api/v1/app/jobs/42/resume",

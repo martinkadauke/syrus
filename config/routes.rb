@@ -25,6 +25,7 @@ Rails.application.routes.draw do
         post "jobs", to: "direct_jobs#create"
         get "jobs/:id/source", to: "jobs#source", constraints: { id: /\d+/ }
         get "jobs/:id/timeline", to: "jobs#timeline", constraints: { id: /\d+/ }
+        get "jobs/:job_id/runs/:run_id/artifacts", to: "jobs#run_artifacts", constraints: { job_id: /\d+/, run_id: /\d+/ }
         get "jobs/:job_id/runs/:run_id/grade_log", to: "jobs#grade_log", constraints: { job_id: /\d+/, run_id: /\d+/ }
         get "jobs/:id", to: "jobs#show", constraints: { id: /\d+/ }
         post "jobs/:job_id/pin", to: "job_pins#create", constraints: { job_id: /\d+/ }

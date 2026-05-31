@@ -176,6 +176,7 @@ export type JobRun = {
   can_stop: boolean
   can_diagnose: boolean
   can_resume: boolean
+  app_artifacts_path: string
   app_stop_path: string
   app_diagnose_path: string
   app_resume_path: string
@@ -289,6 +290,21 @@ export type JobGradeLogPayload = {
   contents: string
 }
 
+export type JobRunArtifactsPayload = {
+  job_id: number
+  run_id: number
+  agent_diff: string | null
+  agent_diff_bytes: number
+  logs_count: number
+  logs: Array<{
+    id: number
+    sequence: number
+    kind: string | null
+    chunk: string
+    created_at: string | null
+  }>
+}
+
 export function fetchJobDetail(id: string) {
   return getJson<JobDetailPayload>(`/api/v1/app/jobs/${id}`)
 }
@@ -303,6 +319,10 @@ export function fetchJobSource(id: string, search = "") {
 
 export function fetchJobGradeLog(path: string) {
   return getJson<JobGradeLogPayload>(path)
+}
+
+export function fetchJobRunArtifacts(path: string) {
+  return getJson<JobRunArtifactsPayload>(path)
 }
 
 export function postJobCommand(path: string, body?: unknown) {

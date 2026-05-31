@@ -301,6 +301,7 @@ module App
         can_stop: run.may_cancel?,
         can_diagnose: run.queued? || run.running?,
         can_resume: %w[failed cancelled].include?(run.state) && session.present?,
+        app_artifacts_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/artifacts",
         app_stop_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/stop",
         app_diagnose_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/diagnose",
         app_resume_path: "/api/v1/app/jobs/#{@job.id}/resume",

@@ -14,6 +14,34 @@ module Api
           render json: ::App::JobDetailPayload.timeline(job: find_job)
         end
 
+        def run_artifacts
+          job = find_job_by_param(:job_id)
+          run = job.runs.includes(:job_logs).find_by(id: params[:run_id])
+          unless run
+            render_error("not_found", "Run not found.", status: :not_found)
+            return
+          end
+
+          logs = run.job_logs.order(:sequence).map do |log|
+            {
+              id: log.id,
+              sequence: log.sequence,
+              kind: log.kind,
+              chunk: log.chunk,
+              created_at: log.created_at&.iso8601
+            }
+          end
+
+          render json: {
+            job_id: job.id,
+            run_id: run.id,
+            agent_diff: run.agent_diff,
+            agent_diff_bytes: run.agent_diff&.bytesize || 0,
+            logs_count: logs.size,
+            logs: logs
+          }
+        end
+
         def grade_log
           job = find_job_by_param(:job_id)
           run = job.runs.includes(:step).find_by(id: params[:run_id])

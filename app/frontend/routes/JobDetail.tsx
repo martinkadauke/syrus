@@ -8,6 +8,7 @@ import {
   deleteJobCommand,
   fetchJobDetail,
   fetchJobGradeLog,
+  fetchJobRunArtifacts,
   fetchJobSource,
   fetchJobTimeline,
   patchJobCommand,
@@ -468,10 +469,20 @@ function StepCard({ step, payload, command }: { step: JobStep; payload: JobDetai
 
 function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
   const [gradeLogOpen, setGradeLogOpen] = useState(false)
+  const [artifactView, setArtifactView] = useState<"transcript" | "diff" | null>(null)
   const gradeLog = useMutation({
     mutationFn: (path: string) => fetchJobGradeLog(path),
     onSuccess: () => setGradeLogOpen(true)
   })
+  const artifacts = useMutation({
+    mutationFn: (path: string) => fetchJobRunArtifacts(path)
+  })
+
+  function showArtifacts(view: "transcript" | "diff") {
+    setGradeLogOpen(false)
+    setArtifactView((current) => current === view ? null : view)
+    if (!artifacts.data) artifacts.mutate(run.app_artifacts_path)
+  }
 
   return (
     <div className="rounded border border-gray-200 bg-white p-3 text-sm">
@@ -490,6 +501,16 @@ function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayl
           {run.run_diagnostic?.present ? <p className="mt-1 text-xs text-amber-700">Diagnostic captured {formatDate(run.run_diagnostic.created_at)}{run.run_diagnostic.error_message ? `: ${run.run_diagnostic.error_message}` : ""}</p> : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
+          {run.job_log_count > 0 ? (
+            <button className={buttonClass("secondary")} disabled={artifacts.isPending} onClick={() => showArtifacts("transcript")} type="button">
+              {artifacts.isPending && artifactView === "transcript" ? "Loading..." : "Transcript"}
+            </button>
+          ) : null}
+          {run.agent_diff_present ? (
+            <button className={buttonClass("secondary")} disabled={artifacts.isPending} onClick={() => showArtifacts("diff")} type="button">
+              {artifacts.isPending && artifactView === "diff" ? "Loading..." : "Diff"}
+            </button>
+          ) : null}
           {run.can_stop ? <CommandButton command={command} input={{ method: "post", path: run.app_stop_path }} tone="danger">Stop</CommandButton> : null}
           {run.can_diagnose ? <CommandButton command={command} input={{ method: "post", path: run.app_diagnose_path }} tone="secondary">Diagnose</CommandButton> : null}
           {run.can_resume ? <CommandButton command={command} input={{ method: "post", path: payload.paths.app_resume_path, body: { source_run_id: run.id } }} tone="secondary">Resume</CommandButton> : null}
@@ -500,6 +521,8 @@ function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayl
           ) : null}
         </div>
       </div>
+      {artifacts.isError ? <p className="mt-3 text-xs text-red-700">{errorMessage(artifacts.error, "Unable to load run artifacts.")}</p> : null}
+      {artifactView && artifacts.data ? <RunArtifactsPanel payload={artifacts.data} view={artifactView} /> : null}
       {gradeLog.isError ? <p className="mt-3 text-xs text-red-700">{errorMessage(gradeLog.error, "Grade log failed.")}</p> : null}
       {gradeLogOpen && gradeLog.data ? (
         <section className="mt-3 rounded border border-gray-200 bg-gray-50">
@@ -511,6 +534,35 @@ function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayl
         </section>
       ) : null}
     </div>
+  )
+}
+
+function RunArtifactsPanel({ payload, view }: { payload: Awaited<ReturnType<typeof fetchJobRunArtifacts>>; view: "transcript" | "diff" }) {
+  if (view === "diff") {
+    return (
+      <section className="mt-3 rounded border border-gray-200 bg-gray-50">
+        <h4 className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase text-gray-500">Agent diff</h4>
+        {payload.agent_diff ? (
+          <pre className="max-h-[32rem] overflow-auto p-3 font-mono text-xs text-gray-800 whitespace-pre-wrap">{payload.agent_diff}</pre>
+        ) : <p className="p-3 text-sm text-gray-400">No diff captured for this run.</p>}
+      </section>
+    )
+  }
+
+  return (
+    <section className="mt-3 rounded border border-gray-200 bg-gray-50">
+      <h4 className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase text-gray-500">Transcript</h4>
+      {payload.logs.length > 0 ? (
+        <ol className="max-h-[32rem] overflow-auto divide-y divide-gray-200">
+          {payload.logs.map((log) => (
+            <li className="grid gap-2 px-3 py-2 font-mono text-xs text-gray-800 sm:grid-cols-[5rem_minmax(0,1fr)]" key={log.id}>
+              <span className="text-gray-400">{log.kind || `#${log.sequence}`}</span>
+              <pre className="whitespace-pre-wrap break-words">{log.chunk}</pre>
+            </li>
+          ))}
+        </ol>
+      ) : <p className="p-3 text-sm text-gray-400">No transcript rows captured for this run.</p>}
+    </section>
   )
 }
 
