@@ -280,7 +280,8 @@ module App
       {
         views: VIEWS,
         sort_columns: User::DASHBOARD_SORT_COLUMNS.fetch(subject),
-        sort_directions: User::DASHBOARD_SORT_DIRECTIONS
+        sort_directions: User::DASHBOARD_SORT_DIRECTIONS,
+        filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user)
       }
     end
 

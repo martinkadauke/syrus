@@ -59,6 +59,10 @@ RSpec.describe "App API dashboard commands", type: :request do
         "sort_columns" => %w[title state repository created_at started_at],
         "sort_directions" => %w[asc desc]
       )
+      expect(body.dig("controls", "filter_schema")).to include(
+        include("field" => "state", "label" => "State", "values" => include(include("value" => "open", "label" => "Any open"))),
+        include("field" => "repository_id", "label" => "Repository", "values" => include(include("value" => repo.id, "label" => "acme/widgets")))
+      )
       expect(body.dig("paths", "dashboard_jobs_path")).to eq(dashboard_jobs_path)
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
     end

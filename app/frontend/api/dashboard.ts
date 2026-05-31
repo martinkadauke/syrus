@@ -87,6 +87,19 @@ export type DashboardSmartFolder = {
   path: string
 }
 
+export type DashboardFilterOption = {
+  value: string | number
+  label: string
+}
+
+export type DashboardFilterSchemaField = {
+  field: string
+  label: string
+  bucket: string
+  operators: string[]
+  values?: Array<DashboardFilterOption | string>
+}
+
 export type DashboardPayload = {
   subject: DashboardSubject
   view: string
@@ -109,6 +122,7 @@ export type DashboardPayload = {
     views: string[]
     sort_columns: string[]
     sort_directions: string[]
+    filter_schema: DashboardFilterSchemaField[]
   }
   smart_folders: DashboardSmartFolder[]
   active_smart_folder_id: number | null

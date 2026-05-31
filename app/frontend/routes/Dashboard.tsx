@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { bulkDashboardJobs, fetchDashboard, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardJobs, fetchDashboard, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -35,6 +35,7 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
         <SmartFolderNav payload={payload} prefix={prefix} />
         <section className="min-w-0 space-y-4">
           <DashboardToolbar pathname={pathname} search={search} payload={payload} />
+          <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
           <DashboardTable payload={payload} />
           <Pagination pathname={pathname} search={search} payload={payload} />
         </section>
@@ -152,6 +153,58 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
         </label>
         {payload.view === "kanban" ? <span className="mb-1 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600">Kanban lanes: {payload.preferences.kanban_lanes.join(", ")}</span> : null}
       </div>
+    </div>
+  )
+}
+
+function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
+  const navigate = useNavigate()
+  const controls = filterControlsFor(payload)
+  if (controls.length === 0) return null
+
+  const params = new URLSearchParams(search)
+  const activeControls = controls.filter((control) => params.get(control.param))
+  const hasFilters = activeControls.length > 0 || params.has("q") || params.has("smart_folder_id")
+
+  function changeFilter(param: string, value: string) {
+    navigate(dashboardLinkFromSearch(pathname, search, { [param]: value || null, page: null }))
+  }
+
+  return (
+    <div className="space-y-2 rounded border border-gray-200 bg-white p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        {controls.map((control) => (
+          <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`dashboard-filter-${control.param}`} key={control.param}>
+            {control.label}
+            <select
+              className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
+              id={`dashboard-filter-${control.param}`}
+              onChange={(event) => changeFilter(control.param, event.target.value)}
+              value={params.get(control.param) || ""}
+            >
+              <option value="">All</option>
+              {control.options.map((option) => (
+                <option key={String(option.value)} value={String(option.value)}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+        {hasFilters ? (
+          <Link className="mb-1 text-sm text-gray-500 underline hover:text-gray-700" to={clearFiltersLink(pathname, search)}>
+            Clear filters
+          </Link>
+        ) : null}
+      </div>
+
+      {activeControls.length > 0 ? (
+        <div className="flex flex-wrap gap-2 text-xs">
+          {activeControls.map((control) => (
+            <span className="rounded bg-blue-50 px-2 py-1 text-blue-700" key={control.param}>
+              {control.label}: {optionLabel(control.options, params.get(control.param) || "")}
+            </span>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -450,6 +503,15 @@ function dashboardLinkFromSearch(path: string, search: string, updates: Record<s
   return query ? `${path}?${query}` : path
 }
 
+function clearFiltersLink(path: string, search: string) {
+  const params = new URLSearchParams(search)
+  for (const key of ["state", "repository_id", "kind", "trigger_kind", "job_id", "attention", "tag_ids", "pr", "age", "q", "smart_folder_id", "page"]) {
+    params.delete(key)
+  }
+  const query = params.toString()
+  return query ? `${path}?${query}` : path
+}
+
 function withRoutePrefix(path: string, prefix: string) {
   if (!prefix || path.startsWith(prefix)) return path
   if (!path.startsWith("/")) return path
@@ -473,6 +535,36 @@ function bulkButtonClass(disabled: boolean, tone: "default" | "danger" = "defaul
   if (tone === "danger") return "rounded border border-red-300 px-3 py-1 text-red-700 hover:bg-red-50"
 
   return "rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-white"
+}
+
+function filterControlsFor(payload: DashboardPayload) {
+  const controls: Array<{ param: string; label: string; options: DashboardFilterOption[] }> = []
+  const state = schemaField(payload.controls.filter_schema, "state")
+  const repository = schemaField(payload.controls.filter_schema, "repository_id")
+  const kind = payload.subject === "job" ? schemaField(payload.controls.filter_schema, "kind") : null
+  const triggerKind = payload.subject === "workflow" ? schemaField(payload.controls.filter_schema, "trigger_kind") : null
+
+  if (state) controls.push({ param: "state", label: state.label, options: normalizedOptions(state) })
+  if (repository) controls.push({ param: "repository_id", label: repository.label, options: normalizedOptions(repository) })
+  if (kind) controls.push({ param: "kind", label: kind.label, options: normalizedOptions(kind) })
+  if (triggerKind) controls.push({ param: "trigger_kind", label: triggerKind.label, options: normalizedOptions(triggerKind) })
+
+  return controls.filter((control) => control.options.length > 0)
+}
+
+function schemaField(schema: DashboardFilterSchemaField[], field: string) {
+  return schema.find((candidate) => candidate.field === field) || null
+}
+
+function normalizedOptions(field: DashboardFilterSchemaField): DashboardFilterOption[] {
+  return (field.values || []).map((option) => {
+    if (typeof option === "string") return { value: option, label: humanizeOption(option) }
+    return option
+  })
+}
+
+function optionLabel(options: DashboardFilterOption[], value: string) {
+  return options.find((option) => String(option.value) === value)?.label || value
 }
 
 function subjectLabel(subject: DashboardSubject, count: number) {
@@ -500,6 +592,10 @@ function sortColumnLabel(column: string) {
 
 function sortDirectionLabel(direction: string) {
   return direction === "asc" ? "Ascending" : "Descending"
+}
+
+function humanizeOption(value: string) {
+  return value.replace(/_/g, " ").replace(/^\w/, (match) => match.toUpperCase())
 }
 
 function capitalize(value: string) {

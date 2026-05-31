@@ -198,7 +198,7 @@ describe("App", () => {
         )
       }
 
-      if (path === "/api/v1/app/dashboard?view=kanban&subject=job") {
+      if (path === "/api/v1/app/dashboard?view=kanban&subject=job" || path === "/api/v1/app/dashboard?view=kanban&state=open&subject=job") {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -258,9 +258,10 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Dashboard" })).toBeInTheDocument()
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
-    expect(screen.getByText("acme/widgets")).toBeInTheDocument()
+    expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.getByText("Kanban lanes: queued, running, succeeded")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "list" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+    expect(screen.getByLabelText("State")).toHaveValue("")
     expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=kanban")
     expect(screen.getByRole("link", { name: "My work" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&smart_folder_id=7")
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
@@ -273,6 +274,20 @@ describe("App", () => {
         headers: { Accept: "application/json" }
       })
     )
+
+    fireEvent.change(screen.getByLabelText("State"), { target: { value: "open" } })
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard?view=kanban&state=open&subject=job",
+        expect.objectContaining({
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
+    })
+    expect(await screen.findByText("State: Any open")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
 
     fireEvent.change(screen.getByLabelText("Sort column"), { target: { value: "title" } })
 
@@ -3169,7 +3184,35 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
     controls: {
       views: ["list", "kanban"],
       sort_columns: ["title", "state", "repository", "created_at", "started_at"],
-      sort_directions: ["asc", "desc"]
+      sort_directions: ["asc", "desc"],
+      filter_schema: [
+        {
+          field: "state",
+          label: "State",
+          bucket: "enum",
+          operators: ["is"],
+          values: [
+            { value: "open", label: "Any open" },
+            { value: "closed", label: "Closed or merged" }
+          ]
+        },
+        {
+          field: "repository_id",
+          label: "Repository",
+          bucket: "fk",
+          operators: ["is"],
+          values: [
+            { value: 3, label: "acme/widgets" }
+          ]
+        },
+        {
+          field: "kind",
+          label: "Kind",
+          bucket: "enum",
+          operators: ["is"],
+          values: ["issue", "cron", "direct"]
+        }
+      ]
     },
     smart_folders: [
       {
