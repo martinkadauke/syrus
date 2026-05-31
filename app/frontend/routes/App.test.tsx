@@ -1151,6 +1151,59 @@ describe("App", () => {
     expect(await screen.findByText("Document added.")).toBeInTheDocument()
     expect(screen.getByText("https://docs.google.com/document/d/user/edit")).toBeInTheDocument()
   })
+
+  it("renders repository documents and adds a Google Doc", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories/3/documents" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(repositoryDocumentsPayload({
+          documents: [
+            {
+              id: 9,
+              kind: "google_doc",
+              title: "Design brief",
+              google_doc_url: "https://docs.google.com/document/d/design/edit",
+              filename: null,
+              content_type: null,
+              byte_size: null,
+              uploaded_by: "Operator",
+              created_at: "2026-05-30T12:00:00Z"
+            }
+          ],
+          message: "Document added."
+        })), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(repositoryDocumentsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories/3/documents"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Repository documents" })).toBeInTheDocument()
+    expect(await screen.findByText("No supporting documents yet. Upload a file or link a Google Doc to give the agent extra context.")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("URL"), { target: { value: "https://docs.google.com/document/d/design/edit" } })
+    fireEvent.change(screen.getByLabelText("Document title"), { target: { value: "Design brief" } })
+    fireEvent.click(screen.getByRole("button", { name: "Add Google Doc" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/documents",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: expect.any(FormData)
+        })
+      )
+    })
+    expect(await screen.findByText("Document added.")).toBeInTheDocument()
+    expect(screen.getByText("Design brief")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1277,5 +1330,17 @@ function credentialsPayload(overrides: {
     },
     message: overrides.message,
     new_api_token: overrides.newApiToken
+  }
+}
+
+function repositoryDocumentsPayload(overrides: {
+  documents?: Array<Record<string, unknown>>
+  message?: string
+} = {}) {
+  return {
+    repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+    documents: overrides.documents || [],
+    accepted_file_content_types: ["text/markdown", "application/pdf", "image/png"],
+    message: overrides.message
   }
 }
