@@ -50,7 +50,22 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
       "revision" => "dev",
       "revision_url" => nil
     )
+    expect(body["navigation"]).to include(
+      "default_chat_path" => new_chat_path
+    )
     expect(body["csrf_token"]).to be_present
     expect(body["feature_flags"]).to eq("migrated_routes" => [])
+  end
+
+  it "points the default chat navigation at the user's latest chat" do
+    user = Factories.user
+    old_chat = ChatSession.create!(user: user, last_message_at: 2.days.ago)
+    latest_chat = ChatSession.create!(user: user, last_message_at: 1.hour.ago)
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    expect(parse_body.dig("navigation", "default_chat_path")).to eq(chat_path(latest_chat))
+    expect(parse_body.dig("navigation", "default_chat_path")).not_to eq(chat_path(old_chat))
   end
 end

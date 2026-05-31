@@ -64,6 +64,9 @@ describe("App", () => {
             revision: "dev",
             revision_url: null
           },
+          navigation: {
+            default_chat_path: "/chats/new"
+          },
           csrf_token: "csrf-token",
           feature_flags: {
             migrated_routes: []
@@ -116,7 +119,9 @@ describe("App", () => {
       )
 
       expect(await screen.findByRole("navigation", { name: "Primary" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Syrus" })).toHaveAttribute("href", "/app-shell/chats/9")
       expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+      expect(screen.queryByRole("link", { name: "Chat" })).toBeNull()
       expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
       expect(screen.getAllByText("Operator").length).toBeGreaterThan(0)
       expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
@@ -3621,6 +3626,9 @@ function bootstrapPayload() {
     app: {
       revision: "dev",
       revision_url: null
+    },
+    navigation: {
+      default_chat_path: "/chats/9"
     },
     csrf_token: "csrf-token",
     feature_flags: {

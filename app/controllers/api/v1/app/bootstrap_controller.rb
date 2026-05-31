@@ -5,7 +5,8 @@ module Api
         def show
           render json: AppApi::BootstrapSerializer.new(
             user: Current.user,
-            csrf_token: form_authenticity_token
+            csrf_token: form_authenticity_token,
+            default_chat_path: default_chat_path
           ).as_json
         end
       end

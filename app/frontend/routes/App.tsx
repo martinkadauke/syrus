@@ -118,11 +118,11 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   const data = initialBootstrap ? bootstrap.data ?? initialBootstrap : null
   const user = data?.current_user
   const app = data?.app
+  const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
   const navItems = [
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: location.pathname === "/" || location.pathname.includes("/dashboard") },
     { label: "Jobs", to: `${prefix}/jobs/new`, active: location.pathname.includes("/jobs") },
     { label: "Repos", to: `${prefix}/repositories`, active: location.pathname.includes("/repositories") },
-    { label: "Chat", to: `${prefix}/chats/new`, active: location.pathname.includes("/chats") },
     { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: location.pathname.includes("/scheduled_tasks") }
   ]
 
@@ -131,7 +131,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
           <div className="flex min-w-0 items-center gap-5">
-            <Link className="text-lg font-semibold text-gray-900" to={`${prefix}/dashboard/jobs?view=list`}>Syrus</Link>
+            <Link className="text-lg font-semibold text-gray-900" to={defaultChatPath}>Syrus</Link>
             <nav aria-label="Primary" className="flex flex-wrap gap-1 text-sm">
               {navItems.map((item) => (
                 <Link className={navLinkClass(item.active)} key={item.label} to={item.to}>{item.label}</Link>
@@ -226,4 +226,9 @@ function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPaylo
 
 function navLinkClass(active: boolean) {
   return `rounded px-2.5 py-1.5 font-medium ${active ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"}`
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  return `${prefix}${path.startsWith("/") ? path : `/${path}`}`
 }

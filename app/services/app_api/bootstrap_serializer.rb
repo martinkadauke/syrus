@@ -2,15 +2,17 @@ module AppApi
   class BootstrapSerializer
     GITHUB_REPO = "tkadauke/syrus".freeze
 
-    def initialize(user:, csrf_token:)
+    def initialize(user:, csrf_token:, default_chat_path:)
       @user = user
       @csrf_token = csrf_token
+      @default_chat_path = default_chat_path
     end
 
     def as_json(*)
       {
         current_user: user_payload,
         app: app_payload,
+        navigation: navigation_payload,
         csrf_token: @csrf_token,
         feature_flags: {
           migrated_routes: []
@@ -40,6 +42,12 @@ module AppApi
       {
         revision: app_revision,
         revision_url: app_revision_url
+      }
+    end
+
+    def navigation_payload
+      {
+        default_chat_path: @default_chat_path
       }
     end
 

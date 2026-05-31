@@ -16,6 +16,9 @@ export type BootstrapPayload = {
     revision: string
     revision_url: string | null
   }
+  navigation?: {
+    default_chat_path: string
+  }
   csrf_token: string
   feature_flags: {
     migrated_routes: string[]
