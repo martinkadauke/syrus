@@ -1423,6 +1423,45 @@ describe("App", () => {
     expect(await screen.findByText("Message sent.")).toBeInTheDocument()
     expect(screen.getByText("Now inspect proposals")).toBeInTheDocument()
   })
+
+  it("renders the new chat route and posts to the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats" && init?.method === "POST") {
+        return Promise.resolve(new Response(
+          JSON.stringify({ error: { code: "validation_failed", message: "Repository is not available." } }),
+          { status: 422, headers: { "Content-Type": "application/json" } }
+        ))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatFormPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "New chat" })).toBeInTheDocument()
+    fireEvent.change(await screen.findByLabelText("Repository"), { target: { value: "3" } })
+    fireEvent.change(screen.getByLabelText("First message"), { target: { value: "Map the forum" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create chat" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ repository_id: "3", chat_message: { text: "Map the forum" } })
+        })
+      )
+    })
+    expect(await screen.findByText("Repository is not available.")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1730,5 +1769,17 @@ function chatPayload(overrides: {
       chat_attachments_path: "/chats/8/attachments",
       chat_whiteboard_path: "/chats/8/whiteboard"
     }
+  }
+}
+
+function chatFormPayload() {
+  return {
+    repositories: [
+      {
+        id: 3,
+        slug: "acme/widgets"
+      }
+    ],
+    repositories_path: "/repositories"
   }
 }

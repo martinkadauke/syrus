@@ -12,6 +12,7 @@ import { AdminSettings } from "./AdminSettings"
 import { AdminStuck } from "./AdminStuck"
 import { AdminTranscript } from "./AdminTranscript"
 import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
+import { ChatNewRoute } from "./ChatNew"
 import { ChatRoute } from "./Chat"
 import { CredentialsRoute } from "./Credentials"
 import { CronTemplateDetailRoute, CronTemplateFormRoute, CronTemplatesIndex } from "./CronTemplates"
@@ -60,6 +61,7 @@ export function App() {
       <Route path="/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="/epics/new" element={<EpicFormRoute mode="new" />} />
       <Route path="/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
+      <Route path="/chats/new" element={<ChatNewRoute />} />
       <Route path="/chats/:id" element={<ChatRoute />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
@@ -92,6 +94,7 @@ export function App() {
       <Route path="/app-shell/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="/app-shell/epics/new" element={<EpicFormRoute mode="new" />} />
       <Route path="/app-shell/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
+      <Route path="/app-shell/chats/new" element={<ChatNewRoute />} />
       <Route path="/app-shell/chats/:id" element={<ChatRoute />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>

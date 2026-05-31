@@ -118,6 +118,22 @@ export type ChatAttachmentResult = {
   label: string
 }
 
+export type NewChatPayload = {
+  repositories: ChatRepository[]
+  repositories_path: string
+}
+
+export type CreateChatInput = {
+  repositoryId: string
+  text: string
+}
+
+export type ChatCreatedPayload = {
+  message: string
+  redirect_to: string
+  chat: ChatRecord
+}
+
 export type ChatPayload = {
   message?: string | null
   chat: ChatRecord
@@ -154,6 +170,17 @@ export type ChatPayload = {
 
 export function fetchChat(id: string) {
   return getJson<ChatPayload>(`/api/v1/app/chats/${id}`)
+}
+
+export function fetchNewChat() {
+  return getJson<NewChatPayload>("/api/v1/app/chats/new")
+}
+
+export function createChat(values: CreateChatInput) {
+  return postJson<ChatCreatedPayload>("/api/v1/app/chats", {
+    repository_id: values.repositoryId,
+    chat_message: { text: values.text }
+  })
 }
 
 export function sendChatMessage(path: string, text: string) {

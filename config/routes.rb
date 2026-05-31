@@ -222,9 +222,11 @@ Rails.application.routes.draw do
   delete "documents/:id", to: "repositories/documents#destroy", as: :document, constraints: { id: /\d+/ }
   get "repositories/:repository_id/scheduled_tasks/new", to: "spa#show", as: :new_repository_scheduled_task
 
+  get "chats/new", to: "spa#show", as: :new_chat
+  get "chats/new/legacy", to: "chats#new", as: :legacy_new_chat
   get "chats/:id", to: "spa#show", as: :chat, constraints: { id: /\d+/ }
   get "chats/:id/legacy", to: "chats#show", as: :legacy_chat, constraints: { id: /\d+/ }
-  resources :chats, only: %i[ new create ] do
+  resources :chats, only: %i[ create ] do
     get  :messages
     post :message
     post :stop

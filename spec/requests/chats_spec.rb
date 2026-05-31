@@ -7,12 +7,21 @@ RSpec.describe "Chats", type: :request do
   before { sign_in_as(user) }
 
   describe "GET /chats/new" do
-    it "renders the new top-level chat form without creating a chat" do
+    it "serves the React app shell" do
       repo
 
       expect {
         get new_chat_path
       }.not_to change(ChatSession, :count)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "keeps the legacy form available" do
+      repo
+
+      get legacy_new_chat_path
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("New chat")
