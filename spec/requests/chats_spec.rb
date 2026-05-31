@@ -60,6 +60,15 @@ RSpec.describe "Chats", type: :request do
   end
 
   describe "GET /chats/:id" do
+    it "serves the React app shell" do
+      chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
+
+      get chat_path(chat)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
     it "renders the chat page with attachment sidebar and in-scope documents" do
       document = repo.repository_documents.create!(
         user: user,
@@ -71,7 +80,7 @@ RSpec.describe "Chats", type: :request do
       message = chat.messages.create!(role: "assistant", content: { "text" => "Discuss aqueducts." })
       message.bookmarks.create!(label: "Aqueducts", kind: "topic")
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Bookmarks")
@@ -90,7 +99,7 @@ RSpec.describe "Chats", type: :request do
       chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
       message = chat.messages.create!(role: "assistant", content: { "text" => "Discuss roads." })
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include("id=\"message-#{message.id}\"")
       expect(response.body).to include("Bookmark this")
@@ -110,7 +119,7 @@ RSpec.describe "Chats", type: :request do
       chat.messages.create!(role: "tool_result", tool_name: "Read", content: { "result" => [ { "type" => "text", "text" => "contents" } ] })
       chat.messages.create!(role: "system", content: { "text" => "System note." })
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       document = Nokogiri::HTML(response.body)
       bookmark_buttons = document.css("button").select { |button| button.text.squish == "Bookmark this" }
@@ -133,7 +142,7 @@ RSpec.describe "Chats", type: :request do
         content: { "text" => "[mcp_servers] syrus-chat-sidecar=connected" }
       )
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include("Agent run succeeded")
       expect(response.body).to include("$0.37")
@@ -155,7 +164,7 @@ RSpec.describe "Chats", type: :request do
         version: 2
       )
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include("12.4k in")
       expect(response.body).to include("3.2k out")
@@ -179,7 +188,7 @@ RSpec.describe "Chats", type: :request do
       )
       chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("New chat")
@@ -191,7 +200,7 @@ RSpec.describe "Chats", type: :request do
       user.update!(claude_oauth_token: nil)
       chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Claude credentials are required.")
@@ -204,7 +213,7 @@ RSpec.describe "Chats", type: :request do
       chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
       chat.messages.create!(role: "user", content: { "text" => "Ping" })
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include('data-chat-turn-in-flight-value="true"')
       expect(response.body).to include("disabled")
@@ -218,7 +227,7 @@ RSpec.describe "Chats", type: :request do
       chat.messages.create!(role: "tool_use", tool_name: "Read", content: { "input" => { "file_path" => "b.py" } })
       chat.messages.create!(role: "tool_result", tool_name: "Read", content: { "result" => [ { "type" => "text", "text" => "second" } ] })
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       document = Nokogiri::HTML(response.body)
       groups = document.css('details[data-tool-call="true"]')
@@ -242,7 +251,7 @@ RSpec.describe "Chats", type: :request do
         content: { "input" => { "command" => "find #{root} -type f -name '*.rb'" } }
       )
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       document = Nokogiri::HTML(response.body)
       details = document.css('details[data-tool-call="true"] [data-tool-detail]')
@@ -273,7 +282,7 @@ RSpec.describe "Chats", type: :request do
       chat.messages.create!(role: "tool_use", tool_name: "Read", content: { "input" => { "file_path" => "a.py" } })
       chat.messages.create!(role: "tool_result", tool_name: "Read", content: { "result" => [ { "type" => "text", "text" => "contents" } ] })
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("[data-tool-call-result]").size).to eq(0)
@@ -296,7 +305,7 @@ RSpec.describe "Chats", type: :request do
         content: { "text" => "Proposal proposed." }
       )
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include("Map auth flow")
       expect(response.body).to include("Trace the auth flow.")
@@ -309,7 +318,7 @@ RSpec.describe "Chats", type: :request do
     it "does not render manual proposal buttons or modal forms in the composer" do
       chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).not_to include("Propose Epic")
       expect(response.body).not_to include("Propose Job")
@@ -325,7 +334,7 @@ RSpec.describe "Chats", type: :request do
         payload: { "job_id" => job.id }
       )
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).not_to include("Pending actions")
       expect(response.body).not_to include("Cancel Job")
@@ -335,7 +344,7 @@ RSpec.describe "Chats", type: :request do
       chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
       40.times { |i| chat.messages.create!(role: "user", content: { "text" => "msg-#{i}" }) }
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       message_ids = response.body.scan(/id="chat_message_(\d+)"/).flatten.map(&:to_i)
       expect(message_ids).to eq(chat.messages.order(:id).last(30).pluck(:id))
@@ -347,7 +356,7 @@ RSpec.describe "Chats", type: :request do
       chat = ChatSession.create!(user: user, repository: repo, last_message_at: Time.current)
       chat.messages.create!(role: "user", content: { "text" => "hi" })
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include('data-chat-has-more-older-value="false"')
     end
@@ -577,7 +586,7 @@ RSpec.describe "Chats", type: :request do
       expect(proposal.reload).to be_confirmed
       expect(proposal.job).to be_present
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include("Confirmed proposal")
       expect(response.body).to include("Job ##{proposal.job.id}")
@@ -636,7 +645,7 @@ RSpec.describe "Chats", type: :request do
       expect(response).to redirect_to(chat_path(chat))
       expect(proposal.reload).to be_rejected
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include("Map auth")
       expect(response.body).to include("Rejected")
@@ -651,7 +660,7 @@ RSpec.describe "Chats", type: :request do
       ChatProposalDependency.create!(proposal: ui, depends_on: schema)
       chat.messages.create!(role: "assistant", proposal: epic, content: { "text" => "Epic proposal proposed." })
 
-      get chat_path(chat)
+      get legacy_chat_path(chat)
 
       expect(response.body).to include("M3 proposals")
       expect(response.body).to include("Confirm Epic and Jobs")

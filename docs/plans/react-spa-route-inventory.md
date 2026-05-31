@@ -61,7 +61,7 @@ health/storage internals.
 | repository documents | `spa#show` + `/api/v1/app/repositories/:id/documents` | `spa-core` | Migrated to the React repository documents page with app API upload/delete. Legacy ERB fallback lives at `/repositories/:id/documents/legacy`. |
 | repository scheduled task helpers | `spa#show` + `/api/v1/app/repositories/:id/scheduled_tasks*` | `spa-core` | Migrated to React for the per-repository scheduled-task tab and repository-scoped new form. Legacy ERB fallback lives at `/repositories/:id/scheduled_tasks/legacy`. |
 | `/chats/new`, `POST /chats` | `chats#new/create` | `spa-core` | Chat session creation route. |
-| `/chats/:id` | `chats#show` | `spa-core` | High-risk live route. Migrate after realtime foundation is proven. |
+| `/chats/:id` | `spa#show` + `/api/v1/app/chats/:id` | `spa-core` | Migrated to the React chat renderer with app API message sending and app-event invalidation for new messages. Legacy ERB fallback lives at `/chats/:id/legacy`. |
 | chat commands | `chats#messages`, `#message`, `#stop`, `#refresh`, `#reset`, `#create_bookmark`, `#add_attachment`, `#destroy_attachment`, `#confirm_proposal`, `#reject_proposal`, `#confirm_pending_action`, `#destroy_pending_action` | `app-api-needed` | Convert current Turbo/HTML responses to typed browser JSON. |
 | chat whiteboard | `chat_whiteboards#show/update` | `spa-core` + `app-api-needed` | Already JSON-shaped. Move under app API or adapt in place when chat migrates. |
 | `/scheduled_tasks` | `spa#show` + `/api/v1/app/scheduled_tasks*` | `spa-core` | Migrated to the React scheduled-task CRUD shell. Legacy ERB fallback lives at `/scheduled_tasks/legacy`. |
