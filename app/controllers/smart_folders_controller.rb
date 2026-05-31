@@ -88,7 +88,7 @@ class SmartFoldersController < ApplicationController
     when "admin_user"
       admin_users_path(query)
     when "admin_queue"
-      admin_legacy_queue_path(params[:admin_queue_tab].to_s.presence_in(%w[ active pending failed ]) || "active", query)
+      admin_queue_path(params[:admin_queue_tab].to_s.presence_in(%w[ active pending failed ]) || "active", query)
     when "workflow"
       dashboard_workflows_path(query)
     when "epic"

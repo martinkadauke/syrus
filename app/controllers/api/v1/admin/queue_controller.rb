@@ -1,8 +1,8 @@
 module Api
   module V1
     module Admin
-      # Mirror of Admin::QueueController. Same SolidQueue table
-      # introspection, JSON shape. All queries wrapped in a
+      # SolidQueue introspection for external admin API clients. All
+      # queries wrapped in a
       # rescue around AR errors — dev/test single-DB setups
       # respond with `{ error: { code: "queue_unreachable" } }`
       # instead of 500ing.

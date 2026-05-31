@@ -180,7 +180,7 @@ Rails.application.routes.draw do
         get "runs/:run_id/transcript",     to: "transcripts#show"
         get "runs/:run_id/transcript/raw", to: "transcripts#raw"
 
-        # Queue introspection (mirror Admin::QueueController; B).
+        # Queue introspection for external admin API clients.
         get  "queue/active",              to: "queue#active"
         get  "queue/pending",             to: "queue#pending"
         get  "queue/failed",              to: "queue#failed"
@@ -428,12 +428,6 @@ Rails.application.routes.draw do
     # See docs/plans/complete/admin-diagnostics.md (A).
     get  "runs/:run_id/transcript/legacy",   to: "transcripts#show",     as: :legacy_run_transcript
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
-
-    # SolidQueue inspector — see docs/plans/complete/admin-diagnostics.md (B).
-    get  "queue/legacy",                  to: "queue#index", as: :legacy_queue_root
-    get  "queue/legacy/:tab",             to: "queue#show",            as: :legacy_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
-    post "queue/reap_stale_runs",         to: "queue#reap_stale_runs", as: :reap_stale_runs
-    post "queue/legacy/reap_stale_runs",  to: "queue#reap_stale_runs", as: :legacy_reap_stale_runs
 
     # Stuck-things watchlist — Run heartbeat stale or Workflow
     # nearing prune. See Admin::StuckItems for the definition.
