@@ -32,6 +32,8 @@ Rails.application.routes.draw do
         end
         get "jobs/new", to: "direct_jobs#new"
         post "jobs", to: "direct_jobs#create"
+        post "jobs/:job_id/pin", to: "job_pins#create", constraints: { job_id: /\d+/ }
+        delete "jobs/:job_id/pin", to: "job_pins#destroy", constraints: { job_id: /\d+/ }
         get "epics/new", to: "epics#new"
         get "epics/:id", to: "epics#show", constraints: { id: /\d+/ }
         get "epics/:id/edit", to: "epics#edit", constraints: { id: /\d+/ }
