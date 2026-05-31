@@ -78,6 +78,13 @@ export type DashboardWorkflowItem = {
 
 export type DashboardItem = DashboardJobItem | DashboardEpicItem | DashboardWorkflowItem
 
+export type DashboardLane = {
+  key: string
+  title: string
+  count: number
+  items: DashboardItem[]
+}
+
 export type DashboardSmartFolder = {
   id: number
   name: string
@@ -127,6 +134,8 @@ export type DashboardPayload = {
   smart_folders: DashboardSmartFolder[]
   active_smart_folder_id: number | null
   items: DashboardItem[]
+  lanes: DashboardLane[]
+  kanban_limit: number | null
   paths: {
     dashboard_path: string
     dashboard_jobs_path: string

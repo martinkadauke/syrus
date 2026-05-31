@@ -63,6 +63,11 @@ RSpec.describe "App API dashboard commands", type: :request do
         include("field" => "state", "label" => "State", "values" => include(include("value" => "open", "label" => "Any open"))),
         include("field" => "repository_id", "label" => "Repository", "values" => include(include("value" => repo.id, "label" => "acme/widgets")))
       )
+      expect(body["kanban_limit"]).to eq(100)
+      expect(body["lanes"]).to include(
+        include("key" => "queued", "title" => "Queued", "items" => include(include("id" => first.id, "title" => "Build aqueduct"))),
+        include("key" => "running", "title" => "Running", "items" => include(include("id" => second.id, "title" => "Chart forum")))
+      )
       expect(body.dig("paths", "dashboard_jobs_path")).to eq(dashboard_jobs_path)
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
     end

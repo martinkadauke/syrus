@@ -198,13 +198,13 @@ describe("App", () => {
         )
       }
 
-      if (path === "/api/v1/app/dashboard?view=kanban&subject=job" || path === "/api/v1/app/dashboard?view=kanban&state=open&subject=job") {
+      if (path === "/api/v1/app/dashboard?view=list&subject=job" || path === "/api/v1/app/dashboard?view=list&state=open&subject=job") {
         return Promise.resolve(
           new Response(
             JSON.stringify(
               dashboardPayload({
                 subject: "job",
-                view: "kanban",
+                view: "list",
                 page: 2,
                 per_page: 10,
                 total: 25,
@@ -215,29 +215,7 @@ describe("App", () => {
                   kanban_lanes: ["queued", "running", "succeeded"],
                   raw: {}
                 },
-                items: [
-                  {
-                    type: "job",
-                    id: 42,
-                    kind: "issue",
-                    title: "Repair aqueduct",
-                    state: "open",
-                    summary_state: "running",
-                    validity: "valid",
-                    priority: "high",
-                    issue_number: 12,
-                    branch_name: "syrus/issue-12",
-                    pr_number: 34,
-                    latest_workflow_state: "running",
-                    created_at: "2026-05-30T10:00:00Z",
-                    updated_at: "2026-05-30T12:00:00Z",
-                    started_at: "2026-05-30T10:01:00Z",
-                    finished_at: null,
-                    repository: { id: 3, slug: "acme/widgets" },
-                    tags: [{ id: 5, name: "urgent", color: "red" }],
-                    paths: { job_path: "/jobs/42", source_path: "/jobs/42/source" }
-                  }
-                ]
+                items: [dashboardJobItem()]
               })
             ),
             { status: 200, headers: { "Content-Type": "application/json" } }
@@ -250,7 +228,7 @@ describe("App", () => {
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=kanban"]}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list"]}>
           <App />
         </MemoryRouter>
       </QueryClientProvider>
@@ -259,16 +237,15 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Dashboard" })).toBeInTheDocument()
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
     expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
-    expect(screen.getByText("Kanban lanes: queued, running, succeeded")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "list" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+    expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
     expect(screen.getByLabelText("State")).toHaveValue("")
-    expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=kanban")
-    expect(screen.getByRole("link", { name: "My work" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&smart_folder_id=7")
+    expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
+    expect(screen.getByRole("link", { name: "My work" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&page=1")
-    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&page=3")
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=1")
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=3")
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/dashboard?view=kanban&subject=job",
+      "/api/v1/app/dashboard?view=list&subject=job",
       expect.objectContaining({
         credentials: "same-origin",
         headers: { Accept: "application/json" }
@@ -279,7 +256,7 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/dashboard?view=kanban&state=open&subject=job",
+        "/api/v1/app/dashboard?view=list&state=open&subject=job",
         expect.objectContaining({
           credentials: "same-origin",
           headers: { Accept: "application/json" }
@@ -287,7 +264,7 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("State: Any open")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
 
     fireEvent.change(screen.getByLabelText("Sort column"), { target: { value: "title" } })
 
@@ -332,6 +309,46 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
+  })
+
+  it("renders app-shell dashboard kanban lanes from the app dashboard API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          dashboardPayload({
+            subject: "job",
+            view: "kanban",
+            total: 1,
+            lanes: [
+              { key: "queued", title: "Queued", count: 0, items: [] },
+              { key: "running", title: "Running", count: 1, items: [dashboardJobItem()] },
+              { key: "succeeded", title: "Succeeded", count: 0, items: [] }
+            ],
+            kanban_limit: 100
+          })
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=kanban"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("heading", { name: "Running" })).toBeInTheDocument()
+    expect(screen.getByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.queryByText(/Showing/)).not.toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/dashboard?view=kanban&subject=job",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
   })
 
   it("renders the admin queue route from the app admin queue API", async () => {
@@ -3221,11 +3238,13 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
         kind: "custom",
         subject_type: "job",
         active: false,
-        path: "/dashboard/jobs?view=kanban&smart_folder_id=7"
+        path: "/dashboard/jobs?view=list&smart_folder_id=7"
       }
     ],
     active_smart_folder_id: null,
     items: [],
+    lanes: [],
+    kanban_limit: null,
     paths: {
       dashboard_path: "/dashboard",
       dashboard_jobs_path: "/dashboard/jobs",
@@ -3237,6 +3256,31 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
 
   return {
     ...payload,
+    ...overrides
+  }
+}
+
+function dashboardJobItem(overrides: Record<string, unknown> = {}) {
+  return {
+    type: "job",
+    id: 42,
+    kind: "issue",
+    title: "Repair aqueduct",
+    state: "open",
+    summary_state: "running",
+    validity: "valid",
+    priority: "high",
+    issue_number: 12,
+    branch_name: "syrus/issue-12",
+    pr_number: 34,
+    latest_workflow_state: "running",
+    created_at: "2026-05-30T10:00:00Z",
+    updated_at: "2026-05-30T12:00:00Z",
+    started_at: "2026-05-30T10:01:00Z",
+    finished_at: null,
+    repository: { id: 3, slug: "acme/widgets" },
+    tags: [{ id: 5, name: "urgent", color: "red" }],
+    paths: { job_path: "/jobs/42", source_path: "/jobs/42/source" },
     ...overrides
   }
 }

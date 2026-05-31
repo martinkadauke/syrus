@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { bulkDashboardJobs, fetchDashboard, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardJobs, fetchDashboard, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -37,7 +37,7 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
           <DashboardToolbar pathname={pathname} search={search} payload={payload} />
           <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
           <DashboardTable payload={payload} />
-          <Pagination pathname={pathname} search={search} payload={payload} />
+          {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
         </section>
       </div>
     </main>
@@ -210,6 +210,8 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
 }
 
 function DashboardTable({ payload }: { payload: DashboardPayload }) {
+  if (payload.view === "kanban") return <DashboardKanban payload={payload} />
+
   if (payload.items.length === 0) {
     return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">No {subjectLabel(payload.subject, 2)} match this view.</div>
   }
@@ -218,6 +220,75 @@ function DashboardTable({ payload }: { payload: DashboardPayload }) {
   if (payload.subject === "workflow") return <WorkflowsTable items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} />
 
   return <EpicsTable items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} />
+}
+
+function DashboardKanban({ payload }: { payload: DashboardPayload }) {
+  if (payload.lanes.length === 0) {
+    return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">No kanban lanes are configured.</div>
+  }
+
+  return (
+    <div className="overflow-x-auto pb-2">
+      <div className="grid min-w-[56rem] gap-3" style={{ gridTemplateColumns: `repeat(${payload.lanes.length}, minmax(14rem, 1fr))` }}>
+        {payload.lanes.map((lane) => (
+          <KanbanLane key={lane.key} lane={lane} subject={payload.subject} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function KanbanLane({ lane, subject }: { lane: DashboardLane; subject: DashboardSubject }) {
+  return (
+    <section className="min-h-64 rounded border border-gray-200 bg-gray-50">
+      <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
+        <h3 className="text-sm font-semibold text-gray-900">{lane.title}</h3>
+        <span className="rounded bg-white px-2 py-0.5 text-xs text-gray-500 ring-1 ring-gray-200">{lane.count}</span>
+      </header>
+      <div className="space-y-2 p-2">
+        {lane.items.length === 0 ? <p className="px-1 py-2 text-sm text-gray-400">No {subjectLabel(subject, 2)}</p> : null}
+        {lane.items.map((item) => <KanbanCard item={item} key={`${item.type}-${item.id}`} />)}
+      </div>
+    </section>
+  )
+}
+
+function KanbanCard({ item }: { item: DashboardItem }) {
+  if (item.type === "job") {
+    return (
+      <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
+        <a className="text-sm font-medium text-blue-600 hover:underline" href={item.paths.job_path}>{item.title}</a>
+        <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
+          <StatePill state={item.summary_state} />
+          <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.repository.slug}</span>
+          {item.pr_number ? <span className="rounded bg-gray-100 px-1.5 py-0.5">PR #{item.pr_number}</span> : null}
+        </div>
+      </article>
+    )
+  }
+
+  if (item.type === "workflow") {
+    return (
+      <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
+        <div className="text-sm font-medium text-gray-900">Workflow #{item.id}</div>
+        <a className="mt-1 block text-sm text-blue-600 hover:underline" href={item.job.path}>{item.job.title}</a>
+        <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
+          <StatePill state={item.state} />
+          <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.trigger_kind}</span>
+        </div>
+      </article>
+    )
+  }
+
+  return (
+    <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
+      <a className="text-sm font-medium text-blue-600 hover:underline" href={item.paths.epic_path}>{item.title}</a>
+      <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
+        <StatePill state={item.state} />
+        <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.repository.slug}</span>
+      </div>
+    </article>
+  )
 }
 
 function JobsDashboardTable({ items }: { items: DashboardJobItem[] }) {

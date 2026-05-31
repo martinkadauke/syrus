@@ -7,6 +7,17 @@ module App
     DEFAULT_SUBJECT = "epic"
     DEFAULT_VIEW = "list"
     PER_PAGE = 25
+    KANBAN_LIMIT_OPTIONS = [ 10, 25, 50, 100 ].freeze
+    KANBAN_PER_PAGE = 100
+    JOB_KANBAN_LANES = [
+      { key: "blocked", title: "Blocked" },
+      { key: "queued", title: "Queued" },
+      { key: "running", title: "Running" },
+      { key: "succeeded", title: "Succeeded" },
+      { key: "landing", title: "Landing" },
+      { key: "failed", title: "Failed" }
+    ].freeze
+    WORKFLOW_DONE_STATES = %w[succeeded failed cancelled].freeze
 
     def self.call(user:, params:)
       new(user: user, params: params).call
@@ -34,6 +45,8 @@ module App
         smart_folders: smart_folders_json,
         active_smart_folder_id: active_smart_folder&.id,
         items: current_result.fetch(:items),
+        lanes: lanes_json,
+        kanban_limit: view == "kanban" ? kanban_limit : nil,
         paths: paths_json
       }
     end
@@ -86,9 +99,7 @@ module App
     end
 
     def jobs_result
-      scope = user.jobs.where(repository_id: active_repo_ids)
-      filter = Jobs::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
-      scope = filter.apply(scope)
+      scope = filtered_jobs_scope
       total = scope.count
       scope = scope.with_latest_workflow_snapshot.preload(:repository, :tags)
       items = paginate(apply_sort(scope, :job)).map { |job| job_json(job) }
@@ -97,10 +108,7 @@ module App
     end
 
     def epics_result
-      filter = Epics::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
-      scope = user.epics.where(repository_id: active_repo_ids).includes(:repository)
-      scope = scope.where.not(state: Epic::ARCHIVED_STATE) unless filter.includes_archived_state?
-      scope = filter.apply(scope)
+      scope = filtered_epics_scope.includes(:repository)
       total = scope.count
       items = paginate(apply_sort(scope, :epic)).map { |epic| epic_json(epic) }
 
@@ -108,15 +116,42 @@ module App
     end
 
     def workflows_result
-      scope = Workflow.joins(:job)
-                      .where(jobs: { user_id: user.id, repository_id: active_repo_ids })
-                      .includes(:steps, job: :repository)
-      filter = Workflows::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
-      scope = filter.apply(scope)
+      scope = filtered_workflows_scope.includes(:steps, job: :repository)
       total = scope.count
       items = paginate(apply_sort(scope, :workflow)).map { |workflow| workflow_json(workflow) }
 
       { total: total, items: items }
+    end
+
+    def jobs_filter
+      @jobs_filter ||= Jobs::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
+    end
+
+    def filtered_jobs_scope
+      @filtered_jobs_scope ||= jobs_filter.apply(user.jobs.where(repository_id: active_repo_ids))
+    end
+
+    def epics_filter
+      @epics_filter ||= Epics::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
+    end
+
+    def filtered_epics_scope
+      @filtered_epics_scope ||= begin
+        scope = user.epics.where(repository_id: active_repo_ids)
+        scope = scope.where.not(state: Epic::ARCHIVED_STATE) unless epics_filter.includes_archived_state?
+        epics_filter.apply(scope)
+      end
+    end
+
+    def workflows_filter
+      @workflows_filter ||= Workflows::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
+    end
+
+    def filtered_workflows_scope
+      @filtered_workflows_scope ||= begin
+        scope = Workflow.joins(:job).where(jobs: { user_id: user.id, repository_id: active_repo_ids })
+        workflows_filter.apply(scope)
+      end
     end
 
     def counts
@@ -177,6 +212,139 @@ module App
       return 1 if total.to_i.zero?
 
       (total.to_f / PER_PAGE).ceil
+    end
+
+    def lanes_json
+      return [] unless view == "kanban"
+
+      case subject
+      when "job"
+        job_lanes_json
+      when "workflow"
+        workflow_lanes_json
+      else
+        epic_lanes_json
+      end
+    end
+
+    def job_lanes_json
+      visible_lanes = user.dashboard_visible_kanban_lanes(:jobs)
+      lane_defs = JOB_KANBAN_LANES.select { |lane| visible_lanes.include?(lane.fetch(:key)) }
+      records_by_lane = lane_defs.to_h { |lane| [ lane.fetch(:key), [] ] }
+      records = filtered_jobs_scope
+                .where(state: job_kanban_candidate_states(visible_lanes))
+                .with_latest_workflow_snapshot
+                .preload(:repository, :tags, dependencies: :depends_on_job)
+                .order(created_at: :desc, id: :desc)
+                .limit(kanban_limit)
+                .to_a
+
+      records.each do |job|
+        lane = job_kanban_lane_for(job, visible_lanes)
+        records_by_lane[lane] << job if lane && records_by_lane.key?(lane)
+      end
+
+      lane_defs.map { |lane| lane_json(lane.fetch(:key), lane.fetch(:title), records_by_lane.fetch(lane.fetch(:key)).map { |job| job_json(job) }) }
+    end
+
+    def epic_lanes_json
+      lanes = user.dashboard_visible_kanban_lanes(:epics)
+      records = filtered_epics_scope
+                .includes(:repository)
+                .where(state: lanes)
+                .order(updated_at: :desc, id: :desc)
+                .limit(kanban_limit)
+                .to_a
+      records_by_lane = lanes.to_h { |lane| [ lane, [] ] }
+      records.each { |epic| records_by_lane[epic.state] << epic if records_by_lane.key?(epic.state) }
+
+      lanes.map { |lane| lane_json(lane, lane.humanize, records_by_lane.fetch(lane).map { |epic| epic_json(epic) }) }
+    end
+
+    def workflow_lanes_json
+      lanes = user.dashboard_visible_kanban_lanes(:workflows)
+      records_by_lane = lanes.to_h { |lane| [ lane, [] ] }
+      records = filtered_workflows_scope
+                .where(state: workflow_kanban_candidate_states(lanes))
+                .includes(:steps, job: :repository)
+                .order(created_at: :desc, id: :desc)
+                .limit(kanban_limit)
+                .to_a
+
+      records.each do |workflow|
+        lane = workflow_kanban_column_for(workflow, lanes)
+        records_by_lane[lane] << workflow if lane && records_by_lane.key?(lane)
+      end
+
+      lanes.map { |lane| lane_json(lane, lane.humanize, records_by_lane.fetch(lane).map { |workflow| workflow_json(workflow) }) }
+    end
+
+    def lane_json(key, title, items)
+      {
+        key: key,
+        title: title,
+        count: items.size,
+        items: items
+      }
+    end
+
+    def job_kanban_candidate_states(lanes)
+      states = []
+      states.concat(%w[triaging queued]) if lanes.include?("queued")
+      states << "running" if lanes.include?("running")
+      states.concat(%w[implemented closed]) if lanes.include?("succeeded")
+      states.concat(%w[approved landing]) if lanes.include?("landing")
+      states << "failed" if lanes.include?("failed")
+      states.concat(%w[triaging blocked_by_epic queued running implemented failed approved landing]) if lanes.include?("blocked")
+      states.uniq
+    end
+
+    def job_kanban_lane_for(job, visible_lanes)
+      candidates = []
+      candidates << "landing" if job.approved? || job.landing?
+      candidates << "blocked" if job_blocked_for_kanban?(job)
+      candidates << "failed" if job.failed? || job.latest_workflow_state == "failed" || (job.closed? && !job.dependency_succeeded?)
+      candidates << "running" if job.running? || job.latest_workflow_state == "running"
+      candidates << "succeeded" if job.implemented? || job.latest_workflow_state == "succeeded" || job.dependency_succeeded?
+      candidates << "queued"
+      candidates.find { |lane| visible_lanes.include?(lane) }
+    end
+
+    def job_blocked_for_kanban?(job)
+      return true if job.blocked_by_epic?
+      return false unless job.open?
+
+      job.pr_mergeable == false || job.unsatisfied_dependencies.any?
+    end
+
+    def workflow_kanban_candidate_states(lanes)
+      states = []
+      states << "queued" if lanes.include?("queued")
+      states << "running" if lanes.include?("running")
+      states.concat(WORKFLOW_DONE_STATES) if lanes.include?("done")
+      states << "succeeded" if lanes.include?("succeeded")
+      states << "failed" if lanes.include?("failed")
+      states.uniq
+    end
+
+    def workflow_kanban_column_for(workflow, lanes)
+      case workflow.state
+      when "queued", "running"
+        workflow.state
+      when "succeeded"
+        lanes.include?("succeeded") ? "succeeded" : "done"
+      when "failed"
+        lanes.include?("failed") ? "failed" : "done"
+      else
+        "done" if WORKFLOW_DONE_STATES.include?(workflow.state)
+      end
+    end
+
+    def kanban_limit
+      requested_limit = Integer(params[:kanban_limit], exception: false)
+      return requested_limit if KANBAN_LIMIT_OPTIONS.include?(requested_limit)
+
+      KANBAN_PER_PAGE
     end
 
     def job_json(job)
