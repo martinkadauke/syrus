@@ -142,13 +142,13 @@ RSpec.describe "Epics", type: :request do
     end
   end
 
-  describe "GET /?subject=epic&view=list" do
+  describe "GET /dashboard/legacy?subject=epic&view=list" do
     it "renders a subject-aware chip bar and Epic SmartFolder sidebar" do
       sign_in_as(user)
       SmartFolder.ensure_epic_builtins!
       Factories.epic(user: user, repository: repo, title: "Raise the forum", state: "ready")
 
-      get root_path, params: { subject: "epic", view: "list" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list" }
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Epics")
@@ -165,7 +165,7 @@ RSpec.describe "Epics", type: :request do
       Factories.epic(user: user, repository: repo, title: "Backlog aqueduct", state: "backlog")
       folder = SmartFolder.for_subject(:epic).built_in_sidebar_order.find_by!(name: "Ready")
 
-      get root_path, params: { subject: "epic", view: "list", smart_folder_id: folder.id }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list", smart_folder_id: folder.id }
 
       expect(response.body).to include(ready.title)
       expect(response.body).not_to include("Backlog aqueduct")
@@ -183,7 +183,7 @@ RSpec.describe "Epics", type: :request do
         ]
       )
 
-      get root_path, params: { subject: "epic", view: "list", q: q }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list", q: q }
 
       expect(response.body).to include(keep.title)
       expect(response.body).not_to include("Bathhouse tiles")
@@ -198,7 +198,7 @@ RSpec.describe "Epics", type: :request do
         ]
       )
 
-      get root_path, params: { subject: "epic", view: "list", q: q }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list", q: q }
 
       document = Nokogiri::HTML(response.body)
       form = document.at_css("form[action='#{smart_folders_path}']")
@@ -216,12 +216,12 @@ RSpec.describe "Epics", type: :request do
       archived = Factories.epic(user: user, repository: repo, title: "Buried aqueduct", state: "archived", archived_at: Time.current)
       folder = SmartFolder.for_subject(:epic).built_in_sidebar_order.find_by!(name: "Archived")
 
-      get root_path, params: { subject: "epic", view: "list" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list" }
 
       expect(response.body).to include(active.title)
       expect(response.body).not_to include(archived.title)
 
-      get root_path, params: { subject: "epic", view: "list", smart_folder_id: folder.id }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list", smart_folder_id: folder.id }
 
       expect(response.body).to include(archived.title)
       expect(response.body).not_to include(active.title)
@@ -247,7 +247,7 @@ RSpec.describe "Epics", type: :request do
       expect(folder.filter).to eq(filter)
       expect(response).to redirect_to(dashboard_epics_path(smart_folder_id: folder.id))
 
-      get root_path, params: { subject: "epic", view: "list" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list" }
 
       document = Nokogiri::HTML(response.body)
       saved_links = document.css("a[href='#{epics_path(smart_folder_id: folder.id)}']").map { |link| link.text.strip }
@@ -353,7 +353,6 @@ RSpec.describe "Epics", type: :request do
   end
 
   describe "GET /epics/:id/legacy" do
-
     it "shows the dependency graph expanded for small Epics" do
       sign_in_as(user)
       epic = Factories.epic(user: user, repository: repo, title: "Restore forum")

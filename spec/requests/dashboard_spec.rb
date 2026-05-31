@@ -9,7 +9,7 @@ RSpec.describe "Dashboard", type: :request do
 
   it "requires authentication" do
     user  # force a User to exist; first-run setup redirects to new_user instead
-    get dashboard_jobs_path
+    get legacy_dashboard_jobs_path
     expect(response).to redirect_to(new_session_path)
   end
 
@@ -20,7 +20,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.epic(user: user, repository: repo, title: "Raise the forum", state: "ready")
 
-      get root_path
+      get legacy_dashboard_path
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Epics")
@@ -33,7 +33,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_record(repository: repo, issue_number: 7)
       user.update!(dashboard_preferences: { last_subject: "job", last_view: "list" })
 
-      get root_path
+      get legacy_dashboard_path
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("acme/widgets")
@@ -45,12 +45,12 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_record(repository: repo, issue_number: 7)
       Factories.epic(user: user, repository: repo, title: "Launch board", state: "ready")
 
-      get root_path, params: { subject: "job", view: "list" }
+      get legacy_dashboard_path, params: { subject: "job", view: "list" }
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("acme/widgets")
       expect(response.body).to include("#7")
 
-      get root_path, params: { subject: "epic", view: "kanban" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "kanban" }
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Backlog", "Ready", "In Progress", "Done")
       expect(response.body).to include("Launch board")
@@ -62,7 +62,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.epic(user: user, repository: repo, title: "Still marching", state: "ready")
       Factories.epic(user: user, repository: repo, title: "Filed in the vault", state: "archived", archived_at: Time.current)
 
-      get root_path, params: { subject: "epic", view: "kanban" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "kanban" }
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Still marching")
@@ -74,7 +74,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.epic(user: user, repository: repo, title: "Ready work", state: "ready")
       Factories.epic(user: user, repository: repo, title: "Backlog work", state: "backlog")
 
-      get root_path, params: { subject: "epic", view: "list", sort_column: "state", sort_direction: "asc" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list", sort_column: "state", sort_direction: "asc" }
 
       document = Nokogiri::HTML(response.body)
       rows = document.css("tbody tr").map(&:text)
@@ -88,7 +88,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.epic(user: user, repository: repo, title: "Zulu", state: "ready")
       user.update_dashboard_sort!(subject: :epic, column: "title", direction: "desc")
 
-      get root_path, params: { subject: "epic", view: "list", sort_column: "nonsense", sort_direction: "asc" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list", sort_column: "nonsense", sort_direction: "asc" }
 
       document = Nokogiri::HTML(response.body)
       rows = document.css("tbody tr").map(&:text)
@@ -100,7 +100,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.epic(user: user, repository: repo, title: "Persistent order", state: "ready")
 
-      get root_path, params: { subject: "epic", view: "list", sort_column: "state", sort_direction: "asc" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list", sort_column: "state", sort_direction: "asc" }
 
       expect(user.reload.dashboard_sort(:epic)).to eq("column" => "state", "direction" => "asc")
     end
@@ -109,7 +109,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.epic(user: user, repository: repo, title: "Default forum", state: "ready")
 
-      get root_path, params: { subject: "scroll", view: "mosaic" }
+      get legacy_dashboard_path, params: { subject: "scroll", view: "mosaic" }
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Epics")
@@ -121,7 +121,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       chat = ChatSession.create!(repository: repo, user: user, last_message_at: Time.current)
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       chat_links = document.css("a[href='#{chat_path(chat)}']").map { |link| link.text.strip }
@@ -135,12 +135,11 @@ RSpec.describe "Dashboard", type: :request do
       expect(document.at_css("a[href='#{dashboard_workflows_path}']").text).to include("Workflows")
     end
 
-    it "renders the default Dashboard preference on /dashboard inline" do
-      # /dashboard used to redirect to the canonical
-      # dashboard_epics/dashboard_jobs URL; it now dispatches to
-      # the right view inline so the subject+view toggle in the
-      # top nav can switch without round-tripping a redirect.
-      get "/dashboard"
+    it "renders the default Dashboard preference on the legacy dashboard inline" do
+      # The legacy fallback still dispatches to the right view inline
+      # so the subject+view toggle can switch without round-tripping a
+      # redirect.
+      get legacy_dashboard_path
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("Dashboard subject")
@@ -149,7 +148,7 @@ RSpec.describe "Dashboard", type: :request do
     it "updates only the explicit Dashboard preference field" do
       user.update!(dashboard_preferences: { last_subject: "epic", last_view: "kanban" })
 
-      get "/dashboard", params: { subject: "jobs" }
+      get legacy_dashboard_path, params: { subject: "jobs" }
 
       expect(response).to have_http_status(:ok)
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
@@ -208,7 +207,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.epic(user: user, repository: repo, title: "Column treaty", state: "ready")
       user.update_dashboard_columns!(subject: "epics", columns: %w[state updated])
 
-      get root_path, params: { subject: "epic", view: "list" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list" }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("thead th").map { |th| th.text.strip }).not_to include("Repository")
@@ -221,7 +220,7 @@ RSpec.describe "Dashboard", type: :request do
       epic.update!(done_at: 2.days.ago, archived_at: 1.day.ago)
       user.update_dashboard_columns!(subject: "epics", columns: %w[state created_at updated_at done_at archived_at])
 
-      get root_path, params: { subject: "epic", view: "list" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list" }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("thead th").map { |th| th.text.strip }).to include("Created at", "Updated at", "Done at", "Archived at")
@@ -250,7 +249,7 @@ RSpec.describe "Dashboard", type: :request do
         ]
       )
 
-      get root_path, params: { subject: "job", view: "list" }
+      get legacy_dashboard_path, params: { subject: "job", view: "list" }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("thead th").map { |th| th.text.strip }).to include(
@@ -279,7 +278,7 @@ RSpec.describe "Dashboard", type: :request do
         columns: %w[state created_at updated_at started_at finished_at cleaned_up_at]
       )
 
-      get root_path, params: { subject: "workflow", view: "list" }
+      get legacy_dashboard_path, params: { subject: "workflow", view: "list" }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("thead th").map { |th| th.text.strip }).to include(
@@ -296,7 +295,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_record(repository: repo, issue_number: 7, issue_title: "Required aqueduct")
       user.update_column(:dashboard_preferences, { "visible_columns" => { "jobs" => %w[state] } })
 
-      get root_path, params: { subject: "job", view: "list" }
+      get legacy_dashboard_path, params: { subject: "job", view: "list" }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("thead th").map { |th| th.text.strip }).to include("Issue")
@@ -309,7 +308,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_record(repository: repo, issue_number: 7)
       Factories.epic(user: user, repository: repo, title: "Raise the forum", state: "ready")
 
-      get root_path, params: { subject: "job", view: "list" }
+      get legacy_dashboard_path, params: { subject: "job", view: "list" }
 
       expect(response).to have_http_status(:ok)
       document = Nokogiri::HTML(response.body)
@@ -335,7 +334,7 @@ RSpec.describe "Dashboard", type: :request do
         { subject: "workflow", view: "list" },
         { subject: "workflow", view: "kanban" }
       ].each do |params|
-        get root_path, params: params
+        get legacy_dashboard_path, params: params
 
         expect(response).to have_http_status(:ok)
         document = Nokogiri::HTML(response.body)
@@ -366,7 +365,7 @@ RSpec.describe "Dashboard", type: :request do
       # all our jobs default to queued); the Epics badge must remain
       # the total of 3, not the filter cross-applied.
       q = Filters::QueryParam.encode({ "field" => "state", "op" => "is", "value" => "closed" })
-      get dashboard_jobs_path, params: { q: q }
+      get legacy_dashboard_jobs_path, params: { q: q }
 
       subject_nav = Nokogiri::HTML(response.body).at_css("nav[aria-label='Dashboard subject']")
       # Counts live in the `title` hover-tooltip now (badges removed
@@ -389,7 +388,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.job_record(repository: repo, issue_number: 7)
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       frame = document.at_css("turbo-frame#dashboard_content")
@@ -401,7 +400,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.epic(user: user, repository: repo, title: "Raise the forum", state: "ready")
 
-      get root_path, params: { subject: "epic", view: "list" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "list" }
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include('data-filter-memory-subject-value="epic"')
@@ -414,7 +413,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.job_record(repository: repo, issue_number: 77, issue_title: "Count the tablets")
 
-      get root_path, params: { subject: "job", view: "kanban" }
+      get legacy_dashboard_path, params: { subject: "job", view: "kanban" }
 
       expect(response).to have_http_status(:ok)
       document = Nokogiri::HTML(response.body)
@@ -426,14 +425,14 @@ RSpec.describe "Dashboard", type: :request do
       Factories.repository(user: user, owner: "acme", name: "widgets")
 
       %w[epic job workflow].each do |subject|
-        get root_path, params: { subject: subject, view: "kanban" }
+        get legacy_dashboard_path, params: { subject: subject, view: "kanban" }
         document = Nokogiri::HTML(response.body)
         selector = document.at_css("[data-kanban-limit-selector]")
         expect(selector).to be_present
         expect(selector.text).to include("Limit", "10", "25", "50", "100")
       end
 
-      get root_path, params: { subject: "job", view: "list" }
+      get legacy_dashboard_path, params: { subject: "job", view: "list" }
       document = Nokogiri::HTML(response.body)
       expect(document.at_css("[data-kanban-limit-selector]")).to be_nil
     end
@@ -441,7 +440,7 @@ RSpec.describe "Dashboard", type: :request do
     it "renders a persisted Kanban lane picker in Kanban mode" do
       Factories.repository(user: user, owner: "acme", name: "widgets")
 
-      get root_path, params: { subject: "job", view: "kanban" }
+      get legacy_dashboard_path, params: { subject: "job", view: "kanban" }
 
       document = Nokogiri::HTML(response.body)
       picker = document.at_css("[data-column-picker-field-name='kanban_lanes[]']")
@@ -460,7 +459,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_record(repository: repo, epic: epic, issue_number: 7, state: "closed", closure_reason: "pr_merged")
       Factories.job_record(repository: repo, epic: epic, issue_number: 8, state: "queued")
 
-      get dashboard_epics_path
+      get legacy_dashboard_epics_path
 
       expect(response).to have_http_status(:ok)
       document = Nokogiri::HTML(response.body)
@@ -485,7 +484,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.epic(user: user, repository: repo, title: "Ready forum", state: "ready")
       Factories.epic(user: user, repository: repo, title: "Finished forum", state: "done")
 
-      get root_path, params: { subject: "epic", view: "kanban" }
+      get legacy_dashboard_path, params: { subject: "epic", view: "kanban" }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Ready", "Done" ])
@@ -499,7 +498,7 @@ RSpec.describe "Dashboard", type: :request do
         Factories.epic(user: user, repository: repo, title: "Epic #{index + 1}", state: "ready")
       end
 
-      get root_path, params: { subject: "epic", view: "kanban", kanban_limit: 10 }
+      get legacy_dashboard_path, params: { subject: "epic", view: "kanban", kanban_limit: 10 }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("[data-epic-id]").size).to eq(10)
@@ -509,7 +508,7 @@ RSpec.describe "Dashboard", type: :request do
     it "renders the smart-folders sidebar and chip bar on the Epics Kanban view" do
       Factories.repository(user: user, owner: "acme", name: "widgets")
 
-      get dashboard_epics_path
+      get legacy_dashboard_epics_path
 
       document = Nokogiri::HTML(response.body)
       # The chip-bar Stimulus controller mounts with epic-specific schema data.
@@ -587,7 +586,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       done_epic = Factories.epic(user: user, repository: repo, title: "Already shipped", state: "done")
 
-      get dashboard_epics_path, params: { done: "1" }
+      get legacy_dashboard_epics_path, params: { done: "1" }
 
       expect(response.body).to include("Already shipped")
       expect(response.body).to include(epic_path(done_epic))
@@ -599,7 +598,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.epic(user: user, repository: repo_a, title: "Acme board", state: "backlog")
       Factories.epic(user: user, repository: repo_b, title: "Wrong repo", state: "backlog")
 
-      get dashboard_epics_path, params: { repository_id: repo_a.id }
+      get legacy_dashboard_epics_path, params: { repository_id: repo_a.id }
 
       expect(response.body).to include("Acme board")
       expect(response.body).not_to include("Wrong repo")
@@ -612,7 +611,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.epic(user: user, repository: repo, title: "Open runway", state: "backlog")
       EpicDependency.create!(epic: blocked, depends_on_epic: prerequisite, derived: false)
 
-      get dashboard_epics_path, params: { attention: "blocked_by_dependency" }
+      get legacy_dashboard_epics_path, params: { attention: "blocked_by_dependency" }
 
       expect(response.body).to include("Blocked board")
       expect(response.body).not_to include("Open runway")
@@ -626,7 +625,7 @@ RSpec.describe "Dashboard", type: :request do
       older.update_columns(updated_at: 2.days.ago)
       newer.update_columns(updated_at: 1.hour.ago)
 
-      get dashboard_epics_path
+      get legacy_dashboard_epics_path
 
       backlog = Nokogiri::HTML(response.body).css("section").find { |section| section.at_css("h2")&.text&.strip == "Backlog" }
       card_titles = backlog.css("a").map(&:text).map(&:squish)
@@ -670,7 +669,7 @@ RSpec.describe "Dashboard", type: :request do
       other_repo = Factories.repository(user: other, owner: "globex", name: "things")
       Factories.job_record(repository: other_repo, issue_number: 99)
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
       expect(response.body).to include("acme/widgets")
       expect(response.body).to include("#7")
       expect(response.body).not_to include("globex/things")
@@ -678,7 +677,7 @@ RSpec.describe "Dashboard", type: :request do
     end
 
     it "shows the empty state when no jobs exist" do
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
       expect(response.body).to include("No jobs yet")
     end
 
@@ -695,7 +694,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.repository(user: user, owner: "acme", name: "widgets")
       q = Filters::QueryParam.encode({ "field" => "kind", "op" => "is", "value" => "issue" })
 
-      get dashboard_jobs_path, params: { q: q }
+      get legacy_dashboard_jobs_path, params: { q: q }
 
       expect(response).to have_http_status(:ok)
     end
@@ -710,7 +709,7 @@ RSpec.describe "Dashboard", type: :request do
         state: "succeeded"
       )
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       row = document.at_css("tbody tr")
@@ -725,7 +724,7 @@ RSpec.describe "Dashboard", type: :request do
       job = Factories.job(repository: repo, issue_number: 7)
       job.initial_run.update!(cost_usd: 1.23)
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       row = Nokogiri::HTML(response.body).at_css("tbody tr")
       expect(row.css("td")[1].text).to include("$1.23")
@@ -740,7 +739,7 @@ RSpec.describe "Dashboard", type: :request do
       job.update!(state: "failed")
       job.initial_run.update!(state: "failed", cost_usd: 1.23)
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       state_header = document.css("thead th").find { |th| th.text.strip == "State" }
@@ -759,7 +758,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       job = Factories.job_record(repository: repo, issue_number: 7)
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       pin = document.at_css("a[href='#{job_pin_path(job)}'][aria-label='Pin job']")
@@ -782,7 +781,7 @@ RSpec.describe "Dashboard", type: :request do
       failed.latest_workflow.update!(state: "failed", trigger_kind: "retry", created_at: 1.minute.ago)
       failed.initial_run.update!(state: "failed")
 
-      get dashboard_jobs_path, params: { view: "kanban" }
+      get legacy_dashboard_jobs_path, params: { view: "kanban" }
 
       expect(response).to have_http_status(:ok)
       document = Nokogiri::HTML(response.body)
@@ -791,10 +790,10 @@ RSpec.describe "Dashboard", type: :request do
 
       expect(document.at_css("[data-kanban-lane='blocked']").text).to include("#6", "Wait for the forum")
       expect(document.at_css("[data-kanban-lane='queued']").text).to include("#1", "Await the first trumpet", "No workflow yet")
-      expect(document.at_css("[data-kanban-lane='running']").text).to include("#2", "March immediately", "running", "initial")
+      expect(document.at_css("[data-kanban-lane='running']").text).to include("#2", "March immediately", "running", "Initial implementation")
       expect(document.at_css("[data-kanban-lane='succeeded']").text).to include("#3", "Return triumphant", "awaiting feedback")
       expect(document.at_css("[data-kanban-lane='landing']").text).to include("#5", "Enter the landing queue")
-      expect(document.at_css("[data-kanban-lane='failed']").text).to include("#4", "Drop the standard", "failed", "retry")
+      expect(document.at_css("[data-kanban-lane='failed']").text).to include("#4", "Drop the standard", "failed", "Retry")
 
       card = document.at_css("[data-job-id='#{failed.id}']")
       expect(card.name).to eq("a")
@@ -808,7 +807,7 @@ RSpec.describe "Dashboard", type: :request do
       Factories.job_record(repository: repo_a, issue_number: 10, issue_title: "Correct province")
       Factories.job_record(repository: repo_b, issue_number: 20, issue_title: "Wrong province")
 
-      get dashboard_jobs_path, params: { view: "kanban", repository_id: repo_a.id }
+      get legacy_dashboard_jobs_path, params: { view: "kanban", repository_id: repo_a.id }
 
       expect(response.body).to include("#10", "Correct province")
       expect(response.body).not_to include("#20")
@@ -828,7 +827,7 @@ RSpec.describe "Dashboard", type: :request do
       SmartFolder.ensure_builtins!
       folder = SmartFolder.find_builtin_by_attention("in_progress")
 
-      get root_path, params: { subject: "job", view: "kanban", smart_folder_id: folder.id }
+      get legacy_dashboard_path, params: { subject: "job", view: "kanban", smart_folder_id: folder.id }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Queued", "Running", "Landing" ])
@@ -843,7 +842,7 @@ RSpec.describe "Dashboard", type: :request do
         Factories.job_record(repository: repo, issue_number: index + 1, issue_title: "Inscription #{index + 1}")
       end
 
-      get dashboard_jobs_path, params: { view: "kanban", kanban_limit: 10 }
+      get legacy_dashboard_jobs_path, params: { view: "kanban", kanban_limit: 10 }
 
       document = Nokogiri::HTML(response.body)
       expect(document.css("[data-job-id]").size).to eq(10)
@@ -864,7 +863,7 @@ RSpec.describe "Dashboard", type: :request do
 
       SmartFolder.ensure_builtins!
       pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
-      get dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id }
+      get legacy_dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id }
 
       document = Nokogiri::HTML(response.body)
       rows = document.css("tbody tr").map(&:text)
@@ -884,7 +883,7 @@ RSpec.describe "Dashboard", type: :request do
       # data-chip-bar-schema-value on the controller root.
       Factories.repository(user: user, owner: "acme", name: "widgets")
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       schema_attr = Nokogiri::HTML(response.body).at_css("[data-chip-bar-schema-value]")&.[]("data-chip-bar-schema-value")
       expect(schema_attr).to be_present
@@ -909,7 +908,7 @@ RSpec.describe "Dashboard", type: :request do
       )
       Factories.job_record(repository: repo, issue_number: 1)
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       mobile_panel = document.at_css("details")
@@ -944,7 +943,7 @@ RSpec.describe "Dashboard", type: :request do
       closed_failed.update!(state: "failed")
       closed_failed.close!; closed_failed.save!
 
-      get dashboard_jobs_path, params: { attention: "inbox" }
+      get legacy_dashboard_jobs_path, params: { attention: "inbox" }
 
       expect(response.body).to include("#1")
       expect(response.body).not_to include("#2")
@@ -956,7 +955,7 @@ RSpec.describe "Dashboard", type: :request do
       failing.update!(state: "failed")
       Factories.job(repository: repo, issue_number: 2)
 
-      get dashboard_jobs_path, params: { attention: "just_failed" }
+      get legacy_dashboard_jobs_path, params: { attention: "just_failed" }
 
       expect(response.body).to include("#1")
       expect(response.body).not_to include("#2")
@@ -970,7 +969,7 @@ RSpec.describe "Dashboard", type: :request do
 
       SmartFolder.ensure_builtins!
       pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       sidebar = Nokogiri::HTML(response.body).at_css("aside")
       pinned_row = sidebar.css("a").find { |a| a["href"] == dashboard_jobs_path(smart_folder_id: pinned_folder.id) }
@@ -981,7 +980,7 @@ RSpec.describe "Dashboard", type: :request do
     it "hides the Pinned sidebar entry when the user has nothing pinned" do
       Factories.repository(user: user, owner: "acme", name: "widgets")
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       sidebar = Nokogiri::HTML(response.body).at_css("aside")
       expect(sidebar.text).not_to include("Pinned")
@@ -992,7 +991,7 @@ RSpec.describe "Dashboard", type: :request do
       SmartFolder.ensure_builtins!
       pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
 
-      get dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id }
+      get legacy_dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id }
 
       sidebar = Nokogiri::HTML(response.body).at_css("aside")
       expect(sidebar.text).to include("Pinned")
@@ -1006,7 +1005,7 @@ RSpec.describe "Dashboard", type: :request do
       closed = Factories.job(repository: repo, issue_number: 3)
       closed.close!; closed.save!
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       sidebar = Nokogiri::HTML(response.body).at_css("aside")
       in_progress_row = sidebar.css("a").find { |a| a.text.include?("In progress") }
@@ -1018,7 +1017,7 @@ RSpec.describe "Dashboard", type: :request do
       repo = Factories.repository(user: user, owner: "acme", name: "widgets")
       Factories.job(repository: repo, issue_number: 1)  # queued, not in_progress
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       sidebar = Nokogiri::HTML(response.body).at_css("aside")
       expect(sidebar.text).not_to include("In progress")
@@ -1034,7 +1033,7 @@ RSpec.describe "Dashboard", type: :request do
       closed = Factories.job(repository: repo, issue_number: 4)
       closed.close!; closed.save!
 
-      get dashboard_jobs_path, params: { attention: "in_progress" }
+      get legacy_dashboard_jobs_path, params: { attention: "in_progress" }
 
       expect(response.body).to include("#1")
       expect(response.body).not_to include("#2")
@@ -1052,7 +1051,7 @@ RSpec.describe "Dashboard", type: :request do
 
       SmartFolder.ensure_builtins!
       pinned_folder = SmartFolder.find_builtin_by_attention("pinned")
-      get dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id, state: "closed" }
+      get legacy_dashboard_jobs_path, params: { smart_folder_id: pinned_folder.id, state: "closed" }
 
       expect(response.body).not_to include("#1")
       expect(response.body).to include("#2")
@@ -1068,7 +1067,7 @@ RSpec.describe "Dashboard", type: :request do
       SmartFolder.ensure_builtins!
       inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-      get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
+      get legacy_dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
       document = Nokogiri::HTML(response.body)
       chip_bar_form = document.at_css("[data-controller~='chip-bar'] form")
@@ -1087,7 +1086,7 @@ RSpec.describe "Dashboard", type: :request do
       SmartFolder.ensure_builtins!
       inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-      get dashboard_jobs_path, params: { smart_folder_id: inbox.id, state: "open" }
+      get legacy_dashboard_jobs_path, params: { smart_folder_id: inbox.id, state: "open" }
 
       clear_button = Nokogiri::HTML(response.body).css("button").find { |b| b.text.strip == "Clear" }
       expect(clear_button).to be_present
@@ -1099,7 +1098,7 @@ RSpec.describe "Dashboard", type: :request do
       job = Factories.job_record(repository: repo, issue_number: 7)
       %w[alpha beta gamma zeta].each { |name| job.tags << Factories.tag(user: user, name: name) }
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       row_text = Nokogiri::HTML(response.body).at_css("tbody tr").text
       expect(row_text).to include("alpha")
@@ -1119,7 +1118,7 @@ RSpec.describe "Dashboard", type: :request do
         created_at: 1.minute.from_now
       )
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       status_cell = document.css("tbody tr td")[1]
@@ -1142,7 +1141,7 @@ RSpec.describe "Dashboard", type: :request do
       job.close!
       job.save!
 
-      get dashboard_jobs_path
+      get legacy_dashboard_jobs_path
 
       document = Nokogiri::HTML(response.body)
       status_cell = document.css("tbody tr td")[1]
@@ -1171,7 +1170,7 @@ RSpec.describe "Dashboard", type: :request do
         job = Factories.job(repository: repo, issue_number: 7)
         Factories.tag(user: user, name: "epic:attachments", color: "blue")
 
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
 
         document = Nokogiri::HTML(response.body)
         expect(document.at_css("form[action='#{bulk_dashboard_jobs_path}'][data-controller='bulk-jobs']")).to be_present
@@ -1195,7 +1194,7 @@ RSpec.describe "Dashboard", type: :request do
         # with data attributes carrying the action URL and subject.
         Factories.job(repository: repo, issue_number: 7)
 
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
 
         expect(response.body).to include(
           %(data-controller="column-picker"),
@@ -1210,7 +1209,7 @@ RSpec.describe "Dashboard", type: :request do
         user.update!(claude_oauth_token: "oat-test", codex_auth_mode: "api_key", codex_api_key: "sk-test")
         Factories.job(repository: repo, issue_number: 7)
 
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
 
         expect(response.body).to include("Retry with Claude")
         expect(response.body).to include("Retry with Codex")
@@ -1220,7 +1219,7 @@ RSpec.describe "Dashboard", type: :request do
         user.update!(claude_oauth_token: "oat-test", codex_api_key: nil)
         Factories.job(repository: repo, issue_number: 7)
 
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
 
         expect(response.body).not_to include("Retry with Claude")
         expect(response.body).not_to include("Retry with Codex")
@@ -1448,7 +1447,7 @@ RSpec.describe "Dashboard", type: :request do
 
     describe "Workflows tab" do
       it "renders the empty state when no workflows exist" do
-        get dashboard_workflows_path
+        get legacy_dashboard_workflows_path
         expect(response.body).to include("No workflows yet")
       end
 
@@ -1458,7 +1457,7 @@ RSpec.describe "Dashboard", type: :request do
         workflow = job.latest_workflow
         workflow.update!(state: "running", started_at: 10.minutes.ago, agent_provider: "codex")
 
-        get root_path, params: { subject: "workflow", view: "list" }
+        get legacy_dashboard_path, params: { subject: "workflow", view: "list" }
 
         document = Nokogiri::HTML(response.body)
         expect(response.body).to include("acme/widgets")
@@ -1473,7 +1472,7 @@ RSpec.describe "Dashboard", type: :request do
         job = Factories.job(repository: repo, issue_number: 7)
         job.latest_workflow.update!(state: "running")
 
-        get dashboard_workflows_path
+        get legacy_dashboard_workflows_path
 
         document = Nokogiri::HTML(response.body)
         state_header = document.css("thead th").find { |th| th.text.strip == "State" }
@@ -1483,7 +1482,7 @@ RSpec.describe "Dashboard", type: :request do
         end
 
         expect(state_header["class"]).to include("hidden sm:table-cell")
-        expect(mobile_state_summary.text).to include("initial")
+        expect(mobile_state_summary.text).to include("Initial implementation")
       end
 
       it "scopes to the current user (no leakage)" do
@@ -1491,7 +1490,7 @@ RSpec.describe "Dashboard", type: :request do
         Factories.job(repository: mine, issue_number: 7)
         theirs = Factories.repository(user: other, owner: "globex", name: "things")
         Factories.job(repository: theirs, issue_number: 99)
-        get dashboard_workflows_path
+        get legacy_dashboard_workflows_path
         expect(response.body).to include("acme/widgets")
         expect(response.body).not_to include("globex/things")
       end
@@ -1503,7 +1502,7 @@ RSpec.describe "Dashboard", type: :request do
         old_job = Factories.job(repository: repo, issue_number: 2, issue_title: "Ancient failure")
         old_job.latest_workflow.update!(state: "failed", finished_at: 8.days.ago)
 
-        get root_path, params: { subject: "workflow", view: "list" }
+        get legacy_dashboard_path, params: { subject: "workflow", view: "list" }
 
         document = Nokogiri::HTML(response.body)
         tree = JSON.parse(document.at_css("[data-chip-bar-tree-value]")["data-chip-bar-tree-value"])
@@ -1521,7 +1520,7 @@ RSpec.describe "Dashboard", type: :request do
         repo = Factories.repository(user: user, owner: "acme", name: "widgets")
         Factories.job(repository: repo, issue_number: 1).latest_workflow.update!(state: "failed", finished_at: Time.current)
 
-        get dashboard_workflows_path, params: { state: "failed" }
+        get legacy_dashboard_workflows_path, params: { state: "failed" }
 
         document = Nokogiri::HTML(response.body)
         form = document.at_css("form[action='#{smart_folders_path}']")
@@ -1535,7 +1534,7 @@ RSpec.describe "Dashboard", type: :request do
         repo = Factories.repository(user: user, owner: "acme", name: "widgets")
         Factories.job(repository: repo, issue_number: 1)
 
-        get dashboard_workflows_path
+        get legacy_dashboard_workflows_path
 
         document = Nokogiri::HTML(response.body)
         manage_link = document.at_css("aside a[href='#{smart_folders_path(subject_type: "workflow")}']")
@@ -1543,7 +1542,7 @@ RSpec.describe "Dashboard", type: :request do
       end
 
       it "does not render the workflow smart-folder save form for the default filter" do
-        get dashboard_workflows_path
+        get legacy_dashboard_workflows_path
 
         document = Nokogiri::HTML(response.body)
         workflow_forms = document.css("form[action='#{smart_folders_path}']").select do |form|
@@ -1570,7 +1569,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(folder.filter).to eq(filter)
         expect(response).to redirect_to(dashboard_workflows_path(smart_folder_id: folder.id))
 
-        follow_redirect!
+        get legacy_dashboard_workflows_path(smart_folder_id: folder.id)
         document = Nokogiri::HTML(response.body)
         aside = document.at_css("aside")
         expect(aside.text).to include("Saved", "Failed workflows")
@@ -1583,7 +1582,7 @@ RSpec.describe "Dashboard", type: :request do
         old_job.latest_workflow.update!(state: "failed", finished_at: 8.days.ago)
         q = Filters::QueryParam.encode("and" => [])
 
-        get root_path, params: { subject: "workflow", view: "list", q: q }
+        get legacy_dashboard_path, params: { subject: "workflow", view: "list", q: q }
 
         document = Nokogiri::HTML(response.body)
         tree = JSON.parse(document.at_css("[data-chip-bar-tree-value]")["data-chip-bar-tree-value"])
@@ -1600,7 +1599,7 @@ RSpec.describe "Dashboard", type: :request do
         queued.latest_workflow.update!(state: "queued")
         q = Filters::QueryParam.encode("and" => [ { "field" => "state", "op" => "is", "value" => "running" } ])
 
-        get root_path, params: { subject: "workflow", view: "list", q: q }
+        get legacy_dashboard_path, params: { subject: "workflow", view: "list", q: q }
 
         tbody_text = Nokogiri::HTML(response.body).at_css("tbody").text
         expect(tbody_text).to include("Still marching")
@@ -1616,7 +1615,7 @@ RSpec.describe "Dashboard", type: :request do
         failed = Factories.job(repository: repo, issue_number: 3, issue_title: "Misplace the laurel")
         failed.latest_workflow.update!(state: "failed", finished_at: 12.minutes.ago)
 
-        get root_path, params: { subject: "workflow", view: "kanban" }
+        get legacy_dashboard_path, params: { subject: "workflow", view: "kanban" }
 
         document = Nokogiri::HTML(response.body)
         expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Queued", "Running", "Done" ])
@@ -1637,7 +1636,7 @@ RSpec.describe "Dashboard", type: :request do
         cancelled = Factories.job(repository: repo, issue_number: 3, issue_title: "Cancel the laurel")
         cancelled.latest_workflow.update!(state: "cancelled", finished_at: 2.minutes.ago)
 
-        get root_path, params: { subject: "workflow", view: "kanban" }
+        get legacy_dashboard_path, params: { subject: "workflow", view: "kanban" }
 
         document = Nokogiri::HTML(response.body)
         expect(document.css("[data-kanban-lane] h2").map { |heading| heading.text.strip }).to eq([ "Queued", "Running", "Done", "Succeeded", "Failed" ])
@@ -1654,7 +1653,7 @@ RSpec.describe "Dashboard", type: :request do
           job.latest_workflow.update!(state: "queued")
         end
 
-        get root_path, params: { subject: "workflow", view: "kanban", kanban_limit: 10 }
+        get legacy_dashboard_path, params: { subject: "workflow", view: "kanban", kanban_limit: 10 }
 
         document = Nokogiri::HTML(response.body)
         expect(document.css("[data-workflow-id]").size).to eq(10)
@@ -1671,7 +1670,7 @@ RSpec.describe "Dashboard", type: :request do
           closed_job = Factories.job_record(repository: repo, issue_number: 2)
           closed_job.close!; closed_job.save!
 
-          get dashboard_jobs_path, params: { state: "open" }
+          get legacy_dashboard_jobs_path, params: { state: "open" }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
         end
@@ -1681,7 +1680,7 @@ RSpec.describe "Dashboard", type: :request do
           closed_job = Factories.job_record(repository: repo, issue_number: 2)
           closed_job.close!; closed_job.save!
 
-          get dashboard_jobs_path, params: { state: "closed" }
+          get legacy_dashboard_jobs_path, params: { state: "closed" }
           expect(response.body).not_to include("#1")
           expect(response.body).to include("#2")
         end
@@ -1691,7 +1690,7 @@ RSpec.describe "Dashboard", type: :request do
           closed_job = Factories.job_record(repository: repo, issue_number: 2)
           closed_job.close!; closed_job.save!
 
-          get dashboard_jobs_path
+          get legacy_dashboard_jobs_path
           expect(response.body).to include("#1")
           expect(response.body).to include("#2")
         end
@@ -1713,7 +1712,7 @@ RSpec.describe "Dashboard", type: :request do
           closed_failed.latest_workflow.update!(state: "failed", created_at: 3.minutes.ago)
           closed_failed.close!; closed_failed.save!
 
-          get dashboard_jobs_path, params: { state: "failed" }
+          get legacy_dashboard_jobs_path, params: { state: "failed" }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
           expect(response.body).not_to include("#3")
@@ -1736,7 +1735,7 @@ RSpec.describe "Dashboard", type: :request do
           closed_succeeded.latest_workflow.update!(state: "succeeded", created_at: 3.minutes.ago)
           closed_succeeded.close!; closed_succeeded.save!
 
-          get dashboard_jobs_path, params: { state: "succeeded" }
+          get legacy_dashboard_jobs_path, params: { state: "succeeded" }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
           expect(response.body).not_to include("#3")
@@ -1750,7 +1749,7 @@ RSpec.describe "Dashboard", type: :request do
           Factories.job_record(repository: repo_a, issue_number: 10)
           Factories.job_record(repository: repo_b, issue_number: 20)
 
-          get dashboard_jobs_path, params: { repository_id: repo_a.id }
+          get legacy_dashboard_jobs_path, params: { repository_id: repo_a.id }
           expect(response.body).to include("#10")
           expect(response.body).not_to include("#20")
         end
@@ -1761,7 +1760,7 @@ RSpec.describe "Dashboard", type: :request do
           # Legacy <select name='kind'> dropdown has been replaced by
           # the chip-bar's kind chip; its value list ships in the
           # serialized schema. Each value is humanized for display.
-          get dashboard_jobs_path
+          get legacy_dashboard_jobs_path
 
           schema_attr = Nokogiri::HTML(response.body).at_css("[data-chip-bar-schema-value]")&.[]("data-chip-bar-schema-value")
           schema = JSON.parse(schema_attr)
@@ -1781,7 +1780,7 @@ RSpec.describe "Dashboard", type: :request do
             issue_body: "Tidy the thing."
           )
 
-          get dashboard_jobs_path, params: { kind: "direct" }
+          get legacy_dashboard_jobs_path, params: { kind: "direct" }
 
           expect(response.body).not_to include("##{issue.issue_number}")
           expect(response.body).to include("Direct cleanup")
@@ -1795,7 +1794,7 @@ RSpec.describe "Dashboard", type: :request do
           without = Factories.job_record(repository: repo, issue_number: 2)
           with.update!(pr_number: 99)
 
-          get dashboard_jobs_path, params: { pr: "has_pr" }
+          get legacy_dashboard_jobs_path, params: { pr: "has_pr" }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
         end
@@ -1805,7 +1804,7 @@ RSpec.describe "Dashboard", type: :request do
           without = Factories.job_record(repository: repo, issue_number: 2)
           with.update!(pr_number: 99)
 
-          get dashboard_jobs_path, params: { pr: "no_pr" }
+          get legacy_dashboard_jobs_path, params: { pr: "no_pr" }
           expect(response.body).not_to include("#1")
           expect(response.body).to include("#2")
         end
@@ -1814,7 +1813,7 @@ RSpec.describe "Dashboard", type: :request do
           external = Factories.job_record(repository: repo, issue_number: 5,
                                           state: "closed", closure_reason: "preempted",
                                           external_pr_number: 7, finished_at: Time.current)
-          get dashboard_jobs_path, params: { pr: "has_pr" }
+          get legacy_dashboard_jobs_path, params: { pr: "has_pr" }
           expect(response.body).to include("#5")
         end
       end
@@ -1825,7 +1824,7 @@ RSpec.describe "Dashboard", type: :request do
           old    = Factories.job_record(repository: repo, issue_number: 2)
           old.update_column(:created_at, 2.days.ago)
 
-          get dashboard_jobs_path, params: { age: "1d" }
+          get legacy_dashboard_jobs_path, params: { age: "1d" }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
         end
@@ -1835,7 +1834,7 @@ RSpec.describe "Dashboard", type: :request do
           old    = Factories.job_record(repository: repo, issue_number: 2)
           old.update_column(:created_at, 8.days.ago)
 
-          get dashboard_jobs_path, params: { age: "7d" }
+          get legacy_dashboard_jobs_path, params: { age: "7d" }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
         end
@@ -1845,14 +1844,14 @@ RSpec.describe "Dashboard", type: :request do
           old    = Factories.job_record(repository: repo, issue_number: 2)
           old.update_column(:created_at, 31.days.ago)
 
-          get dashboard_jobs_path, params: { age: "30d" }
+          get legacy_dashboard_jobs_path, params: { age: "30d" }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
         end
 
         it "ignores an unrecognised age value and shows all jobs" do
           Factories.job_record(repository: repo, issue_number: 1)
-          get dashboard_jobs_path, params: { age: "bogus" }
+          get legacy_dashboard_jobs_path, params: { age: "bogus" }
           expect(response.body).to include("#1")
         end
       end
@@ -1867,7 +1866,7 @@ RSpec.describe "Dashboard", type: :request do
           closed_a.close!; closed_a.save!
           open_b  = Factories.job_record(repository: repo_b, issue_number: 3)
 
-          get dashboard_jobs_path, params: { state: "open", repository_id: repo_a.id }
+          get legacy_dashboard_jobs_path, params: { state: "open", repository_id: repo_a.id }
           expect(response.body).to include("#1")
           expect(response.body).not_to include("#2")
           expect(response.body).not_to include("#3")
@@ -1884,7 +1883,7 @@ RSpec.describe "Dashboard", type: :request do
           first.tags << urgent
           second.tags << auth
 
-          get dashboard_jobs_path, params: { tag_ids: [ urgent.id, auth.id ] }
+          get legacy_dashboard_jobs_path, params: { tag_ids: [ urgent.id, auth.id ] }
 
           expect(response.body).to include("#1")
           expect(response.body).to include("#2")
@@ -1915,7 +1914,7 @@ RSpec.describe "Dashboard", type: :request do
         Factories.job_record(repository: repo, issue_number: 5, state: "triaging",
                               triaging_reason: "pending_epic_ref")
 
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
 
         document = Nokogiri::HTML(response.body)
         attention = document.at_css("aside")
@@ -1933,7 +1932,7 @@ RSpec.describe "Dashboard", type: :request do
       it "tucks on-demand folders into a More disclosure that closes by default" do
         Factories.job(repository: repo, issue_number: 1)
 
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
 
         document = Nokogiri::HTML(response.body)
         details = document.at_css("aside details")
@@ -1953,7 +1952,7 @@ RSpec.describe "Dashboard", type: :request do
         SmartFolder.ensure_builtins!
         merged_this_week = SmartFolder.find_by!(name: "Merged this week")
 
-        get dashboard_jobs_path, params: { smart_folder_id: merged_this_week.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: merged_this_week.id }
 
         details = Nokogiri::HTML(response.body).at_css("aside details")
         expect(details["open"]).not_to be_nil
@@ -1975,7 +1974,7 @@ RSpec.describe "Dashboard", type: :request do
         SmartFolder.ensure_builtins!
         awaiting_approval = SmartFolder.find_by!(name: "Awaiting your approval")
 
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_approval.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: awaiting_approval.id }
 
         expect(response.body).to include("Inspect the marble")
         expect(response.body).not_to include("Already blessed")
@@ -1983,7 +1982,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(link.text).to include("1")
 
         awaiting.approve!(via: "operator", by_user: user)
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_approval.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: awaiting_approval.id }
 
         expect(response.body).not_to include("Inspect the marble")
       end
@@ -2006,7 +2005,7 @@ RSpec.describe "Dashboard", type: :request do
         SmartFolder.ensure_builtins!
         awaiting_epic = SmartFolder.find_by!(name: "Awaiting Epic")
 
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_epic.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: awaiting_epic.id }
 
         expect(response.body).to include("#3")
         expect(response.body).to include("Waiting for the great parent")
@@ -2014,7 +2013,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(response.body).not_to include("Parent arrived")
 
         pending.update!(state: "blocked_by_epic")
-        get dashboard_jobs_path, params: { smart_folder_id: awaiting_epic.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: awaiting_epic.id }
 
         expect(response.body).not_to include("#3")
       end
@@ -2032,7 +2031,7 @@ RSpec.describe "Dashboard", type: :request do
         SmartFolder.ensure_builtins!
         invalid_folder = SmartFolder.find_by!(name: "Invalid")
 
-        get dashboard_jobs_path, params: { smart_folder_id: invalid_folder.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: invalid_folder.id }
 
         expect(response.body).to include("Rebuild the aqueduct")
         expect(response.body).to include("Covered by the ancient scroll.")
@@ -2048,7 +2047,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(job.invalidation_reason).to be_nil
         expect(job.invalidation_evidence).to eq([])
 
-        get dashboard_jobs_path, params: { smart_folder_id: invalid_folder.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: invalid_folder.id }
         expect(response.body).not_to include("Rebuild the aqueduct")
       end
 
@@ -2062,7 +2061,7 @@ RSpec.describe "Dashboard", type: :request do
         SmartFolder.ensure_builtins!
         inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
         # Scope assertions to the Epic table — Epic titles also appear
         # in the chip-bar schema's epic_id value list, which would
@@ -2076,7 +2075,7 @@ RSpec.describe "Dashboard", type: :request do
         expect(epic_section.text).not_to include("Already marching")
 
         ready.in_progress!
-        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
         epic_section_after = Nokogiri::HTML(response.body)
                                      .at_xpath("//h2[normalize-space()='Epics awaiting your move']/ancestor::div[contains(@class,'bg-white')][1]")
@@ -2088,7 +2087,7 @@ RSpec.describe "Dashboard", type: :request do
         SmartFolder.ensure_builtins!
         inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: inbox.id }
         expect(response.body).to include("Auto-approval")
         expect(response.body).to include("If graders pass")
 
@@ -2101,13 +2100,13 @@ RSpec.describe "Dashboard", type: :request do
       end
 
       it "renders a Kanban card menu action that opens the dependency graph drawer" do
-        # root_path redirects to chat now; the dashboard with the
-        # Epics-aware Inbox folder is where the drawer lives.
+        # The legacy dashboard keeps the ERB dependency graph drawer
+        # available while canonical dashboard routes render React.
         epic = Factories.epic(user: user, repository: repo, state: "ready", title: "Restore the forum")
         SmartFolder.ensure_builtins!
         inbox = SmartFolder.find_builtin_by_attention("inbox")
 
-        get dashboard_jobs_path, params: { smart_folder_id: inbox.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: inbox.id }
 
         document = Nokogiri::HTML(response.body)
         graph_link = document.at_css("a[href='#{graph_epic_path(epic, drawer: 1)}']")
@@ -2127,7 +2126,7 @@ RSpec.describe "Dashboard", type: :request do
         SmartFolder.ensure_builtins!
         just_failed = SmartFolder.find_by!(name: "Just failed")
 
-        get dashboard_jobs_path, params: { smart_folder_id: just_failed.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: just_failed.id }
 
         expect(response.body).to include("#1")
         expect(response.body).not_to include("#2")
@@ -2161,7 +2160,7 @@ RSpec.describe "Dashboard", type: :request do
           position: 0
         )
 
-        get dashboard_jobs_path, params: { smart_folder_id: folder.id }
+        get legacy_dashboard_jobs_path, params: { smart_folder_id: folder.id }
 
         expect(response.body).to include("PRs")
         expect(response.body).to include("#1")
@@ -2214,18 +2213,18 @@ RSpec.describe "Dashboard", type: :request do
         # The legacy dropdown form was data-controller="auto-submit
         # filter-memory"; the chip-bar uses "chip-bar filter-memory"
         # and broadcasts subject + storage key the same way.
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).to include('data-controller="chip-bar filter-memory"')
       end
 
       it "attaches filter-memory#clear action to the Clear link when filters are active" do
         Factories.job_record(repository: repo, issue_number: 1)
-        get dashboard_jobs_path, params: { state: "open" }
+        get legacy_dashboard_jobs_path, params: { state: "open" }
         expect(response.body).to include("filter-memory#clear")
       end
 
       it "does not render the Clear link (or its action) when no filters are active" do
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).not_to include("filter-memory#clear")
       end
 
@@ -2264,26 +2263,26 @@ RSpec.describe "Dashboard", type: :request do
 
       it "shows a warning banner when remaining quota is below 200" do
         set_rate_limit(remaining: 150)
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).to include("quota low")
         expect(response.body).to include("150")
       end
 
       it "shows a critical banner when quota is exhausted" do
         set_rate_limit(remaining: 0)
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).to include("exhausted")
       end
 
       it "shows no banner when quota is ample (>= 200)" do
         set_rate_limit(remaining: 4000)
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).not_to include("quota low")
         expect(response.body).not_to include("exhausted")
       end
 
       it "shows no banner when no rate limit data has been recorded yet" do
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).not_to include("quota low")
         expect(response.body).not_to include("exhausted")
       end
@@ -2296,19 +2295,19 @@ RSpec.describe "Dashboard", type: :request do
       let!(:archived_job) { Factories.job(repository: archived_repo, issue_number: 2) }
 
       it "hides jobs from archived repositories" do
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).to     include("active-thing")
         expect(response.body).not_to include("archived-thing")
       end
 
       it "hides workflows from archived repositories" do
-        get dashboard_workflows_path
+        get legacy_dashboard_workflows_path
         expect(response.body).to     include("active-thing")
         expect(response.body).not_to include("archived-thing")
       end
 
       it "drops archived repos from the repository filter dropdown" do
-        get dashboard_jobs_path
+        get legacy_dashboard_jobs_path
         expect(response.body).to     include(active_repo.slug)
         expect(response.body).not_to include("acme/archived-thing")
       end

@@ -2,9 +2,9 @@ require "rails_helper"
 
 # Server-side coverage for the chip-bar Clear UX. The visual click
 # is exercised by the chip-bar JS controller spec; this verifies
-# that a GET to dashboard_jobs_path with an empty q tree clears the
-# smart-folder filter (no smart_folder_id in the URL) and yields an
-# empty chip-bar tree value on the rendered page.
+# that a GET to the legacy dashboard renderer with an empty q tree
+# clears the smart-folder filter (no smart_folder_id in the URL) and
+# yields an empty chip-bar tree value on the rendered page.
 RSpec.describe "Chip-bar Clear on a kanban smart folder", type: :request do
   let(:user) { Factories.user }
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
@@ -20,7 +20,7 @@ RSpec.describe "Chip-bar Clear on a kanban smart folder", type: :request do
     Factories.job_record(repository: repo, issue_number: 2, state: "closed",
                           closure_reason: "pr_merged", finished_at: Time.current)
 
-    get dashboard_jobs_path, params: { q: "eyJhbmQiOltdfQ", view: "kanban" }
+    get legacy_dashboard_jobs_path, params: { q: "eyJhbmQiOltdfQ", view: "kanban" }
 
     document = Nokogiri::HTML(response.body)
     expect(document.at_css("[data-chip-bar-tree-value]")["data-chip-bar-tree-value"]).to eq('{"and":[]}')
@@ -32,7 +32,7 @@ RSpec.describe "Chip-bar Clear on a kanban smart folder", type: :request do
     inbox = SmartFolder.find_builtin_by_attention("inbox")
     Factories.job(repository: repo, issue_number: 1)
 
-    get dashboard_jobs_path, params: { smart_folder_id: inbox.id, view: "kanban" }
+    get legacy_dashboard_jobs_path, params: { smart_folder_id: inbox.id, view: "kanban" }
 
     document = Nokogiri::HTML(response.body)
     inbox_link = document.css("aside a").find { |a| a.text.include?("Inbox") }

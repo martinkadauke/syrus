@@ -28,11 +28,11 @@ health/storage internals.
 
 | Route group | Current owner | Bucket | Notes / target |
 |---|---|---|---|
-| `/` | `home#index` | `spa-core` | React dashboard shell target. Must preserve subject/view/filter/page URL state. |
-| `/dashboard` | `home#index` | `spa-core` | Same dashboard surface as root. |
-| `/dashboard/epics` | `home#epics` | `spa-core` | Move into React dashboard route tree. |
-| `/dashboard/jobs` | `home#jobs` | `spa-core` | Move into React dashboard route tree. |
-| `/dashboard/workflows` | `home#workflows` | `spa-core` | Move into React dashboard route tree. |
+| `/` | `spa#show` + `/api/v1/app/dashboard` | `spa-core` | Migrated to the React dashboard shell. Must preserve subject/view/filter/page URL state. |
+| `/dashboard` | `spa#show` + `/api/v1/app/dashboard` | `spa-core` | Same dashboard surface as root. Legacy ERB fallback lives at `/dashboard/legacy`. |
+| `/dashboard/epics` | `spa#show` + `/api/v1/app/dashboard?subject=epic` | `spa-core` | Migrated to the React dashboard route tree. Legacy ERB fallback lives at `/dashboard/epics/legacy`. |
+| `/dashboard/jobs` | `spa#show` + `/api/v1/app/dashboard?subject=job` | `spa-core` | Migrated to the React dashboard route tree. Legacy ERB fallback lives at `/dashboard/jobs/legacy`. |
+| `/dashboard/workflows` | `spa#show` + `/api/v1/app/dashboard?subject=workflow` | `spa-core` | Migrated to the React dashboard route tree. Legacy ERB fallback lives at `/dashboard/workflows/legacy`. |
 | `PATCH /dashboard/preferences` | `/api/v1/app/dashboard/preferences` | `spa-core` | App API endpoint persists sort, visible-column, and Kanban lane preferences; legacy Turbo/HTML command remains for fallback. |
 | `POST /dashboard/jobs/bulk` | `/api/v1/app/dashboard/jobs/bulk` | `spa-core` | App API endpoint mirrors retry, close, approve/review, and tag bulk actions with JSON responses. Legacy HTML bulk form remains for fallback. |
 | `POST /dashboard/landing_pause` | `/api/v1/app/dashboard/landing_pause` | `spa-core` | App API endpoint toggles landing pause and re-enqueues the landing processor on resume; legacy HTML command remains for fallback. |
