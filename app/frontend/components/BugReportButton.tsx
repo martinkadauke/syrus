@@ -95,7 +95,7 @@ export function BugReportButton({ context }: { context: string }) {
         title="Report a bug"
         type="button"
       >
-        !
+        <BugIcon />
       </button>
       {open ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -105,11 +105,11 @@ export function BugReportButton({ context }: { context: string }) {
                 <h2 className="text-lg font-semibold text-gray-900" id="bug-report-title">Report a bug</h2>
                 <button
                   aria-label="Close"
-                  className="rounded-md p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  className="flex h-10 w-10 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
                   onClick={closeDialog}
                   type="button"
                 >
-                  x
+                  <CloseIcon />
                 </button>
               </div>
 
@@ -219,6 +219,32 @@ function ScreenshotOption({
       )}
       <span className="mt-2 text-sm font-semibold text-gray-900">{label}</span>
     </label>
+  )
+}
+
+function BugIcon() {
+  return (
+    <svg aria-hidden="true" className="h-7 w-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.25" viewBox="0 0 24 24">
+      <path d="M9 9.5a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0z" />
+      <path d="M9 10h6" />
+      <path d="M9 14h6" />
+      <path d="M12 6.5v3" />
+      <path d="m9.5 7-2-2" />
+      <path d="m14.5 7 2-2" />
+      <path d="M7 12H4" />
+      <path d="M20 12h-3" />
+      <path d="m7.5 16-2.5 2" />
+      <path d="m16.5 16 2.5 2" />
+    </svg>
+  )
+}
+
+function CloseIcon() {
+  return (
+    <svg aria-hidden="true" className="h-7 w-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M6 6l12 12" />
+      <path d="M18 6 6 18" />
+    </svg>
   )
 }
 
