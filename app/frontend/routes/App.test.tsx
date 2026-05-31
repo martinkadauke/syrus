@@ -3717,7 +3717,7 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "New chat" })).toBeInTheDocument()
-    expect(await screen.findByRole("link", { name: "Repositories" })).toHaveAttribute("href", "/app-shell/repositories")
+    expect(screen.queryByRole("link", { name: "Repositories" })).not.toBeInTheDocument()
     fireEvent.change(await screen.findByLabelText("Repository"), { target: { value: "3" } })
     fireEvent.change(screen.getByLabelText("First message"), { target: { value: "Map the forum" } })
     fireEvent.click(screen.getByRole("button", { name: "Create chat" }))

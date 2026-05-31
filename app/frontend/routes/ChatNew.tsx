@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
-import { Link, useLocation, useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { createChat, fetchNewChat, type NewChatPayload } from "../api/chats"
 
@@ -15,9 +15,8 @@ export function ChatNewRoute() {
 
   return (
     <main aria-label="New chat" className="mx-auto max-w-3xl space-y-6 p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+      <header>
         <h1 className="text-3xl font-semibold text-gray-900">New chat</h1>
-        {form.isSuccess ? <Link className="text-sm text-blue-600 underline hover:no-underline" to={withRoutePrefix(form.data.repositories_path, prefix)}>Repositories</Link> : null}
       </header>
 
       {form.isPending ? <PanelMessage>Loading chat form...</PanelMessage> : null}
