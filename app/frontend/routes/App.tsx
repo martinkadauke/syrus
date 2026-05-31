@@ -135,12 +135,17 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
               {navItems.map((item) => (
                 <Link className={navLinkClass(item.active)} key={item.label} to={item.to}>{item.label}</Link>
               ))}
-              {user?.admin ? <Link className={navLinkClass(location.pathname.includes("/admin"))} to={`${prefix}/admin`}>Admin</Link> : null}
             </nav>
           </div>
           <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
             {user ? <span>{user.display_name}</span> : null}
             {app ? <span className="font-mono">{app.revision}</span> : null}
+            {user ? (
+              <nav aria-label="Account" className="flex items-center gap-3">
+                {user.admin ? <Link className="text-gray-600 underline hover:text-gray-900" to={`${prefix}/admin`}>Admin</Link> : null}
+                <Link className="text-gray-600 underline hover:text-gray-900" to={`${prefix}/settings`}>Settings</Link>
+              </nav>
+            ) : null}
             <form action="/session" method="post">
               {data?.csrf_token ? <input name="authenticity_token" type="hidden" value={data.csrf_token} /> : null}
               <input name="_method" type="hidden" value="delete" />
