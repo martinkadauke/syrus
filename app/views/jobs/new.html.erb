@@ -6,7 +6,7 @@
     </p>
   </div>
 
-  <%= form_with url: jobs_path, method: :post, class: "space-y-5" do |f| %>
+  <%= form_with url: direct_job_form_action_path, method: :post, class: "space-y-5" do |f| %>
     <% if flash[:alert] %>
       <div class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
         <%= flash[:alert] %>

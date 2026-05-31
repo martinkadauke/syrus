@@ -38,7 +38,7 @@ health/storage internals.
 | `POST /dashboard/landing_pause` | `home#toggle_landing_pause` | `app-api-needed` | Browser command endpoint; dashboard state refetch after success. |
 | `PATCH /dashboard/epics/:id/auto_approval` | `home#update_epic_auto_approval` | `app-api-needed` | Browser command endpoint; include capability/status in epic payload. |
 | `/app-shell` | `spa#show` | `spa-core` | Hidden authenticated React shell used to prove the SPA asset, bootstrap API, and client routing path before taking over production routes. |
-| `/jobs/new`, `POST /jobs` | `jobs#new/create` | `spa-core` | Direct job creation form. |
+| `/jobs/new` | `spa#show` + `/api/v1/app/jobs/new`, `POST /api/v1/app/jobs` | `spa-core` | Migrated to the React direct-job form. Legacy ERB fallback lives at `/jobs/new/legacy` and posts to `/jobs/legacy`; `POST /jobs` remains as HTML command compatibility. |
 | `/jobs/:id` | `jobs#show` | `spa-core` | High-risk page. Needs split queries for job detail, logs, workflows, attachments. |
 | `/jobs/:id/source` | `jobs#source` | `spa-core` | Source browser. Needs compact tree API and lazy file loading. |
 | job member commands | `jobs#start`, `#run_again`, `#restart`, `#cancel`, `#approve`, `#unapprove`, `#reopen`, `#poll_feedback`, `#rebase`, `#check_mergeability`, `#resume`, `#stop_run`, `#retry_step`, `#push_commits`, `#add_tag`, `#remove_tag`, `#diagnose`, `#add_dependency`, `#remove_dependency`, `#override_dependencies`, `#stack_base`, `#mark_valid` | `app-api-needed` | Prefer explicit command endpoints unless a generic job command endpoint stays simpler and well-typed. Every endpoint must re-check AASM guards. |

@@ -306,7 +306,10 @@ Rails.application.routes.draw do
   get "settings/edit/legacy", to: "settings#edit", as: :legacy_edit_settings
   patch "settings/legacy", to: "settings#update", as: :legacy_settings
   resources :bug_reports, only: %i[ create ]
-  resources :jobs, only: %i[ show new create ] do
+  get "jobs/new", to: "spa#show", as: :new_job
+  get "jobs/new/legacy", to: "jobs#new", as: :legacy_new_job
+  post "jobs/legacy", to: "jobs#create", as: :legacy_jobs
+  resources :jobs, only: %i[ show create ] do
     resource :pin, only: %i[ create destroy ], controller: "job_pins"
     resources :attachments, only: %i[ create destroy ], controller: "job_attachments"
 

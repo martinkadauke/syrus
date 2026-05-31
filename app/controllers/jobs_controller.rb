@@ -1,5 +1,6 @@
 class JobsController < ApplicationController
   before_action :load_job, except: %i[ new create grade_log ]
+  helper_method :direct_job_form_action_path
 
   def show
     @job_pinned = Current.user.job_pins.exists?(job: @job)
@@ -80,7 +81,7 @@ class JobsController < ApplicationController
     job.advance_after_triage!
 
     if @create_more
-      redirect_to new_job_path(repository_id: repository.id, create_more: "1"), notice: "Direct job created."
+      redirect_to new_direct_job_form_path(repository_id: repository.id, create_more: "1"), notice: "Direct job created."
     else
       redirect_to job_path(job), notice: "Direct job created."
     end
@@ -602,6 +603,22 @@ class JobsController < ApplicationController
 
   def create_more?
     ActiveModel::Type::Boolean.new.cast(params[:create_more])
+  end
+
+  def direct_job_form_action_path
+    legacy_direct_job_request? ? legacy_jobs_path : jobs_path
+  end
+
+  def new_direct_job_form_path(**params)
+    if legacy_direct_job_request?
+      legacy_new_job_path(**params)
+    else
+      new_job_path(**params)
+    end
+  end
+
+  def legacy_direct_job_request?
+    request.path == legacy_new_job_path || request.path == legacy_jobs_path
   end
 
   def reopen_notice(prior_reason)

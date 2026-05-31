@@ -1421,16 +1421,29 @@ RSpec.describe "Jobs", type: :request do
     context "signed in" do
       before { sign_in_as(user) }
 
+      it "serves the React app shell" do
+        get new_job_path
+
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+    end
+  end
+
+  describe "GET /jobs/new/legacy" do
+    context "signed in" do
+      before { sign_in_as(user) }
+
       it "renders the new direct job form with the user's active repositories" do
         repository  # ensure it exists
-        get new_job_path
+        get legacy_new_job_path
         expect(response).to be_successful
         expect(response.body).to include("New direct job")
         expect(response.body).to include("acme/widgets")
       end
 
       it "renders the Create More checkbox off by default" do
-        get new_job_path
+        get legacy_new_job_path
         checkbox = Nokogiri::HTML(response.body).at_css('input[type="checkbox"][name="create_more"]')
 
         expect(checkbox).to be_present
@@ -1438,7 +1451,7 @@ RSpec.describe "Jobs", type: :request do
       end
 
       it "keeps the Create More checkbox checked when requested" do
-        get new_job_path(create_more: "1")
+        get legacy_new_job_path(create_more: "1")
         checkbox = Nokogiri::HTML(response.body).at_css('input[type="checkbox"][name="create_more"]')
 
         expect(checkbox).to be_present
@@ -1447,7 +1460,7 @@ RSpec.describe "Jobs", type: :request do
 
       it "pre-selects the repository when repository_id is given in params" do
         repository
-        get new_job_path(repository_id: repository.id)
+        get legacy_new_job_path(repository_id: repository.id)
         expect(response.body).to include("selected")
         expect(response.body).to include(repository.id.to_s)
       end
@@ -1456,7 +1469,7 @@ RSpec.describe "Jobs", type: :request do
         user.update!(claude_oauth_token: "oat-test", codex_auth_mode: "api_key", codex_api_key: "sk-test")
         repository.update!(agent_provider: "codex")
 
-        get new_job_path(repository_id: repository.id)
+        get legacy_new_job_path(repository_id: repository.id)
 
         expect(response.body).to include("Agent")
         expect(response.body).to include("Repository default (Codex)")
@@ -1467,13 +1480,13 @@ RSpec.describe "Jobs", type: :request do
       it "hides the agent picker unless multiple agents are configured" do
         user.update!(claude_oauth_token: "oat-test")
 
-        get new_job_path(repository_id: repository.id)
+        get legacy_new_job_path(repository_id: repository.id)
 
         expect(response.body).not_to include('id="agent_provider"')
       end
 
       it "renders the prompt template picker with all built-in templates" do
-        get new_job_path
+        get legacy_new_job_path
         PromptTemplate.all.each do |template|
           expect(response.body).to include(template.name)
           expect(response.body).to include(template.description)
@@ -1481,7 +1494,7 @@ RSpec.describe "Jobs", type: :request do
       end
 
       it "embeds template data in the Stimulus controller attribute" do
-        get new_job_path
+        get legacy_new_job_path
         expect(response.body).to include("data-controller=\"prompt-template\"")
         expect(response.body).to include("configure-syrus-prep")
       end
@@ -1561,7 +1574,7 @@ RSpec.describe "Jobs", type: :request do
       expect(response.body).to include("That agent is not configured.")
     end
 
-    it "redirects back to the new job form when Create More is checked" do
+    it "redirects back to the React new job route when Create More is checked" do
       repository
       expect {
         post jobs_path, params: {
@@ -1574,7 +1587,21 @@ RSpec.describe "Jobs", type: :request do
         .and have_enqueued_job(RunJob)
 
       expect(response).to redirect_to(new_job_path(repository_id: repository.id, create_more: "1"))
+    end
 
+    it "redirects back to the legacy new job form when Create More is checked from the legacy form" do
+      repository
+      expect {
+        post legacy_jobs_path, params: {
+          repository_id: repository.id,
+          title: "Bump Ruby version",
+          prompt: "Update the Ruby version in .ruby-version to 3.3.0.",
+          create_more: "1"
+        }
+      }.to change(Job, :count).by(1)
+        .and have_enqueued_job(RunJob)
+
+      expect(response).to redirect_to(legacy_new_job_path(repository_id: repository.id, create_more: "1"))
       follow_redirect!
       checkbox = Nokogiri::HTML(response.body).at_css('input[type="checkbox"][name="create_more"]')
       selected_repository = Nokogiri::HTML(response.body).at_css("option[selected]")
