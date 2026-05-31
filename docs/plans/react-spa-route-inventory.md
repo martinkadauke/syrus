@@ -72,9 +72,9 @@ health/storage internals.
 | `/smart_folders` | `spa#show` | `spa-core` | Migrated to the React smart-folder manage shell with internal React Router dashboard navigation. Legacy ERB fallback lives at `/smart_folders/legacy`; dashboard save forms still use `POST /smart_folders`. |
 | `/tags` | `spa#show` + `/api/v1/app/tags` | `spa-core` | Migrated to the React tags shell with internal React Router settings navigation and app API create/update/delete. Legacy ERB fallback and HTML tag mutation routes are removed. |
 | `/filters/fk_options` | `/api/v1/app/filters/fk_options` | `spa-core` | Browser typeahead now uses the app API endpoint with normalized `{ options: [...] }`; legacy JSON helper remains for fallback. |
-| `/credentials/edit`, `/credentials` | `spa#show` + `/api/v1/app/credentials` | `spa-core` | Migrated to the React credentials/settings page. Legacy ERB fallback lives at `/credentials/edit/legacy`; HTML mutations remain for fallback. |
-| credential token commands | `/api/v1/app/credentials/*api_token` | `spa-core` | React uses app API commands returning masked token state plus one-time plaintext on rotation. Legacy HTML commands remain for fallback. |
-| `/account/documents` | `/api/v1/app/credentials/documents` | `spa-core` | React uses app API upload/delete endpoints for credential-page documents. Legacy HTML controller remains for fallback. |
+| `/credentials/edit`, `/credentials` | `spa#show` + `/api/v1/app/credentials` | `spa-core` | Migrated to the React credentials/settings page. Legacy ERB fallback and HTML credential mutation routes are removed. |
+| credential token commands | `/api/v1/app/credentials/*api_token` | `spa-core` | React uses app API commands returning masked token state plus one-time plaintext on rotation. Legacy HTML token command routes are removed. |
+| `/account/documents` | `/api/v1/app/credentials/documents` | `spa-core` | React uses app API upload/delete endpoints for credential-page documents. Legacy HTML document routes are removed. |
 | `/settings` | `spa#show` | `spa-core` | Migrated as the per-user credentials alias. `/settings/edit` remains the separate admin app-settings surface. |
 | `/settings/edit` | `spa#show` | `spa-admin` | Migrated to the React app settings shell. Legacy ERB fallback lives at `/settings/edit/legacy`. |
 | `PATCH /settings` | `settings#update` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/settings`. |

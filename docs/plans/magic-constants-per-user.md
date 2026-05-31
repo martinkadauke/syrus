@@ -56,8 +56,9 @@ reference; defer implementation.
 
 ## UI
 
-Each field lands in `app/views/credentials/edit.html.erb` (the
-existing per-user settings page) under a "Preferences" subsection.
+Each field lands in the React credentials/settings route
+(`/credentials/edit`) under a "Preferences" subsection, backed by the
+app credentials API.
 Pattern: input shows current value, faint hint shows the inherited
 default (or "no cap" for NULL).
 

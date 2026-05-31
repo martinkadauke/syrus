@@ -36,15 +36,6 @@ RSpec.describe "Settings", type: :request do
         expect(response.body).to include(admin.email_address)
       end
 
-      it "keeps the legacy credentials fallback on /credentials/edit/legacy" do
-        get legacy_edit_credentials_path
-
-        expect(response.body).to include("My credentials")
-        expect(response.body).to include("Templates")
-        expect(response.body).to include("Tags")
-        expect(response.body).not_to match(/<a[^>]*>Invitations/)  # moved to admin area
-        expect(response.body).not_to match(/<a[^>]*>App settings/) # moved to admin area
-      end
     end
   end
 
