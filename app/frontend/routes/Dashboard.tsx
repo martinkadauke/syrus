@@ -430,17 +430,17 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
             </div>
           </div>
         ) : null}
-      </div>
 
-      {editingChip && editingMeta && "field" in editingChip ? (
-        <FilterChipEditor
-          chip={editingChip}
-          meta={editingMeta}
-          onApply={() => applyTree()}
-          onChange={(nextChip) => editChip(editingPath!, nextChip)}
-          onClose={() => setEditingPath(null)}
-        />
-      ) : null}
+        {editingChip && editingMeta && "field" in editingChip ? (
+          <FilterChipEditor
+            chip={editingChip}
+            meta={editingMeta}
+            onApply={() => applyTree()}
+            onChange={(nextChip) => editChip(editingPath!, nextChip)}
+            onClose={() => setEditingPath(null)}
+          />
+        ) : null}
+      </div>
 
       {canSaveFilter ? (
         <form className="flex flex-wrap items-end gap-2 border-t border-gray-100 pt-2" onSubmit={saveFolder}>
@@ -560,7 +560,7 @@ function FilterChipEditor({ chip, meta, onChange, onApply, onClose }: { chip: Fi
   }
 
   return (
-    <div className="space-y-3 rounded border border-gray-200 bg-gray-50 p-3">
+    <div aria-label={`${meta.label} filter settings`} className="absolute left-0 top-full z-30 mt-2 w-[min(28rem,calc(100vw-3rem))] space-y-3 rounded border border-gray-200 bg-white p-3 shadow-lg" role="dialog">
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase text-gray-500">{meta.label}</div>
         <button className="text-xs text-gray-500 underline hover:text-gray-700" onClick={onClose} type="button">Done</button>

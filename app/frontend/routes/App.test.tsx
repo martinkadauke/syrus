@@ -380,6 +380,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
     fireEvent.change(screen.getByPlaceholderText("Search filters..."), { target: { value: "state" } })
     fireEvent.click(screen.getByRole("button", { name: "State enum" }))
+    expect(screen.getByRole("dialog", { name: "State filter settings" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Apply filter" }))
 
     await waitFor(() => {
