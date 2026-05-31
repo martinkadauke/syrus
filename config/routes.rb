@@ -359,19 +359,9 @@ Rails.application.routes.draw do
   delete "smart_folders/legacy/:id", to: "smart_folders#destroy", constraints: { id: /\d+/ }
   get "tags", to: "spa#show", as: :tags
   get "cron_templates", to: "spa#show", as: :cron_templates
-  post "cron_templates", to: "cron_templates#create"
   get "cron_templates/new", to: "spa#show", as: :new_cron_template
   get "cron_templates/:id", to: "spa#show", as: :cron_template, constraints: { id: /\d+/ }
   get "cron_templates/:id/edit", to: "spa#show", as: :edit_cron_template, constraints: { id: /\d+/ }
-  patch "cron_templates/:id", to: "cron_templates#update", constraints: { id: /\d+/ }
-  delete "cron_templates/:id", to: "cron_templates#destroy", constraints: { id: /\d+/ }
-  get "cron_templates/legacy", to: "cron_templates#index", as: :legacy_cron_templates
-  post "cron_templates/legacy", to: "cron_templates#create"
-  get "cron_templates/legacy/new", to: "cron_templates#new", as: :legacy_new_cron_template
-  get "cron_templates/legacy/:id", to: "cron_templates#show", as: :legacy_cron_template, constraints: { id: /\d+/ }
-  get "cron_templates/legacy/:id/edit", to: "cron_templates#edit", as: :legacy_edit_cron_template, constraints: { id: /\d+/ }
-  patch "cron_templates/legacy/:id", to: "cron_templates#update", constraints: { id: /\d+/ }
-  delete "cron_templates/legacy/:id", to: "cron_templates#destroy", constraints: { id: /\d+/ }
   get "invitations", to: "spa#show", as: :invitations
   post "invitations", to: "invitations#create"
   delete "invitations/:id", to: "invitations#destroy", as: :invitation, constraints: { id: /\d+/ }
