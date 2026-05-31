@@ -193,6 +193,72 @@ RSpec.describe ChatSession do
     expect(repo.user.chat_sessions).to include(session)
   end
 
+  describe "React app events" do
+    it "emits a header update payload for cached chat metadata" do
+      stopped_at = Time.zone.parse("2026-05-30 12:00:00 UTC")
+      session = described_class.create!(
+        repository: repo,
+        user: repo.user,
+        title: "Updated chat",
+        stop_requested_at: stopped_at,
+        cumulative_input_tokens: 1500,
+        cumulative_output_tokens: 250,
+        cumulative_cost_usd: 0.125
+      )
+      allow(session).to receive(:broadcast_replace_to)
+
+      expect(AppEvents).to receive(:broadcast).with(
+        user: repo.user,
+        type: "updated",
+        resource: "chat",
+        id: session.id,
+        changed: [ "header" ],
+        payload: {
+          action: "update_header",
+          chat: {
+            title: "Updated chat",
+            stop_requested_at: stopped_at.iso8601,
+            cumulative_input_tokens: 1500,
+            cumulative_output_tokens: 250,
+            cumulative_cost_usd: 0.125
+          }
+        }
+      )
+
+      session.broadcast_header
+    end
+
+    it "emits a controls update payload when requested outside message-tail broadcasts" do
+      stopped_at = Time.zone.parse("2026-05-30 12:00:00 UTC")
+      session = described_class.create!(repository: repo, user: repo.user, stop_requested_at: stopped_at)
+      allow(session).to receive(:broadcast_replace_to)
+
+      expect(AppEvents).to receive(:broadcast).with(
+        user: repo.user,
+        type: "updated",
+        resource: "chat",
+        id: session.id,
+        changed: [ "controls" ],
+        payload: {
+          action: "update_controls",
+          turn_in_flight: false,
+          stop_requested_at: stopped_at.iso8601
+        }
+      )
+
+      session.broadcast_controls
+    end
+
+    it "can skip the controls app event when a message-tail event already carries the same state" do
+      session = described_class.create!(repository: repo, user: repo.user)
+      allow(session).to receive(:broadcast_replace_to)
+
+      expect(AppEvents).not_to receive(:broadcast)
+
+      session.broadcast_controls(app_event: false)
+    end
+  end
+
   describe "#attached_documents_in_scope" do
     it "returns repository documents reachable through repository, job, and direct document attachments" do
       user = repo.user

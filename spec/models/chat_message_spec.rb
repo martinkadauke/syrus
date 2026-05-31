@@ -67,7 +67,7 @@ RSpec.describe ChatMessage do
   # compose partial so its `disabled` state tracks `turn_in_flight?`.
   describe "after_create_commit :broadcast_controls_update" do
     it "calls broadcast_controls on the chat session when a message is created" do
-      expect(session).to receive(:broadcast_controls)
+      expect(session).to receive(:broadcast_controls).with(app_event: false)
       described_class.create!(chat_session: session, role: "user", content: { "text" => "Hi" })
     end
 

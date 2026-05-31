@@ -61,6 +61,52 @@ describe("applyAppEvent", () => {
       message(5, "assistant", "done")
     ])
   })
+
+  it("applies chat controls payloads directly to cached chat data", () => {
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+    queryClient.setQueryData(["chats", "9", ""], chatPayload([message(1, "user", "old")]))
+
+    applyAppEvent(queryClient, {
+      ...event("chat", 9),
+      payload: {
+        action: "update_controls",
+        turn_in_flight: false,
+        stop_requested_at: "2026-05-30T12:00:00Z"
+      }
+    })
+
+    expect(invalidate).not.toHaveBeenCalled()
+    const updated = queryClient.getQueryData<ReturnType<typeof chatPayload>>(["chats", "9", ""])
+    expect(updated?.turn_in_flight).toBe(false)
+    expect(updated?.chat.stop_requested_at).toBe("2026-05-30T12:00:00Z")
+  })
+
+  it("applies chat header payloads directly to cached chat data", () => {
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+    queryClient.setQueryData(["chats", "9", ""], chatPayload([message(1, "user", "old")]))
+
+    applyAppEvent(queryClient, {
+      ...event("chat", 9),
+      payload: {
+        action: "update_header",
+        chat: {
+          title: "Updated chat",
+          cumulative_input_tokens: 1500,
+          cumulative_output_tokens: 250,
+          cumulative_cost_usd: 0.125
+        }
+      }
+    })
+
+    expect(invalidate).not.toHaveBeenCalled()
+    const updated = queryClient.getQueryData<ReturnType<typeof chatPayload>>(["chats", "9", ""])
+    expect(updated?.chat.title).toBe("Updated chat")
+    expect(updated?.chat.cumulative_input_tokens).toBe(1500)
+    expect(updated?.chat.cumulative_output_tokens).toBe(250)
+    expect(updated?.chat.cumulative_cost_usd).toBe(0.125)
+  })
 })
 
 function event(resource: string, id: number | null) {

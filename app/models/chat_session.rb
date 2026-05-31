@@ -120,6 +120,7 @@ class ChatSession < ApplicationRecord
       partial: "chats/header",
       locals: { repository: repository, chat_session: self }
     )
+    broadcast_app_header_update
   end
 
   # Re-render the compose form so its `disabled` state matches the
@@ -127,16 +128,52 @@ class ChatSession < ApplicationRecord
   # after_create_commit (any new message can flip the value: a fresh
   # user message starts the turn, a non-user message ends it) and from
   # the Stop action so the operator's click is acknowledged in the UI.
-  def broadcast_controls
+  def broadcast_controls(app_event: true)
     broadcast_replace_to(
       "chat_session_#{id}_controls",
       target: "chat_session_#{id}_controls",
       partial: "chats/compose",
       locals: { repository: repository, chat_session: self, turn_in_flight: turn_in_flight? }
     )
+    broadcast_app_controls_update if app_event
   end
 
   private
+
+  def broadcast_app_header_update
+    AppEvents.broadcast(
+      user: user,
+      type: "updated",
+      resource: "chat",
+      id: id,
+      changed: [ "header" ],
+      payload: {
+        action: "update_header",
+        chat: {
+          title: title,
+          stop_requested_at: stop_requested_at&.iso8601,
+          cumulative_input_tokens: cumulative_input_tokens.to_i,
+          cumulative_output_tokens: cumulative_output_tokens.to_i,
+          cumulative_cost_usd: cumulative_cost.to_f
+        }
+      }
+    )
+  end
+
+  def broadcast_app_controls_update
+    AppEvents.broadcast(
+      user: user,
+      type: "updated",
+      resource: "chat",
+      id: id,
+      changed: [ "controls" ],
+      payload: {
+        action: "update_controls",
+        turn_in_flight: turn_in_flight?,
+        stop_requested_at: stop_requested_at&.iso8601
+      }
+    )
+  end
 
   def cumulative_usage_previously_changed?
     saved_change_to_cumulative_input_tokens? ||

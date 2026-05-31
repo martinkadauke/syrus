@@ -56,7 +56,7 @@ class ChatMessage < ApplicationRecord
   # turn, a non-user message ends it. Re-render the compose partial so
   # its disabled state matches.
   def broadcast_controls_update
-    chat_session.broadcast_controls
+    chat_session.broadcast_controls(app_event: false)
   end
 
   def broadcast_app_event
