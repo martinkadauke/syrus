@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
-import type { ErrorInfo, FormEvent, ReactNode } from "react"
+import type { ErrorInfo, FormEvent, KeyboardEvent, ReactNode } from "react"
 import { Component, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
@@ -38,6 +38,7 @@ import {
 import { Markdown } from "../lib/Markdown"
 
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
+const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
 
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
 type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "updateScene">
@@ -489,6 +490,7 @@ function ProposalChildren({ children, mutation }: { children: ChatProposalChild[
 function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const [text, setText] = useState("")
+  const submitWithEnter = useSubmitChatWithEnter()
   const search = queryKey[2]
   const send = useMutation({
     mutationFn: () => sendChatMessage(appendSearch(payload.paths.app_message_path, search), text),
@@ -499,10 +501,22 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
     }
   })
 
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
+  function submitMessage() {
+    if (payload.turn_in_flight || send.isPending || text.length === 0) return
     onNotice(null)
     send.mutate()
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    submitMessage()
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!submitWithEnter || event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
+
+    event.preventDefault()
+    submitMessage()
   }
 
   return (
@@ -513,6 +527,7 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
           className="min-h-9 max-h-24 flex-1 resize-none overflow-y-auto rounded border border-gray-300 px-3 py-2 text-sm leading-5 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50"
           disabled={payload.turn_in_flight || send.isPending}
           onChange={(event) => setText(event.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={payload.chat.repository ? "Ask about this repository..." : "Attach a repository to start chatting..."}
           required
           rows={1}
@@ -523,6 +538,23 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
       </div>
     </form>
   )
+}
+
+function useSubmitChatWithEnter() {
+  const [enabled, setEnabled] = useState(isDesktopChatViewport)
+
+  useEffect(() => {
+    const update = () => setEnabled(isDesktopChatViewport())
+    update()
+    window.addEventListener("resize", update)
+    return () => window.removeEventListener("resize", update)
+  }, [])
+
+  return enabled
+}
+
+function isDesktopChatViewport() {
+  return typeof window !== "undefined" && window.innerWidth >= CHAT_ENTER_SUBMIT_MIN_WIDTH
 }
 
 function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: ChatQueryKey }) {

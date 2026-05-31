@@ -3744,6 +3744,104 @@ describe("App", () => {
     expect(screen.queryByText("Message sent.")).not.toBeInTheDocument()
   })
 
+  it("sends chat messages with Enter on desktop", async () => {
+    const restoreViewport = setViewportWidth(1280)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/message" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({
+          messages: [
+            ...chatPayload().messages,
+            {
+              type: "message",
+              id: 10,
+              role: "user",
+              text: "Send this with enter",
+              bookmarkable: true
+            }
+          ]
+        })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const input = await screen.findByPlaceholderText("Ask about this repository...")
+      fireEvent.change(input, { target: { value: "Send this with enter" } })
+      expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false)
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/chats/8/message",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({ chat_message: { text: "Send this with enter" } })
+          })
+        )
+      })
+      expect(await screen.findByText("Send this with enter")).toBeInTheDocument()
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it("keeps Shift+Enter as a chat input newline on desktop", async () => {
+    const restoreViewport = setViewportWidth(1280)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const input = await screen.findByPlaceholderText("Ask about this repository...")
+      fireEvent.change(input, { target: { value: "Keep editing" } })
+      expect(fireEvent.keyDown(input, { key: "Enter", shiftKey: true })).toBe(true)
+      expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it("keeps Enter as a chat input newline on mobile", async () => {
+    const restoreViewport = setViewportWidth(390)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const input = await screen.findByPlaceholderText("Ask about this repository...")
+      fireEvent.change(input, { target: { value: "Keep editing on mobile" } })
+      expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(true)
+      expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+    } finally {
+      restoreViewport()
+    }
+  })
+
   it("saves chat whiteboard changes through the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -5195,6 +5293,17 @@ function chatPayload(overrides: {
       app_attachments_path: "/api/v1/app/chats/8/attachments",
       app_whiteboard_path: "/api/v1/app/chats/8/whiteboard"
     }
+  }
+}
+
+function setViewportWidth(width: number) {
+  const originalWidth = window.innerWidth
+  Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event("resize"))
+
+  return () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: originalWidth })
+    window.dispatchEvent(new Event("resize"))
   }
 }
 
