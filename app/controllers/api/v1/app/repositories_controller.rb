@@ -6,6 +6,73 @@ module Api
           render json: repositories_payload
         end
 
+        def new
+          render json: form_payload(Current.user.repositories.build(default_branch: "main", trigger_label: "syrus"))
+        end
+
+        def edit
+          render json: form_payload(find_repository)
+        end
+
+        def owners
+          render json: GithubClient.for_user(Current.user).accessible_owners
+        rescue ArgumentError
+          render json: { error: "no_token" }
+        rescue Octokit::Unauthorized, Octokit::Forbidden
+          render json: { error: "unauthorized" }
+        rescue StandardError
+          render json: { error: "error" }
+        end
+
+        def repos
+          owner = params[:owner].to_s.strip
+          return render json: { error: "missing_params" } if owner.blank?
+
+          owner_type = params[:owner_type].to_s.strip
+          render json: { repos: GithubClient.for_user(Current.user).owner_repos(owner, owner_type: owner_type) }
+        rescue ArgumentError
+          render json: { error: "no_token" }
+        rescue Octokit::NotFound, Octokit::Unauthorized, Octokit::Forbidden
+          render json: { error: "not_found" }
+        rescue StandardError
+          render json: { error: "error" }
+        end
+
+        def branches
+          owner = params[:owner].to_s.strip
+          name = params[:name].to_s.strip
+          if owner.blank? || name.blank?
+            render json: { error: "missing_params" }
+            return
+          end
+
+          render json: GithubClient.for_user(Current.user).repo_branches("#{owner}/#{name}")
+        rescue Octokit::NotFound, Octokit::Unauthorized, Octokit::Forbidden
+          render json: { error: "not_found" }
+        rescue StandardError
+          render json: { error: "error" }
+        end
+
+        def create
+          repository = Current.user.repositories.build(repository_params)
+
+          if repository.save
+            render json: saved_payload(repository, message: "Repository #{repository.slug} added."), status: :created
+          else
+            render_error("validation_failed", repository.errors.full_messages.to_sentence, status: :unprocessable_content)
+          end
+        end
+
+        def update
+          repository = find_repository
+
+          if repository.update(repository_params)
+            render json: saved_payload(repository, message: "Repository #{repository.slug} updated.")
+          else
+            render_error("validation_failed", repository.errors.full_messages.to_sentence, status: :unprocessable_content)
+          end
+        end
+
         def poll
           repository = find_repository
           if repository.archived?
@@ -30,6 +97,24 @@ module Api
         end
 
         private
+
+        def form_payload(repository)
+          {
+            repository: repository_form_json(repository),
+            configured_agent_providers: User::AGENT_PROVIDERS.map { |provider| provider_json(provider) },
+            user_agent_provider_label: agent_provider_label(Current.user.agent_provider),
+            auto_approve_modes: auto_approve_modes_json,
+            repositories_path: repositories_path
+          }
+        end
+
+        def saved_payload(repository, message:)
+          {
+            message: message,
+            redirect_to: repositories_path,
+            repository: repository_json(repository)
+          }
+        end
 
         def repositories_payload(message: nil)
           repos = Current.user.repositories.order(:owner, :name)
@@ -62,8 +147,72 @@ module Api
           }
         end
 
+        def repository_form_json(repository)
+          {
+            id: repository.id,
+            owner: repository.owner.to_s,
+            name: repository.name.to_s,
+            slug: repository.persisted? ? repository.slug : nil,
+            default_branch: repository.default_branch.to_s,
+            trigger_label: repository.trigger_label.to_s,
+            polling_enabled: repository.polling_enabled?,
+            prepare_enabled: repository.prepare_enabled?,
+            pr_cost_footer_enabled: repository.pr_cost_footer_enabled?,
+            auto_merge_enabled: repository.auto_merge_enabled?,
+            agent_provider: repository.agent_provider.to_s,
+            auto_approve_mode: repository.auto_approve_mode,
+            github_owner_id: repository.github_owner_id,
+            github_repository_id: repository.github_repository_id,
+            repository_path: repository.persisted? ? repository_path(repository) : nil
+          }
+        end
+
+        def provider_json(provider)
+          {
+            value: provider,
+            label: agent_provider_label(provider)
+          }
+        end
+
+        def auto_approve_modes_json
+          [
+            {
+              value: "never",
+              label: "Never",
+              preview: "No direct rule; Jobs can still inherit a repository or user default."
+            },
+            {
+              value: "if_graders_pass",
+              label: "If graders pass",
+              preview: "Jobs using this rule enter landing after repo-committed graders pass."
+            },
+            {
+              value: "if_graders_pass_and_tagged_safe",
+              label: "If graders pass and tagged safe",
+              preview: "Jobs using this rule also need the safe tag before landing."
+            }
+          ]
+        end
+
         def find_repository
           Current.user.repositories.find(params[:id])
+        end
+
+        def repository_params
+          params.require(:repository).permit(
+            :owner,
+            :name,
+            :default_branch,
+            :trigger_label,
+            :polling_enabled,
+            :prepare_enabled,
+            :agent_provider,
+            :pr_cost_footer_enabled,
+            :auto_merge_enabled,
+            :auto_approve_mode,
+            :github_repository_id,
+            :github_owner_id
+          )
         end
 
         def agent_provider_label(provider)

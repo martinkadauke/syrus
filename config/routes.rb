@@ -42,7 +42,12 @@ Rails.application.routes.draw do
         post "chats/:id/stop", to: "chats#stop", constraints: { id: /\d+/ }
         post "chats/:id/refresh", to: "chats#refresh", constraints: { id: /\d+/ }
         post "chats/:id/reset", to: "chats#reset", constraints: { id: /\d+/ }
-        resources :repositories, only: %i[ index ] do
+        get "repositories/new", to: "repositories#new"
+        get "repositories/:id/edit", to: "repositories#edit", constraints: { id: /\d+/ }
+        get "repositories/owners", to: "repositories#owners"
+        get "repositories/repos", to: "repositories#repos"
+        get "repositories/branches", to: "repositories#branches"
+        resources :repositories, only: %i[ index create update ] do
           member do
             post :poll
             post :archive
