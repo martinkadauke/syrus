@@ -121,7 +121,6 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
   const navItems = [
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: location.pathname === "/" || location.pathname.includes("/dashboard") },
-    { label: "Jobs", to: `${prefix}/jobs/new`, active: location.pathname.includes("/jobs") },
     { label: "Repos", to: `${prefix}/repositories`, active: location.pathname.includes("/repositories") },
     { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: location.pathname.includes("/scheduled_tasks") }
   ]

@@ -96,6 +96,8 @@ RSpec.describe "App API dashboard commands", type: :request do
         include("key" => "running", "title" => "Running", "items" => include(include("id" => second.id, "title" => "Chart forum")))
       )
       expect(body.dig("paths", "dashboard_jobs_path")).to eq(dashboard_jobs_path)
+      expect(body.dig("paths", "new_epic_path")).to eq(new_epic_path)
+      expect(body.dig("paths", "new_job_path")).to eq(new_job_path)
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
     end
 

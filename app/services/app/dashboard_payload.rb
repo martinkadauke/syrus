@@ -579,6 +579,8 @@ module App
         dashboard_jobs_path: dashboard_jobs_path,
         dashboard_epics_path: dashboard_epics_path,
         dashboard_workflows_path: dashboard_workflows_path,
+        new_epic_path: new_epic_path,
+        new_job_path: new_job_path,
         app_dashboard_path: "/api/v1/app/dashboard"
       }
     end

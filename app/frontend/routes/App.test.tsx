@@ -118,10 +118,12 @@ describe("App", () => {
         </QueryClientProvider>
       )
 
-      expect(await screen.findByRole("navigation", { name: "Primary" })).toBeInTheDocument()
+      const primaryNav = await screen.findByRole("navigation", { name: "Primary" })
+      expect(primaryNav).toBeInTheDocument()
       expect(screen.getByRole("link", { name: "Syrus" })).toHaveAttribute("href", "/app-shell/chats/9")
-      expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
-      expect(screen.queryByRole("link", { name: "Chat" })).toBeNull()
+      expect(within(primaryNav).getByRole("link", { name: "Dashboard" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+      expect(within(primaryNav).queryByRole("link", { name: "Jobs" })).toBeNull()
+      expect(within(primaryNav).queryByRole("link", { name: "Chat" })).toBeNull()
       expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
       expect(screen.getAllByText("Operator").length).toBeGreaterThan(0)
       expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
@@ -346,6 +348,8 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
     expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("")
     expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
+    expect(screen.getByRole("link", { name: "New Epic" })).toHaveAttribute("href", "/app-shell/epics/new")
+    expect(screen.getByRole("link", { name: "New Job" })).toHaveAttribute("href", "/app-shell/jobs/new")
     expect(screen.getByRole("link", { name: "My work 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=1")
@@ -4244,6 +4248,8 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
       dashboard_jobs_path: "/dashboard/jobs",
       dashboard_epics_path: "/dashboard/epics",
       dashboard_workflows_path: "/dashboard/workflows",
+      new_epic_path: "/epics/new",
+      new_job_path: "/jobs/new",
       app_dashboard_path: "/api/v1/app/dashboard"
     }
   }

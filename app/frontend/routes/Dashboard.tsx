@@ -29,7 +29,10 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
           <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
           <p className="mt-1 text-sm text-gray-500">{payload.total} {subjectLabel(payload.subject, payload.total)} in this view</p>
         </div>
-        <SubjectTabs payload={payload} prefix={prefix} />
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <SubjectTabs payload={payload} prefix={prefix} />
+          <DashboardCreateActions payload={payload} prefix={prefix} />
+        </div>
       </header>
 
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -42,6 +45,15 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
         </section>
       </div>
     </main>
+  )
+}
+
+function DashboardCreateActions({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Link className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" to={withRoutePrefix(payload.paths.new_epic_path, prefix)}>New Epic</Link>
+      <Link className="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700" to={withRoutePrefix(payload.paths.new_job_path, prefix)}>New Job</Link>
+    </div>
   )
 }
 

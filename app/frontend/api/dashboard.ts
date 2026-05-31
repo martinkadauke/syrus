@@ -171,6 +171,8 @@ export type DashboardPayload = {
     dashboard_jobs_path: string
     dashboard_epics_path: string
     dashboard_workflows_path: string
+    new_epic_path: string
+    new_job_path: string
     app_dashboard_path: string
   }
 }
