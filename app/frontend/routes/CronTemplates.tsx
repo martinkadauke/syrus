@@ -27,7 +27,6 @@ const emptyTemplate: CronTemplateInput = {
 export function CronTemplatesIndex() {
   const location = useLocation()
   const basePath = routeBase(location.pathname)
-  const prefix = routePrefix(location.pathname)
   const templates = useQuery({
     queryKey: ["cron_templates"],
     queryFn: fetchCronTemplates
@@ -35,7 +34,6 @@ export function CronTemplatesIndex() {
 
   return (
     <main aria-label="Cron templates" className="mx-auto max-w-6xl space-y-6 p-6">
-      <SettingsNav active="templates" prefix={prefix} />
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Cron templates</h1>
@@ -65,7 +63,6 @@ export function CronTemplateDetailRoute() {
 
   return (
     <main aria-label="Cron template detail" className="mx-auto max-w-6xl space-y-6 p-6">
-      <SettingsNav active="templates" prefix={prefix} />
       {detail.isPending ? <PanelMessage>Loading template...</PanelMessage> : null}
       {detail.isError ? <CronTemplatesError error={detail.error} /> : null}
       {detail.isSuccess ? <TemplateDetail basePath={basePath} payload={detail.data} prefix={prefix} /> : null}
@@ -78,7 +75,6 @@ export function CronTemplateFormRoute({ mode }: { mode: "new" | "edit" }) {
   const params = useParams()
   const id = params.id || ""
   const basePath = routeBase(location.pathname)
-  const prefix = routePrefix(location.pathname)
   const index = useQuery({
     queryKey: ["cron_templates"],
     queryFn: fetchCronTemplates
@@ -96,7 +92,6 @@ export function CronTemplateFormRoute({ mode }: { mode: "new" | "edit" }) {
 
   return (
     <main aria-label={mode === "new" ? "New cron template" : "Edit cron template"} className="mx-auto max-w-3xl space-y-6 p-6">
-      <SettingsNav active="templates" prefix={prefix} />
       <header>
         <h1 className="text-2xl font-semibold text-gray-900">{mode === "new" ? "New cron template" : "Edit template"}</h1>
         <p className="mt-1 text-sm text-gray-600">
@@ -341,16 +336,6 @@ function RepositoryApplyLinks({ repositories, prefix }: { repositories: Awaited<
   )
 }
 
-function SettingsNav({ active, prefix }: { active: "templates" | "tags"; prefix: string }) {
-  return (
-    <nav className="flex gap-6 border-b border-gray-200 text-sm" aria-label="Settings">
-      <Link className={navClass(false)} to={`${prefix}/credentials/edit`}>My credentials</Link>
-      <Link className={navClass(active === "templates")} to={`${prefix}/cron_templates`}>Templates</Link>
-      <Link className={navClass(active === "tags")} to={`${prefix}/tags`}>Tags</Link>
-    </nav>
-  )
-}
-
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block text-sm font-medium text-gray-700">
@@ -384,10 +369,6 @@ function CronTemplatesError({ error }: { error: Error }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700" : "text-gray-600"}`}>{children}</div>
-}
-
-function navClass(active: boolean) {
-  return `border-b-2 pb-3 ${active ? "border-blue-600 font-medium text-blue-600" : "border-transparent text-gray-600 hover:text-gray-900"}`
 }
 
 function inputClass() {

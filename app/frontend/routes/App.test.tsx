@@ -1545,7 +1545,9 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Tags" })).toBeInTheDocument()
     expect(await screen.findByText("triage")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
+    const settingsNav = screen.getByRole("navigation", { name: "Settings navigation" })
+    expect(within(settingsNav).getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
+    expect(within(settingsNav).getByRole("link", { name: "Tags" })).toHaveClass("bg-gray-900")
     expect(screen.getByText("3")).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "epic:attachments" } })
@@ -1690,6 +1692,7 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Cron templates" })).toBeInTheDocument()
     expect(await screen.findByText("Weekly dependency bump")).toBeInTheDocument()
+    expect(within(screen.getByRole("navigation", { name: "Settings navigation" })).getByRole("link", { name: "Templates" })).toHaveClass("bg-gray-900")
     expect(screen.getByRole("link", { name: "Weekly dependency bump" })).toHaveAttribute("href", "/app-shell/cron_templates/5")
     expect(screen.getByText("2 repos")).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -2013,9 +2016,11 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "My credentials" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
-    expect(screen.getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
-    expect(screen.getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
+    const settingsNav = screen.getByRole("navigation", { name: "Settings navigation" })
+    expect(within(settingsNav).getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
+    expect(within(settingsNav).getByRole("link", { name: "My credentials" })).toHaveClass("bg-gray-900")
+    expect(within(settingsNav).getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
+    expect(within(settingsNav).getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
     expect(screen.queryByRole("link", { name: "Invitations" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "App settings" })).not.toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/credentials", expect.objectContaining({ credentials: "same-origin" }))

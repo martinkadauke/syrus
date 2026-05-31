@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   createTag,
@@ -24,8 +24,6 @@ export function Tags() {
 
   return (
     <main aria-label="Tags" className="mx-auto max-w-6xl space-y-6 p-6">
-      <SettingsNav />
-
       <header>
         <h1 className="text-2xl font-semibold text-gray-900">Tags</h1>
         <p className="mt-1 text-sm text-gray-500">Global job labels scoped to your account.</p>
@@ -36,19 +34,6 @@ export function Tags() {
       {tags.isError ? <TagsError error={tags.error} /> : null}
       {tags.isSuccess ? <TagsView onNotice={setNotice} payload={tags.data} /> : null}
     </main>
-  )
-}
-
-function SettingsNav() {
-  const location = useLocation()
-  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
-
-  return (
-    <nav className="flex gap-6 border-b border-gray-200 text-sm" aria-label="Settings">
-      <Link className={navClass(false)} to={`${prefix}/credentials/edit`}>My credentials</Link>
-      <Link className={navClass(false)} to={`${prefix}/cron_templates`}>Templates</Link>
-      <Link className={navClass(true)} to={`${prefix}/tags`}>Tags</Link>
-    </nav>
   )
 }
 
@@ -241,10 +226,6 @@ function TagsError({ error }: { error: Error }) {
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {
   return <div className={`p-4 text-sm ${tone === "error" ? "text-red-700" : "text-gray-600"}`}>{children}</div>
-}
-
-function navClass(active: boolean) {
-  return `border-b-2 pb-3 ${active ? "border-blue-600 font-medium text-blue-600" : "border-transparent text-gray-600 hover:text-gray-900"}`
 }
 
 function tagColors(color: string, palette: TagPaletteColor[]) {

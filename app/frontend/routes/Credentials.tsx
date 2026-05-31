@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   addCredentialDocuments,
@@ -26,7 +26,6 @@ export function CredentialsRoute() {
 
   return (
     <main aria-label="My credentials" className="mx-auto max-w-4xl space-y-6 p-6">
-      <SettingsNav />
       <header>
         <h1 className="text-2xl font-semibold text-gray-900">My credentials</h1>
         <p className="mt-1 text-sm text-gray-600">Encrypted credentials and account-scoped context for Syrus runs.</p>
@@ -416,19 +415,6 @@ function ApiTokenPanel({ payload, onNotice }: { payload: CredentialsPayload; onN
   )
 }
 
-function SettingsNav() {
-  const location = useLocation()
-  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
-
-  return (
-    <nav className="flex gap-6 border-b border-gray-200 text-sm" aria-label="Settings">
-      <Link className={navClass(true)} to={`${prefix}/credentials/edit`}>My credentials</Link>
-      <Link className={navClass(false)} to={`${prefix}/cron_templates`}>Templates</Link>
-      <Link className={navClass(false)} to={`${prefix}/tags`}>Tags</Link>
-    </nav>
-  )
-}
-
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block text-sm font-medium text-gray-700">
@@ -491,10 +477,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 
 function inputClass() {
   return "block w-full rounded border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-blue-600"
-}
-
-function navClass(active: boolean) {
-  return `border-b-2 pb-3 ${active ? "border-blue-600 font-medium text-blue-600" : "border-transparent text-gray-600 hover:text-gray-900"}`
 }
 
 function inputFromPayload(payload: CredentialsPayload): CredentialsInput {

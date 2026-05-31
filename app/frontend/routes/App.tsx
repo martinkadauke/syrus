@@ -157,6 +157,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
         </div>
       </header>
       {showsAdminNavigation(normalizedPath) ? <AdminNavigation normalizedPath={normalizedPath} prefix={prefix} /> : null}
+      {showsSettingsNavigation(normalizedPath) ? <SettingsNavigation normalizedPath={normalizedPath} prefix={prefix} /> : null}
       {children}
       {user ? <BugReportButton context={bugReportContext(location.pathname)} /> : null}
     </div>
@@ -189,11 +190,37 @@ function AdminNavigation({ normalizedPath, prefix }: { normalizedPath: string; p
   )
 }
 
+function SettingsNavigation({ normalizedPath, prefix }: { normalizedPath: string; prefix: string }) {
+  const items: Array<{ label: string; path: string; active: (path: string) => boolean }> = [
+    { label: "My credentials", path: "/credentials/edit", active: (path) => path === "/settings" || path === "/credentials/edit" },
+    { label: "Templates", path: "/cron_templates", active: (path) => path.startsWith("/cron_templates") },
+    { label: "Tags", path: "/tags", active: (path) => path === "/tags" }
+  ]
+
+  return (
+    <div className="border-b border-gray-200 bg-white">
+      <nav aria-label="Settings navigation" className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-2 text-xs">
+        {items.map((item) => {
+          const className = adminNavLinkClass(item.active(normalizedPath))
+          return <Link className={className} key={item.label} to={withRoutePrefix(item.path, prefix)}>{item.label}</Link>
+        })}
+      </nav>
+    </div>
+  )
+}
+
 function showsAdminNavigation(pathname: string) {
   return pathname === "/admin" ||
     pathname.startsWith("/admin/") ||
     pathname === "/settings/edit" ||
     pathname === "/invitations"
+}
+
+function showsSettingsNavigation(pathname: string) {
+  return pathname === "/settings" ||
+    pathname === "/credentials/edit" ||
+    pathname === "/tags" ||
+    pathname.startsWith("/cron_templates")
 }
 
 function normalizedAppPath(pathname: string) {
