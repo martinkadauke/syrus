@@ -163,6 +163,79 @@ describe("App", () => {
     expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
   })
 
+  it("renders the app-shell dashboard route from the app dashboard API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/dashboard?view=kanban&subject=job") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                view: "kanban",
+                page: 2,
+                per_page: 10,
+                total: 25,
+                total_pages: 3,
+                items: [
+                  {
+                    type: "job",
+                    id: 42,
+                    kind: "issue",
+                    title: "Repair aqueduct",
+                    state: "open",
+                    summary_state: "running",
+                    validity: "valid",
+                    priority: "high",
+                    issue_number: 12,
+                    branch_name: "syrus/issue-12",
+                    pr_number: 34,
+                    latest_workflow_state: "running",
+                    created_at: "2026-05-30T10:00:00Z",
+                    updated_at: "2026-05-30T12:00:00Z",
+                    started_at: "2026-05-30T10:01:00Z",
+                    finished_at: null,
+                    repository: { id: 3, slug: "acme/widgets" },
+                    tags: [{ id: 5, name: "urgent", color: "red" }],
+                    paths: { job_path: "/jobs/42", source_path: "/jobs/42/source" }
+                  }
+                ]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=kanban"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Dashboard" })).toBeInTheDocument()
+    expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.getByText("acme/widgets")).toBeInTheDocument()
+    expect(screen.getByText("Kanban lanes: queued, running, succeeded")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=kanban")
+    expect(screen.getByRole("link", { name: "My work" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&smart_folder_id=7")
+    expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&page=1")
+    expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban&page=3")
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/dashboard?view=kanban&subject=job",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
   it("renders the admin queue route from the app admin queue API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
@@ -2988,6 +3061,52 @@ function epicFormPayload() {
       }
     ],
     dashboard_epics_path: "/dashboard/epics"
+  }
+}
+
+function dashboardPayload(overrides: Record<string, unknown> = {}) {
+  const payload = {
+    subject: "job",
+    view: "list",
+    page: 1,
+    per_page: 25,
+    total: 1,
+    total_pages: 1,
+    counts: {
+      jobs: 4,
+      epics: 2,
+      workflows: 6
+    },
+    preferences: {
+      sort: { column: "updated_at", direction: "desc" },
+      visible_columns: ["title", "state", "repository"],
+      kanban_lanes: ["queued", "running", "succeeded"],
+      raw: {}
+    },
+    smart_folders: [
+      {
+        id: 7,
+        name: "My work",
+        kind: "custom",
+        subject_type: "job",
+        active: false,
+        path: "/dashboard/jobs?view=kanban&smart_folder_id=7"
+      }
+    ],
+    active_smart_folder_id: null,
+    items: [],
+    paths: {
+      dashboard_path: "/dashboard",
+      dashboard_jobs_path: "/dashboard/jobs",
+      dashboard_epics_path: "/dashboard/epics",
+      dashboard_workflows_path: "/dashboard/workflows",
+      app_dashboard_path: "/api/v1/app/dashboard"
+    }
+  }
+
+  return {
+    ...payload,
+    ...overrides
   }
 }
 
