@@ -29,8 +29,20 @@ RSpec.describe "Credentials", type: :request do
       credentials_document.at_css(selector).attribute("disabled").present?
     end
 
-    it "renders the edit form without echoing existing values" do
+    it "serves the React credentials shell" do
       get edit_credentials_path
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "serves the React credentials shell from the settings alias" do
+      get settings_path
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "renders the legacy edit form without echoing existing values" do
+      get legacy_edit_credentials_path
       expect(response).to be_successful
       expect(response.body).not_to include("sk-existing")
       expect(response.body).not_to include("sk-codex-existing")
@@ -40,7 +52,7 @@ RSpec.describe "Credentials", type: :request do
     end
 
     it "renders only the selected agent's credential fields" do
-      get edit_credentials_path
+      get legacy_edit_credentials_path
 
       expect(agent_section("claudeSection")["class"].to_s.split).not_to include("hidden")
       expect(disabled_field?("#user_claude_oauth_token")).to be(false)
@@ -56,7 +68,7 @@ RSpec.describe "Credentials", type: :request do
     it "renders only the selected Codex auth method's credential field" do
       user.update!(agent_provider: "codex", codex_auth_mode: "chatgpt_login")
 
-      get edit_credentials_path
+      get legacy_edit_credentials_path
 
       expect(agent_section("claudeSection")["class"].to_s.split).to include("hidden")
       expect(disabled_field?("#user_claude_oauth_token")).to be(true)
@@ -94,6 +106,12 @@ RSpec.describe "Credentials", type: :request do
       expect(user.codex_api_key).to eq("sk-codex-existing")
       expect(user.codex_auth_json).to include("codex-access-existing")
       expect(user.github_token).to eq("ghp_existing")
+    end
+
+    it "keeps legacy updates inside the legacy fallback" do
+      patch legacy_credentials_path, params: { user: { name: "Legacy Operator" } }
+      expect(response).to redirect_to(legacy_edit_credentials_path)
+      expect(user.reload.name).to eq("Legacy Operator")
     end
 
     it "leaves both unchanged when both fields are blank" do
@@ -154,11 +172,16 @@ RSpec.describe "Credentials", type: :request do
       it "rotate_api_token issues a fresh token and shows it once via flash" do
         post rotate_api_token_credentials_path
         expect(response).to redirect_to(edit_credentials_path)
-        get edit_credentials_path
-        # Plaintext appears in the body once (the flash-reveal block)
-        expect(response.body).to match(/syrus_[A-Za-z0-9_-]{30,}/)
         # Persisted (deterministic-encrypted) so we can re-look-up
         expect(admin.reload.api_token).to start_with("syrus_")
+      end
+
+      it "keeps legacy token rotation inside the legacy fallback" do
+        post legacy_rotate_api_token_credentials_path
+        expect(response).to redirect_to(legacy_edit_credentials_path)
+        get legacy_edit_credentials_path
+        # Plaintext appears in the body once (the flash-reveal block)
+        expect(response.body).to match(/syrus_[A-Za-z0-9_-]{30,}/)
       end
 
       it "revoke_api_token clears the column" do

@@ -48,10 +48,18 @@ RSpec.describe "Account documents", type: :request do
       user: user
     )
 
-    get edit_credentials_path
+    get legacy_edit_credentials_path
 
     expect(response).to have_http_status(:ok)
     expect(response.body).to include("Personal documents")
     expect(response.body).to include("https://docs.google.com/document/d/user/edit")
+  end
+
+  it "keeps legacy document mutations inside the legacy fallback" do
+    post account_documents_path,
+         params: { document: { google_doc_url: "https://docs.google.com/document/d/user/edit" } },
+         headers: { "HTTP_REFERER" => legacy_edit_credentials_url }
+
+    expect(response).to redirect_to(legacy_edit_credentials_path)
   end
 end

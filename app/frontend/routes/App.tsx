@@ -37,6 +37,7 @@ export function App() {
       <Route path="/admin/installations" element={<AdminInstallations />} />
       <Route path="/invitations" element={<AdminInvitations />} />
       <Route path="/settings/edit" element={<AdminSettings />} />
+      <Route path="/settings" element={<CredentialsRoute />} />
       <Route path="/credentials/edit" element={<CredentialsRoute />} />
       <Route path="/smart_folders" element={<SmartFolders />} />
       <Route path="/tags" element={<Tags />} />
@@ -62,6 +63,7 @@ export function App() {
       <Route path="/app-shell/admin/installations" element={<AdminInstallations />} />
       <Route path="/app-shell/invitations" element={<AdminInvitations />} />
       <Route path="/app-shell/settings/edit" element={<AdminSettings />} />
+      <Route path="/app-shell/settings" element={<CredentialsRoute />} />
       <Route path="/app-shell/credentials/edit" element={<CredentialsRoute />} />
       <Route path="/app-shell/smart_folders" element={<SmartFolders />} />
       <Route path="/app-shell/tags" element={<Tags />} />

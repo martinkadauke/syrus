@@ -3,10 +3,15 @@ Rails.application.routes.draw do
   resources :passwords, param: :token
   resources :users, only: %i[ new create ]
 
-  resource :credentials, only: %i[ edit update ] do
+  resource :credentials, only: %i[ update ] do
     post :rotate_api_token
     delete :revoke_api_token
   end
+  get "credentials/edit", to: "spa#show", as: :edit_credentials
+  get "credentials/edit/legacy", to: "credentials#edit", as: :legacy_edit_credentials
+  patch "credentials/legacy", to: "credentials#update", as: :legacy_credentials
+  post "credentials/legacy/rotate_api_token", to: "credentials#rotate_api_token", as: :legacy_rotate_api_token_credentials
+  delete "credentials/legacy/revoke_api_token", to: "credentials#revoke_api_token", as: :legacy_revoke_api_token_credentials
   resources :account_documents, path: "account/documents", only: %i[ create destroy ]
 
   # Admin REST API. Token-based auth (per-user), JSON only.
@@ -286,7 +291,7 @@ Rails.application.routes.draw do
   # Legacy compatibility: the account menu's `/settings` entry is the
   # per-user credentials page. App-wide settings live at `/settings/edit`
   # and remain admin-only.
-  get "settings", to: "credentials#edit"
+  get "settings", to: "spa#show"
   get "settings/edit", to: "spa#show", as: :edit_settings
   patch "settings", to: "settings#update"
   get "settings/edit/legacy", to: "settings#edit", as: :legacy_edit_settings

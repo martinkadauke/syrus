@@ -23,18 +23,18 @@ class AccountDocumentsController < ApplicationController
     end
 
     if created.any? && errors.empty?
-      redirect_to edit_credentials_path, notice: "Document added."
+      redirect_to credentials_redirect_path, notice: "Document added."
     elsif created.any?
-      redirect_to edit_credentials_path, alert: "Some documents could not be added: #{errors.to_sentence}"
+      redirect_to credentials_redirect_path, alert: "Some documents could not be added: #{errors.to_sentence}"
     else
-      redirect_to edit_credentials_path, alert: errors.presence&.to_sentence || "Choose a file or enter a Google Doc URL."
+      redirect_to credentials_redirect_path, alert: errors.presence&.to_sentence || "Choose a file or enter a Google Doc URL."
     end
   end
 
   def destroy
     document = Current.user.documents.find(params[:id])
     document.destroy!
-    redirect_to edit_credentials_path, notice: "Document removed."
+    redirect_to credentials_redirect_path, notice: "Document removed."
   end
 
   private
@@ -45,5 +45,9 @@ class AccountDocumentsController < ApplicationController
 
   def google_doc_url
     params.dig(:document, :google_doc_url).to_s.strip
+  end
+
+  def credentials_redirect_path
+    request.referer.to_s.include?("/credentials/edit/legacy") ? legacy_edit_credentials_path : edit_credentials_path
   end
 end
