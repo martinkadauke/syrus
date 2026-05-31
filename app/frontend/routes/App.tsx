@@ -15,6 +15,7 @@ import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
 import { CredentialsRoute } from "./Credentials"
 import { CronTemplateDetailRoute, CronTemplateFormRoute, CronTemplatesIndex } from "./CronTemplates"
 import { DirectJobNewRoute } from "./DirectJobNew"
+import { RepositoriesIndex } from "./Repositories"
 import { RepositoryDocumentsRoute } from "./RepositoryDocuments"
 import { RepositoryScheduledTasksRoute } from "./RepositoryScheduledTasks"
 import { ScheduledTaskDetailRoute, ScheduledTaskFormRoute, ScheduledTasksIndex } from "./ScheduledTasks"
@@ -53,6 +54,7 @@ export function App() {
       <Route path="/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
       <Route path="/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
       <Route path="/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
+      <Route path="/repositories" element={<RepositoriesIndex />} />
       <Route path="/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
@@ -81,6 +83,7 @@ export function App() {
       <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
       <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
       <Route path="/app-shell/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
+      <Route path="/app-shell/repositories" element={<RepositoriesIndex />} />
       <Route path="/app-shell/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>

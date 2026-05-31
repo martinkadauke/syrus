@@ -1275,6 +1275,43 @@ describe("App", () => {
     expect(body.get("job_attachment[google_doc_url]")).toBe("https://docs.google.com/document/d/context/edit")
     expect(await screen.findByText("Direct job created.")).toBeInTheDocument()
   })
+
+  it("renders repositories and polls one from the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/repositories/3/poll" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(repositoriesPayload({ message: "Polling acme/widgets now." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(repositoriesPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/repositories"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Repositories" })).toBeInTheDocument()
+    expect(await screen.findByText("acme/widgets")).toBeInTheDocument()
+    expect(screen.getByText("old/repo")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Add" })).toHaveAttribute("href", "/repositories/new")
+    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/repositories/3")
+    fireEvent.click(screen.getByRole("button", { name: "Poll now" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/repositories/3/poll",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin"
+        })
+      )
+    })
+    expect(await screen.findByText("Polling acme/widgets now.")).toBeInTheDocument()
+  })
 })
 
 function scheduledTaskOptions() {
@@ -1450,5 +1487,52 @@ function directJobFormPayload() {
     accepted_file_content_types: ["text/markdown", "application/pdf", "image/png"],
     new_repository_path: "/repositories/new",
     dashboard_jobs_path: "/dashboard/jobs"
+  }
+}
+
+function repositoriesPayload(overrides: { message?: string } = {}) {
+  return {
+    active_repositories: [
+      {
+        id: 3,
+        slug: "acme/widgets",
+        owner: "acme",
+        name: "widgets",
+        default_branch: "main",
+        trigger_label: "syrus",
+        polling_enabled: true,
+        archived: false,
+        archived_at: null,
+        agent_provider: "codex",
+        agent_provider_label: "Codex",
+        last_poll_status: "ok",
+        last_poll_started_at: "2026-05-30T12:00:00Z",
+        last_poll_error: null,
+        repository_path: "/repositories/3",
+        edit_repository_path: "/repositories/3/edit"
+      }
+    ],
+    archived_repositories: [
+      {
+        id: 4,
+        slug: "old/repo",
+        owner: "old",
+        name: "repo",
+        default_branch: "main",
+        trigger_label: "syrus",
+        polling_enabled: false,
+        archived: true,
+        archived_at: "2026-05-29T12:00:00Z",
+        agent_provider: null,
+        agent_provider_label: "default",
+        last_poll_status: null,
+        last_poll_started_at: null,
+        last_poll_error: null,
+        repository_path: "/repositories/4",
+        edit_repository_path: "/repositories/4/edit"
+      }
+    ],
+    new_repository_path: "/repositories/new",
+    message: overrides.message
   }
 }
