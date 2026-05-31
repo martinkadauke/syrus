@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
@@ -3785,6 +3785,94 @@ describe("App", () => {
     expect(screen.queryByText("Message sent.")).not.toBeInTheDocument()
   })
 
+  it("keeps the chat scrolled to the bottom when new messages arrive at the bottom", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const stream = await screen.findByTestId("chat-message-stream")
+    setScrollMetrics(stream, { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 })
+    fireEvent.scroll(stream)
+    setScrollMetrics(stream, { scrollHeight: 1200, clientHeight: 400, scrollTop: 600 })
+
+    act(() => {
+      queryClient.setQueryData(["chats", "8", ""], chatPayload({
+        messages: [
+          ...chatPayload().messages,
+          {
+            type: "message",
+            id: 10,
+            role: "assistant",
+            text: "The water still flows.",
+            bookmarkable: true
+          }
+        ]
+      }))
+    })
+
+    expect(await screen.findByText("The water still flows.")).toBeInTheDocument()
+    await waitFor(() => expect(stream.scrollTop).toBe(1200))
+    expect(screen.queryByRole("button", { name: /new messages?/ })).not.toBeInTheDocument()
+  })
+
+  it("shows a new message button when messages arrive away from the bottom", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const stream = await screen.findByTestId("chat-message-stream")
+    setScrollMetrics(stream, { scrollHeight: 1000, clientHeight: 400, scrollTop: 200 })
+    fireEvent.scroll(stream)
+    setScrollMetrics(stream, { scrollHeight: 1300, clientHeight: 400, scrollTop: 200 })
+
+    act(() => {
+      queryClient.setQueryData(["chats", "8", ""], chatPayload({
+        messages: [
+          ...chatPayload().messages,
+          {
+            type: "message",
+            id: 10,
+            role: "assistant",
+            text: "First new note.",
+            bookmarkable: true
+          },
+          {
+            type: "message",
+            id: 11,
+            role: "assistant",
+            text: "Second new note.",
+            bookmarkable: true
+          }
+        ]
+      }))
+    })
+
+    const button = await screen.findByRole("button", { name: "2 new messages" })
+    expect(stream.scrollTop).toBe(200)
+
+    fireEvent.click(button)
+    await waitFor(() => expect(stream.scrollTop).toBe(1300))
+    expect(screen.queryByRole("button", { name: "2 new messages" })).not.toBeInTheDocument()
+  })
+
   it("sends chat messages with Enter on desktop", async () => {
     const restoreViewport = setViewportWidth(1280)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
@@ -5359,6 +5447,12 @@ function setViewportWidth(width: number) {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: originalWidth })
     window.dispatchEvent(new Event("resize"))
   }
+}
+
+function setScrollMetrics(element: HTMLElement, metrics: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
+  Object.defineProperty(element, "scrollHeight", { configurable: true, value: metrics.scrollHeight })
+  Object.defineProperty(element, "clientHeight", { configurable: true, value: metrics.clientHeight })
+  Object.defineProperty(element, "scrollTop", { configurable: true, writable: true, value: metrics.scrollTop })
 }
 
 function chatFormPayload() {

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
-import type { ErrorInfo, FormEvent, KeyboardEvent, ReactNode } from "react"
+import type { ErrorInfo, FormEvent, KeyboardEvent, ReactNode, UIEvent } from "react"
 import { Component, useCallback, useEffect, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
@@ -39,6 +39,7 @@ import { Markdown } from "../lib/Markdown"
 
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
+const CHAT_BOTTOM_THRESHOLD_PX = 48
 
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
 type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "updateScene">
@@ -192,6 +193,11 @@ function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: C
 }
 
 function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const streamRef = useRef<HTMLDivElement | null>(null)
+  const atBottomRef = useRef(true)
+  const streamChatIdRef = useRef(payload.chat.id)
+  const maxPayloadMessageIdRef = useRef(maxMessageId(payload.messages))
+  const [newMessageCount, setNewMessageCount] = useState(0)
   const [olderMessages, setOlderMessages] = useState<ChatMessageItem[]>([])
   const [showSystemMessages, setShowSystemMessages] = useState(false)
   const [hasMoreOlder, setHasMoreOlder] = useState(payload.has_more_older)
@@ -200,6 +206,8 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
   const hiddenSystemMessageCount = displayedItems.filter(isLowPrioritySystemMessage).length
   const visibleItems = showSystemMessages ? displayedItems : displayedItems.filter((item) => !isLowPrioritySystemMessage(item))
   const oldestId = oldestMessageId(displayedMessages)
+  const payloadMessageIdsSignature = payload.messages.map((message) => message.id).join("|")
+  const visibleItemsSignature = chatRenderItemsSignature(visibleItems)
   const loadOlder = useMutation({
     mutationFn: (before: number) => fetchChatMessages(payload.paths.app_messages_path, before),
     onSuccess: (page) => {
@@ -208,15 +216,51 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
     }
   })
 
+  const scrollToBottom = useCallback(() => {
+    scrollMessageStreamToBottom(streamRef.current)
+    atBottomRef.current = true
+    setNewMessageCount(0)
+  }, [])
+
+  const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
+    const atBottom = isMessageStreamAtBottom(event.currentTarget)
+    atBottomRef.current = atBottom
+    if (atBottom) setNewMessageCount(0)
+  }, [])
+
   useEffect(() => {
     setOlderMessages([])
     setShowSystemMessages(false)
     setHasMoreOlder(payload.has_more_older)
+    setNewMessageCount(0)
+    atBottomRef.current = true
+    streamChatIdRef.current = payload.chat.id
+    maxPayloadMessageIdRef.current = maxMessageId(payload.messages)
   }, [payload.chat.id])
 
   useEffect(() => {
     if (olderMessages.length === 0) setHasMoreOlder(payload.has_more_older)
   }, [olderMessages.length, payload.has_more_older])
+
+  useEffect(() => {
+    if (streamChatIdRef.current !== payload.chat.id) {
+      streamChatIdRef.current = payload.chat.id
+      maxPayloadMessageIdRef.current = maxMessageId(payload.messages)
+      return
+    }
+
+    const previousMaxMessageId = maxPayloadMessageIdRef.current
+    const nextMaxMessageId = maxMessageId(payload.messages)
+    if (previousMaxMessageId != null && nextMaxMessageId != null && nextMaxMessageId > previousMaxMessageId && !atBottomRef.current) {
+      const incomingCount = countIncomingVisibleMessages(payload.messages, previousMaxMessageId, showSystemMessages)
+      if (incomingCount > 0) setNewMessageCount((count) => count + incomingCount)
+    }
+    maxPayloadMessageIdRef.current = nextMaxMessageId
+  }, [payload.chat.id, payloadMessageIdsSignature, showSystemMessages])
+
+  useEffect(() => {
+    if (atBottomRef.current) scrollMessageStreamToBottom(streamRef.current)
+  }, [visibleItemsSignature])
 
   if (displayedItems.length === 0) {
     return (
@@ -227,30 +271,41 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
   }
 
   return (
-    <div className="h-full min-h-0 space-y-4 overflow-y-auto p-4" data-testid="chat-message-stream">
-      {hasMoreOlder ? (
-        <div className="text-center">
-          <button
-            className={secondaryButton()}
-            disabled={loadOlder.isPending || oldestId == null}
-            onClick={() => {
-              if (oldestId != null) loadOlder.mutate(oldestId)
-            }}
-            type="button"
-          >
-            {loadOlder.isPending ? "Loading..." : "Load older messages"}
-          </button>
-          {loadOlder.isError ? <div className="mt-2 text-xs text-red-700">{errorMessage(loadOlder.error, "Unable to load older messages.")}</div> : null}
-        </div>
+    <div className="relative h-full min-h-0">
+      <div className="h-full min-h-0 space-y-4 overflow-y-auto p-4" data-testid="chat-message-stream" onScroll={handleScroll} ref={streamRef}>
+        {hasMoreOlder ? (
+          <div className="text-center">
+            <button
+              className={secondaryButton()}
+              disabled={loadOlder.isPending || oldestId == null}
+              onClick={() => {
+                if (oldestId != null) loadOlder.mutate(oldestId)
+              }}
+              type="button"
+            >
+              {loadOlder.isPending ? "Loading..." : "Load older messages"}
+            </button>
+            {loadOlder.isError ? <div className="mt-2 text-xs text-red-700">{errorMessage(loadOlder.error, "Unable to load older messages.")}</div> : null}
+          </div>
+        ) : null}
+        {hiddenSystemMessageCount > 0 ? (
+          <SystemMessagesToggle count={hiddenSystemMessageCount} expanded={showSystemMessages} onToggle={() => setShowSystemMessages((value) => !value)} />
+        ) : null}
+        {visibleItems.map((item) => item.type === "tool_group" ? (
+          <ToolGroup item={item} key={renderItemKey(item)} />
+        ) : (
+          <ChatMessage item={item} key={renderItemKey(item)} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+        ))}
+      </div>
+      {newMessageCount > 0 ? (
+        <button
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-lg hover:bg-gray-800"
+          onClick={scrollToBottom}
+          type="button"
+        >
+          {newMessageCount} new {newMessageCount === 1 ? "message" : "messages"}
+        </button>
       ) : null}
-      {hiddenSystemMessageCount > 0 ? (
-        <SystemMessagesToggle count={hiddenSystemMessageCount} expanded={showSystemMessages} onToggle={() => setShowSystemMessages((value) => !value)} />
-      ) : null}
-      {visibleItems.map((item) => item.type === "tool_group" ? (
-        <ToolGroup item={item} key={renderItemKey(item)} />
-      ) : (
-        <ChatMessage item={item} key={renderItemKey(item)} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
-      ))}
     </div>
   )
 }
@@ -299,6 +354,22 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
 
 function isLowPrioritySystemMessage(item: ChatRenderItem) {
   return item.type === "message" && item.role === "system" && ["neutral", "success"].includes(item.system?.tone || "neutral")
+}
+
+function isMessageStreamAtBottom(element: HTMLElement) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= CHAT_BOTTOM_THRESHOLD_PX
+}
+
+function scrollMessageStreamToBottom(element: HTMLElement | null) {
+  if (!element) return
+  element.scrollTop = element.scrollHeight
+}
+
+function countIncomingVisibleMessages(messages: ChatMessageItem[], previousMaxMessageId: number, showSystemMessages: boolean) {
+  return messages.filter((message) => {
+    if (message.id <= previousMaxMessageId) return false
+    return showSystemMessages || !isLowPrioritySystemMessage(renderMessage(message))
+  }).length
 }
 
 function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
@@ -1242,9 +1313,22 @@ function renderItemKey(item: ChatRenderItem) {
   return `tool-${item.calls.map((call) => call.message_id).join("-")}`
 }
 
+function chatRenderItemsSignature(items: ChatRenderItem[]) {
+  return items.map((item) => {
+    if (item.type === "message") return `${renderItemKey(item)}:${item.text.length}`
+
+    return `${renderItemKey(item)}:${item.calls.map((call) => `${call.message_id}:${call.result_body.length}`).join(",")}`
+  }).join("|")
+}
+
 function oldestMessageId(messages: ChatMessageItem[]) {
   const ids = messages.map((message) => message.id)
   return ids.length > 0 ? Math.min(...ids) : null
+}
+
+function maxMessageId(messages: ChatMessageItem[]) {
+  const ids = messages.map((message) => message.id)
+  return ids.length > 0 ? Math.max(...ids) : null
 }
 
 function errorMessage(error: Error, fallback: string) {
