@@ -31,6 +31,22 @@ class JobDependency < ApplicationRecord
     "#{unresolved_owner}/#{unresolved_repo}##{unresolved_number}"
   end
 
+  def dependency_succeeded?
+    return depends_on_job.dependency_succeeded? if resolved?
+
+    referenced_epic&.done? == true
+  end
+
+  def referenced_epic
+    return nil unless pending?
+    return nil unless job&.user
+
+    repository = job.user.repositories.find_by(owner: unresolved_owner, name: unresolved_repo)
+    return nil unless repository
+
+    repository.epics.find_by(github_issue_url: unresolved_github_issue_url)
+  end
+
   # Promote a pending row to a resolved row. Caller passes the Job that
   # now exists for the previously-unresolved reference; we clear the
   # unresolved_* columns and set depends_on_job_id. Save runs the cycle
@@ -47,6 +63,10 @@ class JobDependency < ApplicationRecord
   end
 
   private
+
+  def unresolved_github_issue_url
+    "https://github.com/#{unresolved_owner}/#{unresolved_repo}/issues/#{unresolved_number}"
+  end
 
   def exactly_one_target
     if depends_on_job_id.blank? && unresolved_number.blank?

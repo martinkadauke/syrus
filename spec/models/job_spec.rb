@@ -637,6 +637,49 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       expect(job.unsatisfied_dependencies.first).to be_pending
     end
 
+    it "treats pending dependencies on done Epic issues as satisfied" do
+      Epic.create!(
+        user: user,
+        repository: repository,
+        title: "Finished prerequisite",
+        github_issue_url: "https://github.com/#{repository.owner}/#{repository.name}/issues/999",
+        state: "done",
+        done_at: Time.current
+      )
+      job = Job.create!(
+        user: user,
+        repository: repository,
+        issue_number: 43,
+        issue_body: "Depends-on: #999"
+      )
+
+      expect(job.dependencies.first).to be_pending
+      expect(job).to be_dependencies_satisfied
+      expect(job.unsatisfied_dependencies).to be_empty
+      expect(job).to be_stack_ready_for_execution
+    end
+
+    it "keeps pending dependencies on unfinished Epic issues unsatisfied" do
+      Epic.create!(
+        user: user,
+        repository: repository,
+        title: "Unfinished prerequisite",
+        github_issue_url: "https://github.com/#{repository.owner}/#{repository.name}/issues/999",
+        state: "in_progress"
+      )
+      job = Job.create!(
+        user: user,
+        repository: repository,
+        issue_number: 43,
+        issue_body: "Depends-on: #999"
+      )
+
+      expect(job.dependencies.first).to be_pending
+      expect(job).not_to be_dependencies_satisfied
+      expect(job.unsatisfied_dependencies.size).to eq(1)
+      expect(job).not_to be_stack_ready_for_execution
+    end
+
     it "promotes pending dependencies to resolved when the target Job is later created" do
       dependent = Job.create!(
         user: user,

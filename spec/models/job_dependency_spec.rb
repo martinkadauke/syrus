@@ -100,6 +100,27 @@ RSpec.describe JobDependency do
       expect(described_class.pending).to include(pending)
       expect(described_class.pending).not_to include(resolved)
     end
+
+    it "resolves pending Epic issue references through #referenced_epic" do
+      epic = Factories.epic(
+        user: user,
+        repository: repository,
+        github_issue_url: "https://github.com/#{repository.owner}/#{repository.name}/issues/99",
+        state: "done",
+        done_at: Time.current
+      )
+      job = issue_job(1)
+      dependency = described_class.create!(
+        job: job,
+        unresolved_owner: repository.owner,
+        unresolved_repo: repository.name,
+        unresolved_number: 99,
+        source: "parsed"
+      )
+
+      expect(dependency.referenced_epic).to eq(epic)
+      expect(dependency).to be_dependency_succeeded
+    end
   end
 
   describe "Epic dependency derivation" do

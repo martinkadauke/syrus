@@ -12,10 +12,10 @@ class JobStackResolver
 
     dependencies = @job.dependencies.includes(:depends_on_job).to_a
     return force_main! if dependencies.empty?
-    return false if dependencies.any?(&:pending?)
 
-    unresolved = dependencies.reject { |dependency| dependency.depends_on_job.dependency_succeeded? }
+    unresolved = dependencies.reject(&:dependency_succeeded?)
     return force_main! if unresolved.empty?
+    return false if unresolved.any?(&:pending?)
     return false unless unresolved.size == 1
 
     parent = unresolved.first.depends_on_job

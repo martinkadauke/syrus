@@ -498,17 +498,13 @@ class Job < ApplicationRecord
     return true if dependencies_overridden_at.present?
 
     dependencies.includes(:depends_on_job).all? do |dependency|
-      # Pending (unresolved) deps are always treated as unsatisfied —
-      # we don't know yet whether the referenced issue's Job will
-      # succeed, so we have to assume it won't.
-      next false if dependency.pending?
-      dependency.depends_on_job.dependency_succeeded?
+      dependency.dependency_succeeded?
     end
   end
 
   def unsatisfied_dependencies
     dependencies.includes(depends_on_job: :repository).reject do |dependency|
-      dependency.resolved? && dependency.depends_on_job.dependency_succeeded?
+      dependency.dependency_succeeded?
     end
   end
 
