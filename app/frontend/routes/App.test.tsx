@@ -2025,7 +2025,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(screen.getByRole("main", { name: "Scheduled tasks" })).toBeInTheDocument()
+    expect(screen.getByRole("main", { name: "Scheduled tasks" })).toHaveClass("max-w-7xl")
     expect(await screen.findByText("Weekly tests")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Weekly tests" })).toHaveAttribute("href", "/app-shell/scheduled_tasks/12")
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
@@ -2056,7 +2056,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toBeInTheDocument()
+    expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toHaveClass("max-w-7xl")
     expect(await screen.findByText("Keep tests moving.")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(screen.getByRole("link", { name: "#44" })).toHaveAttribute("href", "/app-shell/jobs/44")
@@ -2164,7 +2164,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toBeInTheDocument()
+    expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toHaveClass("max-w-7xl")
     expect(await screen.findByText("Daily review")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "New scheduled task" })).toHaveAttribute("href", "/app-shell/repositories/3/scheduled_tasks/new")
     fireEvent.click(screen.getByRole("button", { name: "Disable" }))
@@ -2566,7 +2566,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Repositories" })).toBeInTheDocument()
+    expect(await screen.findByRole("main", { name: "Repositories" })).toHaveClass("max-w-7xl")
     expect(await screen.findByText("acme/widgets")).toBeInTheDocument()
     expect(screen.getByText("old/repo")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Add" })).toHaveAttribute("href", "/app-shell/repositories/new")
