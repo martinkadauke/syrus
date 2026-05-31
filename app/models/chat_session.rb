@@ -111,30 +111,13 @@ class ChatSession < ApplicationRecord
   end
 
   def broadcast_header
-    # Sync (NOT _later_to): see chat_message.rb#broadcast_to_chat
-    # for the rationale — the default queue gets clogged during an
-    # agent turn, and chat broadcasts shouldn't wait on it.
-    broadcast_replace_to(
-      "chat_session_#{id}_header",
-      target: "chat_session_#{id}_header",
-      partial: "chats/header",
-      locals: { repository: repository, chat_session: self }
-    )
     broadcast_app_header_update
   end
 
-  # Re-render the compose form so its `disabled` state matches the
-  # latest value of `turn_in_flight?`. Called from ChatMessage's
-  # after_create_commit (any new message can flip the value: a fresh
-  # user message starts the turn, a non-user message ends it) and from
-  # the Stop action so the operator's click is acknowledged in the UI.
+  # Chat controls are rendered by React from typed app-event payloads.
+  # ChatMessage tail events already carry the active-turn state, so
+  # callers can suppress this duplicate event when appropriate.
   def broadcast_controls(app_event: true)
-    broadcast_replace_to(
-      "chat_session_#{id}_controls",
-      target: "chat_session_#{id}_controls",
-      partial: "chats/compose",
-      locals: { repository: repository, chat_session: self, turn_in_flight: turn_in_flight? }
-    )
     broadcast_app_controls_update if app_event
   end
 

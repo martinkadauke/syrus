@@ -60,18 +60,8 @@ RSpec.describe ChatMessage do
     expect(bookmarkable_roles).to eq(%w[user assistant])
   end
 
-  # Regression: before this fix the compose form was rendered once
-  # (server-side, with turn_in_flight: true) and never refreshed when
-  # the turn ended, leaving the Send button disabled until the operator
-  # reloaded the page. Every new ChatMessage row now re-broadcasts the
-  # compose partial so its `disabled` state tracks `turn_in_flight?`.
-  describe "after_create_commit :broadcast_controls_update" do
-    it "calls broadcast_controls on the chat session when a message is created" do
-      expect(session).to receive(:broadcast_controls).with(app_event: false)
-      described_class.create!(chat_session: session, role: "user", content: { "text" => "Hi" })
-    end
-
-    it "flips turn_in_flight? to false once a non-user message follows the latest user message" do
+  describe "#turn_in_flight?" do
+    it "flips to false once a non-user message follows the latest user message" do
       session
       described_class.create!(chat_session: session, role: "user", content: { "text" => "What's up?" })
 
@@ -84,8 +74,16 @@ RSpec.describe ChatMessage do
   end
 
   describe "after_create_commit :broadcast_app_event" do
+    it "does not ask Rails to server-render chat controls for message updates" do
+      allow(AppEvents).to receive(:broadcast)
+      expect(session).not_to receive(:broadcast_controls)
+
+      described_class.create!(chat_session: session, role: "user", content: { "text" => "Hi" })
+    end
+
     it "broadcasts a typed replace-tail payload for React chat rendering" do
       described_class.create!(chat_session: session, role: "user", content: { "text" => "Hi" })
+      expect(session).not_to receive(:broadcast_controls)
 
       expect(AppEvents).to receive(:broadcast) do |user:, type:, resource:, id:, changed:, payload:|
         expect(user).to eq(session.user)

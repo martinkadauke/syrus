@@ -36,7 +36,7 @@ page-level morph for subscribed pages.
 |---|---|
 | `home/index` (dashboard) | `[user, "jobs"]` |
 | `repositories/show` | `repo`, `[repo, "jobs"]` |
-| `chats/show` | `chat_session_<id>_messages`, `_controls`, `_header`, `_whiteboard` |
+| `chats/show` legacy fallback | `chat_session_<id>_whiteboard` |
 | `jobs/show` | `job`, `[job, "logs"]` |
 | `epics/show` | `epic` |
 
@@ -171,11 +171,12 @@ The `chip_bar_controller` and `bulk_jobs_controller` both have morph-restoration
 logic — neither has a JS test exercising the morph cycle. A regression that
 breaks chip-bar state preservation would only surface manually.
 
-### Risk E: `chats/show` subscribes to FOUR named streams
-`turbo_stream_from` is cheap-ish but four parallel cable subscriptions for one
-page is more than every other view. If the chat session has its own state
-machine, consider consolidating into a single stream and demultiplexing in
-JS. Not urgent — works today.
+### Resolved: chat message/header/control streams moved to app events
+The canonical `/chats/:id` route is React. Live chat message tail,
+header, and control updates now arrive as typed app events and are
+rendered on the frontend, so Rails no longer renders those Turbo Stream
+partials on every message. The legacy ERB fallback keeps only the
+whiteboard Turbo stream.
 
 ## Defensive defaults — what we should standardize
 

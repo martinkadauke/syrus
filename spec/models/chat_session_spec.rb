@@ -205,7 +205,7 @@ RSpec.describe ChatSession do
         cumulative_output_tokens: 250,
         cumulative_cost_usd: 0.125
       )
-      allow(session).to receive(:broadcast_replace_to)
+      expect(session).not_to receive(:broadcast_replace_to)
 
       expect(AppEvents).to receive(:broadcast).with(
         user: repo.user,
@@ -231,7 +231,7 @@ RSpec.describe ChatSession do
     it "emits a controls update payload when requested outside message-tail broadcasts" do
       stopped_at = Time.zone.parse("2026-05-30 12:00:00 UTC")
       session = described_class.create!(repository: repo, user: repo.user, stop_requested_at: stopped_at)
-      allow(session).to receive(:broadcast_replace_to)
+      expect(session).not_to receive(:broadcast_replace_to)
 
       expect(AppEvents).to receive(:broadcast).with(
         user: repo.user,
@@ -251,7 +251,7 @@ RSpec.describe ChatSession do
 
     it "can skip the controls app event when a message-tail event already carries the same state" do
       session = described_class.create!(repository: repo, user: repo.user)
-      allow(session).to receive(:broadcast_replace_to)
+      expect(session).not_to receive(:broadcast_replace_to)
 
       expect(AppEvents).not_to receive(:broadcast)
 

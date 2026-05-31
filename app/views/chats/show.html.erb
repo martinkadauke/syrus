@@ -78,9 +78,6 @@
     </section>
   <% end %>
 
-  <%= turbo_stream_from "chat_session_#{@chat_session.id}_messages" %>
-  <%= turbo_stream_from "chat_session_#{@chat_session.id}_controls" %>
-  <%= turbo_stream_from "chat_session_#{@chat_session.id}_header" %>
   <%= turbo_stream_from "chat_session_#{@chat_session.id}_whiteboard" %>
 
   <% if Current.user.claude_oauth_token.blank? %>

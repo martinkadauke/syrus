@@ -92,9 +92,10 @@ class ChatTurnJob < ApplicationJob
     case kind.to_s
     when "tool_call"
       # Persist the structured tool invocation. Abbreviation is the
-      # presentation layer's job (see ChatMessageGrouper + the chat
-      # view); storing the raw input keeps the data tier honest and
-      # lets the view evolve without DB churn.
+      # presentation layer's job (React chat renderer, plus
+      # ChatMessageGrouper for the legacy fallback); storing the raw
+      # input keeps the data tier honest and lets the view evolve
+      # without DB churn.
       @chat.messages.create!(
         role: "tool_use",
         tool_name: tool_name,
