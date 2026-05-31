@@ -105,7 +105,7 @@ RSpec.describe "Repositories", type: :request do
         installation = Factories.installation(user: user, account_login: "acme")
         repo = Factories.repository(user: user, owner: "acme", name: "widgets", installation: installation)
 
-        get repository_path(repo)
+        get legacy_repository_path(repo)
 
         expect(response.body).to include("✓ Syrus App installed (via acme)")
         expect(response.body).not_to include("This repository is using personal-token fallback.")
@@ -121,7 +121,7 @@ RSpec.describe "Repositories", type: :request do
           github_repository_id: 200
         )
 
-        get repository_path(repo)
+        get legacy_repository_path(repo)
 
         expect(response.body).to include("This repository is using personal-token fallback.")
         expect(response.body).to include(
@@ -132,7 +132,7 @@ RSpec.describe "Repositories", type: :request do
       it "shows the manifest CTA when the App is not registered" do
         repo = Factories.repository(user: user)
 
-        get repository_path(repo)
+        get legacy_repository_path(repo)
 
         expect(response.body).to include("Syrus App is not registered.")
         expect(response.body).to include("Register Syrus App")
@@ -150,7 +150,7 @@ RSpec.describe "Repositories", type: :request do
         )
         repo.update_column(:installation_id, installation.id)
 
-        get repository_path(repo)
+        get legacy_repository_path(repo)
 
         expect(response.body).to include("Its previous installation was removed.")
         expect(response.body).to include("Install Syrus App on this repository")
@@ -389,6 +389,13 @@ RSpec.describe "Repositories", type: :request do
         mine = Factories.repository(user: user, owner: "acme", name: "widgets")
         get repository_path(mine)
         expect(response).to have_http_status(:ok)
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
+      it "keeps the legacy show page available" do
+        mine = Factories.repository(user: user, owner: "acme", name: "widgets")
+        get legacy_repository_path(mine)
+        expect(response).to have_http_status(:ok)
         expect(response.body).to include("acme/widgets")
       end
 
@@ -397,7 +404,7 @@ RSpec.describe "Repositories", type: :request do
         mine.repository_notes.create!(body: "Pinned deployment context.", author: "operator")
         mine.repository_notes.create!(body: "Removed context.", author: "agent", removed_at: Time.current)
 
-        get repository_path(mine)
+        get legacy_repository_path(mine)
 
         expect(response.body).to include("Notes")
         expect(response.body).to include("Pinned deployment context.")
@@ -407,7 +414,7 @@ RSpec.describe "Repositories", type: :request do
 
       it "shows the repository default agent on the show page" do
         mine = Factories.repository(user: user, agent_provider: "codex")
-        get repository_path(mine)
+        get legacy_repository_path(mine)
         expect(response.body).to include("Agent:")
         expect(response.body).to include("Codex")
       end
@@ -417,7 +424,7 @@ RSpec.describe "Repositories", type: :request do
         failed = Factories.job(repository: mine)
         failed.current_run.update!(state: "failed", finished_at: Time.current)
 
-        get repository_path(mine)
+        get legacy_repository_path(mine)
 
         expect(response.body).to include("Retry 1 failed with Codex")
         expect(response.body).to include("Retry 1 failed job(s) with Codex?")
@@ -429,20 +436,20 @@ RSpec.describe "Repositories", type: :request do
         job_mine  = Factories.job(repository: mine)
         job_other = Factories.job(repository: other)
 
-        get repository_path(mine)
+        get legacy_repository_path(mine)
         expect(response.body).to include(job_path(job_mine))
         expect(response.body).not_to include(job_path(job_other))
       end
 
       it "does not show another user's repository" do
         foreign = Factories.repository(user: other, owner: "globex", name: "things")
-        get repository_path(foreign)
+        get legacy_repository_path(foreign)
         expect(response).to have_http_status(:not_found)
       end
 
       it "links the slug to GitHub" do
         mine = Factories.repository(user: user, owner: "acme", name: "widgets")
-        get repository_path(mine)
+        get legacy_repository_path(mine)
         expect(response.body).to include("https://github.com/acme/widgets")
       end
 
@@ -450,7 +457,7 @@ RSpec.describe "Repositories", type: :request do
         let(:repo) { Factories.repository(user: user) }
 
         it "defaults to the overview tab" do
-          get repository_path(repo)
+          get legacy_repository_path(repo)
           expect(response).to have_http_status(:ok)
           expect(response.body).to include("Overview")
           expect(response.body).to include("GitHub Issues")
@@ -476,7 +483,7 @@ RSpec.describe "Repositories", type: :request do
             instance_double(GithubClient, list_all_issues: [ fake_issue ])
           )
 
-          get repository_path(repo, tab: "github_issues")
+          get legacy_repository_path(repo, tab: "github_issues")
           expect(response).to have_http_status(:ok)
           expect(response.body).to include("Fix the thing")
           expect(response.body).not_to include("Recent jobs")
@@ -485,7 +492,7 @@ RSpec.describe "Repositories", type: :request do
         it "shows an alert on the github_issues tab when no token is configured" do
           allow(GithubClient).to receive(:for).and_raise(ArgumentError)
 
-          get repository_path(repo, tab: "github_issues")
+          get legacy_repository_path(repo, tab: "github_issues")
           expect(response).to have_http_status(:ok)
           expect(flash[:alert]).to match(/No GitHub token/)
         end
@@ -497,13 +504,13 @@ RSpec.describe "Repositories", type: :request do
             }
           )
 
-          get repository_path(repo, tab: "github_issues")
+          get legacy_repository_path(repo, tab: "github_issues")
           expect(response).to have_http_status(:ok)
           expect(flash[:alert]).to match(/GitHub error/)
         end
 
         it "ignores unknown tab values and falls back to overview" do
-          get repository_path(repo, tab: "hax")
+          get legacy_repository_path(repo, tab: "hax")
           expect(response).to have_http_status(:ok)
           expect(response.body).to include("Recent jobs")
         end
@@ -514,14 +521,14 @@ RSpec.describe "Repositories", type: :request do
 
         it "shows no pagination controls when jobs fit on one page" do
           3.times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get repository_path(repo)
+          get legacy_repository_path(repo)
           expect(response.body).not_to include("← Previous")
           expect(response.body).not_to include("Next →")
         end
 
         it "shows 'Showing X–Y of Z' counter and navigation when jobs exceed one page" do
           (RepositoriesController::PER_PAGE + 2).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get repository_path(repo)
+          get legacy_repository_path(repo)
           total = RepositoriesController::PER_PAGE + 2
           expect(response.body).to include("Showing 1–#{RepositoriesController::PER_PAGE} of #{total}")
           expect(response.body).to include("Next →")
@@ -529,19 +536,19 @@ RSpec.describe "Repositories", type: :request do
 
         it "renders a disabled Previous button on page 1" do
           (RepositoriesController::PER_PAGE + 1).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get repository_path(repo)
+          get legacy_repository_path(repo)
           expect(response.body).to match(/class="px-3 py-1 border border-gray-200 rounded text-gray-300"[^>]*>← Previous/)
         end
 
         it "renders a disabled Next button on the last page" do
           (RepositoriesController::PER_PAGE + 1).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get repository_path(repo, page: 2)
+          get legacy_repository_path(repo, page: 2)
           expect(response.body).to match(/class="px-3 py-1 border border-gray-200 rounded text-gray-300"[^>]*>Next →/)
         end
 
         it "shows the correct range on page 2" do
           (RepositoriesController::PER_PAGE + 3).times { |i| Factories.job(repository: repo, issue_number: i + 1) }
-          get repository_path(repo, page: 2)
+          get legacy_repository_path(repo, page: 2)
           total = RepositoriesController::PER_PAGE + 3
           expect(response.body).to include("Showing #{RepositoriesController::PER_PAGE + 1}–#{total} of #{total}")
         end

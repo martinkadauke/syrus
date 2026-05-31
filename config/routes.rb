@@ -197,7 +197,9 @@ Rails.application.routes.draw do
   get "repositories/legacy", to: "repositories#index", as: :legacy_repositories
   get "repositories/:id/edit", to: "spa#show", as: :edit_repository, constraints: { id: /\d+/ }
   get "repositories/:id/edit/legacy", to: "repositories#edit", as: :legacy_edit_repository, constraints: { id: /\d+/ }
-  resources :repositories, except: %i[ index create destroy new edit ] do
+  get "repositories/:id", to: "spa#show", as: :repository, constraints: { id: /\d+/ }
+  get "repositories/:id/legacy", to: "repositories#show", as: :legacy_repository, constraints: { id: /\d+/ }
+  resources :repositories, except: %i[ index create destroy new edit show ] do
     collection do
       get :owners
       get :repos
