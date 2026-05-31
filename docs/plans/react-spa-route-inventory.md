@@ -73,7 +73,9 @@ health/storage internals.
 | `/credentials/edit`, `/credentials` | `credentials#edit/update` | `spa-core` | Account credentials/settings page. Needs careful encrypted attribute handling in request specs. |
 | credential token commands | `credentials#rotate_api_token`, `#revoke_api_token` | `app-api-needed` | Command endpoints returning masked token state. |
 | `/account/documents` | `account_documents#create/destroy` | `app-api-needed` | Upload/delete endpoints for credential page. |
-| `/settings`, `/settings/edit`, `PATCH /settings` | `credentials#edit`, `settings#edit/update` | `spa-core` | Split user credentials vs admin app settings clearly in React nav. |
+| `/settings` | `credentials#edit` | `spa-core` | Per-user credentials alias. Still migrates with the credentials page. |
+| `/settings/edit` | `spa#show` | `spa-admin` | Migrated to the React app settings shell. Legacy ERB fallback lives at `/settings/edit/legacy`. |
+| `PATCH /settings` | `settings#update` | `legacy-html` | Kept for existing HTML controls; React uses `/api/v1/app/admin/settings`. |
 | `/invitations` | `spa#show` | `spa-admin` | Migrated to the React invitations shell. Legacy ERB fallback lives at `/invitations/legacy`. |
 | `/admin` | `spa#show` | `spa-admin` | Migrated to the React admin overview shell; legacy ERB fallback lives at `/admin/legacy`. |
 | `/admin/queue`, `/admin/queue/:tab` | `spa#show` | `spa-admin` | Migrated to the React admin queue shell. Legacy ERB fallback lives at `/admin/queue/legacy` and `/admin/queue/legacy/:tab`. |

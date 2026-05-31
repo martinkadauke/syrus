@@ -18,7 +18,7 @@
         </div>
         <% if set %>
           <%= button_to "Clear",
-                settings_path,
+                settings_form_path,
                 method: :patch,
                 params: { clear_secret: secret },
                 class: "rounded-md px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium cursor-pointer",
@@ -28,7 +28,7 @@
     <% end %>
   </div>
 
-  <%= form_with model: @setting, url: settings_path, scope: :app_setting, method: :patch, class: "bg-white border border-gray-200 rounded-lg p-6 space-y-4" do |form| %>
+  <%= form_with model: @setting, url: settings_form_path, scope: :app_setting, method: :patch, class: "bg-white border border-gray-200 rounded-lg p-6 space-y-4" do |form| %>
     <p class="text-sm text-gray-600">
       Leaving secret fields blank keeps the stored value unchanged. Use the Clear controls above to remove a secret.
     </p>

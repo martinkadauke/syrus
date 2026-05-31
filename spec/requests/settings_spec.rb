@@ -72,8 +72,14 @@ RSpec.describe "Settings", type: :request do
     context "as an admin" do
       before { sign_in_as(admin) }
 
-      it "renders the toggle" do
+      it "serves the React app settings shell" do
         get edit_settings_path
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
+      it "renders the toggle in the legacy fallback" do
+        get legacy_edit_settings_path
         expect(response).to be_successful
         expect(response.body).to include("Open signups")
         expect(response.body).to include("Leaving secret fields blank keeps the stored value unchanged")
@@ -131,6 +137,13 @@ RSpec.describe "Settings", type: :request do
           expect(flash[:notice]).to include("cleared")
           expect(setting.reload.public_send(secret)).to be_nil
         end
+      end
+
+      it "keeps legacy updates inside the legacy fallback" do
+        patch legacy_settings_path, params: { app_setting: { signups_open: "1" } }
+
+        expect(AppSetting.signups_open?).to be true
+        expect(response).to redirect_to(legacy_edit_settings_path)
       end
 
       it "rejects unknown app secret names" do

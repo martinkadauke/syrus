@@ -13,6 +13,8 @@ class SpaController < ApplicationController
       request.path == "/app-shell/admin" ||
       request.path.start_with?("/app-shell/admin/") ||
       request.path == "/invitations" ||
-      request.path == "/app-shell/invitations"
+      request.path == "/app-shell/invitations" ||
+      request.path == "/settings/edit" ||
+      request.path == "/app-shell/settings/edit"
   end
 end

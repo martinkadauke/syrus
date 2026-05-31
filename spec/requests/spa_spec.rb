@@ -47,9 +47,11 @@ RSpec.describe "SPA shell", type: :request do
     user = Factories.user
     sign_in_as(user)
 
-    get "/app-shell/invitations"
+    [ "/app-shell/invitations", "/app-shell/settings/edit" ].each do |path|
+      get path
 
-    expect(response).to redirect_to(root_path)
-    expect(flash[:alert]).to match(/admin/i)
+      expect(response).to redirect_to(root_path)
+      expect(flash[:alert]).to match(/admin/i)
+    end
   end
 end

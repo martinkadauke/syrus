@@ -223,7 +223,10 @@ Rails.application.routes.draw do
   # per-user credentials page. App-wide settings live at `/settings/edit`
   # and remain admin-only.
   get "settings", to: "credentials#edit"
-  resource :settings, only: %i[ edit update ]
+  get "settings/edit", to: "spa#show", as: :edit_settings
+  patch "settings", to: "settings#update"
+  get "settings/edit/legacy", to: "settings#edit", as: :legacy_edit_settings
+  patch "settings/legacy", to: "settings#update", as: :legacy_settings
   resources :bug_reports, only: %i[ create ]
   resources :jobs, only: %i[ show new create ] do
     resource :pin, only: %i[ create destroy ], controller: "job_pins"
