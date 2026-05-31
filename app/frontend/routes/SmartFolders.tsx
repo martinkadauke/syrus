@@ -22,6 +22,7 @@ const subjects = [
 
 export function SmartFolders() {
   const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const [notice, setNotice] = useState<string | null>(null)
   const smartFolders = useQuery({
     queryKey: ["smart_folders", location.search],
@@ -38,7 +39,7 @@ export function SmartFolders() {
           </p>
         </div>
         {smartFolders.data ? (
-          <a className="text-sm text-blue-600 underline hover:no-underline" href={smartFolders.data.dashboard_path}>Back to dashboard</a>
+          <Link className="text-sm text-blue-600 underline hover:no-underline" to={withRoutePrefix(smartFolders.data.dashboard_path, prefix)}>Back to dashboard</Link>
         ) : null}
       </header>
 
@@ -192,6 +193,17 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
 
 function subjectFromSearch(search: string) {
   return new URLSearchParams(search).get("subject_type") || "job"
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function errorMessage(error: Error, fallback: string) {

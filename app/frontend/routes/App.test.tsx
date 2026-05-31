@@ -1259,7 +1259,7 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Smart folders" })).toBeInTheDocument()
     expect(await screen.findByDisplayValue("Ready Epics")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/dashboard/epics")
+    expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/app-shell/dashboard/epics")
 
     fireEvent.change(screen.getByLabelText("Position for Ready Epics"), { target: { value: "3" } })
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
