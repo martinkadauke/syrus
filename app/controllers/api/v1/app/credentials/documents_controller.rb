@@ -2,6 +2,10 @@ module Api
   module V1
     module App
       class Credentials::DocumentsController < CredentialsController
+        def index
+          render json: documents_payload(Current.user)
+        end
+
         def create
           created = []
           errors = []
@@ -26,9 +30,9 @@ module Api
           end
 
           if created.any? && errors.empty?
-            render json: credentials_payload(Current.user.reload).merge(message: "Document added."), status: :created
+            render json: documents_payload(Current.user.reload).merge(message: "Document added."), status: :created
           elsif created.any?
-            render json: credentials_payload(Current.user.reload).merge(message: "Some documents could not be added: #{errors.to_sentence}"),
+            render json: documents_payload(Current.user.reload).merge(message: "Some documents could not be added: #{errors.to_sentence}"),
                    status: :multi_status
           else
             render_error("validation_failed", errors.presence&.to_sentence || "Choose a file or enter a Google Doc URL.",
@@ -40,7 +44,7 @@ module Api
           document = Current.user.documents.find(params[:id])
           document.destroy!
 
-          render json: credentials_payload(Current.user.reload).merge(message: "Document removed.")
+          render json: documents_payload(Current.user.reload).merge(message: "Document removed.")
         end
 
         private

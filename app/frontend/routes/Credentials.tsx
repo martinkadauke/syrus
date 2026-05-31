@@ -1,19 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
-import { Link } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
-  addCredentialDocuments,
   clearCredential,
-  deleteCredentialDocument,
   fetchCredentials,
   revokeApiToken,
   rotateApiToken,
   updateCredentials,
   type CredentialsInput,
-  type CredentialsPayload,
-  type PersonalDocument
+  type CredentialsPayload
 } from "../api/credentials"
 
 const queryKey = ["credentials"] as const
@@ -28,7 +24,7 @@ export function CredentialsRoute() {
     <main aria-label="My credentials" className="mx-auto max-w-4xl space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900">My credentials</h1>
-        <p className="mt-1 text-sm text-gray-600">Encrypted credentials and account-scoped context for Syrus runs.</p>
+        <p className="mt-1 text-sm text-gray-600">Encrypted credentials and account settings for Syrus runs.</p>
       </header>
 
       {credentials.isPending ? <PanelMessage>Loading credentials...</PanelMessage> : null}
@@ -45,7 +41,6 @@ function CredentialsView({ payload }: { payload: CredentialsPayload }) {
     <>
       {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
       <CredentialsForm onNotice={setNotice} payload={payload} />
-      <DocumentsPanel onNotice={setNotice} payload={payload} />
       {payload.user.admin ? <ApiTokenPanel onNotice={setNotice} payload={payload} /> : null}
     </>
   )
@@ -267,85 +262,6 @@ function SecretTextArea({
   )
 }
 
-function DocumentsPanel({ payload, onNotice }: { payload: CredentialsPayload; onNotice: (message: string | null) => void }) {
-  const queryClient = useQueryClient()
-  const [files, setFiles] = useState<File[]>([])
-  const [googleDocUrl, setGoogleDocUrl] = useState("")
-  const upload = useMutation({
-    mutationFn: () => addCredentialDocuments(files, googleDocUrl),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
-      setFiles([])
-      setGoogleDocUrl("")
-      onNotice(updated.message || "Document added.")
-    }
-  })
-  const destroy = useMutation({
-    mutationFn: (document: PersonalDocument) => deleteCredentialDocument(document.id),
-    onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
-      onNotice(updated.message || "Document removed.")
-    }
-  })
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    onNotice(null)
-    upload.mutate()
-  }
-
-  return (
-    <section className="rounded border border-gray-200 bg-white p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-gray-900">Personal documents</h2>
-          <p className="mt-1 text-xs text-gray-500">Context attached to your account.</p>
-        </div>
-        <span className="text-xs text-gray-500">{payload.documents.length}</span>
-      </div>
-
-      <div className="mt-4 divide-y divide-gray-200 rounded border border-gray-200">
-        {payload.documents.length === 0 ? (
-          <p className="p-4 text-sm text-gray-500">No personal documents yet.</p>
-        ) : payload.documents.map((document) => (
-          <div className="flex items-center justify-between gap-3 p-3" key={document.id}>
-            <DocumentSummary document={document} />
-            <button
-              className="text-xs font-medium text-red-600 hover:text-red-700 disabled:text-red-300"
-              disabled={destroy.isPending}
-              onClick={() => {
-                if (window.confirm("Delete this document?")) destroy.mutate(document)
-              }}
-              type="button"
-            >
-              Delete
-            </button>
-          </div>
-        ))}
-      </div>
-
-      <form className="mt-4 space-y-3" onSubmit={submit}>
-        {upload.isError ? <PanelMessage tone="error">{errorMessage(upload.error, "Unable to add document.")}</PanelMessage> : null}
-        {destroy.isError ? <PanelMessage tone="error">{errorMessage(destroy.error, "Unable to delete document.")}</PanelMessage> : null}
-        <Field label="Upload files">
-          <input
-            className="block w-full text-sm text-gray-700"
-            multiple
-            onChange={(event) => setFiles(Array.from(event.currentTarget.files || []))}
-            type="file"
-          />
-        </Field>
-        <Field label="Google Doc URL">
-          <input className={inputClass()} onChange={(event) => setGoogleDocUrl(event.target.value)} placeholder="https://docs.google.com/document/d/..." type="url" value={googleDocUrl} />
-        </Field>
-        <button className="rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:bg-gray-400" disabled={upload.isPending} type="submit">
-          {upload.isPending ? "Adding..." : "Add document"}
-        </button>
-      </form>
-    </section>
-  )
-}
-
 function ApiTokenPanel({ payload, onNotice }: { payload: CredentialsPayload; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const [newToken, setNewToken] = useState(payload.new_api_token || "")
@@ -444,24 +360,6 @@ function GithubRateLimit({ payload }: { payload: CredentialsPayload }) {
   )
 }
 
-function DocumentSummary({ document }: { document: PersonalDocument }) {
-  if (document.kind === "google_doc" && document.google_doc_url) {
-    return (
-      <div className="min-w-0">
-        <a className="block truncate text-sm font-medium text-blue-700 hover:underline" href={document.google_doc_url} rel="noopener" target="_blank">{document.google_doc_url}</a>
-        <div className="mt-1 text-xs text-gray-500">Google Doc</div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-w-0">
-      <div className="truncate text-sm font-medium text-gray-900">{document.filename || "File"}</div>
-      <div className="mt-1 text-xs text-gray-500">{document.content_type || "unknown"} · {formatBytes(document.byte_size)}</div>
-    </div>
-  )
-}
-
 function CredentialsError({ error }: { error: Error }) {
   return <PanelMessage tone="error">{errorMessage(error, "Unable to load credentials.")}</PanelMessage>
 }
@@ -497,13 +395,6 @@ function inputFromPayload(payload: CredentialsPayload): CredentialsInput {
 
 function titleize(value: string) {
   return value.replace(/_/g, " ").replace(/\b\w/g, (match) => match.toUpperCase())
-}
-
-function formatBytes(value: number | null) {
-  if (!value) return "unknown size"
-  if (value < 1024) return `${value} B`
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function errorMessage(error: Error, fallback: string) {

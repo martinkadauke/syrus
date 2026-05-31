@@ -2203,6 +2203,8 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "My credentials" })).toBeInTheDocument()
+    expect(screen.queryByText("Personal documents")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Google Doc URL")).not.toBeInTheDocument()
     fireEvent.change(await screen.findByLabelText("Display name"), { target: { value: "Ada Lovelace" } })
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
@@ -2244,6 +2246,7 @@ describe("App", () => {
     const settingsNav = screen.getByRole("navigation", { name: "Settings navigation" })
     expect(within(settingsNav).getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
     expect(within(settingsNav).getByRole("link", { name: "My credentials" })).toHaveClass("bg-gray-900")
+    expect(within(settingsNav).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/documents")
     expect(within(settingsNav).getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
     expect(within(settingsNav).getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
     expect(screen.queryByRole("link", { name: "Invitations" })).not.toBeInTheDocument()
@@ -2285,25 +2288,26 @@ describe("App", () => {
     expect(await screen.findByText("syrus_newtoken")).toBeInTheDocument()
   })
 
-  it("uploads a personal document from the credentials route", async () => {
+  it("uploads a personal document from the documents settings route", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/credentials/documents" && init?.method === "POST") {
-        return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ documents: [{ id: 8, kind: "google_doc", google_doc_url: "https://docs.google.com/document/d/user/edit", filename: null, content_type: null, byte_size: null, created_at: "2026-05-30T12:00:00Z" }], message: "Document added." })), { status: 201, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify(personalDocumentsPayload({ documents: [{ id: 8, kind: "google_doc", google_doc_url: "https://docs.google.com/document/d/user/edit", filename: null, content_type: null, byte_size: null, created_at: "2026-05-30T12:00:00Z" }], message: "Document added." })), { status: 201, headers: { "Content-Type": "application/json" } }))
       }
 
-      return Promise.resolve(new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      return Promise.resolve(new Response(JSON.stringify(personalDocumentsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/credentials/edit"]}>
+        <MemoryRouter initialEntries={["/app-shell/documents"]}>
           <App />
         </MemoryRouter>
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "My credentials" })).toBeInTheDocument()
+    expect(await screen.findByRole("main", { name: "Personal documents" })).toBeInTheDocument()
+    expect(within(screen.getByRole("navigation", { name: "Settings navigation" })).getByRole("link", { name: "Documents" })).toHaveClass("bg-gray-900")
     fireEvent.change(await screen.findByLabelText("Google Doc URL"), { target: { value: "https://docs.google.com/document/d/user/edit" } })
     fireEvent.click(screen.getByRole("button", { name: "Add document" }))
 
@@ -4294,7 +4298,6 @@ function credentialsPayload(overrides: {
   apiToken?: boolean
   newApiToken?: string
   message?: string
-  documents?: Array<Record<string, unknown>>
 } = {}) {
   return {
     user: {
@@ -4324,7 +4327,6 @@ function credentialsPayload(overrides: {
       reset_at: "2026-05-30T13:00:00Z",
       observed_at: "2026-05-30T12:00:00Z"
     },
-    documents: overrides.documents || [],
     options: {
       agent_providers: ["claude", "codex"],
       codex_auth_modes: ["api_key", "chatgpt_login"],
@@ -4340,6 +4342,16 @@ function credentialsPayload(overrides: {
     },
     message: overrides.message,
     new_api_token: overrides.newApiToken
+  }
+}
+
+function personalDocumentsPayload(overrides: {
+  documents?: Array<Record<string, unknown>>
+  message?: string
+} = {}) {
+  return {
+    documents: overrides.documents || [],
+    message: overrides.message
   }
 }
 

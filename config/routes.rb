@@ -29,7 +29,7 @@ Rails.application.routes.draw do
           post :clear_credential
           post :rotate_api_token
           delete :revoke_api_token
-          resources :documents, only: %i[ create destroy ], controller: "credentials/documents"
+          resources :documents, only: %i[ index create destroy ], controller: "credentials/documents"
         end
         get "jobs/new", to: "direct_jobs#new"
         post "jobs", to: "direct_jobs#create"
@@ -265,6 +265,7 @@ Rails.application.routes.draw do
   get "chats/:id", to: "spa#show", as: :chat, constraints: { id: /\d+/ }
 
   get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks
+  get "documents", to: "spa#show", as: :documents
   get "scheduled_tasks/:id", to: "spa#show", as: :scheduled_task, constraints: { id: /\d+/ }
   get "scheduled_tasks/:id/edit", to: "spa#show", as: :edit_scheduled_task, constraints: { id: /\d+/ }
   get "app-shell", to: "spa#show", as: :app_shell

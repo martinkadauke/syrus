@@ -32,11 +32,6 @@ RSpec.describe "API: /api/v1/app/credentials", type: :request do
 
   it "shows credential status without echoing encrypted secret values" do
     sign_in_as(user)
-    user.documents.create!(
-      kind: "google_doc",
-      google_doc_url: "https://docs.google.com/document/d/user/edit",
-      user: user
-    )
 
     get "/api/v1/app/credentials"
 
@@ -49,11 +44,25 @@ RSpec.describe "API: /api/v1/app/credentials", type: :request do
       "codex_auth_json" => true,
       "github_token" => true
     )
-    expect(body.dig("documents", 0, "google_doc_url")).to eq("https://docs.google.com/document/d/user/edit")
+    expect(body).not_to have_key("documents")
     expect(response.body).not_to include("sk-existing")
     expect(response.body).not_to include("sk-codex-existing")
     expect(response.body).not_to include("codex-access-existing")
     expect(response.body).not_to include("ghp_existing")
+  end
+
+  it "lists personal documents separately from credentials" do
+    sign_in_as(user)
+    user.documents.create!(
+      kind: "google_doc",
+      google_doc_url: "https://docs.google.com/document/d/user/edit",
+      user: user
+    )
+
+    get "/api/v1/app/credentials/documents"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("documents", 0, "google_doc_url")).to eq("https://docs.google.com/document/d/user/edit")
   end
 
   it "updates write-only credentials while preserving blank secrets and false booleans" do

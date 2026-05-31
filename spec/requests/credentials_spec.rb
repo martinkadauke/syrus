@@ -28,6 +28,13 @@ RSpec.describe "Credentials", type: :request do
       expect(response.body).to include('id="syrus-spa-root"')
     end
 
+    it "serves the React personal documents shell" do
+      get "/documents"
+
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
     it "does not route the retired legacy HTML credential endpoints" do
       expect {
         Rails.application.routes.recognize_path("/credentials/edit/legacy", method: :get)

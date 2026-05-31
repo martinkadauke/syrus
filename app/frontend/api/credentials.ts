@@ -62,10 +62,14 @@ export type CredentialsPayload = {
   user: CredentialsUser
   credential_status: CredentialStatus
   github_rate_limit: GithubRateLimit | null
-  documents: PersonalDocument[]
   options: CredentialsOptions
   message?: string
   new_api_token?: string
+}
+
+export type PersonalDocumentsPayload = {
+  documents: PersonalDocument[]
+  message?: string
 }
 
 export type CredentialsInput = {
@@ -84,6 +88,10 @@ export type CredentialsInput = {
 
 export function fetchCredentials() {
   return getJson<CredentialsPayload>("/api/v1/app/credentials")
+}
+
+export function fetchCredentialDocuments() {
+  return getJson<PersonalDocumentsPayload>("/api/v1/app/credentials/documents")
 }
 
 export function updateCredentials(values: CredentialsInput) {
@@ -112,9 +120,9 @@ export function addCredentialDocuments(files: File[], googleDocUrl: string) {
   if (googleDocUrl.trim().length > 0) {
     formData.append("document[google_doc_url]", googleDocUrl.trim())
   }
-  return postForm<CredentialsPayload>("/api/v1/app/credentials/documents", formData)
+  return postForm<PersonalDocumentsPayload>("/api/v1/app/credentials/documents", formData)
 }
 
 export function deleteCredentialDocument(id: number) {
-  return deleteJson<CredentialsPayload>(`/api/v1/app/credentials/documents/${id}`)
+  return deleteJson<PersonalDocumentsPayload>(`/api/v1/app/credentials/documents/${id}`)
 }

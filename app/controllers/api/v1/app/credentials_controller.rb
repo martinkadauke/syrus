@@ -59,8 +59,13 @@ module Api
             user: user_json(user),
             credential_status: credential_status_json(user),
             github_rate_limit: github_rate_limit_json(user),
-            documents: user.documents.with_attached_file.order(:created_at, :id).map { |document| document_json(document) },
             options: credentials_options
+          }
+        end
+
+        def documents_payload(user)
+          {
+            documents: user.documents.with_attached_file.order(:created_at, :id).map { |document| document_json(document) }
           }
         end
 
