@@ -1,8 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
-import { Link } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 import { fetchAdminOverview } from "../api/adminOverview"
 
 export function AdminOverview() {
+  const location = useLocation()
+  const prefix = routePrefix(location.pathname)
   const overview = useQuery({
     queryKey: ["admin", "overview"],
     queryFn: fetchAdminOverview
@@ -32,14 +34,14 @@ export function AdminOverview() {
       </header>
 
       <section aria-label="System metrics" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric title="Active runs" value={data.active_runs.total} context={triggerContext(data.active_runs.by_trigger, "all idle")} href="/admin/queue/active" />
-        <Metric title="Queued runs" value={data.queued_runs.total} context={data.queued_runs.total > 0 ? "waiting for a worker" : "queue empty"} href="/admin/queue/pending" />
-        <Metric title="Workers" value={data.workers.unreachable ? "?" : data.workers.total ?? 0} context={workersContext(data.workers)} href="/admin/queue/workers" tone={data.workers.stale ? "alarm" : "ok"} />
-        <Metric title="Recurring jobs" value={overdueRecurring.length} context={overdueRecurring.length > 0 ? overdueRecurring.map((task) => task.key).join(", ") : "all firing"} href="/admin/queue/recurring" tone={overdueRecurring.length > 0 ? "alarm" : "ok"} />
-        <Metric title="Failed runs (24h)" value={data.recent_failures_24h.total} context={triggerContext(data.recent_failures_24h.by_trigger, "no failures")} href="/admin/queue/failed" tone={data.recent_failures_24h.total > 0 ? "warn" : "ok"} />
+        <Metric title="Active runs" value={data.active_runs.total} context={triggerContext(data.active_runs.by_trigger, "all idle")} href={withRoutePrefix("/admin/queue/active", prefix)} />
+        <Metric title="Queued runs" value={data.queued_runs.total} context={data.queued_runs.total > 0 ? "waiting for a worker" : "queue empty"} href={withRoutePrefix("/admin/queue/pending", prefix)} />
+        <Metric title="Workers" value={data.workers.unreachable ? "?" : data.workers.total ?? 0} context={workersContext(data.workers)} href={withRoutePrefix("/admin/queue/workers", prefix)} tone={data.workers.stale ? "alarm" : "ok"} />
+        <Metric title="Recurring jobs" value={overdueRecurring.length} context={overdueRecurring.length > 0 ? overdueRecurring.map((task) => task.key).join(", ") : "all firing"} href={withRoutePrefix("/admin/queue/recurring", prefix)} tone={overdueRecurring.length > 0 ? "alarm" : "ok"} />
+        <Metric title="Failed runs (24h)" value={data.recent_failures_24h.total} context={triggerContext(data.recent_failures_24h.by_trigger, "no failures")} href={withRoutePrefix("/admin/queue/failed", prefix)} tone={data.recent_failures_24h.total > 0 ? "warn" : "ok"} />
         <Metric title="GitHub rate limits" value={data.github_rate_limits.length} context={data.github_rate_limits.length > 0 ? data.github_rate_limits.map((user) => user.email).join(", ") : "all healthy"} tone={data.github_rate_limits.length > 0 ? "warn" : "ok"} />
         <Metric title="Agent session capture" value={captureRate == null ? "-" : `${Math.round(captureRate * 100)}%`} context={`${data.agent_session_capture_rate.captured} of ${data.agent_session_capture_rate.total}`} tone={captureRate == null || captureRate >= 0.95 ? "ok" : "warn"} />
-        <Metric title="Stuck things" value={data.stuck.length} context={data.stuck.length > 0 ? "needs attention" : "nothing flagged"} href="/admin/stuck" tone={data.stuck.some((item) => item.severity === "alarm") ? "alarm" : data.stuck.length > 0 ? "warn" : "ok"} />
+        <Metric title="Stuck things" value={data.stuck.length} context={data.stuck.length > 0 ? "needs attention" : "nothing flagged"} href={withRoutePrefix("/admin/stuck", prefix)} tone={data.stuck.some((item) => item.severity === "alarm") ? "alarm" : data.stuck.length > 0 ? "warn" : "ok"} />
       </section>
 
       {data.stuck.length > 0 ? (
@@ -57,6 +59,17 @@ export function AdminOverview() {
       ) : null}
     </main>
   )
+}
+
+function routePrefix(pathname: string) {
+  return pathname.startsWith("/app-shell") ? "/app-shell" : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function Metric({

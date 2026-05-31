@@ -210,8 +210,8 @@ describe("App", () => {
 
     expect(await screen.findByText("Active runs")).toBeInTheDocument()
     expect(screen.getByRole("main", { name: "Admin overview" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /Active runs/ })).toHaveAttribute("href", "/admin/queue/active")
-    expect(screen.getByRole("link", { name: /Stuck things/ })).toHaveAttribute("href", "/admin/stuck")
+    expect(screen.getByRole("link", { name: /Active runs/ })).toHaveAttribute("href", "/app-shell/admin/queue/active")
+    expect(screen.getByRole("link", { name: /Stuck things/ })).toHaveAttribute("href", "/app-shell/admin/stuck")
     expect(screen.getByText("2")).toBeInTheDocument()
     expect(screen.getByText("Run #4 silent for 10m")).toBeInTheDocument()
   })
