@@ -50,6 +50,14 @@ Rails.application.routes.draw do
         post "jobs/:job_id/approve", to: "job_lifecycle#approve", constraints: { job_id: /\d+/ }
         post "jobs/:job_id/unapprove", to: "job_lifecycle#unapprove", constraints: { job_id: /\d+/ }
         post "jobs/:job_id/reopen", to: "job_lifecycle#reopen", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/poll_feedback", to: "job_run_commands#poll_feedback", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/rebase", to: "job_run_commands#rebase", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/check_mergeability", to: "job_run_commands#check_mergeability", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/resume", to: "job_run_commands#resume", constraints: { job_id: /\d+/ }
+        post "jobs/:job_id/runs/:run_id/stop", to: "job_run_commands#stop_run", constraints: { job_id: /\d+/, run_id: /\d+/ }
+        post "jobs/:job_id/runs/:run_id/diagnose", to: "job_run_commands#diagnose", constraints: { job_id: /\d+/, run_id: /\d+/ }
+        post "jobs/:job_id/workflows/:workflow_id/retry_step", to: "job_run_commands#retry_step", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
+        post "jobs/:job_id/workflows/:workflow_id/push_commits", to: "job_run_commands#push_commits", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
         get "epics/new", to: "epics#new"
         get "epics/:id", to: "epics#show", constraints: { id: /\d+/ }
         get "epics/:id/edit", to: "epics#edit", constraints: { id: /\d+/ }
