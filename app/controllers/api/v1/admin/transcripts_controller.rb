@@ -1,9 +1,9 @@
 module Api
   module V1
     module Admin
-      # Mirror of Admin::TranscriptsController for programmatic
-      # access. Same parser, same captured agent-session data, JSON
-      # shape suitable for piping into jq.
+      # Token-auth transcript API. Same parser and captured
+      # agent-session data as the React app API, with a JSON shape
+      # suitable for piping into jq.
       #
       #   GET /api/v1/admin/runs/:run_id/transcript        → { summary, events }
       #   GET /api/v1/admin/runs/:run_id/transcript/raw    → raw JSONL

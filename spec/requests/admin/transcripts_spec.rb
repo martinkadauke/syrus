@@ -51,44 +51,10 @@ RSpec.describe "Admin transcripts", type: :request do
     end
   end
 
-  describe "GET /admin/runs/:run_id/transcript/legacy" do
-    before do
-      ClaudeSession.find_or_create_by!(
-        resumable: run,
-        session_id: "abc-123"
-      ) do |session|
-        session.transcript_jsonl = jsonl(
-          { "type" => "system", "subtype" => "init", "model" => "claude-sonnet-4-6",
-            "cwd" => "/x", "tools" => [ "Bash", "mcp__syrus__submit_summary" ],
-            "session_id" => "abc-123" },
-          { "type" => "assistant", "message" => { "content" => [
-            { "type" => "tool_use", "name" => "Bash", "input" => { "command" => "ls" }, "id" => "u1" }
-          ] } },
-          { "type" => "result", "subtype" => "success", "num_turns" => 1,
-            "duration_ms" => 200, "total_cost_usd" => 0.01, "is_error" => false }
-        )
-      end
-    end
-
-    it "renders the transcript with summary + events for admins" do
-      sign_in_as(admin)
-      get "/admin/runs/#{run.id}/transcript/legacy"
-      expect(response).to be_successful
-      expect(response.body).to include("Run ##{run.id}")
-      expect(response.body).to include("claude-sonnet-4-6")
-      expect(response.body).to include("Bash")
-      expect(response.body).to include("mcp__syrus__submit_summary")
-      expect(response.body).to include("turns=1")
-    end
-
-    it "redirects when no agent session was captured" do
-      sign_in_as(admin)
-      run.claude_session.destroy
-      get "/admin/runs/#{run.id}/transcript/legacy"
-      expect(response).to redirect_to(job_path(run.job)).or redirect_to(root_path)
-      expect(flash[:alert]).to match(/no agent session/i)
-      expect(flash[:alert]).not_to match(/Claude session|ClaudeSession/)
-    end
+  it "does not route the retired legacy transcript endpoint" do
+    expect {
+      Rails.application.routes.recognize_path("/admin/runs/#{run.id}/transcript/legacy", method: :get)
+    }.to raise_error(ActionController::RoutingError)
   end
 
   describe "GET /admin/runs/:run_id/transcript/download" do

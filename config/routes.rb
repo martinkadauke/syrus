@@ -174,9 +174,8 @@ Rails.application.routes.draw do
         # ?per (max 100).
         get "runs", to: "runs#index"
 
-        # Transcripts (mirror Admin::TranscriptsController; A in
-        # docs/plans/complete/admin-diagnostics.md). Paginated event stream
-        # via ?page= + ?per=, plus a raw-JSONL pass-through.
+        # Transcripts. Paginated event stream via ?page= + ?per=,
+        # plus a raw-JSONL pass-through.
         get "runs/:run_id/transcript",     to: "transcripts#show"
         get "runs/:run_id/transcript/raw", to: "transcripts#raw"
 
@@ -419,10 +418,7 @@ Rails.application.routes.draw do
   get "admin/installations", to: "spa#show", as: :admin_installations
 
   namespace :admin do
-    # Per-Run claude transcript viewer — renders the captured
-    # ClaudeSession.transcript_jsonl as a structured event stream.
-    # See docs/plans/complete/admin-diagnostics.md (A).
-    get  "runs/:run_id/transcript/legacy",   to: "transcripts#show",     as: :legacy_run_transcript
+    # Raw transcript download for offline analysis.
     get  "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 
     get "github_app/register", to: "github_app#register", as: :github_app_register

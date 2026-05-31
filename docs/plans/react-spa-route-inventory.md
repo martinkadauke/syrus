@@ -83,7 +83,7 @@ health/storage internals.
 | `/admin/queue`, `/admin/queue/:tab` | `spa#show` + `/api/v1/app/admin/queue*` | `spa-admin` | Migrated to the React admin queue shell with app API reaper command. Legacy ERB fallback and HTML reaper route are removed. |
 | `/admin/stuck` | `spa#show` | `spa-admin` | Migrated to the React stuck-items shell with internal React Router links to Jobs and transcripts. Legacy ERB fallback is removed. |
 | `/admin/processes`, `/admin/processes/:id` | `spa#show` + `/api/v1/app/admin/processes*` | `spa-admin` | Migrated to the React process inventory/detail shell with internal React Router transcript links and app API kill. Legacy ERB fallback and HTML kill route are removed. |
-| `/admin/runs/:run_id/transcript` | `spa#show` | `spa-admin` | Migrated to the React transcript viewer with internal React Router back-to-Job navigation. Legacy ERB fallback lives at `/admin/runs/:run_id/transcript/legacy`. |
+| `/admin/runs/:run_id/transcript` | `spa#show` | `spa-admin` | Migrated to the React transcript viewer with internal React Router back-to-Job navigation. Legacy ERB fallback is removed. |
 | `/admin/runs/:run_id/transcript/download` | `admin/transcripts#download` | `legacy-html` | Keep as regular download endpoint. |
 | `/admin/users`, `/admin/users/:id` | `spa#show` + `/api/v1/app/admin/users*` | `spa-admin` | Migrated to the React users list/detail shell with app API scheduling commands. Legacy ERB fallback and HTML scheduling command routes are removed. |
 | `/admin/console` | `spa#show` + `/api/v1/app/admin/console*` | `spa-admin` | Migrated to the React operator console with app API kill-switch/cache commands. Legacy ERB fallback and HTML console command routes are removed. |

@@ -10,8 +10,7 @@ require "json"
 # text, tool_use calls, tool_result responses, and the final
 # result summary.
 #
-# Used by Admin::TranscriptsController to render the transcript
-# viewer.
+# Used by the admin transcript APIs to render the transcript viewer.
 class ClaudeTranscript
   Event = Data.define(:kind, :timestamp, :data)
   # `kind` is one of:
