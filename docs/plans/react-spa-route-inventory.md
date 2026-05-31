@@ -68,7 +68,7 @@ health/storage internals.
 | scheduled task commands | `scheduled_tasks#pause`, `#resume`, `#fire_now` | `app-api-needed` | Command endpoints with updated scheduled task payload. |
 | `/cron_templates` | `cron_templates` resource | `spa-core` | CRUD surface; can migrate with scheduled tasks. |
 | `/smart_folders` | `smart_folders#index/create/update/destroy` | `spa-core` + `app-api-needed` | Used by dashboard/admin filters. API should expose subject type and query. |
-| `/tags` | `tags#index/create/update/destroy` | `spa-core` + `app-api-needed` | CRUD surface plus job tag use. |
+| `/tags` | `spa#show` | `spa-core` | Migrated to the React tags shell. Legacy ERB fallback lives at `/tags/legacy`. |
 | `/filters/fk_options` | `filters/fk_options#index` | `app-api-needed` | Existing JSON-ish helper. Normalize response shape before React forms rely on it. |
 | `/credentials/edit`, `/credentials` | `credentials#edit/update` | `spa-core` | Account credentials/settings page. Needs careful encrypted attribute handling in request specs. |
 | credential token commands | `credentials#rotate_api_token`, `#revoke_api_token` | `app-api-needed` | Command endpoints returning masked token state. |

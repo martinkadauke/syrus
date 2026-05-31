@@ -212,7 +212,14 @@ Rails.application.routes.draw do
     end
   end
   resources :smart_folders, only: %i[ index create update destroy ]
-  resources :tags, only: %i[ index create update destroy ]
+  get "tags", to: "spa#show", as: :tags
+  post "tags", to: "tags#create"
+  patch "tags/:id", to: "tags#update", as: :tag, constraints: { id: /\d+/ }
+  delete "tags/:id", to: "tags#destroy", constraints: { id: /\d+/ }
+  get "tags/legacy", to: "tags#index", as: :legacy_tags
+  post "tags/legacy", to: "tags#create"
+  patch "tags/legacy/:id", to: "tags#update", as: :legacy_tag, constraints: { id: /\d+/ }
+  delete "tags/legacy/:id", to: "tags#destroy", constraints: { id: /\d+/ }
   resources :cron_templates
   get "invitations", to: "spa#show", as: :invitations
   post "invitations", to: "invitations#create"

@@ -6,18 +6,25 @@ RSpec.describe "Tags", type: :request do
 
   before { sign_in_as(user) }
 
-  it "lists only the current user's tags" do
+  it "serves the React tags shell" do
+    get tags_path
+
+    expect(response).to be_successful
+    expect(response.body).to include('id="syrus-spa-root"')
+  end
+
+  it "lists only the current user's tags in the legacy fallback" do
     Factories.tag(user: user, name: "mine", color: "blue")
     Factories.tag(user: other, name: "theirs", color: "red")
 
-    get tags_path
+    get legacy_tags_path
 
     expect(response.body).to include("mine")
     expect(response.body).not_to include("theirs")
   end
 
   it "renders the per-user settings nav with Tags as the active tab" do
-    get tags_path
+    get legacy_tags_path
 
     document = Nokogiri::HTML(response.body)
     nav_links = document.css("nav a").map { |a| [ a.text.strip, a["href"] ] }
@@ -44,6 +51,7 @@ RSpec.describe "Tags", type: :request do
 
     expect(tag.reload.name).to eq("new")
     expect(tag.color).to eq("green")
+    expect(response).to redirect_to(tags_path)
   end
 
   it "deletes the tag and its job assignments" do
@@ -57,6 +65,24 @@ RSpec.describe "Tags", type: :request do
     }.to change { JobTag.count }.by(-1)
 
     expect(Tag.exists?(tag.id)).to be(false)
+    expect(response).to redirect_to(tags_path)
+  end
+
+  it "keeps legacy mutations inside the legacy fallback" do
+    expect {
+      post legacy_tags_path, params: { tag: { name: "legacy", color: "gray" } }
+    }.to change { user.tags.count }.by(1)
+    expect(response).to redirect_to(legacy_tags_path)
+
+    tag = user.tags.last
+    patch legacy_tag_path(tag), params: { tag: { name: "legacy-new", color: "blue" } }
+    expect(tag.reload.name).to eq("legacy-new")
+    expect(response).to redirect_to(legacy_tags_path)
+
+    expect {
+      delete legacy_tag_path(tag)
+    }.to change { user.tags.count }.by(-1)
+    expect(response).to redirect_to(legacy_tags_path)
   end
 
   it "does not allow managing another user's tags" do
