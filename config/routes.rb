@@ -29,6 +29,9 @@ Rails.application.routes.draw do
           delete :revoke_api_token
           resources :documents, only: %i[ create destroy ], controller: "credentials/documents"
         end
+        get "repositories/:repository_id/documents", to: "repository_documents#index"
+        post "repositories/:repository_id/documents", to: "repository_documents#create"
+        delete "repository_documents/:id", to: "repository_documents#destroy"
         get "repositories/:repository_id/scheduled_tasks/new", to: "scheduled_tasks#new"
         get "repositories/:repository_id/scheduled_tasks", to: "scheduled_tasks#repository_index"
         post "repositories/:repository_id/scheduled_tasks", to: "scheduled_tasks#create"
