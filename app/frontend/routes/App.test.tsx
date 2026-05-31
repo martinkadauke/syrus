@@ -211,7 +211,7 @@ describe("App", () => {
                 total_pages: 3,
                 preferences: {
                   sort: { column: sortColumn, direction: sortDirection },
-                  visible_columns: ["title", "state", "repository"],
+                  visible_columns: ["checkbox", "issue", "state", "repository", "latest", "workflows_count", "started"],
                   kanban_lanes: ["queued", "running", "succeeded"],
                   raw: {}
                 },
@@ -238,7 +238,7 @@ describe("App", () => {
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
     expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
-    expect(screen.getByLabelText("State")).toHaveValue("")
+    expect(screen.getByRole("combobox", { name: "State" })).toHaveValue("")
     expect(screen.getByRole("link", { name: "Epics 2" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
     expect(screen.getByRole("link", { name: "My work" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
@@ -252,7 +252,7 @@ describe("App", () => {
       })
     )
 
-    fireEvent.change(screen.getByLabelText("State"), { target: { value: "open" } })
+    fireEvent.change(screen.getByRole("combobox", { name: "State" }), { target: { value: "open" } })
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -287,6 +287,26 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Dashboard preferences updated.")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText("Workflows count"))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard/preferences",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            subject: "job",
+            visible_columns: ["state", "repository", "latest", "started"]
+          })
+        })
+      )
+    })
 
     fireEvent.click(screen.getByLabelText("Select Repair aqueduct"))
     fireEvent.click(screen.getByRole("button", { name: "Retry" }))
@@ -3229,7 +3249,7 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
     },
     preferences: {
       sort: { column: "created_at", direction: "desc" },
-      visible_columns: ["title", "state", "repository"],
+      visible_columns: ["checkbox", "issue", "state", "repository", "latest", "workflows_count", "started"],
       kanban_lanes: ["queued", "running", "succeeded"],
       raw: {}
     },
@@ -3237,6 +3257,21 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
       views: ["list", "kanban"],
       sort_columns: ["title", "state", "repository", "created_at", "started_at"],
       sort_directions: ["asc", "desc"],
+      columns: {
+        required: [
+          { key: "checkbox", title: "Checkbox" },
+          { key: "issue", title: "Issue" }
+        ],
+        optional: [
+          { key: "state", title: "State" },
+          { key: "repository", title: "Repository" },
+          { key: "latest", title: "Latest" },
+          { key: "workflows_count", title: "Workflows count" },
+          { key: "started", title: "Started" },
+          { key: "created_at", title: "Created at" },
+          { key: "updated_at", title: "Updated at" }
+        ]
+      },
       kanban_lanes: [
         { key: "blocked", title: "Blocked" },
         { key: "queued", title: "Queued" },
@@ -3321,6 +3356,12 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     updated_at: "2026-05-30T12:00:00Z",
     started_at: "2026-05-30T10:01:00Z",
     finished_at: null,
+    approved_at: null,
+    dependencies_overridden_at: null,
+    last_feedback_addressed_at: null,
+    last_seen_comment_at: null,
+    pr_mergeable_checked_at: null,
+    workflows_count: 1,
     repository: { id: 3, slug: "acme/widgets" },
     tags: [{ id: 5, name: "urgent", color: "red" }],
     paths: { job_path: "/jobs/42", source_path: "/jobs/42/source" },

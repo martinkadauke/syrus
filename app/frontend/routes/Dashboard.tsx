@@ -112,6 +112,18 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
     })
   }
 
+  function updateColumn(column: string, checked: boolean) {
+    const optionalColumns = payload.controls.columns.optional.map((option) => option.key)
+    const next = optionalColumns.filter((candidate) => {
+      if (candidate === column) return checked
+      return payload.preferences.visible_columns.includes(candidate)
+    })
+    updatePreferences.mutate({
+      subject: payload.subject,
+      visible_columns: next
+    })
+  }
+
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
@@ -160,6 +172,23 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
             ))}
           </select>
         </label>
+        {payload.view === "list" ? (
+          <fieldset className="flex max-w-xl flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1">
+            <legend className="sr-only">Visible columns</legend>
+            <span className="mr-1 text-xs font-medium uppercase text-gray-500">Columns</span>
+            {payload.controls.columns.optional.map((column) => (
+              <label className="inline-flex items-center gap-1 text-xs text-gray-700" key={column.key}>
+                <input
+                  checked={payload.preferences.visible_columns.includes(column.key)}
+                  disabled={updatePreferences.isPending}
+                  onChange={(event) => updateColumn(column.key, event.target.checked)}
+                  type="checkbox"
+                />
+                <span>{column.title}</span>
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
         {payload.view === "kanban" ? (
           <fieldset className="flex max-w-xl flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1">
             <legend className="sr-only">Kanban lanes</legend>
@@ -241,10 +270,11 @@ function DashboardTable({ payload }: { payload: DashboardPayload }) {
     return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">No {subjectLabel(payload.subject, 2)} match this view.</div>
   }
 
-  if (payload.subject === "job") return <JobsDashboardTable items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} />
-  if (payload.subject === "workflow") return <WorkflowsTable items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} />
+  const columns = dashboardVisibleColumns(payload)
+  if (payload.subject === "job") return <JobsDashboardTable columns={columns} items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} />
+  if (payload.subject === "workflow") return <WorkflowsTable columns={columns} items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} />
 
-  return <EpicsTable items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} />
+  return <EpicsTable columns={columns} items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} />
 }
 
 function DashboardKanban({ payload }: { payload: DashboardPayload }) {
@@ -316,7 +346,7 @@ function KanbanCard({ item }: { item: DashboardItem }) {
   )
 }
 
-function JobsDashboardTable({ items }: { items: DashboardJobItem[] }) {
+function JobsDashboardTable({ items, columns }: { items: DashboardJobItem[]; columns: string[] }) {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const visibleIds = useMemo(() => items.map((item) => item.id), [items])
   const selectedArray = useMemo(() => Array.from(selectedIds), [selectedIds])
@@ -351,6 +381,7 @@ function JobsDashboardTable({ items }: { items: DashboardJobItem[] }) {
       <BulkJobActions selectedIds={selectedArray} onClear={() => setSelectedIds(new Set())} />
       <JobsTable
         allSelected={allSelected}
+        columns={columns}
         items={items}
         onToggleAll={toggleAll}
         onToggleOne={toggleOne}
@@ -398,12 +429,14 @@ function BulkJobActions({ selectedIds, onClear }: { selectedIds: number[]; onCle
 
 function JobsTable({
   items,
+  columns,
   selectedIds,
   allSelected,
   onToggleAll,
   onToggleOne
 }: {
   items: DashboardJobItem[]
+  columns: string[]
   selectedIds: Set<number>
   allSelected: boolean
   onToggleAll: () => void
@@ -414,34 +447,17 @@ function JobsTable({
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
-            <th className="w-10 px-4 py-2">
-              <input aria-label="Select all jobs" checked={allSelected} onChange={onToggleAll} type="checkbox" />
-            </th>
-            <th className="px-4 py-2">Job</th>
-            <th className="px-4 py-2">State</th>
-            <th className="px-4 py-2">Repository</th>
-            <th className="px-4 py-2">Latest</th>
-            <th className="px-4 py-2">Updated</th>
+            {columns.map((column) => (
+              <th className={column === "checkbox" ? "w-10 px-4 py-2" : "px-4 py-2"} key={column}>
+                {column === "checkbox" ? <input aria-label="Select all jobs" checked={allSelected} onChange={onToggleAll} type="checkbox" /> : dashboardColumnLabel("job", column)}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {items.map((job) => (
             <tr key={job.id}>
-              <td className="px-4 py-3 align-top">
-                <input aria-label={`Select ${job.title}`} checked={selectedIds.has(job.id)} onChange={() => onToggleOne(job.id)} type="checkbox" />
-              </td>
-              <td className="max-w-md px-4 py-3">
-                <a className="font-medium text-blue-600 hover:underline" href={job.paths.job_path}>{job.title}</a>
-                <div className="mt-1 flex flex-wrap gap-1 text-xs text-gray-500">
-                  <span>#{job.issue_number || job.id}</span>
-                  {job.pr_number ? <span>PR #{job.pr_number}</span> : null}
-                  {job.tags.map((tag) => <span className="rounded bg-gray-100 px-1.5 py-0.5" key={tag.id}>{tag.name}</span>)}
-                </div>
-              </td>
-              <td className="px-4 py-3"><StatePill state={job.summary_state} /></td>
-              <td className="px-4 py-3 font-mono text-xs text-gray-600">{job.repository.slug}</td>
-              <td className="px-4 py-3 text-gray-700">{job.latest_workflow_state}</td>
-              <td className="px-4 py-3 text-gray-500">{formatDate(job.updated_at)}</td>
+              {columns.map((column) => <JobCell column={column} job={job} key={column} onToggleOne={onToggleOne} selected={selectedIds.has(job.id)} />)}
             </tr>
           ))}
         </tbody>
@@ -450,30 +466,43 @@ function JobsTable({
   )
 }
 
-function EpicsTable({ items }: { items: DashboardEpicItem[] }) {
+function JobCell({ job, column, selected, onToggleOne }: { job: DashboardJobItem; column: string; selected: boolean; onToggleOne: (id: number) => void }) {
+  if (column === "checkbox") {
+    return <td className="px-4 py-3 align-top"><input aria-label={`Select ${job.title}`} checked={selected} onChange={() => onToggleOne(job.id)} type="checkbox" /></td>
+  }
+  if (column === "issue" || column === "title") {
+    return (
+      <td className="max-w-md px-4 py-3">
+        <a className="font-medium text-blue-600 hover:underline" href={job.paths.job_path}>{job.title}</a>
+        <div className="mt-1 flex flex-wrap gap-1 text-xs text-gray-500">
+          <span>#{job.issue_number || job.id}</span>
+          {job.pr_number ? <span>PR #{job.pr_number}</span> : null}
+          {job.tags.map((tag) => <span className="rounded bg-gray-100 px-1.5 py-0.5" key={tag.id}>{tag.name}</span>)}
+        </div>
+      </td>
+    )
+  }
+  if (column === "state") return <td className="px-4 py-3"><StatePill state={job.summary_state} /></td>
+  if (column === "repository") return <td className="px-4 py-3 font-mono text-xs text-gray-600">{job.repository.slug}</td>
+  if (column === "latest") return <td className="px-4 py-3 text-gray-700">{job.latest_workflow_state}</td>
+  if (column === "workflows_count") return <td className="px-4 py-3 text-gray-700">{job.workflows_count}</td>
+
+  return <td className="px-4 py-3 text-gray-500">{formatDate(jobDateValue(job, column))}</td>
+}
+
+function EpicsTable({ items, columns }: { items: DashboardEpicItem[]; columns: string[] }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
-            <th className="px-4 py-2">Epic</th>
-            <th className="px-4 py-2">State</th>
-            <th className="px-4 py-2">Repository</th>
-            <th className="px-4 py-2">Auto approval</th>
-            <th className="px-4 py-2">Updated</th>
+            {columns.map((column) => <th className="px-4 py-2" key={column}>{dashboardColumnLabel("epic", column)}</th>)}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {items.map((epic) => (
             <tr key={epic.id}>
-              <td className="max-w-md px-4 py-3">
-                <a className="font-medium text-blue-600 hover:underline" href={epic.paths.epic_path}>{epic.title}</a>
-                <div className="mt-1 font-mono text-xs text-gray-500">{epic.display_number}</div>
-              </td>
-              <td className="px-4 py-3"><StatePill state={epic.state} /></td>
-              <td className="px-4 py-3 font-mono text-xs text-gray-600">{epic.repository.slug}</td>
-              <td className="px-4 py-3 text-gray-700">{epic.auto_approve_mode.replace(/_/g, " ")}</td>
-              <td className="px-4 py-3 text-gray-500">{formatDate(epic.updated_at)}</td>
+              {columns.map((column) => <EpicCell column={column} epic={epic} key={column} />)}
             </tr>
           ))}
         </tbody>
@@ -482,36 +511,60 @@ function EpicsTable({ items }: { items: DashboardEpicItem[] }) {
   )
 }
 
-function WorkflowsTable({ items }: { items: DashboardWorkflowItem[] }) {
+function EpicCell({ epic, column }: { epic: DashboardEpicItem; column: string }) {
+  if (column === "epic") {
+    return (
+      <td className="max-w-md px-4 py-3">
+        <a className="font-medium text-blue-600 hover:underline" href={epic.paths.epic_path}>{epic.title}</a>
+        <div className="mt-1 font-mono text-xs text-gray-500">{epic.display_number}</div>
+      </td>
+    )
+  }
+  if (column === "state") return <td className="px-4 py-3"><StatePill state={epic.state} /></td>
+  if (column === "repository") return <td className="px-4 py-3 font-mono text-xs text-gray-600">{epic.repository.slug}</td>
+  if (column === "updated") return <td className="px-4 py-3 text-gray-500">{formatDate(epic.updated_at)}</td>
+
+  return <td className="px-4 py-3 text-gray-500">{formatDate(epicDateValue(epic, column))}</td>
+}
+
+function WorkflowsTable({ items, columns }: { items: DashboardWorkflowItem[]; columns: string[] }) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
-            <th className="px-4 py-2">Workflow</th>
-            <th className="px-4 py-2">State</th>
-            <th className="px-4 py-2">Job</th>
-            <th className="px-4 py-2">Trigger</th>
-            <th className="px-4 py-2">Started</th>
+            {columns.map((column) => <th className="px-4 py-2" key={column}>{dashboardColumnLabel("workflow", column)}</th>)}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
           {items.map((workflow) => (
             <tr key={workflow.id}>
-              <td className="px-4 py-3 font-medium text-gray-900">Workflow #{workflow.id}</td>
-              <td className="px-4 py-3"><StatePill state={workflow.state} /></td>
-              <td className="max-w-md px-4 py-3">
-                <a className="font-medium text-blue-600 hover:underline" href={workflow.job.path}>{workflow.job.title}</a>
-                <div className="mt-1 font-mono text-xs text-gray-500">{workflow.job.repository.slug}</div>
-              </td>
-              <td className="px-4 py-3 text-gray-700">{workflow.trigger_kind}</td>
-              <td className="px-4 py-3 text-gray-500">{formatDate(workflow.started_at || workflow.created_at)}</td>
+              {columns.map((column) => <WorkflowCell column={column} key={column} workflow={workflow} />)}
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   )
+}
+
+function WorkflowCell({ workflow, column }: { workflow: DashboardWorkflowItem; column: string }) {
+  if (column === "workflow" || column === "title") return <td className="px-4 py-3 font-medium text-gray-900">Workflow #{workflow.id}</td>
+  if (column === "state") return <td className="px-4 py-3"><StatePill state={workflow.state} /></td>
+  if (column === "job") {
+    return (
+      <td className="max-w-md px-4 py-3">
+        <a className="font-medium text-blue-600 hover:underline" href={workflow.job.path}>{workflow.job.title}</a>
+        <div className="mt-1 font-mono text-xs text-gray-500">{workflow.job.repository.slug}</div>
+      </td>
+    )
+  }
+  if (column === "trigger") return <td className="px-4 py-3 text-gray-700">{workflow.trigger_kind}</td>
+  if (column === "agent") return <td className="px-4 py-3 text-gray-700">{workflow.agent_provider}</td>
+  if (column === "started") return <td className="px-4 py-3 text-gray-500">{formatDate(workflow.started_at || workflow.created_at)}</td>
+  if (column === "finished") return <td className="px-4 py-3 text-gray-500">{formatDate(workflow.finished_at)}</td>
+
+  return <td className="px-4 py-3 text-gray-500">{formatDate(workflowDateValue(workflow, column))}</td>
 }
 
 function Pagination({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
@@ -692,6 +745,117 @@ function sortColumnLabel(column: string) {
 
 function sortDirectionLabel(direction: string) {
   return direction === "asc" ? "Ascending" : "Descending"
+}
+
+function dashboardColumnLabel(subject: DashboardSubject, column: string) {
+  const labels: Record<DashboardSubject, Record<string, string>> = {
+    epic: {
+      epic: "Epic",
+      state: "State",
+      repository: "Repository",
+      updated: "Updated",
+      created_at: "Created at",
+      updated_at: "Updated at",
+      done_at: "Done at",
+      archived_at: "Archived at"
+    },
+    job: {
+      checkbox: "Checkbox",
+      issue: "Issue",
+      title: "Title",
+      state: "State",
+      repository: "Repository",
+      latest: "Latest",
+      workflows_count: "Workflows count",
+      started: "Started",
+      created_at: "Created at",
+      updated_at: "Updated at",
+      started_at: "Started at",
+      finished_at: "Finished at",
+      approved_at: "Approved at",
+      dependencies_overridden_at: "Dependencies overridden at",
+      last_feedback_addressed_at: "Last feedback addressed at",
+      last_seen_comment_at: "Last seen comment at",
+      pr_mergeable_checked_at: "PR mergeable checked at"
+    },
+    workflow: {
+      workflow: "Workflow",
+      title: "Workflow",
+      job: "Job",
+      trigger: "Trigger",
+      state: "State",
+      started: "Started",
+      finished: "Finished",
+      agent: "Agent",
+      created_at: "Created at",
+      updated_at: "Updated at",
+      started_at: "Started at",
+      finished_at: "Finished at",
+      cleaned_up_at: "Cleaned up at"
+    }
+  }
+
+  return labels[subject][column] || humanizeOption(column)
+}
+
+function dashboardVisibleColumns(payload: DashboardPayload) {
+  const allowed = new Set([
+    ...payload.controls.columns.required.map((column) => column.key),
+    ...payload.controls.columns.optional.map((column) => column.key)
+  ])
+  const normalized = [
+    ...payload.controls.columns.required.map((column) => column.key),
+    ...payload.preferences.visible_columns.map((column) => normalizeDashboardColumn(payload.subject, column))
+  ]
+
+  return normalized.filter((column, index, columns) => allowed.has(column) && columns.indexOf(column) === index)
+}
+
+function normalizeDashboardColumn(subject: DashboardSubject, column: string) {
+  if (subject === "job" && column === "title") return "issue"
+  if (subject === "workflow" && column === "title") return "workflow"
+
+  return column
+}
+
+function jobDateValue(job: DashboardJobItem, column: string) {
+  const values: Record<string, string | null> = {
+    started: job.started_at,
+    created_at: job.created_at,
+    updated_at: job.updated_at,
+    started_at: job.started_at,
+    finished_at: job.finished_at,
+    approved_at: job.approved_at,
+    dependencies_overridden_at: job.dependencies_overridden_at,
+    last_feedback_addressed_at: job.last_feedback_addressed_at,
+    last_seen_comment_at: job.last_seen_comment_at,
+    pr_mergeable_checked_at: job.pr_mergeable_checked_at
+  }
+
+  return values[column] || null
+}
+
+function epicDateValue(epic: DashboardEpicItem, column: string) {
+  const values: Record<string, string | null> = {
+    created_at: epic.created_at,
+    updated_at: epic.updated_at,
+    done_at: epic.done_at,
+    archived_at: epic.archived_at
+  }
+
+  return values[column] || null
+}
+
+function workflowDateValue(workflow: DashboardWorkflowItem, column: string) {
+  const values: Record<string, string | null> = {
+    created_at: workflow.created_at,
+    updated_at: workflow.updated_at,
+    started_at: workflow.started_at,
+    finished_at: workflow.finished_at,
+    cleaned_up_at: workflow.cleaned_up_at
+  }
+
+  return values[column] || null
 }
 
 function humanizeOption(value: string) {

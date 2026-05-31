@@ -18,6 +18,7 @@ module App
       { key: "failed", title: "Failed" }
     ].freeze
     WORKFLOW_DONE_STATES = %w[succeeded failed cancelled].freeze
+    COLUMN_LABELS = HomeHelper::DASHBOARD_COLUMN_LABELS
 
     def self.call(user:, params:)
       new(user: user, params: params).call
@@ -101,7 +102,7 @@ module App
     def jobs_result
       scope = filtered_jobs_scope
       total = scope.count
-      scope = scope.with_latest_workflow_snapshot.preload(:repository, :tags)
+      scope = scope.with_latest_workflow_snapshot.preload(:repository, :tags, :workflows)
       items = paginate(apply_sort(scope, :job)).map { |job| job_json(job) }
 
       { total: total, items: items }
@@ -234,7 +235,7 @@ module App
       records = filtered_jobs_scope
                 .where(state: job_kanban_candidate_states(visible_lanes))
                 .with_latest_workflow_snapshot
-                .preload(:repository, :tags, dependencies: :depends_on_job)
+                .preload(:repository, :tags, :workflows, dependencies: :depends_on_job)
                 .order(created_at: :desc, id: :desc)
                 .limit(kanban_limit)
                 .to_a
@@ -365,6 +366,12 @@ module App
         updated_at: job.updated_at&.iso8601,
         started_at: job.started_at&.iso8601,
         finished_at: job.finished_at&.iso8601,
+        approved_at: job.approved_at&.iso8601,
+        dependencies_overridden_at: job.dependencies_overridden_at&.iso8601,
+        last_feedback_addressed_at: job.last_feedback_addressed_at&.iso8601,
+        last_seen_comment_at: job.last_seen_comment_at&.iso8601,
+        pr_mergeable_checked_at: job.pr_mergeable_checked_at&.iso8601,
+        workflows_count: job.workflows.size,
         repository: repository_json(job.repository),
         tags: job.tags.map { |tag| tag_json(tag) },
         paths: {
@@ -386,6 +393,7 @@ module App
         created_at: epic.created_at&.iso8601,
         updated_at: epic.updated_at&.iso8601,
         done_at: epic.done_at&.iso8601,
+        archived_at: epic.archived_at&.iso8601,
         repository: repository_json(epic.repository),
         paths: {
           epic_path: epic_path(epic),
@@ -406,6 +414,7 @@ module App
         updated_at: workflow.updated_at&.iso8601,
         started_at: workflow.started_at&.iso8601,
         finished_at: workflow.finished_at&.iso8601,
+        cleaned_up_at: workflow.cleaned_up_at&.iso8601,
         steps_count: workflow.steps.size,
         job: {
           id: job.id,
@@ -449,8 +458,24 @@ module App
         views: VIEWS,
         sort_columns: User::DASHBOARD_SORT_COLUMNS.fetch(subject),
         sort_directions: User::DASHBOARD_SORT_DIRECTIONS,
+        columns: column_options_json,
         kanban_lanes: kanban_lane_options_json,
         filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user)
+      }
+    end
+
+    def column_options_json
+      table = subject.pluralize
+      {
+        required: User::DASHBOARD_REQUIRED_COLUMNS.fetch(table).map { |column| column_json(table, column) },
+        optional: User::DASHBOARD_OPTIONAL_COLUMNS.fetch(table).map { |column| column_json(table, column) }
+      }
+    end
+
+    def column_json(table, column)
+      {
+        key: column,
+        title: COLUMN_LABELS.dig(table, column) || column.humanize
       }
     end
 

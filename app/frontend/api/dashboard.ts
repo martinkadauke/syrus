@@ -30,6 +30,12 @@ export type DashboardJobItem = {
   updated_at: string | null
   started_at: string | null
   finished_at: string | null
+  approved_at: string | null
+  dependencies_overridden_at: string | null
+  last_feedback_addressed_at: string | null
+  last_seen_comment_at: string | null
+  pr_mergeable_checked_at: string | null
+  workflows_count: number
   repository: DashboardRepository
   tags: DashboardTag[]
   paths: {
@@ -49,6 +55,7 @@ export type DashboardEpicItem = {
   created_at: string | null
   updated_at: string | null
   done_at: string | null
+  archived_at: string | null
   repository: DashboardRepository
   paths: {
     epic_path: string
@@ -66,6 +73,7 @@ export type DashboardWorkflowItem = {
   updated_at: string | null
   started_at: string | null
   finished_at: string | null
+  cleaned_up_at: string | null
   steps_count: number
   job: {
     id: number
@@ -86,6 +94,11 @@ export type DashboardLane = {
 }
 
 export type DashboardKanbanLaneOption = {
+  key: string
+  title: string
+}
+
+export type DashboardColumnOption = {
   key: string
   title: string
 }
@@ -134,6 +147,10 @@ export type DashboardPayload = {
     views: string[]
     sort_columns: string[]
     sort_directions: string[]
+    columns: {
+      required: DashboardColumnOption[]
+      optional: DashboardColumnOption[]
+    }
     kanban_lanes: DashboardKanbanLaneOption[]
     filter_schema: DashboardFilterSchemaField[]
   }

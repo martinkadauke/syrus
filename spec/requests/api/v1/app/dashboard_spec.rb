@@ -48,6 +48,9 @@ RSpec.describe "App API dashboard commands", type: :request do
         "title" => "Build aqueduct",
         "state" => "queued",
         "latest_workflow_state" => "queued",
+        "workflows_count" => 0,
+        "approved_at" => nil,
+        "dependencies_overridden_at" => nil,
         "repository" => include("slug" => "acme/widgets"),
         "tags" => [ include("name" => "aqueduct", "color" => "blue") ],
         "paths" => include("job_path" => job_path(first), "source_path" => source_job_path(first))
@@ -58,6 +61,17 @@ RSpec.describe "App API dashboard commands", type: :request do
         "views" => %w[list kanban],
         "sort_columns" => %w[title state repository created_at started_at],
         "sort_directions" => %w[asc desc],
+        "columns" => {
+          "required" => [
+            { "key" => "checkbox", "title" => "Checkbox" },
+            { "key" => "issue", "title" => "Issue" }
+          ],
+          "optional" => include(
+            { "key" => "state", "title" => "State" },
+            { "key" => "repository", "title" => "Repository" },
+            { "key" => "workflows_count", "title" => "Workflows count" }
+          )
+        },
         "kanban_lanes" => [
           { "key" => "blocked", "title" => "Blocked" },
           { "key" => "queued", "title" => "Queued" },
