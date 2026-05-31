@@ -358,13 +358,6 @@ Rails.application.routes.draw do
   patch "smart_folders/legacy/:id", to: "smart_folders#update", as: :legacy_smart_folder, constraints: { id: /\d+/ }
   delete "smart_folders/legacy/:id", to: "smart_folders#destroy", constraints: { id: /\d+/ }
   get "tags", to: "spa#show", as: :tags
-  post "tags", to: "tags#create"
-  patch "tags/:id", to: "tags#update", as: :tag, constraints: { id: /\d+/ }
-  delete "tags/:id", to: "tags#destroy", constraints: { id: /\d+/ }
-  get "tags/legacy", to: "tags#index", as: :legacy_tags
-  post "tags/legacy", to: "tags#create"
-  patch "tags/legacy/:id", to: "tags#update", as: :legacy_tag, constraints: { id: /\d+/ }
-  delete "tags/legacy/:id", to: "tags#destroy", constraints: { id: /\d+/ }
   get "cron_templates", to: "spa#show", as: :cron_templates
   post "cron_templates", to: "cron_templates#create"
   get "cron_templates/new", to: "spa#show", as: :new_cron_template
