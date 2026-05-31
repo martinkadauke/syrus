@@ -34,7 +34,7 @@ health/storage internals.
 | `/dashboard/jobs` | `home#jobs` | `spa-core` | Move into React dashboard route tree. |
 | `/dashboard/workflows` | `home#workflows` | `spa-core` | Move into React dashboard route tree. |
 | `PATCH /dashboard/preferences` | `/api/v1/app/dashboard/preferences` | `spa-core` | App API endpoint persists sort, visible-column, and Kanban lane preferences; legacy Turbo/HTML command remains for fallback. |
-| `POST /dashboard/jobs/bulk` | `home#bulk_jobs` | `app-api-needed` | Browser command endpoint under `/api/v1/app/dashboard/jobs/bulk`. |
+| `POST /dashboard/jobs/bulk` | `/api/v1/app/dashboard/jobs/bulk` | `spa-core` | App API endpoint mirrors retry, close, approve/review, and tag bulk actions with JSON responses. Legacy HTML bulk form remains for fallback. |
 | `POST /dashboard/landing_pause` | `/api/v1/app/dashboard/landing_pause` | `spa-core` | App API endpoint toggles landing pause and re-enqueues the landing processor on resume; legacy HTML command remains for fallback. |
 | `PATCH /dashboard/epics/:id/auto_approval` | `/api/v1/app/dashboard/epics/:id/auto_approval` | `spa-core` | App API endpoint updates dashboard Epic auto-approval state; legacy HTML command remains for fallback. |
 | `/app-shell` | `spa#show` | `spa-core` | Hidden authenticated React shell used to prove the SPA asset, bootstrap API, and client routing path before taking over production routes. |

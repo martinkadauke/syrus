@@ -46,6 +46,7 @@ Rails.application.routes.draw do
         get "filters/fk_options", to: "filters#fk_options"
         patch "dashboard/preferences", to: "dashboard#preferences"
         post "dashboard/landing_pause", to: "dashboard#landing_pause"
+        post "dashboard/jobs/bulk", to: "dashboard#bulk_jobs"
         patch "dashboard/epics/:id/auto_approval", to: "dashboard#epic_auto_approval", constraints: { id: /\d+/ }
         get "chats/new", to: "chats#new"
         post "chats", to: "chats#create"
