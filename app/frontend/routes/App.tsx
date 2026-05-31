@@ -8,6 +8,7 @@ import { AdminInstallations } from "./AdminInstallations"
 import { AdminOverview } from "./AdminOverview"
 import { AdminQueueRoute } from "./AdminQueue"
 import { AdminProcessDetail, AdminProcessesIndex } from "./AdminProcesses"
+import { AdminSettings } from "./AdminSettings"
 import { AdminStuck } from "./AdminStuck"
 import { AdminTranscript } from "./AdminTranscript"
 import { AdminUserDetailRoute, AdminUsersIndex } from "./AdminUsers"
@@ -29,6 +30,7 @@ export function App() {
       <Route path="/admin/console" element={<AdminConsole />} />
       <Route path="/admin/installations" element={<AdminInstallations />} />
       <Route path="/invitations" element={<AdminInvitations />} />
+      <Route path="/settings/edit" element={<AdminSettings />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
       <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
       <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
@@ -41,6 +43,7 @@ export function App() {
       <Route path="/app-shell/admin/console" element={<AdminConsole />} />
       <Route path="/app-shell/admin/installations" element={<AdminInstallations />} />
       <Route path="/app-shell/invitations" element={<AdminInvitations />} />
+      <Route path="/app-shell/settings/edit" element={<AdminSettings />} />
       <Route path="*" element={<BootstrapShell />} />
     </Routes>
   )

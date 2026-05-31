@@ -579,4 +579,80 @@ describe("App", () => {
     })
     expect(await screen.findByText("No pending invitations.")).toBeInTheDocument()
   })
+
+  it("renders the app settings route from the app admin settings API and updates settings", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/admin/settings" && init?.method === "PATCH") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              settings: {
+                signups_open: true,
+                clearable_secrets: [
+                  { key: "telegram_bot_token", label: "Telegram bot token", set: true },
+                  { key: "telegram_webhook_secret", label: "Telegram webhook secret", set: false }
+                ]
+              },
+              message: "Settings updated."
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            settings: {
+              signups_open: false,
+              clearable_secrets: [
+                { key: "telegram_bot_token", label: "Telegram bot token", set: true },
+                { key: "telegram_webhook_secret", label: "Telegram webhook secret", set: false }
+              ]
+            }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/settings/edit"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin settings" })).toBeInTheDocument()
+    expect((await screen.findAllByText("Telegram bot token")).length).toBeGreaterThan(0)
+    expect(screen.getByRole("button", { name: "Clear" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("checkbox", { name: /Open signups/ }))
+    fireEvent.change(screen.getByLabelText("Telegram bot token"), { target: { value: "bot-token" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/admin/settings",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            app_setting: {
+              signups_open: true,
+              telegram_bot_token: "bot-token",
+              telegram_webhook_secret: ""
+            }
+          })
+        })
+      )
+    })
+    expect(await screen.findByText("Settings updated.")).toBeInTheDocument()
+  })
 })

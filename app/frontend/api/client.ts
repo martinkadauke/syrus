@@ -44,11 +44,15 @@ export async function postJson<T>(path: string, body?: unknown): Promise<T> {
   return writeJson<T>(path, "POST", body)
 }
 
+export async function patchJson<T>(path: string, body?: unknown): Promise<T> {
+  return writeJson<T>(path, "PATCH", body)
+}
+
 export async function deleteJson<T>(path: string): Promise<T> {
   return writeJson<T>(path, "DELETE")
 }
 
-async function writeJson<T>(path: string, method: "POST" | "DELETE", body?: unknown): Promise<T> {
+async function writeJson<T>(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json"
   }
