@@ -23,23 +23,36 @@ RSpec.describe "Cron templates", type: :request do
     before { sign_in_as(user) }
 
     describe "GET /cron_templates" do
-      it "lists the user's templates" do
-        user.cron_templates.create!(valid_attrs)
+      it "serves the React cron templates shell" do
         get cron_templates_path
+
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
+      it "lists the user's templates in the legacy fallback" do
+        user.cron_templates.create!(valid_attrs)
+        get legacy_cron_templates_path
         expect(response).to be_successful
         expect(response.body).to include("Weekly dependency bump")
       end
 
       it "doesn't show another user's templates" do
         other_user.cron_templates.create!(valid_attrs.merge(name: "Their template"))
-        get cron_templates_path
+        get legacy_cron_templates_path
         expect(response.body).not_to include("Their template")
       end
     end
 
     describe "GET /cron_templates/new" do
-      it "renders the form" do
+      it "serves the React template form shell" do
         get new_cron_template_path
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
+      it "renders the legacy form" do
+        get legacy_new_cron_template_path
         expect(response).to be_successful
         expect(response.body).to include("New cron template")
       end
@@ -54,6 +67,15 @@ RSpec.describe "Cron templates", type: :request do
         expect(response).to redirect_to(cron_template_path(tmpl))
         expect(tmpl.name).to eq("Weekly dependency bump")
         expect(tmpl.user).to eq(user)
+      end
+
+      it "keeps legacy creates inside the legacy fallback" do
+        expect {
+          post legacy_cron_templates_path, params: { cron_template: valid_attrs }
+        }.to change { user.cron_templates.count }.by(1)
+
+        tmpl = CronTemplate.last
+        expect(response).to redirect_to(legacy_cron_template_path(tmpl))
       end
 
       it "rejects a malformed cron expression" do
@@ -73,15 +95,21 @@ RSpec.describe "Cron templates", type: :request do
     describe "GET /cron_templates/:id" do
       let(:template) { user.cron_templates.create!(valid_attrs) }
 
-      it "shows the template" do
+      it "serves the React template detail shell" do
         get cron_template_path(template)
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+      end
+
+      it "shows the template in the legacy fallback" do
+        get legacy_cron_template_path(template)
         expect(response).to be_successful
         expect(response.body).to include("Weekly dependency bump")
       end
 
       it "refuses to show another user's template" do
         other_tmpl = other_user.cron_templates.create!(valid_attrs.merge(name: "Theirs"))
-        get cron_template_path(other_tmpl)
+        get legacy_cron_template_path(other_tmpl)
         expect(response).to have_http_status(:not_found)
       end
     end
@@ -92,6 +120,14 @@ RSpec.describe "Cron templates", type: :request do
         patch cron_template_path(template),
               params: { cron_template: { prompt: "Updated prompt." } }
         expect(response).to redirect_to(cron_template_path(template))
+        expect(template.reload.prompt).to eq("Updated prompt.")
+      end
+
+      it "keeps legacy updates inside the legacy fallback" do
+        template = user.cron_templates.create!(valid_attrs)
+        patch legacy_cron_template_path(template),
+              params: { cron_template: { prompt: "Updated prompt." } }
+        expect(response).to redirect_to(legacy_cron_template_path(template))
         expect(template.reload.prompt).to eq("Updated prompt.")
       end
 
@@ -110,6 +146,14 @@ RSpec.describe "Cron templates", type: :request do
           delete cron_template_path(template)
         }.to change { CronTemplate.count }.by(-1)
         expect(response).to redirect_to(cron_templates_path)
+      end
+
+      it "keeps legacy deletes inside the legacy fallback" do
+        template = user.cron_templates.create!(valid_attrs)
+        expect {
+          delete legacy_cron_template_path(template)
+        }.to change { CronTemplate.count }.by(-1)
+        expect(response).to redirect_to(legacy_cron_templates_path)
       end
 
       it "refuses to delete another user's template" do

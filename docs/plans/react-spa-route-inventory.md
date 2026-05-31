@@ -66,7 +66,7 @@ health/storage internals.
 | chat whiteboard | `chat_whiteboards#show/update` | `spa-core` + `app-api-needed` | Already JSON-shaped. Move under app API or adapt in place when chat migrates. |
 | `/scheduled_tasks` | `scheduled_tasks#index/show/new/edit/create/update/destroy` | `spa-core` | CRUD surface. |
 | scheduled task commands | `scheduled_tasks#pause`, `#resume`, `#fire_now` | `app-api-needed` | Command endpoints with updated scheduled task payload. |
-| `/cron_templates` | `cron_templates` resource | `spa-core` | CRUD surface; can migrate with scheduled tasks. |
+| `/cron_templates` | `spa#show` | `spa-core` | Migrated to the React cron-template CRUD shell. Legacy ERB fallback lives at `/cron_templates/legacy`. |
 | `/smart_folders` | `spa#show` | `spa-core` | Migrated to the React smart-folder manage shell. Legacy ERB fallback lives at `/smart_folders/legacy`; dashboard save forms still use `POST /smart_folders`. |
 | `/tags` | `spa#show` | `spa-core` | Migrated to the React tags shell. Legacy ERB fallback lives at `/tags/legacy`. |
 | `/filters/fk_options` | `filters/fk_options#index` | `app-api-needed` | Existing JSON-ish helper. Normalize response shape before React forms rely on it. |

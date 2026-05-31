@@ -12,7 +12,7 @@
         scheduled task with the template's settings pre-filled.
       </p>
     </div>
-    <%= link_to "New", new_cron_template_path,
+    <%= link_to "New", new_cron_template_entry_path,
           class: "shrink-0 rounded-md px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium self-start" %>
   </div>
 
@@ -33,7 +33,7 @@
           <% @templates.each do |tmpl| %>
             <tr>
               <td class="px-4 py-3 font-medium">
-                <%= link_to tmpl.name, cron_template_path(tmpl), class: "text-blue-600 underline hover:no-underline" %>
+                <%= link_to tmpl.name, cron_template_detail_path(tmpl), class: "text-blue-600 underline hover:no-underline" %>
                 <% if tmpl.description.present? %>
                   <p class="text-xs text-gray-500 font-normal mt-0.5"><%= tmpl.description %></p>
                 <% end %>
@@ -51,7 +51,7 @@
                 <% end %>
               </td>
               <td class="px-4 py-3 text-right">
-                <%= link_to "Open", cron_template_path(tmpl), class: "text-blue-600 underline hover:no-underline" %>
+                <%= link_to "Open", cron_template_detail_path(tmpl), class: "text-blue-600 underline hover:no-underline" %>
               </td>
             </tr>
           <% end %>
@@ -65,7 +65,7 @@
         Create a template to define a reusable recurring-task blueprint, then apply it
         to any of your repositories.
       </p>
-      <%= link_to "Create your first template", new_cron_template_path,
+      <%= link_to "Create your first template", new_cron_template_entry_path,
             class: "mt-4 inline-block rounded-md px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium" %>
     </div>
   <% end %>

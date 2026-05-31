@@ -8,8 +8,8 @@
   <div class="mt-6">
     <%= render "form",
           template: @template,
-          form_url: cron_template_path(@template),
+          form_url: cron_template_form_path(@template),
           submit_label: "Save",
-          cancel_url: cron_template_path(@template) %>
+          cancel_url: cron_template_detail_path(@template) %>
   </div>
 </div>
