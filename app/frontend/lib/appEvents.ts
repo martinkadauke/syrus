@@ -1,5 +1,5 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
-import type { ChatPayload, ChatRenderItem, ChatToolGroupItem } from "../api/chats"
+import type { ChatMessageItem, ChatPayload } from "../api/chats"
 
 export type AppEvent = {
   type: string
@@ -51,7 +51,7 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
       return {
         ...current,
         turn_in_flight: payload.turn_in_flight ?? current.turn_in_flight,
-        messages: replaceMessageTail(current.messages, payload.replace_from_id, payload.items),
+        messages: replaceMessageTail(current.messages, payload.replace_from_id, payload.messages),
         chat: {
           ...current.chat,
           stop_requested_at: payload.stop_requested_at ?? current.chat.stop_requested_at
@@ -65,7 +65,7 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
 type ChatReplaceTailPayload = {
   action: "replace_tail"
   replace_from_id: number
-  items: ChatRenderItem[]
+  messages: ChatMessageItem[]
   turn_in_flight?: boolean
   stop_requested_at?: string | null
 }
@@ -76,65 +76,44 @@ function chatReplaceTailPayload(payload: unknown): ChatReplaceTailPayload | null
   const candidate = payload as Partial<ChatReplaceTailPayload>
   if (candidate.action !== "replace_tail") return null
   if (typeof candidate.replace_from_id !== "number") return null
-  if (!Array.isArray(candidate.items)) return null
+  const messages = Array.isArray(candidate.messages) ? candidate.messages : Array.isArray((payload as { items?: unknown }).items) ? (payload as { items: unknown[] }).items : null
+  if (!isChatMessages(messages)) return null
 
   return {
     action: "replace_tail",
     replace_from_id: candidate.replace_from_id,
-    items: candidate.items,
+    messages,
     turn_in_flight: typeof candidate.turn_in_flight === "boolean" ? candidate.turn_in_flight : undefined,
     stop_requested_at: typeof candidate.stop_requested_at === "string" || candidate.stop_requested_at === null ? candidate.stop_requested_at : undefined
   }
 }
 
-function replaceMessageTail(current: ChatRenderItem[], replaceFromId: number, nextItems: ChatRenderItem[]) {
-  const retained = current
-    .map((item) => trimItemBefore(item, replaceFromId))
-    .filter((item): item is ChatRenderItem => item != null)
+function isChatMessages(value: unknown): value is ChatMessageItem[] {
+  return Array.isArray(value) && value.every((item) => {
+    if (!item || typeof item !== "object") return false
 
-  return coalesceToolGroups([...retained, ...nextItems])
+    const candidate = item as Partial<ChatMessageItem>
+    return candidate.type === "message" && typeof candidate.id === "number"
+  })
 }
 
-function trimItemBefore(item: ChatRenderItem, replaceFromId: number): ChatRenderItem | null {
-  if (item.type === "message") return item.id < replaceFromId ? item : null
-
-  const calls = item.calls.filter((call) => call.message_id < replaceFromId)
-  return calls.length > 0 ? { ...item, calls } : null
+function replaceMessageTail(current: ChatMessageItem[], replaceFromId: number, nextMessages: ChatMessageItem[]) {
+  return dedupeMessages([
+    ...current.filter((message) => message.id < replaceFromId),
+    ...nextMessages
+  ])
 }
 
-function coalesceToolGroups(items: ChatRenderItem[]) {
-  const coalesced: ChatRenderItem[] = []
-
-  for (const item of items) {
-    const previous = coalesced.at(-1)
-    if (isToolGroup(previous) && isToolGroup(item) && previous.tool === item.tool) {
-      previous.calls = dedupeToolCalls([...previous.calls, ...item.calls])
-    } else {
-      coalesced.push(cloneRenderItem(item))
-    }
-  }
-
-  return coalesced
-}
-
-function isToolGroup(item: ChatRenderItem | undefined): item is ChatToolGroupItem {
-  return item?.type === "tool_group"
-}
-
-function dedupeToolCalls(calls: ChatToolGroupItem["calls"]) {
+function dedupeMessages(messages: ChatMessageItem[]) {
   const seen = new Set<number>()
-  const result: ChatToolGroupItem["calls"] = []
+  const result: ChatMessageItem[] = []
 
-  for (const call of calls) {
-    if (seen.has(call.message_id)) continue
+  for (const message of messages) {
+    if (seen.has(message.id)) continue
 
-    seen.add(call.message_id)
-    result.push(call)
+    seen.add(message.id)
+    result.push(message)
   }
 
   return result
-}
-
-function cloneRenderItem(item: ChatRenderItem): ChatRenderItem {
-  return item.type === "tool_group" ? { ...item, calls: [...item.calls] } : item
 }

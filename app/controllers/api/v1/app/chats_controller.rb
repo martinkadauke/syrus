@@ -19,7 +19,7 @@ module Api
 
           render json: {
             has_more_older: has_more_older,
-            messages: grouped_messages_json(messages, repository: chat_session.repository)
+            messages: messages_json(messages, repository: chat_session.repository)
           }
         end
 
@@ -208,7 +208,7 @@ module Api
             chat_available: Current.user.claude_oauth_token.present?,
             turn_in_flight: chat_session.turn_in_flight?,
             has_more_older: has_more_older,
-            messages: grouped_messages_json(messages, repository: repository),
+            messages: messages_json(messages, repository: repository),
             bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },
             pending_actions: pending_actions_json(chat_session),
             attachment_groups: attachment_groups_json(attachment_groups),
@@ -256,8 +256,8 @@ module Api
           chat_session.messages.includes(proposal: [ :repository, :job, :epic, :target_epic, dependencies: [], child_proposals: [ :repository, dependencies: [] ] ])
         end
 
-        def grouped_messages_json(messages, repository:)
-          ::App::ChatMessagePayload.grouped(messages, repository: repository)
+        def messages_json(messages, repository:)
+          ::App::ChatMessagePayload.messages(messages, repository: repository)
         end
 
         def bookmark_json(bookmark)

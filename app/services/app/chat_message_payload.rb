@@ -1,48 +1,20 @@
 module App
   class ChatMessagePayload
     include Rails.application.routes.url_helpers
-    include ActionView::Helpers::NumberHelper
 
-    SYSTEM_RESULT_PATTERN = /\A\[(?:codex )?result\]\s+(?<payload>.+)\z/
-    SYSTEM_MCP_PATTERN = /\A\[mcp_servers\]\s+(?<payload>.+)\z/
-    SYSTEM_CODEX_ERROR_PATTERN = /\A\[codex error\]\s+(?<message>.+)\z/
-
-    def self.grouped(messages, repository:)
-      new(repository: repository).grouped(messages)
+    def self.messages(messages, repository:)
+      new(repository: repository).messages(messages)
     end
 
     def initialize(repository:)
       @repository = repository
     end
 
-    def grouped(messages)
-      ChatMessageGrouper.group(messages, repository: @repository).map do |item|
-        if item[:type] == :tool_group
-          tool_group_json(item)
-        else
-          message_json(item[:message])
-        end
-      end
+    def messages(messages)
+      messages.map { |message| message_json(message) }
     end
 
     private
-
-    def tool_group_json(group)
-      {
-        type: "tool_group",
-        tool: group[:tool],
-        calls: group[:calls].map do |call|
-          result = call[:result]
-          content = result&.content
-          {
-            message_id: call[:message].id,
-            detail: call[:detail].to_s,
-            result_body: content.is_a?(Hash) ? AgentEventAbbreviator.full_result_body(content["result"]) : content.to_s,
-            result_error: content.is_a?(Hash) && content["is_error"] == true
-          }
-        end
-      }
-    end
 
     def message_json(message)
       text = message.content.is_a?(Hash) ? message.content["text"].to_s : message.content.to_s
@@ -50,19 +22,14 @@ module App
         type: "message",
         id: message.id,
         role: message.role,
+        tool_name: message.tool_name,
+        content: message.content,
         text: text,
         bookmarkable: message.bookmarkable?,
         bookmark_path: chat_bookmarks_path(message.chat_session)
       }
 
-      case message.role
-      when "assistant"
-        payload[:proposal] = proposal_json(message.proposal, chat_session: message.chat_session) if message.proposal_card?
-      when "tool_use", "tool_result"
-        payload[:tool] = structured_tool_json(message)
-      when "system"
-        payload[:system] = system_message_json(text)
-      end
+      payload[:proposal] = proposal_json(message.proposal, chat_session: message.chat_session) if message.proposal_id.present?
 
       payload
     end
@@ -122,79 +89,6 @@ module App
         reject_path: chat_proposal_reject_path(chat_session, proposal),
         app_reject_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/reject"
       }
-    end
-
-    def structured_tool_json(message)
-      content_hash = message.content.is_a?(Hash) ? message.content : {}
-      tool_name = message.tool_name.presence || content_hash["name"].presence || message.role
-      proposal = message.proposal
-      {
-        name: tool_name,
-        payload: content_hash.presence || { "content" => message.content },
-        proposal_id: proposal&.id,
-        proposal_state_label: proposal&.state == "proposed" ? "pending" : proposal&.state
-      }
-    end
-
-    def system_message_json(text)
-      if (match = text.match(SYSTEM_RESULT_PATTERN))
-        system_result_message(parse_system_fields(match[:payload]))
-      elsif (match = text.match(SYSTEM_MCP_PATTERN))
-        system_mcp_message(match[:payload])
-      elsif (match = text.match(SYSTEM_CODEX_ERROR_PATTERN))
-        { tone: "error", label: "Error", body: match[:message].to_s }
-      else
-        { tone: "neutral", label: "System", body: text }
-      end
-    end
-
-    def system_result_message(fields)
-      error = fields["is_error"].to_s == "true"
-      subtype = fields["subtype"].to_s
-      body = [ system_result_title(error, subtype) ]
-      body << "#{fields['turns'].to_i} #{'turn'.pluralize(fields['turns'].to_i)}" if fields["turns"].present?
-      body << system_duration_label(fields["duration_ms"]) if fields["duration_ms"].present?
-      body << number_to_currency(fields["total_cost_usd"].to_f, precision: 2) if fields["total_cost_usd"].present?
-
-      { tone: (error ? "error" : "success"), label: (error ? "Failed" : "Done"), body: body.compact.join(" · ") }
-    end
-
-    def system_result_title(error, subtype)
-      return "Agent run failed#{": #{subtype.humanize}" if subtype.present?}" if error
-      return "Agent run succeeded" if subtype == "success"
-
-      subtype.present? ? "Agent run finished: #{subtype.humanize}" : "Agent run finished"
-    end
-
-    def system_mcp_message(payload)
-      servers = payload.to_s.split(/\s*,\s*/).filter_map do |entry|
-        name, status = entry.split("=", 2)
-        next if name.blank?
-
-        [ name, status.presence || "unknown" ]
-      end
-      failing = servers.reject { |_, status| status.to_s.in?(%w[connected running ready]) }
-      if servers.empty?
-        { tone: "neutral", label: "MCP", body: "MCP server status unavailable" }
-      elsif failing.any?
-        { tone: "warning", label: "MCP", body: "MCP issue: #{failing.map { |name, status| "#{name} #{status}" }.join(', ')}" }
-      else
-        { tone: "success", label: "Connected", body: "MCP connected: #{servers.map(&:first).join(', ')}" }
-      end
-    end
-
-    def parse_system_fields(payload)
-      payload.to_s.scan(/(\w+)=([^,\s]+)/).to_h
-    end
-
-    def system_duration_label(duration_ms)
-      seconds = duration_ms.to_f / 1000.0
-      return "#{(seconds * 10).round / 10.0}s" if seconds < 60
-
-      minutes = seconds / 60.0
-      return "#{minutes.round(1)}m" if minutes < 10
-
-      "#{minutes.round}m"
     end
 
     def materialized_path(record)

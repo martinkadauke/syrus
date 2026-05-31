@@ -30,14 +30,8 @@ describe("applyAppEvent", () => {
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
     queryClient.setQueryData(["chats", "9", ""], chatPayload([
       message(1, "user", "old"),
-      {
-        type: "tool_group",
-        tool: "Read",
-        calls: [
-          { message_id: 2, detail: "a.rb", result_body: "a", result_error: false },
-          { message_id: 3, detail: "b.rb", result_body: "", result_error: false }
-        ]
-      }
+      message(2, "tool_use", "read a", { tool_name: "Read", content: { input: { file_path: "a.rb" } } }),
+      message(3, "tool_use", "read b", { tool_name: "Read", content: { input: { file_path: "b.rb" } } })
     ]))
 
     applyAppEvent(queryClient, {
@@ -47,15 +41,9 @@ describe("applyAppEvent", () => {
         replace_from_id: 3,
         turn_in_flight: false,
         stop_requested_at: "2026-05-30T12:00:00Z",
-        items: [
-          {
-            type: "tool_group",
-            tool: "Read",
-            calls: [
-              { message_id: 3, detail: "b.rb", result_body: "b", result_error: false },
-              { message_id: 4, detail: "c.rb", result_body: "c", result_error: false }
-            ]
-          },
+        messages: [
+          message(3, "tool_use", "read b again", { tool_name: "Read", content: { input: { file_path: "b.rb" } } }),
+          message(4, "tool_result", "b result", { tool_name: "Read", content: { result: [{ type: "text", text: "b" }] } }),
           message(5, "assistant", "done")
         ]
       }
@@ -67,15 +55,9 @@ describe("applyAppEvent", () => {
     expect(updated?.chat.stop_requested_at).toBe("2026-05-30T12:00:00Z")
     expect(updated?.messages).toEqual([
       message(1, "user", "old"),
-      {
-        type: "tool_group",
-        tool: "Read",
-        calls: [
-          { message_id: 2, detail: "a.rb", result_body: "a", result_error: false },
-          { message_id: 3, detail: "b.rb", result_body: "b", result_error: false },
-          { message_id: 4, detail: "c.rb", result_body: "c", result_error: false }
-        ]
-      },
+      message(2, "tool_use", "read a", { tool_name: "Read", content: { input: { file_path: "a.rb" } } }),
+      message(3, "tool_use", "read b again", { tool_name: "Read", content: { input: { file_path: "b.rb" } } }),
+      message(4, "tool_result", "b result", { tool_name: "Read", content: { result: [{ type: "text", text: "b" }] } }),
       message(5, "assistant", "done")
     ])
   })
@@ -91,22 +73,21 @@ function event(resource: string, id: number | null) {
   }
 }
 
-function message(id: number, role: "user" | "assistant", text: string) {
+function message(id: number, role: "user" | "assistant" | "tool_use" | "tool_result" | "system", text: string, overrides: Record<string, unknown> = {}) {
   return {
     type: "message" as const,
     id,
     role,
+    tool_name: null,
+    content: { text },
     text,
     bookmarkable: true,
-    bookmark_path: `/chats/9/bookmarks`
+    bookmark_path: `/chats/9/bookmarks`,
+    ...overrides
   }
 }
 
-function chatPayload(messages: Array<ReturnType<typeof message> | {
-  type: "tool_group"
-  tool: string
-  calls: Array<{ message_id: number; detail: string; result_body: string; result_error: boolean }>
-}>) {
+function chatPayload(messages: Array<ReturnType<typeof message>>) {
   return {
     message: null,
     chat: {

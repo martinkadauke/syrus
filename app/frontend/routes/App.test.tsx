@@ -2267,6 +2267,59 @@ describe("App", () => {
     expect(await screen.findByText("Version 3")).toBeInTheDocument()
   })
 
+  it("renders raw chat messages on the frontend", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({
+        messages: [
+          {
+            type: "message",
+            id: 10,
+            role: "tool_use",
+            tool_name: "Read",
+            content: { input: { file_path: "app/models/chat.rb" } },
+            text: "",
+            bookmarkable: false,
+            bookmark_path: "/chats/8/bookmarks"
+          },
+          {
+            type: "message",
+            id: 11,
+            role: "tool_result",
+            tool_name: "Read",
+            content: { result: [{ type: "text", text: "class Chat\nend" }] },
+            text: "",
+            bookmarkable: false,
+            bookmark_path: "/chats/8/bookmarks"
+          },
+          {
+            type: "message",
+            id: 12,
+            role: "system",
+            tool_name: null,
+            content: { text: "[result] subtype=success, is_error=false, turns=4, duration_ms=170223, total_cost_usd=0.37236969999999997" },
+            text: "[result] subtype=success, is_error=false, turns=4, duration_ms=170223, total_cost_usd=0.37236969999999997",
+            bookmarkable: false,
+            bookmark_path: "/chats/8/bookmarks"
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Read")).toBeInTheDocument()
+    expect(screen.getAllByText("app/models/chat.rb").length).toBeGreaterThan(0)
+    expect(screen.getByText(/class Chat\s+end/)).toBeInTheDocument()
+    expect(screen.getByText(/Agent run succeeded/)).toBeInTheDocument()
+    expect(screen.getByText(/\$0\.37/)).toBeInTheDocument()
+  })
+
   it("runs chat commands through the app API", async () => {
     const search = "?attachment_type=Repository&attachment_query=tools"
     const proposalMessage = {
@@ -3278,6 +3331,8 @@ function chatPayload(overrides: {
         type: "message",
         id: 9,
         role: "assistant",
+        tool_name: null,
+        content: { text: "Discuss aqueducts." },
         text: "Discuss aqueducts.",
         bookmarkable: true,
         bookmark_path: "/chats/8/bookmarks"

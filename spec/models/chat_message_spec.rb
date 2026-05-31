@@ -95,9 +95,10 @@ RSpec.describe ChatMessage do
         expect(changed).to eq([ "messages" ])
         expect(payload).to include(action: "replace_tail", turn_in_flight: false)
         expect(payload[:replace_from_id]).to be_present
-        expect(payload[:items].last).to include(
+        expect(payload[:messages].last).to include(
           type: "message",
           role: "assistant",
+          content: { "text" => "Hello from React." },
           text: "Hello from React."
         )
         expect(payload.to_s).not_to include("html")

@@ -24,6 +24,7 @@ import {
   stopChat,
   type ChatAttachmentResult,
   type ChatAttachmentRow,
+  type ChatMessageItem,
   type ChatPendingAction,
   type ChatPayload,
   type ChatProposal,
@@ -183,26 +184,27 @@ function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: C
 }
 
 function MessageStream({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
-  const [olderItems, setOlderItems] = useState<ChatRenderItem[]>([])
+  const [olderMessages, setOlderMessages] = useState<ChatMessageItem[]>([])
   const [hasMoreOlder, setHasMoreOlder] = useState(payload.has_more_older)
-  const displayedItems = mergeRenderItems(olderItems, payload.messages)
-  const oldestId = oldestMessageId(displayedItems)
+  const displayedMessages = mergeChatMessages(olderMessages, payload.messages)
+  const displayedItems = renderChatMessages(displayedMessages)
+  const oldestId = oldestMessageId(displayedMessages)
   const loadOlder = useMutation({
     mutationFn: (before: number) => fetchChatMessages(payload.paths.app_messages_path, before),
     onSuccess: (page) => {
-      setOlderItems((current) => mergeRenderItems(page.messages, current))
+      setOlderMessages((current) => mergeChatMessages(page.messages, current))
       setHasMoreOlder(page.has_more_older)
     }
   })
 
   useEffect(() => {
-    setOlderItems([])
+    setOlderMessages([])
     setHasMoreOlder(payload.has_more_older)
   }, [payload.chat.id])
 
   useEffect(() => {
-    if (olderItems.length === 0) setHasMoreOlder(payload.has_more_older)
-  }, [olderItems.length, payload.has_more_older])
+    if (olderMessages.length === 0) setHasMoreOlder(payload.has_more_older)
+  }, [olderMessages.length, payload.has_more_older])
 
   if (displayedItems.length === 0) {
     return (
@@ -903,23 +905,230 @@ function formatThousands(value: number) {
   return Number.isInteger(thousands) ? String(thousands) : thousands.toFixed(1).replace(/\.0$/, "")
 }
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(value)
+function formatCurrency(value: number, digits = 4) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
 }
 
-function mergeRenderItems(...groups: ChatRenderItem[][]) {
-  const seen = new Set<string>()
+function renderChatMessages(messages: ChatMessageItem[]): ChatRenderItem[] {
   const items: ChatRenderItem[] = []
+  let currentGroup: ChatToolGroupItem | null = null
 
-  for (const item of groups.flat()) {
-    const key = renderItemKey(item)
-    if (seen.has(key)) continue
-
-    seen.add(key)
-    items.push(item)
+  for (const message of messages) {
+    if (groupableToolUse(message)) {
+      const toolName = message.tool_name || ""
+      const call = {
+        message_id: message.id,
+        detail: toolDetail(toolName, contentInput(message.content)),
+        result_body: "",
+        result_error: false
+      }
+      const tool = toolLabel(toolName)
+      if (currentGroup !== null && currentGroup.tool === tool) {
+        currentGroup.calls.push(call)
+      } else {
+        currentGroup = { type: "tool_group", tool, calls: [call] }
+        items.push(currentGroup)
+      }
+    } else if (groupableToolResult(message)) {
+      const lastCall = currentGroup?.calls.at(-1)
+      if (lastCall && lastCall.result_body === "") {
+        const content = contentRecord(message.content)
+        lastCall.result_body = content ? fullResultBody(content.result) : String(message.content ?? message.text)
+        lastCall.result_error = content?.is_error === true
+      } else {
+        currentGroup = null
+        items.push(renderMessage(message))
+      }
+    } else {
+      currentGroup = null
+      items.push(renderMessage(message))
+    }
   }
 
   return items
+}
+
+function renderMessage(message: ChatMessageItem): ChatRenderItem {
+  if (message.role === "system") {
+    return { ...message, system: systemMessage(message.text) }
+  }
+
+  if (message.role === "tool_use" || message.role === "tool_result") {
+    return { ...message, tool: structuredTool(message) }
+  }
+
+  return message
+}
+
+function groupableToolUse(message: ChatMessageItem) {
+  return message.role === "tool_use" && Boolean(message.tool_name) && !message.proposal
+}
+
+function groupableToolResult(message: ChatMessageItem) {
+  return message.role === "tool_result" && !message.proposal
+}
+
+function structuredTool(message: ChatMessageItem): ChatStructuredTool {
+  const content = contentRecord(message.content)
+  const name = message.tool_name || stringValue(content?.name) || message.role
+  const proposal = message.proposal
+
+  return {
+    name,
+    payload: content || { content: message.content ?? message.text },
+    proposal_id: proposal?.id || null,
+    proposal_state_label: proposal?.state === "proposed" ? "pending" : proposal?.state || null
+  }
+}
+
+function systemMessage(text: string): ChatSystemMessage {
+  const result = text.match(/^\[(?:codex )?result\]\s+(.+)$/)
+  if (result) return systemResultMessage(parseSystemFields(result[1]))
+
+  const mcp = text.match(/^\[mcp_servers\]\s+(.+)$/)
+  if (mcp) return systemMcpMessage(mcp[1])
+
+  const codexError = text.match(/^\[codex error\]\s+(.+)$/)
+  if (codexError) return { tone: "error", label: "Error", body: codexError[1] }
+
+  return { tone: "neutral", label: "System", body: text }
+}
+
+function systemResultMessage(fields: Record<string, string>): ChatSystemMessage {
+  const error = fields.is_error === "true"
+  const subtype = fields.subtype || ""
+  const body = [systemResultTitle(error, subtype)]
+  if (fields.turns) body.push(`${Number.parseInt(fields.turns, 10)} ${Number.parseInt(fields.turns, 10) === 1 ? "turn" : "turns"}`)
+  if (fields.duration_ms) body.push(systemDurationLabel(fields.duration_ms))
+  if (fields.total_cost_usd) body.push(formatCurrency(Number.parseFloat(fields.total_cost_usd), 2))
+
+  return { tone: error ? "error" : "success", label: error ? "Failed" : "Done", body: body.join(" · ") }
+}
+
+function systemResultTitle(error: boolean, subtype: string) {
+  if (error) return `Agent run failed${subtype ? `: ${humanize(subtype)}` : ""}`
+  if (subtype === "success") return "Agent run succeeded"
+
+  return subtype ? `Agent run finished: ${humanize(subtype)}` : "Agent run finished"
+}
+
+function systemMcpMessage(payload: string): ChatSystemMessage {
+  const servers = payload.split(/\s*,\s*/).map((entry) => {
+    const [name, status] = entry.split("=", 2)
+    return name ? [name, status || "unknown"] : null
+  }).filter((entry): entry is [string, string] => entry != null)
+  const failing = servers.filter(([, status]) => !["connected", "running", "ready"].includes(status))
+
+  if (servers.length === 0) return { tone: "neutral", label: "MCP", body: "MCP server status unavailable" }
+  if (failing.length > 0) return { tone: "warning", label: "MCP", body: `MCP issue: ${failing.map(([name, status]) => `${name} ${status}`).join(", ")}` }
+
+  return { tone: "success", label: "Connected", body: `MCP connected: ${servers.map(([name]) => name).join(", ")}` }
+}
+
+function parseSystemFields(payload: string) {
+  return Object.fromEntries(Array.from(payload.matchAll(/(\w+)=([^,\s]+)/g), (match) => [match[1], match[2]]))
+}
+
+function systemDurationLabel(durationMs: string) {
+  const seconds = Number.parseFloat(durationMs) / 1000
+  if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`
+
+  const minutes = seconds / 60
+  if (minutes < 10) return `${Math.round(minutes * 10) / 10}m`
+
+  return `${Math.round(minutes)}m`
+}
+
+function toolLabel(name: string) {
+  return name.startsWith("mcp__") ? name.split("__", 3).at(-1) || name : name
+}
+
+function toolDetail(name: string, input: Record<string, unknown>) {
+  switch (name) {
+    case "Bash":
+      return firstLine(stringValue(input.command))
+    case "Read":
+    case "Edit":
+    case "Write":
+      return stringValue(input.file_path)
+    case "NotebookEdit":
+      return stringValue(input.notebook_path)
+    case "Glob":
+      return stringValue(input.pattern)
+    case "Grep": {
+      const base = stringValue(input.pattern)
+      const path = stringValue(input.path)
+      return path ? `${base} in ${path}` : base
+    }
+    case "WebFetch":
+      return stringValue(input.url)
+    case "WebSearch":
+      return stringValue(input.query)
+    case "TodoWrite":
+      return `${Array.isArray(input.todos) ? input.todos.length : 0} item(s)`
+    case "Task":
+    case "Agent":
+      return stringValue(input.description) || firstLine(stringValue(input.prompt))
+    case "ToolSearch":
+      return stringValue(input.query)
+    default:
+      if (name.startsWith("mcp__")) {
+        const candidate = Object.values(input).find((value) => typeof value === "string" && value.length > 0)
+        return firstLine(stringValue(candidate))
+      }
+
+      return firstLine(JSON.stringify(input))
+  }
+}
+
+function fullResultBody(content: unknown): string {
+  if (typeof content === "string") return content
+  if (Array.isArray(content)) {
+    return content.map((item) => {
+      const record = contentRecord(item)
+      if (record?.type === "text") return stringValue(record.text)
+      if (record?.type === "tool_reference") return `-> ${stringValue(record.tool_name)}`
+      return ""
+    }).filter(Boolean).join("\n")
+  }
+  if (content == null) return "(empty)"
+
+  return String(content)
+}
+
+function contentInput(content: unknown) {
+  return contentRecord(contentRecord(content)?.input) || {}
+}
+
+function contentRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function firstLine(value: string) {
+  return value.split(/\r?\n/, 1)[0].trim()
+}
+
+function stringValue(value: unknown) {
+  return typeof value === "string" ? value : value == null ? "" : String(value)
+}
+
+function humanize(value: string) {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function mergeChatMessages(...groups: ChatMessageItem[][]) {
+  const seen = new Set<string>()
+  const messages: ChatMessageItem[] = []
+
+  for (const item of groups.flat()) {
+    const key = String(item.id)
+    if (seen.has(key)) continue
+
+    seen.add(key)
+    messages.push(item)
+  }
+
+  return messages
 }
 
 function renderItemKey(item: ChatRenderItem) {
@@ -928,8 +1137,8 @@ function renderItemKey(item: ChatRenderItem) {
   return `tool-${item.calls.map((call) => call.message_id).join("-")}`
 }
 
-function oldestMessageId(items: ChatRenderItem[]) {
-  const ids = items.flatMap((item) => item.type === "message" ? [item.id] : item.calls.map((call) => call.message_id))
+function oldestMessageId(messages: ChatMessageItem[]) {
+  const ids = messages.map((message) => message.id)
   return ids.length > 0 ? Math.min(...ids) : null
 }
 

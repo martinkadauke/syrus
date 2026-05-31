@@ -14,10 +14,10 @@ class ChatMessage < ApplicationRecord
   validates :role, presence: true, inclusion: { in: ROLES }
   validate :content_is_present
 
-  # Proposal-bearing rows render as inline proposal cards. All other
-  # tool_use messages flow through ChatMessageGrouper and the
-  # tool_call_group partial — collapsed by default, no per-message
-  # expansion logic needed.
+  # Proposal-bearing rows render as inline proposal cards in the
+  # legacy ERB fallback. All other tool_use messages flow through
+  # ChatMessageGrouper there; the React chat receives raw message
+  # records and does its own grouping client-side.
   def proposal_tool_use?
     role == "tool_use" && proposal_id.present?
   end
@@ -77,7 +77,7 @@ class ChatMessage < ApplicationRecord
       payload: {
         action: "replace_tail",
         replace_from_id: tail.first&.id,
-        items: ::App::ChatMessagePayload.grouped(tail, repository: chat.repository),
+        messages: ::App::ChatMessagePayload.messages(tail, repository: chat.repository),
         turn_in_flight: chat.turn_in_flight?,
         stop_requested_at: chat.stop_requested_at&.iso8601
       }

@@ -73,10 +73,15 @@ export type ChatMessageItem = {
   type: "message"
   id: number
   role: "user" | "assistant" | "tool_use" | "tool_result" | "system"
+  tool_name?: string | null
+  content?: unknown
   text: string
   bookmarkable: boolean
   bookmark_path: string
   proposal?: ChatProposal | null
+}
+
+export type ChatRenderMessageItem = ChatMessageItem & {
   tool?: ChatStructuredTool
   system?: ChatSystemMessage
 }
@@ -92,7 +97,7 @@ export type ChatToolGroupItem = {
   }>
 }
 
-export type ChatRenderItem = ChatMessageItem | ChatToolGroupItem
+export type ChatRenderItem = ChatRenderMessageItem | ChatToolGroupItem
 
 export type ChatBookmark = {
   id: number
@@ -159,7 +164,7 @@ export type ChatPayload = {
   chat_available: boolean
   turn_in_flight: boolean
   has_more_older: boolean
-  messages: ChatRenderItem[]
+  messages: ChatMessageItem[]
   bookmarks: ChatBookmark[]
   pending_actions: ChatPendingAction[]
   attachment_groups: {
@@ -194,7 +199,7 @@ export type ChatPayload = {
 
 export type ChatMessagesPayload = {
   has_more_older: boolean
-  messages: ChatRenderItem[]
+  messages: ChatMessageItem[]
 }
 
 export function fetchChat(id: string, search = "") {
