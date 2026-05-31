@@ -1569,6 +1569,55 @@ describe("App", () => {
     expect(await screen.findByText("Title can't be blank")).toBeInTheDocument()
   })
 
+  it("renders an Epic detail page and updates state through the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/epics/7/state" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify(epicDetailPayload({
+          message: "Epic updated.",
+          state: "in_progress",
+          stateTransitions: [
+            { label: "Move back to ready", target_state: "ready", confirm: null },
+            { label: "Archive", target_state: "archived", confirm: "Archive this Epic?" }
+          ]
+        })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(epicDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/epics/7"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "Epic" })).toBeInTheDocument()
+    expect(await screen.findByText("EPIC-7")).toBeInTheDocument()
+    expect(screen.getByText("Raise the forum")).toBeInTheDocument()
+    expect(screen.getByText("columns")).toBeInTheDocument()
+    expect(screen.getByText("(1 epic dep, 0 job blockers)")).toBeInTheDocument()
+    expect(screen.getByText("Survey forum")).toBeInTheDocument()
+    expect(screen.getByText("1/1 done")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Start" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/epics/7/state",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          body: JSON.stringify({ target_state: "in_progress" })
+        })
+      )
+    })
+    expect(await screen.findByText("Epic updated.")).toBeInTheDocument()
+    expect(screen.getByText("In Progress")).toBeInTheDocument()
+  })
+
   it("renders a chat and sends a message from the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -2128,6 +2177,68 @@ function epicFormPayload() {
       }
     ],
     dashboard_epics_path: "/dashboard/epics"
+  }
+}
+
+function epicDetailPayload(overrides: {
+  message?: string
+  state?: string
+  stateTransitions?: Array<Record<string, unknown>>
+} = {}) {
+  return {
+    message: overrides.message,
+    epic: {
+      id: 7,
+      number: 7,
+      display_number: "EPIC-7",
+      title: "Raise the forum",
+      description: "Build **columns**.",
+      state: overrides.state || "ready",
+      github_issue_url: "https://github.com/acme/widgets/issues/12",
+      updated_at: "2026-05-30T12:00:00Z",
+      archived: false,
+      jobs_count: 1,
+      epic_path: "/epics/7",
+      repository: {
+        id: 3,
+        slug: "acme/widgets",
+        repository_path: "/repositories/3"
+      }
+    },
+    summary: {
+      done_jobs_count: 1,
+      total_jobs_count: 1,
+      dependency_edge_count: 1,
+      blocked: false
+    },
+    state_transitions: overrides.stateTransitions || [
+      { label: "Start", target_state: "in_progress", confirm: null },
+      { label: "Archive", target_state: "archived", confirm: "Archive this Epic?" }
+    ],
+    graph: {
+      empty: false,
+      definition: "flowchart LR\n  epic_7[\"EPIC-7 Raise the forum\"]\n  epic_6[\"EPIC-6 Deliver marble\"]\n  epic_7 --> epic_6",
+      node_count: 2,
+      epic_dependency_count: 1,
+      job_blocker_count: 0,
+      initially_open: true
+    },
+    jobs: [
+      {
+        id: 42,
+        label: "#12",
+        title: "Survey forum",
+        path: "/jobs/42",
+        state: "closed",
+        repository_slug: "acme/widgets"
+      }
+    ],
+    paths: {
+      dashboard_epics_path: "/dashboard/epics",
+      edit_epic_path: "/epics/7/edit",
+      app_state_path: "/api/v1/app/epics/7/state",
+      app_archive_path: "/api/v1/app/epics/7/archive"
+    }
   }
 }
 

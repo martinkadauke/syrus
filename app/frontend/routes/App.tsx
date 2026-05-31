@@ -17,6 +17,7 @@ import { ChatRoute } from "./Chat"
 import { CredentialsRoute } from "./Credentials"
 import { CronTemplateDetailRoute, CronTemplateFormRoute, CronTemplatesIndex } from "./CronTemplates"
 import { DirectJobNewRoute } from "./DirectJobNew"
+import { EpicDetailRoute } from "./EpicDetail"
 import { EpicFormRoute } from "./EpicForm"
 import { RepositoriesIndex } from "./Repositories"
 import { RepositoryDetailRoute } from "./RepositoryDetail"
@@ -66,6 +67,7 @@ export function App() {
       <Route path="/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="/epics/new" element={<EpicFormRoute mode="new" />} />
       <Route path="/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
+      <Route path="/epics/:id" element={<EpicDetailRoute />} />
       <Route path="/chats/new" element={<ChatNewRoute />} />
       <Route path="/chats/:id" element={<ChatRoute />} />
       <Route path="/app-shell/admin" element={<AdminOverview />} />
@@ -102,6 +104,7 @@ export function App() {
       <Route path="/app-shell/jobs/new" element={<DirectJobNewRoute />} />
       <Route path="/app-shell/epics/new" element={<EpicFormRoute mode="new" />} />
       <Route path="/app-shell/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
+      <Route path="/app-shell/epics/:id" element={<EpicDetailRoute />} />
       <Route path="/app-shell/chats/new" element={<ChatNewRoute />} />
       <Route path="/app-shell/chats/:id" element={<ChatRoute />} />
       <Route path="*" element={<BootstrapShell />} />
