@@ -29,17 +29,20 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
           <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
           <p className="mt-1 text-sm text-gray-500">{payload.total} {subjectLabel(payload.subject, payload.total)} in this view</p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-3">
-          <SubjectTabs payload={payload} prefix={prefix} />
-          <DashboardCreateActions payload={payload} prefix={prefix} />
-        </div>
+        <DashboardCreateActions payload={payload} prefix={prefix} />
       </header>
+
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <SubjectTabs payload={payload} prefix={prefix} />
+        <div className="min-w-0 flex-1">
+          <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
+        </div>
+        <DashboardToolbar pathname={pathname} search={search} payload={payload} />
+      </div>
 
       <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
         <SmartFolderNav payload={payload} prefix={prefix} />
         <section className="min-w-0 space-y-4">
-          <DashboardToolbar pathname={pathname} search={search} payload={payload} />
-          <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
           <DashboardTable payload={payload} prefix={prefix} />
           {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
         </section>
@@ -58,10 +61,10 @@ function DashboardCreateActions({ payload, prefix }: { payload: DashboardPayload
 }
 
 function SubjectTabs({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
-  const subjects: Array<{ key: DashboardSubject; label: string; count: number; path: string }> = [
-    { key: "epic", label: "Epics", count: payload.counts.epics, path: "/dashboard/epics" },
-    { key: "job", label: "Jobs", count: payload.counts.jobs, path: "/dashboard/jobs" },
-    { key: "workflow", label: "Workflows", count: payload.counts.workflows, path: "/dashboard/workflows" }
+  const subjects: Array<{ key: DashboardSubject; label: string; path: string }> = [
+    { key: "epic", label: "Epics", path: "/dashboard/epics" },
+    { key: "job", label: "Jobs", path: "/dashboard/jobs" },
+    { key: "workflow", label: "Workflows", path: "/dashboard/workflows" }
   ]
 
   return (
@@ -72,7 +75,7 @@ function SubjectTabs({ payload, prefix }: { payload: DashboardPayload; prefix: s
           key={subject.key}
           to={dashboardLink(`${prefix}${subject.path}`, { view: payload.view })}
         >
-          {subject.label} <span className="text-gray-400">{subject.count}</span>
+          {subject.label}
         </Link>
       ))}
     </nav>
@@ -158,8 +161,6 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
       void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
     }
   })
-  const sortColumn = sortValue(payload.preferences.sort, "column") || payload.controls.sort_columns[0] || "title"
-  const sortDirection = sortValue(payload.preferences.sort, "direction") || payload.controls.sort_directions[0] || "desc"
 
   function updateLane(lane: string, checked: boolean) {
     const current = payload.preferences.kanban_lanes
@@ -183,13 +184,8 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
   }
 
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900">{capitalize(subjectLabel(payload.subject, 2))}</h2>
-        <p className="text-sm text-gray-500">Sorted by {sortColumn || "default"} {sortDirection || "desc"}</p>
-        {updatePreferences.isError ? <p className="mt-1 text-sm text-red-700" role="alert">{errorMessage(updatePreferences.error, "Unable to update dashboard preferences.")}</p> : null}
-      </div>
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="shrink-0">
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <nav aria-label="Dashboard view" className="inline-flex overflow-hidden rounded border border-gray-300 bg-white text-sm">
           {payload.controls.views.map((view) => (
             <Link
@@ -251,6 +247,7 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
           </fieldset>
         ) : null}
       </div>
+      {updatePreferences.isError ? <p className="mt-1 text-right text-sm text-red-700" role="alert">{errorMessage(updatePreferences.error, "Unable to update dashboard preferences.")}</p> : null}
     </div>
   )
 }
@@ -399,7 +396,7 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
   }
 
   return (
-    <div className="space-y-2 rounded border border-gray-200 bg-white p-3">
+    <div className="space-y-2 rounded border border-gray-200 bg-white px-3 py-2">
       <div className="relative flex flex-wrap items-center gap-2">
         {draftChildren.map((node, index) => (
           <FilterNodeChip
@@ -898,11 +895,22 @@ function BulkJobActions({ selectedIds, onClear }: { selectedIds: number[]; onCle
     action.mutate(bulkAction)
   }
 
+  if (selectedIds.length === 0) {
+    if (notice) {
+      return (
+        <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
+          {notice}
+        </div>
+      )
+    }
+
+    return null
+  }
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
       <div>
-        <span className="font-medium text-gray-900">{selectedIds.length}</span>
-        <span className="text-gray-600"> selected</span>
+        <span className="font-medium text-gray-900">{selectedIds.length} selected</span>
         {notice ? <span className="ml-3 text-emerald-700" role="status">{notice}</span> : null}
         {action.isError ? <span className="ml-3 text-red-700" role="alert">{errorMessage(action.error, "Bulk action failed.")}</span> : null}
       </div>
@@ -1552,10 +1560,6 @@ function workflowDateValue(workflow: DashboardWorkflowItem, column: string) {
 
 function humanizeOption(value: string) {
   return value.replace(/_/g, " ").replace(/^\w/, (match) => match.toUpperCase())
-}
-
-function capitalize(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 function errorMessage(error: Error, fallback: string) {
