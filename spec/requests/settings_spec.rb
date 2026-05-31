@@ -14,33 +14,34 @@ RSpec.describe "Settings", type: :request do
     context "as a non-admin" do
       before { admin; sign_in_as(non_admin) }
 
-      it "serves the credentials page as an intentional alias" do
+      it "serves the React credentials shell as an intentional alias" do
         get settings_path
-        expect(response).to be_successful
-        expect(response.body).to include("My credentials")
-      end
 
-      it "shows only My credentials in the in-page nav" do
-        get settings_path
-        expect(response.body).to include("My credentials")
-        expect(response.body).not_to include("Invitations")
-        expect(response.body).not_to include("App settings")
+        expect(response).to be_successful
+        expect(response.body).to include('id="syrus-spa-root"')
+        expect(response.body).to include('id="syrus-bootstrap-data"')
+        expect(response.body).to include(non_admin.email_address)
       end
     end
 
     context "as an admin" do
       before { sign_in_as(admin) }
 
-      it "serves the credentials page as an intentional alias" do
+      it "serves the React credentials shell as an intentional alias" do
         get settings_path
+
         expect(response).to be_successful
-        expect(response.body).to include("My credentials")
+        expect(response.body).to include('id="syrus-spa-root"')
+        expect(response.body).to include('id="syrus-bootstrap-data"')
+        expect(response.body).to include(admin.email_address)
       end
 
-      it "shows only the per-user sections in the in-page nav (Invitations + App settings are admin-area-only)" do
-        get settings_path
+      it "keeps the legacy credentials fallback on /credentials/edit/legacy" do
+        get legacy_edit_credentials_path
+
         expect(response.body).to include("My credentials")
         expect(response.body).to include("Templates")
+        expect(response.body).to include("Tags")
         expect(response.body).not_to match(/<a[^>]*>Invitations/)  # moved to admin area
         expect(response.body).not_to match(/<a[^>]*>App settings/) # moved to admin area
       end

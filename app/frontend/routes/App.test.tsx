@@ -1444,6 +1444,28 @@ describe("App", () => {
     expect(await screen.findByText("Credentials updated.")).toBeInTheDocument()
   })
 
+  it("renders /settings as the credentials route without admin links", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/settings"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("main", { name: "My credentials" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "My credentials" })).toHaveAttribute("href", "/app-shell/credentials/edit")
+    expect(screen.getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
+    expect(screen.getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
+    expect(screen.queryByRole("link", { name: "Invitations" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "App settings" })).not.toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/credentials", expect.objectContaining({ credentials: "same-origin" }))
+  })
+
   it("rotates an admin API token from the credentials route", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
