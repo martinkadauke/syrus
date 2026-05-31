@@ -10,6 +10,8 @@ class GitRunner
   #     (git prints the full URL in some network-error messages,
   #     e.g. "fatal: unable to access 'https://x-access-token:T@…'")
   AUTH_URL_PATTERN = %r{(https://x-access-token:)[^@\s]+(@)}.freeze
+  DARWIN_TEMP_DIR_WARNING_PATTERN =
+    /\Agit: warning: confstr\(\) failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using \/tmp instead\s*\z/.freeze
 
   # Wall-clock ceiling for any git operation. Network-bound clones /
   # fetches against very large repos can be slow; 10 minutes covers
@@ -19,6 +21,10 @@ class GitRunner
 
   def self.redact(text)
     text.to_s.gsub(AUTH_URL_PATTERN, '\1[REDACTED]\2')
+  end
+
+  def self.ignorable_output_line?(line)
+    line.to_s.match?(DARWIN_TEMP_DIR_WARNING_PATTERN)
   end
 
   class GitError < StandardError
@@ -80,6 +86,8 @@ class GitRunner
       workflow: current_run&.workflow,
       on_output_line: ->(raw_line) do
         line = self.class.redact(raw_line)
+        next if self.class.ignorable_output_line?(line)
+
         output << line
         log_sink.call(line)
       end

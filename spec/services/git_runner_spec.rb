@@ -49,6 +49,19 @@ RSpec.describe GitRunner do
     end
   end
 
+  describe ".ignorable_output_line?" do
+    it "ignores macOS temp-dir warnings that git can emit in sandboxed processes" do
+      line = "git: warning: confstr() failed with code 5: couldn't get path of DARWIN_USER_TEMP_DIR; using /tmp instead\n"
+
+      expect(described_class.ignorable_output_line?(line)).to eq(true)
+    end
+
+    it "keeps real git warnings and fatal messages" do
+      expect(described_class.ignorable_output_line?("warning: refname 'main' is ambiguous\n")).to eq(false)
+      expect(described_class.ignorable_output_line?("fatal: couldn't find remote ref refs/heads/feature\n")).to eq(false)
+    end
+  end
+
   describe "GitError redaction (defense in depth)" do
     it "scrubs the token from the stored command + the exception message" do
       auth_url = "https://x-access-token:github_pat_AAA111@github.com/o/r.git"
