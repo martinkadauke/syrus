@@ -616,8 +616,9 @@ function FilterNodeChip({
 
 function FilterChipButton({ chip, controls, negated = false, onClick }: { chip: FilterChip; controls: DashboardFilterSchemaField[]; negated?: boolean; onClick: () => void }) {
   const meta = filterMetaFor(controls, chip.field)
+  const label = `${negated ? "NOT " : ""}${meta?.label || chip.field} ${humanizeOp(chip.op)}${isPredicateOp(chip.op) ? "" : ` ${formatFilterValue(chip, meta)}`}`
   return (
-    <button className="inline-flex items-baseline gap-1 text-left" onClick={onClick} type="button">
+    <button aria-label={label} className="inline-flex items-baseline gap-1 text-left" onClick={onClick} type="button">
       <span className="font-medium text-gray-700">{negated ? "NOT " : ""}{meta?.label || chip.field}</span>
       <span className="text-xs text-gray-500">{humanizeOp(chip.op)}</span>
       {isPredicateOp(chip.op) ? null : <span className="font-mono text-gray-900">{formatFilterValue(chip, meta)}</span>}
@@ -647,7 +648,7 @@ function FilterChipEditor({ chip, editorRef, meta, onChange }: { chip: FilterChi
 }
 
 function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: DashboardFilterSchemaField; onChange: (chip: FilterChip) => void }) {
-  if (isPredicateOp(chip.op)) return <span className="pb-1.5 text-sm text-gray-500">No value needed</span>
+  if (isPredicateOp(chip.op)) return null
 
   const options = filterOptions(meta)
   const multi = isMultiValueOp(chip.op)

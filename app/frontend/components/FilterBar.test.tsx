@@ -20,6 +20,13 @@ const filterSchema: FilterSchemaField[] = [
     bucket: "enum",
     operators: ["is"],
     values: [{ value: "issue", label: "Issue" }]
+  },
+  {
+    field: "has_parent",
+    label: "Has parent",
+    bucket: "boolean",
+    operators: ["is_true", "is_false"],
+    values: []
   }
 ]
 
@@ -62,6 +69,24 @@ describe("FilterBar", () => {
         and: [{ field: "state", op: "is", value: "closed" }]
       })
     })
+  })
+
+  it("does not show a value placeholder for predicate filters", () => {
+    render(
+      <MemoryRouter initialEntries={["/dashboard/jobs"]}>
+        <FilterBar
+          filter={{ and: [{ field: "has_parent", op: "is_true", value: null }] }}
+          filterSchema={filterSchema}
+          pathname="/dashboard/jobs"
+          search=""
+        />
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Has parent is true" }))
+
+    expect(screen.getByRole("dialog", { name: "Has parent filter settings" })).toBeInTheDocument()
+    expect(screen.queryByText("No value needed")).not.toBeInTheDocument()
   })
 
   it("closes an open chip editor before showing the add-or filter menu", async () => {

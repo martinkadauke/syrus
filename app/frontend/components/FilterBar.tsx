@@ -350,7 +350,7 @@ function FilterChipEditor({ chip, editorRef, meta, onChange }: { chip: FilterChi
 }
 
 function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: FilterSchemaField; onChange: (chip: FilterChip) => void }) {
-  if (isPredicateOp(chip.op)) return <span className="pb-1.5 text-sm text-gray-500">No value needed</span>
+  if (isPredicateOp(chip.op)) return null
 
   const options = filterOptions(meta)
   const multi = isMultiValueOp(chip.op)

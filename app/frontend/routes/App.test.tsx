@@ -605,6 +605,25 @@ describe("App", () => {
         ]
       })
     })
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+    fireEvent.change(screen.getByPlaceholderText("Search filters..."), { target: { value: "parent" } })
+    fireEvent.click(screen.getByRole("button", { name: "Has parent boolean" }))
+    await waitFor(() => {
+      expect(latestFilterTree).toEqual({
+        and: [
+          {
+            or: [
+              { field: "state", op: "is", value: "closed" },
+              { field: "kind", op: "is", value: "issue" }
+            ]
+          },
+          { field: "has_parent", op: "is_true", value: null }
+        ]
+      })
+    })
+    fireEvent.click(await screen.findByRole("button", { name: "Has parent is true" }))
+    expect(await screen.findByRole("dialog", { name: "Has parent filter settings" })).toBeInTheDocument()
+    expect(screen.queryByText("No value needed")).not.toBeInTheDocument()
 
     const smartFoldersPanel = await screen.findByRole("complementary", { name: "Dashboard smart folders panel" })
     fireEvent.change(within(smartFoldersPanel).getByLabelText("Folder name"), { target: { value: "Open work" } })
@@ -4835,6 +4854,13 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
           bucket: "enum",
           operators: ["is"],
           values: ["issue", "cron", "direct"]
+        },
+        {
+          field: "has_parent",
+          label: "Has parent",
+          bucket: "boolean",
+          operators: ["is_true", "is_false"],
+          values: []
         },
         {
           field: "attention",
