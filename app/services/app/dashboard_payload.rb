@@ -86,6 +86,7 @@ module App
         counts: counts,
         preferences: preferences_json,
         controls: controls_json,
+        filter: current_filter.to_h,
         landing_queue: landing_queue_json,
         smart_folders: smart_folders_json,
         active_smart_folder_id: active_smart_folder&.id,
@@ -108,6 +109,17 @@ module App
         workflows_result
       else
         epics_result
+      end
+    end
+
+    def current_filter
+      case subject
+      when "job"
+        jobs_filter
+      when "workflow"
+        workflows_filter
+      else
+        epics_filter
       end
     end
 

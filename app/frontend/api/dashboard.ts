@@ -147,6 +147,7 @@ export type DashboardPayload = {
     kanban_lanes: string[]
     raw: Record<string, unknown>
   }
+  filter?: Record<string, unknown> | null
   controls: {
     views: string[]
     sort_columns: string[]

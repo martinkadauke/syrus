@@ -502,6 +502,7 @@ describe("App", () => {
               dashboardPayload({
                 subject: "job",
                 view: "list",
+                filter: latestFilterTree || { and: [] },
                 page: 2,
                 per_page: 10,
                 total: 25,
@@ -834,6 +835,7 @@ describe("App", () => {
                     path: "/dashboard/jobs?view=list&smart_folder_id=4"
                   }
                 ],
+                filter: { and: [ { field: "attention", op: "is", value: "merged_this_week" } ] },
                 items: [dashboardJobItem()]
               })
             ),
@@ -857,6 +859,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Stale 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=2")
     expect(screen.getByText("More")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Merged this week 0" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=3")
+    expect(screen.getByRole("button", { name: /Attention preset.*Merged this week/ })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Saved review 2" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=4")
     expect(screen.getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/app-shell/smart_folders?subject_type=job")
   })
@@ -4650,9 +4653,20 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
           bucket: "enum",
           operators: ["is"],
           values: ["issue", "cron", "direct"]
+        },
+        {
+          field: "attention",
+          label: "Attention preset",
+          bucket: "preset",
+          operators: ["is"],
+          values: [
+            { value: "merged_this_week", label: "Merged this week" },
+            { value: "inbox", label: "Inbox" }
+          ]
         }
       ]
     },
+    filter: { and: [] },
     landing_queue: {
       visible: false,
       paused: false,

@@ -89,9 +89,8 @@ function SmartFolderNav({ payload, prefix, search }: { payload: DashboardPayload
   const primaryFolders = builtinFolders.filter((folder) => folder.visibility !== "on_demand")
   const moreFolders = builtinFolders.filter((folder) => folder.visibility === "on_demand")
   const savedFolders = payload.smart_folders.filter((folder) => folder.kind === "user_defined")
-  const params = new URLSearchParams(search)
-  const appliedChildren = topFilterChildren(filterTreeFromSearch(search))
-  const canSaveFilter = appliedChildren.length > 0 || legacyFilterKeys.some((key) => params.has(key))
+  const appliedTree = filterTreeFromPayload(payload.filter)
+  const canSaveFilter = topFilterChildren(appliedTree).length > 0
   const landingPause = useMutation({
     mutationFn: () => toggleDashboardLandingPause(payload.landing_queue.toggle_path),
     onSuccess: () => {
@@ -102,7 +101,7 @@ function SmartFolderNav({ payload, prefix, search }: { payload: DashboardPayload
     mutationFn: () => createDashboardSmartFolder({
       subject: payload.subject,
       name: folderName,
-      filters: smartFolderFiltersFromSearch(search)
+      filters: smartFolderFiltersFromTree(appliedTree)
     }),
     onSuccess: (created) => {
       setFolderName("")
@@ -322,7 +321,7 @@ function ColumnsIcon() {
 
 function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
   const navigate = useNavigate()
-  const [draftTree, setDraftTree] = useState<FilterTree>(() => filterTreeFromSearch(search))
+  const [draftTree, setDraftTree] = useState<FilterTree>(() => filterTreeFromPayload(payload.filter))
   const [editingPath, setEditingPath] = useState<FilterPath | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [addQuery, setAddQuery] = useState("")
@@ -330,7 +329,7 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
   const addMenuRef = useRef<HTMLDivElement | null>(null)
   const controls = payload.controls.filter_schema
   const params = new URLSearchParams(search)
-  const appliedTree = useMemo(() => filterTreeFromSearch(search), [search])
+  const appliedTree = useMemo(() => filterTreeFromPayload(payload.filter), [payload.filter])
   const draftChildren = topFilterChildren(draftTree)
   const hasFilters = draftChildren.length > 0 || legacyFilterKeys.some((key) => params.has(key)) || params.has("smart_folder_id")
   const filteredControls = controls.filter((control) => {
@@ -1207,22 +1206,15 @@ function clearFiltersLink(path: string, search: string) {
   return query ? `${path}?${query}` : path
 }
 
-function smartFolderFiltersFromSearch(search: string) {
-  const params = new URLSearchParams(search)
-  const tree = decodeFilterTree(params.get("q"))
-  if (tree && topFilterChildren(tree).length > 0) return { filter: JSON.stringify(normalizedFilterTree(tree)) }
-
+function smartFolderFiltersFromTree(tree: FilterTree) {
+  const normalized = normalizedFilterTree(tree)
   const filters: Record<string, string> = {}
-  for (const [key, value] of params.entries()) {
-    if (["page", "view", "smart_folder_id"].includes(key)) continue
-    if (value.length > 0) filters[key] = value
-  }
-
+  if (topFilterChildren(normalized).length > 0) filters.filter = JSON.stringify(normalized)
   return filters
 }
 
-function filterTreeFromSearch(search: string): FilterTree {
-  return normalizedFilterTree(decodeFilterTree(new URLSearchParams(search).get("q")) || { and: [] })
+function filterTreeFromPayload(filter: DashboardPayload["filter"]): FilterTree {
+  return normalizedFilterTree(filter && typeof filter === "object" ? filter as FilterTree : null)
 }
 
 function decodeFilterTree(raw: string | null): FilterTree | null {
