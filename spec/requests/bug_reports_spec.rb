@@ -3,14 +3,6 @@ require "rails_helper"
 RSpec.describe "Bug reports", type: :request do
   let(:user) { Factories.user }
 
-  def upload_png(content: "\x89PNG\r\n\x1A\nscreenshot".b)
-    Rack::Test::UploadedFile.new(
-      StringIO.new(content),
-      "image/png",
-      original_filename: "capture.png"
-    )
-  end
-
   describe "layout entry point" do
     it "serves signed-in app pages through the React shell that owns bug reports" do
       repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
@@ -32,98 +24,9 @@ RSpec.describe "Bug reports", type: :request do
     end
   end
 
-  describe "POST /bug_reports" do
-    before { sign_in_as(user) }
-
-    it "creates a direct Job for tkadauke/syrus and auto-starts its workflow with the selected screenshot attached" do
-      repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-
-      expect {
-        post bug_reports_path, params: {
-          title: "Home#index bug",
-          description: "The dashboard fell over.",
-          screenshot: upload_png
-        }, headers: { "ACCEPT" => "application/json" }
-      }.to change(Job, :count).by(1)
-       .and change(Document, :count).by(1)
-       .and change(Workflow, :count).by(1)
-       .and change(Run, :count).by(1)
-
-      job = Job.last
-      expect(response).to have_http_status(:created)
-      expect(JSON.parse(response.body)).to include("message" => "Bug report queued.", "job_id" => job.id)
-      expect(job).to have_attributes(
-        user: user,
-        repository: repository,
-        kind: "direct",
-        issue_number: nil,
-        issue_title: "Home#index bug",
-        issue_body: "Home#index bug\n\nThe dashboard fell over."
-      )
-      expect(job.workflows.first).to be_queued
-      expect(job.runs.last).to be_queued
-
-      attachment = job.job_attachments.last
-      expect(attachment.source_url).to start_with("bug-report://")
-      expect(attachment.filename).to eq("capture.png")
-      expect(attachment.content_type).to eq("image/png")
-      expect(attachment.file).to be_attached
-      expect(attachment.file.download).to include("screenshot")
-    end
-
-    it "creates a direct Job without an attachment when no screenshot is selected and auto-starts its workflow" do
-      repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-
-      expect {
-        post bug_reports_path, params: {
-          title: "Home#index bug",
-          description: "The dashboard fell over."
-        }, headers: { "ACCEPT" => "application/json" }
-      }.to change(Job, :count).by(1)
-       .and change(Document, :count).by(0)
-       .and change(Workflow, :count).by(1)
-       .and change(Run, :count).by(1)
-
-      job = Job.last
-      expect(response).to have_http_status(:created)
-      expect(JSON.parse(response.body)).to include("message" => "Bug report queued.", "job_id" => job.id)
-      expect(job).to have_attributes(
-        user: user,
-        repository: repository,
-        kind: "direct",
-        issue_number: nil,
-        issue_title: "Home#index bug",
-        issue_body: "Home#index bug\n\nThe dashboard fell over."
-      )
-      expect(job.job_attachments).to be_empty
-    end
-
-    it "keeps the HTML fallback on the originating page instead of the new job" do
-      Factories.repository(user: user, owner: "tkadauke", name: "syrus")
-      origin = dashboard_jobs_url
-
-      post bug_reports_path, params: {
-        title: "Home#index bug",
-        description: "The dashboard fell over."
-      }, headers: { "HTTP_REFERER" => origin }
-
-      expect(response).to redirect_to(origin)
-      expect(response).not_to redirect_to(job_path(Job.last))
-    end
-
-    it "requires the hardcoded repository to be configured for the user" do
-      Factories.repository(user: user, owner: "acme", name: "widgets")
-
-      expect {
-        post bug_reports_path, params: {
-          title: "Missing repo",
-          description: "No target",
-          screenshot: upload_png
-        }
-      }.not_to change(Job, :count)
-
-      expect(response).to redirect_to(dashboard_jobs_path)
-      expect(flash[:alert]).to eq("Bug report repository tkadauke/syrus is not configured.")
-    end
+  it "does not route the retired legacy HTML bug report endpoint" do
+    expect {
+      Rails.application.routes.recognize_path("/bug_reports", method: :post)
+    }.to raise_error(ActionController::RoutingError)
   end
 end
