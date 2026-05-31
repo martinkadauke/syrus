@@ -29,14 +29,14 @@ health/storage internals.
 | Route group | Current owner | Bucket | Notes / target |
 |---|---|---|---|
 | `/` | `spa#show` + `/api/v1/app/dashboard` | `spa-core` | Migrated to the React dashboard shell. Must preserve subject/view/filter/page URL state. |
-| `/dashboard` | `spa#show` + `/api/v1/app/dashboard` | `spa-core` | Same dashboard surface as root. Legacy ERB fallback lives at `/dashboard/legacy`. |
-| `/dashboard/epics` | `spa#show` + `/api/v1/app/dashboard?subject=epic` | `spa-core` | Migrated to the React dashboard route tree. Legacy ERB fallback lives at `/dashboard/epics/legacy`. |
-| `/dashboard/jobs` | `spa#show` + `/api/v1/app/dashboard?subject=job` | `spa-core` | Migrated to the React dashboard route tree. Dashboard record links use React Router navigation, including `/app-shell` prefixed test routes. Legacy ERB fallback lives at `/dashboard/jobs/legacy`. |
-| `/dashboard/workflows` | `spa#show` + `/api/v1/app/dashboard?subject=workflow` | `spa-core` | Migrated to the React dashboard route tree. Legacy ERB fallback lives at `/dashboard/workflows/legacy`. |
-| `PATCH /dashboard/preferences` | `/api/v1/app/dashboard/preferences` | `spa-core` | App API endpoint persists sort, visible-column, and Kanban lane preferences; legacy Turbo/HTML command remains for fallback. |
-| `POST /dashboard/jobs/bulk` | `/api/v1/app/dashboard/jobs/bulk` | `spa-core` | App API endpoint mirrors retry, close, approve/review, and tag bulk actions with JSON responses. Legacy HTML bulk form remains for fallback. |
-| `POST /dashboard/landing_pause` | `/api/v1/app/dashboard/landing_pause` | `spa-core` | App API endpoint toggles landing pause and re-enqueues the landing processor on resume; legacy HTML command remains for fallback. |
-| `PATCH /dashboard/epics/:id/auto_approval` | `/api/v1/app/dashboard/epics/:id/auto_approval` | `spa-core` | App API endpoint updates dashboard Epic auto-approval state; legacy HTML command remains for fallback. |
+| `/dashboard` | `spa#show` + `/api/v1/app/dashboard` | `spa-core` | Same dashboard surface as root. Legacy ERB fallback removed. |
+| `/dashboard/epics` | `spa#show` + `/api/v1/app/dashboard?subject=epic` | `spa-core` | Migrated to the React dashboard route tree. Legacy ERB fallback removed. |
+| `/dashboard/jobs` | `spa#show` + `/api/v1/app/dashboard?subject=job` | `spa-core` | Migrated to the React dashboard route tree. Dashboard record links use React Router navigation, including `/app-shell` prefixed test routes. Legacy ERB fallback removed. |
+| `/dashboard/workflows` | `spa#show` + `/api/v1/app/dashboard?subject=workflow` | `spa-core` | Migrated to the React dashboard route tree. Legacy ERB fallback removed. |
+| `PATCH /dashboard/preferences` | `/api/v1/app/dashboard/preferences` | `spa-core` | Retired as an HTML/Turbo command; app API endpoint persists sort, visible-column, and Kanban lane preferences. |
+| `POST /dashboard/jobs/bulk` | `/api/v1/app/dashboard/jobs/bulk` | `spa-core` | Retired as an HTML bulk form; app API endpoint mirrors retry, close, approve/review, and tag bulk actions with JSON responses. |
+| `POST /dashboard/landing_pause` | `/api/v1/app/dashboard/landing_pause` | `spa-core` | Retired as an HTML command; app API endpoint toggles landing pause and re-enqueues the landing processor on resume. |
+| `PATCH /dashboard/epics/:id/auto_approval` | `/api/v1/app/dashboard/epics/:id/auto_approval` | `spa-core` | Retired as an HTML command; app API endpoint updates dashboard Epic auto-approval state. |
 | `/app-shell` | `spa#show` | `spa-core` | Hidden authenticated React shell used to prove the SPA asset, bootstrap API, and client routing path before taking over production routes. |
 | `/jobs/new` | `spa#show` + `/api/v1/app/jobs/new`, `POST /api/v1/app/jobs` | `spa-core` | Migrated to the React direct-job form with internal React Router navigation after create. Legacy ERB fallback and HTML `POST /jobs` commands are removed. |
 | `/jobs/:id` | `spa#show` + `/api/v1/app/jobs/:id`, `/api/v1/app/jobs/:id/timeline` | `spa-core` | Migrated to the React Job detail page. Internal repository/dependent-Job links use React Router navigation. Legacy ERB fallback lives at `/jobs/:id/legacy`; HTML member commands remain for fallback/dashboard controls. |
@@ -49,9 +49,9 @@ health/storage internals.
 | `/jobs/:job_id/pin` | `/api/v1/app/jobs/:job_id/pin` | `spa-core` | App API pin/unpin endpoint returns the new pin state and emits job app-event invalidation. Legacy HTML command remains for fallback. |
 | `/epics/:id` | `spa#show` + `/api/v1/app/epics/:id` | `spa-core` | Migrated to the React Epic detail page with child Jobs, dependency graph data, internal React Router navigation, and app API state/archive commands. Legacy ERB detail fallback removed. |
 | `/epics/new`, `/epics/:id/edit` | `spa#show` + `/api/v1/app/epics*` | `spa-core` | Migrated to the React Epic form with internal React Router navigation after save. Legacy ERB form fallbacks and HTML `POST/PATCH /epics` commands removed. |
-| `PATCH /epics/:id/archive` | `/api/v1/app/epics/:id/archive` | `spa-core` | React uses the app API command endpoint; legacy HTML command remains for fallback/dashboard controls. |
-| `PATCH /epics/:id/state` | `/api/v1/app/epics/:id/state` | `spa-core` | React uses the app API command endpoint; legacy HTML/JSON command remains for fallback/dashboard controls. |
-| `/epics/:id/graph` | `epics#graph` | `legacy-html` | Legacy Turbo drawer endpoint for ERB dashboard cards. React Epic detail renders the Mermaid dependency graph client-side from `/api/v1/app/epics/:id` graph data and does not mount `mermaid_graph`. |
+| `PATCH /epics/:id/archive` | `/api/v1/app/epics/:id/archive` | `spa-core` | React uses the app API command endpoint; legacy HTML command remains until the final HTML command cleanup. |
+| `PATCH /epics/:id/state` | `/api/v1/app/epics/:id/state` | `spa-core` | React uses the app API command endpoint; legacy HTML/JSON command remains until the final HTML command cleanup. |
+| `/epics/:id/graph` | removed | `spa-core` | Legacy Turbo drawer endpoint removed with the ERB dashboard. React Epic detail renders the dependency graph from `/api/v1/app/epics/:id` graph data. |
 | `/epics`, `/jobs`, `/workflows` redirects | route redirects | `spa-core` | Compatibility shortcuts now redirect to React-owned `/dashboard/epics`, `/dashboard/jobs`, and `/dashboard/workflows` while preserving non-`subject` query params. |
 | `/repositories` | `spa#show` + `/api/v1/app/repositories` | `spa-core` | Migrated to the React repository list with app API poll/archive/unarchive commands. Internal add/show/edit links use React Router navigation. Legacy ERB list fallback removed. |
 | `/repositories/new`, `/repositories/:id/edit`, `POST/PATCH /repositories` | `spa#show` + `/api/v1/app/repositories*` | `spa-core` | Migrated to the React repository form with app API GitHub owner/repo/branch selectors and internal React Router navigation after save. Legacy ERB form fallbacks and HTML `POST/PATCH /repositories` commands removed. |
@@ -104,12 +104,12 @@ health/storage internals.
 | Slice | Controllers to retire or rewrite in React |
 |---|---|
 | SPA shell | `split_button`, `flash`, `bug_report`, global `form_validation` compatibility |
-| Admin diagnostics | `auto_refresh`, `tabs`, `filter_memory` if used by admin filters |
-| Dashboard | `chip_bar`, `column_picker`, `sort_select`, `bulk_jobs`, `kanban`, `epic_graph_drawer`, `filter_memory`, `checkbox_persistence`, `details_persistence` |
+| Admin diagnostics | `auto_refresh`, `tabs` |
+| Dashboard | Retired ERB-only controllers: `chip_bar`, `column_picker`, `sort_select`, `bulk_jobs`, `kanban`, `epic_graph_drawer`, `filter_memory`. Generic `checkbox_persistence` and `details_persistence` remain only in the legacy application layout. |
 | Job detail/source | `approval_review`, `attachment_drop`, `iteration_tabs`, `retry_context`, `run_timer`, `source_highlight`, `source_tree`, `transcript_toggle` |
 | Chat/whiteboard | retired with the React chat route |
 | Repository/settings/forms | `credentials_form`, `scheduled_task_form`, `document_upload`, `auto_submit` |
-| Shared visual helpers | `mermaid_graph` remains only for legacy ERB graph drawers; React Epic detail renders Mermaid client-side. `relative_time` can become a React utility as remaining legacy pages migrate. |
+| Shared visual helpers | `relative_time` can become a React utility as remaining legacy pages migrate. The legacy Mermaid graph drawer has been removed. |
 
 ## First migration slice
 

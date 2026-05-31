@@ -13,17 +13,15 @@ RSpec.describe "Bug reports", type: :request do
 
   describe "layout entry point" do
     it "renders the floating bug-report control for signed-in app pages" do
-      # The canonical dashboard is now the SPA shell; the legacy
-      # dashboard still renders the application layout where the
-      # Stimulus bug-report control lives.
-      Factories.repository(user: user, owner: "tkadauke", name: "syrus")
+      repository = Factories.repository(user: user, owner: "tkadauke", name: "syrus")
+      job = Factories.job(repository: repository, issue_number: 1)
       sign_in_as(user)
 
-      get legacy_dashboard_jobs_path
+      get legacy_job_path(job)
 
       expect(response.body).to match(/data-controller="[^"]*\bform-validation\b/)
       expect(response.body).to include('data-controller="bug-report"')
-      expect(response.body).to include('data-bug-context="Home#jobs"')
+      expect(response.body).to include('data-bug-context="Jobs#show"')
       expect(response.body).to include("Report a bug")
       expect(response.body).to include("No screenshot")
       expect(response.body).to include("bug_reports")
@@ -128,9 +126,8 @@ RSpec.describe "Bug reports", type: :request do
         }
       }.not_to change(Job, :count)
 
-      expect(response).to redirect_to(legacy_dashboard_jobs_path)
-      follow_redirect!
-      expect(response.body).to include("Bug report repository tkadauke/syrus is not configured.")
+      expect(response).to redirect_to(dashboard_jobs_path)
+      expect(flash[:alert]).to eq("Bug report repository tkadauke/syrus is not configured.")
     end
   end
 end

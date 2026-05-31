@@ -1,6 +1,4 @@
 class EpicsController < ApplicationController
-  PER_PAGE = 25
-
   before_action :load_epic
 
   def archive
@@ -44,17 +42,6 @@ class EpicsController < ApplicationController
       format.html { redirect_back fallback_location: dashboard_epics_path, alert: "Unknown Epic state." }
       format.json { render json: { error: "unknown_state" }, status: :unprocessable_content }
     end
-  end
-
-  def graph
-    @graph = EpicDependencyGraphRenderer.new(@epic).render
-    html = render_to_string(partial: "dependency_graph", locals: {
-      epic: @epic,
-      result: @graph,
-      initially_open: true,
-      drawer: ActiveModel::Type::Boolean.new.cast(params[:drawer])
-    })
-    render html: helpers.safe_turbo_frame("epic_graph_drawer_body") { html.html_safe }
   end
 
   private

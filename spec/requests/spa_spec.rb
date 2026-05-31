@@ -54,20 +54,6 @@ RSpec.describe "SPA shell", type: :request do
     expect(response).to redirect_to(new_session_path)
   end
 
-  it "keeps the legacy dashboard renderer available behind fallback routes" do
-    user = Factories.user
-    repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-    Factories.job_record(repository: repo, issue_number: 7)
-    sign_in_as(user)
-
-    get legacy_dashboard_jobs_path
-
-    expect(response).to have_http_status(:ok)
-    expect(response.body).to include("acme/widgets")
-    expect(response.body).to include("#7")
-    expect(response.body).not_to include('id="syrus-spa-root"')
-  end
-
   it "requires admin access for admin SPA routes" do
     Factories.user
     user = Factories.user

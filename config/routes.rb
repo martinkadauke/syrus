@@ -263,16 +263,9 @@ Rails.application.routes.draw do
   get "app-shell", to: "spa#show", as: :app_shell
   get "app-shell/*path", to: "spa#show", as: :app_shell_route
   get "dashboard", to: "spa#show", as: :dashboard
-  get "dashboard/legacy", to: "home#index", as: :legacy_dashboard
-  patch "dashboard/preferences", to: "home#update_preferences", as: :dashboard_preferences
   get "dashboard/epics", to: "spa#show", as: :dashboard_epics
-  get "dashboard/epics/legacy", to: "home#epics", as: :legacy_dashboard_epics
-  patch "dashboard/epics/:id/auto_approval", to: "home#update_epic_auto_approval", as: :dashboard_epic_auto_approval
   get "dashboard/jobs", to: "spa#show", as: :dashboard_jobs
-  get "dashboard/jobs/legacy", to: "home#jobs", as: :legacy_dashboard_jobs
-  post "dashboard/landing_pause", to: "home#toggle_landing_pause", as: :toggle_landing_pause
   get "dashboard/workflows", to: "spa#show", as: :dashboard_workflows
-  get "dashboard/workflows/legacy", to: "home#workflows", as: :legacy_dashboard_workflows
   get "jobs", to: redirect(status: 302) { |_params, request|
     query = request.query_parameters.except("subject").to_query
     query.present? ? "/dashboard/jobs?#{query}" : "/dashboard/jobs"
@@ -344,12 +337,6 @@ Rails.application.routes.draw do
       post :mark_valid
     end
   end
-  resources :epics, only: [] do
-    member do
-      get :graph
-    end
-  end
-
   get "admin", to: "spa#show", as: :admin_root
   get "admin/queue", to: "spa#show", as: :admin_queue_root
   get "admin/queue/:tab", to: "spa#show", as: :admin_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }
@@ -371,7 +358,6 @@ Rails.application.routes.draw do
     get "github_app/confirm",  to: "github_app#confirm",  as: :github_app_confirm
   end
 
-  post "dashboard/jobs/bulk", to: "home#bulk_jobs", as: :bulk_dashboard_jobs
   root "spa#show"
 
   # Reveal health status on /up that returns 200 if the app boots with no exceptions, otherwise 500.

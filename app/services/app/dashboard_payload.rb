@@ -18,7 +18,50 @@ module App
       { key: "failed", title: "Failed" }
     ].freeze
     WORKFLOW_DONE_STATES = %w[succeeded failed cancelled].freeze
-    COLUMN_LABELS = HomeHelper::DASHBOARD_COLUMN_LABELS
+    COLUMN_LABELS = {
+      "epics" => {
+        "epic" => "Epic",
+        "state" => "State",
+        "repository" => "Repository",
+        "updated" => "Updated",
+        "created_at" => "Created at",
+        "updated_at" => "Updated at",
+        "done_at" => "Done at",
+        "archived_at" => "Archived at"
+      },
+      "jobs" => {
+        "checkbox" => "Checkbox",
+        "issue" => "Issue",
+        "state" => "State",
+        "repository" => "Repository",
+        "latest" => "Latest",
+        "workflows_count" => "Workflows count",
+        "started" => "Started",
+        "created_at" => "Created at",
+        "updated_at" => "Updated at",
+        "started_at" => "Started at",
+        "finished_at" => "Finished at",
+        "approved_at" => "Approved at",
+        "dependencies_overridden_at" => "Dependencies overridden at",
+        "last_feedback_addressed_at" => "Last feedback addressed at",
+        "last_seen_comment_at" => "Last seen comment at",
+        "pr_mergeable_checked_at" => "PR mergeable checked at"
+      },
+      "workflows" => {
+        "workflow" => "Workflow",
+        "job" => "Job",
+        "trigger" => "Trigger",
+        "state" => "State",
+        "started" => "Started",
+        "finished" => "Finished",
+        "agent" => "Agent",
+        "created_at" => "Created at",
+        "updated_at" => "Updated at",
+        "started_at" => "Started at",
+        "finished_at" => "Finished at",
+        "cleaned_up_at" => "Cleaned up at"
+      }
+    }.freeze
 
     def self.call(user:, params:)
       new(user: user, params: params).call

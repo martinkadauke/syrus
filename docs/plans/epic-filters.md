@@ -274,9 +274,9 @@ EPIC_BUILTINS = [
   surfaces a sidebar of Epic SmartFolders.
 - Chip-bar UI partial accepts a `subject:` parameter and renders
   `Filters::Schema.for(subject: :epic, user: current_user)`.
-- The existing `filter_memory_controller.js` becomes
-  subject-aware (key the memory by `subject` so navigating between
-  Jobs and Epics doesn't clobber each other's last filter).
+- Historical note: the legacy `filter_memory_controller.js` became
+  subject-aware for the ERB dashboard, then was retired when the
+  dashboard moved fully to React.
 
 ## Acceptance (whole plan)
 
@@ -401,10 +401,9 @@ dashboard:
   subject-scoped.
 - **Subject toggle + view toggle**: a horizontal control row beneath
   the user-wide summary.
-- **Filter chip-bar**: subject-aware (`Filters::Schema.for(subject:)`),
-  re-renders when subject changes. Filter state is scoped per subject
-  in `filter_memory_controller.js` (key by subject so switching
-  doesn't clobber the other's filter).
+- **Filter chip-bar**: historical ERB implementation. The React
+  dashboard now owns filter state without the retired
+  `filter_memory_controller.js`.
 - **Sidebar with SmartFolders**: subject-aware
   (`SmartFolder.for_subject(name)`), built-ins appear per subject.
 - **Main content area**: List view or Kanban view, depending on the
