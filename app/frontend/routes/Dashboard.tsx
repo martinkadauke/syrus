@@ -151,6 +151,7 @@ function SmartFolderLink({ folder, prefix }: { folder: DashboardSmartFolder; pre
 
 function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
   const queryClient = useQueryClient()
+  const [columnsOpen, setColumnsOpen] = useState(false)
   const updatePreferences = useMutation({
     mutationFn: updateDashboardPreferences,
     onSuccess: () => {
@@ -238,21 +239,36 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
           </select>
         </label>
         {payload.view === "list" ? (
-          <fieldset className="flex max-w-xl flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1">
-            <legend className="sr-only">Visible columns</legend>
-            <span className="mr-1 text-xs font-medium uppercase text-gray-500">Columns</span>
-            {payload.controls.columns.optional.map((column) => (
-              <label className="inline-flex items-center gap-1 text-xs text-gray-700" key={column.key}>
-                <input
-                  checked={payload.preferences.visible_columns.includes(column.key)}
-                  disabled={updatePreferences.isPending}
-                  onChange={(event) => updateColumn(column.key, event.target.checked)}
-                  type="checkbox"
-                />
-                <span>{column.title}</span>
-              </label>
-            ))}
-          </fieldset>
+          <div className="relative">
+            <button
+              aria-controls="dashboard-columns-menu"
+              aria-expanded={columnsOpen}
+              aria-haspopup="menu"
+              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setColumnsOpen((open) => !open)}
+              type="button"
+            >
+              Columns
+            </button>
+            {columnsOpen ? (
+              <div className="absolute right-0 z-20 mt-2 w-64 rounded border border-gray-200 bg-white p-3 shadow-lg" id="dashboard-columns-menu" role="menu">
+                <fieldset className="space-y-2">
+                  <legend className="text-xs font-semibold uppercase text-gray-500">Visible columns</legend>
+                  {payload.controls.columns.optional.map((column) => (
+                    <label className="flex items-center gap-2 text-sm text-gray-700" key={column.key}>
+                      <input
+                        checked={payload.preferences.visible_columns.includes(column.key)}
+                        disabled={updatePreferences.isPending}
+                        onChange={(event) => updateColumn(column.key, event.target.checked)}
+                        type="checkbox"
+                      />
+                      <span>{column.title}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+            ) : null}
+          </div>
         ) : null}
         {payload.view === "kanban" ? (
           <fieldset className="flex max-w-xl flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1">

@@ -447,6 +447,8 @@ describe("App", () => {
       )
     })
 
+    fireEvent.click(screen.getByRole("button", { name: "Columns" }))
+    expect(screen.getByRole("group", { name: "Visible columns" })).toBeInTheDocument()
     fireEvent.click(screen.getByLabelText("Workflows count"))
 
     await waitFor(() => {
