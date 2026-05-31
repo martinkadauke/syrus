@@ -111,16 +111,6 @@ module ApplicationHelper
   # Render a split button — primary action with a chevron that
   # opens a dropdown of related options. Wraps the partial so
   # callers don't need to remember the path.
-  #
-  #   <%= split_button(
-  #         primary: { label: "Retry", path: run_again_job_path(@job) },
-  #         options: [
-  #           { label: "Retry from failed step", path: retry_step_job_path(@job, workflow_id: wf.id) },
-  #           { label: "Start over",             path: restart_job_path(@job), confirm: "Sure?" }
-  #         ],
-  #         theme: "blue",
-  #         disabled: false
-  #       ) %>
   def split_button(primary:, options:, theme: "blue", disabled: false)
     render "shared/split_button",
            primary: primary, options: options,

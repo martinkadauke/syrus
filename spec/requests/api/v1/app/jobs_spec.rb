@@ -231,6 +231,7 @@ RSpec.describe "App API job detail", type: :request do
 
     run_payload = parse_body["workflows"].flat_map { |payload| payload["steps"] }.flat_map { |payload| payload["runs"] }.find { |payload| payload["id"] == grade_run.id }
     expect(run_payload["app_grade_log_path"]).to include("/api/v1/app/jobs/#{job.id}/runs/#{grade_run.id}/grade_log", "name=tests")
+    expect(run_payload).not_to have_key("grade_log_path")
 
     get "/api/v1/app/jobs/#{job.id}/runs/#{grade_run.id}/grade_log", params: { name: "tests" }
 

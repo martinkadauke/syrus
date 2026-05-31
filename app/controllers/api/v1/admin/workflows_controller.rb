@@ -2,7 +2,7 @@ module Api
   module V1
     module Admin
       # Workflow-scoped admin actions exposed over the API.
-      # Mirrors of JobsController#retry_step and the
+      # Mirrors the Job detail retry-step command and the
       # WorkflowWorkspace.cleanup_for path that today only runs on
       # the daily prune job's schedule.
       #
@@ -31,8 +31,8 @@ module Api
 
         # Reopens the workflow + the failed step, creates a fresh
         # Run on the failed step, lets the inline-chain dispatch
-        # take it from there. Same semantics as the HTML
-        # JobsController#retry_step. Returns the new Run id.
+        # take it from there. Same semantics as the Job detail
+        # retry-step command. Returns the new Run id.
         def retry_step
           workflow = Workflow.find(params[:id])
 

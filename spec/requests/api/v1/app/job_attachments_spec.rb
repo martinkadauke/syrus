@@ -48,6 +48,7 @@ RSpec.describe "App API job attachments", type: :request do
       include("filename" => "notes.md", "app_delete_path" => %r{\A/api/v1/app/jobs/#{job.id}/attachments/\d+\z}),
       include("google_doc_url" => "https://docs.google.com/document/d/context/edit")
     )
+    expect(body["attachments"].first).not_to have_key("delete_path")
   end
 
   it "rejects empty attachment submissions" do

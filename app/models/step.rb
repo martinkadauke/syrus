@@ -71,7 +71,7 @@ class Step < ApplicationRecord
     end
 
     # Reopen a failed Step so a new Run can be created on it. Used
-    # by JobsController#retry_step. Resets the timing fields — the
+    # by the retry-step command. Resets the timing fields — the
     # next perform_step's start! callback will repopulate started_at.
     # The failed prior Run stays on the Step as historical record.
     event :reopen do

@@ -16,7 +16,7 @@ class PollRebaseJob < ApplicationJob
   # in the same poll cycle, and the auto-rebase loop instantiates
   # one Rebase workflow per Job — O(n) workflows hitting the same
   # workspace pool simultaneously. Bound that fan-out here. Manual
-  # rebases via JobsController#rebase bypass this cap (operator
+  # rebases via the Job detail command bypass this cap (operator
   # explicitly asked for it).
   CONCURRENT_REBASES_PER_REPO = 3
 

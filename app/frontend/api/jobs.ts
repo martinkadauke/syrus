@@ -180,7 +180,6 @@ export type JobRun = {
   app_stop_path: string
   app_diagnose_path: string
   app_resume_path: string
-  grade_log_path: string | null
   app_grade_log_path: string | null
 }
 

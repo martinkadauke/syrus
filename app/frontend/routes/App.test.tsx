@@ -2644,10 +2644,9 @@ describe("App", () => {
         }
       ]
     })
-    const gradeStep = payload.workflows[0].steps[0] as { kind: string; details: unknown; runs: Array<{ grade_log_path: string | null; app_grade_log_path: string | null }> }
+    const gradeStep = payload.workflows[0].steps[0] as { kind: string; details: unknown; runs: Array<{ app_grade_log_path: string | null }> }
     gradeStep.kind = "grader"
     gradeStep.details = { name: "tests", command: "bin/rspec" }
-    gradeStep.runs[0].grade_log_path = "/jobs/42/runs/9/grade_log?name=tests&workflow_id=5"
     gradeStep.runs[0].app_grade_log_path = "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5"
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -4355,7 +4354,6 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
                 app_stop_path: "/api/v1/app/jobs/42/runs/9/stop",
                 app_diagnose_path: "/api/v1/app/jobs/42/runs/9/diagnose",
                 app_resume_path: "/api/v1/app/jobs/42/resume",
-                grade_log_path: null,
                 app_grade_log_path: null
               }
             ]

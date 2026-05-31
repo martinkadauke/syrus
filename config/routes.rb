@@ -306,36 +306,6 @@ Rails.application.routes.draw do
   get "jobs/new", to: "spa#show", as: :new_job
   get "jobs/:id/source", to: "spa#show", as: :source_job, constraints: { id: /\d+/ }
   get "jobs/:id", to: "spa#show", as: :job, constraints: { id: /\d+/ }
-  resources :jobs, only: [] do
-    resource :pin, only: %i[ create destroy ], controller: "job_pins"
-    resources :attachments, only: %i[ create destroy ], controller: "job_attachments"
-
-    member do
-      post :start
-      post :run_again      # soft retry — new Run on the existing branch
-      post :restart        # hard reset — close this thread, open a new one with a fresh branch + PR
-      post :cancel         # cancel active runs + close the thread
-      post :approve        # implemented → approved, by operator action
-      post :unapprove      # approved → implemented, until landing starts
-      post :reopen         # undo a close — closed → open, polling resumes
-      post :poll_feedback  # manually trigger PollPullRequestJob for this Job
-      post :rebase         # manually trigger a rebase Run on this Job's PR
-      post :check_mergeability  # ask GitHub for the latest mergeable status now
-      post :resume         # continue a failed Run via claude --resume
-      post :stop_run       # cancel a single active Run without closing the thread
-      post :retry_step     # re-run the failed step in a failed Workflow (keeps the existing workspace)
-      post :push_commits   # push uncommitted/committed local changes from a failed Workflow's workspace
-      post :tags, action: :add_tag
-      delete "tags/:tag_id", action: :remove_tag, as: :tag
-      post :diagnose       # capture a RunHealthSnapshot for an active Run
-      get  "runs/:run_id/grade_log", action: :grade_log, as: :run_grade_log
-      post :dependencies, action: :add_dependency
-      delete "dependencies/:dependency_id", action: :remove_dependency, as: :dependency
-      post :override_dependencies
-      patch :stack_base
-      post :mark_valid
-    end
-  end
   get "admin", to: "spa#show", as: :admin_root
   get "admin/queue", to: "spa#show", as: :admin_queue_root
   get "admin/queue/:tab", to: "spa#show", as: :admin_queue, constraints: { tab: /active|pending|failed|recurring|workers/ }

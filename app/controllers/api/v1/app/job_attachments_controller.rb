@@ -112,7 +112,6 @@ module Api
             content_type: attachment.content_type,
             byte_size: attachment.byte_size,
             google_doc_url: attachment.google_doc_url,
-            delete_path: job_attachment_path(job, attachment),
             app_delete_path: "/api/v1/app/jobs/#{job.id}/attachments/#{attachment.id}"
           }
         end

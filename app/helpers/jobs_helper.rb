@@ -138,34 +138,6 @@ module JobsHelper
     colored_pill(status, classes: ATTENTION_STATUS_STYLES.fetch(status, ApplicationHelper::PILL_FALLBACK_CLASSES), extra: "shrink-0")
   end
 
-  def job_pin_button(job, pinned:)
-    label = pinned ? "Unpin job" : "Pin job"
-    classes = [
-      "inline-flex h-7 w-7 items-center justify-center rounded-md border text-sm",
-      pinned ? "border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100" : "border-gray-200 bg-white text-gray-400 hover:border-amber-200 hover:text-amber-500"
-    ].join(" ")
-
-    link_to job_pin_path(job),
-            class: classes,
-            title: label,
-            aria: { label: label, pressed: pinned.to_s },
-            data: { turbo_method: pinned ? :delete : :post } do
-      tag.svg(
-        xmlns: "http://www.w3.org/2000/svg",
-        viewBox: "0 0 24 24",
-        fill: (pinned ? "currentColor" : "none"),
-        stroke: "currentColor",
-        "stroke-width": "1.8",
-        "stroke-linecap": "round",
-        "stroke-linejoin": "round",
-        class: "h-4 w-4",
-        aria: { hidden: "true" }
-      ) do
-        tag.path(d: "M12 3.75l2.5 5.06 5.59.81-4.05 3.95.96 5.57L12 16.51l-5 2.63.96-5.57-4.05-3.95 5.59-.81L12 3.75z")
-      end
-    end
-  end
-
   def tag_chip(tag_record, classes: nil)
     colors = tag_color_values(tag_record)
     content_tag(:span,

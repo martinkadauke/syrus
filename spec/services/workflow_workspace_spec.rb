@@ -436,7 +436,7 @@ RSpec.describe WorkflowWorkspace do
       workflow.fail!
       workflow.save!
       # Workspace stays on disk so the operator can use
-      # JobsController#retry_step. cleaned_up_at stays nil.
+      # Retry-step command. cleaned_up_at stays nil.
       expect(ws.path).to exist
       expect(workflow.reload.cleaned_up_at).to be_nil
     end

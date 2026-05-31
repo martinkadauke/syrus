@@ -15,7 +15,7 @@ class PollPullRequestJob < ApplicationJob
   # the watermark or stack two pr_comment Runs at once.
   limits_concurrency to: 1, key: ->(job_id, *) { "pr_poll:#{job_id}" }
 
-  # `manual: true` is set by JobsController#poll_feedback (operator
+  # `manual: true` is set by the Job detail feedback command (operator
   # clicked the "Check for PR feedback" button). The pr_comment /
   # ci_failure caps are runaway-loop defenses for the autonomous
   # 5-minute poller; the operator clicking the button is an
