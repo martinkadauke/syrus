@@ -182,7 +182,10 @@ Rails.application.routes.draw do
     # The repository chat home (no tab, no UI entry point) is gone;
     # the per-repo controller was pure duplication of ChatsController.
     resources :notes, only: %i[ create destroy ], controller: "repositories/notes"
-    resources :documents, only: %i[ index create destroy ], controller: "repositories/documents", shallow: true
+    get "documents", to: "spa#show", as: :documents
+    post "documents", to: "repositories/documents#create"
+    get "documents/legacy", to: "repositories/documents#index", as: :legacy_documents
+    post "documents/legacy", to: "repositories/documents#create"
     get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks
     patch "scheduled_tasks/:id", to: "repositories/scheduled_tasks#update", as: :scheduled_task
     delete "scheduled_tasks/:id", to: "repositories/scheduled_tasks#destroy"
@@ -193,6 +196,7 @@ Rails.application.routes.draw do
     get "scheduled_tasks/legacy/new", to: "scheduled_tasks#new", as: :legacy_new_scheduled_task
     post "scheduled_tasks/legacy", to: "scheduled_tasks#create"
   end
+  delete "documents/:id", to: "repositories/documents#destroy", as: :document, constraints: { id: /\d+/ }
   get "repositories/:repository_id/scheduled_tasks/new", to: "spa#show", as: :new_repository_scheduled_task
 
   resources :chats, only: %i[ new create show ] do

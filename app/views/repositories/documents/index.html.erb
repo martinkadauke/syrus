@@ -45,7 +45,7 @@
                     </div>
                   </div>
                   <%= button_to "Delete",
-                        document_path(document, frame: params[:frame]),
+                        repository_document_delete_path(document),
                         method: :delete,
                         class: "rounded px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer",
                         form: { class: "shrink-0", data: { turbo_confirm: "Delete this document?" } } %>
@@ -63,7 +63,7 @@
       <section class="space-y-3 border-t border-gray-200 pt-4">
         <h3 class="text-sm font-semibold text-gray-900">Upload a file</h3>
         <%= form_with model: [ @repository, Document.new(kind: "file") ],
-              url: repository_documents_path(@repository, frame: params[:frame]),
+              url: repository_documents_form_path(@repository),
               method: :post,
               multipart: true,
               class: "space-y-3" do |form| %>
@@ -98,7 +98,7 @@
       <section class="space-y-3 border-t border-gray-200 pt-4">
         <h3 class="text-sm font-semibold text-gray-900">Link a Google Doc</h3>
         <%= form_with model: [ @repository, Document.new(kind: "google_doc") ],
-              url: repository_documents_path(@repository, frame: params[:frame]),
+              url: repository_documents_form_path(@repository),
               method: :post,
               class: "space-y-3" do |form| %>
           <%= form.hidden_field :kind, value: "google_doc" %>

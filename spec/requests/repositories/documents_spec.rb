@@ -15,8 +15,15 @@ RSpec.describe "Repository documents", type: :request do
   end
 
   describe "GET /repositories/:repository_id/documents" do
-    it "renders the documentation frame empty state and forms" do
+    it "serves the React repository documents shell" do
       get repository_documents_path(repo, frame: 1)
+
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "renders the legacy documentation frame empty state and forms" do
+      get repository_legacy_documents_path(repo, frame: 1)
 
       expect(response).to have_http_status(:ok)
       expect(response.body).to include("repository_#{repo.id}_documents")
@@ -39,7 +46,7 @@ RSpec.describe "Repository documents", type: :request do
         file: upload(filename: "architecture.pdf", content_type: "application/pdf", content: "%PDF")
       )
 
-      get repository_documents_path(repo, frame: 1)
+      get repository_legacy_documents_path(repo, frame: 1)
 
       expect(response.body).to include("Launch plan")
       expect(response.body).to include("https://docs.google.com/document/d/launch/edit")
@@ -69,6 +76,20 @@ RSpec.describe "Repository documents", type: :request do
       expect(response).to redirect_to(repository_documents_path(repo, frame: "1"))
     end
 
+    it "keeps legacy creates inside the legacy fallback" do
+      expect {
+        post repository_legacy_documents_path(repo, frame: 1), params: {
+          repository_document: {
+            kind: "google_doc",
+            title: "Legacy notes",
+            google_docs_url: "https://docs.google.com/document/d/legacy/edit"
+          }
+        }
+      }.to change(Document, :count).by(1)
+
+      expect(response).to redirect_to(repository_legacy_documents_path(repo, frame: "1"))
+    end
+
     it "creates a Google Docs link document" do
       expect {
         post repository_documents_path(repo, frame: 1), params: {
@@ -88,7 +109,7 @@ RSpec.describe "Repository documents", type: :request do
 
     it "rerenders validation errors for unsupported uploads" do
       expect {
-        post repository_documents_path(repo, frame: 1), params: {
+        post repository_legacy_documents_path(repo, frame: 1), params: {
           repository_document: {
             kind: "file",
             title: "Archive",
@@ -132,6 +153,19 @@ RSpec.describe "Repository documents", type: :request do
 
       expect(ActiveStorage::Blob.where(id: blob.id)).to be_empty
       expect(response).to redirect_to(repository_documents_path(repo, frame: "1"))
+    end
+
+    it "keeps legacy deletes inside the legacy fallback" do
+      document = repo.repository_documents.create!(
+        user: user,
+        kind: "google_doc",
+        title: "Legacy",
+        google_docs_url: "https://docs.google.com/document/d/legacy/edit"
+      )
+
+      delete document_path(document, frame: 1, legacy: 1)
+
+      expect(response).to redirect_to(repository_legacy_documents_path(repo, frame: "1"))
     end
 
     it "blocks deletion of another user's document" do
