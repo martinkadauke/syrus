@@ -1,9 +1,8 @@
 module Api
   module V1
     module Admin
-      # Mirror of Admin::SpawnedProcessesController. Subprocess
-      # inventory with the same filters as the HTML page plus
-      # programmatic kill.
+      # Subprocess inventory for external admin API clients, including
+      # filters and programmatic kill.
       #
       #   GET  /api/v1/admin/processes
       #     - ?state=running|finished|all (default: active+recent-1h)

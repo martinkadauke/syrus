@@ -1,21 +1,9 @@
 require "rails_helper"
 
-RSpec.describe "Admin spawned processes (HTML)", type: :request do
+RSpec.describe "Admin spawned processes (HTML shell)", type: :request do
   let(:user) { Factories.user(admin: true) }
 
   before { sign_in_as(user) }
-
-  def fixture(**overrides)
-    SpawnedProcess.create!({
-      kind: "agent",
-      command: "claude --print",
-      hostname: "syrus-worker-test",
-      started_at: 30.seconds.ago,
-      last_chunk_at: 5.seconds.ago,
-      run: nil,
-      workflow: nil
-    }.merge(overrides))
-  end
 
   describe "GET /admin/processes" do
     it "serves the React processes shell" do
@@ -25,107 +13,31 @@ RSpec.describe "Admin spawned processes (HTML)", type: :request do
     end
   end
 
-  describe "GET /admin/processes/legacy" do
-    it "lists active and recently-finished rows" do
-      running = fixture
-      recent = fixture(started_at: 5.minutes.ago, finished_at: 1.minute.ago, outcome: "succeeded", exit_status: 0)
-      ancient = fixture(started_at: 5.hours.ago, finished_at: 4.hours.ago, outcome: "succeeded", exit_status: 0)
-
-      get admin_legacy_processes_path
-
-      expect(response.body).to include("Process ##{running.id}").or include(running.command)
-      expect(response.body).to include(recent.command)
-      expect(response.body).not_to include("Process ##{ancient.id}")
-    end
-
-    it "filters by ?state=running" do
-      running = fixture
-      fixture(started_at: 10.minutes.ago, finished_at: 1.minute.ago, outcome: "succeeded", exit_status: 0)
-
-      get admin_legacy_processes_path, params: { state: "running" }
-      doc = Nokogiri::HTML(response.body)
-      shown_rows = doc.css("tbody tr").size
-      expect(shown_rows).to eq(1)
-    end
-
-    it "filters by an encoded state chip" do
-      running = fixture
-      finished = fixture(command: "finished command", started_at: 10.minutes.ago, finished_at: 1.minute.ago, outcome: "succeeded", exit_status: 0)
-      q = Filters::QueryParam.encode("field" => "state", "op" => "is", "value" => "running")
-
-      get admin_legacy_processes_path, params: { q: q }
-
-      expect(response.body).to include(running.command)
-      expect(response.body).not_to include(finished.command)
-      doc = Nokogiri::HTML(response.body)
-      expect(doc.css("tbody tr").size).to eq(1)
-    end
-
-    it "filters by ?kind=" do
-      fixture(kind: "agent")
-      grader = fixture(kind: "grader", command: "bin/rspec")
-
-      get admin_legacy_processes_path, params: { kind: "grader" }
-      expect(response.body).to include(grader.command)
-      expect(response.body).not_to include("claude --print")
-    end
-
-    it "renders a Kill button on running rows without a kill request" do
-      sp = fixture
-      get admin_legacy_processes_path
-      expect(response.body).to include(admin_legacy_kill_process_path(sp))
-    end
-
-    it "hides the Kill button once kill_requested_at is set" do
-      sp = fixture(kill_requested_at: Time.current)
-      get admin_legacy_processes_path
-      expect(response.body).to include("kill requested")
-      # The form action should not be rendered as a button for this row
-      doc = Nokogiri::HTML(response.body)
-      row_actions = doc.at_xpath("//td[contains(., 'Detail')]")
-      expect(row_actions&.css("form[action='#{admin_legacy_kill_process_path(sp)}']")).to be_empty
-    end
-  end
-
   describe "GET /admin/processes/:id" do
     it "serves the React process detail shell" do
-      sp = fixture
+      sp = SpawnedProcess.create!(
+        kind: "agent",
+        command: "claude --print",
+        hostname: "syrus-worker-test",
+        started_at: 30.seconds.ago,
+        last_chunk_at: 5.seconds.ago
+      )
       get admin_process_path(sp)
       expect(response).to be_successful
       expect(response.body).to include('id="syrus-spa-root"')
     end
   end
 
-  describe "GET /admin/processes/legacy/:id" do
-    it "renders the detail dl" do
-      sp = fixture
-      get admin_legacy_process_path(sp)
-      expect(response.body).to include("Process ##{sp.id}")
-      expect(response.body).to include("syrus-worker-test")
-    end
-  end
-
-  describe "POST /admin/processes/:id/kill" do
-    it "stamps kill_requested_at and redirects with a notice" do
-      sp = fixture
-      expect { post kill_admin_process_path(sp) }.to change { sp.reload.kill_requested_at }.from(nil)
-      expect(response).to redirect_to(admin_processes_path)
-      expect(flash[:notice]).to include("Kill requested for process ##{sp.id}")
-      expect(sp.kill_requested_by_user).to eq(user)
-    end
-
-    it "refuses to kill an already-finalized process" do
-      sp = fixture(finished_at: Time.current, outcome: "succeeded", exit_status: 0)
-      expect { post kill_admin_process_path(sp) }.not_to change { sp.reload.kill_requested_at }
-      expect(flash[:alert]).to include("already finalized")
-    end
-
-    it "keeps the legacy kill action inside the legacy process fallback" do
-      sp = fixture
-      expect { post admin_legacy_kill_process_path(sp) }.to change { sp.reload.kill_requested_at }.from(nil)
-      expect(response).to redirect_to(admin_legacy_processes_path)
-      expect(flash[:notice]).to include("Kill requested for process ##{sp.id}")
-    end
+  it "does not route the retired legacy HTML process endpoints" do
+    expect {
+      Rails.application.routes.recognize_path("/admin/processes/legacy", method: :get)
+    }.to raise_error(ActionController::RoutingError)
+    expect {
+      Rails.application.routes.recognize_path("/admin/processes/legacy/1", method: :get)
+    }.to raise_error(ActionController::RoutingError)
+    expect {
+      Rails.application.routes.recognize_path("/admin/processes/1/kill", method: :post)
+    }.to raise_error(ActionController::RoutingError)
   end
 end
 

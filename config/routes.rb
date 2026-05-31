@@ -218,7 +218,7 @@ Rails.application.routes.draw do
         post "workflows/:id/retry_step",        to: "workflows#retry_step"
         post "workflows/:id/cleanup_workspace", to: "workflows#cleanup_workspace"
 
-        # Subprocess inventory — see Admin::SpawnedProcessesController.
+        # Subprocess inventory for external admin API clients.
         # Index supports ?state=running|finished|all (default
         # "active_or_recent"), ?kind=, ?hostname=, ?since=,
         # ?run_id=, ?workflow_id=. Detail returns the same payload
@@ -412,7 +412,6 @@ Rails.application.routes.draw do
   get "admin/stuck", to: "spa#show", as: :admin_stuck
   get "admin/processes", to: "spa#show", as: :admin_processes
   get "admin/processes/:id", to: "spa#show", as: :admin_process, constraints: { id: /\d+/ }
-  post "admin/processes/:id/kill", to: "admin/spawned_processes#kill", as: :kill_admin_process, constraints: { id: /\d+/ }
   get "admin/runs/:run_id/transcript", to: "spa#show", as: :admin_run_transcript, constraints: { run_id: /\d+/ }
   get "admin/users", to: "spa#show", as: :admin_users
   get "admin/users/:id", to: "spa#show", as: :admin_user, constraints: { id: /\d+/ }
@@ -439,11 +438,6 @@ Rails.application.routes.draw do
     # Stuck-things watchlist — Run heartbeat stale or Workflow
     # nearing prune. See Admin::StuckItems for the definition.
     get "stuck/legacy", to: "stuck#index", as: :legacy_stuck
-
-    # Subprocess inventory legacy ERB fallback — see Admin::SpawnedProcessesController.
-    get  "processes/legacy",          to: "spawned_processes#index", as: :legacy_processes
-    get  "processes/legacy/:id",      to: "spawned_processes#show",  as: :legacy_process
-    post "processes/legacy/:id/kill", to: "spawned_processes#kill",  as: :legacy_kill_process
 
     get "github_app/register", to: "github_app#register", as: :github_app_register
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
