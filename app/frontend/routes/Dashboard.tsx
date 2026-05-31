@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { ApiError } from "../api/client"
-import { fetchDashboard, updateDashboardPreferences, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardJobs, fetchDashboard, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardJobItem, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -160,18 +161,113 @@ function DashboardTable({ payload }: { payload: DashboardPayload }) {
     return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">No {subjectLabel(payload.subject, 2)} match this view.</div>
   }
 
-  if (payload.subject === "job") return <JobsTable items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} />
+  if (payload.subject === "job") return <JobsDashboardTable items={payload.items.filter((item): item is DashboardJobItem => item.type === "job")} />
   if (payload.subject === "workflow") return <WorkflowsTable items={payload.items.filter((item): item is DashboardWorkflowItem => item.type === "workflow")} />
 
   return <EpicsTable items={payload.items.filter((item): item is DashboardEpicItem => item.type === "epic")} />
 }
 
-function JobsTable({ items }: { items: DashboardJobItem[] }) {
+function JobsDashboardTable({ items }: { items: DashboardJobItem[] }) {
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
+  const visibleIds = useMemo(() => items.map((item) => item.id), [items])
+  const selectedArray = useMemo(() => Array.from(selectedIds), [selectedIds])
+  const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
+
+  useEffect(() => {
+    setSelectedIds((current) => {
+      const visible = new Set(visibleIds)
+      const next = new Set(Array.from(current).filter((id) => visible.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [visibleIds])
+
+  function toggleAll() {
+    setSelectedIds((current) => {
+      if (allSelected) return new Set()
+      return new Set([ ...Array.from(current), ...visibleIds ])
+    })
+  }
+
+  function toggleOne(id: number) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <BulkJobActions selectedIds={selectedArray} onClear={() => setSelectedIds(new Set())} />
+      <JobsTable
+        allSelected={allSelected}
+        items={items}
+        onToggleAll={toggleAll}
+        onToggleOne={toggleOne}
+        selectedIds={selectedIds}
+      />
+    </div>
+  )
+}
+
+function BulkJobActions({ selectedIds, onClear }: { selectedIds: number[]; onClear: () => void }) {
+  const queryClient = useQueryClient()
+  const [notice, setNotice] = useState<string | null>(null)
+  const action = useMutation({
+    mutationFn: (bulkAction: DashboardBulkJobAction) => bulkDashboardJobs({ job_ids: selectedIds, bulk_action: bulkAction }),
+    onSuccess: (payload) => {
+      setNotice(payload.message)
+      onClear()
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  })
+  const disabled = selectedIds.length === 0 || action.isPending
+
+  function run(bulkAction: DashboardBulkJobAction) {
+    setNotice(null)
+    if (bulkAction === "close" && !window.confirm(`Close ${selectedIds.length} selected job${selectedIds.length === 1 ? "" : "s"}?`)) return
+    action.mutate(bulkAction)
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
+      <div>
+        <span className="font-medium text-gray-900">{selectedIds.length}</span>
+        <span className="text-gray-600"> selected</span>
+        {notice ? <span className="ml-3 text-emerald-700" role="status">{notice}</span> : null}
+        {action.isError ? <span className="ml-3 text-red-700" role="alert">{errorMessage(action.error, "Bulk action failed.")}</span> : null}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("retry")} type="button">Retry</button>
+        <button className={bulkButtonClass(disabled)} disabled={disabled} onClick={() => run("approve")} type="button">Approve</button>
+        <button className={bulkButtonClass(disabled, "danger")} disabled={disabled} onClick={() => run("close")} type="button">Close</button>
+      </div>
+    </div>
+  )
+}
+
+function JobsTable({
+  items,
+  selectedIds,
+  allSelected,
+  onToggleAll,
+  onToggleOne
+}: {
+  items: DashboardJobItem[]
+  selectedIds: Set<number>
+  allSelected: boolean
+  onToggleAll: () => void
+  onToggleOne: (id: number) => void
+}) {
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase text-gray-500">
           <tr>
+            <th className="w-10 px-4 py-2">
+              <input aria-label="Select all jobs" checked={allSelected} onChange={onToggleAll} type="checkbox" />
+            </th>
             <th className="px-4 py-2">Job</th>
             <th className="px-4 py-2">State</th>
             <th className="px-4 py-2">Repository</th>
@@ -182,6 +278,9 @@ function JobsTable({ items }: { items: DashboardJobItem[] }) {
         <tbody className="divide-y divide-gray-100">
           {items.map((job) => (
             <tr key={job.id}>
+              <td className="px-4 py-3 align-top">
+                <input aria-label={`Select ${job.title}`} checked={selectedIds.has(job.id)} onChange={() => onToggleOne(job.id)} type="checkbox" />
+              </td>
               <td className="max-w-md px-4 py-3">
                 <a className="font-medium text-blue-600 hover:underline" href={job.paths.job_path}>{job.title}</a>
                 <div className="mt-1 flex flex-wrap gap-1 text-xs text-gray-500">
@@ -367,6 +466,13 @@ function pageLink(pathname: string, search: string, page: number) {
 
 function folderClass(active: boolean) {
   return `flex min-w-0 rounded px-2 py-1.5 text-sm ${active ? "bg-blue-50 font-medium text-blue-700" : "text-gray-700 hover:bg-gray-100"}`
+}
+
+function bulkButtonClass(disabled: boolean, tone: "default" | "danger" = "default") {
+  if (disabled) return "rounded border border-gray-200 px-3 py-1 text-gray-300"
+  if (tone === "danger") return "rounded border border-red-300 px-3 py-1 text-red-700 hover:bg-red-50"
+
+  return "rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-white"
 }
 
 function subjectLabel(subject: DashboardSubject, count: number) {

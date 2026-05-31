@@ -184,6 +184,20 @@ describe("App", () => {
         )
       }
 
+      if (path === "/api/v1/app/dashboard/jobs/bulk" && init?.method === "POST") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              message: "Retry enqueued for 1 job.",
+              action: "retry",
+              affected_job_ids: [42],
+              skipped_job_ids: []
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
       if (path === "/api/v1/app/dashboard?view=kanban&subject=job") {
         return Promise.resolve(
           new Response(
@@ -281,6 +295,28 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Dashboard preferences updated.")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText("Select Repair aqueduct"))
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard/jobs/bulk",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          headers: expect.objectContaining({
+            Accept: "application/json",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({
+            job_ids: [42],
+            bulk_action: "retry"
+          })
+        })
+      )
+    })
+    expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
   })
 
   it("renders the admin queue route from the app admin queue API", async () => {

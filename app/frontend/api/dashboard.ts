@@ -1,4 +1,4 @@
-import { getJson, patchJson } from "./client"
+import { getJson, patchJson, postJson } from "./client"
 
 export type DashboardSubject = "job" | "epic" | "workflow"
 
@@ -135,10 +135,30 @@ export type DashboardPreferencesPayload = {
   dashboard_preferences: Record<string, unknown>
 }
 
+export type DashboardBulkJobAction = "retry" | "close" | "approve"
+
+export type DashboardBulkJobsInput = {
+  job_ids: number[]
+  bulk_action: DashboardBulkJobAction | string
+  tag_id?: number
+  tag_name?: string
+}
+
+export type DashboardBulkJobsPayload = {
+  message: string
+  action: string
+  affected_job_ids: number[]
+  skipped_job_ids: number[]
+}
+
 export function fetchDashboard(search = "") {
   return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`)
 }
 
 export function updateDashboardPreferences(input: DashboardPreferencesInput) {
   return patchJson<DashboardPreferencesPayload>("/api/v1/app/dashboard/preferences", input)
+}
+
+export function bulkDashboardJobs(input: DashboardBulkJobsInput) {
+  return postJson<DashboardBulkJobsPayload>("/api/v1/app/dashboard/jobs/bulk", input)
 }
