@@ -32,6 +32,57 @@ import { ScheduledTaskDetailRoute, ScheduledTaskFormRoute, ScheduledTasksIndex }
 import { SmartFolders } from "./SmartFolders"
 import { Tags } from "./Tags"
 
+type AppRouteDefinition = {
+  path: string
+  element: ReactNode
+}
+
+const appRouteDefinitions: AppRouteDefinition[] = [
+  { path: "/dashboard", element: <DashboardRoute /> },
+  { path: "/dashboard/epics", element: <DashboardRoute /> },
+  { path: "/dashboard/jobs", element: <DashboardRoute /> },
+  { path: "/dashboard/workflows", element: <DashboardRoute /> },
+  { path: "/admin", element: <AdminOverview /> },
+  { path: "/admin/queue", element: <AdminQueueRoute /> },
+  { path: "/admin/queue/:tab", element: <AdminQueueRoute /> },
+  { path: "/admin/stuck", element: <AdminStuck /> },
+  { path: "/admin/processes", element: <AdminProcessesIndex /> },
+  { path: "/admin/processes/:id", element: <AdminProcessDetail /> },
+  { path: "/admin/runs/:runId/transcript", element: <AdminTranscript /> },
+  { path: "/admin/users", element: <AdminUsersIndex /> },
+  { path: "/admin/users/:id", element: <AdminUserDetailRoute /> },
+  { path: "/admin/console", element: <AdminConsole /> },
+  { path: "/admin/installations", element: <AdminInstallations /> },
+  { path: "/invitations", element: <AdminInvitations /> },
+  { path: "/settings/edit", element: <AdminSettings /> },
+  { path: "/settings", element: <CredentialsRoute /> },
+  { path: "/credentials/edit", element: <CredentialsRoute /> },
+  { path: "/smart_folders", element: <SmartFolders /> },
+  { path: "/tags", element: <Tags /> },
+  { path: "/cron_templates", element: <CronTemplatesIndex /> },
+  { path: "/cron_templates/new", element: <CronTemplateFormRoute mode="new" /> },
+  { path: "/cron_templates/:id", element: <CronTemplateDetailRoute /> },
+  { path: "/cron_templates/:id/edit", element: <CronTemplateFormRoute mode="edit" /> },
+  { path: "/scheduled_tasks", element: <ScheduledTasksIndex /> },
+  { path: "/scheduled_tasks/:id", element: <ScheduledTaskDetailRoute /> },
+  { path: "/scheduled_tasks/:id/edit", element: <ScheduledTaskFormRoute mode="edit" /> },
+  { path: "/repositories/:repositoryId/scheduled_tasks", element: <RepositoryScheduledTasksRoute /> },
+  { path: "/repositories/:repositoryId/scheduled_tasks/new", element: <ScheduledTaskFormRoute mode="new" /> },
+  { path: "/repositories/:repositoryId/documents", element: <RepositoryDocumentsRoute /> },
+  { path: "/repositories/new", element: <RepositoryFormRoute mode="new" /> },
+  { path: "/repositories/:id/edit", element: <RepositoryFormRoute mode="edit" /> },
+  { path: "/repositories/:id", element: <RepositoryDetailRoute /> },
+  { path: "/repositories", element: <RepositoriesIndex /> },
+  { path: "/jobs/new", element: <DirectJobNewRoute /> },
+  { path: "/jobs/:id/source", element: <JobDetailRoute /> },
+  { path: "/jobs/:id", element: <JobDetailRoute /> },
+  { path: "/epics/new", element: <EpicFormRoute mode="new" /> },
+  { path: "/epics/:id/edit", element: <EpicFormRoute mode="edit" /> },
+  { path: "/epics/:id", element: <EpicDetailRoute /> },
+  { path: "/chats/new", element: <ChatNewRoute /> },
+  { path: "/chats/:id", element: <ChatRoute /> }
+]
+
 export function App() {
   useAppEvents()
   const initialBootstrap = readInitialBootstrap()
@@ -40,96 +91,18 @@ export function App() {
     <AppChrome initialBootstrap={initialBootstrap}>
       <Routes>
         <Route path="/" element={<DashboardRoute />} />
-        <Route path="/dashboard" element={<DashboardRoute />} />
-        <Route path="/dashboard/epics" element={<DashboardRoute />} />
-        <Route path="/dashboard/jobs" element={<DashboardRoute />} />
-        <Route path="/dashboard/workflows" element={<DashboardRoute />} />
-        <Route path="/admin" element={<AdminOverview />} />
-        <Route path="/admin/queue" element={<AdminQueueRoute />} />
-        <Route path="/admin/queue/:tab" element={<AdminQueueRoute />} />
-        <Route path="/admin/stuck" element={<AdminStuck />} />
-        <Route path="/admin/processes" element={<AdminProcessesIndex />} />
-        <Route path="/admin/processes/:id" element={<AdminProcessDetail />} />
-        <Route path="/admin/runs/:runId/transcript" element={<AdminTranscript />} />
-        <Route path="/admin/users" element={<AdminUsersIndex />} />
-        <Route path="/admin/users/:id" element={<AdminUserDetailRoute />} />
-        <Route path="/admin/console" element={<AdminConsole />} />
-        <Route path="/admin/installations" element={<AdminInstallations />} />
-        <Route path="/invitations" element={<AdminInvitations />} />
-        <Route path="/settings/edit" element={<AdminSettings />} />
-        <Route path="/settings" element={<CredentialsRoute />} />
-        <Route path="/credentials/edit" element={<CredentialsRoute />} />
-        <Route path="/smart_folders" element={<SmartFolders />} />
-        <Route path="/tags" element={<Tags />} />
-        <Route path="/cron_templates" element={<CronTemplatesIndex />} />
-        <Route path="/cron_templates/new" element={<CronTemplateFormRoute mode="new" />} />
-        <Route path="/cron_templates/:id" element={<CronTemplateDetailRoute />} />
-        <Route path="/cron_templates/:id/edit" element={<CronTemplateFormRoute mode="edit" />} />
-        <Route path="/scheduled_tasks" element={<ScheduledTasksIndex />} />
-        <Route path="/scheduled_tasks/:id" element={<ScheduledTaskDetailRoute />} />
-        <Route path="/scheduled_tasks/:id/edit" element={<ScheduledTaskFormRoute mode="edit" />} />
-        <Route path="/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
-        <Route path="/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
-        <Route path="/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
-        <Route path="/repositories/new" element={<RepositoryFormRoute mode="new" />} />
-        <Route path="/repositories/:id/edit" element={<RepositoryFormRoute mode="edit" />} />
-        <Route path="/repositories/:id" element={<RepositoryDetailRoute />} />
-        <Route path="/repositories" element={<RepositoriesIndex />} />
-        <Route path="/jobs/new" element={<DirectJobNewRoute />} />
-        <Route path="/jobs/:id/source" element={<JobDetailRoute />} />
-        <Route path="/jobs/:id" element={<JobDetailRoute />} />
-        <Route path="/epics/new" element={<EpicFormRoute mode="new" />} />
-        <Route path="/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
-        <Route path="/epics/:id" element={<EpicDetailRoute />} />
-        <Route path="/chats/new" element={<ChatNewRoute />} />
-        <Route path="/chats/:id" element={<ChatRoute />} />
-        <Route path="/app-shell/admin" element={<AdminOverview />} />
-        <Route path="/app-shell/admin/queue" element={<AdminQueueRoute />} />
-        <Route path="/app-shell/admin/queue/:tab" element={<AdminQueueRoute />} />
-        <Route path="/app-shell/admin/stuck" element={<AdminStuck />} />
-        <Route path="/app-shell/admin/processes" element={<AdminProcessesIndex />} />
-        <Route path="/app-shell/admin/processes/:id" element={<AdminProcessDetail />} />
-        <Route path="/app-shell/admin/runs/:runId/transcript" element={<AdminTranscript />} />
-        <Route path="/app-shell/admin/users" element={<AdminUsersIndex />} />
-        <Route path="/app-shell/admin/users/:id" element={<AdminUserDetailRoute />} />
-        <Route path="/app-shell/admin/console" element={<AdminConsole />} />
-        <Route path="/app-shell/admin/installations" element={<AdminInstallations />} />
-        <Route path="/app-shell/invitations" element={<AdminInvitations />} />
-        <Route path="/app-shell/settings/edit" element={<AdminSettings />} />
-        <Route path="/app-shell/settings" element={<CredentialsRoute />} />
-        <Route path="/app-shell/credentials/edit" element={<CredentialsRoute />} />
-        <Route path="/app-shell/smart_folders" element={<SmartFolders />} />
-        <Route path="/app-shell/tags" element={<Tags />} />
-        <Route path="/app-shell/cron_templates" element={<CronTemplatesIndex />} />
-        <Route path="/app-shell/cron_templates/new" element={<CronTemplateFormRoute mode="new" />} />
-        <Route path="/app-shell/cron_templates/:id" element={<CronTemplateDetailRoute />} />
-        <Route path="/app-shell/cron_templates/:id/edit" element={<CronTemplateFormRoute mode="edit" />} />
-        <Route path="/app-shell/scheduled_tasks" element={<ScheduledTasksIndex />} />
-        <Route path="/app-shell/scheduled_tasks/:id" element={<ScheduledTaskDetailRoute />} />
-        <Route path="/app-shell/scheduled_tasks/:id/edit" element={<ScheduledTaskFormRoute mode="edit" />} />
-        <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks" element={<RepositoryScheduledTasksRoute />} />
-        <Route path="/app-shell/repositories/:repositoryId/scheduled_tasks/new" element={<ScheduledTaskFormRoute mode="new" />} />
-        <Route path="/app-shell/repositories/:repositoryId/documents" element={<RepositoryDocumentsRoute />} />
-        <Route path="/app-shell/repositories/new" element={<RepositoryFormRoute mode="new" />} />
-        <Route path="/app-shell/repositories/:id/edit" element={<RepositoryFormRoute mode="edit" />} />
-        <Route path="/app-shell/repositories/:id" element={<RepositoryDetailRoute />} />
-        <Route path="/app-shell/repositories" element={<RepositoriesIndex />} />
-        <Route path="/app-shell/jobs/new" element={<DirectJobNewRoute />} />
-        <Route path="/app-shell/jobs/:id/source" element={<JobDetailRoute />} />
-        <Route path="/app-shell/jobs/:id" element={<JobDetailRoute />} />
-        <Route path="/app-shell/epics/new" element={<EpicFormRoute mode="new" />} />
-        <Route path="/app-shell/epics/:id/edit" element={<EpicFormRoute mode="edit" />} />
-        <Route path="/app-shell/epics/:id" element={<EpicDetailRoute />} />
-        <Route path="/app-shell/chats/new" element={<ChatNewRoute />} />
-        <Route path="/app-shell/chats/:id" element={<ChatRoute />} />
-        <Route path="/app-shell/dashboard" element={<DashboardRoute />} />
-        <Route path="/app-shell/dashboard/epics" element={<DashboardRoute />} />
-        <Route path="/app-shell/dashboard/jobs" element={<DashboardRoute />} />
-        <Route path="/app-shell/dashboard/workflows" element={<DashboardRoute />} />
+        {renderAppRoutes()}
         <Route path="*" element={<BootstrapShell initialBootstrap={initialBootstrap} />} />
       </Routes>
     </AppChrome>
   )
+}
+
+function renderAppRoutes() {
+  return appRouteDefinitions.flatMap(({ path, element }) => [
+    <Route element={element} key={path} path={path} />,
+    <Route element={element} key={`/app-shell${path}`} path={`/app-shell${path}`} />
+  ])
 }
 
 function AppChrome({ children, initialBootstrap }: { children: ReactNode; initialBootstrap: BootstrapPayload | null }) {
