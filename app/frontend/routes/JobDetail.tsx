@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
-import { useLocation, useNavigate, useParams } from "react-router-dom"
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import {
   createJobAttachments,
@@ -35,6 +35,7 @@ export function JobDetailRoute() {
   const navigate = useNavigate()
   const id = params.id || ""
   const activeTab = tabFromLocation(location.pathname, location.search)
+  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
   const queryKey = jobDetailQueryKey(id)
   const detail = useQuery({
     queryKey,
@@ -54,7 +55,7 @@ export function JobDetailRoute() {
     <main aria-label="Job" className="mx-auto max-w-7xl space-y-6 p-6">
       {detail.isPending ? <PanelMessage>Loading Job...</PanelMessage> : null}
       {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, "Unable to load Job.")}</PanelMessage> : null}
-      {detail.isSuccess ? <JobDetailView activeTab={activeTab} onSelectTab={selectTab} payload={detail.data} queryKey={queryKey} /> : null}
+      {detail.isSuccess ? <JobDetailView activeTab={activeTab} onSelectTab={selectTab} payload={detail.data} prefix={prefix} queryKey={queryKey} /> : null}
     </main>
   )
 }
@@ -70,7 +71,7 @@ function tabFromLocation(pathname: string, search: string): JobTab {
   return value === "workflows" || value === "attachments" || value === "source" ? value : "summary"
 }
 
-function JobDetailView({ payload, queryKey, activeTab, onSelectTab }: { payload: JobDetailPayload; queryKey: JobDetailQueryKey; activeTab: JobTab; onSelectTab: (tab: JobTab) => void }) {
+function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefix }: { payload: JobDetailPayload; queryKey: JobDetailQueryKey; activeTab: JobTab; onSelectTab: (tab: JobTab) => void; prefix: string }) {
   const [notice, setNotice] = useState<string | null>(payload.message || null)
   const command = useJobCommand(payload.job.id, queryKey, setNotice)
 
@@ -85,7 +86,7 @@ function JobDetailView({ payload, queryKey, activeTab, onSelectTab }: { payload:
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="break-words text-3xl font-semibold text-gray-900">
-                <a className="font-mono hover:underline" href={payload.repository.repository_path}>{payload.repository.slug}</a>
+                <Link className="font-mono hover:underline" to={withRoutePrefix(payload.repository.repository_path, prefix)}>{payload.repository.slug}</Link>
                 <span className="px-2 text-gray-300">/</span>
                 <span>{jobSourceLabel(payload)}</span>
               </h1>
@@ -109,7 +110,7 @@ function JobDetailView({ payload, queryKey, activeTab, onSelectTab }: { payload:
 
       <TabNav active={activeTab} attachmentsCount={payload.attachments.length} workflowsCount={payload.workflows.length} onSelect={onSelectTab} />
 
-      {activeTab === "summary" ? <SummaryTab command={command} payload={payload} /> : null}
+      {activeTab === "summary" ? <SummaryTab command={command} payload={payload} prefix={prefix} /> : null}
       {activeTab === "workflows" ? <WorkflowsTab command={command} payload={payload} /> : null}
       {activeTab === "attachments" ? <AttachmentsTab payload={payload} queryKey={queryKey} onNotice={setNotice} /> : null}
       {activeTab === "source" ? <SourceTab jobId={String(payload.job.id)} /> : null}
@@ -233,7 +234,7 @@ function TabNav({ active, workflowsCount, attachmentsCount, onSelect }: { active
   )
 }
 
-function SummaryTab({ payload, command }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+function SummaryTab({ payload, command, prefix }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; prefix: string }) {
   const timeline = useQuery({
     queryKey: ["jobs", String(payload.job.id), "timeline"],
     queryFn: () => fetchJobTimeline(String(payload.job.id))
@@ -261,7 +262,7 @@ function SummaryTab({ payload, command }: { payload: JobDetailPayload; command: 
         <KeyValue label="Closed">{payload.job.finished_at ? `${formatDate(payload.job.finished_at)} (${payload.job.closure_reason || "unspecified"})` : "still open"}</KeyValue>
       </section>
 
-      <DependenciesPanel command={command} payload={payload} />
+      <DependenciesPanel command={command} payload={payload} prefix={prefix} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="rounded border border-gray-200 bg-white p-4">
@@ -329,7 +330,7 @@ function PullRequestSummary({ payload }: { payload: JobDetailPayload }) {
   )
 }
 
-function DependenciesPanel({ payload, command }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+function DependenciesPanel({ payload, command, prefix }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; prefix: string }) {
   const [target, setTarget] = useState("")
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -368,7 +369,7 @@ function DependenciesPanel({ payload, command }: { payload: JobDetailPayload; co
           <ul className="mt-2 divide-y divide-gray-100">
             {payload.dependents.map((dependent) => (
               <li className="py-2" key={dependent.id}>
-                <a className="text-blue-600 hover:underline" href={dependent.job.job_path}>{dependent.job.repository_slug} {dependent.job.issue_number ? `#${dependent.job.issue_number}` : `Job #${dependent.job.id}`}</a>
+                <Link className="text-blue-600 hover:underline" to={withRoutePrefix(dependent.job.job_path, prefix)}>{dependent.job.repository_slug} {dependent.job.issue_number ? `#${dependent.job.issue_number}` : `Job #${dependent.job.id}`}</Link>
                 <StatusPill state={dependent.job.summary_state} />
               </li>
             ))}
@@ -673,6 +674,13 @@ function sourceSearch(ref: string | null, path: string | null) {
   if (path) params.set("path", path)
   const value = params.toString()
   return value ? `?${value}` : ""
+}
+
+function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
 }
 
 function KeyValue({ label, children }: { label: string; children: ReactNode }) {

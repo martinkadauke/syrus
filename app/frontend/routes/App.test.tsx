@@ -2203,7 +2203,26 @@ describe("App", () => {
   })
 
   it("renders a Job detail page and runs commands through the app API", async () => {
-    const payload = jobDetailPayload()
+    const payload = jobDetailPayload({
+      dependents: [
+        {
+          id: 12,
+          source: "manual",
+          job: {
+            id: 41,
+            kind: "issue",
+            state: "open",
+            summary_state: "implemented",
+            repository_slug: "acme/widgets",
+            issue_number: 11,
+            issue_title: "Build hill",
+            branch_name: "syrus/issue-11",
+            pr_number: 76,
+            job_path: "/jobs/41"
+          }
+        }
+      ]
+    })
     const gradeStep = payload.workflows[0].steps[0] as { kind: string; details: unknown; runs: Array<{ grade_log_path: string | null; app_grade_log_path: string | null }> }
     gradeStep.kind = "grader"
     gradeStep.details = { name: "tests", command: "bin/rspec" }
@@ -2234,6 +2253,8 @@ describe("App", () => {
 
     expect(await screen.findByRole("main", { name: "Job" })).toBeInTheDocument()
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "acme/widgets #11" })).toHaveAttribute("href", "/app-shell/jobs/41")
     expect(screen.getByText("Water should climb the hill.")).toBeInTheDocument()
     expect(screen.getByText("Moved the uphill water simulation.")).toBeInTheDocument()
     expect(await screen.findByText("Workflow created")).toBeInTheDocument()
