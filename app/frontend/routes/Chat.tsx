@@ -1120,7 +1120,8 @@ function stringValue(value: unknown) {
 }
 
 function humanize(value: string) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
+  const normalized = value.replace(/_id$/, "").replace(/_/g, " ").toLowerCase()
+  return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : ""
 }
 
 function routePrefix(pathname: string) {

@@ -3208,6 +3208,51 @@ describe("App", () => {
             content: { text: "[result] subtype=success, is_error=false, turns=4, duration_ms=170223, total_cost_usd=0.37236969999999997" },
             text: "[result] subtype=success, is_error=false, turns=4, duration_ms=170223, total_cost_usd=0.37236969999999997",
             bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 13,
+            role: "system",
+            tool_name: null,
+            content: { text: "[result] subtype=error_max_turns, is_error=true, turns=50, duration_ms=1200" },
+            text: "[result] subtype=error_max_turns, is_error=true, turns=50, duration_ms=1200",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 14,
+            role: "system",
+            tool_name: null,
+            content: { text: "[mcp_servers] syrus-chat-sidecar=connected" },
+            text: "[mcp_servers] syrus-chat-sidecar=connected",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 15,
+            role: "system",
+            tool_name: null,
+            content: { text: "[mcp_servers] syrus-chat-sidecar=failed" },
+            text: "[mcp_servers] syrus-chat-sidecar=failed",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 16,
+            role: "system",
+            tool_name: null,
+            content: { text: "[codex error] command timed out" },
+            text: "[codex error] command timed out",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 17,
+            role: "system",
+            tool_name: null,
+            content: { text: "Cancelled by operator." },
+            text: "Cancelled by operator.",
+            bookmarkable: false
           }
         ]
       })), { status: 200, headers: { "Content-Type": "application/json" } })
@@ -3225,7 +3270,15 @@ describe("App", () => {
     expect(screen.getAllByText("app/models/chat.rb").length).toBeGreaterThan(0)
     expect(screen.getByText(/class Chat\s+end/)).toBeInTheDocument()
     expect(screen.getByText(/Agent run succeeded/)).toBeInTheDocument()
+    expect(screen.getByText(/4 turns/)).toBeInTheDocument()
+    expect(screen.getByText(/2\.8m/)).toBeInTheDocument()
     expect(screen.getByText(/\$0\.37/)).toBeInTheDocument()
+    expect(screen.getByText(/Agent run failed: Error max turns/)).toBeInTheDocument()
+    expect(screen.getByText(/1\.2s/)).toBeInTheDocument()
+    expect(screen.getByText(/MCP connected: syrus-chat-sidecar/)).toBeInTheDocument()
+    expect(screen.getByText(/MCP issue: syrus-chat-sidecar failed/)).toBeInTheDocument()
+    expect(screen.getByText("command timed out")).toBeInTheDocument()
+    expect(screen.getByText("Cancelled by operator.")).toBeInTheDocument()
   })
 
   it("runs chat commands through the app API", async () => {
