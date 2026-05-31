@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
+import "@excalidraw/excalidraw/index.css"
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
+import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import {
   addChatAttachment,
@@ -12,6 +15,8 @@ import {
   deleteChatAttachment,
   fetchChat,
   fetchChatMessages,
+  fetchChatWhiteboard,
+  patchChatWhiteboard,
   refreshChat,
   rejectChatProposal,
   resetChat,
@@ -26,9 +31,15 @@ import {
   type ChatRenderItem,
   type ChatStructuredTool,
   type ChatSystemMessage,
+  type ChatWhiteboardElement,
   type ChatToolGroupItem
 } from "../api/chats"
 import { Markdown } from "../lib/Markdown"
+
+const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
+
+type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
+type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "updateScene">
 
 export function ChatRoute() {
   const params = useParams()
@@ -522,17 +533,191 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
 function SidePanel({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <aside aria-label="Chat side panel" className="space-y-4 rounded border border-gray-200 bg-white p-4">
-      <section>
-        <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Whiteboard</div>
-        <div className="rounded border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600">
-          <div>Version {payload.whiteboard.version}</div>
-          <div>{payload.whiteboard.elements.length} canvas {payload.whiteboard.elements.length === 1 ? "element" : "elements"}</div>
-        </div>
-      </section>
+      <WhiteboardPanel payload={payload} />
       <Bookmarks payload={payload} />
       <Attachments payload={payload} queryKey={queryKey} onNotice={onNotice} />
     </aside>
   )
+}
+
+function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
+  const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [version, setVersion] = useState(payload.whiteboard.version)
+  const [elements, setElements] = useState<ChatWhiteboardElement[]>(() => whiteboardElements(payload))
+  const apiRef = useRef<ExcalidrawApi | null>(null)
+  const appliedSignatureRef = useRef(signatureFor(elements))
+  const chatIdRef = useRef(payload.chat.id)
+  const pathRef = useRef(payload.paths.app_whiteboard_path)
+  const pendingElementsRef = useRef<readonly ChatWhiteboardElement[] | null>(null)
+  const remoteUpdateInProgressRef = useRef(false)
+  const retryingConflictRef = useRef(false)
+  const saveTimerRef = useRef<number | null>(null)
+  const versionRef = useRef(payload.whiteboard.version)
+
+  const clearPendingSave = useCallback(() => {
+    if (saveTimerRef.current == null) return
+
+    window.clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = null
+  }, [])
+
+  const applyRemoteElements = useCallback((nextElements: readonly ChatWhiteboardElement[], nextVersion: number) => {
+    remoteUpdateInProgressRef.current = true
+    const copied = Array.from(nextElements)
+    setElements(copied)
+    apiRef.current?.updateScene({ elements: asExcalidrawElements(copied) })
+    versionRef.current = nextVersion
+    setVersion(nextVersion)
+    appliedSignatureRef.current = signatureFor(copied)
+    queueMicrotask(() => {
+      remoteUpdateInProgressRef.current = false
+    })
+  }, [])
+
+  const recoverConflict = useCallback(async (originalElements: readonly ChatWhiteboardElement[]) => {
+    if (retryingConflictRef.current) return
+
+    retryingConflictRef.current = true
+    try {
+      const current = await fetchChatWhiteboard(pathRef.current)
+      applyRemoteElements(current.scene_json.elements, current.version)
+      const retry = await patchChatWhiteboard(pathRef.current, {
+        elements: originalElements,
+        expected_version: current.version
+      })
+      if (retry.status === 409) throw new ApiError("Whiteboard changed again before the retry completed.", { status: 409 })
+
+      applyRemoteElements(retry.payload.scene_json.elements, retry.payload.version)
+    } finally {
+      retryingConflictRef.current = false
+    }
+  }, [applyRemoteElements])
+
+  const savePending = useCallback(async () => {
+    const pendingElements = pendingElementsRef.current
+    if (!pendingElements) return
+
+    pendingElementsRef.current = null
+    setSaveError(null)
+    try {
+      const result = await patchChatWhiteboard(pathRef.current, {
+        elements: pendingElements,
+        expected_version: versionRef.current
+      })
+      if (result.status === 409) {
+        await recoverConflict(pendingElements)
+        return
+      }
+
+      applyRemoteElements(result.payload.scene_json.elements, result.payload.version)
+    } catch (error) {
+      setSaveError(errorMessage(errorAsError(error), "Whiteboard save failed."))
+    }
+  }, [applyRemoteElements, recoverConflict])
+
+  useEffect(() => {
+    let cancelled = false
+    void import("@excalidraw/excalidraw")
+      .then((module) => {
+        if (!cancelled) setExcalidraw(() => module.Excalidraw)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setLoadError(errorMessage(errorAsError(error), "Unable to load the whiteboard."))
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    pathRef.current = payload.paths.app_whiteboard_path
+  }, [payload.paths.app_whiteboard_path])
+
+  useEffect(() => {
+    const nextElements = whiteboardElements(payload)
+    const chatChanged = chatIdRef.current !== payload.chat.id
+    if (!chatChanged && payload.whiteboard.version <= versionRef.current) return
+
+    chatIdRef.current = payload.chat.id
+    applyRemoteElements(nextElements, payload.whiteboard.version)
+  }, [applyRemoteElements, payload])
+
+  useEffect(() => () => {
+    clearPendingSave()
+    const pendingElements = pendingElementsRef.current
+    if (pendingElements) {
+      void patchChatWhiteboard(pathRef.current, {
+        elements: pendingElements,
+        expected_version: versionRef.current
+      }).catch(() => {})
+    }
+  }, [clearPendingSave])
+
+  const handleChange = useCallback((nextElements: readonly ChatWhiteboardElement[]) => {
+    if (remoteUpdateInProgressRef.current) return
+
+    const copied = Array.from(nextElements)
+    setElements(copied)
+    const signature = signatureFor(copied)
+    if (signature === appliedSignatureRef.current) return
+
+    pendingElementsRef.current = copied
+    clearPendingSave()
+    saveTimerRef.current = window.setTimeout(() => {
+      void savePending()
+    }, WHITEBOARD_SAVE_DEBOUNCE_MS)
+  }, [clearPendingSave, savePending])
+
+  return (
+    <section>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="text-xs font-semibold uppercase text-gray-500">Whiteboard</div>
+        <div className="text-xs text-gray-500">Version {version}</div>
+      </div>
+      <div className="relative h-[26rem] overflow-hidden rounded border border-gray-200 bg-gray-50">
+        {Excalidraw ? (
+          <Excalidraw
+            excalidrawAPI={(api) => {
+              apiRef.current = api
+              apiRef.current.updateScene({ elements: asExcalidrawElements(elements) })
+            }}
+            initialData={{ elements: asExcalidrawElements(elements) }}
+            onChange={(nextElements) => handleChange(nextElements as readonly ChatWhiteboardElement[])}
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center p-4 text-sm text-gray-500">
+            {loadError || "Loading canvas..."}
+          </div>
+        )}
+        {elements.length === 0 ? (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-gray-400">
+            Empty canvas. Start sketching, or ask the agent to draw something.
+          </div>
+        ) : null}
+      </div>
+      <div className="mt-1 text-xs text-gray-500">
+        {saveError || `${elements.length} canvas ${elements.length === 1 ? "element" : "elements"}`}
+      </div>
+    </section>
+  )
+}
+
+function whiteboardElements(payload: ChatPayload): ChatWhiteboardElement[] {
+  return Array.isArray(payload.whiteboard.elements) ? payload.whiteboard.elements : []
+}
+
+function signatureFor(elements: readonly ChatWhiteboardElement[]) {
+  return elements
+    .map((element) => `${String(element.id || "")}:${String(element.version ?? 0)}`)
+    .sort()
+    .join(",")
+}
+
+function asExcalidrawElements(elements: readonly ChatWhiteboardElement[]) {
+  return elements as unknown as readonly ExcalidrawElement[]
 }
 
 function Bookmarks({ payload }: { payload: ChatPayload }) {
@@ -750,4 +935,8 @@ function oldestMessageId(items: ChatRenderItem[]) {
 
 function errorMessage(error: Error, fallback: string) {
   return error instanceof ApiError ? error.message : fallback
+}
+
+function errorAsError(error: unknown) {
+  return error instanceof Error ? error : new Error(String(error))
 }

@@ -44,6 +44,8 @@ Rails.application.routes.draw do
         post "chats", to: "chats#create"
         get "chats/:id", to: "chats#show", constraints: { id: /\d+/ }
         get "chats/:id/messages", to: "chats#messages", constraints: { id: /\d+/ }
+        get "chats/:id/whiteboard", to: "chat_whiteboards#show", constraints: { id: /\d+/ }
+        patch "chats/:id/whiteboard", to: "chat_whiteboards#update", constraints: { id: /\d+/ }
         post "chats/:id/message", to: "chats#message", constraints: { id: /\d+/ }
         post "chats/:id/stop", to: "chats#stop", constraints: { id: /\d+/ }
         post "chats/:id/refresh", to: "chats#refresh", constraints: { id: /\d+/ }

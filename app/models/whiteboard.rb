@@ -52,6 +52,14 @@ class Whiteboard < ApplicationRecord
       partial: "chats/whiteboard_broadcast",
       locals: { chat_session: chat_session, whiteboard: self }
     )
+    AppEvents.broadcast(
+      user: chat_session.user,
+      type: "updated",
+      resource: "chat",
+      id: chat_session_id,
+      changed: [ "whiteboard" ],
+      payload: current_state
+    )
   end
 
   def broadcast_channel

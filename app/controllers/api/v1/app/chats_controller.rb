@@ -232,6 +232,7 @@ module Api
               app_reset_path: "/api/v1/app/chats/#{chat_session.id}/reset",
               app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
               app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
+              app_whiteboard_path: "/api/v1/app/chats/#{chat_session.id}/whiteboard",
               chat_messages_path: chat_messages_path(chat_session),
               chat_attachments_path: chat_attachments_path(chat_session),
               chat_whiteboard_path: chat_whiteboard_path(chat_session)

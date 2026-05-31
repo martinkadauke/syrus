@@ -1,4 +1,4 @@
-import { deleteJson, getJson, postJson } from "./client"
+import { ApiError, deleteJson, getJson, patchJson, postJson } from "./client"
 
 export type ChatRepository = {
   id: number
@@ -128,6 +128,15 @@ export type ChatAttachmentResult = {
   label: string
 }
 
+export type ChatWhiteboardElement = Record<string, unknown>
+
+export type ChatWhiteboardPayload = {
+  scene_json: {
+    elements: ChatWhiteboardElement[]
+  }
+  version: number
+}
+
 export type NewChatPayload = {
   repositories: ChatRepository[]
   repositories_path: string
@@ -163,7 +172,7 @@ export type ChatPayload = {
   attachment_results: ChatAttachmentResult[]
   whiteboard: {
     version: number
-    elements: unknown[]
+    elements: ChatWhiteboardElement[]
   }
   paths: {
     new_chat_path: string
@@ -176,6 +185,7 @@ export type ChatPayload = {
     app_reset_path: string
     app_bookmarks_path: string
     app_attachments_path: string
+    app_whiteboard_path: string
     chat_messages_path: string
     chat_attachments_path: string
     chat_whiteboard_path: string
@@ -193,6 +203,22 @@ export function fetchChat(id: string, search = "") {
 
 export function fetchChatMessages(path: string, before: number) {
   return getJson<ChatMessagesPayload>(`${path}?before=${encodeURIComponent(String(before))}`)
+}
+
+export function fetchChatWhiteboard(path: string) {
+  return getJson<ChatWhiteboardPayload>(path)
+}
+
+export async function patchChatWhiteboard(path: string, input: { elements: readonly ChatWhiteboardElement[]; expected_version: number }) {
+  try {
+    return { status: 200, payload: await patchJson<ChatWhiteboardPayload>(path, input) }
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      return { status: 409, payload: await fetchChatWhiteboard(path) }
+    }
+
+    throw error
+  }
 }
 
 export function fetchNewChat() {

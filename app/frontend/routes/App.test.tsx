@@ -16,6 +16,25 @@ vi.mock("@rails/actioncable", () => ({
   })
 }))
 
+vi.mock("@excalidraw/excalidraw", () => ({
+  Excalidraw: ({ excalidrawAPI, initialData, onChange }: {
+    excalidrawAPI?: (api: { updateScene: () => void }) => void
+    initialData?: { elements?: unknown[] }
+    onChange?: (elements: unknown[]) => void
+  }) => {
+    excalidrawAPI?.({ updateScene: () => {} })
+
+    return (
+      <button
+        onClick={() => onChange?.([...(initialData?.elements || []), { id: "shape-react", version: 1 }])}
+        type="button"
+      >
+        Draw on whiteboard
+      </button>
+    )
+  }
+}))
+
 describe("App", () => {
   it("loads bootstrap data into the SPA shell", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
@@ -1814,6 +1833,45 @@ describe("App", () => {
     expect(screen.getByText("Now inspect proposals")).toBeInTheDocument()
   })
 
+  it("saves chat whiteboard changes through the app API", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/whiteboard" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify({
+          scene_json: { elements: [{ id: "shape-react", version: 1 }] },
+          version: 3
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: "Draw on whiteboard" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/whiteboard",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          body: JSON.stringify({
+            elements: [{ id: "box-1", type: "rectangle" }, { id: "shape-react", version: 1 }],
+            expected_version: 2
+          })
+        })
+      )
+    })
+    expect(await screen.findByText("Version 3")).toBeInTheDocument()
+  })
+
   it("runs chat commands through the app API", async () => {
     const search = "?attachment_type=Repository&attachment_query=tools"
     const proposalMessage = {
@@ -2609,6 +2667,7 @@ function chatPayload(overrides: {
       app_reset_path: "/api/v1/app/chats/8/reset",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
       app_attachments_path: "/api/v1/app/chats/8/attachments",
+      app_whiteboard_path: "/api/v1/app/chats/8/whiteboard",
       chat_messages_path: "/chats/8/messages",
       chat_attachments_path: "/chats/8/attachments",
       chat_whiteboard_path: "/chats/8/whiteboard"
