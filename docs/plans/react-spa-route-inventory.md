@@ -46,7 +46,7 @@ health/storage internals.
 | `/jobs/:job_id/attachments` | `job_attachments#create/destroy` | `app-api-needed` | Browser upload/delete endpoint with progress/error state. |
 | `/jobs/:job_id/pin` | `job_pins#create/destroy` | `app-api-needed` | Small command endpoint; can be optimistic. |
 | `/epics/:id` | `epics#show` | `spa-core` | Detail page plus child jobs/dependency graph. |
-| `/epics/new`, `/epics/:id/edit`, `POST/PATCH /epics` | `epics#new/create/edit/update` | `spa-core` | React form route; reuse browser form primitives. |
+| `/epics/new`, `/epics/:id/edit` | `spa#show` + `/api/v1/app/epics*` | `spa-core` | Migrated to the React Epic form. Legacy ERB fallback lives at `/epics/new/legacy` and `/epics/:id/edit/legacy`; HTML `POST/PATCH /epics` remains for fallback. |
 | `PATCH /epics/:id/archive` | `epics#archive` | `app-api-needed` | Command endpoint. |
 | `PATCH /epics/:id/state` | `epics#update_state` | `app-api-needed` | Existing JSON support can inform browser endpoint shape. |
 | `/epics/:id/graph` | `epics#graph` | `spa-core` | Graph data endpoint or React route depending current response shape. |

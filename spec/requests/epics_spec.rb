@@ -90,6 +90,58 @@ RSpec.describe "Epics", type: :request do
     end
   end
 
+  describe "GET /epics/new" do
+    it "requires authentication" do
+      user
+      get new_epic_path
+
+      expect(response).to redirect_to(new_session_path)
+    end
+
+    it "serves the React app shell" do
+      sign_in_as(user)
+
+      get new_epic_path
+
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "keeps the legacy form fallback" do
+      sign_in_as(user)
+      repo
+
+      get legacy_new_epic_path
+
+      expect(response).to be_successful
+      expect(response.body).to include("New Epic")
+      expect(response.body).to include("acme/widgets")
+    end
+  end
+
+  describe "GET /epics/:id/edit" do
+    it "serves the React app shell" do
+      sign_in_as(user)
+      epic = Factories.epic(user: user, repository: repo)
+
+      get edit_epic_path(epic)
+
+      expect(response).to be_successful
+      expect(response.body).to include('id="syrus-spa-root"')
+    end
+
+    it "keeps the legacy form fallback" do
+      sign_in_as(user)
+      epic = Factories.epic(user: user, repository: repo, title: "Raise the forum")
+
+      get legacy_edit_epic_path(epic)
+
+      expect(response).to be_successful
+      expect(response.body).to include("Edit Epic")
+      expect(response.body).to include("Raise the forum")
+    end
+  end
+
   describe "GET /?subject=epic&view=list" do
     it "renders a subject-aware chip bar and Epic SmartFolder sidebar" do
       sign_in_as(user)

@@ -270,7 +270,11 @@ Rails.application.routes.draw do
     query = request.query_parameters.except("subject").to_query
     query.present? ? "/?subject=epic&#{query}" : "/?subject=epic"
   }, as: :epics
-  resources :epics, only: %i[ show new create edit update ] do
+  get "epics/new", to: "spa#show", as: :new_epic
+  get "epics/new/legacy", to: "epics#new", as: :legacy_new_epic
+  get "epics/:id/edit", to: "spa#show", as: :edit_epic, constraints: { id: /\d+/ }
+  get "epics/:id/edit/legacy", to: "epics#edit", as: :legacy_edit_epic, constraints: { id: /\d+/ }
+  resources :epics, only: %i[ show create update ] do
     member do
       patch :archive
       patch :state, action: :update_state
