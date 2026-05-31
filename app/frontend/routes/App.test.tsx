@@ -458,7 +458,9 @@ describe("App", () => {
         })
       )
     })
-    expect(await screen.findByText("Dashboard preferences updated.")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText("Dashboard preferences updated.")).not.toBeInTheDocument()
+    })
 
     fireEvent.click(screen.getByRole("button", { name: "Sort by Issue ascending" }))
 
