@@ -56,8 +56,8 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
 function DashboardCreateActions({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
   return (
     <div className="flex flex-wrap gap-2">
-      <Link className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50" to={withRoutePrefix(payload.paths.new_epic_path, prefix)}>New Epic</Link>
-      <Link className="rounded bg-gray-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-700" to={withRoutePrefix(payload.paths.new_job_path, prefix)}>New Job</Link>
+      <Link className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500" to={withRoutePrefix(payload.paths.new_epic_path, prefix)}>New Epic</Link>
+      <Link className="rounded bg-green-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-500" to={withRoutePrefix(payload.paths.new_job_path, prefix)}>New Job</Link>
     </div>
   )
 }
