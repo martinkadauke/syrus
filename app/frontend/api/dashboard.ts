@@ -50,6 +50,7 @@ export type DashboardEpicItem = {
   number: number
   display_number: string
   title: string
+  description: string
   state: string
   auto_approve_mode: string
   jobs_count: number

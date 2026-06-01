@@ -824,6 +824,57 @@ describe("App", () => {
     }
   })
 
+  it("renders mobile Epic dashboard rows as consolidated cards", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          dashboardPayload({
+            subject: "epic",
+            view: "list",
+            preferences: {
+              sort: { column: "updated_at", direction: "desc" },
+              visible_columns: ["epic", "state", "repository", "updated"],
+              kanban_lanes: ["backlog", "ready", "in_progress", "done"],
+              raw: {}
+            },
+            controls: {
+              ...dashboardPayload().controls,
+              sort_columns: ["title", "state", "repository", "updated_at"]
+            },
+            items: [
+              dashboardEpicItem({
+                description: "Epic: Extend filter framework to Epics Make Syrus's chip-bar filter framework work for Epics."
+              })
+            ]
+          })
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/epics?view=list"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const row = await screen.findByRole("article", { name: "EPIC-7 Raise the forum" })
+      expect(within(row).getByText("ready")).toBeInTheDocument()
+      expect(within(row).getByText("EPIC-7")).toBeInTheDocument()
+      expect(within(row).getByText("Raise the forum")).toBeInTheDocument()
+      expect(within(row).getByText(/chip-bar filter framework/)).toBeInTheDocument()
+      expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
+      expect(within(row).getByRole("link", { name: "View" })).toHaveAttribute("href", "/app-shell/epics/7")
+      expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    } finally {
+      restoreMedia()
+    }
+  })
+
   it("toggles landing queue pause from the React dashboard", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -5551,6 +5602,7 @@ function dashboardEpicItem(overrides: Record<string, unknown> = {}) {
     number: 7,
     display_number: "EPIC-7",
     title: "Raise the forum",
+    description: "Build columns.",
     state: "ready",
     auto_approve_mode: "never",
     jobs_count: 1,

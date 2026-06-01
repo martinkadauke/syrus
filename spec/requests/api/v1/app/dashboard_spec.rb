@@ -122,7 +122,7 @@ RSpec.describe "App API dashboard commands", type: :request do
     end
 
     it "applies smart folder filters and returns active folder metadata" do
-      ready = Factories.epic(user: user, repository: repo, title: "Ready aqueduct", state: "ready")
+      ready = Factories.epic(user: user, repository: repo, title: "Ready aqueduct", description: "Build a calmer aqueduct.", state: "ready")
       Factories.epic(user: user, repository: repo, title: "Backlog forum", state: "backlog")
       folder = SmartFolder.create!(
         user: user,
@@ -143,6 +143,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "id" => ready.id,
         "display_number" => ready.display_number,
         "title" => "Ready aqueduct",
+        "description" => "Build a calmer aqueduct.",
         "jobs_count" => 0,
         "paths" => include(
           "epic_path" => epic_path(ready),

@@ -816,6 +816,10 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
 }
 
 function EpicsTable({ items, columns, prefix, sortState }: { items: DashboardEpicItem[]; columns: string[]; prefix: string; sortState: DashboardSortState }) {
+  const isDesktop = useMediaQuery("(min-width: 1024px)", true)
+
+  if (!isDesktop) return <MobileEpicsList items={items} prefix={prefix} />
+
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -833,6 +837,35 @@ function EpicsTable({ items, columns, prefix, sortState }: { items: DashboardEpi
         </tbody>
       </table>
     </div>
+  )
+}
+
+function MobileEpicsList({ items, prefix }: { items: DashboardEpicItem[]; prefix: string }) {
+  return (
+    <div className="rounded border border-gray-200 bg-white">
+      <div className="divide-y divide-gray-100">
+        {items.map((epic) => <MobileEpicRow epic={epic} key={epic.id} prefix={prefix} />)}
+      </div>
+    </div>
+  )
+}
+
+function MobileEpicRow({ epic, prefix }: { epic: DashboardEpicItem; prefix: string }) {
+  return (
+    <article aria-label={`${epic.display_number} ${epic.title}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 px-4 py-3">
+      <div className="pt-1">
+        <StatePill state={epic.state} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="font-mono text-xs font-semibold uppercase tracking-wide text-gray-500">{epic.display_number}</span>
+          <h2 className="text-sm font-semibold leading-snug text-gray-900">{epic.title}</h2>
+        </div>
+        {compactText(epic.description) ? <p className="mt-1 line-clamp-2 text-sm leading-snug text-gray-500">{compactText(epic.description)}</p> : null}
+        <div className="mt-1 font-mono text-xs text-gray-500">{epic.repository.slug}</div>
+      </div>
+      <Link className="self-center text-sm font-medium text-blue-600 underline hover:text-blue-500" to={withRoutePrefix(epic.paths.epic_path, prefix)}>View</Link>
+    </article>
   )
 }
 
@@ -941,6 +974,10 @@ function Pagination({ payload, pathname, search }: { payload: DashboardPayload; 
 
 function StatePill({ state }: { state: string }) {
   return <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize text-gray-700 ring-1 ring-gray-200">{state.replace(/_/g, " ")}</span>
+}
+
+function compactText(value: string) {
+  return value.replace(/\s+/g, " ").trim()
 }
 
 function DashboardError({ error }: { error: Error }) {

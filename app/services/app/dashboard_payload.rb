@@ -444,6 +444,7 @@ module App
         number: epic.number,
         display_number: epic.display_number,
         title: epic.title,
+        description: epic.description.to_s,
         state: epic.state,
         auto_approve_mode: epic.auto_approve_mode,
         jobs_count: epic.jobs.size,
