@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, useLocation } from "react-router-dom"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { FilterBar, type FilterSchemaField } from "./FilterBar"
 
 const filterSchema: FilterSchemaField[] = [
@@ -69,6 +69,59 @@ describe("FilterBar", () => {
         and: [{ field: "state", op: "is", value: "closed" }]
       })
     })
+  })
+
+  it("uses a custom link builder for filter and clear navigation", async () => {
+    const buildLink = vi.fn((path: string, search: string, updates: Record<string, string | number | null | undefined>) => {
+      const params = new URLSearchParams(search)
+      for (const [key, value] of Object.entries(updates)) {
+        if (value == null || String(value).length === 0) {
+          params.delete(key)
+        } else {
+          params.set(key, String(value))
+        }
+      }
+
+      const query = params.toString()
+      return query ? `${path}?${query}` : path
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/dashboard/jobs?view=kanban&state=open"]}>
+        <FilterBar
+          buildLink={buildLink}
+          filter={{ and: [{ field: "state", op: "is", value: "open" }] }}
+          filterSchema={filterSchema}
+          legacyFilterKeys={["state"]}
+          pathname="/dashboard/jobs"
+          search="?view=kanban&state=open"
+        />
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/dashboard/jobs?view=kanban")
+
+    fireEvent.click(screen.getByRole("button", { name: "State is Open" }))
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "closed" } })
+
+    await waitFor(() => {
+      expect(decodedFilterFromLocation()).toEqual({
+        and: [{ field: "state", op: "is", value: "closed" }]
+      })
+    })
+    expect(screen.getByTestId("location")).toHaveTextContent("/dashboard/jobs?view=kanban")
+    expect(screen.getByTestId("location")).not.toHaveTextContent("state=")
+    expect(buildLink).toHaveBeenCalledWith(
+      "/dashboard/jobs",
+      "?view=kanban&state=open",
+      expect.objectContaining({
+        page: null,
+        q: expect.any(String),
+        smart_folder_id: null,
+        state: null
+      })
+    )
   })
 
   it("does not show a value placeholder for predicate filters", () => {

@@ -33,6 +33,9 @@ export type FilterNode = FilterChip | FilterGroup
 export type FilterTree = FilterGroup
 
 type FilterPath = number[]
+type FilterLinkUpdates = Record<string, string | number | null | undefined>
+
+export type FilterLinkBuilder = (path: string, search: string, updates: FilterLinkUpdates) => string
 
 export function FilterBar({
   filter,
@@ -40,7 +43,8 @@ export function FilterBar({
   pathname,
   search,
   legacyFilterKeys = [],
-  className = "space-y-2"
+  className = "space-y-2",
+  buildLink = linkFromSearch
 }: {
   filter?: Record<string, unknown> | null
   filterSchema: FilterSchemaField[]
@@ -48,6 +52,7 @@ export function FilterBar({
   search: string
   legacyFilterKeys?: string[]
   className?: string
+  buildLink?: FilterLinkBuilder
 }) {
   const navigate = useNavigate()
   const [draftTree, setDraftTree] = useState<FilterTree>(() => filterTreeFromPayload(filter))
@@ -128,14 +133,14 @@ export function FilterBar({
   function applyTree(tree = draftTree) {
     const normalized = normalizedFilterTree(tree)
     const nextQ = topFilterChildren(normalized).length > 0 ? encodeFilterTree(normalized) : null
-    const updates: Record<string, string | number | null | undefined> = {
+    const updates: FilterLinkUpdates = {
       q: nextQ,
       page: null,
       smart_folder_id: null
     }
     for (const key of legacyFilterKeys) updates[key] = null
 
-    navigate(linkFromSearch(pathname, search, updates))
+    navigate(buildLink(pathname, search, updates))
   }
 
   function openAddMenu() {
@@ -215,7 +220,7 @@ export function FilterBar({
           + Add filter
         </button>
         {hasFilters ? (
-          <Link className="text-sm text-gray-500 underline hover:text-gray-700" to={clearFiltersLink(pathname, search, legacyFilterKeys)}>
+          <Link className="text-sm text-gray-500 underline hover:text-gray-700" to={clearFiltersLink(pathname, search, legacyFilterKeys, buildLink)}>
             Clear filters
           </Link>
         ) : null}
@@ -627,16 +632,18 @@ function filterNotClass(negated: boolean) {
     : "inline-flex h-5 w-5 items-center justify-center rounded border border-gray-300 text-sm font-bold leading-none text-gray-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
 }
 
-function clearFiltersLink(path: string, search: string, legacyFilterKeys: string[]) {
-  const params = new URLSearchParams(search)
-  for (const key of ["q", "smart_folder_id", "page", ...legacyFilterKeys]) {
-    params.delete(key)
+function clearFiltersLink(path: string, search: string, legacyFilterKeys: string[], buildLink: FilterLinkBuilder) {
+  const updates: FilterLinkUpdates = {
+    q: null,
+    smart_folder_id: null,
+    page: null
   }
-  const query = params.toString()
-  return query ? `${path}?${query}` : path
+  for (const key of legacyFilterKeys) updates[key] = null
+
+  return buildLink(path, search, updates)
 }
 
-function linkFromSearch(path: string, search: string, updates: Record<string, string | number | null | undefined>) {
+function linkFromSearch(path: string, search: string, updates: FilterLinkUpdates) {
   const params = new URLSearchParams(search)
   for (const [key, value] of Object.entries(updates)) {
     if (value == null || String(value).length === 0) {
