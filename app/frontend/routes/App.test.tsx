@@ -809,7 +809,9 @@ describe("App", () => {
 
       expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
       const controls = screen.getByRole("group", { name: "Dashboard controls" })
+      expect(controls).toHaveClass("justify-between")
       expect(within(controls).getByRole("navigation", { name: "Dashboard subjects" })).toBeInTheDocument()
+      expect(within(controls).getByRole("navigation", { name: "Dashboard subjects" }).parentElement).toHaveClass("flex-1", "overflow-x-auto")
       expect(within(controls).getByRole("navigation", { name: "Dashboard view" })).toBeInTheDocument()
       expect(within(controls).queryByRole("button", { name: "Columns" })).not.toBeInTheDocument()
 

@@ -68,8 +68,10 @@ function DesktopDashboardControls({ payload, pathname, prefix, search }: { paylo
 function MobileDashboardControls({ payload, pathname, prefix, search }: { payload: DashboardPayload; pathname: string; prefix: string; search: string }) {
   return (
     <div className="space-y-3">
-      <div aria-label="Dashboard controls" className="flex items-center gap-3 overflow-x-auto pb-1" role="group">
-        <SubjectTabs className="flex shrink-0 flex-nowrap gap-2" payload={payload} prefix={prefix} />
+      <div aria-label="Dashboard controls" className="flex items-center justify-between gap-3 pb-1" role="group">
+        <div className="min-w-0 flex-1 overflow-x-auto">
+          <SubjectTabs className="flex w-max flex-nowrap gap-2" payload={payload} prefix={prefix} />
+        </div>
         <DashboardToolbar pathname={pathname} search={search} payload={payload} showConfiguration={false} />
       </div>
       <details className="group rounded border border-gray-200 bg-white">
