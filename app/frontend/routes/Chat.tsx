@@ -82,22 +82,40 @@ function appendSearch(path: string, search: string) {
 
 function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey }) {
   const [notice, setNotice] = useState<string | null>(payload.message || null)
+  const [whiteboardFullscreen, setWhiteboardFullscreen] = useState(false)
 
   const title = payload.chat.title || payload.chat.repository?.slug || "New chat"
 
+  useEffect(() => {
+    setWhiteboardFullscreen(false)
+  }, [payload.chat.id])
+
+  useEffect(() => {
+    if (!whiteboardFullscreen) return
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setWhiteboardFullscreen(false)
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [whiteboardFullscreen])
+
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="break-words text-3xl font-semibold text-gray-900">{title}</h1>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Link className="rounded bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200" to={withRoutePrefix(payload.paths.new_chat_path, prefix)}>New chat</Link>
-        </div>
-      </header>
+      {whiteboardFullscreen ? null : (
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="break-words text-3xl font-semibold text-gray-900">{title}</h1>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link className="rounded bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200" to={withRoutePrefix(payload.paths.new_chat_path, prefix)}>New chat</Link>
+          </div>
+        </header>
+      )}
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
-      <PendingActions payload={payload} queryKey={queryKey} onNotice={setNotice} />
+      {whiteboardFullscreen ? null : <PendingActions payload={payload} queryKey={queryKey} onNotice={setNotice} />}
 
       {!payload.chat_available ? (
         <section className="rounded border border-amber-200 bg-white p-6 text-sm text-amber-900">
@@ -105,7 +123,14 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
           <p className="mt-1">Chat uses Claude. Add a Claude OAuth token in <Link className="underline hover:no-underline" to={withRoutePrefix(payload.paths.credentials_path, prefix)}>Credentials</Link> to enable chat.</p>
         </section>
       ) : (
-        <ChatWorkspace payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
+        <ChatWorkspace
+          payload={payload}
+          prefix={prefix}
+          queryKey={queryKey}
+          onNotice={setNotice}
+          whiteboardFullscreen={whiteboardFullscreen}
+          onWhiteboardFullscreenChange={setWhiteboardFullscreen}
+        />
       )}
     </div>
   )
@@ -623,9 +648,24 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
 
 type WorkspaceTab = "whiteboard" | "context" | "chats"
 
-function ChatWorkspace({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function ChatWorkspace({
+  payload,
+  prefix,
+  queryKey,
+  onNotice,
+  whiteboardFullscreen,
+  onWhiteboardFullscreenChange
+}: {
+  payload: ChatPayload
+  prefix: string
+  queryKey: ChatQueryKey
+  onNotice: (message: string | null) => void
+  whiteboardFullscreen: boolean
+  onWhiteboardFullscreenChange: (fullscreen: boolean) => void
+}) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(() => storedWorkspaceTab() || defaultWorkspaceTab(payload))
   const [workspaceWidth, setWorkspaceWidth] = useState(storedWorkspaceWidth)
+  const expanded = activeTab === "whiteboard" && whiteboardFullscreen
 
   useEffect(() => {
     storeWorkspacePreference(CHAT_WORKSPACE_TAB_KEY, activeTab)
@@ -653,21 +693,30 @@ function ChatWorkspace({ payload, prefix, queryKey, onNotice }: { payload: ChatP
     window.addEventListener("mouseup", stopResize)
   }
 
+  function selectTab(tab: WorkspaceTab) {
+    if (tab !== "whiteboard") onWhiteboardFullscreenChange(false)
+    setActiveTab(tab)
+  }
+
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:gap-0"
-      style={{ gridTemplateColumns: `minmax(0,1fr) 0.5rem minmax(${CHAT_WORKSPACE_MIN_WIDTH}px,${workspaceWidth}px)` }}
+      className={expanded ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:gap-0"}
+      style={expanded ? undefined : { gridTemplateColumns: `minmax(0,1fr) 0.5rem minmax(${CHAT_WORKSPACE_MIN_WIDTH}px,${workspaceWidth}px)` }}
     >
-      <ChatColumn payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
-      <button
-        aria-label="Resize chat workspace"
-        className="hidden cursor-col-resize rounded bg-transparent transition hover:bg-blue-100 focus:bg-blue-100 focus:outline-none lg:block"
-        onMouseDown={beginResize}
-        type="button"
-      />
+      {expanded ? null : <ChatColumn payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />}
+      {expanded ? null : (
+        <button
+          aria-label="Resize chat workspace"
+          className="hidden cursor-col-resize rounded bg-transparent transition hover:bg-blue-100 focus:bg-blue-100 focus:outline-none lg:block"
+          onMouseDown={beginResize}
+          type="button"
+        />
+      )}
       <ChatWorkspacePanel
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        fullscreen={expanded}
+        onSelectTab={selectTab}
+        onToggleWhiteboardFullscreen={() => onWhiteboardFullscreenChange(!expanded)}
         payload={payload}
         prefix={prefix}
         queryKey={queryKey}
@@ -691,37 +740,43 @@ function ChatColumn({ payload, prefix, queryKey, onNotice }: { payload: ChatPayl
 
 function ChatWorkspacePanel({
   activeTab,
+  fullscreen,
   onSelectTab,
+  onToggleWhiteboardFullscreen,
   payload,
   prefix,
   queryKey,
   onNotice
 }: {
   activeTab: WorkspaceTab
+  fullscreen: boolean
   onSelectTab: (tab: WorkspaceTab) => void
+  onToggleWhiteboardFullscreen: () => void
   payload: ChatPayload
   prefix: string
   queryKey: ChatQueryKey
   onNotice: (message: string | null) => void
 }) {
   return (
-    <aside aria-label="Chat workspace" className="flex min-h-[34rem] min-w-0 flex-col rounded border border-gray-200 bg-white lg:min-h-0">
-      <nav aria-label="Chat workspace tabs" className="flex border-b border-gray-200 px-3 pt-3 text-sm font-medium">
-        {(["whiteboard", "context", "chats"] as WorkspaceTab[]).map((tab) => (
-          <button
-            className={workspaceTabClass(activeTab === tab)}
-            key={tab}
-            onClick={() => onSelectTab(tab)}
-            type="button"
-          >
-            {workspaceTabLabel(tab)}
-          </button>
-        ))}
-      </nav>
+    <aside aria-label="Chat workspace" className={`flex min-h-[34rem] min-w-0 flex-col rounded border border-gray-200 bg-white lg:min-h-0 ${fullscreen ? "flex-1" : ""}`}>
+      {fullscreen ? null : (
+        <nav aria-label="Chat workspace tabs" className="flex border-b border-gray-200 px-3 pt-3 text-sm font-medium">
+          {(["whiteboard", "context", "chats"] as WorkspaceTab[]).map((tab) => (
+            <button
+              className={workspaceTabClass(activeTab === tab)}
+              key={tab}
+              onClick={() => onSelectTab(tab)}
+              type="button"
+            >
+              {workspaceTabLabel(tab)}
+            </button>
+          ))}
+        </nav>
+      )}
       <div className={`min-h-0 flex-1 ${activeTab === "whiteboard" ? "overflow-hidden p-3" : "overflow-y-auto p-4"}`}>
         {activeTab === "whiteboard" ? (
           <WhiteboardBoundary>
-            <WhiteboardPanel payload={payload} />
+            <WhiteboardPanel fullscreen={fullscreen} onToggleFullscreen={onToggleWhiteboardFullscreen} payload={payload} />
           </WhiteboardBoundary>
         ) : null}
         {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
@@ -762,7 +817,7 @@ class WhiteboardBoundary extends Component<{ children: ReactNode }, WhiteboardBo
   }
 }
 
-function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
+function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscreen: boolean; onToggleFullscreen: () => void; payload: ChatPayload }) {
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -898,7 +953,17 @@ function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
     <section className="flex h-full min-h-[30rem] flex-col">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase text-gray-500">Whiteboard</div>
-        <div className="text-xs text-gray-500">Version {version}</div>
+        <div className="flex items-center gap-2">
+          <div className="text-xs text-gray-500">Version {version}</div>
+          <button
+            aria-pressed={fullscreen}
+            className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            onClick={onToggleFullscreen}
+            type="button"
+          >
+            {fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          </button>
+        </div>
       </div>
       <div className="relative min-h-[28rem] flex-1 overflow-hidden rounded border border-gray-200 bg-gray-50">
         {Excalidraw ? (
