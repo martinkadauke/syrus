@@ -48,6 +48,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "title" => "Build aqueduct",
         "state" => "queued",
         "latest_workflow_state" => "queued",
+        "total_cost_usd" => 0.0,
         "workflows_count" => 0,
         "approved_at" => nil,
         "dependencies_overridden_at" => nil,

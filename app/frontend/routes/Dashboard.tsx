@@ -767,6 +767,10 @@ function JobsTable({
   prefix: string
   sortState: DashboardSortState
 }) {
+  const isDesktop = useMediaQuery("(min-width: 1024px)", true)
+
+  if (!isDesktop) return <MobileJobsList items={items} onToggleOne={onToggleOne} prefix={prefix} selectedIds={selectedIds} />
+
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -788,6 +792,49 @@ function JobsTable({
         </tbody>
       </table>
     </div>
+  )
+}
+
+function MobileJobsList({ items, selectedIds, onToggleOne, prefix }: { items: DashboardJobItem[]; selectedIds: Set<number>; onToggleOne: (id: number) => void; prefix: string }) {
+  return (
+    <div className="rounded border border-gray-200 bg-white">
+      <div className="divide-y divide-gray-100">
+        {items.map((job) => <MobileJobRow job={job} key={job.id} onToggleOne={onToggleOne} prefix={prefix} selected={selectedIds.has(job.id)} />)}
+      </div>
+    </div>
+  )
+}
+
+function MobileJobRow({ job, selected, onToggleOne, prefix }: { job: DashboardJobItem; selected: boolean; onToggleOne: (id: number) => void; prefix: string }) {
+  const approvalLabel = job.approved_at ? "Approved" : "Not approved"
+
+  return (
+    <article aria-label={job.title} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3">
+      <input aria-label={`Select ${job.title}`} checked={selected} className="mt-1" onChange={() => onToggleOne(job.id)} type="checkbox" />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <StatePill state={job.summary_state} />
+          <span className="text-xs font-medium text-gray-500">{formatCurrency(job.total_cost_usd, 2)}</span>
+          <span className="font-mono text-xs text-gray-500">{job.repository.slug}</span>
+        </div>
+        <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <Link className="text-sm font-semibold leading-snug text-blue-600 hover:underline" to={withRoutePrefix(job.paths.job_path, prefix)}>{job.title}</Link>
+          {job.kind !== "issue" ? <span className="text-xs text-gray-500">{humanizeOption(job.kind)}</span> : null}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-gray-500">
+          <span>#{job.issue_number || job.id}</span>
+          {job.pr_number ? <span>→ PR #{job.pr_number}</span> : null}
+          <span>{approvalLabel}</span>
+          <span>{job.workflows_count} {pluralize(job.workflows_count, "workflow")}</span>
+          <span>{formatDate(job.started_at || job.created_at)}</span>
+        </div>
+        {job.tags.length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {job.tags.map((tag) => <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500" key={tag.id}>{tag.name}</span>)}
+          </div>
+        ) : null}
+      </div>
+    </article>
   )
 }
 
@@ -1019,6 +1066,14 @@ function StatePill({ state }: { state: string }) {
 
 function compactText(value: string) {
   return value.replace(/\s+/g, " ").trim()
+}
+
+function formatCurrency(value: number, digits = 4) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
+}
+
+function pluralize(count: number, singular: string) {
+  return count === 1 ? singular : `${singular}s`
 }
 
 function DashboardError({ error }: { error: Error }) {

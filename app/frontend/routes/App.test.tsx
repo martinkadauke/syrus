@@ -824,6 +824,51 @@ describe("App", () => {
     }
   })
 
+  it("renders mobile Job dashboard rows as consolidated cards", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          dashboardPayload({
+            subject: "job",
+            view: "list",
+            items: [
+              dashboardJobItem({
+                summary_state: "implemented",
+                total_cost_usd: 0.1234
+              })
+            ]
+          })
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const row = await screen.findByRole("article", { name: "Repair aqueduct" })
+      expect(within(row).getByLabelText("Select Repair aqueduct")).toBeInTheDocument()
+      expect(within(row).getByText("implemented")).toBeInTheDocument()
+      expect(within(row).getByText("$0.12")).toBeInTheDocument()
+      expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
+      expect(within(row).getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
+      expect(within(row).getByText("#12")).toBeInTheDocument()
+      expect(within(row).getByText("→ PR #34")).toBeInTheDocument()
+      expect(within(row).getByText("Not approved")).toBeInTheDocument()
+      expect(within(row).getByText("1 workflow")).toBeInTheDocument()
+      expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    } finally {
+      restoreMedia()
+    }
+  })
+
   it("renders mobile Epic dashboard rows as consolidated cards", async () => {
     const restoreMedia = mockMediaQuery(false)
     vi.spyOn(window, "fetch").mockResolvedValue(
@@ -5624,6 +5669,7 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     summary_state: "running",
     validity: "valid",
     priority: "high",
+    total_cost_usd: 0,
     issue_number: 12,
     branch_name: "syrus/issue-12",
     pr_number: 34,

@@ -158,7 +158,7 @@ module App
     def jobs_result
       scope = filtered_jobs_scope
       total = scope.count
-      scope = scope.with_latest_workflow_snapshot.preload(:repository, :tags, :workflows)
+      scope = scope.with_latest_workflow_snapshot.preload(:repository, :tags, :workflows, :runs)
       items = paginate(apply_sort(scope, :job)).map { |job| job_json(job) }
 
       { total: total, items: items }
@@ -414,6 +414,7 @@ module App
         summary_state: summary_state(job),
         validity: job.validity,
         priority: job.priority,
+        total_cost_usd: job.total_cost_usd.to_f,
         issue_number: job.issue_number,
         branch_name: job.branch_name,
         pr_number: job.pr_number || job.external_pr_number,

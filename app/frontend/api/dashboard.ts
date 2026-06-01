@@ -22,6 +22,7 @@ export type DashboardJobItem = {
   summary_state: string
   validity: string
   priority: string
+  total_cost_usd: number
   issue_number: number | null
   branch_name: string | null
   pr_number: number | null
