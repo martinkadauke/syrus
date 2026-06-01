@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter, useLocation } from "react-router-dom"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { FilterBar, type FilterSchemaField } from "./FilterBar"
 
 const filterSchema: FilterSchemaField[] = [
@@ -27,6 +27,13 @@ const filterSchema: FilterSchemaField[] = [
     bucket: "boolean",
     operators: ["is_true", "is_false"],
     values: []
+  },
+  {
+    field: "repository_id",
+    label: "Repository",
+    bucket: "fk",
+    operators: ["is", "is_one_of"],
+    typeahead: true
   }
 ]
 
@@ -48,6 +55,10 @@ function decodedFilterFromLocation() {
 }
 
 describe("FilterBar", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it("applies chip editor value changes immediately", async () => {
     render(
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>
@@ -183,6 +194,64 @@ describe("FilterBar", () => {
     expect(within(dialog).getByText("Closed")).toBeInTheDocument()
   })
 
+  it("uses search-as-you-type controls for FK filters", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = new URL(String(input), "http://example.test")
+      if (url.pathname !== "/api/v1/app/filters/fk_options") {
+        return Promise.reject(new Error(`Unexpected fetch: ${url.pathname}`))
+      }
+
+      const ids = url.searchParams.getAll("ids[]")
+      const q = url.searchParams.get("q")
+      if (ids.includes("3")) {
+        return Promise.resolve(jsonResponse({ options: [{ value: 3, label: "acme/widgets" }] }))
+      }
+      if (q === "api") {
+        return Promise.resolve(jsonResponse({ options: [{ value: 4, label: "acme/api" }] }))
+      }
+
+      return Promise.resolve(jsonResponse({ options: [] }))
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/dashboard/jobs"]}>
+        <FilterBar
+          filter={{ and: [{ field: "repository_id", op: "is", value: "3" }] }}
+          filterSchema={filterSchema}
+          pathname="/dashboard/jobs"
+          search=""
+        />
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "Repository is 3" }))
+    const dialog = screen.getByRole("dialog", { name: "Repository filter settings" })
+
+    expect(within(dialog).getAllByRole("combobox")).toHaveLength(1)
+    expect(within(dialog).getByPlaceholderText("Search by name...")).toBeInTheDocument()
+    expect(within(dialog).getByText("Search by name to add a value")).toBeInTheDocument()
+    expect(await within(dialog).findByText("acme/widgets")).toBeInTheDocument()
+
+    fireEvent.change(within(dialog).getByPlaceholderText("Search by name..."), { target: { value: "api" } })
+    expect(await within(dialog).findByRole("button", { name: "acme/api" })).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/filters/fk_options?field=repository_id&q=api",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "acme/api" }))
+
+    await waitFor(() => {
+      expect(decodedFilterFromLocation()).toEqual({
+        and: [{ field: "repository_id", op: "is", value: "4" }]
+      })
+    })
+  })
+
   it("opens the filter menu before adding OR alternatives", async () => {
     render(
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>
@@ -259,3 +328,10 @@ describe("FilterBar", () => {
     expect(screen.queryByRole("dialog", { name: "State filter settings" })).not.toBeInTheDocument()
   })
 })
+
+function jsonResponse(payload: unknown) {
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { "Content-Type": "application/json" }
+  })
+}

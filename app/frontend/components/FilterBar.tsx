@@ -382,6 +382,8 @@ function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: F
 
   const options = filterOptions(meta)
   const multi = isMultiValueOp(chip.op)
+  if (meta.bucket === "fk" || meta.typeahead) return <TypeaheadFilterValueEditor chip={chip} meta={meta} multi={multi} onChange={onChange} />
+
   if (options.length > 0 && !meta.typeahead) {
     if (multi) return <MultiFilterValueEditor chip={chip} meta={meta} onChange={onChange} options={options} />
 
@@ -416,6 +418,123 @@ function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: F
         type="text"
         value={String(chip.value ?? "")}
       />
+    </label>
+  )
+}
+
+function TypeaheadFilterValueEditor({ chip, meta, multi, onChange }: { chip: FilterChip; meta: FilterSchemaField; multi: boolean; onChange: (chip: FilterChip) => void }) {
+  const [query, setQuery] = useState("")
+  const [selectedOptions, setSelectedOptions] = useState<FilterOption[]>([])
+  const [options, setOptions] = useState<FilterOption[]>([])
+  const selected = multi ? Array.isArray(chip.value) ? chip.value.map(String) : [] : String(chip.value ?? "") ? [String(chip.value)] : []
+  const selectedSet = new Set(selected)
+
+  useEffect(() => {
+    let cancelled = false
+
+    if (selected.length === 0) {
+      setSelectedOptions([])
+      return
+    }
+
+    void loadFkOptions(meta.field, { ids: selected }).then((loadedOptions) => {
+      if (!cancelled) setSelectedOptions(loadedOptions)
+    }).catch(() => {
+      if (!cancelled) setSelectedOptions(selected.map((value) => ({ value, label: value })))
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [meta.field, selected.join("\0")])
+
+  useEffect(() => {
+    let cancelled = false
+    const trimmedQuery = query.trim()
+
+    if (!trimmedQuery) {
+      setOptions([])
+      return
+    }
+
+    void loadFkOptions(meta.field, { q: trimmedQuery }).then((loadedOptions) => {
+      if (!cancelled) setOptions(loadedOptions.filter((option) => !selectedSet.has(String(option.value))))
+    }).catch(() => {
+      if (!cancelled) setOptions([])
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [meta.field, query, selected.join("\0")])
+
+  function addValue(value: string) {
+    if (multi) {
+      if (selectedSet.has(value)) return
+      onChange({ ...chip, value: [...selected, value] })
+    } else {
+      onChange({ ...chip, value })
+    }
+    setQuery("")
+    setOptions([])
+  }
+
+  function removeValue(value: string) {
+    if (multi) {
+      onChange({ ...chip, value: selected.filter((selectedValue) => selectedValue !== value) })
+    } else {
+      onChange({ ...chip, value: "" })
+    }
+  }
+
+  return (
+    <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-value-${meta.field}-search`}>
+      <span className="sr-only">Value</span>
+      <div className="mt-1 w-72 overflow-hidden rounded border border-gray-300 bg-white normal-case text-gray-700">
+        <div className="flex min-h-11 flex-wrap items-center gap-1.5 px-2 py-2 text-sm">
+          {selected.length > 0 ? (
+            selected.map((value) => {
+              const option = selectedOptions.find((candidate) => String(candidate.value) === value) || { value, label: value }
+              return (
+                <span className="inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-indigo-800" key={value}>
+                  {option.label}
+                  <button aria-label={`Remove ${option.label}`} className="text-indigo-500 hover:text-indigo-800" onClick={() => removeValue(value)} type="button">x</button>
+                </span>
+              )
+            })
+          ) : (
+            <span className="text-gray-400">Nothing selected yet</span>
+          )}
+        </div>
+        <input
+          className="block w-full border-t border-gray-200 px-2 py-2 text-sm focus:outline-none"
+          id={`filter-value-${meta.field}-search`}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search by name..."
+          type="search"
+          value={query}
+        />
+        <div className="max-h-56 overflow-y-auto border-t border-gray-200 py-1">
+          {query.trim() ? (
+            options.length > 0 ? (
+              options.map((option) => (
+                <button
+                  className="block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+                  key={String(option.value)}
+                  onClick={() => addValue(String(option.value))}
+                  type="button"
+                >
+                  {option.label}
+                </button>
+              ))
+            ) : (
+              <div className="px-3 py-1.5 text-sm text-gray-400">No matches</div>
+            )
+          ) : (
+            <div className="px-3 py-1.5 text-sm text-gray-400">Search by name to add a value</div>
+          )}
+        </div>
+      </div>
     </label>
   )
 }
@@ -751,4 +870,20 @@ function normalizedOptions(field: FilterSchemaField): FilterOption[] {
 
 function humanizeOption(value: string) {
   return value.replace(/_/g, " ").replace(/^\w/, (match) => match.toUpperCase())
+}
+
+async function loadFkOptions(field: string, { q, ids }: { q?: string; ids?: string[] }): Promise<FilterOption[]> {
+  const params = new URLSearchParams({ field })
+  if (q) params.set("q", q)
+  for (const id of ids || []) params.append("ids[]", id)
+
+  const response = await fetch(`/api/v1/app/filters/fk_options?${params}`, {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" }
+  })
+
+  if (!response.ok) throw new Error(`Failed to load filter options: ${response.status}`)
+
+  const payload = await response.json() as { options?: FilterOption[] }
+  return payload.options || []
 }

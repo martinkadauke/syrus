@@ -25,7 +25,7 @@ module Filters
         "bucket"    => chip.bucket.to_s,
         "operators" => chip.operators.map(&:to_s)
       }
-      if chip.respond_to?(:typeahead) && chip.typeahead
+      if chip.bucket.to_s == "fk" || (chip.respond_to?(:typeahead) && chip.typeahead)
         meta["typeahead"] = true
       else
         meta["values"] = humanize_values(dynamic_values(chip, user) || chip.values)
@@ -71,10 +71,8 @@ module Filters
       end.join(" ")
     end
 
-    # FK chips (repository_id, epic_id, parent_job_id) need
-    # per-user value lists. The schema embeds them inline so the
-    # chip-bar UI doesn't need an extra autocomplete round-trip
-    # for the small data sets a single user owns.
+    # Collection chips and large enum-like chips can need per-user
+    # value lists. FK chips are always typeahead and skip this path.
     def dynamic_values(chip, user)
       return nil unless user
 

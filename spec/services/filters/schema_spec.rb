@@ -143,16 +143,15 @@ RSpec.describe Filters::Schema do
       expect(schema).not_to have_key("values")
     end
 
-    it "keeps non-typeahead FK chips on the inline values path" do
+    it "marks FK chips as typeahead instead of embedding inline values" do
       user = Factories.user
       Factories.repository(user: user, owner: "acme", name: "widgets")
 
       schema = described_class.chip_for("repository_id", user: user)
 
-      expect(schema).not_to have_key("typeahead")
-      expect(schema["values"]).to eq([
-        { "value" => user.repositories.first.id, "label" => "acme/widgets" }
-      ])
+      expect(schema["bucket"]).to eq("fk")
+      expect(schema["typeahead"]).to eq(true)
+      expect(schema).not_to have_key("values")
     end
   end
 end

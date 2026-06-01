@@ -47,7 +47,7 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
     )
   end
 
-  it "searches jobs by title, exact issue number, and branch name" do
+  it "searches jobs by title only" do
     user = Factories.user
     repo = Factories.repository(user:)
     by_title = Factories.job_record(user:, repository: repo, issue_number: 10, issue_title: "Add typeahead")
@@ -60,10 +60,10 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
     expect(parse_body["options"].map { |row| row["value"] }).to eq([ by_title.id ])
 
     get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: "99" }
-    expect(parse_body["options"].map { |row| row["value"] }).to include(by_number.id)
+    expect(parse_body["options"].map { |row| row["value"] }).not_to include(by_number.id)
 
     get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: "fk-options" }
-    expect(parse_body["options"].map { |row| row["value"] }).to eq([ by_branch.id ])
+    expect(parse_body["options"].map { |row| row["value"] }).not_to include(by_branch.id)
   end
 
   it "caps search responses at 50 results" do
@@ -95,6 +95,9 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
 
     get "/api/v1/app/filters/fk_options", params: { field: "repository_id", q: "widg" }
     expect(parse_body["options"]).to eq([{ "value" => repo.id, "label" => "acme/widgets" }])
+
+    get "/api/v1/app/filters/fk_options", params: { field: "repository_id", q: "acme" }
+    expect(parse_body["options"]).to eq([])
 
     get "/api/v1/app/filters/fk_options", params: { field: "epic_id", q: "migration" }
     expect(parse_body["options"]).to eq([{ "value" => epic.id, "label" => "EPIC-#{epic.number} Typeahead migration" }])

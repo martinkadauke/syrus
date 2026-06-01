@@ -83,7 +83,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       )
       expect(body.dig("controls", "filter_schema")).to include(
         include("field" => "state", "label" => "State", "values" => include(include("value" => "open", "label" => "Any open"))),
-        include("field" => "repository_id", "label" => "Repository", "values" => include(include("value" => repo.id, "label" => "acme/widgets")))
+        include("field" => "repository_id", "label" => "Repository", "bucket" => "fk", "typeahead" => true)
       )
       expect(body["landing_queue"]).to eq(
         "visible" => false,

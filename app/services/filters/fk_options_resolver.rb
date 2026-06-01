@@ -56,27 +56,17 @@ module Filters
 
       case field
       when "repository_id"
-        scope.where("repositories.owner LIKE :pattern OR repositories.name LIKE :pattern", pattern:)
+        scope.where("repositories.name LIKE ?", pattern)
       when "epic_id"
         scope.where("epics.title LIKE ?", pattern)
       when "parent_job_id", "job_id"
-        jobs_search(scope, query, pattern)
+        scope.where("jobs.issue_title LIKE ?", pattern)
       when "tags"
         scope.where("tags.name LIKE ?", pattern)
       when "hostname"
         scope.where("spawned_processes.hostname LIKE ?", pattern)
       else
         scope
-      end
-    end
-
-    def jobs_search(scope, query, pattern)
-      if query.match?(/\A\d+\z/)
-        scope.where("jobs.issue_title LIKE :pattern OR jobs.branch_name LIKE :pattern OR jobs.issue_number = :number",
-          pattern:,
-          number: query.to_i)
-      else
-        scope.where("jobs.issue_title LIKE :pattern OR jobs.branch_name LIKE :pattern", pattern:)
       end
     end
 
