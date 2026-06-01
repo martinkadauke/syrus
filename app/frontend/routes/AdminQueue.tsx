@@ -299,7 +299,7 @@ function WorkerTable({ workers }: { workers: QueueWorker[] }) {
             <tr key={`${worker.hostname}-${worker.pid}`}>
               <td className="px-4 py-2 font-medium text-gray-900">{worker.hostname || "-"}</td>
               <td className="px-4 py-2 text-gray-700">{worker.pid}</td>
-              <td className="px-4 py-2 font-mono text-xs text-gray-600">{worker.queues?.join(", ") || "-"}</td>
+              <td className="px-4 py-2 font-mono text-xs text-gray-600">{formatQueues(worker.queues)}</td>
               <td className="px-4 py-2 text-gray-700">{worker.threads ?? "-"}</td>
               <td className="px-4 py-2 text-gray-600">{formatDate(worker.last_heartbeat_at)}</td>
               <td className={`px-4 py-2 ${worker.stale ? "text-red-700" : "text-emerald-700"}`}>{worker.stale ? "stale" : "healthy"}</td>
@@ -345,6 +345,12 @@ function QueueError({ error }: { error: Error }) {
   const message = queueUnavailable ? "SolidQueue tables are unreachable from this connection." : "Unable to load queue data."
 
   return <PanelMessage tone="error">{message}</PanelMessage>
+}
+
+function formatQueues(queues: QueueWorker["queues"]) {
+  if (Array.isArray(queues)) return queues.length > 0 ? queues.join(", ") : "-"
+  if (typeof queues === "string") return queues.trim() || "-"
+  return "-"
 }
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {

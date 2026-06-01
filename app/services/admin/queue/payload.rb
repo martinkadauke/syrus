@@ -148,11 +148,26 @@ module Admin
         {
           pid: worker.pid,
           hostname: worker.hostname,
-          queues: worker.metadata&.dig("queues"),
+          queues: worker_queues(worker),
           threads: worker.metadata&.dig("thread_pool_size"),
           last_heartbeat_at: worker.last_heartbeat_at,
           stale: worker.last_heartbeat_at.nil? || worker.last_heartbeat_at < 2.minutes.ago
         }
+      end
+
+      def worker_queues(worker)
+        queues = worker.metadata&.dig("queues")
+
+        case queues
+        when Array
+          queues.map(&:to_s)
+        when String
+          queues.split(",").map(&:strip).reject(&:blank?)
+        when nil
+          []
+        else
+          [ queues.to_s ]
+        end
       end
 
       def serialize_process(process)

@@ -1151,6 +1151,54 @@ describe("App", () => {
     )
   })
 
+  it("renders admin queue workers when SolidQueue reports queue metadata as a string", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          workers: [
+            {
+              hostname: "worker-a",
+              pid: 101,
+              queues: "runs",
+              threads: 2,
+              last_heartbeat_at: "2026-05-30T12:00:00Z",
+              stale: false
+            }
+          ],
+          all_processes: [
+            {
+              kind: "Worker",
+              hostname: "worker-a",
+              pid: 101,
+              last_heartbeat_at: "2026-05-30T12:00:00Z"
+            }
+          ]
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/admin/queue/workers"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByRole("main", { name: "Admin queue" })).toBeInTheDocument()
+    expect(await screen.findAllByText("worker-a")).toHaveLength(2)
+    expect(screen.getByText("runs")).toBeInTheDocument()
+    expect(screen.getByText("healthy")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/admin/queue/workers",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
   it("renders the admin stuck route from the app admin stuck API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(

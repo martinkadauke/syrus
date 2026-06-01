@@ -152,7 +152,7 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
 
   it "returns worker and process inventory" do
     sign_in_as(admin)
-    solid_queue_process(hostname: "worker-a", pid: 101, metadata: { "queues" => [ "runs" ], "thread_pool_size" => 2 })
+    solid_queue_process(hostname: "worker-a", pid: 101, metadata: { "queues" => "runs", "thread_pool_size" => 2 })
     solid_queue_process(kind: "Dispatcher", hostname: "dispatcher-a", pid: 202)
 
     get "/api/v1/app/admin/queue/workers"

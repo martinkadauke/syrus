@@ -34,7 +34,7 @@ export type QueueRecurringTask = {
 export type QueueWorker = {
   pid: number
   hostname: string | null
-  queues: string[] | null
+  queues: string[] | string | null
   threads: number | null
   last_heartbeat_at: string | null
   stale: boolean
