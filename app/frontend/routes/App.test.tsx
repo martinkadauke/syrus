@@ -770,6 +770,47 @@ describe("App", () => {
     expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
   })
 
+  it("keeps dashboard folders and filters collapsed on mobile", async () => {
+    const restoreMedia = mockDashboardMedia(false)
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          dashboardPayload({
+            subject: "job",
+            view: "list",
+            items: [dashboardJobItem()]
+          })
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
+      const controls = screen.getByRole("group", { name: "Dashboard controls" })
+      expect(within(controls).getByRole("navigation", { name: "Dashboard subjects" })).toBeInTheDocument()
+      expect(within(controls).getByRole("navigation", { name: "Dashboard view" })).toBeInTheDocument()
+      expect(within(controls).queryByRole("button", { name: "Columns" })).not.toBeInTheDocument()
+
+      const disclosure = screen.getByText("Folders and filters").closest("details")
+      expect(disclosure).not.toHaveAttribute("open")
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(disclosure).toHaveAttribute("open")
+      expect(screen.getByRole("button", { name: "+ Add filter" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "My work 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
+    } finally {
+      restoreMedia()
+    }
+  })
+
   it("toggles landing queue pause from the React dashboard", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -5380,6 +5421,33 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
   return {
     ...payload,
     ...overrides
+  }
+}
+
+function mockDashboardMedia(matches: boolean) {
+  const original = Object.getOwnPropertyDescriptor(window, "matchMedia")
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn((query: string) => ({
+      matches,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  })
+
+  return () => {
+    if (original) {
+      Object.defineProperty(window, "matchMedia", original)
+    } else {
+      Reflect.deleteProperty(window, "matchMedia")
+    }
   }
 }
 

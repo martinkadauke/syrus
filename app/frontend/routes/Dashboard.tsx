@@ -24,6 +24,7 @@ export function DashboardRoute() {
 
 function DashboardView({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
   const prefix = pathname.startsWith("/app-shell") ? "/app-shell" : ""
+  const isDesktop = useMediaQuery("(min-width: 1024px)", true)
 
   return (
     <main aria-label="Dashboard" className="mx-auto max-w-[96rem] space-y-5 p-6">
@@ -32,25 +33,93 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
         <DashboardCreateActions payload={payload} prefix={prefix} />
       </header>
 
-      <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-center">
-        <SubjectTabs payload={payload} prefix={prefix} />
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
-          <div className="min-w-0 flex-1">
-            <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
+      {isDesktop ? (
+        <>
+          <DesktopDashboardControls pathname={pathname} payload={payload} prefix={prefix} search={search} />
+          <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
+            <SmartFolderNav payload={payload} prefix={prefix} search={search} />
+            <DashboardContent pathname={pathname} payload={payload} prefix={prefix} search={search} />
           </div>
-          <DashboardToolbar pathname={pathname} search={search} payload={payload} />
-        </div>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
-        <SmartFolderNav payload={payload} prefix={prefix} search={search} />
-        <section className="min-w-0 space-y-4">
-          <DashboardTable payload={payload} prefix={prefix} />
-          {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
-        </section>
-      </div>
+        </>
+      ) : (
+        <>
+          <MobileDashboardControls pathname={pathname} payload={payload} prefix={prefix} search={search} />
+          <DashboardContent pathname={pathname} payload={payload} prefix={prefix} search={search} />
+        </>
+      )}
     </main>
   )
+}
+
+function DesktopDashboardControls({ payload, pathname, prefix, search }: { payload: DashboardPayload; pathname: string; prefix: string; search: string }) {
+  return (
+    <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)] lg:items-center">
+      <SubjectTabs payload={payload} prefix={prefix} />
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="min-w-0 flex-1">
+          <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
+        </div>
+        <DashboardToolbar pathname={pathname} search={search} payload={payload} />
+      </div>
+    </div>
+  )
+}
+
+function MobileDashboardControls({ payload, pathname, prefix, search }: { payload: DashboardPayload; pathname: string; prefix: string; search: string }) {
+  return (
+    <div className="space-y-3">
+      <div aria-label="Dashboard controls" className="flex items-center gap-3 overflow-x-auto pb-1" role="group">
+        <SubjectTabs className="flex shrink-0 flex-nowrap gap-2" payload={payload} prefix={prefix} />
+        <DashboardToolbar pathname={pathname} search={search} payload={payload} showConfiguration={false} />
+      </div>
+      <details className="group rounded border border-gray-200 bg-white">
+        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-gray-700">
+          <span>Folders and filters</span>
+          <span className="text-gray-400 group-open:hidden">Show</span>
+          <span className="hidden text-gray-400 group-open:inline">Hide</span>
+        </summary>
+        <div className="space-y-4 border-t border-gray-200 p-4">
+          <DashboardFilterBar pathname={pathname} search={search} payload={payload} />
+          <SmartFolderNav payload={payload} prefix={prefix} search={search} />
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function DashboardContent({ payload, pathname, prefix, search }: { payload: DashboardPayload; pathname: string; prefix: string; search: string }) {
+  return (
+    <section className="min-w-0 space-y-4">
+      <DashboardTable payload={payload} prefix={prefix} />
+      {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
+    </section>
+  )
+}
+
+function useMediaQuery(query: string, defaultMatches: boolean) {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return defaultMatches
+
+    return window.matchMedia(query).matches
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+
+    const media = window.matchMedia(query)
+    const updateMatches = () => setMatches(media.matches)
+    updateMatches()
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", updateMatches)
+      return () => media.removeEventListener("change", updateMatches)
+    }
+
+    media.addListener(updateMatches)
+    return () => media.removeListener(updateMatches)
+  }, [query])
+
+  return matches
 }
 
 function DashboardCreateActions({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
@@ -62,7 +131,7 @@ function DashboardCreateActions({ payload, prefix }: { payload: DashboardPayload
   )
 }
 
-function SubjectTabs({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
+function SubjectTabs({ payload, prefix, className = "flex flex-wrap gap-2" }: { payload: DashboardPayload; prefix: string; className?: string }) {
   const subjects: Array<{ key: DashboardSubject; label: string; path: string }> = [
     { key: "epic", label: "Epics", path: "/dashboard/epics" },
     { key: "job", label: "Jobs", path: "/dashboard/jobs" },
@@ -70,7 +139,7 @@ function SubjectTabs({ payload, prefix }: { payload: DashboardPayload; prefix: s
   ]
 
   return (
-    <nav aria-label="Dashboard subjects" className="flex flex-wrap gap-2">
+    <nav aria-label="Dashboard subjects" className={className}>
       {subjects.map((subject) => (
         <Link
           className={`rounded border px-3 py-1.5 text-sm font-medium ${payload.subject === subject.key ? "border-blue-600 bg-blue-50 text-blue-700" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"}`}
@@ -196,7 +265,7 @@ function SmartFolderLink({ folder, prefix }: { folder: DashboardSmartFolder; pre
   )
 }
 
-function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
+function DashboardToolbar({ payload, pathname, search, showConfiguration = true }: { payload: DashboardPayload; pathname: string; search: string; showConfiguration?: boolean }) {
   const queryClient = useQueryClient()
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [lanesOpen, setLanesOpen] = useState(false)
@@ -273,7 +342,7 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
             </Link>
           ))}
         </nav>
-        {payload.view === "list" ? (
+        {showConfiguration && payload.view === "list" ? (
           <div className="relative" ref={columnsMenuRef}>
             <button
               aria-label="Columns"
@@ -306,7 +375,7 @@ function DashboardToolbar({ payload, pathname, search }: { payload: DashboardPay
             ) : null}
           </div>
         ) : null}
-        {payload.view === "kanban" ? (
+        {showConfiguration && payload.view === "kanban" ? (
           <div className="relative" ref={lanesMenuRef}>
             <button
               aria-label="Kanban lanes"
