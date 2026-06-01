@@ -68,28 +68,6 @@ module Api
           render json: chat_payload(chat_session.reload, message: "Stop requested.")
         end
 
-        def refresh
-          chat_session = find_chat_session
-          unless chat_session.repository
-            render_error("validation_failed", "Attach a repository before refreshing a workspace.", status: :unprocessable_content)
-            return
-          end
-
-          ChatWorkspaceJob.perform_later(chat_session.id, action: :refresh)
-          render json: chat_payload(chat_session.reload, message: "Repository refresh queued.")
-        end
-
-        def reset
-          chat_session = find_chat_session
-          unless chat_session.repository
-            render_error("validation_failed", "Attach a repository before resetting a workspace.", status: :unprocessable_content)
-            return
-          end
-
-          ChatWorkspaceJob.perform_later(chat_session.id, action: :reset)
-          render json: chat_payload(chat_session.reload, message: "Workspace reset queued.")
-        end
-
         def add_attachment
           chat_session = find_chat_session
           attachable = attachable_from_params(chat_session)
@@ -229,8 +207,6 @@ module Api
               app_messages_path: "/api/v1/app/chats/#{chat_session.id}/messages",
               app_message_path: "/api/v1/app/chats/#{chat_session.id}/message",
               app_stop_path: "/api/v1/app/chats/#{chat_session.id}/stop",
-              app_refresh_path: "/api/v1/app/chats/#{chat_session.id}/refresh",
-              app_reset_path: "/api/v1/app/chats/#{chat_session.id}/reset",
               app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
               app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
               app_whiteboard_path: "/api/v1/app/chats/#{chat_session.id}/whiteboard"

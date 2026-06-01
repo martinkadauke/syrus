@@ -142,10 +142,11 @@ module Prompts
             feature branch to investigate, the next turn starts there
             — switch back to the default branch when you're done with
             the digression.
-          - The workspace may drift behind origin. Run `git fetch`
-            (or use the `repo_info` tool) when you need a current
-            view, especially when answering "what's on main right
-            now" questions.
+          - The workspace may drift behind origin. Feel free to run
+            `git fetch` or `git pull --ff-only` inside attached
+            repository checkouts whenever a current view would help
+            you answer the operator's question. Use `repo_info` when
+            you want a quick repository status summary.
 
         Your output:
 

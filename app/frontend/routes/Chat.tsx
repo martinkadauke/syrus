@@ -18,9 +18,7 @@ import {
   fetchChatMessages,
   fetchChatWhiteboard,
   patchChatWhiteboard,
-  refreshChat,
   rejectChatProposal,
-  resetChat,
   sendChatMessage,
   stopChat,
   type ChatAttachmentResult,
@@ -83,20 +81,7 @@ function appendSearch(path: string, search: string) {
 }
 
 function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey }) {
-  const queryClient = useQueryClient()
-  const search = queryKey[2]
   const [notice, setNotice] = useState<string | null>(payload.message || null)
-  const command = useMutation({
-    mutationFn: (kind: "stop" | "refresh" | "reset") => {
-      if (kind === "stop") return stopChat(appendSearch(payload.paths.app_stop_path, search))
-      if (kind === "refresh") return refreshChat(appendSearch(payload.paths.app_refresh_path, search))
-      return resetChat(appendSearch(payload.paths.app_reset_path, search))
-    },
-    onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
-      setNotice(updated.message || null)
-    }
-  })
 
   const title = payload.chat.title || payload.chat.repository?.slug || "New chat"
 
@@ -108,27 +93,11 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
           {payload.chat.repository ? <ChatRepositoryLink prefix={prefix} repository={payload.chat.repository} /> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {payload.chat.repository ? (
-            <>
-              <button className={secondaryButton()} disabled={command.isPending} onClick={() => command.mutate("refresh")} type="button">Refresh repo</button>
-              <button
-                className="rounded border border-red-200 bg-white px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50 disabled:text-gray-300"
-                disabled={command.isPending}
-                onClick={() => {
-                  if (window.confirm("Reset this chat workspace? Any in-progress workspace state will be destroyed.")) command.mutate("reset")
-                }}
-                type="button"
-              >
-                Reset workspace
-              </button>
-            </>
-          ) : null}
           <Link className="rounded bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200" to={withRoutePrefix(payload.paths.new_chat_path, prefix)}>New chat</Link>
         </div>
       </header>
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
-      {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Chat command failed.")}</PanelMessage> : null}
       <PendingActions payload={payload} queryKey={queryKey} onNotice={setNotice} />
 
       {!payload.chat_available ? (

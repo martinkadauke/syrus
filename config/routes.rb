@@ -85,8 +85,6 @@ Rails.application.routes.draw do
         patch "chats/:id/whiteboard", to: "chat_whiteboards#update", constraints: { id: /\d+/ }
         post "chats/:id/message", to: "chats#message", constraints: { id: /\d+/ }
         post "chats/:id/stop", to: "chats#stop", constraints: { id: /\d+/ }
-        post "chats/:id/refresh", to: "chats#refresh", constraints: { id: /\d+/ }
-        post "chats/:id/reset", to: "chats#reset", constraints: { id: /\d+/ }
         post "chats/:id/bookmarks", to: "chats#create_bookmark", constraints: { id: /\d+/ }
         post "chats/:id/attachments", to: "chats#add_attachment", constraints: { id: /\d+/ }
         delete "chats/:id/attachments/:attachment_id", to: "chats#destroy_attachment", constraints: { id: /\d+/, attachment_id: /\d+/ }

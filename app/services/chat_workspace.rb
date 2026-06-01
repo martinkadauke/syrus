@@ -29,14 +29,6 @@ class ChatWorkspace
     new(chat_session).attach_repository!(repository)
   end
 
-  def self.refresh!(chat_session, repository)
-    new(chat_session).refresh!(repository)
-  end
-
-  def self.reset!(chat_session)
-    new(chat_session).reset!
-  end
-
   def self.destroy!(chat_session)
     FileUtils.rm_rf(path_for(chat_session).to_s)
   end
@@ -81,15 +73,6 @@ class ChatWorkspace
 
     @chat_session.chat_attachments.find_or_create_by!(attachable: repository)
     path
-  end
-
-  def refresh!(repository)
-    attach_repository!(repository)
-  end
-
-  def reset!
-    self.class.destroy!(@chat_session)
-    ensure_root!
   end
 
   private

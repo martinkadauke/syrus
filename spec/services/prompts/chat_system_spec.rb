@@ -79,7 +79,8 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("The workspace persists across turns.")
     expect(out).to include("Use `attach_repository(slug)` whenever you need to look at")
     expect(out).to include("switch back to the default branch when you're done")
-    expect(out).to match(/Run `git fetch`\s+\(or use the `repo_info` tool\)/)
+    expect(out).to match(/Feel free to run\s+`git fetch` or `git pull --ff-only`/)
+    expect(out).to match(/Use `repo_info` when\s+you want a quick repository status summary\./)
   end
 
   it "supports top-level chats that do not start with a repository" do

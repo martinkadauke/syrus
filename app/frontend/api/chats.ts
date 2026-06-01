@@ -187,8 +187,6 @@ export type ChatPayload = {
     app_messages_path: string
     app_message_path: string
     app_stop_path: string
-    app_refresh_path: string
-    app_reset_path: string
     app_bookmarks_path: string
     app_attachments_path: string
     app_whiteboard_path: string
@@ -240,14 +238,6 @@ export function sendChatMessage(path: string, text: string) {
 }
 
 export function stopChat(path: string) {
-  return postJson<ChatPayload>(path)
-}
-
-export function refreshChat(path: string) {
-  return postJson<ChatPayload>(path)
-}
-
-export function resetChat(path: string) {
   return postJson<ChatPayload>(path)
 }
 

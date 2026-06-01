@@ -3931,6 +3931,8 @@ describe("App", () => {
     expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("lg:min-h-0")
     expect(screen.getByRole("navigation", { name: "Chat workspace tabs" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Resize chat workspace" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Refresh repo" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Reset workspace" })).not.toBeInTheDocument()
     expect(screen.getByText("Version 2")).toBeInTheDocument()
     expect(screen.queryByText("Launch notes")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Context" }))
@@ -5689,8 +5691,6 @@ function chatPayload(overrides: {
       app_messages_path: "/api/v1/app/chats/8/messages",
       app_message_path: "/api/v1/app/chats/8/message",
       app_stop_path: "/api/v1/app/chats/8/stop",
-      app_refresh_path: "/api/v1/app/chats/8/refresh",
-      app_reset_path: "/api/v1/app/chats/8/reset",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
       app_attachments_path: "/api/v1/app/chats/8/attachments",
       app_whiteboard_path: "/api/v1/app/chats/8/whiteboard"

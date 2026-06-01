@@ -66,34 +66,6 @@ RSpec.describe ChatWorkspace do
     end
   end
 
-  describe ".refresh!" do
-    it "fetches and fast-forwards the attached repo" do
-      path = described_class.attach_repository!(chat_session, repository)
-      git = instance_double(GitRunner)
-      allow(GitRunner).to receive(:new).and_return(git)
-
-      expect(git).to receive(:run)
-        .with("fetch", "origin", "main", "--prune", chdir: path.to_s, env: { "GIT_TERMINAL_PROMPT" => "0" })
-      expect(git).to receive(:run).with("checkout", "main", chdir: path.to_s)
-      expect(git).to receive(:run).with("merge", "--ff-only", "origin/main", chdir: path.to_s)
-
-      described_class.refresh!(chat_session, repository)
-    end
-  end
-
-  describe ".reset!" do
-    it "removes the existing chat workspace and recreates the root" do
-      path = described_class.attach_repository!(chat_session, repository)
-      File.write(path.join("local-note.txt"), "discard me\n")
-
-      root = described_class.path_for(chat_session)
-      described_class.reset!(chat_session)
-
-      expect(root).to exist
-      expect(path).not_to exist
-    end
-  end
-
   describe ".destroy!" do
     it "removes the workspace path" do
       path = described_class.ensure_root!(chat_session)

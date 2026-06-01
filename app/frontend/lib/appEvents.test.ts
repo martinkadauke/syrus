@@ -163,8 +163,6 @@ function chatPayload(messages: Array<ReturnType<typeof message>>) {
       app_messages_path: "/api/v1/app/chats/9/messages",
       app_message_path: "/api/v1/app/chats/9/message",
       app_stop_path: "/api/v1/app/chats/9/stop",
-      app_refresh_path: "/api/v1/app/chats/9/refresh",
-      app_reset_path: "/api/v1/app/chats/9/reset",
       app_bookmarks_path: "/api/v1/app/chats/9/bookmarks",
       app_attachments_path: "/api/v1/app/chats/9/attachments",
       app_whiteboard_path: "/api/v1/app/chats/9/whiteboard"
