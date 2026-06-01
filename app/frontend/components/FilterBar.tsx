@@ -359,9 +359,9 @@ function FilterChipEditor({ chip, editorRef, meta, onAddAlternative, onChange }:
   }
 
   return (
-    <div aria-label={`${meta.label} filter settings`} className="absolute left-0 top-full z-30 mt-2 w-[min(28rem,calc(100vw-3rem))] space-y-3 rounded border border-gray-200 bg-white p-3 shadow-lg" ref={editorRef} role="dialog">
+    <div aria-label={`${meta.label} filter settings`} className="absolute left-0 top-full z-30 mt-2 w-[min(36rem,calc(100vw-3rem))] space-y-3 rounded border border-gray-200 bg-white p-3 shadow-lg" ref={editorRef} role="dialog">
       <div className="text-xs font-semibold uppercase text-gray-500">{meta.label}</div>
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="space-y-3">
         <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-op-${meta.field}`}>
           Operator
           <select className="mt-1 block rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700" id={`filter-op-${meta.field}`} onChange={(event) => updateOp(event.target.value)} value={chip.op}>
@@ -426,6 +426,7 @@ function TypeaheadFilterValueEditor({ chip, meta, multi, onChange }: { chip: Fil
   const [query, setQuery] = useState("")
   const [selectedOptions, setSelectedOptions] = useState<FilterOption[]>([])
   const [options, setOptions] = useState<FilterOption[]>([])
+  const inputRef = useRef<HTMLInputElement>(null)
   const selected = multi ? Array.isArray(chip.value) ? chip.value.map(String) : [] : String(chip.value ?? "") ? [String(chip.value)] : []
   const selectedSet = new Set(selected)
 
@@ -488,10 +489,10 @@ function TypeaheadFilterValueEditor({ chip, meta, multi, onChange }: { chip: Fil
   }
 
   return (
-    <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-value-${meta.field}-search`}>
-      <span className="sr-only">Value</span>
-      <div className="mt-1 w-72 overflow-hidden rounded border border-gray-300 bg-white normal-case text-gray-700">
-        <div className="flex min-h-11 flex-wrap items-center gap-1.5 px-2 py-2 text-sm">
+    <div className="block text-xs font-medium uppercase text-gray-500">
+      <label htmlFor={`filter-value-${meta.field}-search`}>Value</label>
+      <div className="relative mt-1 normal-case text-gray-700">
+        <div className="flex max-h-[10rem] min-h-11 w-full flex-wrap items-center gap-1.5 overflow-y-auto rounded border border-gray-300 bg-white px-2 py-2 text-sm" onClick={() => inputRef.current?.focus()}>
           {selected.length > 0 ? (
             selected.map((value) => {
               const option = selectedOptions.find((candidate) => String(candidate.value) === value) || { value, label: value }
@@ -502,21 +503,20 @@ function TypeaheadFilterValueEditor({ chip, meta, multi, onChange }: { chip: Fil
                 </span>
               )
             })
-          ) : (
-            <span className="text-gray-400">Nothing selected yet</span>
-          )}
+          ) : null}
+          <input
+            className="min-w-32 flex-1 border-0 bg-transparent p-0 text-sm focus:outline-none"
+            id={`filter-value-${meta.field}-search`}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by name..."
+            ref={inputRef}
+            type="text"
+            value={query}
+          />
         </div>
-        <input
-          className="block w-full border-t border-gray-200 px-2 py-2 text-sm focus:outline-none"
-          id={`filter-value-${meta.field}-search`}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name..."
-          type="search"
-          value={query}
-        />
-        <div className="max-h-56 overflow-y-auto border-t border-gray-200 py-1">
-          {query.trim() ? (
-            options.length > 0 ? (
+        {query.trim() ? (
+          <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded border border-gray-200 bg-white py-1 shadow-lg">
+            {options.length > 0 ? (
               options.map((option) => (
                 <button
                   className="block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
@@ -529,13 +529,11 @@ function TypeaheadFilterValueEditor({ chip, meta, multi, onChange }: { chip: Fil
               ))
             ) : (
               <div className="px-3 py-1.5 text-sm text-gray-400">No matches</div>
-            )
-          ) : (
-            <div className="px-3 py-1.5 text-sm text-gray-400">Search by name to add a value</div>
-          )}
-        </div>
+            )}
+          </div>
+        ) : null}
       </div>
-    </label>
+    </div>
   )
 }
 

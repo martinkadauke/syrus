@@ -216,7 +216,7 @@ describe("FilterBar", () => {
     render(
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>
         <FilterBar
-          filter={{ and: [{ field: "repository_id", op: "is", value: "3" }] }}
+          filter={{ and: [{ field: "repository_id", op: "is_one_of", value: ["3"] }] }}
           filterSchema={filterSchema}
           pathname="/dashboard/jobs"
           search=""
@@ -225,15 +225,17 @@ describe("FilterBar", () => {
       </MemoryRouter>
     )
 
-    fireEvent.click(screen.getByRole("button", { name: "Repository is 3" }))
+    fireEvent.click(screen.getByRole("button", { name: "Repository is one of 3" }))
     const dialog = screen.getByRole("dialog", { name: "Repository filter settings" })
 
     expect(within(dialog).getAllByRole("combobox")).toHaveLength(1)
-    expect(within(dialog).getByPlaceholderText("Search by name...")).toBeInTheDocument()
-    expect(within(dialog).getByText("Search by name to add a value")).toBeInTheDocument()
+    expect(within(dialog).getByText("Operator").compareDocumentPosition(within(dialog).getByText("Value")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const searchInput = within(dialog).getByPlaceholderText("Search by name...")
+    expect(searchInput.parentElement).toHaveClass("flex-wrap", "max-h-[10rem]", "overflow-y-auto")
+    expect(within(dialog).queryByText("Search by name to add a value")).not.toBeInTheDocument()
     expect(await within(dialog).findByText("acme/widgets")).toBeInTheDocument()
 
-    fireEvent.change(within(dialog).getByPlaceholderText("Search by name..."), { target: { value: "api" } })
+    fireEvent.change(searchInput, { target: { value: "api" } })
     expect(await within(dialog).findByRole("button", { name: "acme/api" })).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/filters/fk_options?field=repository_id&q=api",
@@ -247,7 +249,7 @@ describe("FilterBar", () => {
 
     await waitFor(() => {
       expect(decodedFilterFromLocation()).toEqual({
-        and: [{ field: "repository_id", op: "is", value: "4" }]
+        and: [{ field: "repository_id", op: "is_one_of", value: ["3", "4"] }]
       })
     })
   })
