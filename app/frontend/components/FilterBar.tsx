@@ -33,7 +33,6 @@ export type FilterNode = FilterChip | FilterGroup
 export type FilterTree = FilterGroup
 
 type FilterPath = number[]
-type PendingAddTarget = { kind: "and" } | { kind: "or"; index: number }
 
 export function FilterBar({
   filter,
@@ -41,7 +40,7 @@ export function FilterBar({
   pathname,
   search,
   legacyFilterKeys = [],
-  className = "space-y-2 rounded border border-gray-200 bg-white px-3 py-2"
+  className = "space-y-2"
 }: {
   filter?: Record<string, unknown> | null
   filterSchema: FilterSchemaField[]
@@ -55,7 +54,6 @@ export function FilterBar({
   const [editingPath, setEditingPath] = useState<FilterPath | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
   const [addQuery, setAddQuery] = useState("")
-  const [pendingAddTarget, setPendingAddTarget] = useState<PendingAddTarget>({ kind: "and" })
   const addMenuRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement>(null)
   const params = new URLSearchParams(search)
@@ -140,8 +138,7 @@ export function FilterBar({
     navigate(linkFromSearch(pathname, search, updates))
   }
 
-  function openAddMenu(target: PendingAddTarget) {
-    setPendingAddTarget(target)
+  function openAddMenu() {
     setEditingPath(null)
     setAddMenuOpen(true)
     setAddQuery("")
@@ -150,25 +147,30 @@ export function FilterBar({
   function addFilter(meta: FilterSchemaField) {
     const chip = defaultFilterChip(meta)
     const children = topFilterChildren(draftTree).slice()
-    let nextPath: FilterPath
+    const nextPath: FilterPath = [children.length]
 
-    if (pendingAddTarget.kind === "or") {
-      const index = pendingAddTarget.index
-      const slot = children[index]
-      const negated = filterSlotIsNegated(slot)
-      const inner = filterSlotInner(slot)
-      const currentOr = inner && "or" in inner && Array.isArray(inner.or) ? inner.or : [inner].filter(Boolean) as FilterNode[]
-      const nextOr = [...currentOr, chip]
-      children[index] = negated ? { not: { or: nextOr } } : { or: nextOr }
-      nextPath = [index, nextOr.length - 1]
-    } else {
-      children.push(chip)
-      nextPath = [children.length - 1]
-    }
+    children.push(chip)
 
     const nextTree = { and: children }
     updateTree(nextTree, nextPath)
     setAddMenuOpen(false)
+    applyTree(nextTree)
+  }
+
+  function addOrAlternative(path: FilterPath, meta: FilterSchemaField) {
+    const children = topFilterChildren(draftTree).slice()
+    const index = path[0]
+    const slot = children[index]
+    const negated = filterSlotIsNegated(slot)
+    const inner = filterSlotInner(slot)
+    const currentOr = inner && "or" in inner && Array.isArray(inner.or) ? inner.or : [inner].filter(Boolean) as FilterNode[]
+    const nextOr = [...currentOr, defaultFilterChip(meta)]
+    const nextPath: FilterPath = [index, nextOr.length - 1]
+
+    children[index] = negated ? { not: { or: nextOr } } : { or: nextOr }
+
+    const nextTree = { and: children }
+    updateTree(nextTree, nextPath)
     applyTree(nextTree)
   }
 
@@ -199,7 +201,6 @@ export function FilterBar({
             index={index}
             key={index}
             node={node}
-            onAddOr={(targetIndex) => openAddMenu({ kind: "or", index: targetIndex })}
             onEdit={setEditingPath}
             onRemove={removeChip}
             onToggleNegation={toggleNegation}
@@ -208,7 +209,7 @@ export function FilterBar({
         {draftChildren.length > 0 ? null : <span className="text-sm text-gray-400">No filters</span>}
         <button
           className="inline-flex items-center gap-1 rounded border border-dashed border-gray-300 px-2 py-1.5 text-sm text-gray-600 hover:border-gray-400 hover:text-gray-900"
-          onClick={() => openAddMenu({ kind: "and" })}
+          onClick={() => openAddMenu()}
           type="button"
         >
           + Add filter
@@ -251,6 +252,7 @@ export function FilterBar({
             chip={editingChip}
             editorRef={editorRef}
             meta={editingMeta}
+            onAddAlternative={() => addOrAlternative(editingPath!, editingMeta)}
             onChange={(nextChip) => editChip(editingPath!, nextChip)}
           />
         ) : null}
@@ -265,7 +267,6 @@ function FilterNodeChip({
   controls,
   onEdit,
   onRemove,
-  onAddOr,
   onToggleNegation
 }: {
   node: FilterNode
@@ -273,7 +274,6 @@ function FilterNodeChip({
   controls: FilterSchemaField[]
   onEdit: (path: FilterPath) => void
   onRemove: (path: FilterPath) => void
-  onAddOr: (index: number) => void
   onToggleNegation: (index: number) => void
 }) {
   const negated = filterSlotIsNegated(node)
@@ -281,10 +281,9 @@ function FilterNodeChip({
   if (isFilterChip(inner)) {
     return (
       <span className={filterChipClass(negated)}>
-        <button className={filterNotClass(negated)} onClick={() => onToggleNegation(index)} title={negated ? "Remove NOT" : "Wrap in NOT"} type="button">NOT</button>
+        <button aria-label={negated ? "Remove NOT" : "Wrap in NOT"} className={filterNotClass(negated)} onClick={() => onToggleNegation(index)} title={negated ? "Remove NOT" : "Wrap in NOT"} type="button">¬</button>
         <FilterChipButton chip={inner} controls={controls} negated={negated} onClick={() => onEdit([index])} />
         <button aria-label={`Remove ${filterChipLabel(inner, controls)} filter`} className="text-gray-400 hover:text-gray-700" onClick={() => onRemove([index])} type="button">x</button>
-        <button aria-label={`Add OR filter to ${filterChipLabel(inner, controls)}`} className="rounded border border-dashed border-indigo-300 px-1.5 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-50" onClick={() => onAddOr(index)} type="button">+ or</button>
       </span>
     )
   }
@@ -292,7 +291,7 @@ function FilterNodeChip({
   if (inner && "or" in inner && Array.isArray(inner.or)) {
     return (
       <span className={negated ? "inline-flex flex-wrap items-center gap-1 rounded border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-sm" : "inline-flex flex-wrap items-center gap-1 rounded border border-indigo-300 bg-indigo-50 px-1.5 py-0.5 text-sm"}>
-        <button className={filterNotClass(negated)} onClick={() => onToggleNegation(index)} title={negated ? "Remove NOT" : "Wrap in NOT"} type="button">NOT</button>
+        <button aria-label={negated ? "Remove NOT" : "Wrap in NOT"} className={filterNotClass(negated)} onClick={() => onToggleNegation(index)} title={negated ? "Remove NOT" : "Wrap in NOT"} type="button">¬</button>
         <span className={negated ? "text-xs font-semibold text-rose-700" : "text-xs font-semibold text-indigo-700"}>(</span>
         {inner.or.map((child, childIndex) => (
           <span className="inline-flex items-center gap-1" key={childIndex}>
@@ -307,7 +306,6 @@ function FilterNodeChip({
             )}
           </span>
         ))}
-        <button className="rounded border border-dashed border-indigo-400 px-1.5 py-0.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100" onClick={() => onAddOr(index)} type="button">+ or</button>
         <span className={negated ? "text-xs font-semibold text-rose-700" : "text-xs font-semibold text-indigo-700"}>)</span>
       </span>
     )
@@ -321,14 +319,14 @@ function FilterChipButton({ chip, controls, negated = false, onClick }: { chip: 
   const label = `${negated ? "NOT " : ""}${meta?.label || chip.field} ${humanizeOp(chip.op)}${isPredicateOp(chip.op) ? "" : ` ${formatFilterValue(chip, meta)}`}`
   return (
     <button aria-label={label} className="inline-flex items-baseline gap-1 text-left" onClick={onClick} type="button">
-      <span className="font-medium text-gray-700">{negated ? "NOT " : ""}{meta?.label || chip.field}</span>
+      <span className="font-medium text-gray-700">{meta?.label || chip.field}</span>
       <span className="text-xs text-gray-500">{humanizeOp(chip.op)}</span>
       {isPredicateOp(chip.op) ? null : <span className="font-mono text-gray-900">{formatFilterValue(chip, meta)}</span>}
     </button>
   )
 }
 
-function FilterChipEditor({ chip, editorRef, meta, onChange }: { chip: FilterChip; editorRef: RefObject<HTMLDivElement>; meta: FilterSchemaField; onChange: (chip: FilterChip) => void }) {
+function FilterChipEditor({ chip, editorRef, meta, onAddAlternative, onChange }: { chip: FilterChip; editorRef: RefObject<HTMLDivElement>; meta: FilterSchemaField; onAddAlternative: () => void; onChange: (chip: FilterChip) => void }) {
   function updateOp(op: string) {
     onChange({ field: chip.field, op, value: defaultFilterValue(meta, op) })
   }
@@ -345,6 +343,9 @@ function FilterChipEditor({ chip, editorRef, meta, onChange }: { chip: FilterChi
         </label>
         <FilterValueEditor chip={chip} meta={meta} onChange={onChange} />
       </div>
+      <button className="rounded border border-dashed border-indigo-300 px-2 py-1 text-sm font-medium text-indigo-700 hover:bg-indigo-50" onClick={onAddAlternative} type="button">
+        + OR alternative
+      </button>
     </div>
   )
 }
@@ -616,14 +617,14 @@ function humanizeOp(op: string) {
 
 function filterChipClass(negated: boolean) {
   return negated
-    ? "inline-flex flex-wrap items-center gap-1 rounded border border-rose-300 bg-rose-50 px-2 py-1 text-sm"
+    ? "inline-flex flex-wrap items-center gap-1 rounded border border-rose-300 bg-rose-50 px-1.5 py-1 text-sm"
     : "inline-flex flex-wrap items-center gap-1 rounded border border-gray-300 bg-gray-50 px-2 py-1 text-sm"
 }
 
 function filterNotClass(negated: boolean) {
   return negated
-    ? "rounded bg-rose-200 px-1 py-0.5 text-[10px] font-bold text-rose-900"
-    : "rounded border border-gray-300 px-1 py-0.5 text-[10px] font-bold text-gray-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+    ? "inline-flex h-5 w-5 items-center justify-center rounded bg-rose-200 text-sm font-bold leading-none text-rose-900"
+    : "inline-flex h-5 w-5 items-center justify-center rounded border border-gray-300 text-sm font-bold leading-none text-gray-400 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
 }
 
 function clearFiltersLink(path: string, search: string, legacyFilterKeys: string[]) {

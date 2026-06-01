@@ -581,6 +581,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(latestFilterTree).toEqual({ and: [ { field: "state", op: "is", value: "closed" } ] })
     })
+    expect(screen.getByRole("button", { name: "Wrap in NOT" })).toHaveTextContent("¬")
     expect(fetchSpy).toHaveBeenCalledWith(
       expect.stringMatching(/^\/api\/v1\/app\/dashboard\?view=list&q=/),
       expect.objectContaining({
@@ -590,8 +591,7 @@ describe("App", () => {
     )
     expect(await screen.findByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
 
-    fireEvent.click(await screen.findByRole("button", { name: "Add OR filter to State" }))
-    fireEvent.click(screen.getByRole("button", { name: "Kind enum" }))
+    fireEvent.click(await screen.findByRole("button", { name: "+ OR alternative" }))
 
     await waitFor(() => {
       expect(latestFilterTree).toEqual({
@@ -599,7 +599,7 @@ describe("App", () => {
           {
             or: [
               { field: "state", op: "is", value: "closed" },
-              { field: "kind", op: "is", value: "issue" }
+              { field: "state", op: "is", value: "open" }
             ]
           }
         ]
@@ -614,7 +614,7 @@ describe("App", () => {
           {
             or: [
               { field: "state", op: "is", value: "closed" },
-              { field: "kind", op: "is", value: "issue" }
+              { field: "state", op: "is", value: "open" }
             ]
           },
           { field: "has_parent", op: "is_true", value: null }
