@@ -733,11 +733,11 @@ function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
   const applyRemoteElements = useCallback((nextElements: readonly ChatWhiteboardElement[], nextVersion: number) => {
     remoteUpdateInProgressRef.current = true
     const copied = Array.from(nextElements)
+    appliedSignatureRef.current = signatureFor(copied)
     setElements(copied)
     apiRef.current?.updateScene({ elements: asExcalidrawElements(copied) })
     versionRef.current = nextVersion
     setVersion(nextVersion)
-    appliedSignatureRef.current = signatureFor(copied)
     queueMicrotask(() => {
       remoteUpdateInProgressRef.current = false
     })
@@ -827,10 +827,11 @@ function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
     if (remoteUpdateInProgressRef.current) return
 
     const copied = Array.from(nextElements)
-    setElements(copied)
     const signature = signatureFor(copied)
     if (signature === appliedSignatureRef.current) return
 
+    appliedSignatureRef.current = signature
+    setElements(copied)
     pendingElementsRef.current = copied
     clearPendingSave()
     saveTimerRef.current = window.setTimeout(() => {
@@ -849,7 +850,6 @@ function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
           <Excalidraw
             excalidrawAPI={(api) => {
               apiRef.current = api
-              apiRef.current.updateScene({ elements: asExcalidrawElements(elements) })
             }}
             initialData={{ elements: asExcalidrawElements(elements) }}
             onChange={(nextElements) => handleChange(nextElements as readonly ChatWhiteboardElement[])}

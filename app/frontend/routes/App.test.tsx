@@ -9,7 +9,8 @@ const actionCable = vi.hoisted(() => ({
 }))
 
 const excalidrawMock = vi.hoisted(() => ({
-  throwOnRender: false
+  throwOnRender: false,
+  updateScene: vi.fn()
 }))
 
 const html2canvasMock = vi.hoisted(() => vi.fn(async () => ({
@@ -28,13 +29,13 @@ vi.mock("@rails/actioncable", () => ({
 
 vi.mock("@excalidraw/excalidraw", () => ({
   Excalidraw: ({ excalidrawAPI, initialData, onChange }: {
-    excalidrawAPI?: (api: { updateScene: () => void }) => void
+    excalidrawAPI?: (api: { updateScene: typeof excalidrawMock.updateScene }) => void
     initialData?: { elements?: unknown[] }
     onChange?: (elements: unknown[]) => void
   }) => {
     if (excalidrawMock.throwOnRender) throw new Error("Canvas crashed")
 
-    excalidrawAPI?.({ updateScene: () => {} })
+    excalidrawAPI?.({ updateScene: excalidrawMock.updateScene })
 
     return (
       <button
@@ -4132,6 +4133,7 @@ describe("App", () => {
   })
 
   it("saves chat whiteboard changes through the app API", async () => {
+    excalidrawMock.updateScene.mockClear()
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/chats/8/whiteboard" && init?.method === "PATCH") {
@@ -4168,6 +4170,25 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Version 3")).toBeInTheDocument()
+    expect(excalidrawMock.updateScene).toHaveBeenCalledWith({ elements: [{ id: "shape-react", version: 1 }] })
+  })
+
+  it("does not push the initial whiteboard scene back through the imperative API", async () => {
+    excalidrawMock.updateScene.mockClear()
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("button", { name: "Draw on whiteboard" })).toBeInTheDocument()
+    expect(excalidrawMock.updateScene).not.toHaveBeenCalled()
   })
 
   it("keeps the chat visible when the whiteboard render fails", async () => {
