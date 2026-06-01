@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { AdminFiltersLayout } from "../components/AdminFiltersLayout"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import { FilterBar } from "../components/FilterBar"
 import {
@@ -34,18 +35,8 @@ export function AdminUsersIndex() {
       {users.isPending ? <PanelMessage>Loading users...</PanelMessage> : null}
       {users.isError ? <UsersError error={users.error} /> : null}
       {users.isSuccess ? (
-        <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
-          <AdminSmartFolderNav
-            activeSmartFolderId={users.data.active_smart_folder_id}
-            allLabel="All users"
-            allPath={basePath}
-            ariaLabel="Admin user smart folders"
-            folders={users.data.smart_folders}
-            heading="Smart folders"
-            prefix={prefix}
-            subjectType="admin_user"
-          />
-          <div className="min-w-0 space-y-3">
+        <AdminFiltersLayout
+          filterBar={
             <FilterBar
               filter={users.data.filter}
               filterSchema={users.data.controls.filter_schema}
@@ -53,12 +44,25 @@ export function AdminUsersIndex() {
               pathname={location.pathname}
               search={location.search}
             />
-            <section className="rounded border border-gray-200 bg-white">
-              <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">{users.data.count} matching</div>
-              <UsersTable basePath={basePath} users={users.data.users} />
-            </section>
-          </div>
-        </div>
+          }
+          smartFolders={
+            <AdminSmartFolderNav
+              activeSmartFolderId={users.data.active_smart_folder_id}
+              allLabel="All users"
+              allPath={basePath}
+              ariaLabel="Admin user smart folders"
+              folders={users.data.smart_folders}
+              heading="Smart folders"
+              prefix={prefix}
+              subjectType="admin_user"
+            />
+          }
+        >
+          <section className="rounded border border-gray-200 bg-white">
+            <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">{users.data.count} matching</div>
+            <UsersTable basePath={basePath} users={users.data.users} />
+          </section>
+        </AdminFiltersLayout>
       ) : null}
     </main>
   )

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { AdminFiltersLayout } from "../components/AdminFiltersLayout"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import { FilterBar } from "../components/FilterBar"
 import {
@@ -30,18 +31,8 @@ export function AdminProcessesIndex() {
       {processes.isPending ? <PanelMessage>Loading processes...</PanelMessage> : null}
       {processes.isError ? <ProcessError error={processes.error} /> : null}
       {processes.isSuccess ? (
-        <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
-          <AdminSmartFolderNav
-            activeSmartFolderId={processes.data.active_smart_folder_id}
-            allLabel="Active + recent"
-            allPath={basePath}
-            ariaLabel="Admin process smart folders"
-            folders={processes.data.smart_folders}
-            heading="Processes"
-            prefix={prefix}
-            subjectType="spawned_process"
-          />
-          <div className="min-w-0 space-y-3">
+        <AdminFiltersLayout
+          filterBar={
             <FilterBar
               filter={processes.data.filter}
               filterSchema={processes.data.controls.filter_schema}
@@ -49,14 +40,27 @@ export function AdminProcessesIndex() {
               pathname={location.pathname}
               search={location.search}
             />
-            <section className="rounded border border-gray-200 bg-white">
-              <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">
-                {processes.data.running_total} running · {processes.data.processes.length} shown
-              </div>
-              <ProcessesTable basePath={basePath} processes={processes.data.processes} />
-            </section>
-          </div>
-        </div>
+          }
+          smartFolders={
+            <AdminSmartFolderNav
+              activeSmartFolderId={processes.data.active_smart_folder_id}
+              allLabel="Active + recent"
+              allPath={basePath}
+              ariaLabel="Admin process smart folders"
+              folders={processes.data.smart_folders}
+              heading="Processes"
+              prefix={prefix}
+              subjectType="spawned_process"
+            />
+          }
+        >
+          <section className="rounded border border-gray-200 bg-white">
+            <div className="border-b border-gray-200 px-4 py-3 text-sm text-gray-600">
+              {processes.data.running_total} running · {processes.data.processes.length} shown
+            </div>
+            <ProcessesTable basePath={basePath} processes={processes.data.processes} />
+          </section>
+        </AdminFiltersLayout>
       ) : null}
     </main>
   )

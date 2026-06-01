@@ -1302,6 +1302,7 @@ describe("App", () => {
   })
 
   it("renders the admin queue route from the app admin queue API", async () => {
+    const restoreMedia = mockMediaQuery(false)
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -1360,30 +1361,38 @@ describe("App", () => {
       )
     )
 
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/admin/queue/active"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/admin/queue/active"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
 
-    expect(screen.getByRole("main", { name: "Admin queue" })).toBeInTheDocument()
-    expect(await screen.findByText("RunJob")).toBeInTheDocument()
-    expect(screen.getByText("runs")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /Queue is Runs/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
-    expect(screen.getByRole("button", { name: "Job class string" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Runs 1" })).toHaveAttribute("href", "/app-shell/admin/queue/active?smart_folder_id=1")
-    expect(screen.getByRole("link", { name: "All queue" })).toHaveAttribute("href", "/app-shell/admin/queue/active")
-    expect(screen.getByRole("link", { name: "Failed" })).toHaveAttribute("href", "/app-shell/admin/queue/failed")
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/admin/queue/active",
-      expect.objectContaining({
-        credentials: "same-origin",
-        headers: { Accept: "application/json" }
-      })
-    )
+      expect(screen.getByRole("main", { name: "Admin queue" })).toBeInTheDocument()
+      expect(await screen.findByText("RunJob")).toBeInTheDocument()
+      const disclosure = screen.getByText("Folders and filters").closest("details")
+      expect(disclosure).not.toHaveAttribute("open")
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(disclosure).toHaveAttribute("open")
+      expect(screen.getByText("runs")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /Queue is Runs/ })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+      expect(screen.getByRole("button", { name: "Job class string" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Runs 1" })).toHaveAttribute("href", "/app-shell/admin/queue/active?smart_folder_id=1")
+      expect(screen.getByRole("link", { name: "All queue" })).toHaveAttribute("href", "/app-shell/admin/queue/active")
+      expect(screen.getByRole("link", { name: "Failed" })).toHaveAttribute("href", "/app-shell/admin/queue/failed")
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/admin/queue/active",
+        expect.objectContaining({
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
+    } finally {
+      restoreMedia()
+    }
   })
 
   it("renders admin queue workers when SolidQueue reports queue metadata as a string", async () => {
@@ -1480,6 +1489,7 @@ describe("App", () => {
   })
 
   it("renders the admin processes route from the app admin processes API", async () => {
+    const restoreMedia = mockMediaQuery(false)
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -1543,30 +1553,38 @@ describe("App", () => {
       )
     )
 
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/admin/processes?state=running"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/admin/processes?state=running"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
 
-    expect(screen.getByRole("main", { name: "Admin processes" })).toBeInTheDocument()
-    expect(await screen.findByText("claude --print")).toBeInTheDocument()
-    expect(screen.getByText("worker-a")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /State is Running/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
-    expect(screen.getByRole("button", { name: "Hostname enum" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Running 1" })).toHaveAttribute("href", "/app-shell/admin/processes?smart_folder_id=3")
-    expect(screen.getByRole("link", { name: "Detail" })).toHaveAttribute("href", "/app-shell/admin/processes/8")
-    expect(screen.getByRole("button", { name: "Kill" })).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/admin/processes?state=running",
-      expect.objectContaining({
-        credentials: "same-origin",
-        headers: { Accept: "application/json" }
-      })
-    )
+      expect(screen.getByRole("main", { name: "Admin processes" })).toBeInTheDocument()
+      expect(await screen.findByText("claude --print")).toBeInTheDocument()
+      const disclosure = screen.getByText("Folders and filters").closest("details")
+      expect(disclosure).not.toHaveAttribute("open")
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(disclosure).toHaveAttribute("open")
+      expect(screen.getByText("worker-a")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /State is Running/ })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+      expect(screen.getByRole("button", { name: "Hostname enum" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Running 1" })).toHaveAttribute("href", "/app-shell/admin/processes?smart_folder_id=3")
+      expect(screen.getByRole("link", { name: "Detail" })).toHaveAttribute("href", "/app-shell/admin/processes/8")
+      expect(screen.getByRole("button", { name: "Kill" })).toBeInTheDocument()
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/admin/processes?state=running",
+        expect.objectContaining({
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
+    } finally {
+      restoreMedia()
+    }
   })
 
   it("renders the admin process detail route with React transcript links", async () => {
@@ -1622,6 +1640,7 @@ describe("App", () => {
   })
 
   it("renders the admin users route from the app admin users API", async () => {
+    const restoreMedia = mockMediaQuery(false)
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -1704,30 +1723,38 @@ describe("App", () => {
       )
     )
 
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/admin/users?gh_rate=low"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/admin/users?gh_rate=low"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
 
-    expect(screen.getByRole("main", { name: "Admin users" })).toBeInTheDocument()
-    expect(await screen.findByText("Operator")).toBeInTheDocument()
-    expect(screen.getByText("operator@example.com")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /GH rate is Low/ })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
-    expect(screen.getByRole("button", { name: "Email string" })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Operator" })).toHaveAttribute("href", "/app-shell/admin/users/5")
-    expect(screen.getByRole("link", { name: "Rate limit low 1" })).toHaveAttribute("href", "/app-shell/admin/users?smart_folder_id=5")
-    expect(screen.getByText("More")).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/admin/users?gh_rate=low",
-      expect.objectContaining({
-        credentials: "same-origin",
-        headers: { Accept: "application/json" }
-      })
-    )
+      expect(screen.getByRole("main", { name: "Admin users" })).toBeInTheDocument()
+      expect(await screen.findByText("Operator")).toBeInTheDocument()
+      const disclosure = screen.getByText("Folders and filters").closest("details")
+      expect(disclosure).not.toHaveAttribute("open")
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(disclosure).toHaveAttribute("open")
+      expect(screen.getByText("operator@example.com")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /GH rate is Low/ })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+      expect(screen.getByRole("button", { name: "Email string" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Operator" })).toHaveAttribute("href", "/app-shell/admin/users/5")
+      expect(screen.getByRole("link", { name: "Rate limit low 1" })).toHaveAttribute("href", "/app-shell/admin/users?smart_folder_id=5")
+      expect(screen.getByText("More")).toBeInTheDocument()
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/admin/users?gh_rate=low",
+        expect.objectContaining({
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
+    } finally {
+      restoreMedia()
+    }
   })
 
   it("renders the admin transcript route from the app admin transcript API", async () => {

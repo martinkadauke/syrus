@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { AdminFiltersLayout } from "../components/AdminFiltersLayout"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import { FilterBar } from "../components/FilterBar"
 import {
@@ -115,36 +116,26 @@ function QueueContent({ basePath, pathname, payload, prefix, search, tab }: { ba
     />
   ) : null
 
-  if (smartFolders.length === 0) {
-    return (
-      <div className="space-y-3">
-        {filterBar}
-        <section className="rounded border border-gray-200 bg-white">
-          <QueueTabPanel tab={tab} payload={payload} />
-        </section>
-      </div>
-    )
-  }
-
   return (
-    <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)]">
-      <AdminSmartFolderNav
-        activeSmartFolderId={"active_smart_folder_id" in payload ? payload.active_smart_folder_id : null}
-        allLabel="All queue"
-        allPath={`${basePath}/${tab}`}
-        ariaLabel="Admin queue smart folders"
-        folders={smartFolders}
-        heading="Queues"
-        prefix={prefix}
-        subjectType="admin_queue"
-      />
-      <div className="min-w-0 space-y-3">
-        {filterBar}
-        <section className="rounded border border-gray-200 bg-white">
-          <QueueTabPanel tab={tab} payload={payload} />
-        </section>
-      </div>
-    </div>
+    <AdminFiltersLayout
+      filterBar={filterBar}
+      smartFolders={smartFolders.length > 0 ? (
+        <AdminSmartFolderNav
+          activeSmartFolderId={"active_smart_folder_id" in payload ? payload.active_smart_folder_id : null}
+          allLabel="All queue"
+          allPath={`${basePath}/${tab}`}
+          ariaLabel="Admin queue smart folders"
+          folders={smartFolders}
+          heading="Queues"
+          prefix={prefix}
+          subjectType="admin_queue"
+        />
+      ) : null}
+    >
+      <section className="rounded border border-gray-200 bg-white">
+        <QueueTabPanel tab={tab} payload={payload} />
+      </section>
+    </AdminFiltersLayout>
   )
 }
 
