@@ -857,10 +857,10 @@ describe("App", () => {
 
       const row = await screen.findByRole("article", { name: "Repair aqueduct" })
       expect(within(row).getByLabelText("Select Repair aqueduct")).toBeInTheDocument()
+      expect(within(row).getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
       expect(within(row).getByText("implemented")).toBeInTheDocument()
       expect(within(row).getByText("$0.12")).toBeInTheDocument()
       expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
-      expect(within(row).getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
       expect(within(row).getByText("#12")).toBeInTheDocument()
       expect(within(row).getByText("→ PR #34")).toBeInTheDocument()
       expect(within(row).getByText("Not approved")).toBeInTheDocument()
@@ -909,13 +909,14 @@ describe("App", () => {
         </QueryClientProvider>
       )
 
-      const row = await screen.findByRole("article", { name: "EPIC-7 Raise the forum" })
+      const row = await screen.findByRole("link", { name: "EPIC-7 Raise the forum" })
+      expect(row).toHaveAttribute("href", "/app-shell/epics/7")
       expect(within(row).getByText("ready")).toBeInTheDocument()
       expect(within(row).getByText("EPIC-7")).toBeInTheDocument()
       expect(within(row).getByText("Raise the forum")).toBeInTheDocument()
       expect(within(row).getByText(/chip-bar filter framework/)).toBeInTheDocument()
       expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
-      expect(within(row).getByRole("link", { name: "View" })).toHaveAttribute("href", "/app-shell/epics/7")
+      expect(within(row).queryByText("View")).not.toBeInTheDocument()
       expect(screen.queryByRole("table")).not.toBeInTheDocument()
     } finally {
       restoreMedia()
@@ -956,16 +957,17 @@ describe("App", () => {
         </QueryClientProvider>
       )
 
-      const row = await screen.findByRole("article", { name: "Workflow #9 Repair aqueduct" })
+      const row = await screen.findByRole("link", { name: "Workflow #9 Repair aqueduct" })
+      expect(row).toHaveAttribute("href", "/app-shell/jobs/42")
       expect(within(row).getByText("running")).toBeInTheDocument()
       expect(within(row).getByText("Workflow #9")).toBeInTheDocument()
-      expect(within(row).getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
+      expect(within(row).getByText("Repair aqueduct")).toBeInTheDocument()
       expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
       expect(within(row).getByText("manual")).toBeInTheDocument()
       expect(within(row).getByText("codex")).toBeInTheDocument()
       expect(within(row).getByText(/Started/)).toBeInTheDocument()
       expect(within(row).getByText(/Finished/)).toBeInTheDocument()
-      expect(within(row).getByRole("link", { name: "View" })).toHaveAttribute("href", "/app-shell/jobs/42")
+      expect(within(row).queryByText("View")).not.toBeInTheDocument()
       expect(screen.queryByRole("table")).not.toBeInTheDocument()
     } finally {
       restoreMedia()

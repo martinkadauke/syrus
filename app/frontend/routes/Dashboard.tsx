@@ -813,14 +813,14 @@ function MobileJobRow({ job, selected, onToggleOne, prefix }: { job: DashboardJo
   return (
     <article aria-label={job.title} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3">
       <input aria-label={`Select ${job.title}`} checked={selected} className="mt-1" onChange={() => onToggleOne(job.id)} type="checkbox" />
-      <div className="min-w-0">
+      <Link aria-label={job.title} className="min-w-0 rounded-sm text-gray-700 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(job.paths.job_path, prefix)}>
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <StatePill state={job.summary_state} />
           <span className="text-xs font-medium text-gray-500">{formatCurrency(job.total_cost_usd, 2)}</span>
           <span className="font-mono text-xs text-gray-500">{job.repository.slug}</span>
         </div>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <Link className="text-sm font-semibold leading-snug text-blue-600 hover:underline" to={withRoutePrefix(job.paths.job_path, prefix)}>{job.title}</Link>
+          <span className="text-sm font-semibold leading-snug text-blue-600 underline">{job.title}</span>
           {job.kind !== "issue" ? <span className="text-xs text-gray-500">{humanizeOption(job.kind)}</span> : null}
         </div>
         <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-gray-500">
@@ -835,7 +835,7 @@ function MobileJobRow({ job, selected, onToggleOne, prefix }: { job: DashboardJo
             {job.tags.map((tag) => <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-500" key={tag.id}>{tag.name}</span>)}
           </div>
         ) : null}
-      </div>
+      </Link>
     </article>
   )
 }
@@ -901,7 +901,7 @@ function MobileEpicsList({ items, prefix }: { items: DashboardEpicItem[]; prefix
 
 function MobileEpicRow({ epic, prefix }: { epic: DashboardEpicItem; prefix: string }) {
   return (
-    <article aria-label={`${epic.display_number} ${epic.title}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 px-4 py-3">
+    <Link aria-label={`${epic.display_number} ${epic.title}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(epic.paths.epic_path, prefix)}>
       <div className="pt-1">
         <StatePill state={epic.state} />
       </div>
@@ -913,8 +913,7 @@ function MobileEpicRow({ epic, prefix }: { epic: DashboardEpicItem; prefix: stri
         {compactText(epic.description) ? <p className="mt-1 line-clamp-2 text-sm leading-snug text-gray-500">{compactText(epic.description)}</p> : null}
         <div className="mt-1 font-mono text-xs text-gray-500">{epic.repository.slug}</div>
       </div>
-      <Link className="self-center text-sm font-medium text-blue-600 underline hover:text-blue-500" to={withRoutePrefix(epic.paths.epic_path, prefix)}>View</Link>
-    </article>
+    </Link>
   )
 }
 
@@ -974,14 +973,14 @@ function MobileWorkflowRow({ workflow, prefix }: { prefix: string; workflow: Das
   const finishedAt = workflow.finished_at || workflow.cleaned_up_at
 
   return (
-    <article aria-label={`Workflow #${workflow.id} ${workflow.job.title}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 px-4 py-3">
+    <Link aria-label={`Workflow #${workflow.id} ${workflow.job.title}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(workflow.job.path, prefix)}>
       <div className="pt-1">
         <StatePill state={workflow.state} />
       </div>
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="font-mono text-xs font-semibold uppercase tracking-wide text-gray-500">Workflow #{workflow.id}</span>
-          <Link className="text-sm font-semibold leading-snug text-blue-600 hover:underline" to={withRoutePrefix(workflow.job.path, prefix)}>{workflow.job.title}</Link>
+          <span className="text-sm font-semibold leading-snug text-blue-600 underline">{workflow.job.title}</span>
         </div>
         <div className="mt-1 font-mono text-xs text-gray-500">{workflow.job.repository.slug}</div>
         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
@@ -991,8 +990,7 @@ function MobileWorkflowRow({ workflow, prefix }: { prefix: string; workflow: Das
           {finishedAt ? <span>Finished {formatDate(finishedAt)}</span> : null}
         </div>
       </div>
-      <Link className="self-center text-sm font-medium text-blue-600 underline hover:text-blue-500" to={withRoutePrefix(workflow.job.path, prefix)}>View</Link>
-    </article>
+    </Link>
   )
 }
 
