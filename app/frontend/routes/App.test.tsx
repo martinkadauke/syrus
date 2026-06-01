@@ -125,10 +125,17 @@ describe("App", () => {
     )
 
     expect(screen.getByRole("main", { name: "Syrus SPA" })).toBeInTheDocument()
-    expect(await screen.findByRole("link", { name: "operator@example.com" })).toHaveAttribute("href", "/app-shell/settings")
+    const accountNav = await screen.findByRole("navigation", { name: "Account" })
+    expect(within(accountNav).getByRole("link", { name: "admin" })).toHaveAttribute("href", "/app-shell/admin")
+    expect(within(accountNav).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/app-shell/settings")
+    expect(within(accountNav).getByRole("button", { name: "operator@example.com" })).toHaveAttribute("aria-expanded", "false")
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument()
+    fireEvent.click(within(accountNav).getByRole("button", { name: "operator@example.com" }))
+    expect(within(accountNav).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app-shell/settings")
+    expect(within(accountNav).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
+    expect(within(accountNav).getByRole("button", { name: "Sign out" })).toBeInTheDocument()
     expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
-    expect(within(screen.getByRole("navigation", { name: "Account" })).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/bootstrap",
       expect.objectContaining({
@@ -272,10 +279,16 @@ describe("App", () => {
       expect(within(primaryNav).queryByRole("link", { name: "Jobs" })).toBeNull()
       expect(within(primaryNav).queryByRole("link", { name: "Chat" })).toBeNull()
       expect(within(primaryNav).queryByRole("link", { name: "Admin" })).toBeNull()
-      expect(within(accountNav).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
-      expect(within(accountNav).getByRole("link", { name: "Admin" })).toHaveClass("rounded")
-      expect(within(accountNav).getByRole("link", { name: "operator@example.com" })).toHaveAttribute("href", "/app-shell/settings")
+      expect(within(accountNav).getByRole("link", { name: "admin" })).toHaveAttribute("href", "/app-shell/admin")
+      expect(within(accountNav).getByRole("link", { name: "admin" })).toHaveClass("rounded")
+      expect(within(accountNav).getByRole("link", { name: "Account settings" })).toHaveAttribute("href", "/app-shell/settings")
+      expect(within(accountNav).getByRole("button", { name: "operator@example.com" })).toHaveAttribute("aria-expanded", "false")
       expect(within(accountNav).queryByRole("link", { name: "Settings" })).toBeNull()
+      expect(within(accountNav).queryByRole("button", { name: "Sign out" })).toBeNull()
+      fireEvent.click(within(accountNav).getByRole("button", { name: "operator@example.com" }))
+      expect(within(accountNav).getByRole("link", { name: "Settings" })).toHaveAttribute("href", "/app-shell/settings")
+      expect(within(accountNav).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
+      expect(within(accountNav).getByRole("button", { name: "Sign out" })).toBeInTheDocument()
       expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
       expect(fetchSpy).not.toHaveBeenCalled()
     } finally {
@@ -2410,7 +2423,7 @@ describe("App", () => {
       )
 
       const primaryNav = await screen.findByRole("navigation", { name: "Primary" })
-      expect(within(primaryNav).getByRole("link", { name: "Repos" })).toHaveClass("bg-blue-50", "text-blue-700")
+      expect(within(primaryNav).getByRole("link", { name: "Repos" })).toHaveClass("sm:bg-blue-50", "text-blue-700")
       expect(within(primaryNav).getByRole("link", { name: "Schedules" })).not.toHaveClass("bg-blue-50")
       expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toHaveClass("max-w-[96rem]")
       const scheduledTabs = await screen.findByRole("navigation", { name: "Repository tabs" })

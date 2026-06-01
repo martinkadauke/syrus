@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Link, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { BugReportButton } from "../components/BugReportButton"
@@ -141,28 +141,20 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-[96rem] flex-wrap items-center justify-between gap-3 px-6 py-3">
+        <div className="mx-auto flex max-w-[96rem] items-center justify-between gap-3 px-6 py-3">
           <div className="flex min-w-0 items-center gap-5">
             <Link className="text-lg font-semibold text-gray-900" to={defaultChatPath}>Syrus</Link>
-            <nav aria-label="Primary" className="flex flex-wrap gap-1 text-sm">
+            <nav aria-label="Primary" className="flex flex-nowrap gap-1 text-sm">
               {navItems.map((item) => (
                 <Link className={`${item.desktopOnly ? "hidden sm:inline-flex" : ""} ${navLinkClass(item.active)}`} key={item.label} to={item.to}>{item.label}</Link>
               ))}
             </nav>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2 text-xs text-gray-500">
+          <div className="flex shrink-0 items-center justify-end gap-2 text-xs text-gray-500">
             {user ? (
               <>
-                <nav aria-label="Account" className="flex items-center gap-2">
-                  {user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>Admin</Link> : null}
-                  <Link className="max-w-[14rem] truncate text-gray-600 hover:text-gray-900" to={`${prefix}/settings`}>{user.email_address}</Link>
-                </nav>
+                <AccountNavigation csrfToken={data?.csrf_token} prefix={prefix} user={user} />
                 {app ? <span className="hidden font-mono sm:inline">{app.revision}</span> : null}
-                <form action="/session" method="post">
-                  {data?.csrf_token ? <input name="authenticity_token" type="hidden" value={data.csrf_token} /> : null}
-                  <input name="_method" type="hidden" value="delete" />
-                  <button className="rounded border border-gray-200 bg-white px-2.5 py-1 text-gray-600 hover:border-gray-300 hover:text-gray-900" type="submit">Sign out</button>
-                </form>
               </>
             ) : null}
           </div>
@@ -174,6 +166,82 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
       {children}
       {user ? <BugReportButton context={bugReportContext(location.pathname)} /> : null}
     </div>
+  )
+}
+
+function AccountNavigation({ csrfToken, prefix, user }: { csrfToken?: string; prefix: string; user: NonNullable<BootstrapPayload["current_user"]> }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false)
+    }
+
+    function closeOnOutsidePointer(event: PointerEvent) {
+      const target = event.target
+      if (target instanceof Node && menuRef.current?.contains(target)) return
+
+      setOpen(false)
+    }
+
+    window.addEventListener("keydown", closeOnEscape)
+    window.addEventListener("pointerdown", closeOnOutsidePointer)
+    return () => {
+      window.removeEventListener("keydown", closeOnEscape)
+      window.removeEventListener("pointerdown", closeOnOutsidePointer)
+    }
+  }, [open])
+
+  return (
+    <nav aria-label="Account" className="flex items-center gap-2">
+      {user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>admin</Link> : null}
+      <Link aria-label="Account settings" className="inline-flex h-8 w-8 items-center justify-center text-gray-700 hover:text-blue-600 sm:hidden" to={`${prefix}/settings`}>
+        <UserIcon />
+      </Link>
+      <div className="relative hidden sm:block" ref={menuRef}>
+        <button
+          aria-expanded={open}
+          aria-haspopup="menu"
+          className="flex max-w-[18rem] items-center gap-2 truncate text-gray-700 hover:text-blue-600"
+          onClick={() => setOpen((current) => !current)}
+          type="button"
+        >
+          <span className="truncate">{user.email_address}</span>
+          <ChevronDownIcon />
+        </button>
+        {open ? (
+          <div className="absolute right-0 z-30 mt-2 w-56 rounded border border-gray-200 bg-white py-1 text-sm shadow-lg">
+            <Link className="block px-4 py-2 text-gray-700 hover:bg-gray-50" to={`${prefix}/settings`}>Settings</Link>
+            {user.admin ? <Link className="block px-4 py-2 font-medium text-blue-600 hover:bg-gray-50" to={`${prefix}/admin`}>Admin</Link> : null}
+            <div className="my-1 border-t border-gray-100" />
+            <form action="/session" method="post">
+              {csrfToken ? <input name="authenticity_token" type="hidden" value={csrfToken} /> : null}
+              <input name="_method" type="hidden" value="delete" />
+              <button className="block w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50" type="submit">Sign out</button>
+            </form>
+          </div>
+        ) : null}
+      </div>
+    </nav>
+  )
+}
+
+function UserIcon() {
+  return (
+    <svg aria-hidden="true" className="h-7 w-7" fill="none" viewBox="0 0 24 24">
+      <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4.75 20.25a7.25 7.25 0 0 1 14.5 0" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+    </svg>
+  )
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg aria-hidden="true" className="h-3 w-3 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+      <path clipRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.17l3.71-3.94a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" fillRule="evenodd" />
+    </svg>
   )
 }
 
@@ -331,11 +399,11 @@ function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPaylo
 }
 
 function navLinkClass(active: boolean) {
-  return `rounded px-2.5 py-1.5 font-medium ${active ? "bg-blue-50 text-blue-700" : "text-gray-700 hover:bg-gray-100"}`
+  return `rounded px-1 py-1.5 font-medium sm:px-2.5 ${active ? "text-blue-700 sm:bg-blue-50" : "text-gray-700 hover:bg-gray-100"}`
 }
 
 function accountLinkClass() {
-  return "rounded border border-gray-200 bg-white px-2.5 py-1 font-medium text-gray-700 hover:border-gray-300 hover:text-gray-900"
+  return "rounded bg-blue-100 px-2.5 py-1 font-medium text-blue-700 hover:bg-blue-200"
 }
 
 function adminNavLinkClass(active: boolean) {
