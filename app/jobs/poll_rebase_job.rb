@@ -74,9 +74,8 @@ class PollRebaseJob < ApplicationJob
   end
 
   def persist_mergeable(value)
-    # update! (not update_columns) so the after_update_commit
-    # broadcasts_refreshes hook fires and morphs the Job show page if
-    # the operator is watching it.
+    # update! (not update_columns) so callbacks observing mergeability
+    # changes still fire.
     @job.update!(
       pr_mergeable: value,
       pr_mergeable_checked_at: Time.current

@@ -443,7 +443,7 @@ module Api
             }
           end
 
-          install_url = AppSetting.github_app_registered? ? helpers.github_app_install_url_for(repository) : nil
+          install_url = AppSetting.github_app_registered? ? ::App::Presentation.github_app_install_url_for(repository) : nil
           {
             mode: "pat",
             label: "PAT fallback",
@@ -480,17 +480,17 @@ module Api
         def job_json(job)
           {
             id: job.id,
-            state: helpers.job_summary_state(job),
+            state: ::App::Presentation.job_summary_state(job),
             priority: job.priority,
             issue_number: job.issue_number,
             issue_title: job.issue_title.to_s,
             job_path: job_path(job),
             source: job_source_json(job),
             pr_number: job.pr_number,
-            pr_url: helpers.job_pr_url(job),
+            pr_url: ::App::Presentation.job_pr_url(job),
             external_pr_number: job.external_pr_number,
-            external_pr_url: helpers.external_pr_url(job),
-            current_step_caption: helpers.current_step_caption(job),
+            external_pr_url: ::App::Presentation.external_pr_url(job),
+            current_step_caption: ::App::Presentation.current_step_caption(job),
             runs_count: job.runs.size,
             updated_at: job.updated_at.iso8601
           }
@@ -512,7 +512,7 @@ module Api
 
           {
             label: "##{job.issue_number}",
-            path: helpers.job_issue_url(job),
+            path: ::App::Presentation.job_issue_url(job),
             external: true
           }
         end
@@ -640,7 +640,7 @@ module Api
         end
 
         def agent_provider_label(provider)
-          JobsHelper::AGENT_PROVIDER_LABELS[provider] || provider.to_s.titleize
+          ::App::Presentation.agent_provider_label(provider)
         end
       end
     end

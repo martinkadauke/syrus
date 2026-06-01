@@ -1,8 +1,8 @@
 # Async would be cheaper but it's single-process: bin/dev runs the
-# web server and bin/jobs as separate processes, so the worker's
-# Turbo Streams broadcasts (e.g. JobLog#broadcasts_to) never reach
-# the browser's WebSocket subscriber. Solid Cable goes through the
-# cable DB, which both processes share — same posture as production.
+# web server and bin/jobs as separate processes, so worker-side app
+# events never reach the browser's WebSocket subscriber. Solid Cable
+# goes through the cable DB, which both processes share — same posture
+# as production.
 development:
   adapter: solid_cable
   connects_to:

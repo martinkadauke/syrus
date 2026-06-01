@@ -35,10 +35,6 @@ class Epic < ApplicationRecord
   after_create :seed_parsed_epic_dependencies
   after_create :resolve_pending_epic_dependencies_targeting_self
 
-  broadcasts_refreshes_to ->(epic) { [ epic.user, "jobs" ] }
-  broadcasts_refreshes_to ->(epic) { [ epic.repository, "jobs" ] }
-  broadcasts_refreshes
-
   aasm column: :state, whiny_transitions: false do
     state :backlog, initial: true
     state :ready, :in_progress, :done, :archived

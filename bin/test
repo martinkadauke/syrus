@@ -1,30 +1,26 @@
 #!/usr/bin/env bash
 # Runs all test suites and exits non-zero if any failed. The
 # explicit `set +e` + accumulate-exit pattern (not `&&`) means a
-# failure in the Ruby suite doesn't hide a separate failure in JS
-# or React, and vice versa — every suite runs, the operator sees all
+# failure in the Ruby suite doesn't hide a separate failure in React,
+# and vice versa — every suite runs, the operator sees all
 # results, exit code reflects the OR of the suite exit codes.
 #
-# CI should run bin/rspec, bin/test-js, and bin/test-react as
-# separate stages so each suite's failures are reported distinctly;
-# this is the local-dev one-command convenience.
+# CI should run bin/rspec and bin/test-react as separate stages so
+# each suite's failures are reported distinctly; this is the local-dev
+# one-command convenience.
 
 set +e
 
 bin/rspec
 rspec_exit=$?
 
-bin/test-js
-js_exit=$?
-
 bin/test-react
 react_exit=$?
 
-if [ "$rspec_exit" -ne 0 ] || [ "$js_exit" -ne 0 ] || [ "$react_exit" -ne 0 ]; then
+if [ "$rspec_exit" -ne 0 ] || [ "$react_exit" -ne 0 ]; then
   echo
   echo "—— summary ——"
   echo "  rspec: exit $rspec_exit"
-  echo "  test-js: exit $js_exit"
   echo "  test-react: exit $react_exit"
   exit 1
 fi

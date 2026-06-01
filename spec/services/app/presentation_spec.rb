@@ -1,0 +1,84 @@
+require "rails_helper"
+
+RSpec.describe App::Presentation do
+  describe ".agent_provider_label" do
+    it "uses product labels for known providers" do
+      expect(described_class.agent_provider_label("claude")).to eq("Claude Code")
+      expect(described_class.agent_provider_label("codex")).to eq("Codex")
+    end
+
+    it "humanizes unknown providers" do
+      expect(described_class.agent_provider_label("local_dev")).to eq("Local Dev")
+    end
+  end
+
+  describe ".github_app_install_url_for" do
+    it "builds a GitHub App install URL for repositories under one owner" do
+      AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
+      repository = Factories.repository(github_owner_id: 987, github_repository_id: 654)
+
+      expect(described_class.github_app_install_url_for(repository)).to eq(
+        "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=987&repository_ids[]=654"
+      )
+    end
+
+    it "returns nil when the GitHub App is not registered" do
+      repository = Factories.repository(github_owner_id: 987, github_repository_id: 654)
+
+      expect(described_class.github_app_install_url_for(repository)).to be_nil
+    end
+  end
+
+  describe ".job_summary_state" do
+    it "keeps external takeover closures in the preempted bucket" do
+      job = Factories.job_record(state: "closed", closure_reason: "external_pr_merged")
+
+      expect(described_class.job_summary_state(job)).to eq("preempted")
+    end
+
+    it "returns the job state otherwise" do
+      job = Factories.job_record(state: "implemented")
+
+      expect(described_class.job_summary_state(job)).to eq("implemented")
+    end
+  end
+
+  describe ".current_step_caption" do
+    it "returns nil without a running workflow" do
+      job = Factories.job_record
+
+      expect(described_class.current_step_caption(job)).to be_nil
+    end
+
+    it "describes the running workflow step" do
+      job = Factories.job_record
+      workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "running")
+      Step.create!(workflow: workflow, kind: "implement", position: 0, state: "running")
+
+      expect(described_class.current_step_caption(job)).to eq("currently: Implement (workflow: initial)")
+    end
+  end
+
+  describe "job URLs" do
+    it "builds GitHub issue and PR URLs from the repository slug" do
+      repository = Factories.repository(owner: "acme", name: "widgets")
+      job = Factories.job_record(repository: repository, issue_number: 17, pr_number: 4, external_pr_number: 5)
+
+      expect(described_class.job_issue_url(job)).to eq("https://github.com/acme/widgets/issues/17")
+      expect(described_class.job_pr_url(job)).to eq("https://github.com/acme/widgets/pull/4")
+      expect(described_class.external_pr_url(job)).to eq("https://github.com/acme/widgets/pull/5")
+    end
+  end
+
+  describe ".epic_state_transition_options" do
+    it "lists operator transitions for ready epics" do
+      epic = Factories.epic(state: "ready")
+
+      expect(described_class.epic_state_transition_options(epic)).to include(
+        [ "Move to backlog", "backlog" ],
+        [ "Start", "in_progress" ],
+        [ "Archive", "archived" ]
+      )
+    end
+  end
+end

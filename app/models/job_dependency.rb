@@ -13,7 +13,6 @@ class JobDependency < ApplicationRecord
   validate :pending_fields_consistent
 
   after_save_commit :materialize_derived_epic_dependency, if: :resolved?
-  after_commit :broadcast_epic_graph_refreshes
 
   scope :resolved, -> { where.not(depends_on_job_id: nil) }
   scope :pending, -> { where(depends_on_job_id: nil) }
@@ -120,9 +119,4 @@ class JobDependency < ApplicationRecord
     )
   end
 
-  def broadcast_epic_graph_refreshes
-    [ job&.epic, depends_on_job&.epic ].compact.uniq.each do |epic|
-      broadcast_refresh_later_to(epic)
-    end
-  end
 end

@@ -2,7 +2,7 @@ require "open3"
 
 # Captures a point-in-time health snapshot of an active Run and persists
 # it as a RunHealthSnapshot. Triggered by the operator's "Diagnose" button;
-# enqueued immediately and returns — Turbo Stream refresh shows the result.
+# enqueued immediately and returns; React fetches the result through the app API.
 #
 # All signal capture is best-effort: if a subsystem is unreachable (SQ
 # tables absent in test, /proc not on this OS, worktree already cleaned up),

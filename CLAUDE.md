@@ -170,14 +170,8 @@ controllers. React uses TanStack Query for server state and
 `AppUserChannel` app events for live invalidation or compact payload
 updates, notably chat message tails and whiteboard changes.
 
-The legacy `application` layout still exists for auth/bootstrap,
-password reset, GitHub App registration, downloads, and static/PWA
-surfaces. Its Stimulus controllers are legacy-layout support only; do
-not add new operator UI there. See `docs/turbo-audit.md` for the
-remaining Turbo footprint.
-
-Dev and prod use `solid_cable` (NOT `async`) so browser app events and
-any remaining legacy broadcasts work across web/worker processes.
+Dev and prod use `solid_cable` (NOT `async`) so browser app events work
+across web/worker processes.
 
 ## Conventions
 
@@ -212,8 +206,7 @@ any remaining legacy broadcasts work across web/worker processes.
   so the collision risk is within a Job, not across repos.)
 - **Three SolidQueue queues** — `runs` (dedicated worker) for long agent
   invocations; `chat` (dedicated low-concurrency worker) for ChatTurnJob and
-  ChatWorkspaceJob; `default` for pollers, app-event broadcasts, legacy Turbo
-  broadcasts, and reaper jobs.
+  ChatWorkspaceJob; `default` for pollers, app-event broadcasts, and reaper jobs.
   Splitting prevents long RunJobs from starving chat, the reaper, and UI
   broadcasts.
 - **Per-user max-turns** — `User#agent_max_turns` (default 200, range
@@ -234,9 +227,7 @@ any remaining legacy broadcasts work across web/worker processes.
   comment, close, delegate (add the trigger label), or bulk delegate/close
   them through `GithubClient`. Keep single and bulk paths in sync.
 - **Form validation UI** — React forms should use native validity
-  attributes plus route-local error rendering. The legacy
-  `form-validation` Stimulus controller is mounted only by the HTML
-  application layout for auth/external pages.
+  attributes plus route-local error rendering.
 - **Per-user scheduling pause** — `User#scheduling_paused` (boolean).
   `PollScheduledTasksJob` skips paused users entirely. Operator can toggle
   via admin UI; user can toggle in `/credentials/edit`.
@@ -527,20 +518,12 @@ bin/setup          # initial install + DB
 bin/dev            # foreman: web + worker + tailwind:watch
 bin/rspec          # Ruby suite (~2500 examples)
 bin/rspec spec/jobs/run_job_spec.rb   # one file
-bin/test-js        # JS controller specs via `node --test` (no Rails, no npm install)
 bin/test-react     # React/Vitest suite + TypeScript typecheck
-bin/test           # Ruby, legacy JS, and React suites; reports separately
+bin/test           # Ruby and React suites; reports separately
 ```
 
-JS controller specs live as plain `node --test` files under
-`spec/javascript/*.test.mjs`. There is no RSpec wrapper anymore —
-running them under RSpec was theatrical (Open3 → node → faking
-per-file granularity). `node --test` is the actual driver; the
-`.test.mjs` files load each controller via a regex-replaced
-data: URL import so no bundler / `npm install` is required.
-`bin/rspec` ignores `spec/javascript/`; use `bin/test-js` to run
-legacy JS, `bin/test-react` to run the React suite, or `bin/test` to
-chain all three.
+React tests run through Vitest and TypeScript. Use `bin/test-react` for
+frontend-only changes, or `bin/test` to chain Ruby and React.
 
 Docker (production image):
 
@@ -591,9 +574,9 @@ Required runtime env:
 - **`claude --mcp-config` is variadic.** It consumes positional args
   until the next flag, so it MUST be slotted between two flags — never
   immediately before the prompt. (Commit `d9d094e`.)
-- **`broadcasts_refreshes_to ->(run) { run.job }`** breaks under
-  Action Cable's `async` adapter in dev (single-process). Use
-  `solid_cable` in dev (`config/cable.yml`).
+- **Action Cable's `async` adapter is process-local.** Use `solid_cable`
+  in dev (`config/cable.yml`) so app events emitted by `bin/jobs` reach
+  browser subscribers connected to the Rails server.
 - **`db:prepare` errors loudly** when only the primary DB is reachable
   — it tries cache/queue/cable too. The primary still migrates fine.
   Inside containers without all four MySQLs, `|| true` past the error.

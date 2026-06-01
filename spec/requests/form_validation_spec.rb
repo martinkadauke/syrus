@@ -6,6 +6,6 @@ RSpec.describe "Form validation feedback", type: :request do
 
     expect(response).to be_successful
     expect(response.body).to include('id="syrus-spa-root"')
-    expect(response.body).not_to include('data-controller="form-validation checkbox-persistence details-persistence"')
+    expect(response.body).to include('type="module"')
   end
 end

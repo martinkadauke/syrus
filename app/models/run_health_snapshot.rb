@@ -10,10 +10,4 @@ class RunHealthSnapshot < ApplicationRecord
   scope :ordered, -> { order(:created_at) }
   scope :prunable, -> { where("created_at < ?", RETAIN_AFTER.ago) }
 
-  # Turbo Stream: when a snapshot is created, morph the watching job page
-  # so the operator sees the result without refreshing.
-  broadcasts_refreshes_to ->(snapshot) {
-    run = snapshot.run
-    run&.job || [ "dead_snapshot", snapshot.id ]
-  }
 end

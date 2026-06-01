@@ -82,7 +82,7 @@ module Api
               dependency_edge_count: epic.dependencies.size + epic.dependent_links.size,
               blocked: epic.dependencies.any? { |dependency| !dependency.depends_on_epic.done? }
             },
-            state_transitions: helpers.epic_state_transition_options(epic).map do |label, target_state|
+            state_transitions: ::App::Presentation.epic_state_transition_options(epic).map do |label, target_state|
               {
                 label: label,
                 target_state: target_state,

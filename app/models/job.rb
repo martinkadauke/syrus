@@ -283,44 +283,21 @@ class Job < ApplicationRecord
   # awareness without scheduling any agent work.
   after_create :seed_parsed_dependencies
   after_create :resolve_pending_dependencies_targeting_self
-  # `after_save :refresh_epic_auto_state` used to fire on every save —
-  # heartbeat updates, last_seen_comment_at touches, every Turbo
-  # broadcast tick. Now scoped to changes that actually affect the
-  # epic-rollup: state transitions, validity, epic membership,
-  # closure metadata. (The :close event also calls it explicitly via
-  # the transition `after:` lambda.)
+  # `after_save :refresh_epic_auto_state` used to fire on every save.
+  # Keep it scoped to changes that actually affect the epic rollup:
+  # state transitions, validity, epic membership, and closure metadata.
+  # The :close event also calls it explicitly via the transition
+  # `after:` lambda.
   after_save :refresh_epic_auto_state,
              if: -> { epic_id.present? && (saved_change_to_state? || saved_change_to_validity? || saved_change_to_epic_id? || saved_change_to_closure_reason?) }
   after_commit :reopen_recent_closed_epic, if: :saved_change_to_epic_id?
   after_commit :suggest_stale_closed_epic_assignment, if: :stale_closed_epic_assignment?
-
-  # Trigger a Turbo morph-refresh on the Job's show page on any change.
-  # Combined with turbo_refreshes_with method: :morph in the layout,
-  # this re-renders the page server-side and patches in only the changed
-  # bits (state pill, closure_reason, branch_name, pr_number, etc.)
-  # without disturbing user scroll or the live transcript (marked
-  # data-turbo-permanent on the show page).
-  broadcasts_refreshes
-  # And a parallel broadcast on the user's "jobs" stream so the
-  # dashboard (which lists every Job for the current user) morphs on
-  # any change too — new Jobs appear, state pills move, run counts
-  # tick up — all without a manual reload.
-  broadcasts_refreshes_to ->(job) { [ job.user, "jobs" ] }
-  # Same idea for the per-Repository show page — the jobs table
-  # there should pick up newly-polled Jobs (and state changes on
-  # existing ones) without a manual refresh.
-  broadcasts_refreshes_to ->(job) { [ job.repository, "jobs" ] }
-  after_commit :broadcast_epic_refresh
 
   after_update_commit :rebase_stack_children_after_merge, if: :saved_change_to_pr_merged_terminal?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
 
   def solid_queue_priority
     PRIORITY_TO_SQ.fetch(priority.to_s, PRIORITY_TO_SQ["medium"])
-  end
-
-  def broadcast_epic_refresh
-    broadcast_refresh_later_to(epic) if epic
   end
 
   # "The thread is alive" — any non-terminal state. Distinct from

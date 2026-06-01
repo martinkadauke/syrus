@@ -6,7 +6,7 @@ class GithubClient
   # block the worker thread forever. That happened in prod: 4
   # PollMergeStateJob threads wedged for 4+ hours on hanging
   # pull_request reads, locking the entire `default` queue (recurring
-  # scheduler, Turbo broadcasts, PR-feedback polling) behind them.
+  # scheduler, app-event broadcasts, PR-feedback polling) behind them.
   #   open_timeout: TCP connect must complete in N seconds.
   #   timeout:      total request (incl. response read) capped at N.
   # Bound generously: GitHub's slowest documented endpoints (large

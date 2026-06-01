@@ -29,8 +29,6 @@ class SpawnedProcess < ApplicationRecord
   validates :command, :hostname, :started_at, presence: true
   validates :outcome, inclusion: { in: OUTCOMES, allow_nil: true }
 
-  broadcasts_refreshes
-
   scope :running, -> { where(finished_at: nil) }
   scope :finished, -> { where.not(finished_at: nil) }
   scope :stale, ->(threshold = STALE_THRESHOLD) {

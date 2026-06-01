@@ -34,9 +34,8 @@ domain concepts. File paths are repo-relative.
 - Rails 8.1.3 · Ruby 3.2.3
 - SQLite (dev/test) · MySQL (production)
 - **Solid Queue** for background jobs · **Solid Cache** · **Solid Cable**
-  for Turbo Streams broadcasts
-- **Tailwind** via `tailwindcss-rails` · **Turbo Streams + Stimulus** for
-  the web UI (no React)
+  for browser app events
+- **Tailwind** via `tailwindcss-rails` · **React** for the web UI
 - **Octokit** for the GitHub API
 - **AASM** for state machines on `Job` and `Run`
 - **`claude-code` CLI** as the agent (subprocess; see
@@ -187,8 +186,8 @@ period case ends in `failed` via `ReapStaleRunsJob`, not `cancelled`.
 | `manual` | operator: explicit manual prompt | freeform |
 | `local_dev` | local CLI path | runs against a local checkout without opening a PR |
 
-State changes broadcast Turbo refreshes; see [UI surface](#ui-surface)
-for how broadcasts land in the browser.
+State changes reach the browser through app events; see
+[UI surface](#ui-surface) for how updates land in React.
 
 ### JobLog — the transcript
 
@@ -624,14 +623,9 @@ Several layers, each catching different failure modes:
   redirects non-admins to credentials.
 - **`/invitations`** — admin invite flow.
 
-Realtime updates everywhere via Turbo Streams. `Job` and `Run` use
-`broadcasts_refreshes` + Turbo morph (`turbo_refreshes_with method:
-:morph`) so the worker's DB writes patch the operator's browser
-without a refresh. There's also a per-user `"jobs"` stream so the
-dashboard updates as new Jobs appear. The transcript element on the
-job show page is `data-turbo-permanent` so morphs preserve scroll
-position. Dev mode uses `solid_cable` (NOT `async`) so cross-process
-broadcasts work between web and worker.
+Realtime updates use `AppUserChannel` app events consumed by React.
+Dev mode uses `solid_cable` (NOT `async`) so cross-process events work
+between web and worker.
 
 ## Deployment topology
 

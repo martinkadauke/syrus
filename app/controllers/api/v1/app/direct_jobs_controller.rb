@@ -150,7 +150,7 @@ module Api
         end
 
         def agent_provider_label(provider)
-          JobsHelper::AGENT_PROVIDER_LABELS[provider] || provider.to_s.titleize
+          ::App::Presentation.agent_provider_label(provider)
         end
 
         def create_more?

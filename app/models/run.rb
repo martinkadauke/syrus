@@ -123,22 +123,6 @@ class Run < ApplicationRecord
     StepDispatcher.fail_from(step.reload) if step.failed?
   end
 
-  # State changes (queued → running → succeeded/failed/cancelled) and
-  # field updates (agent_turns, agent_outcome, agent_diff) all need to
-  # show up on the Job's show page without requiring the operator to
-  # refresh. Broadcasting refreshes to the parent Job's stream means
-  # "tell anyone watching this Job to morph itself".
-  #
-  # The fallback `[ "dead_run", run.id ]` covers the cascade-destroy
-  # path: when the parent Job is destroyed, run.job returns nil, but
-  # turbo-rails' default `send(stream)` fallback would then try to
-  # send the lambda itself as a method name (TypeError). Returning
-  # a stable, non-nil stream identifier makes the broadcast a no-op
-  # in that case (no subscriber on that stream).
-  broadcasts_refreshes_to ->(run) { run.job || [ "dead_run", run.id ] }
-  after_commit :broadcast_dashboard_refresh_on_state_change,
-               if: :saved_change_to_state?
-
   def initial?
     trigger_kind == "initial"
   end
@@ -173,10 +157,6 @@ class Run < ApplicationRecord
   end
 
   private
-
-  def broadcast_dashboard_refresh_on_state_change
-    broadcast_refresh_later_to(job ? [ job.user, "jobs" ] : [ "dead_run", id, "jobs" ])
-  end
 
   def clear_transcript_on_success!
     claude_session&.update_column(:transcript_jsonl, nil)

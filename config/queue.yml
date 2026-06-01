@@ -24,7 +24,7 @@ default: &default
       threads: <%= ENV.fetch("CHAT_CONCURRENCY", 2) %>
       processes: 1
       polling_interval: 0.1
-    # Everything else — recurring reapers / pollers, Turbo
+    # Everything else — recurring reapers / pollers, app-event
     # broadcasts, prune jobs. All short-lived; sharing a small
     # thread pool is fine. Critically, this worker is independent
     # of the RunJob worker, so a saturated agent pool can't make

@@ -69,17 +69,6 @@ grade:
     run: bin/check-eager-load
     timeout_minutes: 1
 
-  - name: turbo-defaults
-    description: |
-      Rejects turbo_frame_tag calls without an explicit `target:`.
-      Without a target, in-frame links that target the frame but
-      receive a response without the same frame ID render as
-      "Content missing." Every turbo_frame_tag should pass
-      `target: "_top"` unless the frame is hosting in-place
-      navigation.
-    run: bin/check-turbo-defaults
-    timeout_minutes: 1
-
   - name: rspec
     description: |
       Full RSpec suite. CLAUDE.md "Tests are not optional" is the
@@ -90,15 +79,6 @@ grade:
       the same workflow are picked up before spec collection.
     run: bin/rails db:test:prepare && bin/rspec
     timeout_minutes: 10
-
-  - name: js-tests
-    description: |
-      JS controller specs via `node --test` (no Rails boot, no
-      bundler). Separated from the rspec grader so a broken
-      Stimulus controller reports as "js-tests failed" instead of
-      hiding under a generic "rspec failed." Usually ~100ms.
-    run: bin/test-js
-    timeout_minutes: 1
 
   - name: react-tests
     description: |

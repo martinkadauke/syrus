@@ -9,7 +9,7 @@
 #   "Solid Queue is configured to use 7 threads but the database
 #    connection pool is 5. Increase it in `config/database.yml`"
 # A worker pod that crashloops takes the whole queue offline (default
-# queue: Turbo broadcasts, recurring schedulers, reapers; runs queue:
+# queue: app-event broadcasts, recurring schedulers, reapers; runs queue:
 # every agent invocation).
 #
 # Catch the mismatch locally: parse config/queue.yml, compute the max

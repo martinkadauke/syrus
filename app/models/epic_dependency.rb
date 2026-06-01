@@ -9,7 +9,6 @@ class EpicDependency < ApplicationRecord
   validate :no_cycle
 
   after_commit :refresh_dependent_epic
-  after_commit :broadcast_epic_graph_refreshes
 
   private
 
@@ -40,9 +39,4 @@ class EpicDependency < ApplicationRecord
     epic.refresh_auto_state! if epic&.persisted?
   end
 
-  def broadcast_epic_graph_refreshes
-    [ epic, depends_on_epic ].compact.uniq.each do |epic_record|
-      broadcast_refresh_later_to(epic_record)
-    end
-  end
 end
