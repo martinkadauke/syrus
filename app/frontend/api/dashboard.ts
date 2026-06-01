@@ -52,6 +52,7 @@ export type DashboardEpicItem = {
   title: string
   state: string
   auto_approve_mode: string
+  jobs_count: number
   created_at: string | null
   updated_at: string | null
   done_at: string | null
@@ -60,6 +61,7 @@ export type DashboardEpicItem = {
   paths: {
     epic_path: string
     edit_epic_path: string
+    app_state_path: string
   }
 }
 
@@ -231,6 +233,10 @@ export type DashboardSmartFolderCreatePayload = {
   }
 }
 
+export type DashboardEpicStatePayload = {
+  message?: string | null
+}
+
 export function fetchDashboard(search = "") {
   return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`)
 }
@@ -241,6 +247,10 @@ export function updateDashboardPreferences(input: DashboardPreferencesInput) {
 
 export function bulkDashboardJobs(input: DashboardBulkJobsInput) {
   return postJson<DashboardBulkJobsPayload>("/api/v1/app/dashboard/jobs/bulk", input)
+}
+
+export function updateDashboardEpicState(path: string, targetState: string) {
+  return patchJson<DashboardEpicStatePayload>(path, { target_state: targetState })
 }
 
 export function toggleDashboardLandingPause(path: string) {

@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { FormEvent, RefObject } from "react"
+import type { DragEvent, FormEvent, RefObject } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
-import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardEpicState, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
   const location = useLocation()
@@ -833,37 +833,129 @@ function DashboardTable({ payload, prefix }: { payload: DashboardPayload; prefix
 }
 
 function DashboardKanban({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
+  const queryClient = useQueryClient()
+  const [draggedEpic, setDraggedEpic] = useState<DashboardEpicItem | null>(null)
+  const [dragOverLane, setDragOverLane] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const moveEpic = useMutation({
+    mutationFn: ({ epic, targetState }: { epic: DashboardEpicItem; targetState: string }) => updateDashboardEpicState(epic.paths.app_state_path, targetState),
+    onSuccess: (updated) => {
+      setNotice(updated.message || "Epic updated.")
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    }
+  })
+
   if (payload.lanes.length === 0) {
     return <div className="rounded border border-gray-200 bg-white p-6 text-sm text-gray-500">No kanban lanes are configured.</div>
   }
 
+  function startDrag(epic: DashboardEpicItem, event: DragEvent<HTMLElement>) {
+    event.dataTransfer.effectAllowed = "move"
+    event.dataTransfer.setData("text/plain", String(epic.id))
+    setDraggedEpic(epic)
+    setNotice(null)
+  }
+
+  function clearDrag() {
+    setDraggedEpic(null)
+    setDragOverLane(null)
+  }
+
+  function dragOverLaneFor(lane: DashboardLane, event: DragEvent<HTMLElement>) {
+    if (!draggedEpic || moveEpic.isPending) return
+    if (!canMoveEpicToLane(draggedEpic, lane.key)) {
+      setDragOverLane(null)
+      return
+    }
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "move"
+    setDragOverLane(lane.key)
+  }
+
+  function dropOnLane(lane: DashboardLane, event: DragEvent<HTMLElement>) {
+    if (!draggedEpic || !canMoveEpicToLane(draggedEpic, lane.key) || moveEpic.isPending) {
+      clearDrag()
+      return
+    }
+
+    event.preventDefault()
+    moveEpic.mutate({ epic: draggedEpic, targetState: lane.key })
+    clearDrag()
+  }
+
   return (
-    <div className="overflow-x-auto pb-2">
-      <div className="grid min-w-[56rem] gap-3" style={{ gridTemplateColumns: `repeat(${payload.lanes.length}, minmax(14rem, 1fr))` }}>
-        {payload.lanes.map((lane) => (
-          <KanbanLane key={lane.key} lane={lane} prefix={prefix} subject={payload.subject} />
-        ))}
+    <>
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
+      {moveEpic.isError ? <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{errorMessage(moveEpic.error, "Unable to move Epic.")}</div> : null}
+      <div className="overflow-x-auto pb-2">
+        <div className="grid min-w-[56rem] gap-3" style={{ gridTemplateColumns: `repeat(${payload.lanes.length}, minmax(14rem, 1fr))` }}>
+          {payload.lanes.map((lane) => (
+            <KanbanLane
+              draggingOver={dragOverLane === lane.key}
+              key={lane.key}
+              lane={lane}
+              onDragEnd={clearDrag}
+              onDragOver={(event) => dragOverLaneFor(lane, event)}
+              onDragStart={startDrag}
+              onDrop={(event) => dropOnLane(lane, event)}
+              prefix={prefix}
+              subject={payload.subject}
+            />
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 
-function KanbanLane({ lane, prefix, subject }: { lane: DashboardLane; prefix: string; subject: DashboardSubject }) {
+function KanbanLane({
+  draggingOver,
+  lane,
+  onDragEnd,
+  onDragOver,
+  onDragStart,
+  onDrop,
+  prefix,
+  subject
+}: {
+  draggingOver: boolean
+  lane: DashboardLane
+  onDragEnd: () => void
+  onDragOver: (event: DragEvent<HTMLElement>) => void
+  onDragStart: (epic: DashboardEpicItem, event: DragEvent<HTMLElement>) => void
+  onDrop: (event: DragEvent<HTMLElement>) => void
+  prefix: string
+  subject: DashboardSubject
+}) {
   return (
-    <section className="min-h-64 rounded border border-gray-200 bg-gray-50">
+    <section
+      aria-label={`${lane.title} lane`}
+      className={`min-h-64 rounded border bg-gray-50 ${draggingOver ? "border-blue-400 ring-2 ring-blue-100" : "border-gray-200"}`}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
       <header className="flex items-center justify-between border-b border-gray-200 px-3 py-2">
         <h3 className="text-sm font-semibold text-gray-900">{lane.title}</h3>
         <span className="rounded bg-white px-2 py-0.5 text-xs text-gray-500 ring-1 ring-gray-200">{lane.count}</span>
       </header>
       <div className="space-y-2 p-2">
         {lane.items.length === 0 ? <p className="px-1 py-2 text-sm text-gray-400">No {subjectLabel(subject, 2)}</p> : null}
-        {lane.items.map((item) => <KanbanCard item={item} key={`${item.type}-${item.id}`} prefix={prefix} />)}
+        {lane.items.map((item) => (
+          <KanbanCard
+            item={item}
+            key={`${item.type}-${item.id}`}
+            onDragEnd={onDragEnd}
+            onDragStart={onDragStart}
+            prefix={prefix}
+          />
+        ))}
       </div>
     </section>
   )
 }
 
-function KanbanCard({ item, prefix }: { item: DashboardItem; prefix: string }) {
+function KanbanCard({ item, onDragEnd, onDragStart, prefix }: { item: DashboardItem; onDragEnd: () => void; onDragStart: (epic: DashboardEpicItem, event: DragEvent<HTMLElement>) => void; prefix: string }) {
   if (item.type === "job") {
     return (
       <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
@@ -891,7 +983,13 @@ function KanbanCard({ item, prefix }: { item: DashboardItem; prefix: string }) {
   }
 
   return (
-    <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
+    <article
+      aria-label={`${item.display_number} ${item.title}`}
+      className="cursor-grab rounded border border-gray-200 bg-white p-3 shadow-sm active:cursor-grabbing"
+      draggable
+      onDragEnd={onDragEnd}
+      onDragStart={(event) => onDragStart(item, event)}
+    >
       <Link className="text-sm font-medium text-blue-600 hover:underline" to={withRoutePrefix(item.paths.epic_path, prefix)}>{item.title}</Link>
       <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
         <StatePill state={item.state} />
@@ -899,6 +997,15 @@ function KanbanCard({ item, prefix }: { item: DashboardItem; prefix: string }) {
       </div>
     </article>
   )
+}
+
+function canMoveEpicToLane(epic: DashboardEpicItem, targetState: string) {
+  if (targetState === epic.state) return false
+  if (epic.state === "ready" && targetState === "backlog") return true
+  if (epic.state === "ready" && targetState === "in_progress") return true
+  if (epic.state === "in_progress" && targetState === "ready") return true
+  if (epic.state === "backlog" && targetState === "ready") return epic.jobs_count > 0
+  return false
 }
 
 type DashboardSortState = {

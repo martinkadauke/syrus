@@ -165,7 +165,7 @@ module App
     end
 
     def epics_result
-      scope = filtered_epics_scope.includes(:repository)
+      scope = filtered_epics_scope.includes(:repository, :jobs)
       total = scope.count
       items = paginate(apply_sort(scope, :epic)).map { |epic| epic_json(epic) }
 
@@ -307,7 +307,7 @@ module App
     def epic_lanes_json
       lanes = user.dashboard_visible_kanban_lanes(:epics)
       records = filtered_epics_scope
-                .includes(:repository)
+                .includes(:repository, :jobs)
                 .where(state: lanes)
                 .order(updated_at: :desc, id: :desc)
                 .limit(kanban_limit)
@@ -446,6 +446,7 @@ module App
         title: epic.title,
         state: epic.state,
         auto_approve_mode: epic.auto_approve_mode,
+        jobs_count: epic.jobs.size,
         created_at: epic.created_at&.iso8601,
         updated_at: epic.updated_at&.iso8601,
         done_at: epic.done_at&.iso8601,
@@ -453,7 +454,8 @@ module App
         repository: repository_json(epic.repository),
         paths: {
           epic_path: epic_path(epic),
-          edit_epic_path: edit_epic_path(epic)
+          edit_epic_path: edit_epic_path(epic),
+          app_state_path: "/api/v1/app/epics/#{epic.id}/state"
         }
       }
     end

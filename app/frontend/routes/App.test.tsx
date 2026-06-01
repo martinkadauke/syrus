@@ -986,6 +986,86 @@ describe("App", () => {
     })
   })
 
+  it("moves Epic kanban cards with drag and drop", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/epics/7/state" && init?.method === "PATCH") {
+        return Promise.resolve(
+          new Response(JSON.stringify({ message: "Epic updated." }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" }
+          })
+        )
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify(
+            dashboardPayload({
+              subject: "epic",
+              view: "kanban",
+              total: 1,
+              preferences: {
+                sort: { column: "updated_at", direction: "desc" },
+                visible_columns: ["epic", "state", "repository", "updated"],
+                kanban_lanes: ["backlog", "ready", "in_progress"],
+                raw: {}
+              },
+              controls: {
+                ...dashboardPayload().controls,
+                sort_columns: ["title", "state", "repository", "updated_at"],
+                kanban_lanes: [
+                  { key: "backlog", title: "Backlog" },
+                  { key: "ready", title: "Ready" },
+                  { key: "in_progress", title: "In progress" }
+                ]
+              },
+              lanes: [
+                { key: "backlog", title: "Backlog", count: 0, items: [] },
+                { key: "ready", title: "Ready", count: 1, items: [dashboardEpicItem()] },
+                { key: "in_progress", title: "In progress", count: 0, items: [] }
+              ],
+              kanban_limit: 100
+            })
+          ),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/epics?view=kanban"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const card = await screen.findByLabelText("EPIC-7 Raise the forum")
+    const targetLane = screen.getByLabelText("In progress lane")
+    const dataTransfer = {
+      dropEffect: "",
+      effectAllowed: "",
+      setData: vi.fn()
+    }
+
+    fireEvent.dragStart(card, { dataTransfer })
+    fireEvent.dragOver(targetLane, { dataTransfer })
+    fireEvent.drop(targetLane, { dataTransfer })
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/epics/7/state",
+        expect.objectContaining({
+          method: "PATCH",
+          credentials: "same-origin",
+          body: JSON.stringify({ target_state: "in_progress" })
+        })
+      )
+    })
+    expect(await screen.findByRole("status")).toHaveTextContent("Epic updated.")
+  })
+
   it("renders the admin queue route from the app admin queue API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
@@ -5087,6 +5167,30 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     repository: { id: 3, slug: "acme/widgets" },
     tags: [{ id: 5, name: "urgent", color: "red" }],
     paths: { job_path: "/jobs/42", source_path: "/jobs/42/source" },
+    ...overrides
+  }
+}
+
+function dashboardEpicItem(overrides: Record<string, unknown> = {}) {
+  return {
+    type: "epic",
+    id: 7,
+    number: 7,
+    display_number: "EPIC-7",
+    title: "Raise the forum",
+    state: "ready",
+    auto_approve_mode: "never",
+    jobs_count: 1,
+    created_at: "2026-05-30T10:00:00Z",
+    updated_at: "2026-05-30T12:00:00Z",
+    done_at: null,
+    archived_at: null,
+    repository: { id: 3, slug: "acme/widgets" },
+    paths: {
+      epic_path: "/epics/7",
+      edit_epic_path: "/epics/7/edit",
+      app_state_path: "/api/v1/app/epics/7/state"
+    },
     ...overrides
   }
 }

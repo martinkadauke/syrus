@@ -143,7 +143,11 @@ RSpec.describe "App API dashboard commands", type: :request do
         "id" => ready.id,
         "display_number" => ready.display_number,
         "title" => "Ready aqueduct",
-        "paths" => include("epic_path" => epic_path(ready))
+        "jobs_count" => 0,
+        "paths" => include(
+          "epic_path" => epic_path(ready),
+          "app_state_path" => "/api/v1/app/epics/#{ready.id}/state"
+        )
       )
       expect(body["active_smart_folder_id"]).to eq(folder.id)
       expect(body["filter"]).to eq(
