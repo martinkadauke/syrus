@@ -54,6 +54,22 @@ RSpec.describe Whiteboard do
     )
   end
 
+  it "strips non-serializable Excalidraw appState before serving a scene" do
+    whiteboard = described_class.create!(
+      chat_session: chat_session,
+      scene_json: {
+        "elements" => [],
+        "appState" => {
+          "viewBackgroundColor" => "#ffffff",
+          "collaborators" => {},
+          "selectedElementIds" => { "box-1" => true }
+        }
+      }
+    )
+
+    expect(whiteboard.current_state.fetch("appState")).to eq("viewBackgroundColor" => "#ffffff")
+  end
+
   it "caps the scene element count" do
     whiteboard = described_class.new(
       chat_session: chat_session,

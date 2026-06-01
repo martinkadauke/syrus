@@ -11,6 +11,7 @@ const actionCable = vi.hoisted(() => ({
 const excalidrawMock = vi.hoisted(() => ({
   throwOnRender: false,
   addFiles: vi.fn(),
+  lastInitialData: null as { appState?: Record<string, unknown>; elements?: unknown[]; files?: Record<string, Record<string, unknown>> } | null,
   updateScene: vi.fn()
 }))
 
@@ -36,6 +37,7 @@ vi.mock("@excalidraw/excalidraw", () => ({
   }) => {
     if (excalidrawMock.throwOnRender) throw new Error("Canvas crashed")
 
+    excalidrawMock.lastInitialData = initialData || null
     excalidrawAPI?.({ addFiles: excalidrawMock.addFiles, updateScene: excalidrawMock.updateScene })
 
     return (
@@ -79,6 +81,7 @@ describe("App", () => {
     window.localStorage.clear()
     excalidrawMock.throwOnRender = false
     excalidrawMock.addFiles.mockClear()
+    excalidrawMock.lastInitialData = null
     excalidrawMock.updateScene.mockClear()
   })
 
@@ -4333,6 +4336,29 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: "Draw on whiteboard" })).toBeInTheDocument()
     expect(excalidrawMock.updateScene).not.toHaveBeenCalled()
+  })
+
+  it("strips serialized collaborators before mounting the whiteboard", async () => {
+    const payload = chatPayload()
+    payload.whiteboard.appState = {
+      viewBackgroundColor: "#ffffff",
+      collaborators: {},
+      selectedElementIds: { "box-1": true }
+    }
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("button", { name: "Draw on whiteboard" })).toBeInTheDocument()
+    expect(excalidrawMock.lastInitialData?.appState).toEqual({ viewBackgroundColor: "#ffffff" })
   })
 
   it("keeps the chat visible when the whiteboard render fails", async () => {

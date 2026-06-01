@@ -2,6 +2,17 @@ class Whiteboard < ApplicationRecord
   MAX_ELEMENTS = 1000
   ELEMENT_LIMIT_MESSAGE = "Whiteboard at element limit (1000). Operator must clear or remove some shapes before adding more."
   EMPTY_SCENE = { "elements" => [], "appState" => {}, "files" => {} }.freeze
+  TRANSIENT_APP_STATE_KEYS = %w[
+    collaborators
+    selectedElementIds
+    selectedGroupIds
+    editingElement
+    resizingElement
+    draggingElement
+    multiElement
+    suggestedBindings
+    startBoundElement
+  ].freeze
 
   belongs_to :chat_session
 
@@ -37,9 +48,13 @@ class Whiteboard < ApplicationRecord
 
     {
       "elements" => scene.fetch("elements"),
-      "appState" => app_state,
+      "appState" => sanitize_app_state(app_state),
       "files" => files
     }
+  end
+
+  def self.sanitize_app_state(app_state)
+    app_state.except(*TRANSIENT_APP_STATE_KEYS)
   end
 
   def current_state

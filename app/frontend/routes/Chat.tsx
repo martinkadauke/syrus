@@ -1081,7 +1081,7 @@ function whiteboardElements(payload: ChatPayload): ChatWhiteboardElement[] {
 function whiteboardScene(payload: ChatPayload): ChatWhiteboardScene {
   return {
     elements: Array.isArray(payload.whiteboard.elements) ? payload.whiteboard.elements : [],
-    appState: isPlainObject(payload.whiteboard.appState) ? payload.whiteboard.appState : {},
+    appState: cleanWhiteboardAppState(payload.whiteboard.appState),
     files: isPlainObject(payload.whiteboard.files) ? payload.whiteboard.files as ChatWhiteboardScene["files"] : {}
   }
 }
@@ -1110,6 +1110,7 @@ function cleanWhiteboardAppState(value: unknown): ChatWhiteboardScene["appState"
   const appState = safeJsonObject(value)
   delete appState.selectedElementIds
   delete appState.selectedGroupIds
+  delete appState.collaborators
   delete appState.editingElement
   delete appState.resizingElement
   delete appState.draggingElement
