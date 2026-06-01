@@ -64,7 +64,7 @@ export function ChatRoute() {
   })
 
   return (
-    <main aria-label="Chat" className="mx-auto flex max-w-7xl flex-col gap-6 p-6 lg:h-[calc(100vh-4rem)] lg:overflow-hidden">
+    <main aria-label="Chat" className="mx-auto flex max-w-[96rem] flex-col gap-6 p-6 lg:h-[calc(100vh-4rem)] lg:overflow-hidden">
       {chat.isPending ? <PanelMessage>Loading chat...</PanelMessage> : null}
       {chat.isError ? <PanelMessage tone="error">{errorMessage(chat.error, "Unable to load chat.")}</PanelMessage> : null}
       {chat.isSuccess ? <ChatView payload={chat.data} prefix={prefix} queryKey={queryKey} /> : null}

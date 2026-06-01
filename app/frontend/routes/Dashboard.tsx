@@ -26,7 +26,7 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
   const prefix = pathname.startsWith("/app-shell") ? "/app-shell" : ""
 
   return (
-    <main aria-label="Dashboard" className="mx-auto max-w-7xl space-y-5 p-6">
+    <main aria-label="Dashboard" className="mx-auto max-w-[96rem] space-y-5 p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-3xl font-semibold text-gray-900">Dashboard</h1>
         <DashboardCreateActions payload={payload} prefix={prefix} />

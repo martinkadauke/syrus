@@ -25,7 +25,7 @@ export function RepositoryDocumentsRoute() {
   })
 
   return (
-    <main aria-label="Repository documents" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Repository documents" className="mx-auto max-w-[96rem] space-y-6 p-6">
       {documents.isPending ? <PanelMessage>Loading repository documents...</PanelMessage> : null}
       {documents.isError ? <RepositoryDocumentsError error={documents.error} /> : null}
       {documents.isSuccess ? <RepositoryDocumentsView payload={documents.data} prefix={routePrefix(location.pathname)} /> : null}

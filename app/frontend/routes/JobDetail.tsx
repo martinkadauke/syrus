@@ -54,7 +54,7 @@ export function JobDetailRoute() {
   }
 
   return (
-    <main aria-label="Job" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Job" className="mx-auto max-w-[96rem] space-y-6 p-6">
       {detail.isPending ? <PanelMessage>Loading Job...</PanelMessage> : null}
       {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, "Unable to load Job.")}</PanelMessage> : null}
       {detail.isSuccess ? <JobDetailView activeTab={activeTab} onSelectTab={selectTab} payload={detail.data} prefix={prefix} queryKey={queryKey} /> : null}

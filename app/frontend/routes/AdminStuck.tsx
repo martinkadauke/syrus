@@ -15,7 +15,7 @@ export function AdminStuck() {
   })
 
   return (
-    <main aria-label="Admin stuck items" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Admin stuck items" className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header className="flex flex-col gap-4 border-b border-gray-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium uppercase text-gray-500">Admin</p>

@@ -51,7 +51,7 @@ export function RepositoryDetailRoute() {
   })
 
   return (
-    <main aria-label="Repository" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Repository" className="mx-auto max-w-[96rem] space-y-6 p-6">
       {tab !== "github_issues" ? (
         <>
           {detail.isPending ? <PanelMessage>Loading repository...</PanelMessage> : null}

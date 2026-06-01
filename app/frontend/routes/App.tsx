@@ -141,7 +141,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3">
+        <div className="mx-auto flex max-w-[96rem] flex-wrap items-center justify-between gap-3 px-6 py-3">
           <div className="flex min-w-0 items-center gap-5">
             <Link className="text-lg font-semibold text-gray-900" to={defaultChatPath}>Syrus</Link>
             <nav aria-label="Primary" className="flex flex-wrap gap-1 text-sm">
@@ -191,7 +191,7 @@ function FlashBanner({ flash }: { flash?: BootstrapPayload["flash"] }) {
 
   const tone = flash?.alert ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"
   return (
-    <div className="mx-auto max-w-7xl px-6 pt-4">
+    <div className="mx-auto max-w-[96rem] px-6 pt-4">
       <p className={`inline-block rounded border px-3 py-2 text-sm ${tone}`}>{message}</p>
     </div>
   )
@@ -213,7 +213,7 @@ function AdminNavigation({ normalizedPath, prefix }: { normalizedPath: string; p
 
   return (
     <div className="border-b border-gray-200 bg-white">
-      <nav aria-label="Admin navigation" className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-2 text-xs">
+      <nav aria-label="Admin navigation" className="mx-auto flex max-w-[96rem] flex-wrap items-center gap-2 px-6 py-2 text-xs">
         {items.map((item) => {
           const className = adminNavLinkClass(item.active(normalizedPath))
           return <Link className={className} key={item.label} to={withRoutePrefix(item.path, prefix)}>{item.label}</Link>
@@ -233,7 +233,7 @@ function SettingsNavigation({ normalizedPath, prefix }: { normalizedPath: string
 
   return (
     <div className="border-b border-gray-200 bg-white">
-      <nav aria-label="Settings navigation" className="mx-auto flex max-w-7xl flex-wrap items-center gap-2 px-6 py-2 text-xs">
+      <nav aria-label="Settings navigation" className="mx-auto flex max-w-[96rem] flex-wrap items-center gap-2 px-6 py-2 text-xs">
         {items.map((item) => {
           const className = adminNavLinkClass(item.active(normalizedPath))
           return <Link className={className} key={item.label} to={withRoutePrefix(item.path, prefix)}>{item.label}</Link>

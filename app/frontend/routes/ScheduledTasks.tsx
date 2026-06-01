@@ -42,7 +42,7 @@ export function ScheduledTasksIndex() {
   })
 
   return (
-    <main aria-label="Scheduled tasks" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Scheduled tasks" className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900">Scheduled tasks</h1>
         <p className="mt-1 max-w-2xl text-sm text-gray-600">Recurring and one-shot agent prompts attached to repositories.</p>
@@ -73,7 +73,7 @@ export function ScheduledTaskDetailRoute() {
   })
 
   return (
-    <main aria-label="Scheduled task detail" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Scheduled task detail" className="mx-auto max-w-[96rem] space-y-6 p-6">
       {detail.isPending ? <PanelMessage>Loading scheduled task...</PanelMessage> : null}
       {detail.isError ? <ScheduledTasksError error={detail.error} /> : null}
       {detail.isSuccess ? <TaskDetail basePath={tasksBase(location.pathname)} payload={detail.data} prefix={prefix} /> : null}

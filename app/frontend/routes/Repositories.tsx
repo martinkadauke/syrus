@@ -27,7 +27,7 @@ export function RepositoriesIndex() {
   const prefix = routePrefix(location.pathname)
 
   return (
-    <main aria-label="Repositories" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Repositories" className="mx-auto max-w-[96rem] space-y-6 p-6">
       {repositories.isPending ? <PanelMessage>Loading repositories...</PanelMessage> : null}
       {repositories.isError ? <PanelMessage tone="error">{errorMessage(repositories.error, "Unable to load repositories.")}</PanelMessage> : null}
       {repositories.isSuccess ? <RepositoriesView payload={repositories.data} prefix={prefix} /> : null}

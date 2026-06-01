@@ -555,8 +555,8 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(screen.getByRole("main", { name: "Dashboard" })).toBeInTheDocument()
     expect(await screen.findByText("Repair aqueduct")).toBeInTheDocument()
+    expect(screen.getByRole("main", { name: "Dashboard" })).toHaveClass("max-w-[96rem]")
     expect(screen.queryByText("25 jobs in this view")).not.toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Dashboard" }).closest("header")).not.toHaveClass("border-b")
     expect(screen.getByRole("navigation", { name: "Dashboard subjects" }).parentElement).toHaveClass("lg:grid-cols-[16rem_minmax(0,1fr)]")
@@ -2223,7 +2223,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(screen.getByRole("main", { name: "Scheduled tasks" })).toHaveClass("max-w-7xl")
+    expect(screen.getByRole("main", { name: "Scheduled tasks" })).toHaveClass("max-w-[96rem]")
     expect(await screen.findByText("Weekly tests")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Weekly tests" })).toHaveAttribute("href", "/app-shell/scheduled_tasks/12")
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
@@ -2254,7 +2254,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toHaveClass("max-w-7xl")
+    expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toHaveClass("max-w-[96rem]")
     expect(await screen.findByText("Keep tests moving.")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(screen.getByRole("link", { name: "#44" })).toHaveAttribute("href", "/app-shell/jobs/44")
@@ -2371,7 +2371,7 @@ describe("App", () => {
       const primaryNav = await screen.findByRole("navigation", { name: "Primary" })
       expect(within(primaryNav).getByRole("link", { name: "Repos" })).toHaveClass("bg-blue-50", "text-blue-700")
       expect(within(primaryNav).getByRole("link", { name: "Schedules" })).not.toHaveClass("bg-blue-50")
-      expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toHaveClass("max-w-7xl")
+      expect(await screen.findByRole("main", { name: "Repository scheduled tasks" })).toHaveClass("max-w-[96rem]")
       const scheduledTabs = await screen.findByRole("navigation", { name: "Repository tabs" })
       expect(within(scheduledTabs).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
       expect(within(scheduledTabs).getByRole("link", { name: "Context" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=context")
@@ -2571,7 +2571,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Repository documents" })).toHaveClass("max-w-7xl")
+    expect(await screen.findByRole("main", { name: "Repository documents" })).toHaveClass("max-w-[96rem]")
     const repositoryTabs = await screen.findByRole("navigation", { name: "Repository tabs" })
     expect(within(repositoryTabs).getByRole("link", { name: "Overview" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(within(repositoryTabs).getByRole("link", { name: "GitHub Issues" })).toHaveAttribute("href", "/app-shell/repositories/3?tab=github_issues")
@@ -2787,7 +2787,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Repositories" })).toHaveClass("max-w-7xl")
+    expect(await screen.findByRole("main", { name: "Repositories" })).toHaveClass("max-w-[96rem]")
     expect(await screen.findByText("acme/widgets")).toBeInTheDocument()
     expect(screen.getByText("old/repo")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Add" })).toHaveAttribute("href", "/app-shell/repositories/new")

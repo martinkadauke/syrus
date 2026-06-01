@@ -21,7 +21,7 @@ export function AdminProcessesIndex() {
   })
 
   return (
-    <main aria-label="Admin processes" className="mx-auto max-w-7xl space-y-6 p-6">
+    <main aria-label="Admin processes" className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header className="border-b border-gray-200 pb-4">
         <p className="text-xs font-medium uppercase text-gray-500">Admin</p>
         <h1 className="mt-1 text-2xl font-semibold text-gray-900">Processes</h1>
