@@ -29,7 +29,8 @@ module EpicsHelper
 
   def epic_state_transition_options(epic)
     transitions = []
-    transitions << [ "Ready", "ready" ] if epic.backlog? && epic.may_auto_ready?
+    transitions << [ "Move to ready", "ready" ] if epic.backlog? && epic.may_auto_ready?
+    transitions << [ "Move to backlog", "backlog" ] if epic.ready? && epic.may_move_to_backlog?
     transitions << [ "Start", "in_progress" ] if epic.ready? && epic.may_start?
     transitions << [ "Move back to ready", "ready" ] if epic.in_progress? && epic.may_unstart?
     transitions << [ "Mark done", "done" ] if epic.in_progress? && epic.may_auto_complete?

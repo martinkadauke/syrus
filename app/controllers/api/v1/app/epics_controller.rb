@@ -182,6 +182,8 @@ module Api
             epic.override_state!(target_state)
           elsif epic.backlog? && target_state == "ready" && epic.may_auto_ready?
             epic.auto_ready!
+          elsif epic.ready? && target_state == "backlog" && epic.may_move_to_backlog?
+            epic.move_to_backlog!
           elsif epic.ready? && target_state == "in_progress"
             epic.start!
           elsif epic.in_progress? && target_state == "ready"

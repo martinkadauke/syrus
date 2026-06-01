@@ -88,6 +88,7 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
       "blocked" => false
     )
     expect(body["state_transitions"]).to contain_exactly(
+      include("label" => "Move to backlog", "target_state" => "backlog"),
       include("label" => "Start", "target_state" => "in_progress"),
       include("label" => "Archive", "target_state" => "archived", "confirm" => "Archive this Epic?")
     )
@@ -131,9 +132,39 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
     expect(job.reload).to be_queued
   end
 
+  it "moves ready Epics back to backlog through the app API" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, state: "ready")
+
+    patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "backlog" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("epic", "state")).to eq("backlog")
+    expect(epic.reload).to be_backlog
+  end
+
+  it "moves backlog Epics with child Jobs to ready through the app API" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, state: "ready")
+    Factories.job_record(user: user, repository: repository, epic: epic, state: "blocked_by_epic")
+    epic.move_to_backlog!
+
+    patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "ready" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("epic", "state")).to eq("ready")
+    expect(epic.reload).to be_ready
+  end
+
   it "rejects unavailable and unknown app API Epic state transitions" do
     sign_in_as(user)
     epic = Factories.epic(user: user, repository: repository, state: "backlog")
+
+    patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "ready" }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("transition_not_allowed")
+    expect(epic.reload).to be_backlog
 
     patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "done" }
 

@@ -47,6 +47,13 @@ RSpec.describe Epic do
     }.to change { epic.reload.state }.from("backlog").to("ready")
   end
 
+  it "does not allow empty backlog Epics to move to ready" do
+    epic = described_class.create!(user: user, repository: repository, title: "Dependent")
+
+    expect(epic.reload).to be_backlog
+    expect(epic.may_auto_ready?).to be false
+  end
+
   it "does not auto-promote to ready while an Epic dependency is unfinished" do
     prerequisite = described_class.create!(user: user, repository: repository, title: "Prerequisite")
     epic = described_class.create!(user: user, repository: repository, title: "Dependent")
@@ -179,6 +186,19 @@ RSpec.describe Epic do
 
     expect(job.reload).to be_queued
     expect(workflow.first_step.runs.first).to be_queued
+  end
+
+  it "allows ready Epics to move back to backlog without starting child Jobs" do
+    epic = described_class.create!(user: user, repository: repository, title: "Launch", state: "ready")
+    job = Factories.job_record(user: user, repository: repository, issue_number: 20, epic: epic, state: "blocked_by_epic")
+
+    expect {
+      expect {
+        epic.move_to_backlog!
+      }.to change { epic.reload.state }.from("ready").to("backlog")
+    }.not_to change(Run, :count)
+
+    expect(job.reload).to be_blocked_by_epic
   end
 
   it "auto-instantiates and starts workflows for direct child Jobs on epic.start!" do

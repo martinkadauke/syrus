@@ -3269,6 +3269,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/epics/7/edit")
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(screen.getByRole("link", { name: "Survey forum" })).toHaveAttribute("href", "/app-shell/jobs/42")
+    expect(screen.getByRole("button", { name: "Move to backlog" })).toBeInTheDocument()
     expect(screen.getByText("columns")).toBeInTheDocument()
     expect(screen.getByText("(1 epic dep, 0 job blockers)")).toBeInTheDocument()
     expect(await screen.findByRole("img", { name: "Dependency graph" })).toBeInTheDocument()
@@ -5122,6 +5123,7 @@ function epicDetailPayload(overrides: {
       blocked: false
     },
     state_transitions: overrides.stateTransitions || [
+      { label: "Move to backlog", target_state: "backlog", confirm: null },
       { label: "Start", target_state: "in_progress", confirm: null },
       { label: "Archive", target_state: "archived", confirm: "Archive this Epic?" }
     ],

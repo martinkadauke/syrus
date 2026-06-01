@@ -47,6 +47,10 @@ class Epic < ApplicationRecord
       transitions from: :backlog, to: :ready, guard: :ready_to_start?
     end
 
+    event :move_to_backlog do
+      transitions from: :ready, to: :backlog
+    end
+
     event :start do
       transitions from: :ready, to: :in_progress, after: -> {
         self.state = "in_progress"
@@ -87,7 +91,7 @@ class Epic < ApplicationRecord
   end
 
   def ready_to_start?
-    dependencies_done? && child_jobs_confirmed?
+    jobs.exists? && dependencies_done? && child_jobs_confirmed?
   end
 
   def complete?
