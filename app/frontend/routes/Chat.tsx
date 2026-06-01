@@ -64,7 +64,7 @@ export function ChatRoute() {
   })
 
   return (
-    <main aria-label="Chat" className="mx-auto flex max-w-[96rem] flex-col gap-6 p-6 lg:h-[calc(100vh-4rem)] lg:overflow-hidden">
+    <main aria-label="Chat" className="mx-auto flex h-[calc(100vh-4rem)] max-w-[96rem] flex-col gap-6 overflow-hidden p-6">
       {chat.isPending ? <PanelMessage>Loading chat...</PanelMessage> : null}
       {chat.isError ? <PanelMessage tone="error">{errorMessage(chat.error, "Unable to load chat.")}</PanelMessage> : null}
       {chat.isSuccess ? <ChatView payload={chat.data} prefix={prefix} queryKey={queryKey} /> : null}
@@ -702,6 +702,32 @@ function isDesktopChatViewport() {
   return typeof window !== "undefined" && window.innerWidth >= CHAT_ENTER_SUBMIT_MIN_WIDTH
 }
 
+function useMediaQuery(query: string, defaultMatches: boolean) {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return defaultMatches
+
+    return window.matchMedia(query).matches
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+
+    const media = window.matchMedia(query)
+    const updateMatches = () => setMatches(media.matches)
+    updateMatches()
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", updateMatches)
+      return () => media.removeEventListener("change", updateMatches)
+    }
+
+    media.addListener(updateMatches)
+    return () => media.removeListener(updateMatches)
+  }, [query])
+
+  return matches
+}
+
 function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: ChatQueryKey }) {
   const queryClient = useQueryClient()
   const search = queryKey[2]
@@ -717,6 +743,7 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
 }
 
 type WorkspaceTab = "whiteboard" | "context" | "chats"
+type MobileChatTab = "chat" | WorkspaceTab
 
 function ChatWorkspace({
   payload,
@@ -734,7 +761,9 @@ function ChatWorkspace({
   onWhiteboardFullscreenChange: (fullscreen: boolean) => void
 }) {
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(() => storedWorkspaceTab() || defaultWorkspaceTab(payload))
+  const [activeMobileTab, setActiveMobileTab] = useState<MobileChatTab>("chat")
   const [workspaceWidth, setWorkspaceWidth] = useState(storedWorkspaceWidth)
+  const isDesktop = useMediaQuery("(min-width: 1024px)", true)
   const expanded = activeTab === "whiteboard" && whiteboardFullscreen
 
   useEffect(() => {
@@ -768,6 +797,52 @@ function ChatWorkspace({
     setActiveTab(tab)
   }
 
+  function selectMobileTab(tab: MobileChatTab) {
+    setActiveMobileTab(tab)
+    if (tab === "chat") {
+      onWhiteboardFullscreenChange(false)
+      return
+    }
+
+    selectTab(tab)
+  }
+
+  if (!isDesktop && !expanded) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col rounded border border-gray-200 bg-white">
+        <nav aria-label="Chat mobile tabs" className="flex shrink-0 overflow-x-auto border-b border-gray-200 px-3 pt-3 text-sm font-medium">
+          {(["chat", "whiteboard", "context", "chats"] as MobileChatTab[]).map((tab) => (
+            <button
+              className={workspaceTabClass(activeMobileTab === tab)}
+              key={tab}
+              onClick={() => selectMobileTab(tab)}
+              type="button"
+            >
+              {mobileChatTabLabel(tab)}
+            </button>
+          ))}
+        </nav>
+        <div className="flex min-h-0 flex-1 p-3">
+          {activeMobileTab === "chat" ? (
+            <ChatColumn payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+          ) : (
+            <ChatWorkspacePanel
+              activeTab={activeTab}
+              fullscreen={false}
+              showTabs={false}
+              onSelectTab={selectTab}
+              onToggleWhiteboardFullscreen={() => onWhiteboardFullscreenChange(true)}
+              payload={payload}
+              prefix={prefix}
+              queryKey={queryKey}
+              onNotice={onNotice}
+            />
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div
       className={expanded ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:gap-0"}
@@ -798,7 +873,7 @@ function ChatWorkspace({
 
 function ChatColumn({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
-    <section className="flex min-h-[34rem] min-w-0 flex-col gap-3 lg:min-h-0">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white">
         <MessageStream payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         <UsageOverlay payload={payload} />
@@ -811,6 +886,7 @@ function ChatColumn({ payload, prefix, queryKey, onNotice }: { payload: ChatPayl
 function ChatWorkspacePanel({
   activeTab,
   fullscreen,
+  showTabs = true,
   onSelectTab,
   onToggleWhiteboardFullscreen,
   payload,
@@ -820,6 +896,7 @@ function ChatWorkspacePanel({
 }: {
   activeTab: WorkspaceTab
   fullscreen: boolean
+  showTabs?: boolean
   onSelectTab: (tab: WorkspaceTab) => void
   onToggleWhiteboardFullscreen: () => void
   payload: ChatPayload
@@ -828,8 +905,8 @@ function ChatWorkspacePanel({
   onNotice: (message: string | null) => void
 }) {
   return (
-    <aside aria-label="Chat workspace" className={`flex min-h-[34rem] min-w-0 flex-col rounded border border-gray-200 bg-white lg:min-h-0 ${fullscreen ? "flex-1" : ""}`}>
-      {fullscreen ? null : (
+    <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-col rounded border border-gray-200 bg-white ${fullscreen ? "flex-1" : "h-full"}`}>
+      {fullscreen || !showTabs ? null : (
         <nav aria-label="Chat workspace tabs" className="flex border-b border-gray-200 px-3 pt-3 text-sm font-medium">
           {(["whiteboard", "context", "chats"] as WorkspaceTab[]).map((tab) => (
             <button
@@ -1028,7 +1105,7 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
   }, [clearPendingSave, savePending])
 
   return (
-    <section className="flex h-full min-h-[30rem] flex-col">
+    <section className="flex h-full min-h-0 flex-col">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase text-gray-500">Whiteboard</div>
         <div className="flex items-center gap-2">
@@ -1043,7 +1120,7 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
           </button>
         </div>
       </div>
-      <div className="relative min-h-[28rem] flex-1 overflow-hidden rounded border border-gray-200 bg-gray-50">
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-gray-50">
         {Excalidraw ? (
           <Excalidraw
             excalidrawAPI={(api) => {
@@ -1383,6 +1460,10 @@ function workspaceTabLabel(tab: WorkspaceTab) {
   if (tab === "context") return "Context"
 
   return "Chats"
+}
+
+function mobileChatTabLabel(tab: MobileChatTab) {
+  return tab === "chat" ? "Chat" : workspaceTabLabel(tab)
 }
 
 function defaultWorkspaceTab(payload: ChatPayload): WorkspaceTab {

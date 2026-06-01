@@ -784,7 +784,7 @@ describe("App", () => {
   })
 
   it("keeps dashboard folders and filters collapsed on mobile", async () => {
-    const restoreMedia = mockDashboardMedia(false)
+    const restoreMedia = mockMediaQuery(false)
     vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify(
@@ -3998,10 +3998,10 @@ describe("App", () => {
 
     const chatMain = await screen.findByRole("main", { name: "Chat" })
     expect(chatMain).toBeInTheDocument()
-    expect(chatMain).toHaveClass("lg:h-[calc(100vh-4rem)]", "lg:overflow-hidden")
+    expect(chatMain).toHaveClass("h-[calc(100vh-4rem)]", "overflow-hidden")
     expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
     expect(screen.getByTestId("chat-message-stream")).toHaveClass("h-full", "min-h-0", "overflow-y-auto")
-    expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("lg:min-h-0")
+    expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("min-h-0")
     expect(screen.getByRole("navigation", { name: "Chat workspace tabs" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Resize chat workspace" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Refresh repo" })).not.toBeInTheDocument()
@@ -4048,6 +4048,45 @@ describe("App", () => {
     })
     expect(await screen.findByText("Now inspect proposals")).toBeInTheDocument()
     expect(screen.queryByText("Message sent.")).not.toBeInTheDocument()
+  })
+
+  it("renders chat tabs above the chat panel on mobile", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
+      const mobileTabs = screen.getByRole("navigation", { name: "Chat mobile tabs" })
+      expect(within(mobileTabs).getByRole("button", { name: "Chat" })).toHaveClass("border-blue-600")
+      expect(within(mobileTabs).getByRole("button", { name: "Whiteboard" })).toBeInTheDocument()
+      expect(within(mobileTabs).getByRole("button", { name: "Context" })).toBeInTheDocument()
+      expect(within(mobileTabs).getByRole("button", { name: "Chats" })).toBeInTheDocument()
+      expect(screen.queryByRole("navigation", { name: "Chat workspace tabs" })).not.toBeInTheDocument()
+      expect(screen.getByTestId("chat-message-stream")).toHaveClass("h-full", "min-h-0", "overflow-y-auto")
+      expect(screen.getByPlaceholderText("Ask about this repository...")).toBeInTheDocument()
+
+      fireEvent.click(within(mobileTabs).getByRole("button", { name: "Whiteboard" }))
+      expect(within(mobileTabs).getByRole("button", { name: "Whiteboard" })).toHaveClass("border-blue-600")
+      expect(screen.queryByTestId("chat-message-stream")).not.toBeInTheDocument()
+      expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("h-full", "min-h-0")
+      expect(screen.getByText("Version 2")).toBeInTheDocument()
+
+      fireEvent.click(within(mobileTabs).getByRole("button", { name: "Chat" }))
+      expect(screen.getByTestId("chat-message-stream")).toBeInTheDocument()
+      expect(screen.getByPlaceholderText("Ask about this repository...")).toBeInTheDocument()
+    } finally {
+      restoreMedia()
+    }
   })
 
   it("keeps the chat scrolled to the bottom when new messages arrive at the bottom", async () => {
@@ -5437,7 +5476,7 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function mockDashboardMedia(matches: boolean) {
+function mockMediaQuery(matches: boolean) {
   const original = Object.getOwnPropertyDescriptor(window, "matchMedia")
 
   Object.defineProperty(window, "matchMedia", {
