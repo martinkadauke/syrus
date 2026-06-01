@@ -822,7 +822,7 @@ function ChatWorkspace({
             </button>
           ))}
         </nav>
-        <div className="flex min-h-0 flex-1 p-3">
+        <div className="flex min-h-0 w-full flex-1 p-3">
           {activeMobileTab === "chat" ? (
             <ChatColumn payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
           ) : (
@@ -905,7 +905,7 @@ function ChatWorkspacePanel({
   onNotice: (message: string | null) => void
 }) {
   return (
-    <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-col rounded border border-gray-200 bg-white ${fullscreen ? "flex-1" : "h-full"}`}>
+    <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white ${fullscreen ? "" : "h-full w-full"}`}>
       {fullscreen || !showTabs ? null : (
         <nav aria-label="Chat workspace tabs" className="flex border-b border-gray-200 px-3 pt-3 text-sm font-medium">
           {(["whiteboard", "context", "chats"] as WorkspaceTab[]).map((tab) => (

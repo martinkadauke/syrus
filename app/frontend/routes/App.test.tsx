@@ -4078,8 +4078,13 @@ describe("App", () => {
       fireEvent.click(within(mobileTabs).getByRole("button", { name: "Whiteboard" }))
       expect(within(mobileTabs).getByRole("button", { name: "Whiteboard" })).toHaveClass("border-blue-600")
       expect(screen.queryByTestId("chat-message-stream")).not.toBeInTheDocument()
-      expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("h-full", "min-h-0")
+      expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("h-full", "min-h-0", "w-full", "flex-1")
       expect(screen.getByText("Version 2")).toBeInTheDocument()
+
+      fireEvent.click(within(mobileTabs).getByRole("button", { name: "Context" }))
+      expect(within(mobileTabs).getByRole("button", { name: "Context" })).toHaveClass("border-blue-600")
+      expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("h-full", "min-h-0", "w-full", "flex-1")
+      expect(screen.getByText("Launch notes")).toBeInTheDocument()
 
       fireEvent.click(within(mobileTabs).getByRole("button", { name: "Chat" }))
       expect(screen.getByTestId("chat-message-stream")).toBeInTheDocument()
