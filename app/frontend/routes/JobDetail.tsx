@@ -108,7 +108,6 @@ function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefix }: { 
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Job command failed.")}</PanelMessage> : null}
-      <TagsPanel command={command} payload={payload} />
 
       <TabNav active={activeTab} attachmentsCount={payload.attachments.length} workflowsCount={payload.workflows.length} onSelect={onSelectTab} />
 
@@ -263,6 +262,8 @@ function SummaryTab({ payload, command, prefix }: { payload: JobDetailPayload; c
         <KeyValue label="Started">{formatDate(payload.job.started_at)}</KeyValue>
         <KeyValue label="Closed">{payload.job.finished_at ? `${formatDate(payload.job.finished_at)} (${payload.job.closure_reason || "unspecified"})` : "still open"}</KeyValue>
       </section>
+
+      <TagsPanel command={command} payload={payload} />
 
       <DependenciesPanel command={command} payload={payload} prefix={prefix} />
 

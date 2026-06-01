@@ -3441,6 +3441,7 @@ describe("App", () => {
     expect(screen.getByText("Water should climb the hill.")).toBeInTheDocument()
     expect(screen.getByText("Moved the uphill water simulation.")).toBeInTheDocument()
     expect(await screen.findByText("Workflow created")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("Add tag")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Check feedback" }))
     await waitFor(() => {
@@ -3454,6 +3455,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
     expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
     expect(screen.getByText("Run #9")).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("Add tag")).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Transcript" }))
     await waitFor(() => {
