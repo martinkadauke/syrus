@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { describe, expect, it, vi } from "vitest"
 import { FilterBar, type FilterSchemaField } from "./FilterBar"
@@ -8,7 +8,7 @@ const filterSchema: FilterSchemaField[] = [
     field: "state",
     label: "State",
     bucket: "enum",
-    operators: ["is"],
+    operators: ["is", "is_none_of"],
     values: [
       { value: "open", label: "Open" },
       { value: "closed", label: "Closed" }
@@ -140,6 +140,47 @@ describe("FilterBar", () => {
 
     expect(screen.getByRole("dialog", { name: "Has parent filter settings" })).toBeInTheDocument()
     expect(screen.queryByText("No value needed")).not.toBeInTheDocument()
+  })
+
+  it("renders multi-value selections as compact removable tokens", async () => {
+    render(
+      <MemoryRouter initialEntries={["/dashboard/jobs"]}>
+        <FilterBar
+          filter={{ and: [{ field: "state", op: "is_none_of", value: ["open"] }] }}
+          filterSchema={filterSchema}
+          pathname="/dashboard/jobs"
+          search=""
+        />
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "State is none of Open" }))
+    const dialog = screen.getByRole("dialog", { name: "State filter settings" })
+
+    expect(within(dialog).getByText("Open")).toBeInTheDocument()
+    expect(within(dialog).queryByText("Nothing selected yet")).not.toBeInTheDocument()
+    expect(within(dialog).getByPlaceholderText("Search...")).toBeInTheDocument()
+    expect(within(dialog).queryByRole("listbox")).not.toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Open" }))
+
+    await waitFor(() => {
+      expect(decodedFilterFromLocation()).toEqual({
+        and: [{ field: "state", op: "is_none_of", value: [] }]
+      })
+    })
+    expect(within(dialog).getByText("Nothing selected yet")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "State is none of (unset)" })).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Closed" }))
+
+    await waitFor(() => {
+      expect(decodedFilterFromLocation()).toEqual({
+        and: [{ field: "state", op: "is_none_of", value: ["closed"] }]
+      })
+    })
+    expect(within(dialog).getByText("Closed")).toBeInTheDocument()
   })
 
   it("opens the filter menu before adding OR alternatives", async () => {

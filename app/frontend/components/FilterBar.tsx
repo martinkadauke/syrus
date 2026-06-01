@@ -383,6 +383,8 @@ function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: F
   const options = filterOptions(meta)
   const multi = isMultiValueOp(chip.op)
   if (options.length > 0 && !meta.typeahead) {
+    if (multi) return <MultiFilterValueEditor chip={chip} meta={meta} onChange={onChange} options={options} />
+
     const selected = multi ? Array.isArray(chip.value) ? chip.value.map(String) : [] : [String(chip.value ?? "")]
     return (
       <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-value-${meta.field}`}>
@@ -390,13 +392,10 @@ function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: F
         <select
           className="mt-1 block min-w-44 rounded border border-gray-300 bg-white px-2 py-1.5 text-sm normal-case text-gray-700"
           id={`filter-value-${meta.field}`}
-          multiple={multi}
           onChange={(event) => {
-            const value = multi ? Array.from(event.target.selectedOptions).map((option) => option.value) : event.target.value
-            onChange({ ...chip, value })
+            onChange({ ...chip, value: event.target.value })
           }}
-          size={multi ? Math.min(Math.max(options.length, 2), 5) : undefined}
-          value={multi ? selected : selected[0]}
+          value={selected[0]}
         >
           {options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}
         </select>
@@ -417,6 +416,70 @@ function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: F
         type="text"
         value={String(chip.value ?? "")}
       />
+    </label>
+  )
+}
+
+function MultiFilterValueEditor({ chip, meta, onChange, options }: { chip: FilterChip; meta: FilterSchemaField; onChange: (chip: FilterChip) => void; options: FilterOption[] }) {
+  const [query, setQuery] = useState("")
+  const selected = Array.isArray(chip.value) ? chip.value.map(String) : []
+  const selectedSet = new Set(selected)
+  const selectedOptions = selected.map((value) => options.find((option) => String(option.value) === value) || { value, label: value })
+  const filteredOptions = options.filter((option) => {
+    const unselected = !selectedSet.has(String(option.value))
+    const matches = option.label.toLowerCase().includes(query.trim().toLowerCase())
+    return unselected && matches
+  })
+
+  function addValue(value: string) {
+    if (selectedSet.has(value)) return
+
+    onChange({ ...chip, value: [...selected, value] })
+    setQuery("")
+  }
+
+  function removeValue(value: string) {
+    onChange({ ...chip, value: selected.filter((selectedValue) => selectedValue !== value) })
+  }
+
+  return (
+    <label className="block text-xs font-medium uppercase text-gray-500" htmlFor={`filter-value-${meta.field}-search`}>
+      <span className="sr-only">Value</span>
+      <div className="mt-1 w-72 overflow-hidden rounded border border-gray-300 bg-white normal-case text-gray-700">
+        <div className="flex min-h-11 flex-wrap items-center gap-1.5 px-2 py-2 text-sm">
+          {selectedOptions.length > 0 ? (
+            selectedOptions.map((option) => (
+              <span className="inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-indigo-800" key={String(option.value)}>
+                {option.label}
+                <button aria-label={`Remove ${option.label}`} className="text-indigo-500 hover:text-indigo-800" onClick={() => removeValue(String(option.value))} type="button">x</button>
+              </span>
+            ))
+          ) : (
+            <span className="text-gray-400">Nothing selected yet</span>
+          )}
+        </div>
+        <input
+          className="block w-full border-t border-gray-200 px-2 py-2 text-sm focus:outline-none"
+          id={`filter-value-${meta.field}-search`}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search..."
+          type="search"
+          value={query}
+        />
+        <div className="max-h-56 overflow-y-auto border-t border-gray-200 py-1">
+          {filteredOptions.map((option) => (
+            <button
+              className="block w-full px-3 py-1.5 text-left text-sm hover:bg-gray-50"
+              key={String(option.value)}
+              onClick={() => addValue(String(option.value))}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+          {filteredOptions.length === 0 ? <div className="px-3 py-1.5 text-sm text-gray-400">No matches</div> : null}
+        </div>
+      </div>
     </label>
   )
 }
@@ -613,7 +676,7 @@ function filterChipLabel(chip: FilterChip, controls: FilterSchemaField[]) {
 
 function formatFilterValue(chip: FilterChip, meta: FilterSchemaField | null) {
   if (chip.value === null || chip.value === undefined || chip.value === "") return "(unset)"
-  if (Array.isArray(chip.value)) return chip.value.map((value) => labelForOption(value, meta)).join(", ")
+  if (Array.isArray(chip.value)) return chip.value.length > 0 ? chip.value.map((value) => labelForOption(value, meta)).join(", ") : "(unset)"
   if (isObjectValue(chip.value)) {
     if ("n" in chip.value && "unit" in chip.value) return `${chip.value.n} ${chip.value.unit}${chip.op === "more_than_ago" ? " ago" : ""}`
     return JSON.stringify(chip.value)
