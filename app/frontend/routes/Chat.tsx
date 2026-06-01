@@ -40,6 +40,7 @@ import { Markdown } from "../lib/Markdown"
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
 const CHAT_BOTTOM_THRESHOLD_PX = 48
+const CHAT_COMPOSE_MAX_ROWS = 5
 const CHAT_WORKSPACE_WIDTH_KEY = "syrus.chat.workspace.width"
 const CHAT_WORKSPACE_TAB_KEY = "syrus.chat.workspace.tab"
 const CHAT_WORKSPACE_DEFAULT_WIDTH = 520
@@ -565,6 +566,7 @@ function ProposalChildren({ children, mutation }: { children: ChatProposalChild[
 function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const [text, setText] = useState("")
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const submitWithEnter = useSubmitChatWithEnter()
   const search = queryKey[2]
   const send = useMutation({
@@ -594,16 +596,34 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
     submitMessage()
   }
 
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    autosizeChatTextarea(textarea)
+  }, [text])
+
+  useEffect(() => {
+    function handleResize() {
+      const textarea = textareaRef.current
+      if (textarea) autosizeChatTextarea(textarea)
+    }
+
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
+
   return (
     <form className="rounded border border-gray-200 bg-white p-3" onSubmit={submit}>
       {send.isError ? <div className="mb-2 text-sm text-red-700">{errorMessage(send.error, "Message failed.")}</div> : null}
       <div className="flex items-end gap-3">
         <textarea
-          className="min-h-9 max-h-24 flex-1 resize-none overflow-y-auto rounded border border-gray-300 px-3 py-2 text-sm leading-5 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50"
+          className="min-h-9 flex-1 resize-none overflow-y-hidden rounded border border-gray-300 px-3 py-2 text-sm leading-5 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50"
           disabled={payload.turn_in_flight || send.isPending}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={payload.chat.repository ? "Ask about this repository..." : "Attach a repository to start chatting..."}
+          ref={textareaRef}
           required
           rows={1}
           value={text}
@@ -613,6 +633,26 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
       </div>
     </form>
   )
+}
+
+function autosizeChatTextarea(textarea: HTMLTextAreaElement) {
+  textarea.style.height = "auto"
+
+  const style = window.getComputedStyle(textarea)
+  const lineHeight = parsePixelValue(style.lineHeight) || 20
+  const verticalPadding = parsePixelValue(style.paddingTop) + parsePixelValue(style.paddingBottom)
+  const verticalBorder = parsePixelValue(style.borderTopWidth) + parsePixelValue(style.borderBottomWidth)
+  const minHeight = lineHeight + verticalPadding + verticalBorder
+  const maxHeight = (lineHeight * CHAT_COMPOSE_MAX_ROWS) + verticalPadding + verticalBorder
+  const nextHeight = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)
+
+  textarea.style.height = `${nextHeight}px`
+  textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden"
+}
+
+function parsePixelValue(value: string) {
+  const parsed = Number.parseFloat(value)
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function useSubmitChatWithEnter() {

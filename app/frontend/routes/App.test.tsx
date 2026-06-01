@@ -4163,6 +4163,39 @@ describe("App", () => {
     }
   })
 
+  it("grows the chat input up to five rows", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    input.style.lineHeight = "20px"
+    input.style.paddingTop = "8px"
+    input.style.paddingBottom = "8px"
+    input.style.borderTopWidth = "1px"
+    input.style.borderBottomWidth = "1px"
+
+    Object.defineProperty(input, "scrollHeight", { configurable: true, value: 68 })
+    fireEvent.change(input, { target: { value: "First line\nSecond line\nThird line" } })
+    await waitFor(() => {
+      expect(input).toHaveStyle({ height: "68px", overflowY: "hidden" })
+    })
+
+    Object.defineProperty(input, "scrollHeight", { configurable: true, value: 180 })
+    fireEvent.change(input, { target: { value: "One\nTwo\nThree\nFour\nFive\nSix\nSeven" } })
+    await waitFor(() => {
+      expect(input).toHaveStyle({ height: "118px", overflowY: "auto" })
+    })
+  })
+
   it("saves chat whiteboard changes through the app API", async () => {
     excalidrawMock.updateScene.mockClear()
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
