@@ -875,6 +875,56 @@ describe("App", () => {
     }
   })
 
+  it("renders mobile Workflow dashboard rows as consolidated cards", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          dashboardPayload({
+            subject: "workflow",
+            view: "list",
+            preferences: {
+              sort: { column: "started_at", direction: "desc" },
+              visible_columns: ["workflow", "job", "trigger", "state", "started", "finished", "agent"],
+              kanban_lanes: ["queued", "running", "done"],
+              raw: {}
+            },
+            controls: {
+              ...dashboardPayload().controls,
+              sort_columns: ["title", "state", "started_at", "finished_at"]
+            },
+            items: [dashboardWorkflowItem()]
+          })
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/workflows?view=list"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const row = await screen.findByRole("article", { name: "Workflow #9 Repair aqueduct" })
+      expect(within(row).getByText("running")).toBeInTheDocument()
+      expect(within(row).getByText("Workflow #9")).toBeInTheDocument()
+      expect(within(row).getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
+      expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
+      expect(within(row).getByText("manual")).toBeInTheDocument()
+      expect(within(row).getByText("codex")).toBeInTheDocument()
+      expect(within(row).getByText(/Started/)).toBeInTheDocument()
+      expect(within(row).getByText(/Finished/)).toBeInTheDocument()
+      expect(within(row).getByRole("link", { name: "View" })).toHaveAttribute("href", "/app-shell/jobs/42")
+      expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    } finally {
+      restoreMedia()
+    }
+  })
+
   it("toggles landing queue pause from the React dashboard", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -5615,6 +5665,30 @@ function dashboardEpicItem(overrides: Record<string, unknown> = {}) {
       epic_path: "/epics/7",
       edit_epic_path: "/epics/7/edit",
       app_state_path: "/api/v1/app/epics/7/state"
+    },
+    ...overrides
+  }
+}
+
+function dashboardWorkflowItem(overrides: Record<string, unknown> = {}) {
+  return {
+    type: "workflow",
+    id: 9,
+    state: "running",
+    trigger_kind: "manual",
+    agent_provider: "codex",
+    created_at: "2026-05-30T10:00:00Z",
+    updated_at: "2026-05-30T12:00:00Z",
+    started_at: "2026-05-30T10:01:00Z",
+    finished_at: "2026-05-30T10:04:00Z",
+    cleaned_up_at: null,
+    steps_count: 3,
+    job: {
+      id: 42,
+      title: "Repair aqueduct",
+      state: "open",
+      repository: { id: 3, slug: "acme/widgets" },
+      path: "/jobs/42"
     },
     ...overrides
   }

@@ -886,6 +886,10 @@ function EpicCell({ epic, column, prefix }: { epic: DashboardEpicItem; column: s
 }
 
 function WorkflowsTable({ items, columns, prefix, sortState }: { items: DashboardWorkflowItem[]; columns: string[]; prefix: string; sortState: DashboardSortState }) {
+  const isDesktop = useMediaQuery("(min-width: 1024px)", true)
+
+  if (!isDesktop) return <MobileWorkflowsList items={items} prefix={prefix} />
+
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
       <table className="min-w-full divide-y divide-gray-200 text-sm">
@@ -903,6 +907,43 @@ function WorkflowsTable({ items, columns, prefix, sortState }: { items: Dashboar
         </tbody>
       </table>
     </div>
+  )
+}
+
+function MobileWorkflowsList({ items, prefix }: { items: DashboardWorkflowItem[]; prefix: string }) {
+  return (
+    <div className="rounded border border-gray-200 bg-white">
+      <div className="divide-y divide-gray-100">
+        {items.map((workflow) => <MobileWorkflowRow key={workflow.id} prefix={prefix} workflow={workflow} />)}
+      </div>
+    </div>
+  )
+}
+
+function MobileWorkflowRow({ workflow, prefix }: { prefix: string; workflow: DashboardWorkflowItem }) {
+  const startedAt = workflow.started_at || workflow.created_at
+  const finishedAt = workflow.finished_at || workflow.cleaned_up_at
+
+  return (
+    <article aria-label={`Workflow #${workflow.id} ${workflow.job.title}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto] gap-3 px-4 py-3">
+      <div className="pt-1">
+        <StatePill state={workflow.state} />
+      </div>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="font-mono text-xs font-semibold uppercase tracking-wide text-gray-500">Workflow #{workflow.id}</span>
+          <Link className="text-sm font-semibold leading-snug text-blue-600 hover:underline" to={withRoutePrefix(workflow.job.path, prefix)}>{workflow.job.title}</Link>
+        </div>
+        <div className="mt-1 font-mono text-xs text-gray-500">{workflow.job.repository.slug}</div>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+          <span>{workflow.trigger_kind}</span>
+          <span>{workflow.agent_provider}</span>
+          {startedAt ? <span>Started {formatDate(startedAt)}</span> : null}
+          {finishedAt ? <span>Finished {formatDate(finishedAt)}</span> : null}
+        </div>
+      </div>
+      <Link className="self-center text-sm font-medium text-blue-600 underline hover:text-blue-500" to={withRoutePrefix(workflow.job.path, prefix)}>View</Link>
+    </article>
   )
 }
 
