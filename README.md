@@ -64,7 +64,7 @@ Requires Ruby 3.2.3 (see `.ruby-version`). MySQL is **not** needed for local dev
 ```sh
 bin/setup    # bundle, db:prepare, log:clear; tails into bin/dev
 bin/dev      # foreman: web (rails s) + worker (bin/jobs) + css (tailwind:watch)
-bin/rspec    # run the test suite
+bin/test     # run Ruby, legacy JS, and React/TypeScript tests
 ```
 
 `bin/setup --skip-server` if you want to bootstrap without booting the dev server.

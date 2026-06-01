@@ -528,7 +528,8 @@ bin/dev            # foreman: web + worker + tailwind:watch
 bin/rspec          # Ruby suite (~2500 examples)
 bin/rspec spec/jobs/run_job_spec.rb   # one file
 bin/test-js        # JS controller specs via `node --test` (no Rails, no npm install)
-bin/test           # both suites; reports separately; exits non-zero if EITHER fails
+bin/test-react     # React/Vitest suite + TypeScript typecheck
+bin/test           # Ruby, legacy JS, and React suites; reports separately
 ```
 
 JS controller specs live as plain `node --test` files under
@@ -538,7 +539,8 @@ per-file granularity). `node --test` is the actual driver; the
 `.test.mjs` files load each controller via a regex-replaced
 data: URL import so no bundler / `npm install` is required.
 `bin/rspec` ignores `spec/javascript/`; use `bin/test-js` to run
-JS, or `bin/test` to chain both.
+legacy JS, `bin/test-react` to run the React suite, or `bin/test` to
+chain all three.
 
 Docker (production image):
 

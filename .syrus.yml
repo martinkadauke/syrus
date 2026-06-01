@@ -2,7 +2,9 @@
 # workflow run against this repo (Initial / Replay / PrFeedback /
 # CiFailure). The agent skips the dependency-install dance that
 # tripped earlier runs (Job 166: ~25 turns spent figuring out how
-# to make `bin/rspec` work because gems weren't installed).
+# to make `bin/rspec` work because gems weren't installed). Keep
+# Ruby and Node deps explicit here because the presence of this file
+# disables RepoPrepPlan's lockfile auto-detection.
 
 prepare:
   # The agent's env strips BUNDLE_PATH (per Steps::Prepare's
@@ -13,6 +15,7 @@ prepare:
   # the agent just installed.
   - bundle config set --local path vendor/bundle
   - bundle install --jobs 4
+  - npm ci
 
 # Each grader's `description:` is surfaced in the UI (tooltip on the
 # grader name + above the output panel on failure) and prepended to
@@ -96,3 +99,13 @@ grade:
       hiding under a generic "rspec failed." Usually ~100ms.
     run: bin/test-js
     timeout_minutes: 1
+
+  - name: react-tests
+    description: |
+      React SPA tests and TypeScript typecheck. This is the main
+      frontend regression gate after the SPA migration; it runs
+      Vitest first, then `tsc --noEmit` through `bin/test-react`.
+      Failures here usually mean the rendered app/API contract or
+      typed frontend model drifted.
+    run: bin/test-react
+    timeout_minutes: 3
