@@ -170,6 +170,38 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body["paths"].keys).not_to include("chat_messages_path", "chat_attachments_path", "chat_whiteboard_path")
   end
 
+  it "orders the chat navigation by creation time rather than last use" do
+    sign_in_as(user)
+    current_chat = ChatSession.create!(
+      user: user,
+      repository: repository,
+      title: "Old but active",
+      created_at: 3.days.ago,
+      last_message_at: Time.current
+    )
+    middle_chat = ChatSession.create!(
+      user: user,
+      repository: repository,
+      title: "Middle",
+      created_at: 2.days.ago,
+      last_message_at: 1.day.ago
+    )
+    newest_chat = ChatSession.create!(
+      user: user,
+      repository: repository,
+      title: "Newest",
+      created_at: 1.day.ago,
+      last_message_at: nil
+    )
+
+    get "/api/v1/app/chats/#{current_chat.id}"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["recent_chats"].map { |chat| chat.fetch("id") }).to eq([ newest_chat.id, middle_chat.id, current_chat.id ])
+    expect(body["recent_chats"].map { |chat| chat.fetch("current") }).to eq([ false, false, true ])
+  end
+
   it "reports a running chat agent process in the app payload" do
     sign_in_as(user)
     chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)

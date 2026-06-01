@@ -247,14 +247,20 @@ module Api
         end
 
         def recent_chats_json(current_chat_session)
-          recent_chats = Current.user.chat_sessions
-            .where.not(id: current_chat_session.id)
-            .preload(repository_attachments: :attachable)
-            .order(Arel.sql("COALESCE(chat_sessions.last_message_at, chat_sessions.updated_at) DESC"), id: :desc)
-            .limit(19)
-            .to_a
+          chat_ids = Current.user.chat_sessions
+            .order(created_at: :desc, id: :desc)
+            .limit(20)
+            .pluck(:id)
 
-          ([ current_chat_session ] + recent_chats).map do |chat_session|
+          chat_ids = chat_ids.first(19) + [ current_chat_session.id ] unless chat_ids.include?(current_chat_session.id)
+
+          Current.user.chat_sessions
+            .where(id: chat_ids)
+            .preload(repository_attachments: :attachable)
+            .to_a
+            .sort_by { |chat_session| [ chat_session.created_at, chat_session.id ] }
+            .reverse
+            .map do |chat_session|
             chat_json(chat_session).merge(
               current: chat_session.id == current_chat_session.id,
               last_message_at: chat_session.last_message_at&.iso8601
