@@ -901,7 +901,7 @@ function MobileEpicsList({ items, prefix }: { items: DashboardEpicItem[]; prefix
 
 function MobileEpicRow({ epic, prefix }: { epic: DashboardEpicItem; prefix: string }) {
   return (
-    <Link aria-label={`${epic.display_number} ${epic.title}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(epic.paths.epic_path, prefix)}>
+    <Link aria-label={`${epic.display_number} ${epic.title}`} className="grid grid-cols-[7.25rem_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(epic.paths.epic_path, prefix)}>
       <div className="pt-1">
         <StatePill state={epic.state} />
       </div>
@@ -973,7 +973,7 @@ function MobileWorkflowRow({ workflow, prefix }: { prefix: string; workflow: Das
   const finishedAt = workflow.finished_at || workflow.cleaned_up_at
 
   return (
-    <Link aria-label={`Workflow #${workflow.id} ${workflow.job.title}`} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(workflow.job.path, prefix)}>
+    <Link aria-label={`Workflow #${workflow.id} ${workflow.job.title}`} className="grid grid-cols-[7.25rem_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(workflow.job.path, prefix)}>
       <div className="pt-1">
         <StatePill state={workflow.state} />
       </div>
@@ -1061,7 +1061,7 @@ function Pagination({ payload, pathname, search }: { payload: DashboardPayload; 
 }
 
 function StatePill({ state }: { state: string }) {
-  return <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize text-gray-700 ring-1 ring-gray-200">{state.replace(/_/g, " ")}</span>
+  return <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize text-gray-700 ring-1 ring-gray-200">{state.replace(/_/g, " ")}</span>
 }
 
 function compactText(value: string) {

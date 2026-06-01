@@ -911,6 +911,7 @@ describe("App", () => {
 
       const row = await screen.findByRole("link", { name: "EPIC-7 Raise the forum" })
       expect(row).toHaveAttribute("href", "/app-shell/epics/7")
+      expect(row).toHaveClass("grid-cols-[7.25rem_minmax(0,1fr)]")
       expect(within(row).getByText("ready")).toBeInTheDocument()
       expect(within(row).getByText("EPIC-7")).toBeInTheDocument()
       expect(within(row).getByText("Raise the forum")).toBeInTheDocument()
@@ -959,6 +960,7 @@ describe("App", () => {
 
       const row = await screen.findByRole("link", { name: "Workflow #9 Repair aqueduct" })
       expect(row).toHaveAttribute("href", "/app-shell/jobs/42")
+      expect(row).toHaveClass("grid-cols-[7.25rem_minmax(0,1fr)]")
       expect(within(row).getByText("running")).toBeInTheDocument()
       expect(within(row).getByText("Workflow #9")).toBeInTheDocument()
       expect(within(row).getByText("Repair aqueduct")).toBeInTheDocument()
