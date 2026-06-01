@@ -142,7 +142,7 @@ describe("FilterBar", () => {
     expect(screen.queryByText("No value needed")).not.toBeInTheDocument()
   })
 
-  it("adds OR alternatives from the chip editor", async () => {
+  it("opens the filter menu before adding OR alternatives", async () => {
     render(
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>
         <FilterBar
@@ -163,19 +163,26 @@ describe("FilterBar", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "+ OR alternative" }))
 
+    expect(screen.queryByRole("dialog", { name: "State filter settings" })).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText("Search filters...")).toBeInTheDocument()
+    expect(decodedFilterFromLocation()).toBeNull()
+
+    fireEvent.click(screen.getByRole("button", { name: "Kind enum" }))
+
     await waitFor(() => {
       expect(decodedFilterFromLocation()).toEqual({
         and: [
           {
             or: [
               { field: "state", op: "is", value: "open" },
-              { field: "state", op: "is", value: "open" }
+              { field: "kind", op: "is", value: "issue" }
             ]
           }
         ]
       })
     })
     expect(screen.queryByPlaceholderText("Search filters...")).not.toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Kind filter settings" })).toBeInTheDocument()
   })
 
   it("closes an open chip editor with Escape or an outside click", () => {

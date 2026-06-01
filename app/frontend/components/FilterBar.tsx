@@ -58,6 +58,7 @@ export function FilterBar({
   const [draftTree, setDraftTree] = useState<FilterTree>(() => filterTreeFromPayload(filter))
   const [editingPath, setEditingPath] = useState<FilterPath | null>(null)
   const [addMenuOpen, setAddMenuOpen] = useState(false)
+  const [addAlternativePath, setAddAlternativePath] = useState<FilterPath | null>(null)
   const [addQuery, setAddQuery] = useState("")
   const addMenuRef = useRef<HTMLDivElement | null>(null)
   const editorRef = useRef<HTMLDivElement>(null)
@@ -76,6 +77,7 @@ export function FilterBar({
     setDraftTree(appliedTree)
     setEditingPath((path) => path && filterNodeAtPath(appliedTree, path) ? path : null)
     setAddMenuOpen(false)
+    setAddAlternativePath(null)
     setAddQuery("")
   }, [appliedTree])
 
@@ -83,7 +85,10 @@ export function FilterBar({
     if (!addMenuOpen) return
 
     function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setAddMenuOpen(false)
+      if (event.key === "Escape") {
+        setAddMenuOpen(false)
+        setAddAlternativePath(null)
+      }
     }
 
     function closeOnOutsidePointer(event: PointerEvent) {
@@ -91,6 +96,7 @@ export function FilterBar({
       if (target instanceof Node && addMenuRef.current?.contains(target)) return
 
       setAddMenuOpen(false)
+      setAddAlternativePath(null)
     }
 
     window.addEventListener("keydown", closeOnEscape)
@@ -145,11 +151,24 @@ export function FilterBar({
 
   function openAddMenu() {
     setEditingPath(null)
+    setAddAlternativePath(null)
+    setAddMenuOpen(true)
+    setAddQuery("")
+  }
+
+  function openOrAlternativeMenu(path: FilterPath) {
+    setEditingPath(null)
+    setAddAlternativePath(path)
     setAddMenuOpen(true)
     setAddQuery("")
   }
 
   function addFilter(meta: FilterSchemaField) {
+    if (addAlternativePath) {
+      addOrAlternative(addAlternativePath, meta)
+      return
+    }
+
     const chip = defaultFilterChip(meta)
     const children = topFilterChildren(draftTree).slice()
     const nextPath: FilterPath = [children.length]
@@ -159,6 +178,7 @@ export function FilterBar({
     const nextTree = { and: children }
     updateTree(nextTree, nextPath)
     setAddMenuOpen(false)
+    setAddAlternativePath(null)
     applyTree(nextTree)
   }
 
@@ -176,6 +196,8 @@ export function FilterBar({
 
     const nextTree = { and: children }
     updateTree(nextTree, nextPath)
+    setAddMenuOpen(false)
+    setAddAlternativePath(null)
     applyTree(nextTree)
   }
 
@@ -257,7 +279,7 @@ export function FilterBar({
             chip={editingChip}
             editorRef={editorRef}
             meta={editingMeta}
-            onAddAlternative={() => addOrAlternative(editingPath!, editingMeta)}
+            onAddAlternative={() => openOrAlternativeMenu(editingPath!)}
             onChange={(nextChip) => editChip(editingPath!, nextChip)}
           />
         ) : null}

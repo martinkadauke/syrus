@@ -592,6 +592,9 @@ describe("App", () => {
     expect(await screen.findByRole("link", { name: "Clear filters" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
 
     fireEvent.click(await screen.findByRole("button", { name: "+ OR alternative" }))
+    expect(screen.queryByRole("dialog", { name: "State filter settings" })).not.toBeInTheDocument()
+    expect(screen.getByPlaceholderText("Search filters...")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "State enum" }))
 
     await waitFor(() => {
       expect(latestFilterTree).toEqual({
