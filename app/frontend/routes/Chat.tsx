@@ -90,7 +90,6 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="break-words text-3xl font-semibold text-gray-900">{title}</h1>
-          {payload.chat.repository ? <ChatRepositoryLink prefix={prefix} repository={payload.chat.repository} /> : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link className="rounded bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200" to={withRoutePrefix(payload.paths.new_chat_path, prefix)}>New chat</Link>
@@ -137,14 +136,6 @@ function PendingActions({ payload, queryKey, onNotice }: { payload: ChatPayload;
       {action.isError ? <div className="text-xs text-red-700">{errorMessage(action.error, "Pending action failed.")}</div> : null}
     </section>
   )
-}
-
-function ChatRepositoryLink({ repository, prefix }: { repository: NonNullable<ChatPayload["chat"]["repository"]>; prefix: string }) {
-  if (!repository.repository_path) {
-    return <span className="mt-1 inline-block font-mono text-sm text-gray-600">{repository.slug}</span>
-  }
-
-  return <Link className="mt-1 inline-block font-mono text-sm text-blue-600 underline hover:no-underline" to={withRoutePrefix(repository.repository_path, prefix)}>{repository.slug}</Link>
 }
 
 function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: ChatPendingAction; disabled: boolean; onCancel: () => void; onConfirm: () => void }) {
