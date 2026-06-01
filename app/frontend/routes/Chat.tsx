@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
-import type { ErrorInfo, FormEvent, KeyboardEvent, ReactNode, UIEvent } from "react"
-import { Component, useCallback, useEffect, useRef, useState } from "react"
+import type { ErrorInfo, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode, UIEvent } from "react"
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
@@ -25,6 +25,7 @@ import {
   stopChat,
   type ChatAttachmentResult,
   type ChatAttachmentRow,
+  type ChatNavRecord,
   type ChatMessageItem,
   type ChatPendingAction,
   type ChatPayload,
@@ -41,6 +42,11 @@ import { Markdown } from "../lib/Markdown"
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
 const CHAT_BOTTOM_THRESHOLD_PX = 48
+const CHAT_WORKSPACE_WIDTH_KEY = "syrus.chat.workspace.width"
+const CHAT_WORKSPACE_TAB_KEY = "syrus.chat.workspace.tab"
+const CHAT_WORKSPACE_DEFAULT_WIDTH = 520
+const CHAT_WORKSPACE_MIN_WIDTH = 360
+const CHAT_WORKSPACE_MAX_WIDTH = 760
 
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
 type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "updateScene">
@@ -131,16 +137,7 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
           <p className="mt-1">Chat uses Claude. Add a Claude OAuth token in <Link className="underline hover:no-underline" to={withRoutePrefix(payload.paths.credentials_path, prefix)}>Credentials</Link> to enable chat.</p>
         </section>
       ) : (
-        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section className="flex min-h-[34rem] min-w-0 flex-col gap-3 lg:min-h-0">
-            <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white">
-              <MessageStream payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
-              <UsageOverlay payload={payload} />
-            </div>
-            <Compose payload={payload} queryKey={queryKey} onNotice={setNotice} />
-          </section>
-          <SidePanel payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
-        </div>
+        <ChatWorkspace payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
       )}
     </div>
   )
@@ -664,14 +661,112 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
   )
 }
 
-function SidePanel({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+type WorkspaceTab = "whiteboard" | "context" | "chats"
+
+function ChatWorkspace({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(() => storedWorkspaceTab() || defaultWorkspaceTab(payload))
+  const [workspaceWidth, setWorkspaceWidth] = useState(storedWorkspaceWidth)
+
+  useEffect(() => {
+    storeWorkspacePreference(CHAT_WORKSPACE_TAB_KEY, activeTab)
+  }, [activeTab])
+
+  useEffect(() => {
+    storeWorkspacePreference(CHAT_WORKSPACE_WIDTH_KEY, String(workspaceWidth))
+  }, [workspaceWidth])
+
+  function beginResize(event: ReactMouseEvent<HTMLButtonElement>) {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = workspaceWidth
+
+    function resize(moveEvent: MouseEvent) {
+      setWorkspaceWidth(clampWorkspaceWidth(startWidth - (moveEvent.clientX - startX)))
+    }
+
+    function stopResize() {
+      window.removeEventListener("mousemove", resize)
+      window.removeEventListener("mouseup", stopResize)
+    }
+
+    window.addEventListener("mousemove", resize)
+    window.addEventListener("mouseup", stopResize)
+  }
+
   return (
-    <aside aria-label="Chat side panel" className="space-y-4 rounded border border-gray-200 bg-white p-4 lg:min-h-0 lg:overflow-y-auto">
-      <WhiteboardBoundary>
-        <WhiteboardPanel payload={payload} />
-      </WhiteboardBoundary>
-      <Bookmarks payload={payload} />
-      <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+    <div
+      className="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:gap-0"
+      style={{ gridTemplateColumns: `minmax(0,1fr) 0.5rem minmax(${CHAT_WORKSPACE_MIN_WIDTH}px,${workspaceWidth}px)` }}
+    >
+      <ChatColumn payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+      <button
+        aria-label="Resize chat workspace"
+        className="hidden cursor-col-resize rounded bg-transparent transition hover:bg-blue-100 focus:bg-blue-100 focus:outline-none lg:block"
+        onMouseDown={beginResize}
+        type="button"
+      />
+      <ChatWorkspacePanel
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        payload={payload}
+        prefix={prefix}
+        queryKey={queryKey}
+        onNotice={onNotice}
+      />
+    </div>
+  )
+}
+
+function ChatColumn({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  return (
+    <section className="flex min-h-[34rem] min-w-0 flex-col gap-3 lg:min-h-0">
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white">
+        <MessageStream payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+        <UsageOverlay payload={payload} />
+      </div>
+      <Compose payload={payload} queryKey={queryKey} onNotice={onNotice} />
+    </section>
+  )
+}
+
+function ChatWorkspacePanel({
+  activeTab,
+  onSelectTab,
+  payload,
+  prefix,
+  queryKey,
+  onNotice
+}: {
+  activeTab: WorkspaceTab
+  onSelectTab: (tab: WorkspaceTab) => void
+  payload: ChatPayload
+  prefix: string
+  queryKey: ChatQueryKey
+  onNotice: (message: string | null) => void
+}) {
+  return (
+    <aside aria-label="Chat workspace" className="flex min-h-[34rem] min-w-0 flex-col rounded border border-gray-200 bg-white lg:min-h-0">
+      <nav aria-label="Chat workspace tabs" className="flex border-b border-gray-200 px-3 pt-3 text-sm font-medium">
+        {(["whiteboard", "context", "chats"] as WorkspaceTab[]).map((tab) => (
+          <button
+            className={workspaceTabClass(activeTab === tab)}
+            key={tab}
+            onClick={() => onSelectTab(tab)}
+            type="button"
+          >
+            {workspaceTabLabel(tab)}
+          </button>
+        ))}
+      </nav>
+      <div className={`min-h-0 flex-1 ${activeTab === "whiteboard" ? "overflow-hidden p-3" : "overflow-y-auto p-4"}`}>
+        {activeTab === "whiteboard" ? (
+          <WhiteboardBoundary>
+            <WhiteboardPanel payload={payload} />
+          </WhiteboardBoundary>
+        ) : null}
+        {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
+        {activeTab === "chats" ? <ChatNavigator payload={payload} prefix={prefix} /> : null}
+      </div>
     </aside>
   )
 }
@@ -840,12 +935,12 @@ function WhiteboardPanel({ payload }: { payload: ChatPayload }) {
   }, [clearPendingSave, savePending])
 
   return (
-    <section>
+    <section className="flex h-full min-h-[30rem] flex-col">
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase text-gray-500">Whiteboard</div>
         <div className="text-xs text-gray-500">Version {version}</div>
       </div>
-      <div className="relative h-[26rem] overflow-hidden rounded border border-gray-200 bg-gray-50">
+      <div className="relative min-h-[28rem] flex-1 overflow-hidden rounded border border-gray-200 bg-gray-50">
         {Excalidraw ? (
           <Excalidraw
             excalidrawAPI={(api) => {
@@ -887,10 +982,64 @@ function asExcalidrawElements(elements: readonly ChatWhiteboardElement[]) {
   return elements as unknown as readonly ExcalidrawElement[]
 }
 
-function Bookmarks({ payload }: { payload: ChatPayload }) {
+function ChatNavigator({ payload, prefix }: { payload: ChatPayload; prefix: string }) {
+  const [query, setQuery] = useState("")
+  const normalizedQuery = query.trim().toLowerCase()
+  const recentChats = useMemo(() => {
+    return (payload.recent_chats || []).filter((chat) => {
+      if (!normalizedQuery) return true
+
+      return [
+        chatDisplayTitle(chat),
+        chat.repository?.slug || "",
+        String(chat.id)
+      ].some((value) => value.toLowerCase().includes(normalizedQuery))
+    })
+  }, [normalizedQuery, payload.recent_chats])
+
+  return (
+    <div className="space-y-5">
+      <section className="space-y-3">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-gray-900">Chats</h2>
+          <Link className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700" to={withRoutePrefix(payload.paths.new_chat_path, prefix)}>New chat</Link>
+        </div>
+        <label className="block text-xs font-medium text-gray-600">
+          Search chats
+          <input
+            className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Title, repo, or id"
+            type="search"
+            value={query}
+          />
+        </label>
+        {recentChats.length > 0 ? (
+          <nav aria-label="Recent chats" className="space-y-1">
+            {recentChats.map((chat) => (
+              <Link
+                className={`block rounded border px-2 py-1.5 text-xs ${chat.current ? "border-blue-200 bg-blue-50 text-blue-800" : "border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"}`}
+                key={chat.id}
+                to={withRoutePrefix(chat.chat_path, prefix)}
+              >
+                <span className="block truncate font-medium">{chatDisplayTitle(chat)}</span>
+                <span className="mt-0.5 block truncate font-mono text-[0.7rem] text-gray-500">{chat.repository?.slug || `Chat #${chat.id}`}</span>
+              </Link>
+            ))}
+          </nav>
+        ) : (
+          <div className="text-xs text-gray-400">No matching chats.</div>
+        )}
+      </section>
+      <ChatBookmarks payload={payload} />
+    </div>
+  )
+}
+
+function ChatBookmarks({ payload }: { payload: ChatPayload }) {
   return (
     <section>
-      <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Bookmarks</div>
+      <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Bookmarks in this chat</div>
       {payload.bookmarks.length > 0 ? (
         <nav aria-label="Chat bookmarks" className="space-y-1">
           {payload.bookmarks.map((bookmark) => (
@@ -899,7 +1048,7 @@ function Bookmarks({ payload }: { payload: ChatPayload }) {
             </a>
           ))}
         </nav>
-      ) : <div className="text-xs text-gray-400">None</div>}
+      ) : <div className="text-xs text-gray-400">No bookmarks yet.</div>}
     </section>
   )
 }
@@ -1063,6 +1212,55 @@ function primaryButton() {
 
 function secondaryButton() {
   return "rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:text-gray-300"
+}
+
+function workspaceTabClass(active: boolean) {
+  return `border-b-2 px-3 py-2 ${active ? "border-blue-600 text-blue-700" : "border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900"}`
+}
+
+function workspaceTabLabel(tab: WorkspaceTab) {
+  if (tab === "whiteboard") return "Whiteboard"
+  if (tab === "context") return "Context"
+
+  return "Chats"
+}
+
+function defaultWorkspaceTab(payload: ChatPayload): WorkspaceTab {
+  return whiteboardElements(payload).length > 0 ? "whiteboard" : "context"
+}
+
+function storedWorkspaceTab(): WorkspaceTab | null {
+  try {
+    const value = window.localStorage.getItem(CHAT_WORKSPACE_TAB_KEY)
+    return value === "whiteboard" || value === "context" || value === "chats" ? value : null
+  } catch (_error) {
+    return null
+  }
+}
+
+function storedWorkspaceWidth() {
+  try {
+    return clampWorkspaceWidth(Number.parseInt(window.localStorage.getItem(CHAT_WORKSPACE_WIDTH_KEY) || "", 10) || CHAT_WORKSPACE_DEFAULT_WIDTH)
+  } catch (_error) {
+    return CHAT_WORKSPACE_DEFAULT_WIDTH
+  }
+}
+
+function storeWorkspacePreference(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch (_error) {
+    // Local storage can be unavailable in hardened browser modes; the
+    // workspace still works with in-memory state.
+  }
+}
+
+function clampWorkspaceWidth(width: number) {
+  return Math.min(Math.max(width, CHAT_WORKSPACE_MIN_WIDTH), CHAT_WORKSPACE_MAX_WIDTH)
+}
+
+function chatDisplayTitle(chat: Pick<ChatNavRecord, "id" | "title" | "repository">) {
+  return chat.title || chat.repository?.slug || `Chat #${chat.id}`
 }
 
 function formatThousands(value: number) {

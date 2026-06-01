@@ -124,6 +124,13 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       cumulative_cost_usd: 0.012345,
       last_message_at: Time.current
     )
+    older_chat = ChatSession.create!(
+      user: user,
+      repository: repository,
+      title: "Older chat",
+      last_message_at: 2.days.ago
+    )
+    ChatSession.create!(user: Factories.user, title: "Foreign chat", last_message_at: Time.current)
     message = chat.messages.create!(role: "assistant", content: { "text" => "Discuss **aqueducts**." })
     message.bookmarks.create!(label: "Aqueducts", kind: "topic")
     chat.create_whiteboard!(scene_json: { "elements" => [ { "id" => "box-1", "type" => "rectangle" } ] }, version: 2)
@@ -137,6 +144,11 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body["chat_available"]).to eq(true)
     expect(body["turn_in_flight"]).to eq(false)
     expect(body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id))
+    expect(body["recent_chats"]).to include(
+      include("id" => chat.id, "current" => true, "chat_path" => chat_path(chat), "repository" => include("slug" => "acme/widgets")),
+      include("id" => older_chat.id, "current" => false, "title" => "Older chat")
+    )
+    expect(body["recent_chats"].to_s).not_to include("Foreign chat")
     expect(body["messages"]).to contain_exactly(include(
       "type" => "message",
       "id" => message.id,

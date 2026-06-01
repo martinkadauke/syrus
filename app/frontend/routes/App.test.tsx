@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { App } from "./App"
 
@@ -62,6 +62,12 @@ vi.mock("mermaid", () => ({
 }))
 
 describe("App", () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    excalidrawMock.throwOnRender = false
+    excalidrawMock.updateScene.mockClear()
+  })
+
   it("loads bootstrap data into the SPA shell", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
@@ -3922,13 +3928,24 @@ describe("App", () => {
     expect(chatMain).toHaveClass("lg:h-[calc(100vh-4rem)]", "lg:overflow-hidden")
     expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
     expect(screen.getByTestId("chat-message-stream")).toHaveClass("h-full", "min-h-0", "overflow-y-auto")
-    expect(screen.getByRole("complementary", { name: "Chat side panel" })).toHaveClass("lg:min-h-0", "lg:overflow-y-auto")
-    expect(screen.getByText("Aqueducts")).toBeInTheDocument()
-    expect(screen.getByText("Launch notes")).toBeInTheDocument()
+    expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("lg:min-h-0")
+    expect(screen.getByRole("navigation", { name: "Chat workspace tabs" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Resize chat workspace" })).toBeInTheDocument()
     expect(screen.getByText("Version 2")).toBeInTheDocument()
+    expect(screen.queryByText("Launch notes")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Context" }))
+    expect(screen.getByText("Launch notes")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Chats" }))
+    expect(screen.getByRole("navigation", { name: "Recent chats" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Road survey/ })).toHaveAttribute("href", "/app-shell/chats/4")
+    expect(screen.getByText("Bookmarks in this chat")).toBeInTheDocument()
+    expect(screen.getByText("Aqueducts")).toBeInTheDocument()
+    fireEvent.change(screen.getByPlaceholderText("Title, repo, or id"), { target: { value: "roads" } })
+    expect(screen.queryByRole("link", { name: /Aqueduct planning/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /Road survey/ })).toBeInTheDocument()
     expect(screen.getByText("12.4k in", { exact: false })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
-    expect(screen.getByRole("link", { name: "New chat" })).toHaveAttribute("href", "/app-shell/chats/new")
+    expect(screen.getAllByRole("link", { name: "New chat" }).map((link) => link.getAttribute("href"))).toContain("/app-shell/chats/new")
     fireEvent.change(screen.getByPlaceholderText("Ask about this repository..."), { target: { value: "Now inspect proposals" } })
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
 
@@ -4446,9 +4463,11 @@ describe("App", () => {
         })
       )
     })
+    fireEvent.click(screen.getByRole("button", { name: "Chats" }))
     expect(await screen.findByRole("link", { name: "Aqueduct marker" })).toHaveAttribute("href", "#message-9")
     expect(screen.queryByText("Bookmarked Aqueduct marker.")).not.toBeInTheDocument()
 
+    fireEvent.click(screen.getByRole("button", { name: "Context" }))
     fireEvent.click(await screen.findByText("acme/tools"))
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -5619,6 +5638,32 @@ function chatPayload(overrides: {
     ],
     bookmarks: [
       { id: 1, label: "Aqueducts", chat_message_id: 9 }
+    ],
+    recent_chats: [
+      {
+        id: 8,
+        title: "Aqueduct planning",
+        chat_path: "/chats/8",
+        repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+        stop_requested_at: null,
+        cumulative_input_tokens: 12400,
+        cumulative_output_tokens: 3200,
+        cumulative_cost_usd: 0.0123,
+        current: true,
+        last_message_at: "2026-06-01T10:00:00Z"
+      },
+      {
+        id: 4,
+        title: "Road survey",
+        chat_path: "/chats/4",
+        repository: { id: 4, slug: "acme/roads", repository_path: "/repositories/4" },
+        stop_requested_at: null,
+        cumulative_input_tokens: 2000,
+        cumulative_output_tokens: 1000,
+        cumulative_cost_usd: 0.001,
+        current: false,
+        last_message_at: "2026-05-31T10:00:00Z"
+      }
     ],
     pending_actions: [],
     attachment_groups: {

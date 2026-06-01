@@ -213,6 +213,7 @@ module Api
             has_more_older: has_more_older,
             messages: messages_json(messages, repository: repository),
             bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },
+            recent_chats: recent_chats_json(chat_session),
             pending_actions: pending_actions_json(chat_session),
             attachment_groups: attachment_groups_json(attachment_groups),
             documents_in_scope: chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) },
@@ -266,6 +267,22 @@ module Api
             label: bookmark.label,
             chat_message_id: bookmark.chat_message_id
           }
+        end
+
+        def recent_chats_json(current_chat_session)
+          recent_chats = Current.user.chat_sessions
+            .where.not(id: current_chat_session.id)
+            .preload(repository_attachments: :attachable)
+            .order(Arel.sql("COALESCE(chat_sessions.last_message_at, chat_sessions.updated_at) DESC"), id: :desc)
+            .limit(19)
+            .to_a
+
+          ([ current_chat_session ] + recent_chats).map do |chat_session|
+            chat_json(chat_session).merge(
+              current: chat_session.id == current_chat_session.id,
+              last_message_at: chat_session.last_message_at&.iso8601
+            )
+          end
         end
 
         def pending_actions_json(chat_session)

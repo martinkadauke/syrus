@@ -150,6 +150,7 @@ function chatPayload(messages: Array<ReturnType<typeof message>>) {
     has_more_older: false,
     messages,
     bookmarks: [],
+    recent_chats: [],
     pending_actions: [],
     attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
     documents_in_scope: [],

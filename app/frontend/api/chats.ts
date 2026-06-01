@@ -17,6 +17,11 @@ export type ChatRecord = {
   cumulative_cost_usd: number
 }
 
+export type ChatNavRecord = ChatRecord & {
+  current: boolean
+  last_message_at: string | null
+}
+
 export type ChatSystemMessage = {
   tone: "success" | "warning" | "error" | "neutral"
   label: string
@@ -161,6 +166,7 @@ export type ChatPayload = {
   has_more_older: boolean
   messages: ChatMessageItem[]
   bookmarks: ChatBookmark[]
+  recent_chats: ChatNavRecord[]
   pending_actions: ChatPendingAction[]
   attachment_groups: {
     repositories: ChatAttachmentRow[]
