@@ -8,7 +8,8 @@ class ClaudeInvocation
                  max_turns: AgentInvocation::DEFAULT_MAX_TURNS,
                  mcp_config: nil,
                  resume_session_id: nil,
-                 stop_requested: -> { false })
+                 stop_requested: -> { false },
+                 process_started: ->(_process) { })
     @workspace_path = workspace_path.to_s
     @prompt = prompt
     @oauth_token = oauth_token
@@ -19,6 +20,7 @@ class ClaudeInvocation
     @mcp_config = mcp_config
     @resume_session_id = resume_session_id
     @stop_requested = stop_requested
+    @process_started = process_started
   end
 
   def run
@@ -31,7 +33,8 @@ class ClaudeInvocation
       max_turns: @max_turns,
       mcp_config: @mcp_config,
       resume_session_id: @resume_session_id,
-      stop_requested: @stop_requested
+      stop_requested: @stop_requested,
+      process_started: @process_started
     )
   end
 
@@ -46,7 +49,9 @@ class ClaudeInvocation
   # --dangerously-skip-permissions is intentional: the agent runs in an
   # isolated per-job worktree, never against the operator's checkout. Same
   # trust posture as letting a human dev pair on a branch.
-  def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:, max_turns:, mcp_config: nil, resume_session_id: nil, stop_requested: -> { false })
+  def default_runner(workspace_path:, prompt:, oauth_token:, log_sink:, timeout:,
+                     max_turns:, mcp_config: nil, resume_session_id: nil,
+                     stop_requested: -> { false }, process_started: ->(_process) { })
     env = agent_env(oauth_token: oauth_token, workspace_path: workspace_path)
     cmd = [ "claude", "--print" ]
     # `--mcp-config <configs...>` is variadic — claude keeps consuming
@@ -84,6 +89,7 @@ class ClaudeInvocation
       run: current_run,
       workflow: current_run&.workflow,
       stop_requested: stop_requested,
+      on_spawned_process: process_started,
       on_output_line: ->(line) do
         update = process_event(line, log_sink)
         metadata.merge!(update.compact) if update
@@ -227,5 +233,4 @@ class ClaudeInvocation
     log_sink.call(line.chomp)
     nil
   end
-
 end

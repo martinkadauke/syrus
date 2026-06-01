@@ -43,13 +43,15 @@ class ChatTurnJob < ApplicationJob
         max_turns: nil,
         mcp_config: mcp_config,
         resume_session_id: parent_session_id,
-        stop_requested: method(:stop_requested?)
+        stop_requested: method(:stop_requested?),
+        process_started: ->(_process) { @chat.broadcast_controls }
       ).run
     end
 
     capture_session!(result) if result
     @chat.record_turn_usage!(result) if result
     touch_chat!
+    @chat.broadcast_controls
   end
 
   private

@@ -4163,6 +4163,38 @@ describe("App", () => {
     }
   })
 
+  it("shows an animated chat agent activity indicator", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({ agentBusy: true, turnInFlight: false })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("status", { name: "Agent is working" })).toHaveTextContent("Agent working")
+  })
+
+  it("shows a starting state before the chat agent process is running", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({ agentBusy: false, turnInFlight: true })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("status", { name: "Agent is starting" })).toHaveTextContent("Agent starting")
+  })
+
   it("grows the chat input up to five rows", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
@@ -5655,6 +5687,7 @@ function chatPayload(overrides: {
   message?: string
   messages?: Array<Record<string, unknown>>
   turnInFlight?: boolean
+  agentBusy?: boolean
   hasMoreOlder?: boolean
 } = {}) {
   return {
@@ -5671,6 +5704,7 @@ function chatPayload(overrides: {
     },
     chat_available: true,
     turn_in_flight: overrides.turnInFlight ?? false,
+    agent_busy: overrides.agentBusy ?? false,
     has_more_older: overrides.hasMoreOlder ?? false,
     messages: overrides.messages || [
       {

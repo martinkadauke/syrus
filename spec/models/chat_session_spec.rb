@@ -181,6 +181,21 @@ RSpec.describe ChatSession do
     expect(session).not_to be_turn_in_flight
   end
 
+  it "reports whether an agent process is running in its workspace" do
+    session = described_class.create!(repository: repo, user: repo.user)
+    expect(session).not_to be_agent_busy
+
+    SpawnedProcess.create!(
+      kind: "agent",
+      command: "claude --print",
+      workdir: session.workspace_root.to_s,
+      hostname: "worker-1",
+      started_at: Time.current
+    )
+
+    expect(session).to be_agent_busy
+  end
+
   it "is destroyed with its repository" do
     session = described_class.create!(repository: repo, user: repo.user)
 
@@ -242,6 +257,7 @@ RSpec.describe ChatSession do
         payload: {
           action: "update_controls",
           turn_in_flight: false,
+          agent_busy: false,
           stop_requested_at: stopped_at.iso8601
         }
       )

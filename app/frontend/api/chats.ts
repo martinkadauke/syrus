@@ -163,6 +163,7 @@ export type ChatPayload = {
   chat: ChatRecord
   chat_available: boolean
   turn_in_flight: boolean
+  agent_busy: boolean
   has_more_older: boolean
   messages: ChatMessageItem[]
   bookmarks: ChatBookmark[]

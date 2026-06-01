@@ -100,6 +100,12 @@ class ChatSession < ApplicationRecord
       .none?
   end
 
+  def agent_busy?
+    SpawnedProcess.running
+                  .where(kind: "agent", workdir: workspace_root.to_s)
+                  .exists?
+  end
+
   def cumulative_cost
     cumulative_cost_usd.to_d
   end
@@ -155,6 +161,7 @@ class ChatSession < ApplicationRecord
       payload: {
         action: "update_controls",
         turn_in_flight: turn_in_flight?,
+        agent_busy: agent_busy?,
         stop_requested_at: stop_requested_at&.iso8601
       }
     )

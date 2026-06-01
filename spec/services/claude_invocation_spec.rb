@@ -24,6 +24,7 @@ RSpec.describe ClaudeInvocation do
       expect(received[:max_turns]).to eq(7)
       expect(received[:mcp_config]).to be_nil
       expect(received[:stop_requested].call).to eq(false)
+      expect(received[:process_started]).to respond_to(:call)
       expect(result.turns).to eq(2)
       expect(result).to be_success
     end

@@ -40,6 +40,7 @@ describe("applyAppEvent", () => {
         action: "replace_tail",
         replace_from_id: 3,
         turn_in_flight: false,
+        agent_busy: true,
         stop_requested_at: "2026-05-30T12:00:00Z",
         messages: [
           message(3, "tool_use", "read b again", { tool_name: "Read", content: { input: { file_path: "b.rb" } } }),
@@ -52,6 +53,7 @@ describe("applyAppEvent", () => {
     expect(invalidate).not.toHaveBeenCalled()
     const updated = queryClient.getQueryData<ReturnType<typeof chatPayload>>(["chats", "9", ""])
     expect(updated?.turn_in_flight).toBe(false)
+    expect(updated?.agent_busy).toBe(true)
     expect(updated?.chat.stop_requested_at).toBe("2026-05-30T12:00:00Z")
     expect(updated?.messages).toEqual([
       message(1, "user", "old"),
@@ -72,6 +74,7 @@ describe("applyAppEvent", () => {
       payload: {
         action: "update_controls",
         turn_in_flight: false,
+        agent_busy: false,
         stop_requested_at: "2026-05-30T12:00:00Z"
       }
     })
@@ -79,6 +82,7 @@ describe("applyAppEvent", () => {
     expect(invalidate).not.toHaveBeenCalled()
     const updated = queryClient.getQueryData<ReturnType<typeof chatPayload>>(["chats", "9", ""])
     expect(updated?.turn_in_flight).toBe(false)
+    expect(updated?.agent_busy).toBe(false)
     expect(updated?.chat.stop_requested_at).toBe("2026-05-30T12:00:00Z")
   })
 
@@ -147,6 +151,7 @@ function chatPayload(messages: Array<ReturnType<typeof message>>) {
     },
     chat_available: true,
     turn_in_flight: true,
+    agent_busy: false,
     has_more_older: false,
     messages,
     bookmarks: [],

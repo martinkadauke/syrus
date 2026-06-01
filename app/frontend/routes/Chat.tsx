@@ -189,6 +189,7 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
   const displayedItems = renderChatMessages(displayedMessages)
   const hiddenSystemMessageCount = displayedItems.filter(isLowPrioritySystemMessage).length
   const visibleItems = showSystemMessages ? displayedItems : displayedItems.filter((item) => !isLowPrioritySystemMessage(item))
+  const agentActive = isAgentActive(payload)
   const oldestId = oldestMessageId(displayedMessages)
   const payloadMessageIdsSignature = payload.messages.map((message) => message.id).join("|")
   const visibleItemsSignature = chatRenderItemsSignature(visibleItems)
@@ -244,12 +245,13 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
 
   useEffect(() => {
     if (atBottomRef.current) scrollMessageStreamToBottom(streamRef.current)
-  }, [visibleItemsSignature])
+  }, [agentActive, visibleItemsSignature])
 
   if (displayedItems.length === 0) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto p-4 text-sm text-gray-500" data-testid="chat-message-stream">
-        {payload.chat.repository ? "Start a chat with this repository." : "Attach a repository to start chatting."}
+      <div className="flex h-full min-h-0 flex-col items-center justify-center gap-3 overflow-y-auto p-4 text-sm text-gray-500" data-testid="chat-message-stream">
+        <div>{payload.chat.repository ? "Start a chat with this repository." : "Attach a repository to start chatting."}</div>
+        {agentActive ? <AgentActivityIndicator running={payload.agent_busy} /> : null}
       </div>
     )
   }
@@ -280,6 +282,7 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
         ) : (
           <ChatMessage item={item} key={renderItemKey(item)} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         ))}
+        {agentActive ? <AgentActivityIndicator running={payload.agent_busy} /> : null}
       </div>
       {newMessageCount > 0 ? (
         <button
@@ -300,6 +303,27 @@ function SystemMessagesToggle({ count, expanded, onToggle }: { count: number; ex
       <button className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50" onClick={onToggle} type="button">
         {expanded ? "Hide system messages" : `Show ${count} hidden system ${count === 1 ? "message" : "messages"}`}
       </button>
+    </div>
+  )
+}
+
+function AgentActivityIndicator({ running }: { running: boolean }) {
+  const label = running ? "Agent is working" : "Agent is starting"
+
+  return (
+    <div aria-label={label} aria-live="polite" className="flex justify-start" role="status">
+      <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 shadow-sm">
+        <span aria-hidden="true" className="inline-flex items-center gap-1">
+          {[0, 1, 2].map((index) => (
+            <span
+              className="h-1.5 w-1.5 animate-bounce rounded-full bg-blue-500"
+              key={index}
+              style={{ animationDelay: `${index * 140}ms` }}
+            />
+          ))}
+        </span>
+        <span>{running ? "Agent working" : "Agent starting"}</span>
+      </div>
     </div>
   )
 }
@@ -338,6 +362,10 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
 
 function isLowPrioritySystemMessage(item: ChatRenderItem) {
   return item.type === "message" && item.role === "system" && ["neutral", "success"].includes(item.system?.tone || "neutral")
+}
+
+function isAgentActive(payload: ChatPayload) {
+  return payload.agent_busy || payload.turn_in_flight
 }
 
 function isMessageStreamAtBottom(element: HTMLElement) {
@@ -569,6 +597,7 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const submitWithEnter = useSubmitChatWithEnter()
   const search = queryKey[2]
+  const agentActive = isAgentActive(payload)
   const send = useMutation({
     mutationFn: () => sendChatMessage(appendSearch(payload.paths.app_message_path, search), text),
     onSuccess: (updated) => {
@@ -579,7 +608,7 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
   })
 
   function submitMessage() {
-    if (payload.turn_in_flight || send.isPending || text.length === 0) return
+    if (agentActive || send.isPending || text.length === 0) return
     onNotice(null)
     send.mutate()
   }
@@ -619,7 +648,7 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
       <div className="flex items-end gap-3">
         <textarea
           className="min-h-9 flex-1 resize-none overflow-y-hidden rounded border border-gray-300 px-3 py-2 text-sm leading-5 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50"
-          disabled={payload.turn_in_flight || send.isPending}
+          disabled={agentActive || send.isPending}
           onChange={(event) => setText(event.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={payload.chat.repository ? "Ask about this repository..." : "Attach a repository to start chatting..."}
@@ -628,8 +657,8 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
           rows={1}
           value={text}
         />
-        <button className={primaryButton()} disabled={payload.turn_in_flight || send.isPending} type="submit">Send</button>
-        {payload.turn_in_flight ? <StopButton payload={payload} queryKey={queryKey} /> : null}
+        <button className={primaryButton()} disabled={agentActive || send.isPending} type="submit">Send</button>
+        {agentActive ? <StopButton payload={payload} queryKey={queryKey} /> : null}
       </div>
     </form>
   )

@@ -99,6 +99,25 @@ RSpec.describe ProcessRunner do
     ENV.replace(saved)
   end
 
+  it "calls back when a spawned process row is registered" do
+    spawned_processes = []
+
+    result = described_class.new(
+      env: {},
+      command: [ ruby, "-e", "exit 0" ],
+      chdir: @dir,
+      timeout: 5,
+      kind: "agent",
+      on_spawned_process: ->(process) { spawned_processes << process }
+    ).run
+
+    expect(result).to be_success
+    expect(spawned_processes.size).to eq(1)
+    expect(spawned_processes.first).to have_attributes(kind: "agent", workdir: @dir)
+    expect(spawned_processes.first.finished_at).to be_nil
+    expect(spawned_processes.first.reload).to be_finished
+  end
+
   it "kills the subprocess when silent_timeout elapses with no output" do
     # The subprocess prints once and then sleeps — past silent_timeout
     # with no further output, ProcessRunner must terminate it and

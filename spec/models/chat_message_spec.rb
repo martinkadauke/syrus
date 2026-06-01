@@ -91,7 +91,7 @@ RSpec.describe ChatMessage do
         expect(resource).to eq("chat")
         expect(id).to eq(session.id)
         expect(changed).to eq([ "messages" ])
-        expect(payload).to include(action: "replace_tail", turn_in_flight: false)
+        expect(payload).to include(action: "replace_tail", turn_in_flight: false, agent_busy: false)
         expect(payload[:replace_from_id]).to be_present
         expect(payload[:messages].last).to include(
           type: "message",

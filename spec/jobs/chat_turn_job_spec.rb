@@ -18,6 +18,7 @@ RSpec.describe ChatTurnJob do
 
   before do
     ChatTurnJob.agent_runner = nil
+    allow(ChatWorkspace).to receive(:path_for).and_call_original
     allow(ChatWorkspace).to receive(:path_for).with(chat).and_return(workspace_path)
     allow(ChatWorkspace).to receive(:ensure_root!).with(chat).and_return(workspace_path)
   end
@@ -118,6 +119,51 @@ RSpec.describe ChatTurnJob do
     expect(chat.reload.cumulative_input_tokens).to eq(10)
     expect(chat.cumulative_output_tokens).to eq(20)
     expect(chat.cumulative_cost).to eq(BigDecimal("0.03"))
+  end
+
+  it "broadcasts chat controls after the agent turn finishes" do
+    message = user_message
+    ChatTurnJob.agent_runner = ->(**_) {
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    expect(AppEvents).to receive(:broadcast).with(
+      user: chat.user,
+      type: "updated",
+      resource: "chat",
+      id: chat.id,
+      changed: [ "controls" ],
+      payload: include(
+        action: "update_controls",
+        agent_busy: false,
+        stop_requested_at: nil
+      )
+    )
+
+    described_class.perform_now(chat.id, message.id)
+  end
+
+  it "broadcasts chat controls when the agent process starts" do
+    message = user_message
+    events = []
+    allow(AppEvents).to receive(:broadcast) { |**kwargs| events << kwargs }
+    ChatTurnJob.agent_runner = ->(workspace_path:, process_started:, **_) {
+      process = SpawnedProcess.create!(
+        kind: "agent",
+        command: "claude --print",
+        workdir: workspace_path,
+        hostname: "worker-1",
+        started_at: Time.current
+      )
+      process_started.call(process)
+      process.update!(finished_at: Time.current, outcome: "succeeded")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, message.id)
+
+    control_events = events.select { |event| event[:changed] == [ "controls" ] }
+    expect(control_events.map { |event| event.dig(:payload, :agent_busy) }).to eq([ true, false ])
   end
 
   it "resumes the existing Claude session after the first turn and omits the system prompt" do

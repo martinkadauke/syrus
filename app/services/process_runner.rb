@@ -56,7 +56,8 @@ class ProcessRunner
                  silent_timeout: nil,
                  kind: nil,
                  run: nil,
-                 workflow: nil)
+                 workflow: nil,
+                 on_spawned_process: nil)
     @env = env
     @command = command
     @chdir = chdir.to_s
@@ -72,6 +73,7 @@ class ProcessRunner
     @kind = kind
     @run = run
     @workflow = workflow
+    @on_spawned_process = on_spawned_process
 
     # Idempotent — only the first call in this process spawns the
     # supervisor thread. Web pods never reach this code path so they
@@ -89,6 +91,7 @@ class ProcessRunner
     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
     @spawned_process = register_spawned_process
+    @on_spawned_process&.call(@spawned_process) if @spawned_process
 
     begin
       Open3.popen2e(@env, *@command,

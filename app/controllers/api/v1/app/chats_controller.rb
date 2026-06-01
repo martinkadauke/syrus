@@ -188,6 +188,7 @@ module Api
             chat: chat_json(chat_session),
             chat_available: Current.user.claude_oauth_token.present?,
             turn_in_flight: chat_session.turn_in_flight?,
+            agent_busy: chat_session.agent_busy?,
             has_more_older: has_more_older,
             messages: messages_json(messages, repository: repository),
             bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },

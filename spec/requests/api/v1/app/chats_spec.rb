@@ -143,6 +143,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("chat", "cumulative_input_tokens")).to eq(12_400)
     expect(body["chat_available"]).to eq(true)
     expect(body["turn_in_flight"]).to eq(false)
+    expect(body["agent_busy"]).to eq(false)
     expect(body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id))
     expect(body["recent_chats"]).to include(
       include("id" => chat.id, "current" => true, "chat_path" => chat_path(chat), "repository" => include("slug" => "acme/widgets")),
@@ -167,6 +168,23 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("paths", "app_attachments_path")).to eq("/api/v1/app/chats/#{chat.id}/attachments")
     expect(body.dig("paths", "app_whiteboard_path")).to eq("/api/v1/app/chats/#{chat.id}/whiteboard")
     expect(body["paths"].keys).not_to include("chat_messages_path", "chat_attachments_path", "chat_whiteboard_path")
+  end
+
+  it "reports a running chat agent process in the app payload" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    SpawnedProcess.create!(
+      kind: "agent",
+      command: "claude --print",
+      workdir: chat.workspace_root.to_s,
+      hostname: "worker-1",
+      started_at: Time.current
+    )
+
+    get "/api/v1/app/chats/#{chat.id}"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["agent_busy"]).to eq(true)
   end
 
   it "returns older messages as typed JSON for frontend rendering" do
@@ -398,6 +416,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(chat.reload.last_message_at).to be > 1.minute.ago
     expect(parse_body["message"]).to eq("Message sent.")
     expect(parse_body["turn_in_flight"]).to eq(true)
+    expect(parse_body["agent_busy"]).to eq(false)
   end
 
   it "returns a validation error for blank chat messages" do

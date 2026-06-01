@@ -50,6 +50,7 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
         return {
           ...current,
           turn_in_flight: replaceTail.turn_in_flight ?? current.turn_in_flight,
+          agent_busy: replaceTail.agent_busy ?? current.agent_busy,
           messages: replaceMessageTail(current.messages, replaceTail.replace_from_id, replaceTail.messages),
           chat: {
             ...current.chat,
@@ -71,6 +72,7 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
         return {
           ...current,
           turn_in_flight: controls.turn_in_flight,
+          agent_busy: controls.agent_busy ?? current.agent_busy,
           chat: {
             ...current.chat,
             stop_requested_at: controls.stop_requested_at
@@ -98,12 +100,14 @@ type ChatReplaceTailPayload = {
   replace_from_id: number
   messages: ChatMessageItem[]
   turn_in_flight?: boolean
+  agent_busy?: boolean
   stop_requested_at?: string | null
 }
 
 type ChatControlsPayload = {
   action: "update_controls"
   turn_in_flight: boolean
+  agent_busy?: boolean
   stop_requested_at: string | null
 }
 
@@ -126,6 +130,7 @@ function chatReplaceTailPayload(payload: unknown): ChatReplaceTailPayload | null
     replace_from_id: candidate.replace_from_id,
     messages,
     turn_in_flight: typeof candidate.turn_in_flight === "boolean" ? candidate.turn_in_flight : undefined,
+    agent_busy: typeof candidate.agent_busy === "boolean" ? candidate.agent_busy : undefined,
     stop_requested_at: typeof candidate.stop_requested_at === "string" || candidate.stop_requested_at === null ? candidate.stop_requested_at : undefined
   }
 }
@@ -141,6 +146,7 @@ function chatControlsPayload(payload: unknown): ChatControlsPayload | null {
   return {
     action: "update_controls",
     turn_in_flight: candidate.turn_in_flight,
+    agent_busy: typeof candidate.agent_busy === "boolean" ? candidate.agent_busy : undefined,
     stop_requested_at: candidate.stop_requested_at
   }
 }
