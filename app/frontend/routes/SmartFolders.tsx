@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   deleteSmartFolder,
   fetchSmartFolders,
@@ -45,7 +46,7 @@ export function SmartFolders() {
 
       <SubjectTabs activeSubject={smartFolders.data?.subject_type || subjectFromSearch(location.search)} />
 
-      {notice ? <p className="text-sm text-emerald-700" role="status">{notice}</p> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {smartFolders.isPending ? <PanelMessage>Loading smart folders...</PanelMessage> : null}
       {smartFolders.isError ? <SmartFoldersError error={smartFolders.error} /> : null}
       {smartFolders.isSuccess ? <SmartFoldersTable onNotice={setNotice} payload={smartFolders.data} querySearch={location.search} /> : null}

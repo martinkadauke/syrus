@@ -4,6 +4,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   archiveScheduledTask,
   createScheduledTask,
@@ -217,7 +218,7 @@ function TaskDetail({ payload, basePath, prefix }: { payload: ScheduledTaskDetai
         <TaskActions archive={archive} basePath={basePath} command={command} task={payload.task} />
       </header>
 
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Unable to update scheduled task.")}</PanelMessage> : null}
       {archive.isError ? <PanelMessage tone="error">{errorMessage(archive.error, "Unable to archive scheduled task.")}</PanelMessage> : null}
 

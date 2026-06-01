@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   createRepositoryDocument,
   deleteRepositoryDocument,
@@ -55,7 +56,7 @@ function RepositoryDocumentsView({ payload, prefix }: { payload: RepositoryDocum
 
       <RepositoryTabs active="documents" prefix={prefix} repositoryId={payload.repository.id} />
 
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {destroy.isError ? <PanelMessage tone="error">{errorMessage(destroy.error, "Unable to delete document.")}</PanelMessage> : null}
 
       <section className="rounded border border-gray-200 bg-white">

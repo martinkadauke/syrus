@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   createJobAttachments,
   deleteJobCommand,
@@ -105,7 +106,7 @@ function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefix }: { 
         </div>
       </header>
 
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Job command failed.")}</PanelMessage> : null}
       <TagsPanel command={command} payload={payload} />
 

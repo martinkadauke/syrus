@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query"
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { BugReportButton } from "../components/BugReportButton"
+import { NoticeToast } from "../components/NoticeToast"
 import { useAppEvents } from "../lib/useAppEvents"
 import { AdminConsole } from "./AdminConsole"
 import { AdminGithubAppConfirm, AdminGithubAppRegister } from "./AdminGithubApp"
@@ -177,8 +178,16 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
 }
 
 function FlashBanner({ flash }: { flash?: BootstrapPayload["flash"] }) {
+  const [visible, setVisible] = useState(Boolean(flash?.alert || flash?.notice))
   const message = flash?.alert || flash?.notice
+
+  useEffect(() => {
+    setVisible(Boolean(message))
+  }, [message])
+
   if (!message) return null
+  if (!flash?.alert && flash?.notice && visible) return <NoticeToast message={flash.notice} onDismiss={() => setVisible(false)} />
+  if (!visible) return null
 
   const tone = flash?.alert ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"
   return (

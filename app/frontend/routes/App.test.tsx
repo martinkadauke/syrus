@@ -4321,6 +4321,13 @@ describe("App", () => {
       )
     })
     expect(await screen.findByRole("link", { name: "Job #88" })).toHaveAttribute("href", "/app-shell/jobs/88")
+    const proposalNotice = await screen.findByRole("status")
+    expect(proposalNotice).toHaveClass("fixed")
+    expect(proposalNotice).toHaveTextContent("Proposal confirmed and filed as Job #88.")
+    fireEvent.click(within(proposalNotice).getByRole("button", { name: "Dismiss notification" }))
+    await waitFor(() => {
+      expect(screen.queryByText("Proposal confirmed and filed as Job #88.")).not.toBeInTheDocument()
+    })
 
     fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
     await waitFor(() => {

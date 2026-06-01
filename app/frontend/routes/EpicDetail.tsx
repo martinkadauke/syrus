@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   archiveEpic,
   fetchEpicDetail,
@@ -110,7 +111,7 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
         </div>
       </header>
 
-      {notice ? <PanelMessage>{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Epic command failed.")}</PanelMessage> : null}
 
       <DependencyGraph graph={payload.graph} />

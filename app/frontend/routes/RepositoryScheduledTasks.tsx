@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   deleteRepositoryScheduledTask,
   fetchRepositoryScheduledTasks,
@@ -67,7 +68,7 @@ function RepositoryScheduledTasksView({ payload, prefix }: { payload: Repository
         <Link className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500" to={`${prefix}/repositories/${payload.repository.id}/scheduled_tasks/new`}>New scheduled task</Link>
       </div>
 
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {toggle.isError ? <PanelMessage tone="error">{errorMessage(toggle.error, "Unable to update scheduled task.")}</PanelMessage> : null}
       {destroy.isError ? <PanelMessage tone="error">{errorMessage(destroy.error, "Unable to delete scheduled task.")}</PanelMessage> : null}
 

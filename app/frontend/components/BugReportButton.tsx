@@ -3,6 +3,7 @@ import type { FormEvent } from "react"
 import { useEffect, useState } from "react"
 import { ApiError } from "../api/client"
 import { createBugReport } from "../api/bugReports"
+import { NoticeToast } from "./NoticeToast"
 
 type Html2Canvas = typeof import("html2canvas-pro").default
 type ScreenshotChoice = "viewport" | "fullPage" | "none"
@@ -82,11 +83,7 @@ export function BugReportButton({ context }: { context: string }) {
 
   return (
     <>
-      {notice ? (
-        <div className="fixed bottom-20 left-4 z-40 max-w-sm rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 shadow" role="status">
-          {notice}
-        </div>
-      ) : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       <button
         aria-label="Report a bug"
         className="fixed bottom-4 left-4 z-40 flex h-12 w-12 items-center justify-center rounded-full bg-rose-600 text-xl font-semibold text-white shadow-lg shadow-rose-900/20 hover:bg-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60"

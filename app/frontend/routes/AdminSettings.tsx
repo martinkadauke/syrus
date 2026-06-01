@@ -9,6 +9,7 @@ import {
   type ClearableSecret
 } from "../api/adminSettings"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 
 const queryKey = ["admin", "settings"] as const
 
@@ -26,7 +27,7 @@ export function AdminSettings() {
         <h1 className="mt-1 text-2xl font-semibold text-gray-900">App settings</h1>
       </header>
 
-      {notice ? <p className="text-sm text-emerald-700" role="status">{notice}</p> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {settings.isPending ? <PanelMessage>Loading app settings...</PanelMessage> : null}
       {settings.isError ? <SettingsError error={settings.error} /> : null}
       {settings.isSuccess ? <SettingsView onNotice={setNotice} payload={settings.data} /> : null}

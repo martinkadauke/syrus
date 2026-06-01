@@ -3,6 +3,7 @@ import type { FormEvent, RefObject } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardFilterOption, type DashboardFilterSchemaField, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
@@ -177,7 +178,7 @@ function SmartFolderNav({ payload, prefix, search }: { payload: DashboardPayload
           >
             {payload.landing_queue.paused ? "Resume landing" : "Pause landing"}
           </button>
-          {landingPause.isSuccess ? <p className="text-xs text-emerald-700" role="status">{landingPause.data.message}</p> : null}
+          <NoticeToast message={landingPause.isSuccess ? landingPause.data.message : null} onDismiss={() => landingPause.reset()} />
           {landingPause.isError ? <p className="text-xs text-red-700" role="alert">{errorMessage(landingPause.error, "Unable to update landing queue.")}</p> : null}
         </div>
       ) : null}
@@ -975,22 +976,14 @@ function BulkJobActions({ selectedIds, onClear }: { selectedIds: number[]; onCle
   }
 
   if (selectedIds.length === 0) {
-    if (notice) {
-      return (
-        <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
-          {notice}
-        </div>
-      )
-    }
-
-    return null
+    return <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
   }
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
       <div>
         <span className="font-medium text-gray-900">{selectedIds.length} selected</span>
-        {notice ? <span className="ml-3 text-emerald-700" role="status">{notice}</span> : null}
+        <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
         {action.isError ? <span className="ml-3 text-red-700" role="alert">{errorMessage(action.error, "Bulk action failed.")}</span> : null}
       </div>
       <div className="flex flex-wrap gap-2">

@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   archiveRepositoryFromPath,
   bulkRepositoryIssues,
@@ -90,7 +91,7 @@ function RepositoryDetail({ activeTab, payload, prefix, queryKey }: { activeTab:
       </header>
 
       <Tabs active={activeTab} prefix={prefix} tabs={payload.tabs} />
-      {notice ? <PanelMessage>{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {activeTab === "context" ? (
         <PinnedContext payload={payload} queryKey={queryKey} onNotice={setNotice} />
       ) : (
@@ -166,7 +167,7 @@ function RepositoryIssues({ payload, prefix }: { payload: RepositoryIssuesPayloa
         <a className="text-blue-600 hover:underline" href={payload.paths.github_issues_path} rel="noopener" target="_blank">View on GitHub</a>
       </div>
 
-      {notice ? <PanelMessage>{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {payload.error_message ? <PanelMessage tone="error">{payload.error_message}</PanelMessage> : null}
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "GitHub issue command failed.")}</PanelMessage> : null}
 

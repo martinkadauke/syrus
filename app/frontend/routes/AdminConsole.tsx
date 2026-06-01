@@ -12,6 +12,7 @@ import {
   type ConsoleSettings
 } from "../api/adminConsole"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 
 export function AdminConsole() {
   const consoleQuery = useQuery({
@@ -174,7 +175,7 @@ function GithubCachePanel({ payload }: { payload: AdminConsolePayload }) {
           {mutation.isPending ? "Clearing..." : "Clear cache"}
         </button>
       </div>
-      {mutation.data?.message ? <p className="mt-2 text-xs text-emerald-700">{mutation.data.message}</p> : null}
+      <NoticeToast message={mutation.data?.message || null} onDismiss={() => mutation.reset()} />
       {mutation.isError ? <p className="mt-2 text-xs text-red-700">Unable to clear GitHub cache.</p> : null}
     </section>
   )

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   clearCredential,
   fetchCredentials,
@@ -39,7 +40,7 @@ function CredentialsView({ payload }: { payload: CredentialsPayload }) {
 
   return (
     <>
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       <CredentialsForm onNotice={setNotice} payload={payload} />
       {payload.user.admin ? <ApiTokenPanel onNotice={setNotice} payload={payload} /> : null}
     </>

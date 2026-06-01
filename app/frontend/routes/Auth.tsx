@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   fetchSignup,
   requestPasswordReset,
@@ -179,7 +180,7 @@ export function PasswordRequestRoute() {
   return (
     <AuthShell title="Forgot your password?">
       <form className="space-y-5" onSubmit={onSubmit}>
-        {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+        <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
         {submit.isError ? <PanelMessage tone="error">{errorMessage(submit.error, "Unable to request password reset.")}</PanelMessage> : null}
         <Field label="Email address">
           <input

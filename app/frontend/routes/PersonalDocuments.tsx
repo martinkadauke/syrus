@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   addCredentialDocuments,
   deleteCredentialDocument,
@@ -37,7 +38,7 @@ function PersonalDocumentsView({ payload }: { payload: PersonalDocumentsPayload 
 
   return (
     <>
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       <DocumentsPanel onNotice={setNotice} payload={payload} />
     </>
   )

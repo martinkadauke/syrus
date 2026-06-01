@@ -3,6 +3,7 @@ import type { ReactNode } from "react"
 import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   archiveRepository,
   fetchRepositories,
@@ -64,7 +65,7 @@ function RepositoriesView({ payload, prefix }: { payload: RepositoriesPayload; p
         <Link className="rounded bg-blue-600 px-3.5 py-2.5 text-sm font-medium text-white hover:bg-blue-500" to={withRoutePrefix(payload.new_repository_path, prefix)}>Add</Link>
       </header>
 
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Repository command failed.")}</PanelMessage> : null}
 
       {payload.active_repositories.length > 0 ? (

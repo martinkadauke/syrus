@@ -6,6 +6,7 @@ import "@excalidraw/excalidraw/index.css"
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   addChatAttachment,
   cancelPendingAction,
@@ -120,7 +121,7 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
         </div>
       </header>
 
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Chat command failed.")}</PanelMessage> : null}
       <PendingActions payload={payload} queryKey={queryKey} onNotice={setNotice} />
 

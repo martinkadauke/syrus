@@ -9,6 +9,7 @@ import {
   type AdminInvitationsPayload
 } from "../api/adminInvitations"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 
 const queryKey = ["admin", "invitations"] as const
 
@@ -30,7 +31,7 @@ export function AdminInvitations() {
       </header>
 
       <CreateInvitationForm onNotice={setNotice} />
-      {notice ? <p className="text-sm text-emerald-700" role="status">{notice}</p> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
 
       <section className="rounded border border-gray-200 bg-white">
         <div className="border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm font-semibold text-gray-700">Pending invitations</div>

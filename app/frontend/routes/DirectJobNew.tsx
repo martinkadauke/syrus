@@ -3,6 +3,7 @@ import type { DragEvent, FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   createDirectJob,
   fetchDirectJobForm,
@@ -115,7 +116,7 @@ function DirectJobForm({ payload, prefix }: { payload: DirectJobFormPayload; pre
 
   return (
     <form className="space-y-5" onSubmit={submit}>
-      {notice ? <PanelMessage tone="success">{notice}</PanelMessage> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to create direct job.")}</PanelMessage> : null}
 
       <section className="space-y-4 rounded border border-gray-200 bg-white p-4">

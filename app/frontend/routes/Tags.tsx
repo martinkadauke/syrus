@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useState } from "react"
 import { Link } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { NoticeToast } from "../components/NoticeToast"
 import {
   createTag,
   deleteTag,
@@ -29,7 +30,7 @@ export function Tags() {
         <p className="mt-1 text-sm text-gray-500">Global job labels scoped to your account.</p>
       </header>
 
-      {notice ? <p className="text-sm text-emerald-700" role="status">{notice}</p> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {tags.isPending ? <PanelMessage>Loading tags...</PanelMessage> : null}
       {tags.isError ? <TagsError error={tags.error} /> : null}
       {tags.isSuccess ? <TagsView onNotice={setNotice} payload={tags.data} /> : null}
