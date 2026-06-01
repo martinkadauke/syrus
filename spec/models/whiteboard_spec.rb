@@ -8,7 +8,7 @@ RSpec.describe Whiteboard do
   it "creates with an empty scene and version zero by default" do
     whiteboard = described_class.create!(chat_session: chat_session)
 
-    expect(whiteboard.scene_json).to eq("elements" => [])
+    expect(whiteboard.scene_json).to eq("elements" => [], "appState" => {}, "files" => {})
     expect(whiteboard.version).to eq(0)
     expect(whiteboard.last_edited_at).to be_nil
   end
@@ -28,6 +28,30 @@ RSpec.describe Whiteboard do
     expect(missing_elements.errors[:scene_json]).to include("must include an elements array")
     expect(non_array_elements).not_to be_valid
     expect(non_array_elements.errors[:scene_json]).to include("must include an elements array")
+  end
+
+  it "requires optional appState and files to be hashes" do
+    bad_app_state = described_class.new(chat_session: chat_session, scene_json: { "elements" => [], "appState" => [] })
+    bad_files = described_class.new(chat_session: chat_session, scene_json: { "elements" => [], "files" => [] })
+
+    expect(bad_app_state).not_to be_valid
+    expect(bad_app_state.errors[:scene_json]).to include("appState must be a hash")
+    expect(bad_files).not_to be_valid
+    expect(bad_files.errors[:scene_json]).to include("files must be a hash")
+  end
+
+  it "normalizes older element-only scenes" do
+    whiteboard = described_class.create!(
+      chat_session: chat_session,
+      scene_json: { "elements" => [ { "id" => "box-1" } ] }
+    )
+
+    expect(whiteboard.current_state).to eq(
+      "elements" => [ { "id" => "box-1" } ],
+      "appState" => {},
+      "files" => {},
+      "version" => 0
+    )
   end
 
   it "caps the scene element count" do
@@ -59,7 +83,7 @@ RSpec.describe Whiteboard do
       resource: "chat",
       id: chat_session.id,
       changed: [ "whiteboard" ],
-      payload: { "elements" => [ { "id" => "box-1" } ], "version" => 3 }
+      payload: { "elements" => [ { "id" => "box-1" } ], "appState" => {}, "files" => {}, "version" => 3 }
     )
 
     whiteboard.broadcast_scene

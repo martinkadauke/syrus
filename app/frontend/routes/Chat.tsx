@@ -33,6 +33,7 @@ import {
   type ChatStructuredTool,
   type ChatSystemMessage,
   type ChatWhiteboardElement,
+  type ChatWhiteboardScene,
   type ChatToolGroupItem
 } from "../api/chats"
 import { Markdown } from "../lib/Markdown"
@@ -48,7 +49,7 @@ const CHAT_WORKSPACE_MIN_WIDTH = 360
 const CHAT_WORKSPACE_MAX_WIDTH = 760
 
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
-type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "updateScene">
+type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "addFiles" | "updateScene">
 
 export function ChatRoute() {
   const params = useParams()
@@ -891,12 +892,12 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [version, setVersion] = useState(payload.whiteboard.version)
-  const [elements, setElements] = useState<ChatWhiteboardElement[]>(() => whiteboardElements(payload))
+  const [scene, setScene] = useState<ChatWhiteboardScene>(() => whiteboardScene(payload))
   const apiRef = useRef<ExcalidrawApi | null>(null)
-  const appliedSignatureRef = useRef(signatureFor(elements))
+  const appliedSignatureRef = useRef(signatureForScene(scene))
   const chatIdRef = useRef(payload.chat.id)
   const pathRef = useRef(payload.paths.app_whiteboard_path)
-  const pendingElementsRef = useRef<readonly ChatWhiteboardElement[] | null>(null)
+  const pendingSceneRef = useRef<ChatWhiteboardScene | null>(null)
   const remoteUpdateInProgressRef = useRef(false)
   const retryingConflictRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
@@ -909,12 +910,16 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
     saveTimerRef.current = null
   }, [])
 
-  const applyRemoteElements = useCallback((nextElements: readonly ChatWhiteboardElement[], nextVersion: number) => {
+  const applyRemoteScene = useCallback((nextScene: ChatWhiteboardScene, nextVersion: number) => {
     remoteUpdateInProgressRef.current = true
-    const copied = Array.from(nextElements)
-    appliedSignatureRef.current = signatureFor(copied)
-    setElements(copied)
-    apiRef.current?.updateScene({ elements: asExcalidrawElements(copied) })
+    const copied = cloneWhiteboardScene(nextScene)
+    appliedSignatureRef.current = signatureForScene(copied)
+    setScene(copied)
+    apiRef.current?.addFiles(asExcalidrawFiles(copied.files))
+    apiRef.current?.updateScene({
+      elements: asExcalidrawElements(copied.elements),
+      appState: copied.appState as never
+    })
     versionRef.current = nextVersion
     setVersion(nextVersion)
     queueMicrotask(() => {
@@ -922,46 +927,46 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
     })
   }, [])
 
-  const recoverConflict = useCallback(async (originalElements: readonly ChatWhiteboardElement[]) => {
+  const recoverConflict = useCallback(async (originalScene: ChatWhiteboardScene) => {
     if (retryingConflictRef.current) return
 
     retryingConflictRef.current = true
     try {
       const current = await fetchChatWhiteboard(pathRef.current)
-      applyRemoteElements(current.scene_json.elements, current.version)
+      applyRemoteScene(current.scene_json, current.version)
       const retry = await patchChatWhiteboard(pathRef.current, {
-        elements: originalElements,
+        ...originalScene,
         expected_version: current.version
       })
       if (retry.status === 409) throw new ApiError("Whiteboard changed again before the retry completed.", { status: 409 })
 
-      applyRemoteElements(retry.payload.scene_json.elements, retry.payload.version)
+      applyRemoteScene(retry.payload.scene_json, retry.payload.version)
     } finally {
       retryingConflictRef.current = false
     }
-  }, [applyRemoteElements])
+  }, [applyRemoteScene])
 
   const savePending = useCallback(async () => {
-    const pendingElements = pendingElementsRef.current
-    if (!pendingElements) return
+    const pendingScene = pendingSceneRef.current
+    if (!pendingScene) return
 
-    pendingElementsRef.current = null
+    pendingSceneRef.current = null
     setSaveError(null)
     try {
       const result = await patchChatWhiteboard(pathRef.current, {
-        elements: pendingElements,
+        ...pendingScene,
         expected_version: versionRef.current
       })
       if (result.status === 409) {
-        await recoverConflict(pendingElements)
+        await recoverConflict(pendingScene)
         return
       }
 
-      applyRemoteElements(result.payload.scene_json.elements, result.payload.version)
+      applyRemoteScene(result.payload.scene_json, result.payload.version)
     } catch (error) {
       setSaveError(errorMessage(errorAsError(error), "Whiteboard save failed."))
     }
-  }, [applyRemoteElements, recoverConflict])
+  }, [applyRemoteScene, recoverConflict])
 
   useEffect(() => {
     let cancelled = false
@@ -983,35 +988,39 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
   }, [payload.paths.app_whiteboard_path])
 
   useEffect(() => {
-    const nextElements = whiteboardElements(payload)
+    const nextScene = whiteboardScene(payload)
     const chatChanged = chatIdRef.current !== payload.chat.id
     if (!chatChanged && payload.whiteboard.version <= versionRef.current) return
 
     chatIdRef.current = payload.chat.id
-    applyRemoteElements(nextElements, payload.whiteboard.version)
-  }, [applyRemoteElements, payload])
+    applyRemoteScene(nextScene, payload.whiteboard.version)
+  }, [applyRemoteScene, payload])
 
   useEffect(() => () => {
     clearPendingSave()
-    const pendingElements = pendingElementsRef.current
-    if (pendingElements) {
+    const pendingScene = pendingSceneRef.current
+    if (pendingScene) {
       void patchChatWhiteboard(pathRef.current, {
-        elements: pendingElements,
+        ...pendingScene,
         expected_version: versionRef.current
       }).catch(() => {})
     }
   }, [clearPendingSave])
 
-  const handleChange = useCallback((nextElements: readonly ChatWhiteboardElement[]) => {
+  const handleChange = useCallback((nextElements: readonly ChatWhiteboardElement[], nextAppState: unknown, nextFiles: unknown) => {
     if (remoteUpdateInProgressRef.current) return
 
-    const copied = Array.from(nextElements)
-    const signature = signatureFor(copied)
+    const copied = cloneWhiteboardScene({
+      elements: Array.from(nextElements),
+      appState: cleanWhiteboardAppState(nextAppState),
+      files: cleanWhiteboardFiles(nextFiles)
+    })
+    const signature = signatureForScene(copied)
     if (signature === appliedSignatureRef.current) return
 
     appliedSignatureRef.current = signature
-    setElements(copied)
-    pendingElementsRef.current = copied
+    setScene(copied)
+    pendingSceneRef.current = copied
     clearPendingSave()
     saveTimerRef.current = window.setTimeout(() => {
       void savePending()
@@ -1040,40 +1049,96 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
             excalidrawAPI={(api) => {
               apiRef.current = api
             }}
-            initialData={{ elements: asExcalidrawElements(elements) }}
-            onChange={(nextElements) => handleChange(nextElements as readonly ChatWhiteboardElement[])}
+            initialData={{
+              elements: asExcalidrawElements(scene.elements),
+              appState: scene.appState as never,
+              files: scene.files as never
+            }}
+            onChange={(nextElements, nextAppState, nextFiles) => handleChange(nextElements as readonly ChatWhiteboardElement[], nextAppState, nextFiles)}
           />
         ) : (
           <div className="flex h-full items-center justify-center p-4 text-sm text-gray-500">
             {loadError || "Loading canvas..."}
           </div>
         )}
-        {elements.length === 0 ? (
+        {scene.elements.length === 0 ? (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-6 text-center text-sm text-gray-400">
             Empty canvas. Start sketching, or ask the agent to draw something.
           </div>
         ) : null}
       </div>
       <div className="mt-1 text-xs text-gray-500">
-        {saveError || `${elements.length} canvas ${elements.length === 1 ? "element" : "elements"}`}
+        {saveError || `${scene.elements.length} canvas ${scene.elements.length === 1 ? "element" : "elements"}`}
       </div>
     </section>
   )
 }
 
 function whiteboardElements(payload: ChatPayload): ChatWhiteboardElement[] {
-  return Array.isArray(payload.whiteboard.elements) ? payload.whiteboard.elements : []
+  return whiteboardScene(payload).elements
 }
 
-function signatureFor(elements: readonly ChatWhiteboardElement[]) {
-  return elements
-    .map((element) => `${String(element.id || "")}:${String(element.version ?? 0)}`)
-    .sort()
-    .join(",")
+function whiteboardScene(payload: ChatPayload): ChatWhiteboardScene {
+  return {
+    elements: Array.isArray(payload.whiteboard.elements) ? payload.whiteboard.elements : [],
+    appState: isPlainObject(payload.whiteboard.appState) ? payload.whiteboard.appState : {},
+    files: isPlainObject(payload.whiteboard.files) ? payload.whiteboard.files as ChatWhiteboardScene["files"] : {}
+  }
+}
+
+function cloneWhiteboardScene(scene: ChatWhiteboardScene): ChatWhiteboardScene {
+  return {
+    elements: JSON.parse(JSON.stringify(scene.elements)) as ChatWhiteboardElement[],
+    appState: cleanWhiteboardAppState(scene.appState),
+    files: cleanWhiteboardFiles(scene.files)
+  }
+}
+
+function signatureForScene(scene: ChatWhiteboardScene) {
+  return JSON.stringify(scene)
 }
 
 function asExcalidrawElements(elements: readonly ChatWhiteboardElement[]) {
   return elements as unknown as readonly ExcalidrawElement[]
+}
+
+function asExcalidrawFiles(files: ChatWhiteboardScene["files"]) {
+  return Object.values(files) as Parameters<ExcalidrawApi["addFiles"]>[0]
+}
+
+function cleanWhiteboardAppState(value: unknown): ChatWhiteboardScene["appState"] {
+  const appState = safeJsonObject(value)
+  delete appState.selectedElementIds
+  delete appState.selectedGroupIds
+  delete appState.editingElement
+  delete appState.resizingElement
+  delete appState.draggingElement
+  delete appState.multiElement
+  delete appState.suggestedBindings
+  delete appState.startBoundElement
+  return appState
+}
+
+function cleanWhiteboardFiles(value: unknown): ChatWhiteboardScene["files"] {
+  const files = safeJsonObject(value)
+  return Object.fromEntries(
+    Object.entries(files).filter(([, file]) => isPlainObject(file))
+  ) as ChatWhiteboardScene["files"]
+}
+
+function safeJsonObject(value: unknown): Record<string, unknown> {
+  if (!isPlainObject(value)) return {}
+
+  try {
+    const parsed = JSON.parse(JSON.stringify(value)) as unknown
+    return isPlainObject(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
 function ChatNavigator({ payload, prefix }: { payload: ChatPayload; prefix: string }) {

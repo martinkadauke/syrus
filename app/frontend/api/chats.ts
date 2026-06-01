@@ -134,12 +134,18 @@ export type ChatAttachmentResult = {
 }
 
 export type ChatWhiteboardElement = Record<string, unknown>
+export type ChatWhiteboardAppState = Record<string, unknown>
+export type ChatWhiteboardFiles = Record<string, Record<string, unknown>>
 
 export type ChatWhiteboardPayload = {
-  scene_json: {
-    elements: ChatWhiteboardElement[]
-  }
+  scene_json: ChatWhiteboardScene
   version: number
+}
+
+export type ChatWhiteboardScene = {
+  elements: ChatWhiteboardElement[]
+  appState: ChatWhiteboardAppState
+  files: ChatWhiteboardFiles
 }
 
 export type NewChatPayload = {
@@ -180,6 +186,8 @@ export type ChatPayload = {
   whiteboard: {
     version: number
     elements: ChatWhiteboardElement[]
+    appState: ChatWhiteboardAppState
+    files: ChatWhiteboardFiles
   }
   paths: {
     new_chat_path: string
@@ -211,7 +219,7 @@ export function fetchChatWhiteboard(path: string) {
   return getJson<ChatWhiteboardPayload>(path)
 }
 
-export async function patchChatWhiteboard(path: string, input: { elements: readonly ChatWhiteboardElement[]; expected_version: number }) {
+export async function patchChatWhiteboard(path: string, input: ChatWhiteboardScene & { expected_version: number }) {
   try {
     return { status: 200, payload: await patchJson<ChatWhiteboardPayload>(path, input) }
   } catch (error) {

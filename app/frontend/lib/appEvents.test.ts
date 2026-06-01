@@ -160,7 +160,7 @@ function chatPayload(messages: Array<ReturnType<typeof message>>) {
     attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
     documents_in_scope: [],
     attachment_results: [],
-    whiteboard: { version: 0, elements: [] },
+    whiteboard: { version: 0, elements: [], appState: {}, files: {} },
     paths: {
       new_chat_path: "/chats/new",
       credentials_path: "/credentials/edit",

@@ -132,6 +132,8 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("You have access to a shared whiteboard alongside this chat.")
     expect(out).to include("canvas wins for spatial relationships")
     expect(out).to include("Each shape\nyou create gets a stable id")
+    expect(out).to include("`draw_line`")
+    expect(out).to include("The scene\ncan include Excalidraw `elements`, `appState`, and `files`.")
     expect(out).to include("Reading the canvas via `read_scene` is cheap")
   end
 

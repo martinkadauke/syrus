@@ -188,6 +188,12 @@ module Prompts
         code references; canvas wins for spatial relationships. Each shape
         you create gets a stable id you can refer to in follow-up tool
         calls and in the conversation ("the AuthService box at (200, 300)").
+        Prefer high-level whiteboard tools (`draw_shape`, `draw_text`,
+        `draw_line`, `draw_arrow`, `draw_freedraw`, `draw_frame`,
+        `draw_embed`, `draw_image`) over raw Excalidraw JSON. Use
+        `update_scene` only when you need a full-scene replacement or an
+        Excalidraw feature the high-level tools cannot express. The scene
+        can include Excalidraw `elements`, `appState`, and `files`.
         Reading the canvas via `read_scene` is cheap — do it when the
         operator references something they drew or moved.
 

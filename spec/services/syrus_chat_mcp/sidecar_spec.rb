@@ -29,7 +29,12 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::ReadSceneTool,
         SyrusChatMcp::DrawShapeTool,
         SyrusChatMcp::DrawTextTool,
+        SyrusChatMcp::DrawLineTool,
         SyrusChatMcp::DrawArrowTool,
+        SyrusChatMcp::DrawFreedrawTool,
+        SyrusChatMcp::DrawFrameTool,
+        SyrusChatMcp::DrawEmbedTool,
+        SyrusChatMcp::DrawImageTool,
         SyrusChatMcp::MoveElementTool,
         SyrusChatMcp::DeleteElementTool,
         SyrusChatMcp::ClearCanvasTool,
@@ -89,7 +94,12 @@ RSpec.describe SyrusChatMcp::Sidecar do
         read_scene
         draw_shape
         draw_text
+        draw_line
         draw_arrow
+        draw_freedraw
+        draw_frame
+        draw_embed
+        draw_image
         move_element
         delete_element
         clear_canvas

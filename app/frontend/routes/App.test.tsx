@@ -10,6 +10,7 @@ const actionCable = vi.hoisted(() => ({
 
 const excalidrawMock = vi.hoisted(() => ({
   throwOnRender: false,
+  addFiles: vi.fn(),
   updateScene: vi.fn()
 }))
 
@@ -29,17 +30,29 @@ vi.mock("@rails/actioncable", () => ({
 
 vi.mock("@excalidraw/excalidraw", () => ({
   Excalidraw: ({ excalidrawAPI, initialData, onChange }: {
-    excalidrawAPI?: (api: { updateScene: typeof excalidrawMock.updateScene }) => void
-    initialData?: { elements?: unknown[] }
-    onChange?: (elements: unknown[]) => void
+    excalidrawAPI?: (api: { addFiles: typeof excalidrawMock.addFiles; updateScene: typeof excalidrawMock.updateScene }) => void
+    initialData?: { appState?: Record<string, unknown>; elements?: unknown[]; files?: Record<string, Record<string, unknown>> }
+    onChange?: (elements: unknown[], appState: Record<string, unknown>, files: Record<string, Record<string, unknown>>) => void
   }) => {
     if (excalidrawMock.throwOnRender) throw new Error("Canvas crashed")
 
-    excalidrawAPI?.({ updateScene: excalidrawMock.updateScene })
+    excalidrawAPI?.({ addFiles: excalidrawMock.addFiles, updateScene: excalidrawMock.updateScene })
 
     return (
       <button
-        onClick={() => onChange?.([...(initialData?.elements || []), { id: "shape-react", version: 1 }])}
+        onClick={() => onChange?.(
+          [...(initialData?.elements || []), { id: "shape-react", type: "image", fileId: "file-react", version: 1 }],
+          { ...(initialData?.appState || {}), viewBackgroundColor: "#ffffff", selectedElementIds: { "shape-react": true } },
+          {
+            ...(initialData?.files || {}),
+            "file-react": {
+              id: "file-react",
+              dataURL: "data:image/png;base64,abc",
+              mimeType: "image/png",
+              created: 1
+            }
+          }
+        )}
         type="button"
       >
         Draw on whiteboard
@@ -65,6 +78,7 @@ describe("App", () => {
   beforeEach(() => {
     window.localStorage.clear()
     excalidrawMock.throwOnRender = false
+    excalidrawMock.addFiles.mockClear()
     excalidrawMock.updateScene.mockClear()
   })
 
@@ -4234,7 +4248,18 @@ describe("App", () => {
       const path = String(input)
       if (path === "/api/v1/app/chats/8/whiteboard" && init?.method === "PATCH") {
         return Promise.resolve(new Response(JSON.stringify({
-          scene_json: { elements: [{ id: "shape-react", version: 1 }] },
+          scene_json: {
+            elements: [{ id: "shape-react", type: "image", fileId: "file-react", version: 1 }],
+            appState: { viewBackgroundColor: "#ffffff" },
+            files: {
+              "file-react": {
+                id: "file-react",
+                dataURL: "data:image/png;base64,abc",
+                mimeType: "image/png",
+                created: 1
+              }
+            }
+          },
           version: 3
         }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
@@ -4259,14 +4284,37 @@ describe("App", () => {
           method: "PATCH",
           credentials: "same-origin",
           body: JSON.stringify({
-            elements: [{ id: "box-1", type: "rectangle" }, { id: "shape-react", version: 1 }],
+            elements: [
+              { id: "box-1", type: "rectangle" },
+              { id: "shape-react", type: "image", fileId: "file-react", version: 1 }
+            ],
+            appState: { viewBackgroundColor: "#ffffff" },
+            files: {
+              "file-react": {
+                id: "file-react",
+                dataURL: "data:image/png;base64,abc",
+                mimeType: "image/png",
+                created: 1
+              }
+            },
             expected_version: 2
           })
         })
       )
     })
     expect(await screen.findByText("Version 3")).toBeInTheDocument()
-    expect(excalidrawMock.updateScene).toHaveBeenCalledWith({ elements: [{ id: "shape-react", version: 1 }] })
+    expect(excalidrawMock.addFiles).toHaveBeenCalledWith([
+      {
+        id: "file-react",
+        dataURL: "data:image/png;base64,abc",
+        mimeType: "image/png",
+        created: 1
+      }
+    ])
+    expect(excalidrawMock.updateScene).toHaveBeenCalledWith({
+      elements: [{ id: "shape-react", type: "image", fileId: "file-react", version: 1 }],
+      appState: { viewBackgroundColor: "#ffffff" }
+    })
   })
 
   it("does not push the initial whiteboard scene back through the imperative API", async () => {
@@ -5761,7 +5809,9 @@ function chatPayload(overrides: {
     attachment_results: [],
     whiteboard: {
       version: 2,
-      elements: [{ id: "box-1", type: "rectangle" }]
+      elements: [{ id: "box-1", type: "rectangle" }],
+      appState: {},
+      files: {}
     },
     paths: {
       new_chat_path: "/chats/new",

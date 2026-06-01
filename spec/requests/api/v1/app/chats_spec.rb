@@ -133,7 +133,14 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     ChatSession.create!(user: Factories.user, title: "Foreign chat", last_message_at: Time.current)
     message = chat.messages.create!(role: "assistant", content: { "text" => "Discuss **aqueducts**." })
     message.bookmarks.create!(label: "Aqueducts", kind: "topic")
-    chat.create_whiteboard!(scene_json: { "elements" => [ { "id" => "box-1", "type" => "rectangle" } ] }, version: 2)
+    chat.create_whiteboard!(
+      scene_json: {
+        "elements" => [ { "id" => "box-1", "type" => "rectangle" } ],
+        "appState" => { "viewBackgroundColor" => "#ffffff" },
+        "files" => { "file-1" => { "id" => "file-1", "dataURL" => "data:image/png;base64,abc" } }
+      },
+      version: 2
+    )
 
     get "/api/v1/app/chats/#{chat.id}"
 
@@ -163,6 +170,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body["documents_in_scope"]).to contain_exactly(include("title" => document.title, "repository_slug" => "acme/widgets"))
     expect(body.dig("whiteboard", "version")).to eq(2)
     expect(body.dig("whiteboard", "elements", 0, "id")).to eq("box-1")
+    expect(body.dig("whiteboard", "appState")).to eq("viewBackgroundColor" => "#ffffff")
+    expect(body.dig("whiteboard", "files", "file-1", "dataURL")).to eq("data:image/png;base64,abc")
     expect(body.dig("paths", "app_messages_path")).to eq("/api/v1/app/chats/#{chat.id}/messages")
     expect(body.dig("paths", "app_message_path")).to eq("/api/v1/app/chats/#{chat.id}/message")
     expect(body.dig("paths", "app_attachments_path")).to eq("/api/v1/app/chats/#{chat.id}/attachments")

@@ -3,17 +3,31 @@ module SyrusChatMcp
     class ElementLimitExceeded < StandardError; end
 
     SHAPE_TYPES = %w[rectangle ellipse diamond sticky].freeze
-    ELEMENT_TYPES = (SHAPE_TYPES + %w[text arrow]).freeze
+    ELEMENT_TYPES = %w[selection rectangle ellipse diamond text line arrow freedraw image frame magicframe iframe embeddable sticky].freeze
     DEFAULT_COLOR = "#f8fafc"
     DEFAULT_STROKE = "#1f2937"
+    ARROWHEAD_TYPES = %w[
+      arrow
+      bar
+      dot
+      circle
+      circle_outline
+      triangle
+      triangle_outline
+      diamond
+      diamond_outline
+      crowfoot_one
+      crowfoot_many
+      crowfoot_one_or_many
+    ].freeze
 
     module_function
 
     def read(chat_session)
       whiteboard = chat_session.whiteboard
-      return { version: 0, elements: [] } unless whiteboard
+      return Whiteboard.default_state unless whiteboard
 
-      { version: whiteboard.version, elements: whiteboard.elements }
+      whiteboard.current_state
     end
 
     def mutate(chat_session, tool_name, args)
@@ -22,11 +36,12 @@ module SyrusChatMcp
 
       Whiteboard.transaction do
         whiteboard = find_or_create_whiteboard(chat_session).lock!
-        elements = deep_dup_elements(whiteboard.elements)
-        result = yield(elements)
+        scene = deep_dup_scene(whiteboard.current_state.except("version"))
+        elements = scene.fetch("elements")
+        result = yield(elements, scene)
         ensure_within_element_limit!(elements)
 
-        whiteboard.scene_json = { "elements" => elements }
+        whiteboard.scene_json = scene
         whiteboard.version += 1
         whiteboard.last_edited_at = Time.current
         whiteboard.save!
@@ -43,7 +58,7 @@ module SyrusChatMcp
     end
 
     def find_or_create_whiteboard(chat_session)
-      chat_session.whiteboard || chat_session.create_whiteboard!(scene_json: { "elements" => [] })
+      chat_session.whiteboard || chat_session.create_whiteboard!
     end
 
     def shape_element(type:, x:, y:, width:, height:, color: nil, **)
@@ -54,17 +69,109 @@ module SyrusChatMcp
       )
     end
 
+    def line_element(type:, x:, y:, points:, stroke_color: nil, stroke_width: nil, start_arrowhead: nil, end_arrowhead: nil)
+      normalized_points = normalize_points(points)
+      dimensions = dimensions_for_points(normalized_points)
+      linear_type = type.to_s
+      raise ArgumentError, "type must be line or arrow" unless %w[line arrow].include?(linear_type)
+
+      element = base_element(
+        type: linear_type,
+        x: x,
+        y: y,
+        width: dimensions.fetch("width"),
+        height: dimensions.fetch("height")
+      ).merge(
+        "strokeColor" => stroke_color.presence || DEFAULT_STROKE,
+        "backgroundColor" => "transparent",
+        "strokeWidth" => integer_or_default(stroke_width, 2),
+        "fillStyle" => "hachure",
+        "points" => normalized_points,
+        "lastCommittedPoint" => nil,
+        "startBinding" => nil,
+        "endBinding" => nil,
+        "startArrowhead" => normalize_arrowhead(start_arrowhead),
+        "endArrowhead" => linear_type == "arrow" ? normalize_arrowhead(end_arrowhead, default: "arrow") : normalize_arrowhead(end_arrowhead)
+      )
+      element["elbowed"] = false if linear_type == "arrow"
+      element
+    end
+
+    def freedraw_element(x:, y:, points:, pressures: nil, simulate_pressure: true, stroke_color: nil, stroke_width: nil)
+      normalized_points = normalize_points(points)
+      dimensions = dimensions_for_points(normalized_points)
+      base_element(type: "freedraw", x: x, y: y, width: dimensions.fetch("width"), height: dimensions.fetch("height")).merge(
+        "strokeColor" => stroke_color.presence || DEFAULT_STROKE,
+        "backgroundColor" => "transparent",
+        "strokeWidth" => integer_or_default(stroke_width, 2),
+        "fillStyle" => "hachure",
+        "points" => normalized_points,
+        "pressures" => normalize_pressures(pressures, normalized_points.length),
+        "simulatePressure" => ActiveModel::Type::Boolean.new.cast(simulate_pressure),
+        "lastCommittedPoint" => nil
+      )
+    end
+
+    def frame_element(type:, x:, y:, width:, height:, name: nil)
+      frame_type = type.to_s.presence || "frame"
+      raise ArgumentError, "type must be frame or magicframe" unless %w[frame magicframe].include?(frame_type)
+
+      base_element(type: frame_type, x: x, y: y, width: width, height: height).merge(
+        "backgroundColor" => "transparent",
+        "strokeColor" => DEFAULT_STROKE,
+        "name" => name.presence
+      )
+    end
+
+    def embed_element(type:, x:, y:, width:, height:, link:)
+      embed_type = type.to_s.presence || "embeddable"
+      raise ArgumentError, "type must be embeddable or iframe" unless %w[embeddable iframe].include?(embed_type)
+
+      base_element(type: embed_type, x: x, y: y, width: width, height: height).merge(
+        "backgroundColor" => "transparent",
+        "strokeColor" => DEFAULT_STROKE,
+        "link" => link.to_s
+      )
+    end
+
+    def image_element(x:, y:, width:, height:, file_id:)
+      base_element(type: "image", x: x, y: y, width: width, height: height).merge(
+        "backgroundColor" => "transparent",
+        "strokeColor" => "transparent",
+        "fileId" => file_id,
+        "status" => "saved",
+        "scale" => [ 1, 1 ],
+        "crop" => nil
+      )
+    end
+
+    def file_record(data_url:, mime_type: nil, file_id: nil)
+      id = file_id.presence || ExcalidrawId.generate
+      now = (Time.current.to_f * 1000).to_i
+      {
+        "id" => id,
+        "dataURL" => data_url.to_s,
+        "mimeType" => mime_type.presence || mime_type_from_data_url(data_url),
+        "created" => now,
+        "lastRetrieved" => now
+      }
+    end
+
     def text_element(content:, x:, y:, font_size: nil)
       font_size = integer_or_default(font_size, 20)
       text = content.to_s
 
       base_element(type: "text", x: x, y: y, width: [ text.length * font_size * 0.6, font_size ].max.round(2), height: (font_size * 1.25).round(2)).merge(
         "text" => text,
+        "originalText" => text,
         "fontSize" => font_size,
         "fontFamily" => 1,
         "textAlign" => "left",
         "verticalAlign" => "top",
-        "baseline" => font_size
+        "baseline" => font_size,
+        "lineHeight" => 1.25,
+        "containerId" => nil,
+        "autoResize" => true
       )
     end
 
@@ -101,7 +208,11 @@ module SyrusChatMcp
       base_element(id: arrow_id, type: "arrow", x: start.fetch("x"), y: start.fetch("y"), width: finish.fetch("x") - start.fetch("x"), height: finish.fetch("y") - start.fetch("y")).merge(
         "points" => [ [ 0, 0 ], [ finish.fetch("x") - start.fetch("x"), finish.fetch("y") - start.fetch("y") ] ],
         "startBinding" => { "elementId" => from_element.fetch("id"), "focus" => 0, "gap" => 1 },
-        "endBinding" => { "elementId" => to_element.fetch("id"), "focus" => 0, "gap" => 1 }
+        "endBinding" => { "elementId" => to_element.fetch("id"), "focus" => 0, "gap" => 1 },
+        "lastCommittedPoint" => nil,
+        "startArrowhead" => nil,
+        "endArrowhead" => "arrow",
+        "elbowed" => false
       )
     end
 
@@ -151,6 +262,12 @@ module SyrusChatMcp
       end
     end
 
+    def validate_scene!(elements:, app_state: nil, files: nil)
+      validate_elements!(elements)
+      raise ArgumentError, "appState must be an object" unless app_state.nil? || app_state.is_a?(Hash)
+      raise ArgumentError, "files must be an object" unless files.nil? || files.is_a?(Hash)
+    end
+
     def ensure_can_append_element!(elements)
       raise ElementLimitExceeded, Whiteboard.element_limit_message if elements.size >= Whiteboard::MAX_ELEMENTS
     end
@@ -183,6 +300,10 @@ module SyrusChatMcp
       JSON.parse(JSON.generate(elements))
     end
 
+    def deep_dup_scene(scene)
+      JSON.parse(JSON.generate(scene))
+    end
+
     def base_element(type:, x:, y:, width:, height:, id: ExcalidrawId.generate)
       now = (Time.current.to_f * 1000).to_i
 
@@ -208,9 +329,11 @@ module SyrusChatMcp
         "seed" => SecureRandom.random_number(1 << 31),
         "version" => 1,
         "versionNonce" => SecureRandom.random_number(1 << 31),
+        "index" => nil,
         "isDeleted" => false,
         "groupIds" => [],
         "frameId" => nil,
+        "boundElements" => nil,
         "roundness" => nil,
         "updated" => now,
         "link" => nil,
@@ -251,6 +374,53 @@ module SyrusChatMcp
       Integer(value)
     rescue ArgumentError, TypeError
       raise ArgumentError, "font_size must be an integer"
+    end
+
+    def normalize_points(points)
+      raise ArgumentError, "points must be an array" unless points.is_a?(Array)
+      raise ArgumentError, "points must include at least two points" if points.size < 2
+
+      points.map do |point|
+        if point.is_a?(Array) && point.size >= 2
+          [ number(point[0], "point x"), number(point[1], "point y") ]
+        elsif point.is_a?(Hash)
+          [ number(point["x"] || point[:x], "point x"), number(point["y"] || point[:y], "point y") ]
+        else
+          raise ArgumentError, "each point must be [x, y] or {x, y}"
+        end
+      end
+    end
+
+    def dimensions_for_points(points)
+      xs = points.map(&:first)
+      ys = points.map(&:second)
+      {
+        "width" => xs.max.to_f - xs.min.to_f,
+        "height" => ys.max.to_f - ys.min.to_f
+      }
+    end
+
+    def normalize_pressures(pressures, count)
+      return [] if pressures.blank?
+      raise ArgumentError, "pressures must be an array" unless pressures.is_a?(Array)
+      raise ArgumentError, "pressures must match points length" unless pressures.length == count
+
+      pressures.map { |pressure| number(pressure, "pressure") }
+    end
+
+    def normalize_arrowhead(value, default: nil)
+      arrowhead = value.presence || default
+      return nil unless arrowhead
+
+      arrowhead = arrowhead.to_s
+      raise ArgumentError, "unsupported arrowhead: #{arrowhead}" unless ARROWHEAD_TYPES.include?(arrowhead)
+
+      arrowhead
+    end
+
+    def mime_type_from_data_url(data_url)
+      match = data_url.to_s.match(/\Adata:([^;,]+)[;,]/)
+      match ? match[1] : "application/octet-stream"
     end
   end
 end

@@ -18,12 +18,16 @@ RSpec.describe "App API chat whiteboards", type: :request do
       }.not_to change(Whiteboard, :count)
 
       expect(response).to have_http_status(:ok)
-      expect(parse_body).to eq("scene_json" => { "elements" => [] }, "version" => 0)
+      expect(parse_body).to eq("scene_json" => { "elements" => [], "appState" => {}, "files" => {} }, "version" => 0)
     end
 
     it "returns the current whiteboard state" do
       chat.create_whiteboard!(
-        scene_json: { "elements" => [ { "id" => "rect-1", "type" => "rectangle" } ] },
+        scene_json: {
+          "elements" => [ { "id" => "rect-1", "type" => "rectangle" } ],
+          "appState" => { "viewBackgroundColor" => "#ffffff" },
+          "files" => { "file-1" => { "id" => "file-1", "dataURL" => "data:image/png;base64,abc" } }
+        },
         version: 7
       )
 
@@ -31,7 +35,11 @@ RSpec.describe "App API chat whiteboards", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(parse_body).to eq(
-        "scene_json" => { "elements" => [ { "id" => "rect-1", "type" => "rectangle" } ] },
+        "scene_json" => {
+          "elements" => [ { "id" => "rect-1", "type" => "rectangle" } ],
+          "appState" => { "viewBackgroundColor" => "#ffffff" },
+          "files" => { "file-1" => { "id" => "file-1", "dataURL" => "data:image/png;base64,abc" } }
+        },
         "version" => 7
       )
     end
@@ -40,6 +48,8 @@ RSpec.describe "App API chat whiteboards", type: :request do
   describe "PATCH /api/v1/app/chats/:id/whiteboard" do
     it "creates a missing whiteboard, updates matching versions, and emits UI updates" do
       elements = [ { "id" => "box-1", "type" => "rectangle", "x" => 12 } ]
+      app_state = { "viewBackgroundColor" => "#ffffff" }
+      files = { "file-1" => { "id" => "file-1", "dataURL" => "data:image/png;base64,abc" } }
 
       expect(AppEvents).to receive(:broadcast).with(
         user: user,
@@ -47,19 +57,19 @@ RSpec.describe "App API chat whiteboards", type: :request do
         resource: "chat",
         id: chat.id,
         changed: [ "whiteboard" ],
-        payload: { "elements" => elements, "version" => 1 }
+        payload: { "elements" => elements, "appState" => app_state, "files" => files, "version" => 1 }
       )
 
       expect {
         patch whiteboard_path(chat),
-              params: { elements: elements, expected_version: 0 },
+              params: { elements: elements, appState: app_state, files: files, expected_version: 0 },
               as: :json
       }.to change(Whiteboard, :count).by(1)
 
       whiteboard = chat.reload.whiteboard
       expect(response).to have_http_status(:ok)
-      expect(parse_body).to eq("scene_json" => { "elements" => elements }, "version" => 1)
-      expect(whiteboard.scene_json).to eq("elements" => elements)
+      expect(parse_body).to eq("scene_json" => { "elements" => elements, "appState" => app_state, "files" => files }, "version" => 1)
+      expect(whiteboard.scene_json).to eq("elements" => elements, "appState" => app_state, "files" => files)
       expect(whiteboard.version).to eq(1)
       expect(whiteboard.last_edited_at).to be_present
     end
@@ -97,7 +107,7 @@ RSpec.describe "App API chat whiteboards", type: :request do
             as: :json
 
       expect(response).to have_http_status(:conflict)
-      expect(parse_body).to eq("scene_json" => { "elements" => [ { "id" => "current" } ] }, "version" => 3)
+      expect(parse_body).to eq("scene_json" => { "elements" => [ { "id" => "current" } ], "appState" => {}, "files" => {} }, "version" => 3)
       expect(whiteboard.reload.scene_json).to eq("elements" => [ { "id" => "current" } ])
       expect(whiteboard.version).to eq(3)
     end

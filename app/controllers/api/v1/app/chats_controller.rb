@@ -182,6 +182,7 @@ module Api
           repository = chat_session.repository
           attachment_groups = chat_session.chat_attachments.includes(:attachable).order(:attachable_type, :attached_at, :id).group_by(&:attachable_type)
           whiteboard = chat_session.whiteboard
+          whiteboard_scene = whiteboard ? whiteboard.current_state : Whiteboard.default_state
 
           {
             message: message,
@@ -198,8 +199,10 @@ module Api
             documents_in_scope: chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) },
             attachment_results: attachment_search_results(chat_session).map { |record| attachable_result_json(record) },
             whiteboard: {
-              version: whiteboard&.version || 0,
-              elements: whiteboard&.elements || []
+              version: whiteboard_scene.fetch("version"),
+              elements: whiteboard_scene.fetch("elements"),
+              appState: whiteboard_scene.fetch("appState"),
+              files: whiteboard_scene.fetch("files")
             },
             paths: {
               new_chat_path: new_chat_path,

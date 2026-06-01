@@ -12,7 +12,12 @@ RSpec.describe "SyrusChatMcp canvas tools" do
         SyrusChatMcp::ReadSceneTool,
         SyrusChatMcp::DrawShapeTool,
         SyrusChatMcp::DrawTextTool,
+        SyrusChatMcp::DrawLineTool,
         SyrusChatMcp::DrawArrowTool,
+        SyrusChatMcp::DrawFreedrawTool,
+        SyrusChatMcp::DrawFrameTool,
+        SyrusChatMcp::DrawEmbedTool,
+        SyrusChatMcp::DrawImageTool,
         SyrusChatMcp::MoveElementTool,
         SyrusChatMcp::DeleteElementTool,
         SyrusChatMcp::ClearCanvasTool,
@@ -62,7 +67,7 @@ RSpec.describe "SyrusChatMcp canvas tools" do
     response = call_tool("read_scene")
 
     expect(response[:result][:isError]).to be_falsey
-    expect(payload(response)).to eq(version: 0, elements: [])
+    expect(payload(response)).to eq(version: 0, elements: [], appState: {}, files: {})
     expect(chat_session.reload.whiteboard).to be_nil
     expect(chat_session.messages).to be_empty
   end
@@ -101,7 +106,90 @@ RSpec.describe "SyrusChatMcp canvas tools" do
 
     element = chat_session.reload.whiteboard.elements.first
     expect(response[:result][:isError]).to be_falsey
-    expect(element).to include("type" => "text", "text" => "Hello", "fontSize" => 24)
+    expect(element).to include("type" => "text", "text" => "Hello", "originalText" => "Hello", "fontSize" => 24)
+  end
+
+  it "draw_line appends a polyline or unbound arrow" do
+    expect_canvas_broadcast
+
+    response = call_tool(
+      "draw_line",
+      type: "arrow",
+      x: 10,
+      y: 20,
+      points: [ [ 0, 0 ], [ 30, 10 ], [ 60, 40 ] ],
+      end_arrowhead: "triangle"
+    )
+
+    element = chat_session.reload.whiteboard.elements.first
+    expect(response[:result][:isError]).to be_falsey
+    expect(element).to include(
+      "type" => "arrow",
+      "points" => [ [ 0.0, 0.0 ], [ 30.0, 10.0 ], [ 60.0, 40.0 ] ],
+      "startBinding" => nil,
+      "endBinding" => nil,
+      "endArrowhead" => "triangle",
+      "elbowed" => false
+    )
+  end
+
+  it "draw_freedraw appends a freehand path" do
+    expect_canvas_broadcast
+
+    response = call_tool(
+      "draw_freedraw",
+      x: 5,
+      y: 6,
+      points: [ { x: 0, y: 0 }, { x: 10, y: 8 } ],
+      pressures: [ 0.2, 0.7 ],
+      simulate_pressure: false
+    )
+
+    element = chat_session.reload.whiteboard.elements.first
+    expect(response[:result][:isError]).to be_falsey
+    expect(element).to include(
+      "type" => "freedraw",
+      "points" => [ [ 0.0, 0.0 ], [ 10.0, 8.0 ] ],
+      "pressures" => [ 0.2, 0.7 ],
+      "simulatePressure" => false
+    )
+  end
+
+  it "draw_frame appends frame-like elements" do
+    expect_canvas_broadcast
+
+    response = call_tool("draw_frame", type: "magicframe", x: 0, y: 0, width: 400, height: 300, name: "Plan")
+
+    element = chat_session.reload.whiteboard.elements.first
+    expect(response[:result][:isError]).to be_falsey
+    expect(element).to include("type" => "magicframe", "name" => "Plan", "width" => 400.0, "height" => 300.0)
+  end
+
+  it "draw_embed appends embeddable iframe-like elements" do
+    expect_canvas_broadcast
+
+    response = call_tool("draw_embed", type: "iframe", link: "https://example.com/demo", x: 1, y: 2, width: 300, height: 180)
+
+    element = chat_session.reload.whiteboard.elements.first
+    expect(response[:result][:isError]).to be_falsey
+    expect(element).to include("type" => "iframe", "link" => "https://example.com/demo")
+  end
+
+  it "draw_image stores an image element and its BinaryFiles entry" do
+    expect_canvas_broadcast
+
+    response = call_tool("draw_image", data_url: "data:image/png;base64,abc", x: 1, y: 2, width: 30, height: 40)
+
+    whiteboard = chat_session.reload.whiteboard
+    element = whiteboard.elements.first
+    file_id = element.fetch("fileId")
+    expect(response[:result][:isError]).to be_falsey
+    expect(element).to include("type" => "image", "status" => "saved", "scale" => [ 1, 1 ], "crop" => nil)
+    expect(whiteboard.files.fetch(file_id)).to include(
+      "id" => file_id,
+      "dataURL" => "data:image/png;base64,abc",
+      "mimeType" => "image/png"
+    )
   end
 
   it "draw_arrow binds both arrow endpoints and both endpoint shapes" do
@@ -168,14 +256,18 @@ RSpec.describe "SyrusChatMcp canvas tools" do
 
   it "update_scene replaces the elements array" do
     replacement = [
-      { "id" => "shape-1", "type" => "rectangle", "x" => 1, "y" => 2, "width" => 3, "height" => 4 }
+      { "id" => "line-1", "type" => "line", "x" => 1, "y" => 2, "width" => 3, "height" => 4, "points" => [ [ 0, 0 ], [ 3, 4 ] ] },
+      { "id" => "image-1", "type" => "image", "x" => 10, "y" => 20, "width" => 30, "height" => 40, "fileId" => "file-1" }
     ]
+    files = { "file-1" => { "id" => "file-1", "dataURL" => "data:image/png;base64,abc", "mimeType" => "image/png" } }
     expect_canvas_broadcast
 
-    response = call_tool("update_scene", elements: replacement)
+    response = call_tool("update_scene", elements: replacement, appState: { viewBackgroundColor: "#fff" }, files: files)
 
     expect(response[:result][:isError]).to be_falsey
     expect(chat_session.reload.whiteboard.elements).to eq(replacement)
+    expect(chat_session.reload.whiteboard.app_state).to eq("viewBackgroundColor" => "#fff")
+    expect(chat_session.reload.whiteboard.files).to eq(files)
   end
 
   it "rejects append tools when the whiteboard is at the element limit" do
@@ -210,7 +302,7 @@ RSpec.describe "SyrusChatMcp canvas tools" do
   end
 
   it "drives a high-level sequence from read to mutation and back to read" do
-    expect(payload(call_tool("read_scene"))).to eq(version: 0, elements: [])
+    expect(payload(call_tool("read_scene"))).to eq(version: 0, elements: [], appState: {}, files: {})
     first_id = payload(draw_shape(x: 0, y: 0, width: 20, height: 20)).fetch(:id)
     second_id = payload(draw_shape(type: "diamond", x: 100, y: 0, width: 20, height: 20)).fetch(:id)
     arrow_id = payload(call_tool("draw_arrow", from_id: first_id, to_id: second_id)).fetch(:id)

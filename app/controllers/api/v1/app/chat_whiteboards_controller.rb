@@ -19,6 +19,11 @@ module Api
             return
           end
 
+          scene = {
+            "elements" => plain_json(elements),
+            "appState" => plain_json(params[:appState] || params[:app_state] || {}),
+            "files" => plain_json(params[:files] || {})
+          }
           expected_version = params.fetch(:expected_version).to_i
           status = :ok
           whiteboard = nil
@@ -26,13 +31,15 @@ module Api
           chat_session.with_lock do
             whiteboard = chat_session.whiteboard || chat_session.create_whiteboard!
             if expected_version == whiteboard.version
-              whiteboard.replace_elements!(elements.map { |element| element.respond_to?(:to_unsafe_h) ? element.to_unsafe_h : element })
+              whiteboard.replace_scene!(scene)
             else
               status = :conflict
             end
           end
 
           render json: whiteboard_payload(whiteboard), status: status
+        rescue ArgumentError => e
+          render_error("bad_request", e.message, status: :bad_request)
         end
 
         private
@@ -43,9 +50,22 @@ module Api
 
         def whiteboard_payload(whiteboard)
           {
-            scene_json: { elements: whiteboard&.elements || [] },
+            scene_json: whiteboard ? whiteboard.current_state.except("version") : Whiteboard.default_scene,
             version: whiteboard&.version || 0
           }
+        end
+
+        def plain_json(value)
+          case value
+          when ActionController::Parameters
+            plain_json(value.to_unsafe_h)
+          when Hash
+            value.to_h.transform_values { |child| plain_json(child) }
+          when Array
+            value.map { |child| plain_json(child) }
+          else
+            value
+          end
         end
       end
     end
