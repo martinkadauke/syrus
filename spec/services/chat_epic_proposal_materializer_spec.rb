@@ -71,6 +71,19 @@ RSpec.describe ChatEpicProposalMaterializer do
     expect(chat_session.proposals.find_by!(slug: "rejected")).to be_rejected
   end
 
+  it "rejects archived proposal repositories before creating records" do
+    repository.archive!
+    proposal = epic_proposal
+
+    expect {
+      expect {
+        described_class.new(user: user).file!(proposal)
+      }.to raise_error(ArgumentError, /repository #{repository.slug} is archived/)
+    }.to change(Epic, :count).by(0).and change(Job, :count).by(0)
+
+    expect(proposal.reload).to be_proposed
+  end
+
   it "rolls back the Epic when a child Job cannot be created" do
     other_repository = Factories.repository(user: user)
     proposal = epic_proposal

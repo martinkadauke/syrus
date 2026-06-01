@@ -82,6 +82,8 @@ class ChatProposalFiler
   attr_reader :user, :repository
 
   def ensure_repository_scope!(proposals)
+    raise ArgumentError, "repository #{repository.slug} is archived" if repository.archived?
+
     foreign = proposals.find { |proposal| proposal.effective_repository&.id != repository.id }
     raise ActiveRecord::RecordNotFound, "proposal #{foreign.id} is outside this repository" if foreign
   end

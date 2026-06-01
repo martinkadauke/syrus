@@ -450,7 +450,7 @@ module Api
           id = params[:repository_id].presence
           return unless id
 
-          Current.user.repositories.find(id)
+          Current.user.repositories.active.find(id)
         end
 
         def attachable_from_params(chat_session)
@@ -474,7 +474,7 @@ module Api
         def find_attachable_by_id(type, id)
           case type
           when "Repository"
-            Current.user.repositories.find(id)
+            Current.user.repositories.active.find(id)
           when "Job"
             Current.user.jobs.find(id)
           when "Document"

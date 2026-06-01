@@ -14,6 +14,7 @@ class ChatEpicProposalMaterializer
     raise ArgumentError, "proposal is no longer proposed" unless epic_proposal.proposed?
 
     job_proposals = proposed_children_for(epic_proposal)
+    ensure_active_repositories!([ epic_proposal ] + job_proposals)
     jobs = []
     epic = nil
 
@@ -48,6 +49,11 @@ class ChatEpicProposalMaterializer
   private
 
   attr_reader :user
+
+  def ensure_active_repositories!(proposals)
+    archived = proposals.map(&:effective_repository).compact.find(&:archived?)
+    raise ArgumentError, "repository #{archived.slug} is archived" if archived
+  end
 
   def proposed_children_for(epic_proposal)
     proposals = epic_proposal.child_proposals.includes(:dependencies).where(state: "proposed").to_a

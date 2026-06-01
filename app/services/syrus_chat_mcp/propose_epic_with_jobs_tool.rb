@@ -161,12 +161,17 @@ module SyrusChatMcp
       end
 
       def repository_for(user, chat_session, slug)
-        return chat_session.repository if slug.blank?
+        if slug.blank?
+          repository = chat_session.repository
+          return repository unless repository&.archived?
+
+          return nil
+        end
 
         owner, name = slug.split("/", 2)
         return nil if owner.blank? || name.blank?
 
-        user.repositories.find_by(owner: owner, name: name)
+        user.repositories.active.find_by(owner: owner, name: name)
       end
 
       def upsert_epic_proposal(chat_session, repository, epic)

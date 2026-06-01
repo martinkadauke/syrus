@@ -46,6 +46,17 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body.dig("chat", "repository", "slug")).to eq("acme/widgets")
   end
 
+  it "does not create a chat with an archived repository attachment" do
+    sign_in_as(user)
+    repository.archive!
+
+    expect {
+      post "/api/v1/app/chats", params: { repository_id: repository.id }
+    }.not_to change(ChatSession, :count)
+
+    expect(response).to have_http_status(:not_found)
+  end
+
   it "creates the first message and enqueues a turn" do
     sign_in_as(user)
 
@@ -291,6 +302,18 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect {
       post "/api/v1/app/chats/#{chat.id}/attachments", params: { attachable_type: "Repository", attachable_id: foreign.id }
+    }.not_to change(ChatAttachment, :count)
+
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it "does not attach archived repositories through the app API" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, last_message_at: Time.current)
+    repository.archive!
+
+    expect {
+      post "/api/v1/app/chats/#{chat.id}/attachments", params: { attachable_type: "Repository", attachable_id: repository.id }
     }.not_to change(ChatAttachment, :count)
 
     expect(response).to have_http_status(:not_found)

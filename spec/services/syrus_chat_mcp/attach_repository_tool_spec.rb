@@ -55,6 +55,16 @@ RSpec.describe SyrusChatMcp::AttachRepositoryTool do
     expect(response.content.first[:text]).to include("not configured")
   end
 
+  it "returns a tool error for an archived repository slug" do
+    repository.archive!
+
+    response = described_class.call(slug: "tkadauke/syrus", server_context: { chat_session: chat_session })
+
+    expect(response.instance_variable_get(:@error)).to eq(true)
+    expect(response.content.first[:text]).to include("not configured")
+    expect(chat_session.reload.attached_repositories).to be_empty
+  end
+
   def seed_remote(bare_path)
     Dir.mktmpdir("syrus-attach-tool-seed") do |seed|
       sh("git init -q -b main #{seed}")

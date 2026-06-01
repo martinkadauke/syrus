@@ -135,6 +135,19 @@ RSpec.describe ChatProposalFiler do
       expect(epic_proposal).to be_confirmed
     end
 
+    it "rejects archived repositories before filing proposals" do
+      repository.archive!
+      job_proposal = proposal(slug: "job-hidden", title: "Hidden job")
+
+      expect {
+        expect {
+          described_class.new(user: user, repository: repository).file!([ job_proposal ])
+        }.to raise_error(ArgumentError, /repository acme\/widgets is archived/)
+      }.to change(Job, :count).by(0).and change(Epic, :count).by(0)
+
+      expect(job_proposal.reload).to be_proposed
+    end
+
     it "materializes a Job proposal under its target Epic" do
       epic = Factories.epic(user: user, repository: repository, title: "Forum")
       job_proposal = proposal(

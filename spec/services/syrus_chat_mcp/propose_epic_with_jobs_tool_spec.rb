@@ -76,6 +76,22 @@ RSpec.describe SyrusChatMcp::ProposeEpicWithJobsTool do
     expect(chat_session.proposals.count).to eq(0)
   end
 
+  it "rejects archived target repositories without creating hidden proposals" do
+    archived = Factories.repository(user: user, owner: "old", name: "archive")
+    archived.archive!
+
+    response = call_tool(
+      epic: { slug: "epic", title: "Epic", description: "Desc.", target_repo: archived.slug },
+      jobs: [
+        { slug: "ui", target_repo: archived.slug, title: "UI", description: "Build it." }
+      ]
+    )
+
+    expect(response[:result][:isError]).to be(true)
+    expect(response[:result][:content].first[:text]).to include("unknown epic target_repo")
+    expect(chat_session.proposals.count).to eq(0)
+  end
+
   it "rejects dependency cycles before persisting anything" do
     response = call_tool(
       epic: { slug: "epic", title: "Epic", description: "Desc.", target_repo: repository.slug },

@@ -8,7 +8,12 @@ module SyrusChatMcp
 
     def repository_for(chat_session, repo)
       token = repo.to_s.strip
-      return chat_session.repository if token.blank?
+      if token.blank?
+        repository = chat_session.repository
+        return repository unless repository&.archived?
+
+        return nil
+      end
 
       scope = chat_session.user.repositories.active
       scope.find_by(id: Integer(token, exception: false)) ||

@@ -19,7 +19,7 @@ module SyrusChatMcp
         owner, name = normalize_slug(slug)
         return SyrusChatMcp.invalid("slug must be owner/name") unless owner && name
 
-        repository = chat_session.user.repositories.find_by("LOWER(owner) = ? AND LOWER(name) = ?", owner.downcase, name.downcase)
+        repository = chat_session.user.repositories.active.find_by("LOWER(owner) = ? AND LOWER(name) = ?", owner.downcase, name.downcase)
         return SyrusChatMcp.invalid("repository #{owner}/#{name} is not configured for this user") unless repository
 
         path = ChatWorkspace.attach_repository!(chat_session, repository)
