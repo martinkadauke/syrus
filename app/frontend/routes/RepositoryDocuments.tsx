@@ -48,13 +48,13 @@ function RepositoryDocumentsView({ payload, prefix }: { payload: RepositoryDocum
   return (
     <>
       <header>
-        <h1 className="font-mono text-2xl font-semibold text-gray-900">
+        <h1 className="break-words font-mono text-3xl font-semibold text-gray-900">
           <Link className="hover:underline" to={`${prefix}${payload.repository.repository_path}`}>{payload.repository.slug}</Link>
         </h1>
-        <p className="mt-1 text-sm text-gray-600">Supporting documents available to agent runs for this repository.</p>
       </header>
 
       <RepositoryTabs active="documents" prefix={prefix} repositoryId={payload.repository.id} />
+      <p className="text-sm text-gray-600">Supporting documents available to agent runs for this repository.</p>
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {destroy.isError ? <PanelMessage tone="error">{errorMessage(destroy.error, "Unable to delete document.")}</PanelMessage> : null}

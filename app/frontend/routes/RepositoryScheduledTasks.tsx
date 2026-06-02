@@ -57,7 +57,7 @@ function RepositoryScheduledTasksView({ payload, prefix }: { payload: Repository
     <>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-mono text-2xl font-semibold text-gray-900">{payload.repository.slug}</h1>
+          <h1 className="break-words font-mono text-3xl font-semibold text-gray-900">{payload.repository.slug}</h1>
         </div>
       </header>
 
