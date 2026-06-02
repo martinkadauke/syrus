@@ -84,8 +84,15 @@ RUN npm run build
 # -j 1 disable parallel compilation to avoid a QEMU bug: https://github.com/rails/bootsnap/issues/495
 RUN bundle exec bootsnap precompile -j 1 app/ lib/
 
-# Precompiling assets for production without requiring secret RAILS_MASTER_KEY
-RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile && \
+# Precompiling assets for production without requiring runtime secrets.
+# These values remain runtime-owned; precompile only needs syntactically valid
+# placeholders while Rails initializes production services.
+RUN SYRUS_APP_HOST=syrus.invalid \
+    S3_ACCESS_KEY_ID=dummy \
+    S3_SECRET_ACCESS_KEY=dummy \
+    S3_BUCKET=syrus-build-assets \
+    S3_ENDPOINT=http://127.0.0.1:9000 \
+    SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile && \
     rm -rf node_modules
 
 

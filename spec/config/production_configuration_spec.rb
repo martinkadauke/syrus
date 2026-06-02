@@ -5,6 +5,7 @@ RSpec.describe "production configuration" do
   let(:application_mailer) { Rails.root.join("app/mailers/application_mailer.rb").read }
   let(:deploy_config) { Rails.root.join("config/deploy.yml").read }
   let(:storage_config) { Rails.root.join("config/storage.yml").read }
+  let(:dockerfile) { Rails.root.join("Dockerfile").read }
 
   it "does not leave scaffold production host or mailer values in place" do
     expect(production_config).not_to include("example.com")
@@ -30,5 +31,15 @@ RSpec.describe "production configuration" do
     expect(production_config).to include('sidecar_process = ENV["SYRUS_MCP_SIDECAR"].present? || ENV["SYRUS_CHAT_MCP_SIDECAR"].present?')
     expect(production_config).to include('log_device = sidecar_process ? STDERR : STDOUT')
     expect(production_config).to include('config.action_mailer.default_url_options = { host: app_host, protocol: "https" }')
+  end
+
+  it "sets build-only runtime placeholders while precompiling assets" do
+    expect(production_config).to include('app_host = ENV.fetch("SYRUS_APP_HOST")')
+    expect(dockerfile).to include("SYRUS_APP_HOST=syrus.invalid")
+    expect(dockerfile).to include("S3_ACCESS_KEY_ID=dummy")
+    expect(dockerfile).to include("S3_SECRET_ACCESS_KEY=dummy")
+    expect(dockerfile).to include("S3_BUCKET=syrus-build-assets")
+    expect(dockerfile).to include("S3_ENDPOINT=http://127.0.0.1:9000")
+    expect(dockerfile).to include("SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile")
   end
 end
