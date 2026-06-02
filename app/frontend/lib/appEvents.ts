@@ -23,11 +23,13 @@ export function queryKeysFor(event: AppEvent): QueryKey[] {
     case "user":
       return [["bootstrap"]]
     case "job":
-      return event.id == null ? [["jobs"], ["job_run_artifacts"]] : [["jobs"], ["jobs", String(event.id)], ["job_run_artifacts", String(event.id)]]
+      return event.id == null ? [["dashboard"], ["jobs"], ["job_run_artifacts"]] : [["dashboard"], ["jobs"], ["jobs", String(event.id)], ["job_run_artifacts", String(event.id)]]
     case "workflow":
-      return event.id == null ? [["workflows"]] : [["workflows"], ["workflows", String(event.id)]]
+      return event.id == null ? [["dashboard"], ["workflows"]] : [["dashboard"], ["workflows"], ["workflows", String(event.id)]]
+    case "epic":
+      return event.id == null ? [["dashboard"], ["epics"]] : [["dashboard"], ["epics"], ["epics", String(event.id)]]
     case "repository":
-      return event.id == null ? [["repositories"]] : [["repositories"], ["repositories", String(event.id)]]
+      return event.id == null ? [["dashboard"], ["repositories"]] : [["dashboard"], ["repositories"], ["repositories", String(event.id)]]
     case "chat":
       return event.id == null ? [["chats"]] : [["chats"], ["chats", String(event.id)]]
     case "admin_overview":

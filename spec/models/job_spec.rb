@@ -1,6 +1,41 @@
 require "rails_helper"
 
 RSpec.describe Job do
+  describe "app events" do
+    it "broadcasts a compact event when created" do
+      repo = Factories.repository
+
+      expect(AppUserChannel).to receive(:broadcast_to).with(
+        repo.user,
+        hash_including(
+          "type" => "job.updated",
+          "resource" => "job",
+          "id" => kind_of(Integer),
+          "changed" => include("job.created", "issue_number", "repository_id")
+        )
+      )
+
+      Job.create!(user: repo.user, repository: repo, issue_number: 44)
+    end
+
+    it "broadcasts changed dashboard-relevant fields when updated" do
+      allow(AppUserChannel).to receive(:broadcast_to)
+      job = Factories.job_record(issue_title: "Repair the forum")
+
+      expect(AppUserChannel).to receive(:broadcast_to).with(
+        job.user,
+        hash_including(
+          "type" => "job.updated",
+          "resource" => "job",
+          "id" => job.id,
+          "changed" => include("job.updated", "state", "issue_title")
+        )
+      )
+
+      job.update!(state: "failed", issue_title: "Repair the basilica")
+    end
+  end
+
   describe "thread state machine" do
     it "starts as an open thread" do
       job = Factories.job

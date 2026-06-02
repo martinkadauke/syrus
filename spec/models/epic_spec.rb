@@ -1,6 +1,41 @@
 require "rails_helper"
 
 RSpec.describe Epic do
+  describe "app events" do
+    it "broadcasts a compact event when created" do
+      repository = Factories.repository
+
+      expect(AppUserChannel).to receive(:broadcast_to).with(
+        repository.user,
+        hash_including(
+          "type" => "epic.updated",
+          "resource" => "epic",
+          "id" => kind_of(Integer),
+          "changed" => include("epic.created", "title", "repository_id")
+        )
+      )
+
+      described_class.create!(user: repository.user, repository: repository, title: "Raise the forum")
+    end
+
+    it "broadcasts changed dashboard-relevant fields when updated" do
+      allow(AppUserChannel).to receive(:broadcast_to)
+      epic = Factories.epic(title: "Raise the forum")
+
+      expect(AppUserChannel).to receive(:broadcast_to).with(
+        epic.user,
+        hash_including(
+          "type" => "epic.updated",
+          "resource" => "epic",
+          "id" => epic.id,
+          "changed" => include("epic.updated", "state", "title")
+        )
+      )
+
+      epic.update!(state: "ready", title: "Raise the basilica")
+    end
+  end
+
   it "defaults auto-approval to never and accepts grader-gated modes" do
     epic = Factories.epic
     expect(epic.auto_approve_mode).to eq("never")

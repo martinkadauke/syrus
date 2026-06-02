@@ -283,6 +283,7 @@ class Job < ApplicationRecord
   # awareness without scheduling any agent work.
   after_create :seed_parsed_dependencies
   after_create :resolve_pending_dependencies_targeting_self
+  after_create_commit :broadcast_app_job_created
   # `after_save :refresh_epic_auto_state` used to fire on every save.
   # Keep it scoped to changes that actually affect the epic rollup:
   # state transitions, validity, epic membership, and closure metadata.
@@ -295,6 +296,7 @@ class Job < ApplicationRecord
 
   after_update_commit :rebase_stack_children_after_merge, if: :saved_change_to_pr_merged_terminal?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
+  after_update_commit :broadcast_app_job_updated
 
   def solid_queue_priority
     PRIORITY_TO_SQ.fetch(priority.to_s, PRIORITY_TO_SQ["medium"])
@@ -648,6 +650,28 @@ class Job < ApplicationRecord
   end
 
   private
+
+  def broadcast_app_job_created
+    broadcast_app_job_event("created")
+  end
+
+  def broadcast_app_job_updated
+    broadcast_app_job_event("updated")
+  end
+
+  def broadcast_app_job_event(action)
+    return unless user
+
+    event = {
+      type: "job.updated",
+      resource: "job",
+      id: id,
+      changed: [ "job.#{action}", *previous_changes.keys.map(&:to_s) ].uniq,
+      occurred_at: Time.current.iso8601(3)
+    }
+
+    AppUserChannel.broadcast_to(user, event.as_json)
+  end
 
   # Issue Jobs auto-instantiate Workflows::Initial on create. The
   # workflow lays out the implement → summarize → pr_open chain;

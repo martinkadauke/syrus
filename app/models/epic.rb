@@ -34,6 +34,8 @@ class Epic < ApplicationRecord
   after_create :resolve_pending_child_jobs
   after_create :seed_parsed_epic_dependencies
   after_create :resolve_pending_epic_dependencies_targeting_self
+  after_create_commit :broadcast_app_epic_created
+  after_update_commit :broadcast_app_epic_updated
 
   aasm column: :state, whiny_transitions: false do
     state :backlog, initial: true
@@ -159,6 +161,28 @@ class Epic < ApplicationRecord
   end
 
   private
+
+  def broadcast_app_epic_created
+    broadcast_app_epic_event("created")
+  end
+
+  def broadcast_app_epic_updated
+    broadcast_app_epic_event("updated")
+  end
+
+  def broadcast_app_epic_event(action)
+    return unless user
+
+    event = {
+      type: "epic.updated",
+      resource: "epic",
+      id: id,
+      changed: [ "epic.#{action}", *previous_changes.keys.map(&:to_s) ].uniq,
+      occurred_at: Time.current.iso8601(3)
+    }
+
+    AppUserChannel.broadcast_to(user, event.as_json)
+  end
 
   def assign_number
     self.number ||= (self.class.maximum(:number) || 0) + 1
