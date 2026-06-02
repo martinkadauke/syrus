@@ -4280,6 +4280,66 @@ describe("App", () => {
     })
   })
 
+  it("shows active retried runs before earlier failed runs on the workflows tab", async () => {
+    const base = jobDetailPayload()
+    const workflow = base.workflows[0]
+    const step = workflow.steps[0]
+    const failedRun = {
+      ...step.runs[0],
+      id: 9,
+      state: "failed",
+      started_at: "2026-05-30T10:01:00Z",
+      finished_at: "2026-05-30T10:15:00Z",
+      created_at: "2026-05-30T10:00:00Z",
+      updated_at: "2026-05-30T10:15:00Z"
+    }
+    const runningRun = {
+      ...step.runs[0],
+      id: 10,
+      state: "running",
+      started_at: "2026-05-30T10:20:00Z",
+      finished_at: null,
+      created_at: "2026-05-30T10:19:00Z",
+      updated_at: "2026-05-30T10:20:00Z",
+      can_stop: true,
+      can_diagnose: false,
+      can_resume: false
+    }
+    vi.spyOn(window, "fetch").mockImplementation(() => {
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload({
+        job: { state: "open", summary_state: "running", any_active_run: true },
+        workflows: [
+          {
+            ...workflow,
+            state: "running",
+            finished_at: null,
+            steps: [
+              {
+                ...step,
+                state: "failed",
+                finished_at: null,
+                runs: [failedRun, runningRun]
+              }
+            ]
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42?tab=workflows"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Active run #10")).toBeInTheDocument()
+    expect(screen.getByText("is running")).toBeInTheDocument()
+    expect(screen.getByText("step failed")).toBeInTheDocument()
+    expect(screen.getByText("Run #10").compareDocumentPosition(screen.getByText("Run #9"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
   it("adds and removes Job attachments through the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)

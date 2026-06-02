@@ -478,27 +478,39 @@ function WorkflowCard({ workflow, payload, command }: { workflow: JobWorkflow; p
 }
 
 function StepCard({ step, payload, command }: { step: JobStep; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+  const runs = sortedRunsNewestFirst(step.runs)
+  const activeRun = runs.find((run) => isActiveState(run.state))
+  const displayState = activeRun ? activeRun.state : step.state
+
   return (
     <div className="rounded border border-gray-100 bg-gray-50 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-medium text-gray-900">{step.position}. {step.kind}</span>
-          <StatusPill state={step.state} />
+          <StatusPill state={displayState} />
+          {activeRun && step.state !== activeRun.state ? <SmallPill>step {step.state.replaceAll("_", " ")}</SmallPill> : null}
           {step.latest ? <SmallPill>latest</SmallPill> : null}
         </div>
         <span className="text-xs text-gray-500">{formatDate(step.started_at || step.created_at)}</span>
       </div>
+      {activeRun ? (
+        <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <span className="font-semibold">Active run #{activeRun.id}</span>
+          <span> is {activeRun.state.replaceAll("_", " ")}</span>
+          <span> since {formatDate(activeRun.started_at || activeRun.created_at)}</span>
+        </div>
+      ) : null}
       {step.details ? <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs text-gray-600">{stringify(step.details)}</pre> : null}
-      {step.runs.length > 0 ? (
+      {runs.length > 0 ? (
         <div className="mt-3 space-y-2">
-          {step.runs.map((run) => <RunRow command={command} key={run.id} payload={payload} run={run} />)}
+          {runs.map((run) => <RunRow active={activeRun?.id === run.id} command={command} key={run.id} payload={payload} run={run} />)}
         </div>
       ) : <p className="mt-2 text-xs text-gray-400">No runs for this step.</p>}
     </div>
   )
 }
 
-function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+function RunRow({ run, payload, command, active = false }: { run: JobRun; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; active?: boolean }) {
   const [gradeLogOpen, setGradeLogOpen] = useState(false)
   const [artifactView, setArtifactView] = useState<"transcript" | "diff" | null>(null)
   const gradeLog = useMutation({
@@ -516,7 +528,7 @@ function RunRow({ run, payload, command }: { run: JobRun; payload: JobDetailPayl
   }
 
   return (
-    <div className="rounded border border-gray-200 bg-white p-3 text-sm">
+    <div className={`rounded border bg-white p-3 text-sm ${active ? "border-blue-300 ring-1 ring-blue-100" : "border-gray-200"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">
@@ -845,6 +857,23 @@ function formatBytes(value: number) {
 
 function plural(count: number, singular: string) {
   return count === 1 ? singular : `${singular}s`
+}
+
+function sortedRunsNewestFirst(runs: JobRun[]) {
+  return [...runs].sort((left, right) => {
+    const leftTime = runSortTime(left)
+    const rightTime = runSortTime(right)
+    if (leftTime !== rightTime) return rightTime - leftTime
+    return right.id - left.id
+  })
+}
+
+function runSortTime(run: JobRun) {
+  return new Date(run.started_at || run.created_at || run.updated_at || 0).getTime()
+}
+
+function isActiveState(state: string) {
+  return state === "queued" || state === "running"
 }
 
 function stringify(value: unknown) {
