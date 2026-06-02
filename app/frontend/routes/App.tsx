@@ -37,6 +37,7 @@ import { ScheduledTaskDetailRoute, ScheduledTaskFormRoute, ScheduledTasksIndex }
 import { SetupRoute } from "./Setup"
 import { SmartFolders } from "./SmartFolders"
 import { Tags } from "./Tags"
+import { TeamDirectoryRoute, TeamProfileRoute } from "./Profiles"
 
 type AppRouteDefinition = {
   path: string
@@ -81,6 +82,8 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/settings/edit", element: <AdminSettings /> },
   { path: "/settings", element: <CredentialsRoute /> },
   { path: "/credentials/edit", element: <CredentialsRoute /> },
+  { path: "/profiles", element: <TeamDirectoryRoute /> },
+  { path: "/profiles/:id", element: <TeamProfileRoute /> },
   { path: "/documents", element: <PersonalDocumentsRoute /> },
   { path: "/smart_folders", element: <SmartFolders /> },
   { path: "/tags", element: <Tags /> },
@@ -151,6 +154,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
     ...(data?.setup && !data.setup.complete ? [{ label: "Setup", to: `${prefix}/setup`, active: normalizedPath === "/setup" }] : []),
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: normalizedPath === "/" || normalizedPath.startsWith("/dashboard") },
     { label: "Repos", to: `${prefix}/repositories`, active: normalizedPath.startsWith("/repositories") },
+    ...(data && data.team_user_count > 1 ? [ { label: "Team", to: `${prefix}/profiles`, active: normalizedPath.startsWith("/profiles"), desktopOnly: true } ] : []),
     { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: normalizedPath === "/scheduled_tasks" || normalizedPath.startsWith("/scheduled_tasks/"), desktopOnly: true }
   ] : []
 
@@ -169,7 +173,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
           <div className="flex shrink-0 items-center justify-end gap-2 text-xs text-gray-500">
             {user ? (
               <>
-                <AccountNavigation csrfToken={data?.csrf_token} prefix={prefix} user={user} />
+                <AccountNavigation csrfToken={data?.csrf_token} prefix={prefix} showTeamProfile={(data?.team_user_count || 0) > 1} user={user} />
                 {app ? <RevisionLink app={app} /> : null}
               </>
             ) : null}
@@ -207,7 +211,7 @@ function PubliliusSyrusFooter({ quote }: { quote: string }) {
   )
 }
 
-function AccountNavigation({ csrfToken, prefix, user }: { csrfToken?: string; prefix: string; user: NonNullable<BootstrapPayload["current_user"]> }) {
+function AccountNavigation({ csrfToken, prefix, showTeamProfile, user }: { csrfToken?: string; prefix: string; showTeamProfile: boolean; user: NonNullable<BootstrapPayload["current_user"]> }) {
   const [open, setOpen] = useState(false)
   const menuRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
 
@@ -231,6 +235,7 @@ function AccountNavigation({ csrfToken, prefix, user }: { csrfToken?: string; pr
         {open ? (
           <div className="absolute right-0 z-30 mt-2 w-56 rounded border border-gray-200 bg-white py-1 text-sm shadow-lg">
             <Link className="block px-4 py-2 text-gray-700 hover:bg-gray-50" to={`${prefix}/settings`}>Settings</Link>
+            {showTeamProfile ? <Link className="block px-4 py-2 text-gray-700 hover:bg-gray-50" to={`${prefix}/profiles/${user.id}`}>My profile</Link> : null}
             {user.admin ? <Link className="block px-4 py-2 font-medium text-blue-600 hover:bg-gray-50" to={`${prefix}/admin`}>Admin</Link> : null}
             <div className="my-1 border-t border-gray-100" />
             <form action="/session" method="post">
