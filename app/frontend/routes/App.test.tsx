@@ -5115,7 +5115,7 @@ describe("App", () => {
     Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView })
     const initialPayload = chatPayload({ hasMoreOlder: true })
     initialPayload.bookmarks = [
-      { id: 7, label: "Earlier aqueduct note", chat_message_id: 4 }
+      { id: 7, label: "Earlier aqueduct note", chat_message_id: 4, anchor_message_id: 5 }
     ]
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
@@ -5125,7 +5125,7 @@ describe("App", () => {
           messages: [
             {
               type: "message",
-              id: 4,
+              id: 5,
               role: "assistant",
               text: "Earlier **aqueduct** note.",
               bookmarkable: true
@@ -5147,7 +5147,7 @@ describe("App", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Chats" }))
     const bookmark = await screen.findByRole("link", { name: "Earlier aqueduct note" })
-    expect(bookmark).toHaveAttribute("href", "#message-4")
+    expect(bookmark).toHaveAttribute("href", "#message-5")
     fireEvent.click(bookmark)
 
     expect(await screen.findByText("aqueduct")).toBeInTheDocument()
@@ -6302,7 +6302,7 @@ function chatPayload(overrides: {
       }
     ],
     bookmarks: [
-      { id: 1, label: "Aqueducts", chat_message_id: 9 }
+      { id: 1, label: "Aqueducts", chat_message_id: 9, anchor_message_id: 9 }
     ],
     recent_chats: [
       {

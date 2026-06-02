@@ -104,6 +104,7 @@ export type ChatBookmark = {
   id: number
   label: string
   chat_message_id: number
+  anchor_message_id?: number
 }
 
 export type ChatPendingAction = {

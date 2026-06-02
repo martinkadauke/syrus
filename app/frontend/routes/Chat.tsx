@@ -1367,21 +1367,25 @@ function ChatBookmarks({ payload, onBookmarkSelect }: { payload: ChatPayload; on
       <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Bookmarks in this chat</div>
       {payload.bookmarks.length > 0 ? (
         <nav aria-label="Chat bookmarks" className="space-y-1">
-          {payload.bookmarks.map((bookmark) => (
-            <a
-              className="block rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-              href={`#message-${bookmark.chat_message_id}`}
-              key={bookmark.id}
-              onClick={(event) => {
-                if (!isPlainAnchorClick(event)) return
+          {payload.bookmarks.map((bookmark) => {
+            const anchorMessageId = bookmark.anchor_message_id ?? bookmark.chat_message_id
 
-                event.preventDefault()
-                onBookmarkSelect(bookmark.chat_message_id)
-              }}
-            >
-              <span className="block truncate">{bookmark.label}</span>
-            </a>
-          ))}
+            return (
+              <a
+                className="block rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                href={`#message-${anchorMessageId}`}
+                key={bookmark.id}
+                onClick={(event) => {
+                  if (!isPlainAnchorClick(event)) return
+
+                  event.preventDefault()
+                  onBookmarkSelect(anchorMessageId)
+                }}
+              >
+                <span className="block truncate">{bookmark.label}</span>
+              </a>
+            )
+          })}
         </nav>
       ) : <div className="text-xs text-gray-400">No bookmarks yet.</div>}
     </section>

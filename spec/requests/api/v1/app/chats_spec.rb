@@ -151,7 +151,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body["chat_available"]).to eq(true)
     expect(body["turn_in_flight"]).to eq(false)
     expect(body["agent_busy"]).to eq(false)
-    expect(body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id))
+    expect(body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id, "anchor_message_id" => message.id))
     expect(body["recent_chats"]).to include(
       include("id" => chat.id, "current" => true, "chat_path" => chat_path(chat), "repository" => include("slug" => "acme/widgets")),
       include("id" => older_chat.id, "current" => false, "title" => "Older chat")
@@ -177,6 +177,30 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("paths", "app_attachments_path")).to eq("/api/v1/app/chats/#{chat.id}/attachments")
     expect(body.dig("paths", "app_whiteboard_path")).to eq("/api/v1/app/chats/#{chat.id}/whiteboard")
     expect(body["paths"].keys).not_to include("chat_messages_path", "chat_attachments_path", "chat_whiteboard_path")
+  end
+
+  it "resolves bookmark anchors to rendered chat messages" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    chat.messages.create!(role: "assistant", content: { "text" => "Preparing an epic." })
+    tool_message = chat.messages.create!(
+      role: "tool_use",
+      tool_name: "mcp__syrus-chat-sidecar__set_bookmark",
+      content: { "name" => "mcp__syrus-chat-sidecar__set_bookmark", "input" => { "label" => "Wisdom App Epic", "kind" => "epic_origin" } }
+    )
+    proposal_message = chat.messages.create!(role: "assistant", content: { "text" => "Epic proposal proposed." })
+    tool_message.bookmarks.create!(label: "Wisdom App Epic", kind: "epic_origin")
+
+    get "/api/v1/app/chats/#{chat.id}"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["bookmarks"]).to contain_exactly(
+      include(
+        "label" => "Wisdom App Epic",
+        "chat_message_id" => tool_message.id,
+        "anchor_message_id" => proposal_message.id
+      )
+    )
   end
 
   it "orders the chat navigation by creation time rather than last use" do
@@ -336,7 +360,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["message"]).to eq("Bookmarked Aqueducts.")
-    expect(parse_body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id))
+    expect(parse_body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id, "anchor_message_id" => message.id))
   end
 
   it "adds and removes attachments through the app API" do
