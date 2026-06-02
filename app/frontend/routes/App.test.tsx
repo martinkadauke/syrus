@@ -4954,7 +4954,8 @@ describe("App", () => {
     })
   })
 
-  it("loads older chat messages from the app API", async () => {
+  it("loads older chat messages when scrolling near the top", async () => {
+    const restoreSize = stubChatStreamSize({ scrollHeight: 1200, clientHeight: 600 })
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats/8/messages?before=9") {
@@ -4975,24 +4976,76 @@ describe("App", () => {
       return Promise.resolve(new Response(JSON.stringify(chatPayload({ hasMoreOlder: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
 
-    fireEvent.click(await screen.findByRole("button", { name: "Load older messages" }))
+      const stream = await screen.findByTestId("chat-message-stream")
+      expect(screen.queryByRole("button", { name: "Load older messages" })).not.toBeInTheDocument()
+      setScrollMetrics(stream, { scrollHeight: 1200, clientHeight: 600, scrollTop: 24 })
+      fireEvent.scroll(stream)
 
-    expect(await screen.findByText("aqueduct")).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/chats/8/messages?before=9",
-      expect.objectContaining({
-        credentials: "same-origin",
-        headers: { Accept: "application/json" }
-      })
-    )
+      expect(await screen.findByText("aqueduct")).toBeInTheDocument()
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/messages?before=9",
+        expect.objectContaining({
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
+    } finally {
+      restoreSize()
+    }
+  })
+
+  it("loads older chat messages when the initial transcript does not fill the viewport", async () => {
+    const restoreSize = stubChatStreamSize({ scrollHeight: 420, clientHeight: 600 })
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/messages?before=9") {
+        return Promise.resolve(new Response(JSON.stringify({
+          has_more_older: false,
+          messages: [
+            {
+              type: "message",
+              id: 4,
+              role: "assistant",
+              text: "Earlier **aqueduct** note.",
+              bookmarkable: true
+            }
+          ]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload({ hasMoreOlder: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(screen.queryByRole("button", { name: "Load older messages" })).not.toBeInTheDocument()
+      expect(await screen.findByText("aqueduct")).toBeInTheDocument()
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/messages?before=9",
+        expect.objectContaining({
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
+    } finally {
+      restoreSize()
+    }
   })
 
   it("loads and scrolls to chat bookmarks", async () => {
@@ -6263,6 +6316,37 @@ function setScrollMetrics(element: HTMLElement, metrics: { scrollHeight: number;
   Object.defineProperty(element, "scrollHeight", { configurable: true, value: metrics.scrollHeight })
   Object.defineProperty(element, "clientHeight", { configurable: true, value: metrics.clientHeight })
   Object.defineProperty(element, "scrollTop", { configurable: true, writable: true, value: metrics.scrollTop })
+}
+
+function stubChatStreamSize(metrics: { scrollHeight: number; clientHeight: number }) {
+  const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, "scrollHeight")
+  const clientHeightDescriptor = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, "clientHeight")
+
+  Object.defineProperty(window.HTMLElement.prototype, "scrollHeight", {
+    configurable: true,
+    get() {
+      return this instanceof HTMLElement && this.dataset.testid === "chat-message-stream" ? metrics.scrollHeight : 0
+    }
+  })
+  Object.defineProperty(window.HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get() {
+      return this instanceof HTMLElement && this.dataset.testid === "chat-message-stream" ? metrics.clientHeight : 0
+    }
+  })
+
+  return () => {
+    if (scrollHeightDescriptor) {
+      Object.defineProperty(window.HTMLElement.prototype, "scrollHeight", scrollHeightDescriptor)
+    } else {
+      Reflect.deleteProperty(window.HTMLElement.prototype, "scrollHeight")
+    }
+    if (clientHeightDescriptor) {
+      Object.defineProperty(window.HTMLElement.prototype, "clientHeight", clientHeightDescriptor)
+    } else {
+      Reflect.deleteProperty(window.HTMLElement.prototype, "clientHeight")
+    }
+  }
 }
 
 function chatFormPayload() {

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
 import type { ErrorInfo, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode, UIEvent } from "react"
-import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
@@ -41,6 +41,8 @@ import { Markdown } from "../lib/Markdown"
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
 const CHAT_BOTTOM_THRESHOLD_PX = 48
+const CHAT_TOP_LOAD_THRESHOLD_PX = 96
+const CHAT_INITIAL_FILL_MARGIN_PX = 80
 const CHAT_COMPOSE_MAX_ROWS = 5
 const CHAT_WORKSPACE_WIDTH_KEY = "syrus.chat.workspace.width"
 const CHAT_WORKSPACE_TAB_KEY = "syrus.chat.workspace.tab"
@@ -187,6 +189,7 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
   const streamChatIdRef = useRef(payload.chat.id)
   const maxPayloadMessageIdRef = useRef(maxMessageId(payload.messages))
   const bookmarkLoadBeforeRef = useRef<number | null>(null)
+  const preserveScrollAfterOlderLoadRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
   const [newMessageCount, setNewMessageCount] = useState(0)
   const [olderMessages, setOlderMessages] = useState<ChatMessageItem[]>([])
   const [showSystemMessages, setShowSystemMessages] = useState(false)
@@ -214,11 +217,26 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
     setNewMessageCount(0)
   }, [])
 
+  const requestOlderMessages = useCallback((options: { preserveScroll: boolean }) => {
+    if (!hasMoreOlder || oldestId == null || loadOlder.isPending) return false
+
+    const stream = streamRef.current
+    preserveScrollAfterOlderLoadRef.current = options.preserveScroll && stream ? {
+      scrollHeight: stream.scrollHeight,
+      scrollTop: stream.scrollTop
+    } : null
+    loadOlder.mutate(oldestId)
+    return true
+  }, [hasMoreOlder, loadOlder, oldestId])
+
   const handleScroll = useCallback((event: UIEvent<HTMLDivElement>) => {
     const atBottom = isMessageStreamAtBottom(event.currentTarget)
     atBottomRef.current = atBottom
     if (atBottom) setNewMessageCount(0)
-  }, [])
+    if (isMessageStreamNearTop(event.currentTarget)) {
+      requestOlderMessages({ preserveScroll: true })
+    }
+  }, [requestOlderMessages])
 
   useEffect(() => {
     setOlderMessages([])
@@ -253,6 +271,22 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
   useEffect(() => {
     if (atBottomRef.current) scrollMessageStreamToBottom(streamRef.current)
   }, [agentActive, visibleItemsSignature])
+
+  useLayoutEffect(() => {
+    const snapshot = preserveScrollAfterOlderLoadRef.current
+    const stream = streamRef.current
+    if (!snapshot || !stream) return
+
+    stream.scrollTop = stream.scrollHeight - snapshot.scrollHeight + snapshot.scrollTop
+    preserveScrollAfterOlderLoadRef.current = null
+  }, [visibleItemsSignature])
+
+  useEffect(() => {
+    const stream = streamRef.current
+    if (!stream || !messageStreamNeedsOlderMessages(stream)) return
+
+    requestOlderMessages({ preserveScroll: false })
+  }, [requestOlderMessages, visibleItemsSignature])
 
   useEffect(() => {
     if (!bookmarkTarget) return
@@ -297,21 +331,8 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
   return (
     <div className="relative h-full min-h-0">
       <div className="h-full min-h-0 space-y-4 overflow-y-auto p-4" data-testid="chat-message-stream" onScroll={handleScroll} ref={streamRef}>
-        {hasMoreOlder ? (
-          <div className="text-center">
-            <button
-              className={secondaryButton()}
-              disabled={loadOlder.isPending || oldestId == null}
-              onClick={() => {
-                if (oldestId != null) loadOlder.mutate(oldestId)
-              }}
-              type="button"
-            >
-              {loadOlder.isPending ? "Loading..." : "Load older messages"}
-            </button>
-            {loadOlder.isError ? <div className="mt-2 text-xs text-red-700">{errorMessage(loadOlder.error, "Unable to load older messages.")}</div> : null}
-          </div>
-        ) : null}
+        {loadOlder.isPending ? <div className="text-center text-xs text-gray-400">Loading older messages...</div> : null}
+        {loadOlder.isError ? <div className="text-center text-xs text-red-700">{errorMessage(loadOlder.error, "Unable to load older messages.")}</div> : null}
         {hiddenSystemMessageCount > 0 ? (
           <SystemMessagesToggle count={hiddenSystemMessageCount} expanded={showSystemMessages} onToggle={() => setShowSystemMessages((value) => !value)} />
         ) : null}
@@ -408,6 +429,14 @@ function isAgentActive(payload: ChatPayload) {
 
 function isMessageStreamAtBottom(element: HTMLElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= CHAT_BOTTOM_THRESHOLD_PX
+}
+
+function isMessageStreamNearTop(element: HTMLElement) {
+  return element.scrollTop <= CHAT_TOP_LOAD_THRESHOLD_PX
+}
+
+function messageStreamNeedsOlderMessages(element: HTMLElement) {
+  return element.clientHeight > 0 && element.scrollHeight <= element.clientHeight + CHAT_INITIAL_FILL_MARGIN_PX
 }
 
 function scrollMessageStreamToBottom(element: HTMLElement | null) {
