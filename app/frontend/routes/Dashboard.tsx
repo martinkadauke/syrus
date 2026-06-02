@@ -874,9 +874,9 @@ function LatestWorkflowCell({ job }: { job: DashboardJobItem }) {
 }
 
 function IssueMetadata({ job }: { job: DashboardJobItem }) {
-  const label = `#${job.issue_number || job.id}`
+  if (!job.issue_number) return <span>JOB-{job.id}</span>
 
-  if (!job.issue_number) return <span>{label}</span>
+  const label = `#${job.issue_number}`
 
   return <ExternalMetadataLink href={job.issue_url}>{label}</ExternalMetadataLink>
 }

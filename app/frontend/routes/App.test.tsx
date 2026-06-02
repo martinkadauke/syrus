@@ -834,6 +834,37 @@ describe("App", () => {
     expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
   })
 
+  it("disambiguates GitHub issue numbers from Syrus Job ids on the dashboard", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          dashboardPayload({
+            subject: "job",
+            view: "list",
+            items: [
+              dashboardJobItem({ id: 594, kind: "direct", title: "Navigate to Epic", issue_number: null, issue_url: null, pr_number: null, pr_url: null }),
+              dashboardJobItem({ id: 595, kind: "issue", title: "GitHub issue", issue_number: 123, issue_url: "https://github.com/acme/widgets/issues/123", pr_number: null, pr_url: null })
+            ]
+          })
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Navigate to Epic")).toBeInTheDocument()
+    expect(screen.getByText("JOB-594")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "#123" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues/123")
+    expect(screen.queryByText("#594")).not.toBeInTheDocument()
+  })
+
   it("keeps dashboard folders and filters collapsed on mobile", async () => {
     const restoreMedia = mockMediaQuery(false)
     vi.spyOn(window, "fetch").mockResolvedValue(
