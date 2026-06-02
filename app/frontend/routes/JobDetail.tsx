@@ -594,14 +594,17 @@ function RunRow({ run, payload, command, active = false }: { run: JobRun; payloa
     mutationFn: (path: string) => fetchJobGradeLog(path),
     onSuccess: () => setGradeLogOpen(true)
   })
-  const artifacts = useMutation({
-    mutationFn: (path: string) => fetchJobRunArtifacts(path)
+  const artifacts = useQuery({
+    queryKey: ["job_run_artifacts", String(payload.job.id), String(run.id)],
+    queryFn: () => fetchJobRunArtifacts(run.app_artifacts_path),
+    enabled: artifactView != null,
+    refetchInterval: artifactView === "transcript" && isActiveState(run.state) ? 2000 : false
   })
+  const artifactsLoading = artifacts.isFetching && !artifacts.data
 
   function showArtifacts(view: "transcript" | "diff") {
     setGradeLogOpen(false)
     setArtifactView((current) => current === view ? null : view)
-    if (!artifacts.data) artifacts.mutate(run.app_artifacts_path)
   }
 
   return (
@@ -622,13 +625,13 @@ function RunRow({ run, payload, command, active = false }: { run: JobRun; payloa
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           {run.job_log_count > 0 ? (
-            <button className={buttonClass("secondary")} disabled={artifacts.isPending} onClick={() => showArtifacts("transcript")} type="button">
-              {artifacts.isPending && artifactView === "transcript" ? "Loading..." : "Transcript"}
+            <button className={buttonClass("secondary")} disabled={artifactsLoading} onClick={() => showArtifacts("transcript")} type="button">
+              {artifactsLoading && artifactView === "transcript" ? "Loading..." : "Transcript"}
             </button>
           ) : null}
           {run.agent_diff_present ? (
-            <button className={buttonClass("secondary")} disabled={artifacts.isPending} onClick={() => showArtifacts("diff")} type="button">
-              {artifacts.isPending && artifactView === "diff" ? "Loading..." : "Diff"}
+            <button className={buttonClass("secondary")} disabled={artifactsLoading} onClick={() => showArtifacts("diff")} type="button">
+              {artifactsLoading && artifactView === "diff" ? "Loading..." : "Diff"}
             </button>
           ) : null}
           {run.can_stop ? <CommandButton command={command} input={{ method: "post", path: run.app_stop_path }} tone="danger">Stop</CommandButton> : null}

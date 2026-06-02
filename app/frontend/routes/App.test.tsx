@@ -3829,6 +3829,7 @@ describe("App", () => {
     gradeStep.display_name = "tests"
     gradeStep.details = { name: "tests", command: "bin/rspec" }
     gradeStep.runs[0].app_grade_log_path = "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5"
+    let artifactFetchCount = 0
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/jobs/42/poll_feedback" && init?.method === "POST") {
@@ -3841,15 +3842,17 @@ describe("App", () => {
         return Promise.resolve(new Response(JSON.stringify({ job_id: 42, run_id: 9, name: "tests", contents: "rspec output\n" }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/jobs/42/runs/9/artifacts") {
+        artifactFetchCount += 1
         return Promise.resolve(new Response(JSON.stringify({
           job_id: 42,
           run_id: 9,
           agent_diff: "diff --git a/app.rb b/app.rb\n+puts 'forum'\n",
           agent_diff_bytes: 44,
-          logs_count: 2,
+          logs_count: artifactFetchCount > 1 ? 3 : 2,
           logs: [
             { id: 1, sequence: 0, kind: "stdout", chunk: "digging trench", created_at: "2026-05-30T10:02:00Z" },
-            { id: 2, sequence: 1, kind: "stderr", chunk: "found marble", created_at: "2026-05-30T10:03:00Z" }
+            { id: 2, sequence: 1, kind: "stderr", chunk: "found marble", created_at: "2026-05-30T10:03:00Z" },
+            ...(artifactFetchCount > 1 ? [{ id: 3, sequence: 2, kind: "stdout", chunk: "new marble", created_at: "2026-05-30T10:04:00Z" }] : [])
           ]
         }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
@@ -3897,6 +3900,22 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("digging trench")).toBeInTheDocument()
+
+    const subscriptionCalls = actionCable.createSubscription.mock.calls as unknown[][]
+    const appEventSubscription = subscriptionCalls.at(-1)?.[1] as { received?: (event: unknown) => void } | undefined
+    act(() => {
+      appEventSubscription?.received?.({
+        type: "job.updated",
+        resource: "job",
+        id: 42,
+        changed: ["run.updated", "job_logs"],
+        occurred_at: "2026-05-30T10:04:00.000Z"
+      })
+    })
+    await waitFor(() => {
+      expect(fetchSpy.mock.calls.filter(([path]) => String(path) === "/api/v1/app/jobs/42/runs/9/artifacts")).toHaveLength(2)
+    })
+    expect(await screen.findByText("new marble")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Diff" }))
     expect(await screen.findByText(/diff --git a\/app.rb b\/app.rb/)).toBeInTheDocument()

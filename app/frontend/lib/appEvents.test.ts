@@ -5,7 +5,7 @@ import { applyAppEvent, queryKeysFor } from "./appEvents"
 describe("queryKeysFor", () => {
   it("maps resource events to the query keys they invalidate", () => {
     expect(queryKeysFor(event("user", null))).toEqual([["bootstrap"]])
-    expect(queryKeysFor(event("job", 42))).toEqual([["jobs"], ["jobs", "42"]])
+    expect(queryKeysFor(event("job", 42))).toEqual([["jobs"], ["jobs", "42"], ["job_run_artifacts", "42"]])
     expect(queryKeysFor(event("workflow", 7))).toEqual([["workflows"], ["workflows", "7"]])
     expect(queryKeysFor(event("repository", 3))).toEqual([["repositories"], ["repositories", "3"]])
     expect(queryKeysFor(event("chat", 5))).toEqual([["chats"], ["chats", "5"]])
