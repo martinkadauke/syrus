@@ -4194,7 +4194,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Refresh repo" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Reset workspace" })).not.toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "acme/widgets" })).not.toBeInTheDocument()
-    expect(screen.getByText("Version 2")).toBeInTheDocument()
+    expect(screen.queryByText(/^Version \d+$/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Fullscreen" }))
     expect(screen.getByRole("button", { name: "Exit fullscreen" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.queryByTestId("chat-message-stream")).not.toBeInTheDocument()
@@ -4266,7 +4266,7 @@ describe("App", () => {
       expect(within(mobileTabs).getByRole("button", { name: "Whiteboard" })).toHaveClass("border-blue-600")
       expect(screen.queryByTestId("chat-message-stream")).not.toBeInTheDocument()
       expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("h-full", "min-h-0", "w-full", "flex-1")
-      expect(screen.getByText("Version 2")).toBeInTheDocument()
+      expect(screen.queryByText(/^Version \d+$/)).not.toBeInTheDocument()
 
       fireEvent.click(within(mobileTabs).getByRole("button", { name: "Context" }))
       expect(within(mobileTabs).getByRole("button", { name: "Context" })).toHaveClass("border-blue-600")
@@ -4592,19 +4592,21 @@ describe("App", () => {
         })
       )
     })
-    expect(await screen.findByText("Version 3")).toBeInTheDocument()
-    expect(excalidrawMock.addFiles).toHaveBeenCalledWith([
-      {
-        id: "file-react",
-        dataURL: "data:image/png;base64,abc",
-        mimeType: "image/png",
-        created: 1
-      }
-    ])
-    expect(excalidrawMock.updateScene).toHaveBeenCalledWith({
-      elements: [{ id: "shape-react", type: "image", fileId: "file-react", version: 1 }],
-      appState: { viewBackgroundColor: "#ffffff" }
+    await waitFor(() => {
+      expect(excalidrawMock.addFiles).toHaveBeenCalledWith([
+        {
+          id: "file-react",
+          dataURL: "data:image/png;base64,abc",
+          mimeType: "image/png",
+          created: 1
+        }
+      ])
+      expect(excalidrawMock.updateScene).toHaveBeenCalledWith({
+        elements: [{ id: "shape-react", type: "image", fileId: "file-react", version: 1 }],
+        appState: { viewBackgroundColor: "#ffffff" }
+      })
     })
+    expect(screen.queryByText(/^Version \d+$/)).not.toBeInTheDocument()
   })
 
   it("does not push the initial whiteboard scene back through the imperative API", async () => {

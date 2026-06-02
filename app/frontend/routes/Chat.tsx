@@ -968,7 +968,6 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [version, setVersion] = useState(payload.whiteboard.version)
   const [scene, setScene] = useState<ChatWhiteboardScene>(() => whiteboardScene(payload))
   const apiRef = useRef<ExcalidrawApi | null>(null)
   const appliedSignatureRef = useRef(signatureForScene(scene))
@@ -998,7 +997,6 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
       appState: copied.appState as never
     })
     versionRef.current = nextVersion
-    setVersion(nextVersion)
     queueMicrotask(() => {
       remoteUpdateInProgressRef.current = false
     })
@@ -1109,7 +1107,6 @@ function WhiteboardPanel({ fullscreen, onToggleFullscreen, payload }: { fullscre
       <div className="mb-2 flex items-center justify-between gap-3">
         <div className="text-xs font-semibold uppercase text-gray-500">Whiteboard</div>
         <div className="flex items-center gap-2">
-          <div className="text-xs text-gray-500">Version {version}</div>
           <button
             aria-pressed={fullscreen}
             className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
