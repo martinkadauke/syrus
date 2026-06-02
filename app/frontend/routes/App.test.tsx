@@ -1865,7 +1865,11 @@ describe("App", () => {
     expect(await screen.findByText("pause_runs")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Pause polling" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Resume runs" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Reap now" })).toBeInTheDocument()
+    const reapButton = screen.getByRole("button", { name: "Reap now" })
+    const reapPanel = screen.getByText("Reap stale Runs now").closest("section")
+    expect(reapButton).toBeInTheDocument()
+    expect(reapButton).toHaveClass("shrink-0")
+    expect(reapPanel?.firstElementChild).toHaveClass("flex", "justify-between")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/console",
       expect.objectContaining({

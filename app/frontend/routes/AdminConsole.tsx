@@ -126,16 +126,20 @@ function ReaperPanel() {
 
   return (
     <section className="rounded border border-gray-200 bg-white p-4">
-      <h2 className="font-medium text-gray-900">Reap stale Runs now</h2>
-      <p className="mt-1 max-w-prose text-xs text-gray-600">Runs the stale-run reaper inline when the recurring reaper itself may be starved.</p>
-      <button
-        className="mt-4 rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-red-300"
-        disabled={mutation.isPending}
-        onClick={() => mutation.mutate()}
-        type="button"
-      >
-        {mutation.isPending ? "Running..." : "Reap now"}
-      </button>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="font-medium text-gray-900">Reap stale Runs now</h2>
+          <p className="mt-1 max-w-prose text-xs text-gray-600">Runs the stale-run reaper inline when the recurring reaper itself may be starved.</p>
+        </div>
+        <button
+          className="shrink-0 rounded bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-red-300"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
+          type="button"
+        >
+          {mutation.isPending ? "Running..." : "Reap now"}
+        </button>
+      </div>
       {mutation.isError ? <p className="mt-2 text-xs text-red-700">Unable to run stale-run reaper.</p> : null}
     </section>
   )
