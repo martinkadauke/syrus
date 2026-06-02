@@ -1,7 +1,16 @@
-import type { ReactNode } from "react"
+import { useEffect, type ReactNode } from "react"
+
+const AUTO_DISMISS_DELAY_MS = 10_000
 
 export function NoticeToast({ children, message, onDismiss }: { children?: ReactNode; message?: ReactNode | null; onDismiss: () => void }) {
   const content = children ?? message
+  useEffect(() => {
+    if (!content) return
+
+    const timeout = window.setTimeout(onDismiss, AUTO_DISMISS_DELAY_MS)
+    return () => window.clearTimeout(timeout)
+  }, [content, onDismiss])
+
   if (!content) return null
 
   return (
