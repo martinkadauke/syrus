@@ -4995,6 +4995,59 @@ describe("App", () => {
     )
   })
 
+  it("loads and scrolls to chat bookmarks", async () => {
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView })
+    const initialPayload = chatPayload({ hasMoreOlder: true })
+    initialPayload.bookmarks = [
+      { id: 7, label: "Earlier aqueduct note", chat_message_id: 4 }
+    ]
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/messages?before=9") {
+        return Promise.resolve(new Response(JSON.stringify({
+          has_more_older: false,
+          messages: [
+            {
+              type: "message",
+              id: 4,
+              role: "assistant",
+              text: "Earlier **aqueduct** note.",
+              bookmarkable: true
+            }
+          ]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(initialPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: "Chats" }))
+    const bookmark = await screen.findByRole("link", { name: "Earlier aqueduct note" })
+    expect(bookmark).toHaveAttribute("href", "#message-4")
+    fireEvent.click(bookmark)
+
+    expect(await screen.findByText("aqueduct")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" })
+    })
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/chats/8/messages?before=9",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" }
+      })
+    )
+  })
+
   it("renders the new chat route and posts to the app API", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)

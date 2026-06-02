@@ -73,6 +73,10 @@ export function ChatRoute() {
 }
 
 type ChatQueryKey = readonly ["chats", string, string]
+type BookmarkTarget = {
+  messageId: number
+  requestId: number
+}
 
 function chatQueryKey(id: string | number, search: string): ChatQueryKey {
   return ["chats", String(id), search] as const
@@ -177,15 +181,17 @@ function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: C
   )
 }
 
-function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: { bookmarkTarget: BookmarkTarget | null; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const streamRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
   const streamChatIdRef = useRef(payload.chat.id)
   const maxPayloadMessageIdRef = useRef(maxMessageId(payload.messages))
+  const bookmarkLoadBeforeRef = useRef<number | null>(null)
   const [newMessageCount, setNewMessageCount] = useState(0)
   const [olderMessages, setOlderMessages] = useState<ChatMessageItem[]>([])
   const [showSystemMessages, setShowSystemMessages] = useState(false)
   const [hasMoreOlder, setHasMoreOlder] = useState(payload.has_more_older)
+  const [activeBookmarkTarget, setActiveBookmarkTarget] = useState<BookmarkTarget | null>(null)
   const displayedMessages = mergeChatMessages(olderMessages, payload.messages)
   const displayedItems = renderChatMessages(displayedMessages)
   const hiddenSystemMessageCount = displayedItems.filter(isLowPrioritySystemMessage).length
@@ -247,6 +253,37 @@ function MessageStream({ payload, prefix, queryKey, onNotice }: { payload: ChatP
   useEffect(() => {
     if (atBottomRef.current) scrollMessageStreamToBottom(streamRef.current)
   }, [agentActive, visibleItemsSignature])
+
+  useEffect(() => {
+    if (!bookmarkTarget) return
+
+    bookmarkLoadBeforeRef.current = null
+    setActiveBookmarkTarget(bookmarkTarget)
+  }, [bookmarkTarget?.messageId, bookmarkTarget?.requestId])
+
+  useEffect(() => {
+    if (!activeBookmarkTarget) return
+
+    const stream = streamRef.current
+    if (!stream) return
+
+    const target = findChatMessageAnchor(stream, activeBookmarkTarget.messageId)
+    if (target) {
+      scrollChatMessageIntoView(target)
+      setActiveBookmarkTarget(null)
+      return
+    }
+
+    if (!hasMoreOlder || oldestId == null) {
+      setActiveBookmarkTarget(null)
+      return
+    }
+
+    if (loadOlder.isPending || bookmarkLoadBeforeRef.current === oldestId) return
+
+    bookmarkLoadBeforeRef.current = oldestId
+    loadOlder.mutate(oldestId)
+  }, [activeBookmarkTarget, hasMoreOlder, loadOlder.isPending, oldestId, visibleItemsSignature])
 
   if (displayedItems.length === 0) {
     return (
@@ -376,6 +413,16 @@ function isMessageStreamAtBottom(element: HTMLElement) {
 function scrollMessageStreamToBottom(element: HTMLElement | null) {
   if (!element) return
   element.scrollTop = element.scrollHeight
+}
+
+function findChatMessageAnchor(stream: HTMLElement, messageId: number) {
+  return stream.querySelector<HTMLElement>(`#message-${messageId}`)
+}
+
+function scrollChatMessageIntoView(element: HTMLElement) {
+  if (typeof element.scrollIntoView === "function") {
+    element.scrollIntoView({ block: "start", behavior: "smooth" })
+  }
 }
 
 function countIncomingVisibleMessages(messages: ChatMessageItem[], previousMaxMessageId: number, showSystemMessages: boolean) {
@@ -763,6 +810,8 @@ function ChatWorkspace({
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(() => storedWorkspaceTab() || defaultWorkspaceTab(payload))
   const [activeMobileTab, setActiveMobileTab] = useState<MobileChatTab>("chat")
   const [workspaceWidth, setWorkspaceWidth] = useState(storedWorkspaceWidth)
+  const [bookmarkTarget, setBookmarkTarget] = useState<BookmarkTarget | null>(null)
+  const bookmarkRequestIdRef = useRef(0)
   const isDesktop = useMediaQuery("(min-width: 1024px)", true)
   const expanded = activeTab === "whiteboard" && whiteboardFullscreen
 
@@ -807,6 +856,13 @@ function ChatWorkspace({
     selectTab(tab)
   }
 
+  function selectBookmark(messageId: number) {
+    onWhiteboardFullscreenChange(false)
+    setActiveMobileTab("chat")
+    bookmarkRequestIdRef.current += 1
+    setBookmarkTarget({ messageId, requestId: bookmarkRequestIdRef.current })
+  }
+
   if (!isDesktop && !expanded) {
     return (
       <div className="flex min-h-0 flex-1 flex-col rounded border border-gray-200 bg-white">
@@ -824,7 +880,7 @@ function ChatWorkspace({
         </nav>
         <div className="flex min-h-0 w-full flex-1 p-3">
           {activeMobileTab === "chat" ? (
-            <ChatColumn payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+            <ChatColumn bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
           ) : (
             <ChatWorkspacePanel
               activeTab={activeTab}
@@ -836,6 +892,7 @@ function ChatWorkspace({
               prefix={prefix}
               queryKey={queryKey}
               onNotice={onNotice}
+              onBookmarkSelect={selectBookmark}
             />
           )}
         </div>
@@ -848,7 +905,7 @@ function ChatWorkspace({
       className={expanded ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:gap-0"}
       style={expanded ? undefined : { gridTemplateColumns: `minmax(0,1fr) 0.5rem minmax(${CHAT_WORKSPACE_MIN_WIDTH}px,${workspaceWidth}px)` }}
     >
-      {expanded ? null : <ChatColumn payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />}
+      {expanded ? null : <ChatColumn bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />}
       {expanded ? null : (
         <button
           aria-label="Resize chat workspace"
@@ -866,16 +923,17 @@ function ChatWorkspace({
         prefix={prefix}
         queryKey={queryKey}
         onNotice={onNotice}
+        onBookmarkSelect={selectBookmark}
       />
     </div>
   )
 }
 
-function ChatColumn({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function ChatColumn({ bookmarkTarget, payload, prefix, queryKey, onNotice }: { bookmarkTarget: BookmarkTarget | null; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white">
-        <MessageStream payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+        <MessageStream bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         <UsageOverlay payload={payload} />
       </div>
       <Compose payload={payload} queryKey={queryKey} onNotice={onNotice} />
@@ -892,7 +950,8 @@ function ChatWorkspacePanel({
   payload,
   prefix,
   queryKey,
-  onNotice
+  onNotice,
+  onBookmarkSelect
 }: {
   activeTab: WorkspaceTab
   fullscreen: boolean
@@ -903,6 +962,7 @@ function ChatWorkspacePanel({
   prefix: string
   queryKey: ChatQueryKey
   onNotice: (message: string | null) => void
+  onBookmarkSelect: (messageId: number) => void
 }) {
   return (
     <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white ${fullscreen ? "" : "h-full w-full"}`}>
@@ -927,7 +987,7 @@ function ChatWorkspacePanel({
           </WhiteboardBoundary>
         ) : null}
         {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
-        {activeTab === "chats" ? <ChatNavigator payload={payload} prefix={prefix} /> : null}
+        {activeTab === "chats" ? <ChatNavigator payload={payload} prefix={prefix} onBookmarkSelect={onBookmarkSelect} /> : null}
       </div>
     </aside>
   )
@@ -1216,7 +1276,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
-function ChatNavigator({ payload, prefix }: { payload: ChatPayload; prefix: string }) {
+function ChatNavigator({ payload, prefix, onBookmarkSelect }: { payload: ChatPayload; prefix: string; onBookmarkSelect: (messageId: number) => void }) {
   const [query, setQuery] = useState("")
   const normalizedQuery = query.trim().toLowerCase()
   const recentChats = useMemo(() => {
@@ -1265,19 +1325,29 @@ function ChatNavigator({ payload, prefix }: { payload: ChatPayload; prefix: stri
           <div className="text-xs text-gray-400">No matching chats.</div>
         )}
       </section>
-      <ChatBookmarks payload={payload} />
+      <ChatBookmarks payload={payload} onBookmarkSelect={onBookmarkSelect} />
     </div>
   )
 }
 
-function ChatBookmarks({ payload }: { payload: ChatPayload }) {
+function ChatBookmarks({ payload, onBookmarkSelect }: { payload: ChatPayload; onBookmarkSelect: (messageId: number) => void }) {
   return (
     <section>
       <div className="mb-2 text-xs font-semibold uppercase text-gray-500">Bookmarks in this chat</div>
       {payload.bookmarks.length > 0 ? (
         <nav aria-label="Chat bookmarks" className="space-y-1">
           {payload.bookmarks.map((bookmark) => (
-            <a className="block rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700" href={`#message-${bookmark.chat_message_id}`} key={bookmark.id}>
+            <a
+              className="block rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+              href={`#message-${bookmark.chat_message_id}`}
+              key={bookmark.id}
+              onClick={(event) => {
+                if (!isPlainAnchorClick(event)) return
+
+                event.preventDefault()
+                onBookmarkSelect(bookmark.chat_message_id)
+              }}
+            >
               <span className="block truncate">{bookmark.label}</span>
             </a>
           ))}
@@ -1727,6 +1797,10 @@ function withRoutePrefix(path: string, prefix: string) {
   if (!path.startsWith("/")) return path
 
   return `${prefix}${path}`
+}
+
+function isPlainAnchorClick(event: ReactMouseEvent<HTMLAnchorElement>) {
+  return event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey
 }
 
 function mergeChatMessages(...groups: ChatMessageItem[][]) {
