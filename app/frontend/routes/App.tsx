@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Link, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { BugReportButton } from "../components/BugReportButton"
 import { NoticeToast } from "../components/NoticeToast"
 import { useAppEvents } from "../lib/useAppEvents"
+import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { AdminConsole } from "./AdminConsole"
 import { AdminGithubAppConfirm, AdminGithubAppRegister } from "./AdminGithubApp"
 import { AdminInvitations } from "./AdminInvitations"
@@ -194,29 +195,7 @@ function PubliliusSyrusFooter({ quote }: { quote: string }) {
 
 function AccountNavigation({ csrfToken, prefix, user }: { csrfToken?: string; prefix: string; user: NonNullable<BootstrapPayload["current_user"]> }) {
   const [open, setOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false)
-    }
-
-    function closeOnOutsidePointer(event: PointerEvent) {
-      const target = event.target
-      if (target instanceof Node && menuRef.current?.contains(target)) return
-
-      setOpen(false)
-    }
-
-    window.addEventListener("keydown", closeOnEscape)
-    window.addEventListener("pointerdown", closeOnOutsidePointer)
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape)
-      window.removeEventListener("pointerdown", closeOnOutsidePointer)
-    }
-  }, [open])
+  const menuRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
 
   return (
     <nav aria-label="Account" className="flex items-center gap-2">

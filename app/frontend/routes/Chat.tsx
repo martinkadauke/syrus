@@ -7,6 +7,7 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
+import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import {
   addChatAttachment,
   cancelPendingAction,
@@ -466,6 +467,7 @@ function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<
   const search = queryKey[2]
   const [open, setOpen] = useState(false)
   const [label, setLabel] = useState("")
+  const menuRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
   const bookmark = useMutation({
     mutationFn: () => createChatBookmark(appendSearch(payload.paths.app_bookmarks_path, search), item.id, label),
     onSuccess: (updated) => {
@@ -484,7 +486,7 @@ function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<
   }
 
   return (
-    <div className={`absolute right-0 top-0 z-10 ${open ? "block" : "hidden group-hover/message:block"}`}>
+    <div className={`absolute right-0 top-0 z-10 ${open ? "block" : "hidden group-hover/message:block"}`} ref={menuRef}>
       <button className="rounded border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 shadow-sm hover:bg-gray-50" onClick={() => setOpen((value) => !value)} type="button">
         Bookmark
       </button>

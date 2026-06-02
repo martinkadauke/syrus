@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { DragEvent, FormEvent } from "react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { FilterBar, filterTreeFromPayload, smartFolderFiltersFromTree, topFilterChildren } from "../components/FilterBar"
+import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardEpicState, updateDashboardPreferences, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 export function DashboardRoute() {
@@ -271,8 +272,8 @@ function DashboardToolbar({ payload, pathname, search, showConfiguration = true 
   const queryClient = useQueryClient()
   const [columnsOpen, setColumnsOpen] = useState(false)
   const [lanesOpen, setLanesOpen] = useState(false)
-  const columnsMenuRef = useRef<HTMLDivElement>(null)
-  const lanesMenuRef = useRef<HTMLDivElement>(null)
+  const columnsMenuRef = useDismissiblePopup<HTMLDivElement>(columnsOpen, () => setColumnsOpen(false))
+  const lanesMenuRef = useDismissiblePopup<HTMLDivElement>(lanesOpen, () => setLanesOpen(false))
   const updatePreferences = useMutation({
     mutationFn: updateDashboardPreferences,
     onSuccess: () => {
@@ -300,35 +301,6 @@ function DashboardToolbar({ payload, pathname, search, showConfiguration = true 
       visible_columns: next
     })
   }
-
-  useEffect(() => {
-    if (!columnsOpen && !lanesOpen) return
-
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== "Escape") return
-
-      setColumnsOpen(false)
-      setLanesOpen(false)
-    }
-
-    function closeOnOutsidePointer(event: PointerEvent) {
-      const target = event.target
-      if (target instanceof Node) {
-        if (columnsOpen && columnsMenuRef.current?.contains(target)) return
-        if (lanesOpen && lanesMenuRef.current?.contains(target)) return
-      }
-
-      setColumnsOpen(false)
-      setLanesOpen(false)
-    }
-
-    window.addEventListener("keydown", closeOnEscape)
-    window.addEventListener("pointerdown", closeOnOutsidePointer)
-    return () => {
-      window.removeEventListener("keydown", closeOnEscape)
-      window.removeEventListener("pointerdown", closeOnOutsidePointer)
-    }
-  }, [columnsOpen, lanesOpen])
 
   return (
     <div className="shrink-0">

@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
+import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import {
   archiveRepositoryFromPath,
   bulkRepositoryIssues,
@@ -377,6 +378,8 @@ function Actions({ payload, prefix, queryKey, onNotice }: { payload: RepositoryD
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const search = queryKey[3]
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreMenuRef = useDismissiblePopup<HTMLDivElement>(moreOpen, () => setMoreOpen(false))
   const retry = payload.retry_failed_jobs
   const poll = useMutation({
     mutationFn: () => pollRepositoryDetail(appendSearch(payload.paths.app_poll_repository_path, search), payload.pagination.page),
@@ -403,6 +406,7 @@ function Actions({ payload, prefix, queryKey, onNotice }: { payload: RepositoryD
 
   function archiveRepository() {
     onNotice(null)
+    setMoreOpen(false)
     if (window.confirm(`Archive ${payload.repository.slug}? Polling stops; existing jobs are unaffected.`)) {
       archive.mutate()
     }
@@ -416,13 +420,24 @@ function Actions({ payload, prefix, queryKey, onNotice }: { payload: RepositoryD
         {retry.count > 0 ? (
           <button className={buttonClass("amber")} disabled={disabled} onClick={() => { onNotice(null); retryFailed.mutate() }} type="button">Retry {retry.count} failed with {retry.agent_provider_label}</button>
         ) : null}
-        <details className="relative">
-          <summary className={buttonClass("gray", "cursor-pointer list-none")}>More</summary>
-          <div className="absolute left-0 z-20 mt-2 min-w-40 rounded border border-gray-200 bg-white p-1 text-sm shadow-lg">
-            <Link className="block rounded px-3 py-2 text-gray-700 hover:bg-gray-100" to={withRoutePrefix(payload.paths.edit_repository_path, prefix)}>Edit</Link>
-            <button className="block w-full rounded px-3 py-2 text-left text-amber-800 hover:bg-amber-50 disabled:text-gray-300" disabled={disabled} onClick={archiveRepository} type="button">Archive</button>
-          </div>
-        </details>
+        <div className="relative" ref={moreMenuRef}>
+          <button
+            aria-controls="repository-actions-menu"
+            aria-expanded={moreOpen}
+            aria-haspopup="menu"
+            className={buttonClass("gray")}
+            onClick={() => setMoreOpen((open) => !open)}
+            type="button"
+          >
+            More
+          </button>
+          {moreOpen ? (
+            <div className="absolute left-0 z-20 mt-2 min-w-40 rounded border border-gray-200 bg-white p-1 text-sm shadow-lg" id="repository-actions-menu">
+              <Link className="block rounded px-3 py-2 text-gray-700 hover:bg-gray-100" onClick={() => setMoreOpen(false)} to={withRoutePrefix(payload.paths.edit_repository_path, prefix)}>Edit</Link>
+              <button className="block w-full rounded px-3 py-2 text-left text-amber-800 hover:bg-amber-50 disabled:text-gray-300" disabled={disabled} onClick={archiveRepository} type="button">Archive</button>
+            </div>
+          ) : null}
+        </div>
       </div>
       {poll.isError ? <PanelMessage tone="error">{errorMessage(poll.error, "Repository poll failed.")}</PanelMessage> : null}
       {retryFailed.isError ? <PanelMessage tone="error">{errorMessage(retryFailed.error, "Retry failed jobs command failed.")}</PanelMessage> : null}
