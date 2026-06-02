@@ -73,6 +73,23 @@ describe("applyAppEvent", () => {
     ])
   })
 
+  it("invalidates chat queries when a typed chat event arrives before chat data is cached", () => {
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+
+    applyAppEvent(queryClient, {
+      ...event("chat", 9),
+      payload: {
+        action: "replace_tail",
+        replace_from_id: 1,
+        messages: [message(1, "assistant", "fast response")]
+      }
+    })
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats"] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["chats", "9"] })
+  })
+
   it("applies chat controls payloads directly to cached chat data", () => {
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")

@@ -44,10 +44,12 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
 
   const replaceTail = chatReplaceTailPayload(event.payload)
   if (replaceTail) {
+    let patched = false
     queryClient.setQueriesData<ChatPayload>(
       { queryKey: ["chats", String(event.id)] },
       (current) => {
         if (!current) return current
+        patched = true
 
         return {
           ...current,
@@ -61,15 +63,17 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
         }
       }
     )
-    return true
+    return patched
   }
 
   const controls = chatControlsPayload(event.payload)
   if (controls) {
+    let patched = false
     queryClient.setQueriesData<ChatPayload>(
       { queryKey: ["chats", String(event.id)] },
       (current) => {
         if (!current) return current
+        patched = true
 
         return {
           ...current,
@@ -82,16 +86,21 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
         }
       }
     )
-    return true
+    return patched
   }
 
   const header = chatHeaderPayload(event.payload)
   if (header) {
+    let patched = false
     queryClient.setQueriesData<ChatPayload>(
       { queryKey: ["chats", String(event.id)] },
-      (current) => current ? { ...current, chat: { ...current.chat, ...header.chat } } : current
+      (current) => {
+        if (!current) return current
+        patched = true
+        return { ...current, chat: { ...current.chat, ...header.chat } }
+      }
     )
-    return true
+    return patched
   }
 
   return false
