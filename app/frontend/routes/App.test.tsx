@@ -614,7 +614,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Dashboard" }).closest("header")).not.toHaveClass("border-b")
     const subjectNav = screen.getByRole("navigation", { name: "Dashboard subjects" })
     expect(subjectNav.parentElement).toHaveClass("lg:grid-cols-[16rem_minmax(0,1fr)]")
-    expect(subjectNav).toHaveClass("inline-flex", "overflow-hidden", "rounded", "border", "border-gray-300", "bg-white")
+    expect(subjectNav).toHaveClass("inline-flex", "w-max", "overflow-hidden", "rounded", "border", "border-gray-300", "bg-white")
     expect(screen.getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues/12")
     expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("target", "_blank")

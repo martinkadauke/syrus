@@ -137,7 +137,7 @@ function DashboardCreateActions({ payload, prefix }: { payload: DashboardPayload
   )
 }
 
-function SubjectTabs({ payload, prefix, className = "inline-flex overflow-hidden rounded border border-gray-300 bg-white text-sm" }: { payload: DashboardPayload; prefix: string; className?: string }) {
+function SubjectTabs({ payload, prefix, className = "inline-flex w-max overflow-hidden rounded border border-gray-300 bg-white text-sm" }: { payload: DashboardPayload; prefix: string; className?: string }) {
   const subjects: Array<{ key: DashboardSubject; label: string; path: string }> = [
     { key: "epic", label: "Epics", path: "/dashboard/epics" },
     { key: "job", label: "Jobs", path: "/dashboard/jobs" },
