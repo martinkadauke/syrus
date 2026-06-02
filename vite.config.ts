@@ -6,7 +6,7 @@ export default defineConfig({
   build: {
     outDir: "app/assets/builds",
     emptyOutDir: false,
-    sourcemap: true,
+    sourcemap: false,
     rollupOptions: {
       input: "app/frontend/main.tsx",
       output: {
