@@ -1,6 +1,7 @@
 import type { RefObject } from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
+import { CloseIcon } from "./CloseIcon"
 
 export type FilterOption = {
   value: string | number
@@ -310,7 +311,9 @@ function FilterNodeChip({
       <span className={filterChipClass(negated)}>
         <button aria-label={negated ? "Remove NOT" : "Wrap in NOT"} className={filterNotClass(negated)} onClick={() => onToggleNegation(index)} title={negated ? "Remove NOT" : "Wrap in NOT"} type="button">¬</button>
         <FilterChipButton chip={inner} controls={controls} negated={negated} onClick={() => onEdit([index])} />
-        <button aria-label={`Remove ${filterChipLabel(inner, controls)} filter`} className="text-gray-400 hover:text-gray-700" onClick={() => onRemove([index])} type="button">x</button>
+        <button aria-label={`Remove ${filterChipLabel(inner, controls)} filter`} className="inline-flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700" onClick={() => onRemove([index])} type="button">
+          <CloseIcon className="h-3.5 w-3.5" />
+        </button>
       </span>
     )
   }
@@ -326,7 +329,9 @@ function FilterNodeChip({
             {isFilterChip(child) ? (
               <span className="inline-flex items-center gap-1 rounded border border-gray-300 bg-gray-50 px-2 py-1">
                 <FilterChipButton chip={child} controls={controls} onClick={() => onEdit([index, childIndex])} />
-                <button aria-label={`Remove ${filterChipLabel(child, controls)} filter`} className="text-gray-400 hover:text-gray-700" onClick={() => onRemove([index, childIndex])} type="button">x</button>
+                <button aria-label={`Remove ${filterChipLabel(child, controls)} filter`} className="inline-flex h-5 w-5 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700" onClick={() => onRemove([index, childIndex])} type="button">
+                  <CloseIcon className="h-3.5 w-3.5" />
+                </button>
               </span>
             ) : (
               <span className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-amber-800">complex filter</span>
@@ -500,7 +505,9 @@ function TypeaheadFilterValueEditor({ chip, meta, multi, onChange }: { chip: Fil
               return (
                 <span className="inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-indigo-800" key={value}>
                   {option.label}
-                  <button aria-label={`Remove ${option.label}`} className="text-indigo-500 hover:text-indigo-800" onClick={() => removeValue(value)} type="button">x</button>
+                  <button aria-label={`Remove ${option.label}`} className="inline-flex h-4 w-4 items-center justify-center rounded text-indigo-500 hover:bg-indigo-200 hover:text-indigo-800" onClick={() => removeValue(value)} type="button">
+                    <CloseIcon className="h-3 w-3" />
+                  </button>
                 </span>
               )
             })
@@ -569,7 +576,9 @@ function MultiFilterValueEditor({ chip, meta, onChange, options }: { chip: Filte
             selectedOptions.map((option) => (
               <span className="inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-indigo-800" key={String(option.value)}>
                 {option.label}
-                <button aria-label={`Remove ${option.label}`} className="text-indigo-500 hover:text-indigo-800" onClick={() => removeValue(String(option.value))} type="button">x</button>
+                <button aria-label={`Remove ${option.label}`} className="inline-flex h-4 w-4 items-center justify-center rounded text-indigo-500 hover:bg-indigo-200 hover:text-indigo-800" onClick={() => removeValue(String(option.value))} type="button">
+                  <CloseIcon className="h-3 w-3" />
+                </button>
               </span>
             ))
           ) : (

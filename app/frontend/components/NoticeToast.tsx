@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react"
+import { CloseIcon } from "./CloseIcon"
 
 const AUTO_DISMISS_DELAY_MS = 10_000
 
@@ -19,11 +20,11 @@ export function NoticeToast({ children, message, onDismiss }: { children?: React
         <div className="min-w-0 flex-1">{content}</div>
         <button
           aria-label="Dismiss notification"
-          className="-mr-1 rounded px-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+          className="-mr-1 inline-flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-700"
           onClick={onDismiss}
           type="button"
         >
-          x
+          <CloseIcon />
         </button>
       </div>
     </div>

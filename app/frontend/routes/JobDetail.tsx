@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { CloseIcon } from "../components/CloseIcon"
 import { NoticeToast } from "../components/NoticeToast"
 import { StatusPill } from "../components/StatusPill"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
@@ -289,13 +290,14 @@ function TagsPanel({ payload, command }: { payload: JobDetailPayload; command: R
             <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700" key={tag.id}>
               {tag.name}
               <button
-                className="text-gray-400 hover:text-red-600"
+                aria-label={`Remove ${tag.name}`}
+                className="inline-flex h-4 w-4 items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-red-600"
                 disabled={command.isPending}
                 onClick={() => command.mutate({ method: "delete", path: `${payload.paths.app_tags_path}/${tag.id}` })}
                 title={`Remove ${tag.name}`}
                 type="button"
               >
-                x
+                <CloseIcon className="h-3 w-3" />
               </button>
             </span>
           )) : <span className="text-sm text-gray-400">No tags yet.</span>}

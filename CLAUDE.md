@@ -228,6 +228,11 @@ across web/worker processes.
   them through `GithubClient`. Keep single and bulk paths in sync.
 - **Form validation UI** — React forms should use native validity
   attributes plus route-local error rendering.
+- **Close icons** — React close/dismiss/remove controls should render the
+  shared `CloseIcon` component (`app/frontend/components/CloseIcon.tsx`),
+  not a literal `x` or `×` text node. Keep the accessible label explicit
+  (`Dismiss notification`, `Close`, `Remove <thing>`, etc.) and size the icon
+  with the component's `className` prop.
 - **Per-user scheduling pause** — `User#scheduling_paused` (boolean).
   `PollScheduledTasksJob` skips paused users entirely. Operator can toggle
   via admin UI; user can toggle in `/credentials/edit`.

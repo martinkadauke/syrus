@@ -3,6 +3,7 @@ import type { FormEvent, KeyboardEvent } from "react"
 import { useEffect, useState } from "react"
 import { ApiError } from "../api/client"
 import { createBugReport } from "../api/bugReports"
+import { CloseIcon } from "./CloseIcon"
 import { NoticeToast } from "./NoticeToast"
 
 type Html2Canvas = typeof import("html2canvas-pro").default
@@ -113,7 +114,7 @@ export function BugReportButton({ context }: { context: string }) {
                   onClick={closeDialog}
                   type="button"
                 >
-                  <CloseIcon />
+                  <CloseIcon className="h-7 w-7" />
                 </button>
               </div>
 
@@ -239,15 +240,6 @@ function BugIcon() {
       <path d="M20 12h-3" />
       <path d="m7.5 16-2.5 2" />
       <path d="m16.5 16 2.5 2" />
-    </svg>
-  )
-}
-
-function CloseIcon() {
-  return (
-    <svg aria-hidden="true" className="h-7 w-7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M6 6l12 12" />
-      <path d="M18 6 6 18" />
     </svg>
   )
 }
