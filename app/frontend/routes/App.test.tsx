@@ -260,6 +260,7 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload())
     document.body.appendChild(script)
     const fetchSpy = vi.spyOn(window, "fetch").mockRejectedValue(new Error("unexpected fetch"))
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0)
 
     try {
       render(
@@ -290,7 +291,45 @@ describe("App", () => {
       expect(within(accountNav).getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/app-shell/admin")
       expect(within(accountNav).getByRole("button", { name: "Sign out" })).toBeInTheDocument()
       expect(screen.getAllByText("dev").length).toBeGreaterThan(0)
+      const footer = screen.getByRole("contentinfo")
+      const quoteLink = within(footer).getByRole("link", { name: "A rolling stone gathers no moss." })
+      expect(footer).toHaveClass("hidden", "lg:block")
+      expect(quoteLink).toHaveAttribute("href", "https://en.wikipedia.org/wiki/Publilius_Syrus")
       expect(fetchSpy).not.toHaveBeenCalled()
+    } finally {
+      randomSpy.mockRestore()
+      script.remove()
+    }
+  })
+
+  it("omits the quote footer on chat routes", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload())
+    document.body.appendChild(script)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Chat" })).toBeInTheDocument()
+      expect(screen.queryByRole("contentinfo")).not.toBeInTheDocument()
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8",
+        expect.objectContaining({
+          credentials: "same-origin",
+          headers: { Accept: "application/json" }
+        })
+      )
     } finally {
       script.remove()
     }

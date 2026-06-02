@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Link, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { BugReportButton } from "../components/BugReportButton"
@@ -40,6 +40,17 @@ type AppRouteDefinition = {
   path: string
   element: ReactNode
 }
+
+const PUBLILIUS_SYRUS_WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/Publilius_Syrus"
+const PUBLILIUS_SYRUS_QUOTES = [
+  "A rolling stone gathers no moss.",
+  "A good reputation is more valuable than money.",
+  "It is a bad plan that admits of no modification.",
+  "No one knows what he can do until he tries.",
+  "Practice is the best of all instructors.",
+  "The fear of death is more to be dreaded than death itself.",
+  "Where there is unity there is always victory."
+]
 
 const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/session/new", element: <SignInRoute /> },
@@ -132,6 +143,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   const user = data?.current_user
   const app = data?.app
   const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
+  const quote = useMemo(randomPubliliusSyrusQuote, [])
   const navItems: Array<{ label: string; to: string; active: boolean; desktopOnly?: boolean }> = user ? [
     { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: normalizedPath === "/" || normalizedPath.startsWith("/dashboard") },
     { label: "Repos", to: `${prefix}/repositories`, active: normalizedPath.startsWith("/repositories") },
@@ -164,8 +176,19 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
       {showsSettingsNavigation(normalizedPath) ? <SettingsNavigation normalizedPath={normalizedPath} prefix={prefix} /> : null}
       <FlashBanner flash={data?.flash} />
       {children}
+      {showsPubliliusSyrusFooter(normalizedPath) ? <PubliliusSyrusFooter quote={quote} /> : null}
       {user ? <BugReportButton context={bugReportContext(location.pathname)} /> : null}
     </div>
+  )
+}
+
+function PubliliusSyrusFooter({ quote }: { quote: string }) {
+  return (
+    <footer className="mx-auto hidden max-w-[96rem] px-6 py-8 text-center text-xs text-gray-500 lg:block">
+      <a className="hover:text-blue-600 hover:underline" href={PUBLILIUS_SYRUS_WIKIPEDIA_URL}>
+        {quote}
+      </a>
+    </footer>
   )
 }
 
@@ -324,6 +347,14 @@ function showsSettingsNavigation(pathname: string) {
     pathname === "/documents" ||
     pathname === "/tags" ||
     pathname.startsWith("/cron_templates")
+}
+
+function showsPubliliusSyrusFooter(pathname: string) {
+  return !pathname.startsWith("/chats")
+}
+
+function randomPubliliusSyrusQuote() {
+  return PUBLILIUS_SYRUS_QUOTES[Math.floor(Math.random() * PUBLILIUS_SYRUS_QUOTES.length)]
 }
 
 function normalizedAppPath(pathname: string) {
