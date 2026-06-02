@@ -3877,7 +3877,8 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "Show timeline" })).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText("Add tag")).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "Check feedback" }))
+    fireEvent.click(screen.getByRole("button", { name: "More" }))
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Check feedback" }))
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
         "/api/v1/app/jobs/42/poll_feedback",
@@ -4114,6 +4115,7 @@ describe("App", () => {
     vi.spyOn(window, "confirm").mockReturnValue(true)
     const commandPaths = new Map([
       ["/api/v1/app/jobs/42/start", "Initial workflow enqueued."],
+      ["/api/v1/app/jobs/42/poll_feedback", "Feedback poll enqueued."],
       ["/api/v1/app/jobs/42/rebase", "Rebase workflow enqueued."],
       ["/api/v1/app/jobs/42/check_mergeability", "Checking mergeability now..."],
       ["/api/v1/app/jobs/42/run_again", "Retry workflow enqueued."],
@@ -4138,7 +4140,7 @@ describe("App", () => {
         pinned: true,
         actions: {
           can_start: true,
-          can_poll_feedback: false,
+          can_poll_feedback: true,
           can_rebase: true,
           can_check_mergeability: true,
           can_retry: true,
@@ -4160,13 +4162,16 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    const commands = [
+    const visibleCommands = [
+      ["Approve", "POST", "/api/v1/app/jobs/42/approve"],
+      ["Retry", "POST", "/api/v1/app/jobs/42/run_again"]
+    ]
+    const overflowCommands = [
       ["Start Run", "POST", "/api/v1/app/jobs/42/start"],
+      ["Check feedback", "POST", "/api/v1/app/jobs/42/poll_feedback"],
       ["Rebase now", "POST", "/api/v1/app/jobs/42/rebase"],
       ["Check mergeability", "POST", "/api/v1/app/jobs/42/check_mergeability"],
-      ["Retry", "POST", "/api/v1/app/jobs/42/run_again"],
       ["Start over", "POST", "/api/v1/app/jobs/42/restart"],
-      ["Approve", "POST", "/api/v1/app/jobs/42/approve"],
       ["Unapprove", "POST", "/api/v1/app/jobs/42/unapprove"],
       ["Cancel", "POST", "/api/v1/app/jobs/42/cancel"],
       ["Reopen", "POST", "/api/v1/app/jobs/42/reopen"],
@@ -4174,9 +4179,33 @@ describe("App", () => {
       ["Unpin", "DELETE", "/api/v1/app/jobs/42/pin"]
     ]
 
-    expect(await screen.findByRole("button", { name: "Start Run" })).toBeInTheDocument()
-    for (const [label, method, path] of commands) {
+    expect(await screen.findByRole("button", { name: "Approve" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Start Run" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }))
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: "Escape" })
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: "More" }))
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+    fireEvent.pointerDown(document.body)
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    })
+
+    for (const [label, method, path] of visibleCommands) {
       fireEvent.click(screen.getByRole("button", { name: label }))
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(path, expect.objectContaining({ method }))
+      })
+    }
+
+    for (const [label, method, path] of overflowCommands) {
+      fireEvent.click(screen.getByRole("button", { name: "More" }))
+      fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: label }))
       await waitFor(() => {
         expect(fetchSpy).toHaveBeenCalledWith(path, expect.objectContaining({ method }))
       })

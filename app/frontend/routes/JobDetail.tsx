@@ -5,6 +5,7 @@ import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { StatusPill } from "../components/StatusPill"
+import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import {
   createJobAttachments,
   deleteJobCommand,
@@ -30,6 +31,13 @@ type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
   | { method: "patch"; path: string; body?: unknown; confirm?: string }
   | { method: "delete"; path: string; confirm?: string }
+type ButtonTone = "primary" | "secondary" | "success" | "danger"
+type HeaderAction = {
+  key: string
+  label: string
+  input: CommandInput
+  tone: ButtonTone
+}
 
 export function JobDetailRoute() {
   const params = useParams()
@@ -152,30 +160,111 @@ function useJobCommand(jobId: number, queryKey: JobDetailQueryKey, onNotice: (me
 }
 
 function HeaderActions({ payload, command }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
-  const actions = payload.actions
-  const paths = payload.paths
+  const actions = headerActions(payload)
+  const visibleKeys = primaryHeaderActionKeys(payload, actions)
+  const visibleActions = visibleKeys.map((key) => actions.find((action) => action.key === key)).filter((action): action is HeaderAction => Boolean(action))
+  const overflowActions = actions.filter((action) => !visibleKeys.includes(action.key))
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
-      {actions.can_start ? <CommandButton command={command} input={{ method: "post", path: paths.app_start_path }}>Start Run</CommandButton> : null}
-      {actions.can_poll_feedback ? <CommandButton command={command} input={{ method: "post", path: paths.app_poll_feedback_path }}>Check feedback</CommandButton> : null}
-      {actions.can_rebase ? <CommandButton command={command} input={{ method: "post", path: paths.app_rebase_path }}>Rebase now</CommandButton> : null}
-      {actions.can_check_mergeability ? <CommandButton command={command} input={{ method: "post", path: paths.app_check_mergeability_path }} tone="secondary">Check mergeability</CommandButton> : null}
-      {actions.can_retry ? <CommandButton command={command} input={{ method: "post", path: paths.app_run_again_path }}>Retry</CommandButton> : null}
-      {actions.can_restart ? <CommandButton command={command} input={{ method: "post", path: paths.app_restart_path, confirm: "Start over with a new Job and abandon this branch?" }} tone="secondary">Start over</CommandButton> : null}
-      {actions.can_approve ? <CommandButton command={command} input={{ method: "post", path: paths.app_approve_path }} tone="success">Approve</CommandButton> : null}
-      {actions.can_unapprove ? <CommandButton command={command} input={{ method: "post", path: paths.app_unapprove_path, confirm: "Move this Job back to implemented?" }} tone="secondary">Unapprove</CommandButton> : null}
-      {actions.can_cancel ? <CommandButton command={command} input={{ method: "post", path: paths.app_cancel_path, confirm: "Cancel any running work and close this Job?" }} tone="danger">Cancel</CommandButton> : null}
-      {actions.can_reopen ? <CommandButton command={command} input={{ method: "post", path: paths.app_reopen_path }} tone="success">Reopen</CommandButton> : null}
-      {actions.can_mark_valid ? <CommandButton command={command} input={{ method: "post", path: paths.app_mark_valid_path }} tone="secondary">Mark valid</CommandButton> : null}
-      <CommandButton command={command} input={payload.pinned ? { method: "delete", path: paths.app_pin_path } : { method: "post", path: paths.app_pin_path }} tone="secondary">
-        {payload.pinned ? "Unpin" : "Pin"}
-      </CommandButton>
+      {visibleActions.map((action) => (
+        <CommandButton command={command} input={action.input} key={action.key} tone={action.tone}>{action.label}</CommandButton>
+      ))}
+      {overflowActions.length > 0 ? <HeaderActionsMenu actions={overflowActions} command={command} /> : null}
     </div>
   )
 }
 
-function CommandButton({ children, command, input, tone = "primary" }: { children: ReactNode; command: ReturnType<typeof useJobCommand>; input: CommandInput; tone?: "primary" | "secondary" | "success" | "danger" }) {
+function headerActions(payload: JobDetailPayload): HeaderAction[] {
+  const actions = payload.actions
+  const paths = payload.paths
+  const available: HeaderAction[] = []
+
+  if (actions.can_start) available.push({ key: "start", label: "Start Run", input: { method: "post", path: paths.app_start_path }, tone: "primary" })
+  if (actions.can_poll_feedback) available.push({ key: "poll_feedback", label: "Check feedback", input: { method: "post", path: paths.app_poll_feedback_path }, tone: "secondary" })
+  if (actions.can_rebase) available.push({ key: "rebase", label: "Rebase now", input: { method: "post", path: paths.app_rebase_path }, tone: "secondary" })
+  if (actions.can_check_mergeability) available.push({ key: "check_mergeability", label: "Check mergeability", input: { method: "post", path: paths.app_check_mergeability_path }, tone: "secondary" })
+  if (actions.can_retry) available.push({ key: "retry", label: "Retry", input: { method: "post", path: paths.app_run_again_path }, tone: "primary" })
+  if (actions.can_restart) available.push({ key: "restart", label: "Start over", input: { method: "post", path: paths.app_restart_path, confirm: "Start over with a new Job and abandon this branch?" }, tone: "secondary" })
+  if (actions.can_approve) available.push({ key: "approve", label: "Approve", input: { method: "post", path: paths.app_approve_path }, tone: "success" })
+  if (actions.can_unapprove) available.push({ key: "unapprove", label: "Unapprove", input: { method: "post", path: paths.app_unapprove_path, confirm: "Move this Job back to implemented?" }, tone: "secondary" })
+  if (actions.can_cancel) available.push({ key: "cancel", label: "Cancel", input: { method: "post", path: paths.app_cancel_path, confirm: "Cancel any running work and close this Job?" }, tone: "danger" })
+  if (actions.can_reopen) available.push({ key: "reopen", label: "Reopen", input: { method: "post", path: paths.app_reopen_path }, tone: "success" })
+  if (actions.can_mark_valid) available.push({ key: "mark_valid", label: "Mark valid", input: { method: "post", path: paths.app_mark_valid_path }, tone: "secondary" })
+  available.push({ key: "pin", label: payload.pinned ? "Unpin" : "Pin", input: payload.pinned ? { method: "delete", path: paths.app_pin_path } : { method: "post", path: paths.app_pin_path }, tone: "secondary" })
+
+  return available
+}
+
+function primaryHeaderActionKeys(payload: JobDetailPayload, actions: HeaderAction[]) {
+  const availableKeys = new Set(actions.map((action) => action.key))
+  const jobState = payload.job.summary_state.toLowerCase()
+  const keys: string[] = []
+
+  function add(key: string) {
+    if (availableKeys.has(key) && keys.length < 2) keys.push(key)
+  }
+
+  if (payload.job.any_active_run || jobState === "running") {
+    add("cancel")
+  } else if (availableKeys.has("approve")) {
+    add("approve")
+    add("retry")
+  } else if (jobState === "failed") {
+    add("retry")
+    add("restart")
+  } else if (availableKeys.has("reopen")) {
+    add("reopen")
+  } else if (availableKeys.has("retry")) {
+    add("retry")
+  } else {
+    add("start")
+    add("mark_valid")
+  }
+
+  return keys
+}
+
+function HeaderActionsMenu({ actions, command }: { actions: HeaderAction[]; command: ReturnType<typeof useJobCommand> }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={buttonClass("secondary")}
+        disabled={command.isPending}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        More
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-20 mt-2 w-56 rounded border border-gray-200 bg-white py-1 shadow-lg" role="menu">
+          {actions.map((action) => (
+            <button
+              className={menuButtonClass(action.tone)}
+              disabled={command.isPending}
+              key={action.key}
+              onClick={() => {
+                setOpen(false)
+                command.mutate(action.input)
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function CommandButton({ children, command, input, tone = "primary" }: { children: ReactNode; command: ReturnType<typeof useJobCommand>; input: CommandInput; tone?: ButtonTone }) {
   return (
     <button className={buttonClass(tone)} disabled={command.isPending} onClick={() => command.mutate(input)} type="button">
       {children}
@@ -997,7 +1086,7 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
-function buttonClass(tone: "primary" | "secondary" | "success" | "danger") {
+function buttonClass(tone: ButtonTone) {
   const base = "inline-flex items-center rounded px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
   const tones = {
     primary: "bg-blue-600 text-white hover:bg-blue-500",
@@ -1006,6 +1095,16 @@ function buttonClass(tone: "primary" | "secondary" | "success" | "danger") {
     danger: "bg-amber-600 text-white hover:bg-amber-500"
   }
   return `${base} ${tones[tone]}`
+}
+
+function menuButtonClass(tone: ButtonTone) {
+  const tones = {
+    primary: "text-blue-700 hover:bg-blue-50",
+    secondary: "text-gray-700 hover:bg-gray-50",
+    success: "text-emerald-700 hover:bg-emerald-50",
+    danger: "text-amber-700 hover:bg-amber-50"
+  }
+  return `block w-full px-4 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]}`
 }
 
 function paginationLinkClass() {
