@@ -145,9 +145,8 @@ class AutoMergeGate
     run = @job.current_run
     return unless run
 
-    seq = (run.job_logs.maximum(:sequence) || -1) + 1
-    run.job_logs.create!(
-      sequence: seq,
+    JobLog.append!(
+      run: run,
       kind: "system",
       chunk: "auto_merge: recognized #{parsed.command} from @#{comment.user&.login}"
     )

@@ -51,10 +51,10 @@ class ReconcileJobStatesJob < ApplicationJob
     run = job.runs.order(:created_at).last
     return unless run
 
-    run.job_logs.create!(
+    JobLog.append!(
+      run: run,
       chunk: "[reconciler] Job state #{plan.from_state} → #{plan.target_state} (#{plan.reason})",
-      kind: "system",
-      sequence: (run.job_logs.maximum(:sequence) || -1) + 1
+      kind: "system"
     )
   rescue StandardError
     # Audit logging is best-effort. A missing/locked JobLog row is

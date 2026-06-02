@@ -342,8 +342,7 @@ class Workflow < ApplicationRecord
   def log_workspace_event(message)
     run = Run.where(step_id: steps.select(:id)).order(created_at: :desc).first
     return unless run
-    seq = (run.job_logs.maximum(:sequence) || -1) + 1
-    run.job_logs.create!(chunk: message, sequence: seq, kind: "system")
+    JobLog.append!(run: run, chunk: message, kind: "system")
   rescue StandardError
     # Logging is informational; never let it interfere with cleanup.
   end

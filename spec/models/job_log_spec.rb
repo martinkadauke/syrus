@@ -13,6 +13,30 @@ RSpec.describe JobLog do
     expect(run.reload.job_logs.map(&:chunk)).to eq(%w[first second])
   end
 
+  it "appends the next sequence" do
+    JobLog.create!(run: run, chunk: "first", sequence: 0)
+
+    log = described_class.append!(run: run, chunk: "second", kind: "system")
+
+    expect(log.sequence).to eq(1)
+    expect(log.kind).to eq("system")
+    expect(run.reload.job_logs.order(:sequence).pluck(:chunk)).to eq(%w[first second])
+  end
+
+  it "does not reload or save dirty state on the caller's run instance" do
+    run.assign_attributes(prompt: "dirty in memory")
+
+    described_class.append!(run: run, chunk: "log line")
+
+    expect(run.prompt).to eq("dirty in memory")
+    expect(run).to be_changed
+  end
+
+  it "does not persist blank append chunks" do
+    expect(described_class.append!(run: run, chunk: "   \n", kind: "system")).to be_nil
+    expect(run.job_logs.count).to eq(0)
+  end
+
   it "rejects update — append-only" do
     log = JobLog.create!(run: run, chunk: "hello", sequence: 0)
     expect { log.update!(chunk: "rewritten") }.to raise_error(ActiveRecord::ReadOnlyRecord)

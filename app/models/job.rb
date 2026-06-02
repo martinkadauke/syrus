@@ -597,10 +597,8 @@ class Job < ApplicationRecord
     run = current_run
     return unless run
 
-    next_sequence = (run.job_logs.maximum(:sequence) || -1) + 1
     pending_dependency_warnings.each do |warning|
-      run.job_logs.create!(chunk: warning, sequence: next_sequence, kind: "system")
-      next_sequence += 1
+      JobLog.append!(run: run, chunk: warning, kind: "system")
     end
     self.pending_dependency_warnings = []
   end
@@ -836,9 +834,9 @@ class Job < ApplicationRecord
     run = current_run
     return unless run
 
-    run.job_logs.create!(
+    JobLog.append!(
+      run: run,
       chunk: "dependencies: #{user.email_address} overrode unsatisfied dependencies",
-      sequence: (run.job_logs.maximum(:sequence) || -1) + 1,
       kind: "system"
     )
   end

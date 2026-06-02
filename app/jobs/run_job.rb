@@ -351,8 +351,7 @@ class RunJob < ApplicationJob
       @run.update_column(:last_heartbeat_at, Time.current) if @run.running?
       return
     end
-    next_seq = (@run.job_logs.maximum(:sequence) || -1) + 1
-    @run.job_logs.create!(chunk: text, sequence: next_seq, kind: kind)
+    JobLog.append!(run: @run, chunk: text, kind: kind)
     @run.update_column(:last_heartbeat_at, Time.current) if @run.running?
   end
 end

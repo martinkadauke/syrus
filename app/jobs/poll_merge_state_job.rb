@@ -85,8 +85,7 @@ class PollMergeStateJob < ApplicationJob
     run = @job.current_run
     return unless run
 
-    seq = (run.job_logs.maximum(:sequence) || -1) + 1
-    run.job_logs.create!(chunk: message, sequence: seq, kind: "system")
+    JobLog.append!(run: run, chunk: message, kind: "system")
   end
 
   def attempt_cap_reached?

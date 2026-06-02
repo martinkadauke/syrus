@@ -145,10 +145,6 @@ class LandingQueueProcessor
     run = job.current_run
     return unless run
 
-    run.job_logs.create!(
-      chunk: message,
-      sequence: (run.job_logs.maximum(:sequence) || -1) + 1,
-      kind: "system"
-    )
+    JobLog.append!(run: run, chunk: message, kind: "system")
   end
 end

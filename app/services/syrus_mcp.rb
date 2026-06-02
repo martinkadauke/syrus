@@ -18,8 +18,7 @@ module SyrusMcp
   # transcript and broadcast live via JobLog#broadcasts_to.
   def self.write_log(run, chunk)
     with_database_connection do
-      next_seq = (run.job_logs.maximum(:sequence) || -1) + 1
-      run.job_logs.create!(chunk: chunk, sequence: next_seq)
+      JobLog.append!(run: run, chunk: chunk)
     end
   end
 end

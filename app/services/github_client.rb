@@ -48,8 +48,7 @@ class GithubClient
     message = "[GithubClient] GitHub App installation #{installation.github_installation_id} for #{installation.account_login} detected as removed: #{error.class}: #{error.message}"
     Rails.logger.warn(message)
     if (run = Thread.current[:syrus_current_run])
-      next_seq = (run.job_logs.maximum(:sequence) || -1) + 1
-      run.job_logs.create!(chunk: message, sequence: next_seq, kind: "github_installation_removed")
+      JobLog.append!(run: run, chunk: message, kind: "github_installation_removed")
     end
   rescue => e
     Rails.logger.warn("[GithubClient] installation removal audit failed: #{e.message}")
@@ -647,8 +646,7 @@ class GithubClient
     reset_epoch = headers&.[]("x-ratelimit-reset").to_i
     reset_str  = reset_epoch > 0 ? Time.at(reset_epoch).utc.strftime("%H:%M UTC") : "unknown"
     chunk      = "[rate-limited] #{resource} quota exhausted; resets #{reset_str}"
-    next_seq   = (run.job_logs.maximum(:sequence) || -1) + 1
-    run.job_logs.create!(chunk: chunk, sequence: next_seq, kind: "rate_limited")
+    JobLog.append!(run: run, chunk: chunk, kind: "rate_limited")
   rescue => e
     Rails.logger.warn("[GithubClient] rate_limit log write failed: #{e.message}")
   end
