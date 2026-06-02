@@ -3,6 +3,7 @@ require "json"
 
 class CodexInvocation
   DEFAULT_TIMEOUT_SECONDS = AgentInvocation::DEFAULT_TIMEOUT_SECONDS
+  DEFAULT_MODEL = "gpt-5.5"
   MCP_STARTUP_TIMEOUT_SECONDS = 60
   MCP_TOOL_TIMEOUT_SECONDS = 60
 
@@ -12,6 +13,7 @@ class CodexInvocation
                  timeout: DEFAULT_TIMEOUT_SECONDS,
                  codex_home: nil,
                  mcp_server: nil,
+                 model: nil,
                  resume_session_id: nil,
                  resume_transcript_jsonl: nil)
     @workspace_path = workspace_path.to_s
@@ -22,6 +24,7 @@ class CodexInvocation
     @timeout = timeout
     @codex_home = codex_home&.to_s
     @mcp_server = mcp_server
+    @model = model.presence || ENV.fetch("SYRUS_CODEX_MODEL", DEFAULT_MODEL).presence
     @resume_session_id = resume_session_id
     @resume_transcript_jsonl = resume_transcript_jsonl
   end
@@ -35,6 +38,7 @@ class CodexInvocation
       timeout: @timeout,
       codex_home: @codex_home,
       mcp_server: @mcp_server,
+      model: @model,
       resume_session_id: @resume_session_id,
       resume_transcript_jsonl: @resume_transcript_jsonl
     )
@@ -43,11 +47,11 @@ class CodexInvocation
   private
 
   def default_runner(workspace_path:, prompt:, api_key:, log_sink:, timeout:,
-                     codex_home:, mcp_server: nil, resume_session_id: nil,
+                     codex_home:, mcp_server: nil, model: nil, resume_session_id: nil,
                      resume_transcript_jsonl: nil)
     codex_home = codex_home.presence || File.join(Dir.home, ".codex")
     FileUtils.mkdir_p(codex_home)
-    write_config(codex_home, mcp_server)
+    write_config(codex_home, mcp_server, model)
     restore_resume_transcript(codex_home, resume_session_id, resume_transcript_jsonl)
 
     env = codex_env(api_key: api_key, codex_home: codex_home)
@@ -122,16 +126,17 @@ class CodexInvocation
     )
   end
 
-  def write_config(codex_home, mcp_server)
+  def write_config(codex_home, mcp_server, model)
     FileUtils.mkdir_p(codex_home)
-    File.write(File.join(codex_home, "config.toml"), codex_config_toml(mcp_server))
+    File.write(File.join(codex_home, "config.toml"), codex_config_toml(mcp_server, model: model))
   end
 
-  def codex_config_toml(mcp_server)
+  def codex_config_toml(mcp_server, model:)
     lines = [
       'cli_auth_credentials_store = "file"',
       'approval_policy = "never"'
     ]
+    lines << "model = #{toml_string(model)}" if model.present?
 
     return lines.join("\n") + "\n" unless mcp_server
 

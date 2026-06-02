@@ -38,7 +38,8 @@ RSpec.describe CodexInvocation do
         api_key: "sk-test",
         codex_home: "/tmp/codex-home",
         resume_session_id: "abc",
-        resume_transcript_jsonl: "jsonl"
+        resume_transcript_jsonl: "jsonl",
+        model: "gpt-5.5"
       )
       expect(result).to be_success
     end
@@ -73,7 +74,23 @@ RSpec.describe CodexInvocation do
         expect(captured[:env]["CODEX_HOME"]).to eq(home)
         expect(captured[:cmd]).to include("codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "--json")
         expect(captured[:cmd]).to include("--cd", "/tmp/wkt")
+        expect(File.read(File.join(home, "config.toml"))).to include('model = "gpt-5.5"')
       end
+    end
+
+    it "allows the Codex model to be overridden by environment" do
+      old_model = ENV["SYRUS_CODEX_MODEL"]
+      ENV["SYRUS_CODEX_MODEL"] = "gpt-5.4"
+
+      Dir.mktmpdir do |home|
+        invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test", codex_home: home)
+
+        capture_popen(invocation)
+
+        expect(File.read(File.join(home, "config.toml"))).to include('model = "gpt-5.4"')
+      end
+    ensure
+      ENV["SYRUS_CODEX_MODEL"] = old_model
     end
 
     it "runs codex exec resume when resume_session_id is set" do
@@ -142,6 +159,7 @@ RSpec.describe CodexInvocation do
 
         config = File.read(File.join(home, "config.toml"))
         expect(config).to include('cli_auth_credentials_store = "file"')
+        expect(config).to include('model = "gpt-5.5"')
         expect(config).to include('[mcp_servers.syrus-mcp-sidecar]')
         expect(config).to include('command = "/app/bin/syrus-mcp-sidecar"')
         expect(config).to include('args = ["--run-id", "12"]')
@@ -165,6 +183,7 @@ RSpec.describe CodexInvocation do
         config = File.read(File.join(home, "config.toml"))
         expect(config).to include('cli_auth_credentials_store = "file"')
         expect(config).to include('approval_policy = "never"')
+        expect(config).to include('model = "gpt-5.5"')
         expect(config).not_to include("[mcp_servers.syrus-mcp-sidecar]")
         expect(config).not_to include("stale")
       end
