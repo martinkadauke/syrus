@@ -306,6 +306,8 @@ module App
       {
         id: step.id,
         kind: step.kind,
+        display_name: step_display_name(step),
+        display_status: step_display_status(step),
         position: step.position,
         iteration: step.iteration,
         loop_id: step.loop_id,
@@ -318,6 +320,20 @@ module App
         latest: step == workflow.steps.last,
         runs: step.runs.order(:created_at).map { |run| run_json(run, workflow: workflow) }
       }
+    end
+
+    def step_display_name(step)
+      return step.details["name"].presence || step.details["command"].presence || "grader" if step.kind == "grader"
+
+      Step::Kind.label_for(step.kind)
+    end
+
+    def step_display_status(step)
+      active_run = step.runs.find { |run| run.state.in?(%w[queued running]) }
+      return active_run.state if active_run
+      return nil if step.queued? && step.runs.empty?
+
+      step.state
     end
 
     def run_json(run, workflow:)

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { App } from "./App"
+import type { JobStep } from "../api/jobs"
 
 const actionCable = vi.hoisted(() => ({
   createSubscription: vi.fn(() => ({ unsubscribe: vi.fn() }))
@@ -3823,8 +3824,9 @@ describe("App", () => {
         }
       ]
     })
-    const gradeStep = payload.workflows[0].steps[0] as { kind: string; details: unknown; runs: Array<{ app_grade_log_path: string | null }> }
+    const gradeStep = payload.workflows[0].steps[0] as { kind: string; display_name: string; details: unknown; runs: Array<{ app_grade_log_path: string | null }> }
     gradeStep.kind = "grader"
+    gradeStep.display_name = "tests"
     gradeStep.details = { name: "tests", command: "bin/rspec" }
     gradeStep.runs[0].app_grade_log_path = "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5"
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
@@ -3883,6 +3885,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
     expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /tests/i }))
     expect(screen.getByText("Run #9")).toBeInTheDocument()
     expect(screen.queryByPlaceholderText("Add tag")).not.toBeInTheDocument()
 
@@ -4038,6 +4041,8 @@ describe("App", () => {
     )
 
     expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    expect(screen.getAllByText("running")).toHaveLength(3)
+    fireEvent.click(screen.getByRole("button", { name: /Implement/i }))
     const runningLabels = screen.getAllByText("running")
 
     expect(runningLabels).toHaveLength(4)
@@ -4315,6 +4320,7 @@ describe("App", () => {
               {
                 ...jobDetailPayload().workflows[0].steps[0],
                 state: "failed",
+                display_status: "failed",
                 runs: [
                   {
                     ...jobDetailPayload().workflows[0].steps[0].runs[0],
@@ -4340,6 +4346,7 @@ describe("App", () => {
     )
 
     expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Implement/i }))
     const commands = [
       ["Retry failed step", "POST", "/api/v1/app/jobs/42/workflows/5/retry_step"],
       ["Push commits", "POST", "/api/v1/app/jobs/42/workflows/5/push_commits"],
@@ -4399,6 +4406,7 @@ describe("App", () => {
               {
                 ...step,
                 state: "failed",
+                display_status: "failed",
                 finished_at: null,
                 runs: [failedRun, runningRun]
               }
@@ -4416,10 +4424,88 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
+    expect(screen.queryByText("Active run #10")).not.toBeInTheDocument()
+    fireEvent.click(await screen.findByRole("button", { name: /Implement/i }))
     expect(await screen.findByText("Active run #10")).toBeInTheDocument()
     expect(screen.getByText("is running")).toBeInTheDocument()
     expect(screen.getByText("step failed")).toBeInTheDocument()
     expect(screen.getByText("Run #10").compareDocumentPosition(screen.getByText("Run #9"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  it("groups repeated loop iterations on the workflows tab", async () => {
+    const base = jobDetailPayload()
+    const workflow = base.workflows[0]
+    const template = workflow.steps[0] as JobStep
+    const run = template.runs[0]
+    const loopStep = (attrs: Partial<JobStep>): JobStep => ({
+      ...template,
+      loop_id: "loop-a",
+      runs: [],
+      details: null,
+      latest: false,
+      ...attrs
+    })
+
+    vi.spyOn(window, "fetch").mockImplementation(() => {
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload({
+        job: { state: "open", summary_state: "running", any_active_run: true },
+        workflows: [
+          {
+            ...workflow,
+            state: "running",
+            finished_at: null,
+            steps: [
+              loopStep({
+                id: 61,
+                kind: "implement",
+                display_name: "Implement",
+                display_status: "succeeded",
+                position: 1,
+                iteration: 1,
+                state: "succeeded",
+                runs: [{ ...run, id: 91, state: "succeeded" }]
+              }),
+              loopStep({ id: 62, kind: "grader_fanout", display_name: "Plan graders", display_status: "succeeded", position: 2, iteration: 1, state: "succeeded" }),
+              loopStep({ id: 63, kind: "grader", display_name: "rspec", display_status: "failed", position: 3, iteration: 1, state: "failed", details: { name: "rspec" } }),
+              loopStep({ id: 64, kind: "grader_collect", display_name: "Aggregate graders", display_status: "failed", position: 4, iteration: 1, state: "failed" }),
+              loopStep({
+                id: 65,
+                kind: "implement",
+                display_name: "Implement",
+                display_status: "running",
+                position: 5,
+                iteration: 2,
+                state: "running",
+                latest: true,
+                runs: [{ ...run, id: 92, state: "running", started_at: "2026-05-30T10:20:00Z", finished_at: null }]
+              }),
+              loopStep({ id: 66, kind: "grader_fanout", display_name: "Plan graders", display_status: null, position: 6, iteration: 2, state: "queued" }),
+              loopStep({ id: 67, kind: "grader", display_name: "rspec", display_status: null, position: 7, iteration: 2, state: "queued", details: { name: "rspec" } }),
+              loopStep({ id: 68, kind: "grader_collect", display_name: "Aggregate graders", display_status: null, position: 8, iteration: 2, state: "queued" })
+            ]
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42?tab=workflows"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("button", { name: /Grade loop/ })).toBeInTheDocument()
+    expect(screen.getByText("2 iterations")).toBeInTheDocument()
+    expect(screen.queryByText("Iteration 1")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /rspec/i })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /Grade loop/ }))
+
+    expect(screen.getByText("Iteration 1")).toBeInTheDocument()
+    expect(screen.getByText("Iteration 2")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /rspec/i })).toHaveLength(2)
   })
 
   it("adds and removes Job attachments through the app API", async () => {
@@ -6378,6 +6464,8 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
           {
             id: 6,
             kind: "implement",
+            display_name: "Implement",
+            display_status: "succeeded",
             position: 1,
             iteration: null,
             loop_id: null,

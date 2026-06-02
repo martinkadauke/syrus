@@ -471,6 +471,8 @@ function WorkflowsPagination({ payload, prefix }: { payload: JobDetailPayload; p
 }
 
 function WorkflowCard({ workflow, payload, command }: { workflow: JobWorkflow; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+  const stepItems = workflowStepItems(workflow.steps)
+
   return (
     <section className="rounded border border-gray-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -484,42 +486,103 @@ function WorkflowCard({ workflow, payload, command }: { workflow: JobWorkflow; p
           {workflow.state === "failed" && !workflow.cleaned_up_at ? <CommandButton command={command} input={{ method: "post", path: workflow.app_push_commits_path }} tone="secondary">Push commits</CommandButton> : null}
         </div>
       </div>
-      <div className="mt-4 space-y-3">
-        {workflow.steps.map((step) => <StepCard command={command} key={step.id} payload={payload} step={step} />)}
+      <div className="mt-4 overflow-hidden rounded border border-gray-200">
+        {stepItems.map((item) => item.type === "loop" ? (
+          <LoopGroup command={command} item={item} key={item.loopId} payload={payload} />
+        ) : (
+          <StepCard command={command} key={item.step.id} numberLabel={item.step.position + 1} payload={payload} step={item.step} />
+        ))}
       </div>
     </section>
   )
 }
 
-function StepCard({ step, payload, command }: { step: JobStep; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
-  const runs = sortedRunsNewestFirst(step.runs)
-  const activeRun = runs.find((run) => isActiveState(run.state))
-  const displayState = activeRun ? activeRun.state : step.state
+function LoopGroup({ item, payload, command }: { item: LoopStepItem; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+  const [open, setOpen] = useState(false)
+  const status = loopDisplayStatus(item)
 
   return (
-    <div className="rounded border border-gray-100 bg-gray-50 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-sm font-medium text-gray-900">{step.position}. {step.kind}</span>
-          <StatusPill state={displayState} />
-          {activeRun && step.state !== activeRun.state ? <SmallPill>step {step.state.replaceAll("_", " ")}</SmallPill> : null}
-          {step.latest ? <SmallPill>latest</SmallPill> : null}
-        </div>
-        <span className="text-xs text-gray-500">{formatDate(step.started_at || step.created_at)}</span>
-      </div>
-      {activeRun ? (
-        <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-          <span className="font-semibold">Active run #{activeRun.id}</span>
-          <span> is {activeRun.state.replaceAll("_", " ")}</span>
-          <span> since {formatDate(activeRun.started_at || activeRun.created_at)}</span>
+    <section className="border-b border-gray-200 last:border-b-0">
+      <button
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 bg-violet-50 px-3 py-2 text-left hover:bg-violet-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="font-medium text-gray-900">{loopDisplayName(item)}</span>
+          <SmallPill>{item.iterations.length} {plural(item.iterations.length, "iteration")}</SmallPill>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {status ? <StatusPill state={status} /> : null}
+          <span aria-hidden="true" className="text-gray-400">{open ? "−" : "+"}</span>
+        </span>
+      </button>
+      {open ? (
+        <div className="space-y-3 border-t border-violet-100 bg-white p-3">
+          {item.iterations.map((iteration) => (
+            <section className="overflow-hidden rounded border border-gray-200" key={iteration.iteration}>
+              <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase text-gray-500">
+                Iteration {iteration.iteration}
+              </div>
+              {iteration.steps.map((step, index) => (
+                <StepCard command={command} key={step.id} numberLabel={index + 1} payload={payload} step={step} />
+              ))}
+            </section>
+          ))}
         </div>
       ) : null}
-      {step.details ? <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs text-gray-600">{stringify(step.details)}</pre> : null}
-      {runs.length > 0 ? (
-        <div className="mt-3 space-y-2">
-          {runs.map((run) => <RunRow active={activeRun?.id === run.id} command={command} key={run.id} payload={payload} run={run} />)}
+    </section>
+  )
+}
+
+function StepCard({ step, payload, command, numberLabel }: { step: JobStep; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; numberLabel: number }) {
+  const [open, setOpen] = useState(false)
+  const runs = sortedRunsNewestFirst(step.runs)
+  const activeRun = runs.find((run) => isActiveState(run.state))
+  const displayStatus = activeRun ? activeRun.state : step.display_status
+
+  return (
+    <div className="border-b border-gray-200 bg-white last:border-b-0">
+      <button
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="w-6 shrink-0 text-right font-mono text-xs text-gray-400">{numberLabel}.</span>
+          <span className="truncate text-sm font-medium text-gray-900">{step.display_name}</span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {displayStatus ? <StatusPill state={displayStatus} /> : null}
+          <span aria-hidden="true" className="text-gray-400">{open ? "−" : "+"}</span>
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-gray-100 bg-gray-50 p-3">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            <span>{step.kind}</span>
+            {step.loop_id ? <span>iteration {step.iteration ?? 1}</span> : null}
+            {activeRun && step.state !== activeRun.state ? <SmallPill>step {step.state.replaceAll("_", " ")}</SmallPill> : null}
+            {step.latest ? <SmallPill>latest</SmallPill> : null}
+            <span>{formatDate(step.started_at || step.created_at)}</span>
+          </div>
+          {activeRun ? (
+            <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+              <span className="font-semibold">Active run #{activeRun.id}</span>
+              <span> is {activeRun.state.replaceAll("_", " ")}</span>
+              <span> since {formatDate(activeRun.started_at || activeRun.created_at)}</span>
+            </div>
+          ) : null}
+          {step.details ? <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs text-gray-600">{stringify(step.details)}</pre> : null}
+          {runs.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {runs.map((run) => <RunRow active={activeRun?.id === run.id} command={command} key={run.id} payload={payload} run={run} />)}
+            </div>
+          ) : <p className="mt-2 text-xs text-gray-400">No runs for this step.</p>}
         </div>
-      ) : <p className="mt-2 text-xs text-gray-400">No runs for this step.</p>}
+      ) : null}
     </div>
   )
 }
@@ -982,6 +1045,78 @@ function formatBytes(value: number) {
 
 function plural(count: number, singular: string) {
   return count === 1 ? singular : `${singular}s`
+}
+
+type WorkflowStepItem =
+  | { type: "step"; step: JobStep }
+  | LoopStepItem
+
+type LoopStepItem = {
+  type: "loop"
+  loopId: string
+  iterations: Array<{ iteration: number; steps: JobStep[] }>
+}
+
+function workflowStepItems(steps: JobStep[]): WorkflowStepItem[] {
+  const items: WorkflowStepItem[] = []
+  const consumedLoopIds = new Set<string>()
+
+  for (const step of steps) {
+    if (!step.loop_id) {
+      items.push({ type: "step", step })
+      continue
+    }
+
+    if (consumedLoopIds.has(step.loop_id)) continue
+    consumedLoopIds.add(step.loop_id)
+
+    const loopSteps = steps.filter((candidate) => candidate.loop_id === step.loop_id)
+    const iterations = loopIterations(loopSteps)
+    if (iterations.length <= 1) {
+      loopSteps.forEach((loopStep) => items.push({ type: "step", step: loopStep }))
+      continue
+    }
+
+    items.push({ type: "loop", loopId: step.loop_id, iterations })
+  }
+
+  return items
+}
+
+function loopIterations(steps: JobStep[]) {
+  const groups = new Map<number, JobStep[]>()
+  steps.forEach((step) => {
+    const iteration = step.iteration ?? 1
+    groups.set(iteration, [...(groups.get(iteration) ?? []), step])
+  })
+
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => left - right)
+    .map(([iteration, iterationSteps]) => ({
+      iteration,
+      steps: iterationSteps.sort((left, right) => left.position - right.position)
+    }))
+}
+
+function loopDisplayName(item: LoopStepItem) {
+  const kinds = item.iterations.flatMap((iteration) => iteration.steps.map((step) => step.kind))
+  if (kinds.some((kind) => kind === "grade" || kind === "grader" || kind.startsWith("grader_"))) return "Grade loop"
+  return "Loop"
+}
+
+function loopDisplayStatus(item: LoopStepItem) {
+  const statuses = item.iterations.flatMap((iteration) => iteration.steps.map((step) => effectiveStepStatus(step))).filter((status): status is string => Boolean(status))
+  if (statuses.includes("running")) return "running"
+  if (statuses.includes("queued")) return "queued"
+  if (statuses.includes("failed")) return "failed"
+  if (statuses.includes("cancelled")) return "cancelled"
+  if (statuses.length > 0 && statuses.every((status) => status === "succeeded")) return "succeeded"
+  return null
+}
+
+function effectiveStepStatus(step: JobStep) {
+  const activeRun = sortedRunsNewestFirst(step.runs).find((run) => isActiveState(run.state))
+  return activeRun?.state ?? step.display_status
 }
 
 function sortedRunsNewestFirst(runs: JobRun[]) {

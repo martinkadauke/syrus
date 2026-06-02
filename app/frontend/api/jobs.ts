@@ -144,6 +144,8 @@ export type JobWorkflow = {
 export type JobStep = {
   id: number
   kind: string
+  display_name: string
+  display_status: string | null
   position: number
   iteration: number | null
   loop_id: string | null

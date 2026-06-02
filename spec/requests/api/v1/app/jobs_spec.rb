@@ -87,6 +87,11 @@ RSpec.describe "App API job detail", type: :request do
     workflow = body["workflows"].first
     expect(workflow).to include("trigger_kind" => "initial")
     expect(workflow["app_retry_step_path"]).to eq("/api/v1/app/jobs/#{job.id}/workflows/#{workflow['id']}/retry_step")
+    first_step = workflow["steps"].first
+    expect(first_step["display_name"]).to be_present
+    expect(first_step["display_status"]).to eq("running")
+    future_step = workflow["steps"].find { |step| step["runs"].empty? && step["state"] == "queued" }
+    expect(future_step).to include("display_status" => nil)
     first_run = workflow["steps"].flat_map { |step| step["runs"] }.find { |payload| payload["id"] == run.id }
     expect(first_run).to include(
       "state" => "running",
@@ -280,11 +285,14 @@ RSpec.describe "App API job detail", type: :request do
       details: { "name" => "tests", "command" => "bin/rspec" }
     )
     grade_run = Run.create!(job: job, step: grade_step, trigger_kind: "initial", iteration: 1, state: "failed")
+    grade_step.update!(state: "failed")
     write_grade_log(grade_run, "tests", "rspec output\n")
 
     get "/api/v1/app/jobs/#{job.id}"
 
-    run_payload = parse_body["workflows"].flat_map { |payload| payload["steps"] }.flat_map { |payload| payload["runs"] }.find { |payload| payload["id"] == grade_run.id }
+    step_payload = parse_body["workflows"].flat_map { |payload| payload["steps"] }.find { |payload| payload["id"] == grade_step.id }
+    expect(step_payload).to include("display_name" => "tests", "display_status" => "failed")
+    run_payload = step_payload["runs"].find { |payload| payload["id"] == grade_run.id }
     expect(run_payload["app_grade_log_path"]).to include("/api/v1/app/jobs/#{job.id}/runs/#{grade_run.id}/grade_log", "name=tests")
     expect(run_payload).not_to have_key("grade_log_path")
 
