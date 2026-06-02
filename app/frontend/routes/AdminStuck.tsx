@@ -16,13 +16,13 @@ export function AdminStuck() {
 
   return (
     <main aria-label="Admin stuck items" className="mx-auto max-w-[96rem] space-y-6 p-6">
-      <header className="flex flex-col gap-4 border-b border-gray-200 pb-4 sm:flex-row sm:items-end sm:justify-between">
+      <header className="flex items-end justify-between gap-4 border-b border-gray-200 pb-4">
         <div>
           <p className="text-xs font-medium uppercase text-gray-500">Admin</p>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">Stuck Things</h1>
         </div>
         <button
-          className="inline-flex items-center justify-center rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
+          className="inline-flex shrink-0 items-center justify-center rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-400"
           disabled={stuck.isFetching}
           onClick={() => void stuck.refetch()}
           type="button"

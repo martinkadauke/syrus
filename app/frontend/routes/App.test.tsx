@@ -1477,6 +1477,8 @@ describe("App", () => {
     )
 
     expect(screen.getByRole("main", { name: "Admin stuck items" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Stuck Things" }).closest("header")).toHaveClass("items-end", "justify-between")
+    expect(screen.getByRole("button", { name: /Refresh/ })).toHaveClass("shrink-0")
     expect(await screen.findByText("Run #4 silent for 10m")).toBeInTheDocument()
     expect(screen.getByText("stale_heartbeat")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Job" })).toHaveAttribute("href", "/app-shell/jobs/1")
