@@ -359,11 +359,11 @@ module App
     def job_kanban_lane_for(job, visible_lanes)
       candidates = []
       candidates << "landing" if job.approved? || job.landing?
+      candidates << "failed" if job.failed? || (job.closed? && !job.dependency_succeeded?)
+      candidates << "running" if job.running?
       candidates << "blocked" if job_blocked_for_kanban?(job)
-      candidates << "failed" if job.failed? || job.latest_workflow_state == "failed" || (job.closed? && !job.dependency_succeeded?)
-      candidates << "running" if job.running? || job.latest_workflow_state == "running"
-      candidates << "succeeded" if job.implemented? || job.latest_workflow_state == "succeeded" || job.dependency_succeeded?
-      candidates << "queued"
+      candidates << "succeeded" if job.implemented? || job.dependency_succeeded?
+      candidates << "queued" if job.triaging? || job.queued?
       candidates.find { |lane| visible_lanes.include?(lane) }
     end
 

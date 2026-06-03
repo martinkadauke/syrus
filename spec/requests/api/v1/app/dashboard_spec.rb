@@ -8,6 +8,10 @@ RSpec.describe "App API dashboard commands", type: :request do
 
   def parse_body = JSON.parse(response.body)
 
+  def lane_item_ids(body, key)
+    body.fetch("lanes").find { |lane| lane.fetch("key") == key }.fetch("items").map { |item| item.fetch("id") }
+  end
+
   def finish_initial_work(job, provider: "claude")
     job.initial_run.update!(
       state: "succeeded",
@@ -108,6 +112,47 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body.dig("paths", "new_epic_path")).to eq(new_epic_path)
       expect(body.dig("paths", "new_job_path")).to eq(new_job_path)
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
+    end
+
+    it "keeps running jobs in the running Kanban lane even when blocked diagnostics are visible" do
+      user.update_dashboard_kanban_lanes!(subject: :jobs, lanes: %w[blocked queued running])
+      prerequisite = Factories.job_record(repository: repo, issue_number: 5, issue_title: "Finish paving", state: "queued")
+      running = Factories.job_record(repository: repo, issue_number: 6, issue_title: "Raise aqueduct", state: "running")
+      JobDependency.create!(job: running, depends_on_job: prerequisite, source: "manual", created_by_user: user)
+
+      get "/api/v1/app/dashboard", params: { subject: "job", view: "kanban" }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(lane_item_ids(body, "running")).to include(running.id)
+      expect(lane_item_ids(body, "blocked")).not_to include(running.id)
+    end
+
+    it "keeps queued jobs in the queued Kanban lane when the latest workflow snapshot is stale" do
+      user.update_dashboard_kanban_lanes!(subject: :jobs, lanes: %w[blocked queued running])
+      queued = Factories.job_record(repository: repo, issue_number: 7, issue_title: "Catalog marble", state: "queued")
+      Workflow.create!(job: queued, trigger_kind: "initial", state: "running")
+
+      get "/api/v1/app/dashboard", params: { subject: "job", view: "kanban" }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(lane_item_ids(body, "queued")).to include(queued.id)
+      expect(lane_item_ids(body, "running")).not_to include(queued.id)
+    end
+
+    it "still surfaces non-running jobs with unsatisfied dependencies in the blocked Kanban lane" do
+      user.update_dashboard_kanban_lanes!(subject: :jobs, lanes: %w[blocked queued running])
+      prerequisite = Factories.job_record(repository: repo, issue_number: 8, issue_title: "Approve quarry", state: "queued")
+      blocked = Factories.job_record(repository: repo, issue_number: 9, issue_title: "Lay road", state: "queued")
+      JobDependency.create!(job: blocked, depends_on_job: prerequisite, source: "manual", created_by_user: user)
+
+      get "/api/v1/app/dashboard", params: { subject: "job", view: "kanban" }
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(lane_item_ids(body, "blocked")).to include(blocked.id)
+      expect(lane_item_ids(body, "queued")).not_to include(blocked.id)
     end
 
     it "marks the landing queue pause control visible when the landing smart folder is active" do
