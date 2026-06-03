@@ -7622,7 +7622,11 @@ describe("App", () => {
 })
 
 function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: ReturnType<typeof bootstrapSetupStatusPayload> | null } = {}) {
-  const { setupStatus: setupStatusOverride, ...payloadOverrides } = overrides
+  const {
+    setupStatus: setupStatusOverride,
+    setup_status: setupStatusPayloadOverride,
+    ...payloadOverrides
+  } = overrides
 
   return {
     current_user: {
@@ -7654,8 +7658,22 @@ function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: R
     navigation: {
       default_chat_path: "/chats/9"
     },
+    setup: setupStatusPayload({
+      complete: true,
+      next_step: "complete",
+      progress: {
+        completed: 4,
+        total: 4,
+        steps: [
+          { key: "credentials", label: "Add credentials", complete: true },
+          { key: "repository", label: "Add a repository", complete: true },
+          { key: "first_job", label: "Start the first Job", complete: true },
+          { key: "watch_job", label: "Watch the first successful Job or PR", complete: true }
+        ]
+      }
+    }),
     csrf_token: "csrf-token",
-    setup_status: setupStatusOverride ?? (payloadOverrides.setup_status as ReturnType<typeof bootstrapSetupStatusPayload> | undefined) ?? setupStatus(),
+    setup_status: setupStatusOverride ?? (setupStatusPayloadOverride as ReturnType<typeof bootstrapSetupStatusPayload> | undefined) ?? defaultSetupStatus(),
     feature_flags: {
       migrated_routes: []
     },
