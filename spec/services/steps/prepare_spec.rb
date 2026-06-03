@@ -67,6 +67,49 @@ RSpec.describe Steps::Prepare do
     expect(chunks).to include("[stub-ran] bundle install")
   end
 
+  it "runs commands with workspace-local dependency paths" do
+    File.write(@ws_path.join(".syrus.yml"), <<~YAML)
+      prepare:
+        - bundle install
+    YAML
+    old_bundle_without = ENV["BUNDLE_WITHOUT"]
+    ENV["BUNDLE_WITHOUT"] = "development:test"
+    captured_env = nil
+    fake_runner = instance_double(ProcessRunner)
+    allow(fake_runner).to receive(:run).and_return(
+      ProcessRunner::Result.new(
+        exit_status: 0,
+        timed_out: false,
+        stopped: false,
+        silent_timed_out: false,
+        operator_killed: false,
+        aliveness_failed: false,
+        duration_s: 0.1,
+        spawned_process_id: nil
+      )
+    )
+    allow(ProcessRunner).to receive(:new) do |*_, **kwargs|
+      captured_env = kwargs.fetch(:env)
+      fake_runner
+    end
+
+    handler.call
+
+    deps = @ws_path.join(".syrus", "deps")
+    expect(captured_env).to include(
+      "BUNDLE_PATH" => deps.join("bundle").to_s,
+      "BUNDLE_APP_CONFIG" => deps.join("bundle-config").to_s,
+      "BUNDLE_USER_HOME" => deps.join("bundle-home").to_s,
+      "BUNDLE_USER_CACHE" => deps.join("bundle-cache").to_s,
+      "NPM_CONFIG_CACHE" => deps.join("npm-cache").to_s,
+      "YARN_CACHE_FOLDER" => deps.join("yarn-cache").to_s,
+      "COREPACK_HOME" => deps.join("corepack").to_s
+    )
+    expect(captured_env).not_to have_key("BUNDLE_WITHOUT")
+  ensure
+    ENV["BUNDLE_WITHOUT"] = old_bundle_without
+  end
+
   it "raises StepFailed when a prepare command exits non-zero" do
     File.write(@ws_path.join(".syrus.yml"), <<~YAML)
       prepare:

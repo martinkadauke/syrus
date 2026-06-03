@@ -119,10 +119,10 @@ class CodexInvocation
   def codex_env(api_key:, codex_home:)
     ProcessRunner.forwarded_env(
       AgentInvocation::ENV_FORWARD,
-      extra: {
+      extra: WorkspaceDependencyEnv.for(@workspace_path).merge(
         "CODEX_HOME" => codex_home,
         "CODEX_API_KEY" => api_key.presence
-      }
+      )
     )
   end
 

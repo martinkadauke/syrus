@@ -135,11 +135,13 @@ RSpec.describe Steps::Grade do
     expect(entry["log_bytes"]).to eq(@ws_path.join(entry["log_path"]).size)
   end
 
-  it "scrubs the environment using the prepare allowlist" do
+  it "scrubs the environment and uses workspace-local dependency paths" do
     write_config <<~YAML
       grade:
         - name: envcheck
-          run: ruby -e 'abort "leaked" if ENV["BUNDLE_WITHOUT"]'
+          run: >
+            ruby -e 'abort "leaked" if ENV["BUNDLE_WITHOUT"];
+            abort "missing bundle path" unless ENV["BUNDLE_PATH"].to_s.include?(".syrus/deps/bundle")'
     YAML
 
     old_value = ENV["BUNDLE_WITHOUT"]

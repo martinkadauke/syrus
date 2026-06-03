@@ -120,7 +120,7 @@ class ClaudeInvocation
   def agent_env(oauth_token:, workspace_path:)
     forwarded = ProcessRunner.forwarded_env(
       AgentInvocation::ENV_FORWARD,
-      extra: { "CLAUDE_CODE_OAUTH_TOKEN" => oauth_token }
+      extra: WorkspaceDependencyEnv.for(workspace_path).merge("CLAUDE_CODE_OAUTH_TOKEN" => oauth_token)
     )
     # If the worktree itself is a Bundler project (its own Gemfile),
     # point BUNDLE_GEMFILE at it explicitly. Saves the agent from

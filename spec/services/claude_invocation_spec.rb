@@ -308,14 +308,16 @@ RSpec.describe ClaudeInvocation do
       expect(result[:opts][:unsetenv_others]).to be true
     end
 
-    it "drops worker container's BUNDLE_*/RAILS_*/GEM_* vars from the child env" do
+    it "drops worker container's Rails/Gem env and uses workspace-local Bundler paths" do
       invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x")
       result = with_capturing_popen { invocation.run }
       env = result[:env]
-      %w[BUNDLE_GEMFILE BUNDLE_PATH BUNDLE_DEPLOYMENT BUNDLE_WITHOUT
+      %w[BUNDLE_GEMFILE BUNDLE_DEPLOYMENT BUNDLE_WITHOUT
          GEM_HOME GEM_PATH RAILS_ENV RAILS_MASTER_KEY SYRUS_DATABASE_PASSWORD].each do |k|
         expect(env).not_to have_key(k), "expected #{k.inspect} to be stripped from agent env, got #{env.inspect}"
       end
+      expect(env["BUNDLE_PATH"]).to eq("/tmp/.syrus/deps/bundle")
+      expect(env["BUNDLE_APP_CONFIG"]).to eq("/tmp/.syrus/deps/bundle-config")
     end
 
     it "forwards CLAUDE_CODE_OAUTH_TOKEN" do
@@ -339,6 +341,7 @@ RSpec.describe ClaudeInvocation do
         invocation = described_class.new(dir, prompt: "P", oauth_token: "x")
         result = with_capturing_popen { invocation.run }
         expect(result[:env]["BUNDLE_GEMFILE"]).to eq(File.join(dir, "Gemfile"))
+        expect(result[:env]["BUNDLE_PATH"]).to eq(File.join(dir, ".syrus", "deps", "bundle"))
       end
     end
 

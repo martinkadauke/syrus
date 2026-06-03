@@ -134,6 +134,7 @@ RSpec.describe CodexInvocation do
         expect(captured[:env]["CODEX_HOME"]).to eq(home)
         expect(captured[:env]["CODEX_API_KEY"]).to eq("sk-test")
         expect(captured[:env]["PATH"]).to eq("/usr/bin")
+        expect(captured[:env]["BUNDLE_PATH"]).to eq("/tmp/wkt/.syrus/deps/bundle")
         expect(captured[:env]).not_to have_key("RAILS_MASTER_KEY")
         expect(captured[:env]).not_to have_key("BUNDLE_GEMFILE")
         expect(captured[:opts][:unsetenv_others]).to be true

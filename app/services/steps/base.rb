@@ -52,6 +52,10 @@ module Steps
       @workspace ||= WorkflowWorkspace.new(workflow)
     end
 
+    def workspace_dependency_env
+      WorkspaceDependencyEnv.for(workspace.path)
+    end
+
     # Shared transcript-append + heartbeat-bump for this Run, used
     # by streamed agent output and by handler-emitted log lines.
     # Resilient to blank input — see RunJob#log for the same
