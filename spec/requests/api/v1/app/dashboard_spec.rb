@@ -72,6 +72,10 @@ RSpec.describe "App API dashboard commands", type: :request do
         "tags" => [ include("name" => "aqueduct", "color" => "blue") ],
         "paths" => include("job_path" => job_path(first), "source_path" => source_job_path(first))
       )
+      expect(body["items"].first["retry_state"]).to include(
+        "classification_label" => "Unclassified",
+        "state_label" => "No failure"
+      )
       expect(body["items"].find { |item| item.fetch("id") == second.id }).to include(
         "active_workflow_trigger_kind" => "rebase",
         "latest_workflow_trigger_kind" => "rebase",
