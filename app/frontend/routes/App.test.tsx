@@ -3800,6 +3800,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Add profile page" })).toHaveAttribute("href", "/app-shell/jobs/55")
     expect(screen.getByRole("heading", { name: "Ada Lovelace" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "@ada-lovelace" })).toHaveAttribute("href", "https://github.com/ada-lovelace")
+    expect(screen.getByRole("link", { name: "Ada Lovelace" })).toHaveAttribute("href", "/app-shell/profiles/2")
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(screen.queryByText("GitHub token")).not.toBeInTheDocument()
     expect(screen.queryByText("ada@example.com")).not.toBeInTheDocument()
@@ -7059,6 +7060,10 @@ function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: R
   }
 }
 
+function defaultSetupStatus() {
+  return setupStatus()
+}
+
 function setupStatus(overrides: Record<string, unknown> = {}) {
   return {
     state: "first_successful_job",
@@ -7290,6 +7295,7 @@ function profilePayload(overrides: Record<string, unknown> = {}) {
       profile_website: "https://example.com/ada",
       avatar_url: null,
       counts: { repositories: 1, epics: 2, jobs: 3, open_jobs: 1 },
+      profile_path: "/profiles/2",
       repositories: [
         { id: 3, slug: "acme/widgets", path: "/repositories/3" }
       ],
