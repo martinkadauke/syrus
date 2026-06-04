@@ -94,6 +94,15 @@ RSpec.describe PollMergeStateJob do
     expect(workflow.artifact("rebase_base_sha")).to eq("parent-sha")
   end
 
+  it "dispatches Rebase when unapproved but dirty" do
+    allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(mergeable_state: "dirty", mergeable: false))
+    allow_any_instance_of(GithubClient).to receive(:pr_reviews).and_return([])
+
+    expect {
+      described_class.perform_now(job.id)
+    }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+  end
+
   it "does not dispatch Rebase when the latest no-op rebase already covered the same head/base" do
     Workflows::Rebase.instantiate(job: job).update!(
       state: "succeeded",

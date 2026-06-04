@@ -29,9 +29,7 @@ class PollMergeStateJob < ApplicationJob
     gate = AutoMergeGate.new(job: @job, client: @client, bypass_cache: true, pr: @pr).evaluate
     if gate.merge_ready?
       approve_for_landing
-    elsif gate.approved? && rebaseable_mergeable_state?
-      dispatch_rebase
-    elsif !gate.approved? && mergeable_state == "behind"
+    elsif rebaseable_mergeable_state?
       dispatch_rebase
     end
   end
