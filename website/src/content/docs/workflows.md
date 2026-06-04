@@ -25,8 +25,10 @@ Retries create new Runs without erasing the old transcript.
 
 Trigger: a GitHub issue with the repository's trigger label, or a new cron
 or direct Job that uses the standard issue-to-PR path. Steps:
-`prepare -> implement -> summarize -> pr_open`. The agent makes and commits
-the change during `implement`, `summarize` collects PR copy via MCP and
+`prepare -> loop(implement -> grader_fanout -> grader_collect) -> summarize -> pr_open`.
+The agent makes and commits the change during `implement`, graders run from
+the repository's `grade:` configuration, and failed required graders feed
+the next bounded loop iteration. `summarize` collects PR copy via MCP and
 amends the commit message, and `pr_open` pushes the branch and opens the
 pull request. For GitHub issue Jobs, the implement prompt includes the
 original issue title and body plus subsequent issue comments in
@@ -37,10 +39,11 @@ with a PR number attached.
 ### PrFeedback
 
 Trigger: new review feedback or PR comments on an existing Syrus PR. Steps:
-`prepare -> respond -> summarize_amend -> push`. The agent receives the new
-comments plus PR context, commits follow-up changes on the existing branch,
-then `summarize_amend` rewrites the follow-up commit message. A successful
-workflow pushes to the already-open PR.
+`prepare -> loop(respond -> grader_fanout -> grader_collect) -> summarize_amend -> push`.
+The agent receives the new comments plus PR context, commits follow-up
+changes on the existing branch, and graders can force another bounded
+response iteration before `summarize_amend` rewrites the follow-up commit
+message. A successful workflow pushes to the already-open PR.
 
 ### Rebase
 
@@ -56,10 +59,21 @@ not overwrite an unexpected remote update.
 ### Retry
 
 Trigger: an operator retries a failed or completed Job. Steps:
-`prepare -> implement -> summarize -> pr_open`. It has the same shape as
-Initial, but runs on the existing Job and branch. `pr_open` is idempotent:
-if a PR already exists, it pushes the new commits instead of opening a
-second PR.
+`prepare -> loop(implement -> grader_fanout -> grader_collect) -> summarize -> pr_open`.
+It has the same shape as Initial, but runs on the existing Job and branch.
+`pr_open` is idempotent: if a PR already exists, it pushes the new commits
+instead of opening a second PR.
+
+### AutoMerge
+
+Trigger: an approved Job reaches the landing queue. Steps:
+`loop(landing_fix -> grader_fanout -> grader_collect) -> push -> auto_merge`.
+The final loop runs on the exact PR branch Syrus is about to merge, after
+any last rebase. If required graders fail, the agent receives the grader
+output and gets another bounded repair iteration. `push` publishes any
+final fix commits, and `auto_merge` re-checks GitHub approval,
+mergeability, branch state, and repository policy immediately before
+calling the merge API.
 
 ### Manual
 
@@ -91,13 +105,17 @@ same Job.
 | `implement` | Yes | Make the requested code change for Initial, Retry, cron, and direct work |
 | `respond` | Yes | Address PR review feedback on an existing branch |
 | `analyze_and_fix` | Yes | Diagnose failed CI checks and commit a fix |
+| `landing_fix` | Yes | Make final merge-gate fixes before the landing graders run |
 | `summarize` | Yes | Collect PR title/body/summary through MCP |
 | `summarize_amend` | Yes | Produce follow-up commit copy for PR feedback and CI-failure workflows |
 | `pr_open` | No | Push the branch and open the pull request if one does not already exist |
 | `push` | No | Push commits to an existing PR branch and update the cost footer |
+| `grader_fanout` | No | Materialize one grader Step per configured repo grader |
+| `grader_collect` | No | Aggregate grader results and decide whether the loop continues |
 | `auto_rebase` | No | Try a deterministic rebase before involving an agent |
 | `agent_rebase` | Yes | Resolve rebase conflicts with the agent |
 | `force_push` | No | Force-push a rebased branch with an explicit `--force-with-lease` lease |
+| `auto_merge` | No | Re-check GitHub merge gates and merge the approved PR |
 | `manual` | Yes | Run an operator-supplied prompt |
 
 Planned Step kinds include
@@ -115,6 +133,7 @@ Syrus chooses the template from the trigger kind:
 | `pr_comment` | `Workflows::PrFeedback` |
 | `ci_failure` | `Workflows::CiFailure` |
 | `rebase` | `Workflows::Rebase` |
+| `auto_merge` | `Workflows::AutoMerge` |
 | `retry` | `Workflows::Retry` |
 | `manual` | `Workflows::Manual` |
 | `local_dev` | `Workflows::LocalDev` |

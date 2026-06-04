@@ -209,6 +209,7 @@ class RunJob < ApplicationJob
   def record_landing_failure!(exception)
     return unless @workflow&.trigger_kind == "auto_merge"
     return unless @job&.landing?
+    return if loop_controlled_grade_failure?
 
     @job.landing_failure_reason = "#{exception.class}: #{exception.message}".truncate(500)
     @job.fail_landing! if @job.may_fail_landing?

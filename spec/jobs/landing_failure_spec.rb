@@ -29,8 +29,9 @@ RSpec.describe "landing failure handling" do
     job.approve!(via: "github_review")
     job.start_landing!
     job.save!
-    workflow = Workflows::AutoMerge.instantiate(job: job)
-    run = StepDispatcher.start_workflow(workflow)
+    workflow = Workflow.create!(job: job, trigger_kind: "auto_merge")
+    step = Step.create!(workflow: workflow, kind: "auto_merge", position: 0)
+    run = step.runs.create!(job: job, trigger_kind: "auto_merge", agent_provider: workflow.agent_provider)
 
     allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr)
     allow_any_instance_of(GithubClient).to receive(:pr_reviews).and_return([ OpenStruct.new(state: "APPROVED") ])

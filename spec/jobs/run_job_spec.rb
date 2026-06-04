@@ -765,6 +765,87 @@ RSpec.describe RunJob do
     end
   end
 
+  describe "AutoMerge workflow" do
+    it "runs a final fix + grade loop before pushing and merging" do
+      AppSetting.current.update!(grade_max_iterations: 2)
+      repository.update!(auto_merge_enabled: true)
+      commit_file_to_remote(".syrus.yml", <<~YAML)
+        grade:
+          - name: tests
+            run: test -f grade-pass
+      YAML
+      branch_name = "syrus/issue-42-landing"
+      create_branch_to_remote(branch_name, "feature.rb" => "def greet = 'hello'\n")
+
+      landing_job = Factories.job_record(
+        user: user,
+        repository: repository,
+        issue_number: 42,
+        pr_number: 17,
+        branch_name: branch_name,
+        state: "implemented"
+      )
+      landing_job.approve!(via: "operator", by_user: user)
+      landing_job.save!
+      landing_job.start_landing!
+      landing_job.save!
+
+      stub_request(:get, "https://api.github.com/repos/acme/widgets/pulls/17").to_return(
+        status: 200,
+        headers: { "Content-Type" => "application/json" },
+        body: {
+          number: 17,
+          state: "open",
+          mergeable: true,
+          mergeable_state: "clean",
+          body: "Existing PR body",
+          labels: [],
+          head: { sha: "head-sha" },
+          base: { ref: "main", sha: "base-sha" }
+        }.to_json
+      )
+      stub_request(:patch, "https://api.github.com/repos/acme/widgets/pulls/17").to_return(
+        status: 200,
+        headers: { "Content-Type" => "application/json" },
+        body: { number: 17, state: "open", body: "Existing PR body" }.to_json
+      )
+      merge_stub = stub_request(:put, "https://api.github.com/repos/acme/widgets/pulls/17/merge").to_return(
+        status: 200,
+        headers: { "Content-Type" => "application/json" },
+        body: { merged: true }.to_json
+      )
+      comment_stub = stub_request(:post, "https://api.github.com/repos/acme/widgets/issues/17/comments").to_return(
+        status: 201,
+        headers: { "Content-Type" => "application/json" },
+        body: { id: 1 }.to_json
+      )
+
+      RunJob.agent_runner = ->(workspace_path:, **_) {
+        current = Run.last
+        File.write(File.join(workspace_path, "grade-pass"), "ok\n") if current.step.kind == "landing_fix" && current.iteration >= 2
+        AgentInvocation::Result.new(turns: 2, exit_status: 0, timed_out: false, is_error: false,
+                                    outcome: "success", final_text: nil, session_id: "landing-#{current.iteration}",
+                                    transcript_jsonl: "{}\n")
+      }
+
+      workflow = Workflows::AutoMerge.instantiate(job: landing_job)
+      StepDispatcher.start_workflow(workflow)
+      drain_workflow!(landing_job)
+
+      expect(workflow.reload).to be_succeeded
+      expect(workflow.steps.where(kind: "landing_fix").order(:iteration).pluck(:iteration)).to eq([ 1, 2 ])
+      expect(workflow.steps.where(kind: "grader_collect").order(:iteration).pluck(:iteration, :state)).to eq([
+        [ 1, "failed" ],
+        [ 2, "succeeded" ]
+      ])
+      expect(landing_job.reload).to be_closed
+      expect(landing_job.closure_reason).to eq("pr_merged")
+      expect(merge_stub).to have_been_requested
+      expect(comment_stub).to have_been_requested
+      expect(`git --git-dir=#{bare_remote_dir} show #{landing_job.branch_name}:grade-pass`).to eq("ok\n")
+    end
+  end
+
   describe "log resilience to blank chunks" do
     it "skips persisting empty chunks but bumps the heartbeat" do
       RunJob.agent_runner = ->(workspace_path:, log_sink:, **_) {
@@ -857,7 +938,7 @@ RSpec.describe RunJob do
     current = Run.last
     file = File.join(workspace_path, "feature.rb")
     case current.step.kind
-    when "implement", "manual"
+    when "implement", "landing_fix", "manual"
       File.write(file, "def greet = 'hello'\n")
     when "respond", "analyze_and_fix"
       # Follow-up step on an existing branch — append to the
@@ -893,6 +974,21 @@ RSpec.describe RunJob do
       sh("git -C #{seed} add #{path}")
       sh("git -C #{seed} commit -q -m 'add #{path}'")
       sh("git -C #{seed} push -q origin main")
+    end
+  end
+
+  def create_branch_to_remote(branch, files)
+    Dir.mktmpdir("syrus-branch-seed") do |seed|
+      sh("git clone -q #{bare_remote_dir} #{seed}")
+      sh("git -C #{seed} checkout -q -b #{branch}")
+      files.each do |path, content|
+        full_path = File.join(seed, path)
+        FileUtils.mkdir_p(File.dirname(full_path))
+        File.write(full_path, content)
+        sh("git -C #{seed} add #{path}")
+      end
+      sh("git -C #{seed} commit -q -m 'seed #{branch}'")
+      sh("git -C #{seed} push -q origin #{branch}")
     end
   end
 

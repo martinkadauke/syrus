@@ -229,10 +229,13 @@ RSpec.describe Workflows do
       expect(wf.artifact("rebase_base_sha")).to eq("base-sha")
     end
 
-    it "instantiates AutoMerge with a single executable auto_merge step" do
+    it "instantiates AutoMerge with a final fix + grade loop before push and merge" do
       wf = Workflows::AutoMerge.instantiate(job: job)
-      expect(wf.steps.pluck(:kind)).to eq(%w[ auto_merge ])
-      expect(wf.steps.first.next_step).to be_nil
+      expect(wf.steps.pluck(:kind)).to eq(%w[ landing_fix grader_fanout grader_collect push auto_merge ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ landing_fix grader_fanout grader_collect ])
+      expect(wf.chain_template).to include(
+        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ landing_fix grader_fanout grader_collect ] }
+      )
     end
 
     it "instantiates Manual with a single 'manual' step" do

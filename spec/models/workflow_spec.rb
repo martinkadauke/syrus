@@ -174,12 +174,13 @@ describe "Job state propagation (Phase 2)" do
         .to change { job.reload.state }.from("running").to("failed")
     end
 
-    it "leaves Job state untouched on workflow.fail! for auto_merge workflows (fail_landing handles it)" do
+    it "returns landing Jobs to implemented on workflow.fail! for auto_merge workflows" do
       job.update!(state: "landing")
       wf = described_class.create!(job: job, trigger_kind: "auto_merge", state: "running", started_at: 1.minute.ago)
 
       expect { wf.fail!; wf.save! }
-        .not_to change { job.reload.state }
+        .to change { job.reload.state }.from("landing").to("implemented")
+      expect(job.landing_failure_reason).to eq("auto_merge workflow failed")
     end
 
     it "drives :running → :implemented on workflow.succeed! for follow-up workflows whose chain doesn't include pr_open" do
