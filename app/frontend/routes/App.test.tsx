@@ -1397,8 +1397,9 @@ describe("App", () => {
     )
 
     const scopeNav = await screen.findByRole("navigation", { name: "Dashboard ownership scope" })
-    expect(within(scopeNav).getByRole("link", { name: "Mine" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
+    expect(within(scopeNav).getByRole("link", { name: "Mine" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&ownership_scope=mine")
     expect(within(scopeNav).getByRole("link", { name: "Team" })).toHaveClass("bg-gray-900", "text-white")
+    expect(within(scopeNav).getByRole("link", { name: "Team" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
     expect(within(scopeNav).getByRole("link", { name: "User" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&ownership_scope=user&owner_id=1")
     expect(screen.getByText("Teammate")).toBeInTheDocument()
     expect(screen.queryByText("Operator")).not.toBeInTheDocument()
@@ -7746,9 +7747,9 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
       sort: { column: "created_at", direction: "desc" },
       visible_columns: ["checkbox", "issue", "state", "repository", "latest", "workflows_count", "started"],
       kanban_lanes: ["queued", "running", "succeeded"],
-      ownership_scope: "mine",
-      owner_user_id: 1,
-      owner_id: 1,
+      ownership_scope: "team",
+      owner_user_id: null,
+      owner_id: null,
       raw: {}
     },
     controls: {
@@ -7841,13 +7842,13 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
       toggle_path: "/api/v1/app/dashboard/landing_pause"
     },
     ownership_scope: {
-      scope: "mine",
-      owner_user_id: 1,
-      owner_user: { id: 1, name: "Operator", email_address: "operator@example.com" }
+      scope: "team",
+      owner_user_id: null,
+      owner_user: null
     },
     ownership: {
-      scope: "mine",
-      owner_id: 1,
+      scope: "team",
+      owner_id: null,
       team_user_count: 1,
       badges_visible: false
     },

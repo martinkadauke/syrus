@@ -146,8 +146,9 @@ function OwnershipControls({ payload, pathname, search }: { payload: DashboardPa
   if (payload.ownership.team_user_count <= 1) return null
 
   function scopeLink(scope: string) {
+    const defaultScope = payload.subject === "workflow" ? "mine" : "team"
     return dashboardLinkFromSearch(pathname, search, {
-      ownership_scope: scope === "mine" ? null : scope,
+      ownership_scope: scope === defaultScope ? null : scope,
       owner_id: scope === "user" ? payload.ownership.owner_id : null,
       page: null
     })

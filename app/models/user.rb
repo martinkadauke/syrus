@@ -36,14 +36,14 @@ class User < ApplicationRecord
     "epics" => {
       "sort_column" => "updated_at",
       "sort_direction" => "desc",
-      "ownership_scope" => "mine",
+      "ownership_scope" => "team",
       "visible_columns" => %w[epic state repository updated],
       "kanban_lanes" => %w[backlog ready in_progress done]
     },
     "jobs" => {
       "sort_column" => "created_at",
       "sort_direction" => "desc",
-      "ownership_scope" => "mine",
+      "ownership_scope" => "team",
       "visible_columns" => %w[checkbox issue state repository latest workflows_count started],
       "kanban_lanes" => %w[queued running landing]
     },
@@ -274,7 +274,8 @@ class User < ApplicationRecord
 
   def update_dashboard_ownership!(subject:, scope:, owner_id: nil)
     subject_key = normalize_dashboard_preference_table(subject)
-    scope = scope.to_s.presence_in(%w[mine team user]) || "mine"
+    scope = scope.to_s.presence_in(%w[mine team user]) ||
+            DASHBOARD_PREFERENCES_DEFAULTS.fetch(subject_key).fetch("ownership_scope")
     owner_id = Integer(owner_id, exception: false)
 
     updated = dashboard_preferences

@@ -36,7 +36,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       other_repo = Factories.repository(user: Factories.user, owner: "globex", name: "private")
       other_job = Factories.job_record(repository: other_repo, issue_number: 4, issue_title: "Hide private", state: "queued")
 
-      get "/api/v1/app/dashboard", params: { subject: "job", view: "kanban" }
+      get "/api/v1/app/dashboard", params: { subject: "job", view: "kanban", scope: "mine" }
 
       expect(response).to have_http_status(:ok)
       body = parse_body
@@ -243,7 +243,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(parse_body["items"].map { |item| item.fetch("id") }).to eq([ unowned_workflow.id ])
     end
 
-    it "defaults job and workflow dashboards to the current user's owned work" do
+    it "defaults job dashboards to team work and workflow dashboards to the current user's owned work" do
       user.update_dashboard_preferences!(subject: "job", ownership_scope: "team")
       user.update_dashboard_preferences!(subject: "workflow", ownership_scope: "team")
       mine = Factories.job_record(repository: repo, issue_number: 21, issue_title: "My road", owner_user: user)
@@ -255,10 +255,9 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       body = parse_body
-      expect(body.dig("ownership_scope", "scope")).to eq("mine")
-      expect(body.dig("ownership_scope", "owner_user_id")).to eq(user.id)
-      expect(body["items"].map { |item| item.fetch("id") }).to eq([ mine.id ])
-      expect(body["items"].map { |item| item.fetch("id") }).not_to include(claimable.id)
+      expect(body.dig("ownership_scope", "scope")).to eq("team")
+      expect(body.dig("ownership_scope", "owner_user_id")).to be_nil
+      expect(body["items"].map { |item| item.fetch("id") }).to contain_exactly(mine.id, claimable.id)
       expect(user.reload.dashboard_preferences).to include("last_ownership_scope" => "team")
 
       get "/api/v1/app/dashboard", params: { subject: "workflow" }
@@ -483,7 +482,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["items"].find { |item| item.fetch("id") == billed.id }.fetch("total_cost_usd")).to eq(0.12)
     end
 
-    it "defaults jobs and workflows to the current executor" do
+    it "defaults jobs to team work and workflows to the current executor" do
       mine = Factories.job_record(user: user, repository: repo, owner_user: user, issue_number: 20, issue_title: "My aqueduct")
       my_workflow = Workflow.create!(job: mine, trigger_kind: "initial", state: "queued")
       teammate = Factories.user(email_address: "teammate@example.com")
@@ -495,9 +494,9 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       body = parse_body
-      expect(body.dig("ownership", "scope")).to eq("mine")
-      expect(body["items"].map { |item| item.fetch("id") }).to eq([ mine.id ])
-      expect(body.dig("items", 0, "owner_badge")).to be_nil
+      expect(body.dig("ownership", "scope")).to eq("team")
+      expect(body["items"].map { |item| item.fetch("id") }).to contain_exactly(mine.id, theirs.id)
+      expect(body["items"].find { |item| item.fetch("id") == mine.id }.fetch("owner_badge")).to be_nil
       expect(body.dig("controls", "ownership_scopes")).to include(
         { "value" => "mine", "label" => "Mine" },
         { "value" => "team", "label" => "Team" },
@@ -510,20 +509,20 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(parse_body["items"].map { |item| item.fetch("id") }).to eq([ my_workflow.id ])
     end
 
-    it "defaults epics to mine plus claimable backlog and ready epics" do
+    it "defaults epics to team work" do
       teammate = Factories.user(email_address: "teammate@example.com")
       teammate_repo = Factories.repository(user: teammate, owner: "globex", name: "api")
       mine = Factories.epic(user: teammate, repository: teammate_repo, owner_user: user, state: "in_progress", title: "My claimed epic")
       claimable = Factories.epic(user: teammate, repository: teammate_repo, state: "ready", title: "Claimable epic")
-      hidden_claimed = Factories.epic(user: teammate, repository: teammate_repo, owner_user: teammate, state: "ready", title: "Teammate epic")
-      hidden_done = Factories.epic(user: teammate, repository: teammate_repo, state: "done", title: "Unclaimed done")
+      teammate_claimed = Factories.epic(user: teammate, repository: teammate_repo, owner_user: teammate, state: "ready", title: "Teammate epic")
+      unclaimed_done = Factories.epic(user: teammate, repository: teammate_repo, state: "done", title: "Unclaimed done")
 
       get "/api/v1/app/dashboard", params: { subject: "epic" }
 
       expect(response).to have_http_status(:ok)
       body = parse_body
-      expect(body["items"].map { |item| item.fetch("id") }).to contain_exactly(mine.id, claimable.id)
-      expect(body["items"].map { |item| item.fetch("id") }).not_to include(hidden_claimed.id, hidden_done.id)
+      expect(body.dig("ownership", "scope")).to eq("team")
+      expect(body["items"].map { |item| item.fetch("id") }).to contain_exactly(mine.id, claimable.id, teammate_claimed.id, unclaimed_done.id)
       expect(body["items"].find { |item| item.fetch("id") == mine.id }.fetch("owner_badge")).to be_nil
       expect(body["items"].find { |item| item.fetch("id") == claimable.id }.fetch("owner_badge")).to eq(
         "label" => "Claimable",

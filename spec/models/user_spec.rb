@@ -252,6 +252,19 @@ RSpec.describe User do
       expect(user.dashboard_preferences.fetch("jobs").fetch("kanban_lanes")).to eq(%w[blocked running failed])
     end
 
+    it "falls back to the per-subject ownership default" do
+      user = User.create!(attrs)
+
+      user.update_dashboard_ownership!(subject: :jobs, scope: nil)
+      user.update_dashboard_ownership!(subject: :epics, scope: nil)
+      user.update_dashboard_ownership!(subject: :workflows, scope: nil)
+
+      preferences = user.reload.dashboard_preferences
+      expect(preferences.dig("jobs", "ownership_scope")).to eq("team")
+      expect(preferences.dig("epics", "ownership_scope")).to eq("team")
+      expect(preferences.dig("workflows", "ownership_scope")).to eq("mine")
+    end
+
     it "rejects unknown Kanban lanes" do
       user = User.create!(attrs)
 
