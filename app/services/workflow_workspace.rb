@@ -68,12 +68,24 @@ class WorkflowWorkspace
     return nil unless name.to_s.match?(RepoGradePlan::NAME_PATTERN)
 
     path = path_for(run.workflow).join(".syrus", "grade-output", "iteration-#{run.iteration}", "#{name}.log")
-    return nil unless path.file?
+    return path.binread if path.file?
 
-    path.binread
+    db_log = run.job_logs.where(kind: "grade_log").order(:sequence).pluck(:chunk).join
+    return db_log if db_log.present? || run.running?
+
+    stored_grade_output_for(run, name)
   rescue StandardError => e
     Rails.logger.warn("[WorkflowWorkspace] grade_log_for failed for Run ##{run&.id}: #{e.class}: #{e.message}")
     nil
+  end
+
+  def self.stored_grade_output_for(run, name)
+    step = run.step
+    return nil unless step&.kind == "grader"
+    return nil unless step.details.is_a?(Hash)
+    return nil unless step.details["name"] == name
+
+    step.details["output"]
   end
 
   # Class-level cleanup so the Workflow's AASM terminal-transition

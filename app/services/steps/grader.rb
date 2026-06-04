@@ -46,6 +46,7 @@ module Steps
           on_output_chunk: ->(chunk) do
             file.write(chunk)
             file.flush
+            log(chunk, kind: "grade_log")
           end
         ).run
 

@@ -49,6 +49,8 @@ RSpec.describe Steps::Grade do
     expect(tests_log.read).to include("ok")
     expect(tests_log.read).to include("also ok")
     expect(entries.first["log_bytes"]).to eq(tests_log.size)
+    durable_log = run.reload.job_logs.where(kind: "grade_log").order(:sequence).pluck(:chunk).join
+    expect(durable_log).to include("ok", "also ok", "lint ok")
   end
 
   it "verifies committed grader source when the workspace has no local default-branch ref" do

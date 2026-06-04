@@ -465,9 +465,11 @@ module App
 
     def app_grade_log_path(run, workflow:)
       step = run.step
-      return unless step&.kind.in?(%w[grade grader grader_collect])
+      return unless step&.kind.in?(%w[grade grader])
 
       name = step.details.is_a?(Hash) ? step.details["name"] : nil
+      return if name.blank?
+
       query = { name: name, workflow_id: workflow.id }.compact.to_query
       path = "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/grade_log"
       query.present? ? "#{path}?#{query}" : path
