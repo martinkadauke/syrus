@@ -9,6 +9,7 @@ module Api
       #
       #   GET /api/v1/admin/runs?state=failed&since=2026-05-04T00:00:00Z
       #   GET /api/v1/admin/runs?trigger_kind=ci_failure&job_id=80
+      #   GET /api/v1/admin/runs/:run_id/artifacts
       class RunsController < BaseController
         DEFAULT_PER = 50
         MAX_PER     = 100
@@ -41,6 +42,38 @@ module Api
             page:  page,
             per:   per,
             runs:  rows.map { |r| serialize_compact(r) }
+          }
+        end
+
+        # Full per-Run diagnostic payload for admin API clients.
+        # The compact list intentionally only carries job_log_count;
+        # this endpoint returns the ordered JobLog rows and agent diff
+        # when a caller needs to explain a specific Run outcome without
+        # dropping to kubectl/Rails runner.
+        def artifacts
+          run = Run.includes(:job_logs, step: :workflow).find(params[:run_id])
+          logs = run.job_logs.order(:sequence).map do |log|
+            {
+              id: log.id,
+              sequence: log.sequence,
+              kind: log.kind,
+              chunk: log.chunk,
+              created_at: log.created_at&.iso8601
+            }
+          end
+
+          render json: {
+            job_id: run.job_id,
+            workflow_id: run.step&.workflow_id,
+            step_id: run.step_id,
+            step_kind: run.step&.kind,
+            run_id: run.id,
+            state: run.state,
+            trigger_kind: run.trigger_kind,
+            agent_diff: run.agent_diff,
+            agent_diff_bytes: run.agent_diff&.bytesize || 0,
+            logs_count: logs.size,
+            logs: logs
           }
         end
 

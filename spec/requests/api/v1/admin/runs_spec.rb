@@ -105,4 +105,42 @@ RSpec.describe "API: /api/v1/admin/runs", type: :request do
       expect(parse_body["runs"].size).to be <= 1
     end
   end
+
+  describe "GET /api/v1/admin/runs/:run_id/artifacts" do
+    it "returns ordered JobLog rows and run context for a specific run" do
+      diff = "diff --git a/app.rb b/app.rb"
+      step = job.workflows.last.steps.find_by(kind: "implement")
+      run = Run.create!(job: job, step: step, trigger_kind: "auto_merge",
+                        state: "cancelled", agent_diff: diff)
+      JobLog.append!(run: run, chunk: "starting auto_merge run", kind: nil)
+      JobLog.append!(run: run, chunk: "auto_merge: deferred - mergeable_state=unknown", kind: "system")
+
+      get "/api/v1/admin/runs/#{run.id}/artifacts", headers: auth
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(body).to include(
+        "job_id" => job.id,
+        "workflow_id" => run.step.workflow_id,
+        "step_id" => run.step_id,
+        "step_kind" => run.step.kind,
+        "run_id" => run.id,
+        "state" => "cancelled",
+        "trigger_kind" => "auto_merge",
+        "agent_diff" => diff,
+        "agent_diff_bytes" => diff.bytesize,
+        "logs_count" => 2
+      )
+      expect(body["logs"].map { |log| log.slice("sequence", "kind", "chunk") }).to eq([
+        { "sequence" => 0, "kind" => nil, "chunk" => "starting auto_merge run" },
+        { "sequence" => 1, "kind" => "system", "chunk" => "auto_merge: deferred - mergeable_state=unknown" }
+      ])
+      expect(body["logs"].first["created_at"]).to be_present
+    end
+
+    it "403s for a non-admin token" do
+      get "/api/v1/admin/runs/#{job.initial_run.id}/artifacts", headers: auth(non_admin_tok)
+      expect(response).to have_http_status(:forbidden)
+    end
+  end
 end

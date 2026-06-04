@@ -192,6 +192,7 @@ Rails.application.routes.draw do
         # is most-recently-finished first. Pagination via ?page +
         # ?per (max 100).
         get "runs", to: "runs#index"
+        get "runs/:run_id/artifacts", to: "runs#artifacts"
 
         # Transcripts. Paginated event stream via ?page= + ?per=,
         # plus a raw-JSONL pass-through.
