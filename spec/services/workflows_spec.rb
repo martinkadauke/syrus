@@ -37,7 +37,13 @@ RSpec.describe Workflows do
         [ "prepare", 0 ], [ "implement", 1 ], [ "grader_fanout", 2 ], [ "grader_collect", 3 ], [ "summarize", 4 ], [ "pr_open", 5 ]
       ])
       expect(wf.chain_template).to include(
-        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ implement grader_fanout grader_collect ] }
+        {
+          "type" => "retry_until",
+          "max_iterations" => AppSetting.grade_max_iterations,
+          "repair" => %w[ implement ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => true
+        }
       )
     end
 
@@ -180,7 +186,80 @@ RSpec.describe Workflows do
             steps: [ Workflows::Loop.new(max_iterations: 2, steps: [ :implement ]) ]
           )
         end
-      end.to raise_error(ArgumentError, /nested Workflows::Loop/)
+      end.to raise_error(ArgumentError, /nested workflow control nodes/)
+    end
+
+    it "rejects mixed nested workflow control declarations" do
+      expect do
+        Class.new(Workflows::Base) do
+          steps Workflows::Loop.new(
+            max_iterations: 3,
+            steps: [
+              Workflows::RetryUntil.new(
+                repair: [ :implement ],
+                check: [ :grade ]
+              )
+            ]
+          )
+        end
+      end.to raise_error(ArgumentError, /nested workflow control nodes/)
+    end
+
+    it "materializes a RetryUntil node with repair first by default" do
+      workflow_class = Class.new(Workflows::Base) do
+        steps Workflows::RetryUntil.new(
+                max_iterations: 3,
+                repair: [ :implement ],
+                check: [ :grader_fanout, :grader_collect ]
+              ),
+              :summarize
+
+        def self.trigger_kind = "manual"
+      end
+
+      wf = workflow_class.instantiate(job: job)
+
+      expect(wf.steps.order(:position).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect ])
+      expect(wf.chain_template).to eq([
+        {
+          "type" => "retry_until",
+          "max_iterations" => 3,
+          "repair" => %w[ implement ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => true
+        },
+        { "type" => "step", "kind" => "summarize" }
+      ])
+    end
+
+    it "materializes a RetryUntil node with only check steps when repair_first is false" do
+      workflow_class = Class.new(Workflows::Base) do
+        steps Workflows::RetryUntil.new(
+                max_iterations: 3,
+                repair_first: false,
+                repair: [ :landing_fix ],
+                check: [ :grader_fanout, :grader_collect ]
+              ),
+              :push
+
+        def self.trigger_kind = "manual"
+      end
+
+      wf = workflow_class.instantiate(job: job)
+
+      expect(wf.steps.order(:position).pluck(:kind)).to eq(%w[ grader_fanout grader_collect push ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ grader_fanout grader_collect ])
+      expect(wf.chain_template).to eq([
+        {
+          "type" => "retry_until",
+          "max_iterations" => 3,
+          "repair" => %w[ landing_fix ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => false
+        },
+        { "type" => "step", "kind" => "push" }
+      ])
     end
 
     it "stores the effective chain template on the workflow for later reconstruction" do
@@ -206,7 +285,13 @@ RSpec.describe Workflows do
       expect(wf.steps.pluck(:kind)).to eq(%w[ prepare respond grader_fanout grader_collect summarize_amend push ])
       expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ respond grader_fanout grader_collect ])
       expect(wf.chain_template).to include(
-        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ respond grader_fanout grader_collect ] }
+        {
+          "type" => "retry_until",
+          "max_iterations" => AppSetting.grade_max_iterations,
+          "repair" => %w[ respond ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => true
+        }
       )
     end
 
@@ -229,12 +314,18 @@ RSpec.describe Workflows do
       expect(wf.artifact("rebase_base_sha")).to eq("base-sha")
     end
 
-    it "instantiates AutoMerge with a final fix + grade loop before push and merge" do
+    it "instantiates AutoMerge with a final grade gate before push and merge" do
       wf = Workflows::AutoMerge.instantiate(job: job)
-      expect(wf.steps.pluck(:kind)).to eq(%w[ landing_fix grader_fanout grader_collect push auto_merge ])
-      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ landing_fix grader_fanout grader_collect ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ grader_fanout grader_collect push auto_merge ])
+      expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ grader_fanout grader_collect ])
       expect(wf.chain_template).to include(
-        { "type" => "loop", "max_iterations" => AppSetting.grade_max_iterations, "steps" => %w[ landing_fix grader_fanout grader_collect ] }
+        {
+          "type" => "retry_until",
+          "max_iterations" => AppSetting.grade_max_iterations,
+          "repair" => %w[ landing_fix ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => false
+        }
       )
     end
 

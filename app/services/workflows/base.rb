@@ -1,6 +1,6 @@
 module Workflows
   # Base class for v1 workflow templates. A subclass declares its chain
-  # with plain step kinds and optional Workflows::Loop nodes; `instantiate(job:)`
+  # with plain step kinds and optional workflow control nodes; `instantiate(job:)`
   # creates the Workflow + the initial Step rows with `next_step_id`
   # wiring + position numbers, returns the Workflow.
   #
@@ -19,7 +19,7 @@ module Workflows
     #   class Initial < Base
     #     steps :implement, :summarize, :pr_open
     #   end
-    # Loops are allowed as top-level nodes only:
+    # Control nodes are allowed as top-level nodes only:
     #   steps :prepare,
     #         Workflows::Loop.new(max_iterations: 5, steps: [:implement, :grade]),
     #         :summarize
@@ -98,26 +98,39 @@ module Workflows
     def self.normalize_chain_template(nodes)
       nodes.map do |node|
         case node
-        when Workflows::Loop
-          validate_loop!(node)
+        when Workflows::Loop, Workflows::RetryUntil
+          validate_control_node!(node)
           node
         when Symbol, String
           node.to_s
         else
           raise ArgumentError,
-                "workflow steps must be symbols, strings, or Workflows::Loop instances; got #{node.inspect}"
+                "workflow steps must be symbols, strings, or workflow control nodes; got #{node.inspect}"
         end
       end
     end
 
-    def self.validate_loop!(loop)
-      nested = loop.steps.any? { |step| step.is_a?(Workflows::Loop) }
-      raise ArgumentError, "nested Workflows::Loop nodes are not supported" if nested
+    def self.validate_control_node!(node)
+      nested = control_node_steps(node).any? do |step|
+        step.is_a?(Workflows::Loop) || step.is_a?(Workflows::RetryUntil)
+      end
+      raise ArgumentError, "nested workflow control nodes are not supported" if nested
+    end
+
+    def self.control_node_steps(node)
+      case node
+      when Workflows::Loop
+        node.steps
+      when Workflows::RetryUntil
+        node.repair_steps + node.check_steps
+      else
+        []
+      end
     end
 
     def self.serialize_chain_template(nodes)
       nodes.map do |node|
-        if node.is_a?(Workflows::Loop)
+        if node.is_a?(Workflows::Loop) || node.is_a?(Workflows::RetryUntil)
           node.to_chain_template
         else
           { "type" => "step", "kind" => node.to_s }
@@ -128,7 +141,7 @@ module Workflows
     def self.materialize_steps!(workflow, nodes)
       position = 0
       nodes.flat_map do |node|
-        if node.is_a?(Workflows::Loop)
+        if node.is_a?(Workflows::Loop) || node.is_a?(Workflows::RetryUntil)
           loop_id = SecureRandom.uuid
           node.step_kinds.map do |kind|
             step = Step.create!(

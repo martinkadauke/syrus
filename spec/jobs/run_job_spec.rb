@@ -174,7 +174,13 @@ RSpec.describe RunJob do
       wf = job.workflows.last
       expect(wf.reload.state).to eq("succeeded")
       expect(wf.chain_template).to include(
-        { "type" => "loop", "max_iterations" => 2, "steps" => %w[ implement grader_fanout grader_collect ] }
+        {
+          "type" => "retry_until",
+          "max_iterations" => 2,
+          "repair" => %w[ implement ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => true
+        }
       )
       expect(wf.steps.where(kind: "implement").pluck(:iteration)).to eq([ 1, 2 ])
       expect(job.reload.pr_number).to eq(123)
@@ -766,7 +772,7 @@ RSpec.describe RunJob do
   end
 
   describe "AutoMerge workflow" do
-    it "runs a final fix + grade loop before pushing and merging" do
+    it "runs final graders before repairing, pushing, and merging" do
       AppSetting.current.update!(grade_max_iterations: 2)
       repository.update!(auto_merge_enabled: true)
       commit_file_to_remote(".syrus.yml", <<~YAML)
@@ -833,7 +839,7 @@ RSpec.describe RunJob do
       drain_workflow!(landing_job)
 
       expect(workflow.reload).to be_succeeded
-      expect(workflow.steps.where(kind: "landing_fix").order(:iteration).pluck(:iteration)).to eq([ 1, 2 ])
+      expect(workflow.steps.where(kind: "landing_fix").order(:iteration).pluck(:iteration)).to eq([ 2 ])
       expect(workflow.steps.where(kind: "grader_collect").order(:iteration).pluck(:iteration, :state)).to eq([
         [ 1, "failed" ],
         [ 2, "succeeded" ]

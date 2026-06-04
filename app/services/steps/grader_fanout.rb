@@ -49,8 +49,14 @@ module Steps
     end
 
     def loop_node_for_current_step?(node)
-      node["type"] == "loop" &&
+      case node["type"]
+      when "loop"
         Array(node["steps"]).map(&:to_s).include?(step.kind)
+      when "retry_until"
+        (Array(node["repair"]).map(&:to_s) + Array(node["check"]).map(&:to_s)).include?(step.kind)
+      else
+        false
+      end
     end
 
     # Insert one Step per grader between this fanout Step and its

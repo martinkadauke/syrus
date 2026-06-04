@@ -6,7 +6,7 @@ RSpec.describe Steps::LandingFix do
   let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets") }
   let(:job)        { Factories.job(repository: repository, issue_number: 42, pr_number: 17, branch_name: "syrus/issue-42-1") }
   let(:workflow)   { Workflows::AutoMerge.instantiate(job: job) }
-  let(:step)       { workflow.steps.find_by(kind: "landing_fix") }
+  let(:step)       { landing_fix_step }
   let(:run)        { step.runs.create!(job: job, trigger_kind: workflow.trigger_kind, agent_provider: workflow.agent_provider, iteration: step.iteration) }
   let(:handler)    { described_class.new(run) }
 
@@ -43,8 +43,6 @@ RSpec.describe Steps::LandingFix do
   end
 
   it "appends grade failure feedback on later loop iterations" do
-    step.update!(iteration: 2)
-    run.update!(iteration: 2)
     workflow.set_artifact!("iterations", [
       [
         {
@@ -72,5 +70,18 @@ RSpec.describe Steps::LandingFix do
 
     expect(run.reload.agent_diff).to eq("diff --git a/app.rb b/app.rb\n+ok")
     expect(run.head_sha).to eq("def456")
+  end
+
+  def landing_fix_step
+    workflow.steps.find_by(kind: "landing_fix") || begin
+      grader_collect = workflow.steps.find_by!(kind: "grader_collect")
+      Step.create!(
+        workflow: workflow,
+        kind: "landing_fix",
+        position: grader_collect.position + 1,
+        iteration: 2,
+        loop_id: grader_collect.loop_id
+      )
+    end
   end
 end

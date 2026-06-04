@@ -1,7 +1,7 @@
 module Workflows
   # Issue → PR.
   #
-  #   prepare → loop(implement, grader_fanout, grader_collect) → summarize → pr_open
+  #   prepare → retry_until(implement, grader_fanout, grader_collect) → summarize → pr_open
   #
   # prepare reads `.syrus.yml` (or auto-detects from lockfiles)
   # and runs deterministic setup like `bundle install` so the
@@ -16,7 +16,7 @@ module Workflows
   # grader runs unconditionally — no short-circuit between graders
   # — so the agent's next iteration prompt has every failure to
   # work with. grader_collect aggregates: if any required grader
-  # Step ended :failed, it fails (triggering the loop's next
+  # Step ended :failed, it fails (triggering the retry_until's next
   # iteration); otherwise it succeeds and the chain advances.
   #
   # summarize is a short claude call that --resumes implement's
@@ -27,7 +27,10 @@ module Workflows
   # PullRequestOpener.
   class Initial < Base
     steps :prepare,
-          Workflows::Loop.new(steps: [ :implement, :grader_fanout, :grader_collect ]),
+          Workflows::RetryUntil.new(
+            repair: [ :implement ],
+            check: [ :grader_fanout, :grader_collect ]
+          ),
           :summarize,
           :pr_open
 
@@ -36,9 +39,10 @@ module Workflows
     def self.steps_for(job)
       chain = [
         "prepare",
-        Workflows::Loop.new(
+        Workflows::RetryUntil.new(
           max_iterations: AppSetting.grade_max_iterations,
-          steps: [ :implement, :grader_fanout, :grader_collect ]
+          repair: [ :implement ],
+          check: [ :grader_fanout, :grader_collect ]
         ),
         "summarize",
         "pr_open"

@@ -30,7 +30,7 @@ module Steps
       [
         prompt,
         Prompts::GradeFailureFeedback.new(
-          iterations: workflow.artifacts.fetch("iterations", [])
+          iterations: (workflow.artifacts || {}).fetch("iterations", [])
         ).to_s
       ].join("\n\n")
     end

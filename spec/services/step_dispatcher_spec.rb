@@ -251,6 +251,67 @@ RSpec.describe StepDispatcher do
       expect(loop_workflow.steps.find_by!(kind: "grade", iteration: 2).next_step).to eq(summarize)
       expect(pr_open.reload.position).to eq(5)
     end
+
+    it "inserts retry_until repair steps only after a failed check-only first iteration" do
+      workflow_class = Class.new(Workflows::Base) do
+        steps Workflows::RetryUntil.new(
+                max_iterations: 2,
+                repair_first: false,
+                repair: [ :landing_fix ],
+                check: [ :grader_fanout, :grader_collect ]
+              ),
+              :push,
+              :auto_merge
+
+        def self.trigger_kind = "auto_merge"
+      end
+      retry_workflow = workflow_class.instantiate(job: job)
+      grader_fanout, grader_collect, push, auto_merge = retry_workflow.steps.order(:position)
+
+      expect {
+        described_class.fail_from(grader_collect)
+      }.to change { Run.count }.by(1)
+
+      loop_id = grader_fanout.loop_id
+      expect(retry_workflow.steps.order(:position).pluck(:kind, :position, :iteration, :loop_id)).to eq([
+        [ "grader_fanout", 0, 1, loop_id ],
+        [ "grader_collect", 1, 1, loop_id ],
+        [ "landing_fix", 2, 2, loop_id ],
+        [ "grader_fanout", 3, 2, loop_id ],
+        [ "grader_collect", 4, 2, loop_id ],
+        [ "push", 5, 1, nil ],
+        [ "auto_merge", 6, 1, nil ]
+      ])
+      expect(grader_collect.reload.next_step).to eq(retry_workflow.steps.find_by!(kind: "landing_fix", iteration: 2))
+      expect(retry_workflow.steps.find_by!(kind: "grader_collect", iteration: 2).next_step).to eq(push)
+      expect(auto_merge.reload.position).to eq(6)
+    end
+
+    it "advances retry_until check-only first iteration without materializing repair when checks pass" do
+      workflow_class = Class.new(Workflows::Base) do
+        steps Workflows::RetryUntil.new(
+                max_iterations: 2,
+                repair_first: false,
+                repair: [ :landing_fix ],
+                check: [ :grader_fanout, :grader_collect ]
+              ),
+              :push
+
+        def self.trigger_kind = "auto_merge"
+      end
+      retry_workflow = workflow_class.instantiate(job: job)
+      grader_collect = retry_workflow.steps.find_by!(kind: "grader_collect")
+      push = retry_workflow.steps.find_by!(kind: "push")
+      original_step_count = retry_workflow.steps.count
+
+      expect {
+        described_class.advance_from(grader_collect)
+      }.to change { push.runs.count }.by(1)
+
+      expect(retry_workflow.steps.count).to eq(original_step_count)
+      expect(push.runs.last.iteration).to eq(1)
+      expect(retry_workflow.steps.find_by(kind: "landing_fix")).to be_nil
+    end
   end
 
   describe "Step#after_update_commit advance integration" do

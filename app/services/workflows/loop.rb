@@ -9,7 +9,7 @@ module Workflows
       steps_array = Array(steps)
       raise ArgumentError, "loop steps required" if steps_array.empty?
 
-      @nested = steps_array.any? { |s| s.is_a?(Workflows::Loop) }
+      @nested = steps_array.any? { |s| s.is_a?(Workflows::Loop) || s.is_a?(Workflows::RetryUntil) }
       @steps = (@nested ? steps_array : steps_array.map(&:to_s)).freeze
       @max_iterations = max_iterations
     end

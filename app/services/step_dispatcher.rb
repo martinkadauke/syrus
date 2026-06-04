@@ -133,13 +133,34 @@ class StepDispatcher
                             .pluck(:kind)
                             .reject { |k| k == "grader" }
 
-    Array(@workflow.chain_template).find do |node|
-      node["type"] == "loop" && Array(node["steps"]).map(&:to_s) == actual_kinds
+    Array(@workflow.chain_template).find { |node| loop_node_matches?(node, actual_kinds) }
+  end
+
+  def loop_node_matches?(node, actual_kinds)
+    case node["type"]
+    when "loop"
+      Array(node["steps"]).map(&:to_s) == actual_kinds
+    when "retry_until"
+      check_steps = Array(node["check"]).map(&:to_s)
+      actual_kinds == check_steps || actual_kinds == loop_step_kinds(node)
+    else
+      false
     end
   end
 
   def loop_max_iterations(loop_node)
     loop_node["max_iterations"].presence || AppSetting.grade_max_iterations
+  end
+
+  def loop_step_kinds(loop_node)
+    case loop_node["type"]
+    when "loop"
+      Array(loop_node["steps"]).map(&:to_s)
+    when "retry_until"
+      Array(loop_node["repair"]).map(&:to_s) + Array(loop_node["check"]).map(&:to_s)
+    else
+      []
+    end
   end
 
   def enqueue_next_loop_iteration!(loop_node)
@@ -149,14 +170,15 @@ class StepDispatcher
     continuation = current_grade.next_step
     insertion_position = current_grade.position + 1
     next_iteration = current_grade.iteration + 1
+    loop_steps = loop_step_kinds(loop_node)
     Step.transaction do
-      loop_step_count = loop_node.fetch("steps").size
+      loop_step_count = loop_steps.size
       @workflow.steps.where("position >= ?", insertion_position).update_all(
         [ "position = position + ?", loop_step_count ]
       )
 
       previous = current_grade
-      new_steps = loop_node.fetch("steps").map.with_index do |kind, index|
+      new_steps = loop_steps.map.with_index do |kind, index|
         Step.create!(
           workflow: @workflow,
           kind: kind,
@@ -216,9 +238,10 @@ class StepDispatcher
 
   def prior_iteration_agent_step
     loop_node = loop_node_for(@from_step)
-    agent_step_kind = Array(loop_node&.fetch("steps", [])).find do |kind|
-      Step::AGENTIC_KINDS.include?(kind.to_s)
-    end
+    agent_step_kind =
+      if loop_node
+        loop_step_kinds(loop_node).find { |kind| Step::AGENTIC_KINDS.include?(kind.to_s) }
+      end
     return nil unless agent_step_kind
 
     @workflow.steps.find_by(

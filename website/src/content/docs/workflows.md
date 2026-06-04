@@ -25,10 +25,10 @@ Retries create new Runs without erasing the old transcript.
 
 Trigger: a GitHub issue with the repository's trigger label, or a new cron
 or direct Job that uses the standard issue-to-PR path. Steps:
-`prepare -> loop(implement -> grader_fanout -> grader_collect) -> summarize -> pr_open`.
+`prepare -> retry_until(implement -> grader_fanout -> grader_collect) -> summarize -> pr_open`.
 The agent makes and commits the change during `implement`, graders run from
 the repository's `grade:` configuration, and failed required graders feed
-the next bounded loop iteration. `summarize` collects PR copy via MCP and
+the next bounded repair iteration. `summarize` collects PR copy via MCP and
 amends the commit message, and `pr_open` pushes the branch and opens the
 pull request. For GitHub issue Jobs, the implement prompt includes the
 original issue title and body plus subsequent issue comments in
@@ -39,7 +39,7 @@ with a PR number attached.
 ### PrFeedback
 
 Trigger: new review feedback or PR comments on an existing Syrus PR. Steps:
-`prepare -> loop(respond -> grader_fanout -> grader_collect) -> summarize_amend -> push`.
+`prepare -> retry_until(respond -> grader_fanout -> grader_collect) -> summarize_amend -> push`.
 The agent receives the new comments plus PR context, commits follow-up
 changes on the existing branch, and graders can force another bounded
 response iteration before `summarize_amend` rewrites the follow-up commit
@@ -59,7 +59,7 @@ not overwrite an unexpected remote update.
 ### Retry
 
 Trigger: an operator retries a failed or completed Job. Steps:
-`prepare -> loop(implement -> grader_fanout -> grader_collect) -> summarize -> pr_open`.
+`prepare -> retry_until(implement -> grader_fanout -> grader_collect) -> summarize -> pr_open`.
 It has the same shape as Initial, but runs on the existing Job and branch.
 `pr_open` is idempotent: if a PR already exists, it pushes the new commits
 instead of opening a second PR.
@@ -67,11 +67,12 @@ instead of opening a second PR.
 ### AutoMerge
 
 Trigger: an approved Job reaches the landing queue. Steps:
-`loop(landing_fix -> grader_fanout -> grader_collect) -> push -> auto_merge`.
-The final loop runs on the exact PR branch Syrus is about to merge, after
-any last rebase. If required graders fail, the agent receives the grader
-output and gets another bounded repair iteration. `push` publishes any
-final fix commits, and `auto_merge` re-checks GitHub approval,
+`retry_until(grader_fanout -> grader_collect, repair: landing_fix) -> push -> auto_merge`.
+The final gate first runs graders on the exact PR branch Syrus is about to
+merge, after any last rebase. If required graders fail, the agent receives
+the grader output and gets a bounded `landing_fix` repair iteration before
+the graders run again. `push` publishes any final fix commits, and
+`auto_merge` re-checks GitHub approval,
 mergeability, branch state, and repository policy immediately before
 calling the merge API.
 
@@ -111,7 +112,7 @@ same Job.
 | `pr_open` | No | Push the branch and open the pull request if one does not already exist |
 | `push` | No | Push commits to an existing PR branch and update the cost footer |
 | `grader_fanout` | No | Materialize one grader Step per configured repo grader |
-| `grader_collect` | No | Aggregate grader results and decide whether the loop continues |
+| `grader_collect` | No | Aggregate grader results and decide whether retry_until continues |
 | `auto_rebase` | No | Try a deterministic rebase before involving an agent |
 | `agent_rebase` | Yes | Resolve rebase conflicts with the agent |
 | `force_push` | No | Force-push a rebased branch with an explicit `--force-with-lease` lease |
