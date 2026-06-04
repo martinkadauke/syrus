@@ -216,6 +216,65 @@ RSpec.describe ReapStaleRunsJob do
         expect { described_class.perform_now }.not_to change { run.reload.state }
       end
     end
+
+    describe "orphan-workflow path: Workflow :running but all descendants are terminal" do
+      def terminal_rebase_workflow(job:, step_states:)
+        workflow = Workflows::Rebase.instantiate(job: job)
+        workflow.update!(
+          state: "running",
+          started_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds).ago
+        )
+
+        workflow.steps.order(:position).zip(step_states).each do |step, state|
+          step.update_columns(
+            state: state,
+            started_at: 5.minutes.ago,
+            finished_at: 4.minutes.ago
+          )
+          run = step.runs.create!(job: job, trigger_kind: "rebase")
+          run.update_columns(
+            state: state,
+            started_at: 5.minutes.ago,
+            finished_at: 4.minutes.ago
+          )
+        end
+
+        workflow
+      end
+
+      it "succeeds a running workflow whose last meaningful terminal step succeeded" do
+        repo = Factories.repository(auto_merge_enabled: true)
+        job = Factories.job_record(user: repo.user, repository: repo, state: "implemented", pr_number: 12)
+        job.approve!(via: "github_review")
+        job.save!
+        workflow = terminal_rebase_workflow(job: job, step_states: %w[succeeded succeeded succeeded])
+
+        allow(LandingQueueProcessor).to receive(:try_land!)
+
+        described_class.perform_now
+
+        expect(workflow.reload).to be_succeeded
+        expect(LandingQueueProcessor).to have_received(:try_land!).with(job)
+      end
+
+      it "fails a running workflow whose last meaningful terminal step failed" do
+        workflow = terminal_rebase_workflow(job: job, step_states: %w[succeeded failed cancelled])
+
+        described_class.perform_now
+
+        expect(workflow.reload).to be_failed
+      end
+
+      it "leaves a running workflow alone while a descendant run is still active" do
+        workflow = terminal_rebase_workflow(job: job, step_states: %w[succeeded succeeded succeeded])
+        last_run = workflow.steps.order(:position).last.runs.last
+        last_run.update_columns(state: "running", finished_at: nil, last_heartbeat_at: 30.seconds.ago)
+
+        described_class.perform_now
+
+        expect(workflow.reload).to be_running
+      end
+    end
   end
 
   describe "Run.stale scope" do

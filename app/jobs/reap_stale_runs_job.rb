@@ -45,6 +45,7 @@ class ReapStaleRunsJob < ApplicationJob
     reap_runs_with_pruned_workers   # fast path
     reap_orphaned_running_runs      # ~3-min path
     reap_runs_with_stale_heartbeat  # 30-min backstop
+    finish_orphaned_terminal_workflows
   end
 
   private
@@ -183,5 +184,65 @@ class ReapStaleRunsJob < ApplicationJob
     end
   rescue StandardError => e
     Rails.logger.warn("[ReapStaleRunsJob] reap failed for Run ##{run.id}: #{e.class}: #{e.message}")
+  end
+
+  # Recovery for the post-step gap: the last Run and Step reached a
+  # terminal state, but the StepDispatcher callback that should
+  # transition the Workflow itself never completed. At that point
+  # there is no running Run left for the stale-run paths above to
+  # reap, yet the running Workflow still blocks landing and dashboard
+  # filters.
+  #
+  # Keep this narrow: only finish Workflows with no queued/running
+  # Steps and no queued/running Runs. If any Step is still active,
+  # normal dispatch owns it. Failed grader-loop iterations can coexist
+  # with an eventually-succeeded Workflow, so infer the outcome from
+  # the latest succeeded/failed Step position rather than the mere
+  # presence of any failure.
+  def finish_orphaned_terminal_workflows
+    Workflow.where(state: "running")
+            .where("started_at < ?", ORPHAN_RUN_GRACE_PERIOD.ago)
+            .find_each do |workflow|
+      next if workflow.steps.active.exists?
+      next if Run.where(step_id: workflow.steps.select(:id)).active.exists?
+
+      case orphaned_workflow_outcome(workflow)
+      when :succeeded
+        succeed_workflow!(workflow)
+      when :failed
+        fail_workflow!(workflow)
+      end
+    end
+  end
+
+  def orphaned_workflow_outcome(workflow)
+    terminal_positions = workflow.steps.pluck(:state, :position)
+    last_succeeded = terminal_positions.filter_map { |state, position| position if state == "succeeded" }.max
+    last_failed = terminal_positions.filter_map { |state, position| position if state == "failed" }.max
+
+    return :succeeded if last_succeeded && (last_failed.nil? || last_succeeded > last_failed)
+    return :failed if last_failed && (last_succeeded.nil? || last_failed > last_succeeded)
+
+    nil
+  end
+
+  def succeed_workflow!(workflow)
+    return unless workflow.may_succeed?
+
+    Rails.logger.info("[ReapStaleRunsJob] Workflow ##{workflow.id} succeeded: all steps/runs are terminal")
+    workflow.succeed!
+    workflow.save!
+  rescue StandardError => e
+    Rails.logger.warn("[ReapStaleRunsJob] workflow succeed failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
+  end
+
+  def fail_workflow!(workflow)
+    return unless workflow.may_fail?
+
+    Rails.logger.info("[ReapStaleRunsJob] Workflow ##{workflow.id} failed: all steps/runs are terminal")
+    workflow.fail!
+    workflow.save!
+  rescue StandardError => e
+    Rails.logger.warn("[ReapStaleRunsJob] workflow fail failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
   end
 end
