@@ -34,7 +34,15 @@ module Filters
         # UI hides the Expand button for those.
         EXPANSIONS = {
           "pinned"             => -> { chip_node("pinned_by_me", "is_true", nil) },
-          "in_progress"        => -> { chip_node("state", "is_one_of", %w[running landing]) },
+          "in_progress"        => -> {
+            or_node(
+              chip_node("state", "is_one_of", %w[running landing]),
+              and_node(
+                chip_node("latest_workflow_trigger_kind", "is", "rebase"),
+                chip_node("latest_workflow_state", "is_one_of", %w[queued running])
+              )
+            )
+          },
           # `inbox` is the union of every reason a Job might be sitting
           # in the operator's queue.
           "inbox"              => -> {
@@ -126,9 +134,13 @@ module Filters
         def apply_in_progress
           # Phase 4 simplification: Job.state is now authoritative.
           # `:running` covers initial/retry/pr_comment/ci_failure
-          # workflow execution; `:landing` covers post-approval
-          # auto_merge/rebase work. No need to join Workflow.active.
+          # workflow execution; `:landing` covers active auto_merge
+          # work. Landing can defer back to :approved while a rebase
+          # Workflow is queued/running, so include that active Workflow
+          # explicitly.
+          active_rebase_job_ids = Workflow.active.where(trigger_kind: "rebase").select(:job_id)
           scope.where(state: %w[running landing])
+               .or(scope.open_threads.where(id: active_rebase_job_ids))
         end
 
         def apply_inbox

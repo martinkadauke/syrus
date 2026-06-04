@@ -114,6 +114,26 @@ RSpec.describe "Filters::Chips" do
       expect(run(field: "attention", op: "is", value: "pinned")).to contain_exactly(pinned)
     end
 
+    it "in_progress: includes active rebases deferred back to approved" do
+      running = Factories.job_record(repository: repo, issue_number: 1, state: "running")
+      landing = Factories.job_record(repository: repo, issue_number: 2, state: "landing")
+      queued_rebase = Factories.job_record(repository: repo, issue_number: 3, state: "approved")
+      running_rebase = Factories.job_record(repository: repo, issue_number: 4, state: "approved")
+      finished_rebase = Factories.job_record(repository: repo, issue_number: 5, state: "approved")
+      Factories.job_record(repository: repo, issue_number: 6, state: "approved")
+
+      Workflow.create!(job: queued_rebase, trigger_kind: "rebase", state: "queued")
+      Workflow.create!(job: running_rebase, trigger_kind: "rebase", state: "running")
+      Workflow.create!(job: finished_rebase, trigger_kind: "rebase", state: "succeeded")
+
+      expect(run(field: "attention", op: "is", value: "in_progress")).to contain_exactly(
+        running,
+        landing,
+        queued_rebase,
+        running_rebase
+      )
+    end
+
     it "just_failed: returns jobs in :failed state" do
       failed = Factories.job(repository: repo, issue_number: 1)
       failed.update!(state: "failed")
