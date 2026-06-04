@@ -1754,10 +1754,14 @@ function systemMcpMessage(payload: string): ChatSystemMessage {
     const [name, status] = entry.split("=", 2)
     return name ? [name, status || "unknown"] : null
   }).filter((entry): entry is [string, string] => entry != null)
-  const failing = servers.filter(([, status]) => !["connected", "running", "ready"].includes(status))
+  const ready = new Set(["connected", "running", "ready"])
+  const transient = new Set(["pending"])
+  const pending = servers.filter(([, status]) => transient.has(status))
+  const failing = servers.filter(([, status]) => !ready.has(status) && !transient.has(status))
 
   if (servers.length === 0) return { tone: "neutral", label: "MCP", body: "MCP server status unavailable" }
   if (failing.length > 0) return { tone: "warning", label: "MCP", body: `MCP issue: ${failing.map(([name, status]) => `${name} ${status}`).join(", ")}` }
+  if (pending.length > 0) return { tone: "neutral", label: "MCP", body: `MCP starting: ${pending.map(([name]) => name).join(", ")}` }
 
   return { tone: "success", label: "Connected", body: `MCP connected: ${servers.map(([name]) => name).join(", ")}` }
 }

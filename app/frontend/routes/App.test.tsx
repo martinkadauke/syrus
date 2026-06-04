@@ -6522,13 +6522,22 @@ describe("App", () => {
             id: 16,
             role: "system",
             tool_name: null,
+            content: { text: "[mcp_servers] syrus-chat-sidecar=pending" },
+            text: "[mcp_servers] syrus-chat-sidecar=pending",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 17,
+            role: "system",
+            tool_name: null,
             content: { text: "[codex error] command timed out" },
             text: "[codex error] command timed out",
             bookmarkable: false
           },
           {
             type: "message",
-            id: 17,
+            id: 18,
             role: "system",
             tool_name: null,
             content: { text: "Cancelled by operator." },
@@ -6552,18 +6561,21 @@ describe("App", () => {
     expect(screen.getByText(/class Chat\s+end/)).toBeInTheDocument()
     expect(screen.queryByText(/Agent run succeeded/)).not.toBeInTheDocument()
     expect(screen.queryByText(/MCP connected: syrus-chat-sidecar/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/MCP starting: syrus-chat-sidecar/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/MCP issue: syrus-chat-sidecar pending/)).not.toBeInTheDocument()
     expect(screen.queryByText("Cancelled by operator.")).not.toBeInTheDocument()
     expect(screen.getByText(/Agent run failed: Error max turns/)).toBeInTheDocument()
     expect(screen.getByText(/1\.2s/)).toBeInTheDocument()
     expect(screen.getByText(/MCP issue: syrus-chat-sidecar failed/)).toBeInTheDocument()
     expect(screen.getByText("command timed out")).toBeInTheDocument()
     expect(screen.getByTestId("chat-message-stream")).toHaveClass("pt-12")
-    fireEvent.click(screen.getByRole("button", { name: "Show 3 hidden system messages" }))
+    fireEvent.click(screen.getByRole("button", { name: "Show 4 hidden system messages" }))
     expect(screen.getByText(/Agent run succeeded/)).toBeInTheDocument()
     expect(screen.getByText(/4 turns/)).toBeInTheDocument()
     expect(screen.getByText(/2\.8m/)).toBeInTheDocument()
     expect(screen.getByText(/\$0\.37/)).toBeInTheDocument()
     expect(screen.getByText(/MCP connected: syrus-chat-sidecar/)).toBeInTheDocument()
+    expect(screen.getByText(/MCP starting: syrus-chat-sidecar/)).toBeInTheDocument()
     expect(screen.getByText("Cancelled by operator.")).toBeInTheDocument()
   })
 
