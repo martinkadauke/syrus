@@ -74,6 +74,19 @@ diagnostics + claude_session metadata) plus a thin Job envelope so
 the caller can drill back up. Reuses `Admin::JobStateSerializer`
 (extracted from JobsController) — same per-record-resilience.
 
+### `GET /api/v1/admin/chats` and `/api/v1/admin/chats/:id`
+
+Chat-session diagnostics for agent-quality review. The index is a
+compact, paginated list of recent chats, filterable by `?repo=owner/name`,
+`?user=email-substring`, and `?since=ISO8601`. Rows include user,
+repository attachments, usage totals, message counts, and timestamps.
+The show endpoint returns one chat with raw paginated messages
+(`?before=<message_id>`, `?per=`, max 200), preserving tool names,
+tool-use ids, tool-call inputs, tool results, bookmarks, proposals,
+attachments, and usage metadata. This is intentionally an admin-token
+surface rather than a session-cookie app API so deployed investigations
+can review chat behavior without browser state.
+
 ### List filters on `/api/v1/admin/jobs`
 
 Three new filters: `?failed_in_last_24h=true` (Jobs whose LATEST

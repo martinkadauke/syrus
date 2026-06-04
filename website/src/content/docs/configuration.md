@@ -99,7 +99,7 @@ Each user owns their own credentials and agent preferences.
 | Codex credential | Encrypted Codex API key or ChatGPT login auth JSON, depending on auth mode |
 | Agent max turns | Per-run cap for Claude Code tool-use turns; `0` means no `--max-turns` flag |
 | Scheduling paused | Skips scheduled task firing for that user |
-| Admin API token | Admin-only bearer token for `/api/v1/admin/*`; shown once on rotation |
+| Admin API token | Admin-only bearer token for `/api/v1/admin/*` diagnostics, including Jobs, Runs, queue/processes, and chat transcripts; shown once on rotation |
 
 Provider selection resolves from most specific to least specific:
 

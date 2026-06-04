@@ -179,6 +179,11 @@ Rails.application.routes.draw do
         # doesn't have to know the Syrus internal Job ID up front.
         resources :jobs, only: %i[ show index ]
 
+        # Chat transcript diagnostics. `#index` is compact so an
+        # admin API client can find recent sessions; `#show` returns
+        # paginated raw chat messages with tool calls/results intact.
+        resources :chats, only: %i[ show index ]
+
         # Epic read API. `#index` is compact (filter via ?state=,
         # ?repo=owner/name, ?user=, ?has_unfinished_children=true);
         # `#show` returns the full epic with child jobs + dependency
