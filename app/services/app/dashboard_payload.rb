@@ -8,8 +8,8 @@ module App
     DEFAULT_SUBJECT = "epic"
     DEFAULT_VIEW = "list"
     DEFAULT_OWNERSHIP_SCOPE = "team"
-    USER_FOCUSED_SUBJECTS = %w[workflow].freeze
-    TEAM_FOCUSED_SUBJECTS = %w[job epic].freeze
+    USER_FOCUSED_SUBJECTS = [].freeze
+    TEAM_FOCUSED_SUBJECTS = %w[job epic workflow].freeze
     PER_PAGE = 25
     KANBAN_LIMIT_OPTIONS = [ 10, 25, 50, 100 ].freeze
     KANBAN_PER_PAGE = 100

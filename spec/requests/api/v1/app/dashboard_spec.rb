@@ -243,13 +243,13 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(parse_body["items"].map { |item| item.fetch("id") }).to eq([ unowned_workflow.id ])
     end
 
-    it "defaults job dashboards to team work and workflow dashboards to the current user's owned work" do
+    it "defaults job and workflow dashboards to team work" do
       user.update_dashboard_preferences!(subject: "job", ownership_scope: "team")
       user.update_dashboard_preferences!(subject: "workflow", ownership_scope: "team")
       mine = Factories.job_record(repository: repo, issue_number: 21, issue_title: "My road", owner_user: user)
       claimable = Factories.job_record(repository: repo, issue_number: 22, issue_title: "Unclaimed road", owner_user: nil)
       mine_workflow = Workflow.create!(job: mine, trigger_kind: "initial", state: "queued")
-      Workflow.create!(job: claimable, trigger_kind: "initial", state: "queued")
+      claimable_workflow = Workflow.create!(job: claimable, trigger_kind: "initial", state: "queued")
 
       get "/api/v1/app/dashboard", params: { subject: "job" }
 
@@ -264,8 +264,8 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       body = parse_body
-      expect(body.dig("ownership_scope", "scope")).to eq("mine")
-      expect(body["items"].map { |item| item.fetch("id") }).to eq([ mine_workflow.id ])
+      expect(body.dig("ownership_scope", "scope")).to eq("team")
+      expect(body["items"].map { |item| item.fetch("id") }).to contain_exactly(mine_workflow.id, claimable_workflow.id)
     end
 
     it "keeps explicit team and user scopes available for dashboard coordination" do
@@ -482,13 +482,13 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["items"].find { |item| item.fetch("id") == billed.id }.fetch("total_cost_usd")).to eq(0.12)
     end
 
-    it "defaults jobs to team work and workflows to the current executor" do
+    it "defaults jobs and workflows to team work" do
       mine = Factories.job_record(user: user, repository: repo, owner_user: user, issue_number: 20, issue_title: "My aqueduct")
       my_workflow = Workflow.create!(job: mine, trigger_kind: "initial", state: "queued")
       teammate = Factories.user(email_address: "teammate@example.com")
       teammate_repo = Factories.repository(user: teammate, owner: "acme", name: "api")
       theirs = Factories.job_record(user: teammate, repository: teammate_repo, owner_user: teammate, issue_number: 21, issue_title: "Their forum")
-      Workflow.create!(job: theirs, trigger_kind: "initial", state: "queued")
+      their_workflow = Workflow.create!(job: theirs, trigger_kind: "initial", state: "queued")
 
       get "/api/v1/app/dashboard", params: { subject: "job" }
 
@@ -506,7 +506,9 @@ RSpec.describe "App API dashboard commands", type: :request do
       get "/api/v1/app/dashboard", params: { subject: "workflow" }
 
       expect(response).to have_http_status(:ok)
-      expect(parse_body["items"].map { |item| item.fetch("id") }).to eq([ my_workflow.id ])
+      body = parse_body
+      expect(body.dig("ownership", "scope")).to eq("team")
+      expect(body["items"].map { |item| item.fetch("id") }).to contain_exactly(my_workflow.id, their_workflow.id)
     end
 
     it "defaults epics to team work" do
