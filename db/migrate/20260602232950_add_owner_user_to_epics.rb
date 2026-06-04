@@ -1,6 +1,7 @@
 class AddOwnerUserToEpics < ActiveRecord::Migration[8.1]
   def up
-    add_column :epics, :owner_user_id, :integer unless column_exists?(:epics, :owner_user_id)
+    add_column :epics, :owner_user_id, :bigint unless column_exists?(:epics, :owner_user_id)
+    ensure_bigint_column :epics, :owner_user_id
     add_index :epics, :owner_user_id unless index_exists?(:epics, :owner_user_id)
     add_foreign_key :epics, :users, column: :owner_user_id unless foreign_key_exists?(:epics, :users, column: :owner_user_id)
   end
@@ -9,5 +10,15 @@ class AddOwnerUserToEpics < ActiveRecord::Migration[8.1]
     remove_foreign_key :epics, column: :owner_user_id if foreign_key_exists?(:epics, :users, column: :owner_user_id)
     remove_index :epics, :owner_user_id if index_exists?(:epics, :owner_user_id)
     remove_column :epics, :owner_user_id if column_exists?(:epics, :owner_user_id)
+  end
+
+  private
+
+  def ensure_bigint_column(table, column_name)
+    column = columns(table).find { |candidate| candidate.name == column_name.to_s }
+    return unless column
+    return if column.type == :integer && column.limit == 8
+
+    change_column table, column_name, :bigint
   end
 end
