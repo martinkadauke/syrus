@@ -82,7 +82,7 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
     expect(body.dig("epic", "display_number")).to eq(epic.display_number)
     expect(body.dig("epic", "description")).to eq("Build **columns**.")
     expect(body.dig("epic", "owner")).to be_nil
-    expect(body.dig("epic", "owned_by_current_user")).to eq(false)
+    expect(body.dig("epic", "owned_by_current_user")).to eq(true)
     expect(body.dig("epic", "claimable")).to eq(true)
     expect(body["epic"]).to include(
       "owner_user_id" => user.id,

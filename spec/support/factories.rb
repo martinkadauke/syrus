@@ -57,11 +57,12 @@ module Factories
 
   def job(**attrs)
     repo = attrs[:repository] || repository
+    owner_attrs = attrs.key?(:owner_user) || attrs.key?(:owner_user_id) ? {} : { owner_user: attrs[:user] || repo.user }
     job = Job.create!({
       user: repo.user,
       repository: repo,
       issue_number: 42
-    }.merge(attrs))
+    }.merge(owner_attrs).merge(attrs))
     job.advance_after_triage! if job.may_advance_after_triage?
     job.association(:workflows).reset
     job.association(:runs).reset
@@ -74,12 +75,13 @@ module Factories
   def job_record(**attrs)
     repo = attrs[:repository] || repository(user: attrs[:user] || user)
     desired_state = attrs.key?(:state) ? attrs[:state] : "queued"
+    owner_attrs = attrs.key?(:owner_user) || attrs.key?(:owner_user_id) ? {} : { owner_user: attrs[:user] || repo.user }
 
     create_attrs = {
       user: attrs[:user] || repo.user,
       repository: repo,
       issue_number: 42
-    }.merge(attrs).merge(state: "closed")
+    }.merge(owner_attrs).merge(attrs).merge(state: "closed")
 
     job = Job.create!(create_attrs)
     if desired_state != "closed"

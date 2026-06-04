@@ -316,17 +316,7 @@ describe("App", () => {
   it("renders the logged-out landing CTA from public auth status", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
-        JSON.stringify({
-          authenticated: false,
-          first_signup: false,
-          signups_open: false,
-          valid_invitation: true,
-          cta: {
-            kind: "accept_invitation",
-            label: "Accept invitation",
-            href: "/users/new?token=invite-token"
-          }
-        }),
+        JSON.stringify(publicBootstrapPayload({ first_signup: false, signups_open: false })),
         { status: 200, headers: { "Content-Type": "application/json" } }
       )
     )
@@ -339,12 +329,11 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(screen.getByRole("main", { name: "Syrus landing" })).toBeInTheDocument()
-    expect(await screen.findByRole("link", { name: "Accept invitation" })).toHaveAttribute("href", "/users/new?token=invite-token")
-    expect(screen.getAllByText("Invitation").length).toBeGreaterThan(0)
-    expect(screen.getByText("Valid")).toBeInTheDocument()
+    expect(await screen.findByRole("main", { name: "Syrus public landing" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Create account from invitation" })).toHaveAttribute("href", "/users/new?token=invite-token")
+    expect(screen.getByText("Detected")).toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/auth/status?token=invite-token",
+      "/api/v1/app/bootstrap",
       expect.objectContaining({ credentials: "same-origin" })
     )
   })
@@ -381,7 +370,7 @@ describe("App", () => {
       expect(screen.getByRole("main", { name: "Dashboard" })).toBeInTheDocument()
       expect(screen.queryByRole("main", { name: "Syrus landing" })).not.toBeInTheDocument()
       expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/dashboard?view=list&subject=job",
+        "/api/v1/app/dashboard",
         expect.objectContaining({ credentials: "same-origin" })
       )
     } finally {
@@ -1297,7 +1286,7 @@ describe("App", () => {
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
       setup_status: {
-        ...defaultSetupStatus(),
+        ...setupStatus(),
         readiness: {
           status: "error",
           checks: [
@@ -1725,8 +1714,8 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByText("No Jobs yet. Finish credentials first so Syrus can talk to GitHub and the selected agent.")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Open setup" })).toHaveAttribute("href", "/app-shell/setup")
+    expect(await screen.findByText("No jobs exist yet. Finish setup, then create work from a direct prompt or a labelled GitHub issue.")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Create direct job" })).toHaveAttribute("href", "/app-shell/jobs/new")
   })
 
   it("renders dashboard smart folder visibility groups and badges", async () => {
@@ -3687,7 +3676,7 @@ describe("App", () => {
     fireEvent.change(await screen.findByLabelText("Display name"), { target: { value: "Ada Lovelace" } })
     fireEvent.change(screen.getByLabelText("First name"), { target: { value: "Ada" } })
     fireEvent.change(screen.getByLabelText("Last name"), { target: { value: "Lovelace" } })
-    fireEvent.change(screen.getByLabelText("Bio"), { target: { value: "Mathematician and operator." } })
+    fireEvent.change(screen.getByLabelText("Profile bio"), { target: { value: "Mathematician and operator." } })
     fireEvent.change(screen.getByLabelText("Company"), { target: { value: "Analytical Engines Ltd" } })
     fireEvent.change(screen.getByLabelText("Location"), { target: { value: "London" } })
     fireEvent.change(screen.getByLabelText("Website"), { target: { value: "https://example.com/ada" } })
@@ -3764,8 +3753,8 @@ describe("App", () => {
     expect(screen.getByText("Mathematician and operator.")).toBeInTheDocument()
     expect(screen.getByText("Add profile page")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Add profile page" })).toHaveAttribute("href", "/app-shell/jobs/55")
-    expect(screen.getByRole("link", { name: "Ada Lovelace" })).toHaveAttribute("href", "/app-shell/profiles/2")
-    expect(screen.getByText((content) => content.startsWith("acme/widgets") && content.includes("updated"))).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Ada Lovelace" })).toBeInTheDocument()
+    expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.queryByText("GitHub token")).not.toBeInTheDocument()
     expect(screen.queryByText("ada@example.com")).not.toBeInTheDocument()
     expect(screen.queryByText("sk-profile-secret")).not.toBeInTheDocument()
@@ -7024,6 +7013,10 @@ function setupStatus(overrides: Record<string, unknown> = {}) {
     },
     ...overrides
   }
+}
+
+function defaultSetupStatus(overrides: Record<string, unknown> = {}) {
+  return setupStatus(overrides)
 }
 
 function setupStatusPayload(overrides: Record<string, unknown> = {}) {

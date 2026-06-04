@@ -32,11 +32,6 @@ export type DashboardTag = {
   color: string
 }
 
-export type DashboardOwnerUser = {
-  id: number
-  email_address: string
-}
-
 export type DashboardJobItem = {
   type: "job"
   id: number
@@ -67,7 +62,6 @@ export type DashboardJobItem = {
   pr_mergeable_checked_at: string | null
   workflows_count: number
   repository: DashboardRepository
-  owner_user: DashboardOwnerUser | null
   owner_badge: DashboardOwnerBadge | null
   tags: DashboardTag[]
   paths: {
@@ -99,7 +93,6 @@ export type DashboardEpicItem = {
   done_at: string | null
   archived_at: string | null
   repository: DashboardRepository
-  owner_user: DashboardOwnerUser | null
   paths: {
     epic_path: string
     edit_epic_path: string

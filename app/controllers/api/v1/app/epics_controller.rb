@@ -103,7 +103,7 @@ module Api
           end
 
           render json: detail_payload(epic.reload, message: "Epic reassigned.")
-        rescue ActionController::ParameterMissing, ArgumentError, ActiveRecord::RecordNotFound => e
+        rescue ActionController::ParameterMissing, ArgumentError => e
           render_error("reassign_not_allowed", e.message, status: :unprocessable_content)
         end
 

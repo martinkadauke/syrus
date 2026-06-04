@@ -154,9 +154,7 @@ module App
     end
 
     def active_repositories_scope
-      return Repository.active if team_scope? || user_scope? || claimable_scope?
-
-      Repository.active.where(user_id: user.id)
+      Repository.active
     end
 
     def ownership_scope
@@ -235,16 +233,37 @@ module App
         owner_id = selected_owner_user.id
         if subject_name.to_s == "workflow"
           scope.where(jobs: { owner_user_id: owner_id })
+        elsif subject_name.to_s == "epic"
+          owned = epic_owned_by_scope(scope, owner_id)
+          default_epic_mine_scope? ? owned.or(epic_claimable_scope(scope)) : owned
         else
           scope.where(owner_user_id: owner_id)
         end
       when "claimable"
         if subject_name.to_s == "workflow"
           scope.where(jobs: { owner_user_id: nil })
+        elsif subject_name.to_s == "epic"
+          epic_unclaimed_scope(scope)
         else
           scope.where(owner_user_id: nil)
         end
       end
+    end
+
+    def default_epic_mine_scope?
+      subject == "epic" && mine_scope? && !ownership_param_present?
+    end
+
+    def epic_owned_by_scope(scope, owner_id)
+      scope.where(owner_user_id: owner_id).or(scope.where(owner_id: owner_id))
+    end
+
+    def epic_claimable_scope(scope)
+      epic_unclaimed_scope(scope).where(state: %w[backlog ready])
+    end
+
+    def epic_unclaimed_scope(scope)
+      scope.where(owner_user_id: nil, owner_id: nil)
     end
 
     def jobs_base_scope
@@ -546,7 +565,6 @@ module App
         finished_at: job.finished_at&.iso8601,
         approved_at: job.approved_at&.iso8601,
         owner_user_id: job.owner_user_id,
-        owner_user: owner_user_json(job.owner_user),
         dependencies_overridden_at: job.dependencies_overridden_at&.iso8601,
         last_feedback_addressed_at: job.last_feedback_addressed_at&.iso8601,
         last_seen_comment_at: job.last_seen_comment_at&.iso8601,
@@ -575,12 +593,12 @@ module App
         owner: owner_json(epic.owner),
         owned_by_current_user: epic.claimed_by?(user),
         claimable: epic.claimable?,
-        owner_badge: owner_badge_for(epic.owner_user, claimable: epic.claimable?),
+        owner_badge: owner_badge_for(epic_owner_for_display(epic), claimable: epic.claimable?),
         claimed_at: epic.claimed_at&.iso8601,
         auto_approve_mode: epic.auto_approve_mode,
         owner_user_id: epic.owner_user_id,
         owner_status: epic_owner_status(epic),
-        owner_user: owner_user_json(epic.owner_user),
+        owner_user: owner_user_json(epic_owner_for_display(epic)),
         jobs_count: epic.jobs.size,
         created_at: epic.created_at&.iso8601,
         updated_at: epic.updated_at&.iso8601,
@@ -634,10 +652,15 @@ module App
     end
 
     def epic_owner_status(epic)
-      return "unclaimed" if epic.owner_user_id.blank?
-      return "mine" if epic.owner_user_id == user.id
+      owner_id = epic.owner_user_id || epic.owner_id
+      return "unclaimed" if owner_id.blank?
+      return "mine" if owner_id == user.id
 
       "other_owned"
+    end
+
+    def epic_owner_for_display(epic)
+      epic.owner_user || epic.owner
     end
 
     def owner_badge_for(owner_user, claimable: false)

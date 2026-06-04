@@ -65,7 +65,7 @@ all share the same harness instead of becoming separate scripts.
 
 ## A Concrete Example
 
-1. File a GitHub issue: "Add pagination to the admin jobs list."
+1. File a GitHub issue with label-based delegation: "Add pagination to the admin jobs list."
 2. Add the repository's Syrus trigger label.
 3. Syrus notices the issue, clones the repo, runs setup, and starts the
    configured agent.
@@ -102,7 +102,7 @@ pages say so where that is true.
 What is already clear is the shape: self-hosted, multi-user, BYOK
 automation that turns GitHub work into controlled agent runs and PRs.
 
-## Next
+## Get Started
 
 [Try Syrus locally](/docs/deployment/try-it-locally) if you want the
 shortest proof. [Read the concepts](/docs/concepts) if you want the

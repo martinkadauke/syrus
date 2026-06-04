@@ -28,6 +28,11 @@ const setupCopy: Record<NonNullable<SetupStatus["next_step"]>, { title: string; 
     title: "Start the first job",
     description: "Credentials and a repository are ready. Create a direct job or label a GitHub issue to send work through the pipeline.",
     action: "Create direct job"
+  },
+  watch_first_job: {
+    title: "Watch the first job",
+    description: "The first job is underway. Follow it until Syrus records a successful job or pull request.",
+    action: "Open job"
   }
 }
 

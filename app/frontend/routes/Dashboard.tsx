@@ -174,7 +174,7 @@ function OwnershipControls({ payload, pathname, search }: { payload: DashboardPa
           className="h-9 rounded border border-gray-300 bg-white px-2 text-sm text-gray-700"
           id="dashboard-owner-filter"
           onChange={(event) => navigate(dashboardLinkFromSearch(pathname, search, { ownership_scope: "user", owner_id: event.target.value, page: null }))}
-          value={payload.ownership.owner_id}
+          value={payload.ownership.owner_id ?? ""}
         >
           {payload.controls.owners.map((owner) => <option key={owner.id} value={owner.id}>{owner.label}</option>)}
         </select>
