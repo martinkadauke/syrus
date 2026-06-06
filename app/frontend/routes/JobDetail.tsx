@@ -902,6 +902,7 @@ function RunTranscriptLogs({ logs }: { logs: Awaited<ReturnType<typeof fetchJobR
   const listRef = useRef<HTMLOListElement | null>(null)
   const atBottomRef = useRef(true)
   const logSignature = logs.map((log) => `${log.id}:${log.sequence}:${log.kind || ""}:${log.chunk.length}`).join("|")
+  const displayLogs = coalesceTranscriptLogs(logs)
 
   function handleScroll(event: UIEvent<HTMLOListElement>) {
     atBottomRef.current = isRunTranscriptAtBottom(event.currentTarget)
@@ -913,7 +914,7 @@ function RunTranscriptLogs({ logs }: { logs: Awaited<ReturnType<typeof fetchJobR
 
   return (
     <ol className="max-h-[32rem] overflow-auto divide-y divide-gray-200" data-testid="run-transcript-log-stream" onScroll={handleScroll} ref={listRef}>
-      {logs.map((log) => (
+      {displayLogs.map((log) => (
         <li className="grid gap-2 px-3 py-2 font-mono text-xs text-gray-800 sm:grid-cols-[5rem_minmax(0,1fr)]" key={log.id}>
           <span className="text-gray-400">{transcriptLogKindLabel(log.kind) || `#${log.sequence}`}</span>
           <pre className="whitespace-pre-wrap break-words">{log.chunk}</pre>
@@ -921,6 +922,33 @@ function RunTranscriptLogs({ logs }: { logs: Awaited<ReturnType<typeof fetchJobR
       ))}
     </ol>
   )
+}
+
+type TranscriptLog = Awaited<ReturnType<typeof fetchJobRunArtifacts>>["logs"][number]
+
+function coalesceTranscriptLogs(logs: TranscriptLog[]) {
+  const displayLogs: TranscriptLog[] = []
+  for (const log of logs) {
+    const previous = displayLogs.at(-1)
+    if (previous && shouldCoalesceTranscriptLogs(previous, log)) {
+      previous.chunk = joinTranscriptChunks(previous.chunk, log.chunk)
+      continue
+    }
+
+    displayLogs.push({ ...log })
+  }
+
+  return displayLogs
+}
+
+function shouldCoalesceTranscriptLogs(previous: TranscriptLog, next: TranscriptLog) {
+  if (previous.kind !== next.kind) return false
+  return !["tool_call", "rate_limited"].includes(previous.kind || "")
+}
+
+function joinTranscriptChunks(previous: string, next: string) {
+  if (previous.endsWith("\n") || next.startsWith("\n")) return previous + next
+  return `${previous}\n${next}`
 }
 
 function isRunTranscriptAtBottom(element: HTMLElement) {

@@ -5133,6 +5133,47 @@ describe("App", () => {
     expect(screen.getByText("rspec output")).toBeInTheDocument()
   })
 
+  it("coalesces adjacent transcript chunks with the same kind", async () => {
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/jobs/42/runs/9/artifacts") {
+        return Promise.resolve(new Response(JSON.stringify({
+          job_id: 42,
+          run_id: 9,
+          agent_diff: null,
+          agent_diff_bytes: 0,
+          logs_count: 3,
+          logs: [
+            { id: 1, sequence: 0, kind: "system", chunk: "Fetching rack 3.2.6", created_at: "2026-05-30T10:02:00Z" },
+            { id: 2, sequence: 1, kind: "system", chunk: "Fetching rack-session 2.1.2", created_at: "2026-05-30T10:02:01Z" },
+            { id: 3, sequence: 2, kind: "tool_call", chunk: "bundle install", created_at: "2026-05-30T10:02:02Z" }
+          ]
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: "Workflows (1)" }))
+    fireEvent.click(await screen.findByRole("button", { name: /Implement/i }))
+    fireEvent.click(screen.getByRole("button", { name: "Transcript" }))
+
+    expect(await screen.findByText((_, element) => (
+      element?.tagName === "PRE" &&
+      element.textContent === "Fetching rack 3.2.6\nFetching rack-session 2.1.2"
+    ))).toBeInTheDocument()
+    expect(screen.getAllByText("System")).toHaveLength(1)
+    expect(screen.getByText("Tool")).toBeInTheDocument()
+  })
+
   it("uses the job name as the Job detail title and moves source metadata below it", async () => {
     const payload = jobDetailPayload({
       job: {
