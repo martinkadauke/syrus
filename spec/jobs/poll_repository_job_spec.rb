@@ -7,10 +7,10 @@ RSpec.describe PollRepositoryJob do
     Factories.repository(user: user, owner: "acme", name: "widgets", trigger_label: "syrus", polling_enabled: true)
   end
 
-  def issue(number: 42, labels: [ "syrus" ], body: "")
+  def issue(number: 42, labels: [ "syrus" ], body: "", state: "open")
     OpenStruct.new(
       number: number,
-      state: "open",
+      state: state,
       pull_request: nil,
       title: "Issue #{number}",
       body: body,
@@ -83,6 +83,34 @@ RSpec.describe PollRepositoryJob do
       expect {
         described_class.perform_now(repository.id)
       }.not_to have_enqueued_job(IngestIssueImagesJob)
+    end
+
+    it "closes open issue jobs when GitHub reports the source issue closed" do
+      job = Factories.job(user: user, repository: repository, issue_number: 720)
+      run = job.runs.first
+      closed_issue = issue(number: 720, state: "closed")
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label) do |_client, _slug, _label, state: "open"|
+        state == "closed" ? [ closed_issue ] : []
+      end
+
+      described_class.perform_now(repository.id)
+
+      expect(job.reload).to be_closed
+      expect(job.closure_reason).to eq("issue_closed")
+      expect(run.reload).to be_cancelled
+    end
+
+    it "leaves PR-backed jobs to the PR poller when their source issue is closed" do
+      job = Factories.job(user: user, repository: repository, issue_number: 720, pr_number: 9, branch_name: "syrus/issue-720-1")
+      closed_issue = issue(number: 720, state: "closed")
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label) do |_client, _slug, _label, state: "open"|
+        state == "closed" ? [ closed_issue ] : []
+      end
+
+      described_class.perform_now(repository.id)
+
+      expect(job.reload).to be_open
+      expect(job.closure_reason).to be_nil
     end
 
     it "enqueues a ClassifyIssueJob for new classifier-pending jobs when the agent is configured" do
@@ -317,7 +345,13 @@ RSpec.describe PollRepositoryJob do
     # Default: pretend GitHub reports no linked PR for these issues.
     # Tests covering the preempted path (below) override this stub to
     # return a real linked PR.
-    before { allow_any_instance_of(GithubClient).to receive(:linked_open_pr_for_issue).and_return(nil) }
+    before do
+      allow_any_instance_of(GithubClient).to receive(:linked_open_pr_for_issue).and_return(nil)
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label).and_call_original
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label)
+        .with(repository.slug, repository.trigger_label, state: "closed")
+        .and_return([])
+    end
 
     it "creates a Job for each issue that passes IngestPolicy and isn't dedup'd" do
       # Pre-seed: issue 46 already has a Job, must be dedup'd.
@@ -471,7 +505,13 @@ RSpec.describe PollRepositoryJob do
   end
 
   describe "poll status tracking", vcr: { cassette_name: "poll_repository_job/lists_issues" } do
-    before { allow_any_instance_of(GithubClient).to receive(:linked_open_pr_for_issue).and_return(nil) }
+    before do
+      allow_any_instance_of(GithubClient).to receive(:linked_open_pr_for_issue).and_return(nil)
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label).and_call_original
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label)
+        .with(repository.slug, repository.trigger_label, state: "closed")
+        .and_return([])
+    end
 
     it "sets last_poll_status to 'ok' and records last_poll_started_at after a successful poll" do
       freeze_time do

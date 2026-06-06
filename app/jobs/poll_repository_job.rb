@@ -16,12 +16,14 @@ class PollRepositoryJob < ApplicationJob
     repository.update_columns(last_poll_started_at: Time.current, last_poll_status: nil, last_poll_error: nil)
 
     begin
-      issues = GithubClient.for(repository: repository, user: repository.user)
-                           .issues_with_label(repository.slug, repository.trigger_label)
+      client = GithubClient.for(repository: repository, user: repository.user)
+      issues = client.issues_with_label(repository.slug, repository.trigger_label)
+      closed_issues = client.issues_with_label(repository.slug, repository.trigger_label, state: "closed")
 
       issues.each do |issue|
         ingest(issue, repository)
       end
+      close_jobs_for_closed_issues!(repository, closed_issues)
       repository.jobs.open_threads.find_each(&:start_pending_workflows_if_dependencies_satisfied!)
 
       repository.update_columns(last_poll_status: "ok", last_poll_error: nil)
@@ -109,6 +111,30 @@ class PollRepositoryJob < ApplicationJob
     )
     classify_if_available(job)
     enqueue_issue_image_ingest(job)
+  end
+
+  def close_jobs_for_closed_issues!(repository, issues)
+    issue_numbers = Array(issues)
+      .reject { |issue| pull_request_issue?(issue) }
+      .select { |issue| issue.state.to_s == "closed" }
+      .map(&:number)
+      .compact
+      .uniq
+    return if issue_numbers.empty?
+
+    repository.jobs
+      .issue_kind
+      .open_threads
+      .without_pr
+      .where(issue_number: issue_numbers)
+      .find_each do |job|
+        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{job.issue_number} closed upstream; closing Job ##{job.id}")
+        job.cancel_active_runs_and_close!("issue_closed")
+      end
+  end
+
+  def pull_request_issue?(issue)
+    issue.respond_to?(:pull_request) && issue.pull_request.present?
   end
 
   def ingest_epic_marker!(marker, issue, repository)
