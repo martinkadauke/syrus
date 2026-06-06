@@ -6986,10 +6986,37 @@ describe("App", () => {
           },
           {
             type: "message",
+            id: 20,
+            role: "tool_use",
+            tool_name: "Read",
+            content: { input: { file_path: "/syrus-home/.syrus/workflows/5185/spec/rails_helper.rb" } },
+            text: "",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 21,
+            role: "tool_result",
+            tool_name: "Read",
+            content: { result: [{ type: "text", text: "Loaded /syrus-home/.syrus/workflows/5185/spec/rails_helper.rb" }] },
+            text: "",
+            bookmarkable: false
+          },
+          {
+            type: "message",
             id: 19,
             role: "tool_use",
             tool_name: "Bash",
             content: { input: { command: "rg queue_as /syrus-home/.syrus/chat-workspaces/5/repositories/tkadauke/syrus/app/jobs" } },
+            text: "",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 22,
+            role: "tool_use",
+            tool_name: "Bash",
+            content: { input: { command: "bin/rspec /syrus-home/.syrus/workflows/5185/spec/models/job_spec.rb" } },
             text: "",
             bookmarkable: false
           },
@@ -7069,10 +7096,14 @@ describe("App", () => {
     )
 
     expect(await screen.findByText("Read")).toBeInTheDocument()
-    expect(screen.getAllByText("app/models/chat.rb").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/app\/models\/chat\.rb/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/spec\/rails_helper\.rb/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/Loaded spec\/rails_helper\.rb/)).toBeInTheDocument()
     expect(screen.getByText("Bash")).toBeInTheDocument()
-    expect(screen.getAllByText("rg queue_as app/jobs").length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/rg queue_as app\/jobs/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/bin\/rspec spec\/models\/job_spec\.rb/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/\/syrus-home\/\.syrus\/chat-workspaces/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/\/syrus-home\/\.syrus\/workflows/)).not.toBeInTheDocument()
     expect(screen.getByText(/class Chat\s+end/)).toBeInTheDocument()
     expect(screen.queryByText(/Agent run succeeded/)).not.toBeInTheDocument()
     expect(screen.queryByText(/MCP connected: syrus-chat-sidecar/)).not.toBeInTheDocument()

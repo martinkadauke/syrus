@@ -1785,6 +1785,7 @@ function toolLabel(name: string) {
 }
 
 const CHAT_REPOSITORY_ROOT_PATTERN = /(?:\/[^\s'"`,:;\])}]+)+\/\.syrus\/chat-workspaces\/\d+\/repositories\/[^/\s'"`,:;\])}]+\/[^/\s'"`,:;\])}]+\/?/g
+const WORKFLOW_ROOT_PATTERN = /(?:\/[^\s'"`,:;\])}]+)+\/\.syrus\/workflows\/\d+\/?/g
 
 function toolDetail(name: string, input: Record<string, unknown>) {
   let detail = ""
@@ -1840,15 +1841,17 @@ function toolDetail(name: string, input: Record<string, unknown>) {
 }
 
 function shortenChatRepositoryPaths(value: string) {
-  return value.replace(CHAT_REPOSITORY_ROOT_PATTERN, (match) => match.endsWith("/") ? "" : ".")
+  return value
+    .replace(CHAT_REPOSITORY_ROOT_PATTERN, (match) => match.endsWith("/") ? "" : ".")
+    .replace(WORKFLOW_ROOT_PATTERN, (match) => match.endsWith("/") ? "" : ".")
 }
 
 function fullResultBody(content: unknown): string {
-  if (typeof content === "string") return content
+  if (typeof content === "string") return shortenChatRepositoryPaths(content)
   if (Array.isArray(content)) {
     return content.map((item) => {
       const record = contentRecord(item)
-      if (record?.type === "text") return stringValue(record.text)
+      if (record?.type === "text") return shortenChatRepositoryPaths(stringValue(record.text))
       if (record?.type === "tool_reference") return `-> ${stringValue(record.tool_name)}`
       return ""
     }).filter(Boolean).join("\n")
