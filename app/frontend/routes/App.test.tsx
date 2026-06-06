@@ -5096,6 +5096,8 @@ describe("App", () => {
     expect(screen.queryByText("assistant_text")).not.toBeInTheDocument()
     expect(screen.queryByText("tool_call")).not.toBeInTheDocument()
     const transcriptStream = screen.getByTestId("run-transcript-log-stream")
+    expect(transcriptStream.closest("section")).toHaveClass("max-md:fixed", "max-md:inset-0", "max-md:h-[100dvh]")
+    expect(screen.getByRole("button", { name: "Close artifact viewer" })).toBeInTheDocument()
     setScrollMetrics(transcriptStream, { scrollHeight: 1000, clientHeight: 400, scrollTop: 600 })
     fireEvent.scroll(transcriptStream)
     setScrollMetrics(transcriptStream, { scrollHeight: 1200, clientHeight: 400, scrollTop: 600 })
@@ -5121,6 +5123,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Diff" }))
     expect(await screen.findByText(/diff --git a\/app.rb b\/app.rb/)).toBeInTheDocument()
+    expect(screen.getByTestId("agent-diff-viewer").closest("section")).toHaveClass("max-md:fixed", "max-md:inset-0", "max-md:h-[100dvh]")
     expect(screen.getByText("puts 'old forum'").closest("tr")).toHaveAttribute("data-diff-kind", "delete")
     expect(screen.getByText("puts 'forum'").closest("tr")).toHaveAttribute("data-diff-kind", "add")
     expect(screen.getByText("context").closest("tr")).toHaveAttribute("data-diff-kind", "context")

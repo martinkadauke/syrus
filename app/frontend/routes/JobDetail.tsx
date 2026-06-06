@@ -863,7 +863,7 @@ function RunRow({ run, payload, command, active = false }: { run: JobRun; payloa
         </div>
       </div>
       {artifacts.isError ? <p className="mt-3 text-xs text-red-700">{errorMessage(artifacts.error, "Unable to load run artifacts.")}</p> : null}
-      {artifactView && artifacts.data ? <RunArtifactsPanel payload={artifacts.data} view={artifactView} /> : null}
+      {artifactView && artifacts.data ? <RunArtifactsPanel onClose={() => setArtifactView(null)} payload={artifacts.data} view={artifactView} /> : null}
       {gradeLog.isError ? <p className="mt-3 text-xs text-red-700">{errorMessage(gradeLog.error, "Grade log failed.")}</p> : null}
       {gradeLogOpen && gradeLog.data ? (
         <section className="mt-3 rounded border border-gray-200 bg-gray-50">
@@ -878,11 +878,11 @@ function RunRow({ run, payload, command, active = false }: { run: JobRun; payloa
   )
 }
 
-function RunArtifactsPanel({ payload, view }: { payload: Awaited<ReturnType<typeof fetchJobRunArtifacts>>; view: "transcript" | "diff" }) {
+function RunArtifactsPanel({ payload, view, onClose }: { payload: Awaited<ReturnType<typeof fetchJobRunArtifacts>>; view: "transcript" | "diff"; onClose: () => void }) {
   if (view === "diff") {
     return (
-      <section className="mt-3 rounded border border-gray-200 bg-gray-50">
-        <h4 className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase text-gray-500">Agent diff</h4>
+      <section className={artifactPanelClass()}>
+        <ArtifactPanelHeader onClose={onClose}>Agent diff</ArtifactPanelHeader>
         {payload.agent_diff ? (
           <AgentDiff diff={payload.agent_diff} />
         ) : <p className="p-3 text-sm text-gray-400">No diff captured for this run.</p>}
@@ -891,10 +891,25 @@ function RunArtifactsPanel({ payload, view }: { payload: Awaited<ReturnType<type
   }
 
   return (
-    <section className="mt-3 rounded border border-gray-200 bg-gray-50">
-      <h4 className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase text-gray-500">Transcript</h4>
+    <section className={artifactPanelClass()}>
+      <ArtifactPanelHeader onClose={onClose}>Transcript</ArtifactPanelHeader>
       {payload.logs.length > 0 ? <RunTranscriptLogs logs={payload.logs} /> : <p className="p-3 text-sm text-gray-400">No transcript rows captured for this run.</p>}
     </section>
+  )
+}
+
+function artifactPanelClass() {
+  return "mt-3 rounded border border-gray-200 bg-gray-50 max-md:fixed max-md:inset-0 max-md:z-50 max-md:mt-0 max-md:flex max-md:h-[100dvh] max-md:flex-col max-md:rounded-none max-md:border-0 max-md:bg-white"
+}
+
+function ArtifactPanelHeader({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-3 py-2">
+      <h4 className="text-xs font-semibold uppercase text-gray-500">{children}</h4>
+      <button aria-label="Close artifact viewer" className="hidden rounded p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700 max-md:block" onClick={onClose} type="button">
+        <CloseIcon className="h-5 w-5" />
+      </button>
+    </div>
   )
 }
 
@@ -911,7 +926,7 @@ function AgentDiff({ diff }: { diff: string }) {
   const lines = parseUnifiedDiff(diff)
 
   return (
-    <div className="max-h-[32rem] overflow-auto bg-white font-mono text-xs" data-testid="agent-diff-viewer">
+    <div className="max-h-[32rem] overflow-auto bg-white font-mono text-xs max-md:min-h-0 max-md:flex-1 max-md:max-h-none" data-testid="agent-diff-viewer">
       <table className="min-w-full border-separate border-spacing-0">
         <tbody>
           {lines.map((line, index) => (
@@ -1015,7 +1030,7 @@ function RunTranscriptLogs({ logs }: { logs: Awaited<ReturnType<typeof fetchJobR
   }, [logSignature])
 
   return (
-    <ol className="max-h-[32rem] overflow-auto divide-y divide-gray-200" data-testid="run-transcript-log-stream" onScroll={handleScroll} ref={listRef}>
+    <ol className="max-h-[32rem] overflow-auto divide-y divide-gray-200 max-md:min-h-0 max-md:flex-1 max-md:max-h-none" data-testid="run-transcript-log-stream" onScroll={handleScroll} ref={listRef}>
       {displayLogs.map((log) => (
         <li className="grid gap-2 px-3 py-2 font-mono text-xs text-gray-800 sm:grid-cols-[5rem_minmax(0,1fr)]" key={log.id}>
           <span className="text-gray-400">{transcriptLogKindLabel(log.kind) || `#${log.sequence}`}</span>
