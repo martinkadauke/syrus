@@ -38,6 +38,7 @@ module App
         "checkbox" => "Checkbox",
         "issue" => "Issue",
         "state" => "State",
+        "landing_queue_position" => "Queue",
         "repository" => "Repository",
         "latest" => "Latest",
         "workflows_count" => "Workflows count",
@@ -584,6 +585,7 @@ module App
         latest_workflow_trigger_kind: job.latest_workflow_trigger_kind,
         pr_url: job.pr_number.present? ? App::Presentation.job_pr_url(job) : App::Presentation.external_pr_url(job),
         latest_workflow_state: job.latest_workflow_state,
+        landing_queue_position: landing_queue_position_for(job),
         retry_state: ::App::RetryState.for(job),
         created_at: job.created_at&.iso8601,
         updated_at: job.updated_at&.iso8601,
@@ -823,18 +825,38 @@ module App
 
     def landing_queue_json
       {
-        visible: subject == "job" && active_smart_folder&.attention_preset == "landing_queue",
+        visible: landing_queue_visible?,
         paused: user.landing_paused?,
         toggle_path: "/api/v1/app/dashboard/landing_pause"
       }
     end
 
+    def landing_queue_visible?
+      subject == "job" && active_smart_folder&.attention_preset == "landing_queue"
+    end
+
+    def landing_queue_position_for(job)
+      landing_queue_positions[job.id] if landing_queue_visible?
+    end
+
+    def landing_queue_positions
+      return {} unless landing_queue_visible?
+
+      @landing_queue_positions ||= LandingQueueProcessor.entries(jobs_base_scope).to_h { |entry| [ entry.job_id, entry.position ] }
+    end
+
     def column_options_json
       table = subject.pluralize
       {
-        required: User::DASHBOARD_REQUIRED_COLUMNS.fetch(table).map { |column| column_json(table, column) },
+        required: required_columns_for(table).map { |column| column_json(table, column) },
         optional: User::DASHBOARD_OPTIONAL_COLUMNS.fetch(table).map { |column| column_json(table, column) }
       }
+    end
+
+    def required_columns_for(table)
+      return %w[checkbox landing_queue_position issue] if table == "jobs" && landing_queue_visible?
+
+      User::DASHBOARD_REQUIRED_COLUMNS.fetch(table)
     end
 
     def column_json(table, column)

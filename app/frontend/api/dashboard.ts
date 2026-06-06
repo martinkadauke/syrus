@@ -59,6 +59,7 @@ export type DashboardJobItem = {
   latest_workflow_trigger_kind: string | null
   pr_url: string | null
   latest_workflow_state: string
+  landing_queue_position: number | null
   retry_state?: JobRetryState
   created_at: string | null
   updated_at: string | null

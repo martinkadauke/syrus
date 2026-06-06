@@ -1062,6 +1062,9 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
       </td>
     )
   }
+  if (column === "landing_queue_position") {
+    return <td className="px-4 py-3 font-mono text-xs font-semibold text-gray-600">{job.landing_queue_position ? `#${job.landing_queue_position}` : "-"}</td>
+  }
   if (column === "repository") {
     return <td className="px-4 py-3"><RepositorySlugLink className="font-mono text-xs text-gray-600 hover:text-blue-700 hover:underline" prefix={prefix} repository={job.repository} /></td>
   }
@@ -1618,6 +1621,7 @@ function dashboardColumnLabel(subject: DashboardSubject, column: string) {
       issue: "Issue",
       title: "Title",
       state: "State",
+      landing_queue_position: "Queue",
       repository: "Repository",
       latest: "Latest",
       workflows_count: "Workflows count",

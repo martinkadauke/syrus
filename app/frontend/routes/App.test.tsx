@@ -1713,7 +1713,18 @@ describe("App", () => {
                 paused: false,
                 toggle_path: "/api/v1/app/dashboard/landing_pause"
               },
-              items: [dashboardJobItem()]
+              controls: {
+                ...dashboardPayload().controls,
+                columns: {
+                  required: [
+                    { key: "checkbox", title: "Checkbox" },
+                    { key: "landing_queue_position", title: "Queue" },
+                    { key: "issue", title: "Issue" }
+                  ],
+                  optional: dashboardPayload().controls.columns.optional
+                }
+              },
+              items: [dashboardJobItem({ landing_queue_position: 3 })]
             })
           ),
           { status: 200, headers: { "Content-Type": "application/json" } }
@@ -1730,6 +1741,8 @@ describe("App", () => {
     )
 
     fireEvent.click(await screen.findByRole("button", { name: "Pause landing" }))
+    expect(screen.getByRole("columnheader", { name: "Queue" })).toBeInTheDocument()
+    expect(screen.getByRole("cell", { name: "#3" })).toBeInTheDocument()
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -8074,6 +8087,7 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     latest_workflow_trigger_kind: "rebase",
     pr_url: "https://github.com/acme/widgets/pull/34",
     latest_workflow_state: "running",
+    landing_queue_position: null,
     created_at: "2026-05-30T10:00:00Z",
     updated_at: "2026-05-30T12:00:00Z",
     started_at: "2026-05-30T10:01:00Z",
