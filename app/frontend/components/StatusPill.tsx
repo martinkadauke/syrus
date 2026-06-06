@@ -11,7 +11,7 @@ export function StatusPill({ state }: { state: string }) {
   return <TonePill active={normalized === "running"} tone={tone}>{state.replaceAll("_", " ")}</TonePill>
 }
 
-export function TonePill({ children, tone, active = false, title }: { children: ReactNode; tone: PillTone; active?: boolean; title?: string }) {
+export function TonePill({ children, tone, active = false, title, ariaLabel }: { children: ReactNode; tone: PillTone; active?: boolean; title?: string; ariaLabel?: string }) {
   const colors = {
     amber: "bg-amber-50 text-amber-700 ring-amber-200",
     blue: "bg-blue-50 text-blue-700 ring-blue-200",
@@ -21,7 +21,7 @@ export function TonePill({ children, tone, active = false, title }: { children: 
   }
 
   return (
-    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ${colors[tone]}`} data-status-pill="true" title={title}>
+    <span aria-label={ariaLabel} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ${colors[tone]}`} data-status-pill="true" title={title}>
       {active ? <RunningSpinner /> : null}
       <span>{children}</span>
     </span>

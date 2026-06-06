@@ -766,8 +766,7 @@ function KanbanCard({ item, onDragEnd, onDragStart, prefix }: { item: DashboardI
       <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
         <Link className="text-sm font-medium text-blue-600 hover:underline" to={withRoutePrefix(item.paths.job_path, prefix)}>{item.title}</Link>
         <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
-          <StatusPill state={item.summary_state} />
-          <ActiveWorkflowTriggerPill job={item} />
+          <WorkflowBadges state={item.summary_state} triggerAriaPrefix="Active workflow trigger" triggerKind={item.active_workflow_trigger_kind} />
           <RepositorySlugLink className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-500 hover:text-blue-700 hover:underline" prefix={prefix} repository={item.repository} />
           <OwnerBadge badge={item.owner_badge} />
           {item.pr_number ? <ExternalMetadataLink className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-500 hover:text-blue-700 hover:underline" href={item.pr_url}>PR #{item.pr_number}</ExternalMetadataLink> : null}
@@ -783,8 +782,7 @@ function KanbanCard({ item, onDragEnd, onDragStart, prefix }: { item: DashboardI
         <Link className="text-sm font-medium text-blue-600 hover:underline" to={withRoutePrefix(item.path, prefix)}>{slug}</Link>
         <Link className="mt-1 block text-sm text-blue-600 hover:underline" to={withRoutePrefix(item.job.path, prefix)}>{item.job.title}</Link>
         <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
-          <StatusPill state={item.state} />
-          <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.trigger_kind}</span>
+          <WorkflowBadges state={item.state} triggerAriaPrefix="Workflow trigger" triggerKind={item.trigger_kind} />
           <OwnerBadge badge={item.job.owner_badge} />
         </div>
       </article>
@@ -1010,8 +1008,7 @@ function MobileJobRow({ job, selected, onToggleOne, prefix }: { job: DashboardJo
       <input aria-label={`Select ${job.title}`} checked={selected} className="mt-1" onChange={() => onToggleOne(job.id)} type="checkbox" />
       <div className="min-w-0 text-gray-700">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <StatusPill state={job.summary_state} />
-          <ActiveWorkflowTriggerPill job={job} />
+          <WorkflowBadges state={job.summary_state} triggerAriaPrefix="Active workflow trigger" triggerKind={job.active_workflow_trigger_kind} />
           {job.total_cost_usd == null ? null : <span className="text-xs font-medium text-gray-500">{formatCurrency(job.total_cost_usd, 2)}</span>}
           <RepositorySlugLink prefix={prefix} repository={job.repository} />
           <OwnerBadge badge={job.owner_badge} />
@@ -1060,10 +1057,7 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
   if (column === "state") {
     return (
       <td className="px-4 py-3">
-        <div className="flex flex-wrap items-center gap-1">
-          <StatusPill state={job.summary_state} />
-          <ActiveWorkflowTriggerPill job={job} />
-        </div>
+        <WorkflowBadges state={job.summary_state} triggerAriaPrefix="Active workflow trigger" triggerKind={job.active_workflow_trigger_kind} />
       </td>
     )
   }
@@ -1099,9 +1093,8 @@ function LatestWorkflowCell({ job }: { job: DashboardJobItem }) {
 
   return (
     <td aria-label={`Latest workflow: ${job.latest_workflow_trigger_kind} ${job.latest_workflow_state}`} className="px-4 py-3">
-      <div className="flex flex-col items-start gap-1">
-        <span className="text-xs text-gray-500">{job.latest_workflow_trigger_kind}</span>
-        <StatusPill state={job.latest_workflow_state} />
+      <div className="flex flex-col items-start gap-1.5">
+        <WorkflowBadges state={job.latest_workflow_state} triggerAriaPrefix="Latest workflow trigger" triggerKind={job.latest_workflow_trigger_kind} />
         <RetryStateInline job={job} />
       </div>
     </td>
@@ -1121,10 +1114,21 @@ function JobSlugMetadata({ job, prefix }: { job: DashboardJobItem; prefix: strin
   return <IssueMetadata job={job} />
 }
 
-function ActiveWorkflowTriggerPill({ job }: { job: DashboardJobItem }) {
-  if (!job.active_workflow_trigger_kind) return null
+function WorkflowBadges({ state, triggerAriaPrefix, triggerKind }: { state: string; triggerAriaPrefix: string; triggerKind: string | null }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {triggerKind ? <WorkflowTriggerPill ariaPrefix={triggerAriaPrefix} triggerKind={triggerKind} /> : null}
+      <StatusPill state={state} />
+    </span>
+  )
+}
 
-  return <span aria-label={`Active workflow trigger: ${job.active_workflow_trigger_kind}`} className="rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-blue-100">{job.active_workflow_trigger_kind}</span>
+function WorkflowTriggerPill({ ariaPrefix, triggerKind }: { ariaPrefix: string; triggerKind: string }) {
+  return (
+    <TonePill ariaLabel={`${ariaPrefix}: ${triggerKind}`} tone="gray">
+      {triggerKind.replaceAll("_", " ")}
+    </TonePill>
+  )
 }
 
 function IssueMetadata({ job }: { job: DashboardJobItem }) {
