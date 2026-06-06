@@ -50,6 +50,34 @@ RSpec.describe StackRebaseCoordinator do
     ])
   end
 
+  it "starts a stack rebase for the whole child subtree when a middle stack parent is amended" do
+    grandchild = Factories.job_record(
+      user: child.user,
+      repository: repository,
+      issue_number: 44,
+      pr_number: 44,
+      branch_name: "syrus/issue-44-#{child.id}",
+      parent_job: child
+    )
+    dispatched = []
+    allow(StepDispatcher).to receive(:start_workflow) { |workflow| dispatched << workflow }
+
+    described_class.parent_amended(parent)
+
+    expect(dispatched.size).to eq(1)
+    workflow = dispatched.first
+    expect(workflow.trigger_kind).to eq("stack_rebase")
+    expect(workflow.job_id).to eq(child.id)
+    expect(workflow.artifact(StackRebasePlan::STACK_ARTIFACT).map { |entry| entry["job_id"] }).to eq([
+      child.id,
+      grandchild.id
+    ])
+    expect(workflow.artifact(StackRebasePlan::STACK_ARTIFACT).map { |entry| entry["base_branch"] }).to eq([
+      parent.branch_name,
+      child.branch_name
+    ])
+  end
+
   it "re-points children to main and rebases them when the parent merges" do
     parent.update_columns(state: "closed", closure_reason: "pr_merged")
     client = instance_double(

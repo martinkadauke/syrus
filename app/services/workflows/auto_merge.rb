@@ -40,12 +40,19 @@ module Workflows
 
     def self.after_fail(workflow)
       job = workflow.job
+      cleanup_unrepaired_workspace(workflow)
       return unless job&.landing?
 
       reason = workflow.artifact("failure_reason").presence || "auto_merge workflow failed"
       job.landing_failure_reason = reason.to_s.truncate(500)
       job.fail_landing! if job.may_fail_landing?
       job.save! if job.changed?
+    end
+
+    def self.cleanup_unrepaired_workspace(workflow)
+      return if workflow.steps.where(kind: "landing_fix", state: "succeeded").exists?
+
+      WorkflowWorkspace.cleanup_for(workflow)
     end
   end
 end

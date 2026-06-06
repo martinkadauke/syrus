@@ -183,6 +183,31 @@ describe "Job state propagation (Phase 2)" do
       expect(job.landing_failure_reason).to eq("auto_merge workflow failed")
     end
 
+    it "cleans unrepaired auto_merge workspaces on workflow.fail!" do
+      job.update!(state: "landing")
+      wf = Workflows::AutoMerge.instantiate(job: job)
+      wf.update!(state: "running", started_at: 1.minute.ago)
+      allow(WorkflowWorkspace).to receive(:cleanup_for)
+
+      wf.fail!
+      wf.save!
+
+      expect(WorkflowWorkspace).to have_received(:cleanup_for).with(wf)
+    end
+
+    it "keeps auto_merge workspaces when a landing_fix step succeeded" do
+      job.update!(state: "landing")
+      wf = Workflows::AutoMerge.instantiate(job: job)
+      wf.update!(state: "running", started_at: 1.minute.ago)
+      Step.create!(workflow: wf, kind: "landing_fix", position: 99, state: "succeeded")
+      allow(WorkflowWorkspace).to receive(:cleanup_for)
+
+      wf.fail!
+      wf.save!
+
+      expect(WorkflowWorkspace).not_to have_received(:cleanup_for)
+    end
+
     it "drives :running → :implemented on workflow.succeed! for follow-up workflows whose chain doesn't include pr_open" do
       job.update!(state: "running")
       wf = described_class.create!(job: job, trigger_kind: "pr_comment", state: "running", started_at: 1.minute.ago)
