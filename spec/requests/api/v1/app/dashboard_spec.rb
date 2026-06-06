@@ -202,7 +202,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         issue_title: "First in line",
         state: "approved",
         pr_number: 21,
-        approved_at: 2.hours.ago
+        approved_at: 1.hour.ago
       )
       second = Factories.job_record(
         repository: repo,
@@ -211,7 +211,8 @@ RSpec.describe "App API dashboard commands", type: :request do
         issue_title: "Second in line",
         state: "approved",
         pr_number: 22,
-        approved_at: 1.hour.ago
+        approved_at: 2.hours.ago,
+        parent_job: first
       )
       folder = SmartFolder.create!(
         user: user,
@@ -242,7 +243,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         issue_title: "First in line",
         state: "approved",
         pr_number: 21,
-        approved_at: 2.hours.ago
+        approved_at: 1.hour.ago
       )
       second = Factories.job_record(
         repository: repo,
@@ -251,7 +252,8 @@ RSpec.describe "App API dashboard commands", type: :request do
         issue_title: "Second in line",
         state: "approved",
         pr_number: 22,
-        approved_at: 1.hour.ago
+        approved_at: 2.hours.ago,
+        parent_job: first
       )
       folder = SmartFolder.create!(
         user: user,

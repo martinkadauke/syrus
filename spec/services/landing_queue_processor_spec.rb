@@ -37,6 +37,28 @@ RSpec.describe LandingQueueProcessor do
     expect(child.reload).to be_approved
   end
 
+  it "places stack parents before children in landing queue positions" do
+    child = queue_job(issue_number: 2, approved_at: 2.minutes.ago)
+    parent = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    child.update!(parent_job: parent)
+
+    entries = described_class.entries(Job.where(id: [ child.id, parent.id ]))
+
+    expect(entries.map(&:job_id)).to eq([ parent.id, child.id ])
+    expect(entries.map(&:position)).to eq([ 1, 2 ])
+  end
+
+  it "places explicit Job dependencies before dependents in landing queue positions" do
+    dependent = queue_job(issue_number: 2, approved_at: 2.minutes.ago)
+    prerequisite = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    JobDependency.create!(job: dependent, depends_on_job: prerequisite, source: "manual")
+
+    entries = described_class.entries(Job.where(id: [ dependent.id, prerequisite.id ]))
+
+    expect(entries.map(&:job_id)).to eq([ prerequisite.id, dependent.id ])
+    expect(entries.map(&:position)).to eq([ 1, 2 ])
+  end
+
   it "keeps dependency-blocked Jobs approved and lands the next eligible Job" do
     prerequisite = Factories.job_record(user: user, repository: repository, issue_number: 1, state: "queued", pr_number: 1)
     blocked = queue_job(issue_number: 2, approved_at: 2.minutes.ago)

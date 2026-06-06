@@ -383,7 +383,7 @@ module App
       scope = filtered_jobs_scope
       total = scope.count
       scope = scope.with_latest_workflow_snapshot.preload(:repository, :user, :owner_user, :claimed_by_user, :epic, :tags, :workflows, :runs)
-      items = paginate(apply_sort(scope, :job)).map { |job| job_json(job) }
+      items = sorted_jobs(scope).map { |job| job_json(job) }
 
       { total: total, items: items }
     end
@@ -474,6 +474,26 @@ module App
       else
         default_sort(scope, subject_name, direction)
       end
+    end
+
+    def sorted_jobs(scope)
+      return landing_queue_sorted_jobs(scope) if landing_queue_position_sort?
+
+      paginate(apply_sort(scope, :job))
+    end
+
+    def landing_queue_position_sort?
+      landing_queue_visible? && sort_value(user.dashboard_sort(:job), "column") == "landing_queue_position"
+    end
+
+    def landing_queue_sorted_jobs(scope)
+      direction = sort_value(user.dashboard_sort(:job), "direction") == "asc" ? 1 : -1
+      positions = landing_queue_positions
+      sorted = scope.to_a.sort_by do |job|
+        position = positions[job.id]
+        position ? [ 0, position * direction, job.id * direction ] : [ 1, 0, job.id ]
+      end
+      sorted.slice((page - 1) * PER_PAGE, PER_PAGE) || []
     end
 
     def default_sort(scope, subject_name, direction)

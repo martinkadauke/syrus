@@ -64,9 +64,58 @@ class LandingQueueProcessor
   private
 
   def ordered_queue(scope)
-    scope.where(state: %w[ approved landing ])
-         .includes(:user, :repository, :epic, :parent_job, dependencies: :depends_on_job)
-         .order(Arel.sql("COALESCE(jobs.approved_at, jobs.updated_at) ASC"), :id)
+    chronological = scope.where(state: %w[ approved landing ])
+                         .includes(:user, :repository, :epic, :parent_job, dependencies: :depends_on_job)
+                         .order(Arel.sql("COALESCE(jobs.approved_at, jobs.updated_at) ASC"), :id)
+                         .to_a
+
+    dependency_order(chronological)
+  end
+
+  def dependency_order(jobs)
+    by_id = jobs.index_by(&:id)
+    original_index = jobs.each_with_index.to_h
+    incoming = Hash.new { |hash, key| hash[key] = Set.new }
+    outgoing = Hash.new { |hash, key| hash[key] = Set.new }
+
+    jobs.each { |job| incoming[job.id] }
+    jobs.each do |job|
+      landing_queue_prerequisite_ids(job).each do |prerequisite_id|
+        next unless by_id.key?(prerequisite_id)
+
+        outgoing[prerequisite_id] << job.id
+        incoming[job.id] << prerequisite_id
+      end
+    end
+
+    ready = jobs.select { |job| incoming[job.id].empty? }
+                .sort_by { |job| original_index.fetch(job) }
+    ordered = []
+
+    until ready.empty?
+      job = ready.shift
+      ordered << job
+
+      outgoing[job.id].sort_by { |dependent_id| original_index.fetch(by_id.fetch(dependent_id)) }.each do |dependent_id|
+        incoming[dependent_id].delete(job.id)
+        ready << by_id.fetch(dependent_id) if incoming[dependent_id].empty?
+      end
+      ready.sort_by! { |ready_job| original_index.fetch(ready_job) }
+    end
+
+    ordered + jobs.reject { |job| ordered.include?(job) }
+  end
+
+  def landing_queue_prerequisite_ids(job)
+    ids = []
+    ids << job.parent_job_id if job.parent_job_id.present?
+    job.dependencies.each do |dependency|
+      next if job.dependencies_overridden_at.present?
+      next if dependency.pending? || dependency.depends_on_job_id.blank?
+
+      ids << dependency.depends_on_job_id
+    end
+    ids.uniq
   end
 
   def start_ready_epic_sibling_jobs!
