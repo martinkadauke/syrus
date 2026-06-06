@@ -46,11 +46,17 @@ module App
     attr_reader :job
 
     def latest_failed_workflow
-      @latest_failed_workflow ||= job.workflows.select(&:failed?).max_by { |workflow| [ workflow.created_at || Time.zone.at(0), workflow.id ] }
+      @latest_failed_workflow ||= begin
+        workflow = job.latest_workflow
+        workflow if workflow&.failed?
+      end
     end
 
     def latest_failed_run
-      @latest_failed_run ||= job.runs.select(&:failed?).max_by { |run| [ run.created_at || Time.zone.at(0), run.id ] }
+      @latest_failed_run ||= begin
+        run = job.current_run
+        run if run&.failed?
+      end
     end
 
     def artifacts
