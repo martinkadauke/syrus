@@ -4970,6 +4970,28 @@ describe("App", () => {
           { id: 43, label: "#43", title: "Approve sibling aqueduct", job_path: "/jobs/43" }
         ]
       },
+      dependencies: [
+        {
+          id: 13,
+          source: "parsed",
+          manual: false,
+          pending: false,
+          succeeded: true,
+          unresolved_slug: null,
+          depends_on_job: {
+            id: 44,
+            kind: "issue",
+            state: "closed",
+            summary_state: "closed",
+            repository_slug: "acme/widgets",
+            issue_number: 84,
+            issue_title: "Polish the dependency",
+            branch_name: "syrus/issue-84",
+            pr_number: 101,
+            job_path: "/jobs/44"
+          }
+        }
+      ],
       dependents: [
         {
           id: 12,
@@ -5041,6 +5063,7 @@ describe("App", () => {
     expect(screen.getByText("Moved the uphill water simulation.")).toBeInTheDocument()
     expect(screen.getByText(/In landing queue: position #1/)).toHaveTextContent("waiting for epic siblings to be approved")
     expect(screen.getByRole("link", { name: "#43 Approve sibling aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/43")
+    expect(screen.getByRole("link", { name: "acme/widgets #84 (closed)" })).toHaveAttribute("href", "/app-shell/jobs/44")
     expect(screen.queryByRole("button", { name: "Show timeline" })).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText("Add tag")).toBeInTheDocument()
 
