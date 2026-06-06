@@ -595,8 +595,8 @@ function DependenciesPanel({ payload, command, prefix }: { payload: JobDetailPay
         {payload.dependents.length > 0 ? (
           <ul className="mt-2 divide-y divide-gray-100">
             {payload.dependents.map((dependent) => (
-              <li className="py-2" key={dependent.id}>
-                <Link className="text-blue-600 hover:underline" to={withRoutePrefix(dependent.job.job_path, prefix)}>{dependent.job.repository_slug} {dependent.job.issue_number ? `#${dependent.job.issue_number}` : jobSlug(dependent.job.id)}</Link>
+              <li className="flex flex-wrap items-center gap-2 py-2" key={dependent.id}>
+                <Link className="text-blue-600 hover:underline" to={withRoutePrefix(dependent.job.job_path, prefix)}>{dependent.job.repository_slug} {jobSlug(dependent.job.id)}</Link>
                 <StatusPill state={dependent.job.summary_state} />
               </li>
             ))}
