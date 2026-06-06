@@ -173,7 +173,7 @@ module Steps
         return
       end
 
-      if rebase_attempt_cap_reached?
+      if rebase_attempt_cap_reached?(gate.pr)
         log("auto_merge: needs_rebase but #{PollRebaseJob::REBASE_ATTEMPT_CAP} consecutive rebase attempts have failed; failing landing", kind: "system")
         raise StepFailed, "auto_merge: #{gate.reason} and rebase cap reached"
       end
@@ -194,13 +194,8 @@ module Steps
       RebaseWorkflowSelector.active_for_stack?(job)
     end
 
-    def rebase_attempt_cap_reached?
-      consecutive = 0
-      job.workflows.where(trigger_kind: RebaseWorkflowSelector::TRIGGER_KINDS).reorder(id: :desc).each do |workflow|
-        break if workflow.succeeded?
-        consecutive += 1 if workflow.failed?
-      end
-      consecutive >= PollRebaseJob::REBASE_ATTEMPT_CAP
+    def rebase_attempt_cap_reached?(pr)
+      RebaseAttemptGuard.cap_reached?(job, pr: pr)
     end
 
     def deferred_mergeable_state(gate)

@@ -28,6 +28,9 @@ class LandingFailureHandler
     if infrastructure_blocker?
       pause_landing!
       job.defer_landing! if job.may_defer_landing?
+    elsif rebase_cap_blocker?
+      log_rebase_cap!
+      job.defer_landing! if job.may_defer_landing?
     else
       job.fail_landing! if job.may_fail_landing?
     end
@@ -40,6 +43,10 @@ class LandingFailureHandler
 
   def infrastructure_blocker?
     self.class.infrastructure_blocker?(reason)
+  end
+
+  def rebase_cap_blocker?
+    reason.match?(/rebase cap reached/i)
   end
 
   def pause_landing!
@@ -60,5 +67,18 @@ class LandingFailureHandler
     )
   rescue StandardError => e
     Rails.logger.warn("[LandingFailureHandler] failed to log landing pause for Job ##{job.id}: #{e.class}: #{e.message}")
+  end
+
+  def log_rebase_cap!
+    log_run = run || job.current_run
+    return unless log_run
+
+    JobLog.append!(
+      run: log_run,
+      kind: "system",
+      chunk: "landing_queue: deferred landing because the rebase cap was reached; run a manual rebase or wait for the PR head/base to change before retrying"
+    )
+  rescue StandardError => e
+    Rails.logger.warn("[LandingFailureHandler] failed to log rebase-cap blocker for Job ##{job.id}: #{e.class}: #{e.message}")
   end
 end

@@ -83,6 +83,33 @@ RSpec.describe LandingQueueProcessor do
     expect(entry.blocked_reason).to eq(RebaseLoopGuard::BLOCK_REASON)
   end
 
+  it "blocks approved Jobs whose rebase cap is exhausted while GitHub still reports unmergeable" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    job.update!(pr_mergeable: false, landing_failure_reason: "auto_merge: dirty and rebase cap reached")
+    RebaseAttemptGuard::ATTEMPT_CAP.times do
+      Workflows::Rebase.instantiate(job: job).update!(state: "failed")
+    end
+
+    expect {
+      expect(described_class.call).to be_nil
+    }.not_to change { job.workflows.where(trigger_kind: "auto_merge").count }
+
+    expect(job.reload).to be_approved
+    entry = described_class.entries(Job.where(id: job.id)).first
+    expect(entry.blocked_reason).to eq(RebaseAttemptGuard::BLOCK_REASON)
+  end
+
+  it "clears a stale landing failure reason when a Job starts landing again" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    job.update!(landing_failure_reason: "old landing failure")
+
+    workflow = described_class.call
+
+    expect(workflow.job).to eq(job)
+    expect(job.reload).to be_landing
+    expect(job.landing_failure_reason).to be_nil
+  end
+
   it "holds approved epic jobs until every open sibling is approved" do
     epic = Factories.epic(user: user, repository: repository, state: "in_progress")
     approved = queue_job(issue_number: 1, approved_at: 1.minute.ago, epic: epic)

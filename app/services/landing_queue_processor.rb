@@ -76,6 +76,7 @@ class LandingQueueProcessor
       raise ActiveRecord::Rollback unless job.approved?
       raise ActiveRecord::Rollback unless blockage_for(job)[:blocked_reason].blank?
 
+      job.landing_failure_reason = nil
       job.start_landing!
       job.save!
       workflow = Workflows::AutoMerge.instantiate(job: job)
@@ -105,6 +106,7 @@ class LandingQueueProcessor
     return blocked("missing pull request") if job.pr_number.blank?
     return blocked("active workflow") if job.workflows.active.exists?
     return blocked(RebaseLoopGuard::BLOCK_REASON) if RebaseLoopGuard.waiting_after_noop?(job)
+    return blocked(RebaseAttemptGuard::BLOCK_REASON) if RebaseAttemptGuard.blocking_landing?(job)
     return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?
     if job.epic
       unapproved_siblings = unapproved_epic_siblings(job)

@@ -88,12 +88,7 @@ class PollMergeStateJob < ApplicationJob
   end
 
   def attempt_cap_reached?
-    consecutive = 0
-    @job.workflows.where(trigger_kind: RebaseWorkflowSelector::TRIGGER_KINDS).reorder(id: :desc).each do |workflow|
-      break if workflow.succeeded?
-      consecutive += 1 if workflow.failed?
-    end
-    consecutive >= PollRebaseJob::REBASE_ATTEMPT_CAP
+    RebaseAttemptGuard.cap_reached?(@job, pr: @pr)
   end
 
   def repo_rebase_concurrency_reached?

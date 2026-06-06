@@ -54,4 +54,22 @@ RSpec.describe LandingFailureHandler do
     expect(user.reload.landing_paused).to eq(true)
     expect(run.job_logs.pluck(:chunk)).to include(include("landing_queue: paused landing"))
   end
+
+  it "preserves approval for rebase cap blockers without globally pausing landing" do
+    job = landing_job
+    run = auto_merge_run(job)
+    approved_at = job.approved_at
+
+    described_class.call(
+      job: job,
+      run: run,
+      reason: "Steps::Base::StepFailed: auto_merge: PR mergeable_state is \"dirty\" and rebase cap reached"
+    )
+
+    expect(job.reload).to be_approved
+    expect(job.approved_at).to eq(approved_at)
+    expect(job.landing_failure_reason).to include("rebase cap reached")
+    expect(user.reload.landing_paused).to eq(false)
+    expect(run.job_logs.pluck(:chunk)).to include(include("landing_queue: deferred landing because the rebase cap was reached"))
+  end
 end

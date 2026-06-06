@@ -8,7 +8,7 @@ class PollRebaseJob < ApplicationJob
   # conflict mechanically — bail and surface to the operator.
   # Successful rebases reset the counter (long-lived PRs that rebase
   # cleanly many times should never be blocked).
-  REBASE_ATTEMPT_CAP = 5
+  REBASE_ATTEMPT_CAP = RebaseAttemptGuard::ATTEMPT_CAP
 
   # Concurrent-rebase cap per repository on the AUTONOMOUS poller
   # path. Pathological case: someone merges a schema.rb timestamp
@@ -98,13 +98,8 @@ class PollRebaseJob < ApplicationJob
   end
 
   def attempt_cap_reached?
-    consecutive = 0
-    @job.workflows.where(trigger_kind: RebaseWorkflowSelector::TRIGGER_KINDS).reorder(id: :desc).each do |w|
-      break if w.succeeded?
-      consecutive += 1 if w.failed?
-      # queued/running/cancelled don't count toward or reset the streak
-    end
-    return false if consecutive < REBASE_ATTEMPT_CAP
+    return false unless RebaseAttemptGuard.cap_reached?(@job, pr: @pr)
+
     Rails.logger.info("[PollRebaseJob] job #{@job.id} hit rebase cap (#{REBASE_ATTEMPT_CAP} consecutive failures); skipping")
     true
   end
