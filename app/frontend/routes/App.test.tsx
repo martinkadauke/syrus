@@ -1026,7 +1026,24 @@ describe("App", () => {
                   kanban_lanes: ["queued", "running", "succeeded"],
                   raw: {}
                 },
-                items: [dashboardJobItem()]
+                items: [
+                  dashboardJobItem({
+                    retry_state: {
+                      classification: "git_failure",
+                      classification_label: "Git failure",
+                      retryable: true,
+                      next_auto_retry_at: null,
+                      retry_attempt_count: 1,
+                      retry_budget_remaining: 2,
+                      retry_budget: 3,
+                      auto_retry_exhausted: false,
+                      provider_circuit_open: false,
+                      retry_delayed_until: null,
+                      retry_delay_reason: null,
+                      state_label: "Retryable failure"
+                    }
+                  })
+                ]
               })
             ),
             { status: 200, headers: { "Content-Type": "application/json" } }
@@ -1057,7 +1074,10 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("target", "_blank")
     expect(screen.getByRole("link", { name: "PR #34" })).toHaveAttribute("href", "https://github.com/acme/widgets/pull/34")
     expect(screen.getByRole("link", { name: "PR #34" })).toHaveAttribute("target", "_blank")
-    expect(document.querySelectorAll("[data-status-pill='true']")).toHaveLength(2)
+    expect(document.querySelectorAll("[data-status-pill='true']")).toHaveLength(4)
+    for (const label of screen.getAllByText("Retryable failure")) {
+      expect(label.closest("[data-status-pill='true']")).toHaveClass("rounded-full", "ring-1")
+    }
     expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
     expect(screen.getByRole("link", { name: "Epics" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
