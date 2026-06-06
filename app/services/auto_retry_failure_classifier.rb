@@ -53,6 +53,10 @@ class AutoRetryFailureClassifier
 
   def self.call(...) = new(...).call
 
+  def self.non_retryable_message?(message)
+    NON_RETRYABLE_MESSAGE_PATTERNS.any? { |pattern| message.to_s.match?(pattern) }
+  end
+
   def initialize(workflow:)
     @workflow = workflow
   end
@@ -68,7 +72,7 @@ class AutoRetryFailureClassifier
     diagnostic = run.run_diagnostic
     if diagnostic
       message = [ diagnostic.error_message, diagnostic.error_class ].compact.join(" ")
-      return non_retryable("non_retryable_failure", "known user/code/config failure") if NON_RETRYABLE_MESSAGE_PATTERNS.any? { |pattern| message.match?(pattern) }
+      return non_retryable("non_retryable_failure", "known user/code/config failure") if self.class.non_retryable_message?(message)
       return retryable(diagnostic.error_class, "retryable exception class") if retryable_error_class?(diagnostic.error_class)
       return retryable("transient_process_failure", "retryable diagnostic message") if RETRYABLE_MESSAGE_PATTERNS.any? { |pattern| message.match?(pattern) }
     end

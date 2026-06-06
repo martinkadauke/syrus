@@ -103,5 +103,32 @@ RSpec.describe App::RetryState do
         state_label: "Retryable failure"
       )
     end
+
+    it "does not call rebase-cap landing failures retryable" do
+      job = Factories.job
+      workflow = job.latest_workflow
+      reason = 'Steps::Base::StepFailed: auto_merge: PR mergeable_state is "dirty" and rebase cap reached'
+
+      job.update!(state: "implemented", landing_failure_reason: reason)
+      workflow.update!(
+        state: "failed",
+        failure_reason: reason,
+        artifacts: { "failure_reason" => reason },
+        failure_count: 1,
+        finished_at: 1.minute.ago
+      )
+      job.initial_run.update_columns(state: "failed", finished_at: 1.minute.ago)
+      job.initial_run.create_run_diagnostic!(
+        error_class: "Steps::Base::StepFailed",
+        error_message: reason
+      )
+
+      expect(described_class.for(job.reload)).to include(
+        classification: "non_retryable_failure",
+        classification_label: "Non retryable failure",
+        retryable: false,
+        state_label: "Waiting for operator"
+      )
+    end
   end
 end

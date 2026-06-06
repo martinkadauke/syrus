@@ -40,6 +40,10 @@ RSpec.describe AutoRetryFailureClassifier do
     expect(result.classification).to eq("non_retryable_failure")
   end
 
+  it "recognizes known non-retryable messages without a workflow" do
+    expect(described_class.non_retryable_message?("auto_merge: PR is dirty and rebase cap reached")).to be(true)
+  end
+
   it "classifies timeout diagnostics as retryable" do
     fail_run!(error_class: "Timeout::Error", error_message: "execution expired")
 

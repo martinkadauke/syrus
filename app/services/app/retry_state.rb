@@ -64,7 +64,12 @@ module App
     end
 
     def classification
-      @classification ||= first_present(CLASSIFICATION_KEYS)&.to_s&.presence
+      @classification ||= begin
+        explicit = first_present(CLASSIFICATION_KEYS - [ "failure_reason" ])&.to_s&.presence
+        explicit ||
+          ("non_retryable_failure" if non_retryable_failure_text?) ||
+          first_present([ "failure_reason" ])&.to_s&.presence
+      end
     end
 
     def classification_label
@@ -76,6 +81,7 @@ module App
       return explicit unless explicit.nil?
       return false unless latest_failed_workflow || latest_failed_run
       return false if auto_retry_exhausted?
+      return false if non_retryable_failure_text?
 
       job.open? && !job.any_active_run?
     end
@@ -126,6 +132,20 @@ module App
       return "Waiting for operator" if latest_failed_workflow || latest_failed_run
 
       "No failure"
+    end
+
+    def non_retryable_failure_text?
+      @non_retryable_failure_text ||= AutoRetryFailureClassifier.non_retryable_message?(failure_text)
+    end
+
+    def failure_text
+      [
+        job.landing_failure_reason,
+        latest_failed_workflow&.failure_reason,
+        artifacts["failure_reason"],
+        latest_failed_run&.run_diagnostic&.error_class,
+        latest_failed_run&.run_diagnostic&.error_message
+      ].compact.join("\n")
     end
 
     def first_present(keys)
