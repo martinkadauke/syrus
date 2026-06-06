@@ -7047,7 +7047,7 @@ describe("App", () => {
     expect(screen.getByText("Cancelled by operator.")).toBeInTheDocument()
   })
 
-  it("renders unmatched text tool results like assistant messages", async () => {
+  it("keeps unmatched text tool results out of assistant message rendering", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(JSON.stringify(chatPayload({
         messages: [
@@ -7072,10 +7072,8 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByText("Perfect! Now I have all the information I need.")).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Queue setup" })).toBeInTheDocument()
-    expect(screen.queryByText("tool_result")).not.toBeInTheDocument()
-    expect(screen.queryByText(/"result"/)).not.toBeInTheDocument()
+    expect(await screen.findByText("tool_result")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Queue setup" })).not.toBeInTheDocument()
   })
 
   it("runs chat commands through the app API", async () => {

@@ -444,20 +444,6 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
     )
   }
 
-  if (item.role === "tool_result" && !item.proposal) {
-    const body = toolResultAssistantBody(item.content)
-    if (body) {
-      return (
-        <article className="group/message relative pt-6" id={`chat_message_${item.id}`}>
-          <span className="absolute -top-4" id={`message-${item.id}`} />
-          <div className="max-w-3xl rounded border border-gray-200 bg-white px-4 py-3">
-            <Markdown className="chat-prose text-gray-800" text={body} />
-          </div>
-        </article>
-      )
-    }
-  }
-
   if (item.role === "system") {
     return <SystemMessage item={item.system || { tone: "neutral", label: "System", body: item.text }} />
   }
@@ -1730,14 +1716,6 @@ function structuredTool(message: ChatMessageItem): ChatStructuredTool {
     proposal_id: proposal?.id || null,
     proposal_state_label: proposal?.state === "proposed" ? "pending" : proposal?.state || null
   }
-}
-
-function toolResultAssistantBody(content: unknown) {
-  const record = contentRecord(content)
-  if (!record || record.is_error === true) return ""
-
-  const body = fullResultBody(record.result).trim()
-  return body === "(empty)" ? "" : body
 }
 
 function systemMessage(text: string): ChatSystemMessage {
