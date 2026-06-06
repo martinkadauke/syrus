@@ -89,7 +89,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body.dig("preferences", "sort")).to include("column" => "title", "direction" => "asc")
       expect(body["controls"]).to include(
         "views" => %w[list kanban],
-        "sort_columns" => %w[title state repository created_at started_at],
+        "sort_columns" => %w[title state repository landing_queue_position created_at started_at],
         "sort_directions" => %w[asc desc],
         "columns" => {
           "required" => [
@@ -228,8 +228,50 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body.dig("controls", "columns", "required")).to include(
         { "key" => "landing_queue_position", "title" => "Queue" }
       )
+      expect(body.dig("controls", "sort_columns")).to include("landing_queue_position")
       positions = body.fetch("items").index_by { |item| item.fetch("id") }.transform_values { |item| item.fetch("landing_queue_position") }
       expect(positions).to include(first.id => 1, second.id => 2)
+    end
+
+    it "sorts by landing queue position when the landing smart folder is active" do
+      repo.update!(auto_merge_enabled: true)
+      first = Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 21,
+        issue_title: "First in line",
+        state: "approved",
+        pr_number: 21,
+        approved_at: 2.hours.ago
+      )
+      second = Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 22,
+        issue_title: "Second in line",
+        state: "approved",
+        pr_number: 22,
+        approved_at: 1.hour.ago
+      )
+      folder = SmartFolder.create!(
+        user: user,
+        subject_type: "job",
+        name: "Landing queue",
+        kind: "user_defined",
+        filter: SmartFolder.attention_preset_filter("landing_queue")
+      )
+
+      user.update_dashboard_sort!(subject: "job", column: "landing_queue_position", direction: "asc")
+      get "/api/v1/app/dashboard", params: { subject: "job", smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body.fetch("items").map { |item| item.fetch("id") }).to eq([ first.id, second.id ])
+
+      user.update_dashboard_sort!(subject: "job", column: "landing_queue_position", direction: "desc")
+      get "/api/v1/app/dashboard", params: { subject: "job", smart_folder_id: folder.id }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body.fetch("items").map { |item| item.fetch("id") }).to eq([ second.id, first.id ])
     end
 
     it "filters dashboard records by ownership scope and persists the preference" do

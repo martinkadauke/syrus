@@ -455,6 +455,8 @@ module App
         scope.reorder(Job.arel_table[:state].public_send(direction), Job.arel_table[:id].public_send(direction))
       when [ "job", "repository" ]
         scope.joins(:repository).reorder(Repository.arel_table[:name].public_send(direction), Job.arel_table[:id].public_send(direction))
+      when [ "job", "landing_queue_position" ]
+        scope.reorder(Arel.sql("COALESCE(jobs.approved_at, jobs.updated_at) #{direction.to_s.upcase}"), Job.arel_table[:id].public_send(direction))
       when [ "job", "started_at" ]
         scope.reorder(Job.arel_table[:started_at].public_send(direction), Job.arel_table[:id].public_send(direction))
       when [ "epic", "title" ]

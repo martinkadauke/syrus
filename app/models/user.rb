@@ -80,7 +80,7 @@ class User < ApplicationRecord
   }.freeze
   DASHBOARD_SORT_COLUMNS = {
     "epic" => %w[title state repository updated_at],
-    "job" => %w[title state repository created_at started_at],
+    "job" => %w[title state repository landing_queue_position created_at started_at],
     "workflow" => %w[title state started_at finished_at]
   }.freeze
   DASHBOARD_SORT_DEFAULTS = {
