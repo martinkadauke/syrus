@@ -44,6 +44,48 @@ RSpec.describe App::RetryState do
       )
     end
 
+    it "does not report an old failed workflow after a newer workflow succeeds" do
+      job = Factories.job
+      job.latest_workflow.update!(
+        state: "failed",
+        artifacts: { "failure_classification" => "git_failure" },
+        failure_count: 1,
+        finished_at: 10.minutes.ago
+      )
+      job.initial_run.update_columns(state: "failed", finished_at: 10.minutes.ago)
+
+      succeeded_workflow = Workflow.create!(
+        job: job,
+        trigger_kind: "rebase",
+        state: "succeeded",
+        started_at: 2.minutes.ago,
+        finished_at: 1.minute.ago
+      )
+      succeeded_step = Step.create!(
+        workflow: succeeded_workflow,
+        kind: "auto_rebase",
+        position: 0,
+        state: "succeeded",
+        started_at: 2.minutes.ago,
+        finished_at: 1.minute.ago
+      )
+      Run.create!(
+        job: job,
+        step: succeeded_step,
+        trigger_kind: "rebase",
+        state: "succeeded",
+        started_at: 2.minutes.ago,
+        finished_at: 1.minute.ago
+      )
+
+      expect(described_class.for(job.reload)).to include(
+        classification: nil,
+        classification_label: "Unclassified",
+        retryable: false,
+        state_label: "No failure"
+      )
+    end
+
     it "reports the latest failed workflow when it is still the current attempt" do
       job = Factories.job
       job.latest_workflow.update!(
