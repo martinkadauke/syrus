@@ -250,6 +250,10 @@ across web/worker processes.
 - **GitHub issue actions** — Repository pages can list GitHub issues and
   comment, close, delegate (add the trigger label), or bulk delegate/close
   them through `GithubClient`. Keep single and bulk paths in sync.
+- **GitHub identifiers are links.** Whenever the UI renders a GitHub issue
+  or pull request identifier (`#123`, `PR #123`, `owner/repo#123`), make it
+  clickable to the matching GitHub page when a URL can be derived. Plain
+  identifiers are only acceptable when the target is genuinely unknown.
 - **Form validation UI** — React forms should use native validity
   attributes plus route-local error rendering.
 - **Close icons** — React close/dismiss/remove controls should render the

@@ -44,6 +44,7 @@ export type JobRecord = {
   agent_provider: string | null
   stack_base: string
   issue_number: number | null
+  issue_url: string | null
   issue_title: string | null
   issue_body: string | null
   branch_name: string | null

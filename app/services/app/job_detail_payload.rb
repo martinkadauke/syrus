@@ -63,6 +63,7 @@ module App
         parent_job_id: @job.parent_job_id,
         effective_base_branch: @job.effective_base_branch,
         issue_number: @job.issue_number,
+        issue_url: issue_url,
         issue_title: @job.issue_title,
         issue_body: @job.issue_body,
         branch_name: @job.branch_name,
@@ -586,6 +587,12 @@ module App
       return if number.blank?
 
       "https://github.com/#{@job.repository.owner}/#{@job.repository.name}/pull/#{number}"
+    end
+
+    def issue_url
+      return if @job.issue_number.blank?
+
+      "https://github.com/#{@job.repository.owner}/#{@job.repository.name}/issues/#{@job.issue_number}"
     end
 
     def iso8601(value)

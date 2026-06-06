@@ -114,7 +114,7 @@ function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefix }: { 
               <p className="mt-1 break-words text-sm text-gray-600">
                 <Link className="font-mono hover:underline" to={withRoutePrefix(payload.repository.repository_path, prefix)}>{payload.repository.slug}</Link>
                 <span className="px-2 text-gray-300">/</span>
-                <span>{jobSourceLabel(payload)}</span>
+                <JobSourceLink payload={payload} />
               </p>
               <StatusPill state={payload.job.summary_state} />
               {payload.job.agent_provider ? <SmallPill>{payload.job.agent_provider}</SmallPill> : null}
@@ -1521,6 +1521,17 @@ function jobSourceLabel(payload: JobDetailPayload) {
   if (payload.job.kind === "direct") return "Direct Job"
   if (payload.job.kind === "cron") return "Scheduled Job"
   return jobSlug(payload.job.id)
+}
+
+function JobSourceLink({ payload }: { payload: JobDetailPayload }) {
+  const label = jobSourceLabel(payload)
+  if (!payload.job.issue_url) return <span>{label}</span>
+
+  return (
+    <a className="hover:underline" href={payload.job.issue_url} rel="noopener" target="_blank">
+      {label}
+    </a>
+  )
 }
 
 function dependencyLabel(dependency: JobDependency) {

@@ -5066,6 +5066,8 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Job" })).toBeInTheDocument()
     expect(await screen.findByRole("heading", { level: 1, name: "Repair aqueduct" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues/12")
+    expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("target", "_blank")
     const copySlugButton = screen.getByRole("button", { name: "Copy JOB-42 to clipboard" })
     expect(copySlugButton).toHaveTextContent("JOB-42")
     fireEvent.click(copySlugButton)
@@ -8458,6 +8460,7 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
       agent_provider: "codex",
       stack_base: "auto",
       issue_number: 12,
+      issue_url: "https://github.com/acme/widgets/issues/12",
       issue_title: "Repair aqueduct",
       issue_body: "Water should climb the hill.",
       branch_name: "syrus/issue-12",

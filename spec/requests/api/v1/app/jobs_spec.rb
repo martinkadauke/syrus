@@ -82,6 +82,7 @@ RSpec.describe "App API job detail", type: :request do
       "owner_user" => include("id" => owner.id, "email_address" => "owner@example.com")
     )
     expect(body.dig("job", "pr_url")).to eq("https://github.com/acme/widgets/pull/7")
+    expect(body.dig("job", "issue_url")).to eq("https://github.com/acme/widgets/issues/#{job.issue_number}")
     expect(body.dig("job", "retry_state")).to include(
       "classification" => nil,
       "classification_label" => "Unclassified",
