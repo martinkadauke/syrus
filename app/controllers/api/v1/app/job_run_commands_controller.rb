@@ -135,7 +135,7 @@ module Api
 
           render_job(
             job.reload,
-            message: "Retrying #{result.step.kind} for workflow ##{workflow.id}...",
+            message: "Retrying #{result.step.kind} for #{workflow.slug}...",
             changed: [ "workflows", "runs" ],
             run: result.run.reload,
             workflow: result.workflow.reload,

@@ -15,7 +15,7 @@ module Steps
   class Manual < Base
     def call
       workspace.setup
-      log("invoking agent for manual step (workflow ##{workflow.id}, trigger=#{workflow.trigger_kind})")
+      log("invoking agent for manual step (#{workflow.slug}, trigger=#{workflow.trigger_kind})")
 
       raise StepFailed, "manual step requires a prompt on the Run" if run.prompt.blank?
       run_agent(prompt: run.prompt)

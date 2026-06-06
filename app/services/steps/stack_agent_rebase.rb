@@ -7,7 +7,7 @@ module Steps
       workflow.set_artifact!(StackRebasePlan::AGENT_PRE_SHAS_ARTIFACT, pre_shas)
       run.update!(prompt: compose_prompt) if run.prompt.blank?
 
-      log("invoking agent for stack_agent_rebase step (workflow ##{workflow.id})")
+      log("invoking agent for stack_agent_rebase step (#{workflow.slug})")
       run_agent(prompt: run.prompt)
 
       pushes = pending_entries.map do |entry|

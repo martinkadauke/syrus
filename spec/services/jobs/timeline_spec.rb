@@ -27,9 +27,9 @@ RSpec.describe Jobs::Timeline do
       expect(sources_of(events)).to include("workflow", "step", "run")
 
       titles = titles_of(events).join(" | ")
-      expect(titles).to include("Workflow ##{wf.id} (initial) created")
-      expect(titles).to include("Workflow ##{wf.id} started")
-      expect(titles).to include("Workflow ##{wf.id} succeeded")
+      expect(titles).to include("WF-#{wf.id} (initial) created")
+      expect(titles).to include("WF-#{wf.id} started")
+      expect(titles).to include("WF-#{wf.id} succeeded")
       expect(titles).to include("Step implement started")
       expect(titles).to include("Step implement succeeded")
       expect(titles).to include("Run ##{run.id} created (initial)")
@@ -49,7 +49,7 @@ RSpec.describe Jobs::Timeline do
 
       events = described_class.for(job)
       failure_titles = events.select { |e| e.kind == :failure }.map(&:title)
-      expect(failure_titles).to include("Workflow ##{wf.id} failed",
+      expect(failure_titles).to include("WF-#{wf.id} failed",
                                        "Step implement failed",
                                        "Run ##{run.id} failed")
     end

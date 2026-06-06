@@ -12,7 +12,7 @@ module Steps
   class PrOpen < Base
     def call
       workspace.setup
-      log("pr_open: pushing branch and opening PR (workflow ##{workflow.id})")
+      log("pr_open: pushing branch and opening PR (#{workflow.slug})")
 
       push_branch
       if job.pr_number.present?  # idempotent for retry

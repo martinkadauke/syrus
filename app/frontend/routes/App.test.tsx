@@ -1644,6 +1644,19 @@ describe("App", () => {
             },
             controls: {
               ...dashboardPayload().controls,
+              columns: {
+                required: [
+                  { key: "workflow", title: "Workflow" },
+                  { key: "job", title: "Job" }
+                ],
+                optional: [
+                  { key: "trigger", title: "Trigger" },
+                  { key: "state", title: "State" },
+                  { key: "started", title: "Started" },
+                  { key: "finished", title: "Finished" },
+                  { key: "agent", title: "Agent" }
+                ]
+              },
               sort_columns: ["title", "state", "started_at", "finished_at"]
             },
             items: [dashboardWorkflowItem()]
@@ -1662,12 +1675,12 @@ describe("App", () => {
         </QueryClientProvider>
       )
 
-      const row = await screen.findByRole("link", { name: "Workflow #9 Repair aqueduct" })
-      expect(row).toHaveAttribute("href", "/app-shell/jobs/42")
+      const row = await screen.findByRole("link", { name: "WF-9 Repair aqueduct" })
+      expect(row).toHaveAttribute("href", "/app-shell/jobs/42?tab=workflows#workflow-9")
       expect(row).toHaveClass("grid-cols-[7.25rem_minmax(0,1fr)]")
       expect(within(row).getByText("running")).toBeInTheDocument()
       expectRunningPill(within(row).getByText("running"))
-      expect(within(row).getByText("Workflow #9")).toBeInTheDocument()
+      expect(within(row).getByText("WF-9")).toBeInTheDocument()
       expect(within(row).getByText("Repair aqueduct")).toBeInTheDocument()
       expect(within(row).getByText("acme/widgets")).toBeInTheDocument()
       expect(within(row).getByText("manual")).toBeInTheDocument()
@@ -1676,6 +1689,59 @@ describe("App", () => {
       expect(within(row).getByText(/Finished/)).toBeInTheDocument()
       expect(within(row).queryByText("View")).not.toBeInTheDocument()
       expect(screen.queryByRole("table")).not.toBeInTheDocument()
+    } finally {
+      restoreMedia()
+    }
+  })
+
+  it("renders desktop Workflow dashboard slugs as links", async () => {
+    const restoreMedia = mockMediaQuery(true)
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify(
+          dashboardPayload({
+            subject: "workflow",
+            view: "list",
+            preferences: {
+              sort: { column: "started_at", direction: "desc" },
+              visible_columns: ["workflow", "job", "state", "started"],
+              kanban_lanes: ["queued", "running", "done"],
+              raw: {}
+            },
+            controls: {
+              ...dashboardPayload().controls,
+              columns: {
+                required: [
+                  { key: "workflow", title: "Workflow" },
+                  { key: "job", title: "Job" }
+                ],
+                optional: [
+                  { key: "trigger", title: "Trigger" },
+                  { key: "state", title: "State" },
+                  { key: "started", title: "Started" },
+                  { key: "finished", title: "Finished" },
+                  { key: "agent", title: "Agent" }
+                ]
+              },
+              sort_columns: ["title", "state", "started_at", "finished_at"]
+            },
+            items: [dashboardWorkflowItem()]
+          })
+        ),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/workflows?view=list"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("link", { name: "WF-9" })).toHaveAttribute("href", "/app-shell/jobs/42?tab=workflows#workflow-9")
     } finally {
       restoreMedia()
     }
@@ -5092,7 +5158,7 @@ describe("App", () => {
     expect(await screen.findByText("Checking PR feedback now...")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
-    expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    expect(await screen.findByText("WF-5")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /Grade/i }))
     fireEvent.click(screen.getByRole("button", { name: /tests/i }))
     expect(screen.getByText("Run #9")).toBeInTheDocument()
@@ -5316,8 +5382,8 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("button", { name: "Workflows (12)" })).toBeInTheDocument()
-    expect(screen.getByText("Workflow #15")).toBeInTheDocument()
-    expect(screen.getByText("Workflow #16")).toBeInTheDocument()
+    expect(screen.getByText("WF-15")).toBeInTheDocument()
+    expect(screen.getByText("WF-16")).toBeInTheDocument()
     expect(screen.getAllByText("Showing 11-12 of 12")).toHaveLength(2)
     expect(screen.getAllByRole("link", { name: "Previous" })[0]).toHaveAttribute("href", "/app-shell/jobs/42?tab=workflows&workflows_page=1")
     expect(screen.getAllByText("Next")[0]).toHaveClass("text-gray-300")
@@ -5349,7 +5415,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    expect(await screen.findByText("WF-5")).toBeInTheDocument()
     expect(screen.getAllByText("running")).toHaveLength(2)
     fireEvent.click(screen.getByRole("button", { name: /Implement/i }))
     const runningLabels = screen.getAllByText("running")
@@ -5717,7 +5783,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/jobs/42/workflows/5/retry_step" && init?.method === "POST") {
-        return Promise.resolve(new Response(JSON.stringify({ message: "Retrying implement for workflow #5..." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ message: "Retrying implement for WF-5..." }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/jobs/42/workflows/5/push_commits" && init?.method === "POST") {
         return Promise.resolve(new Response(JSON.stringify({ message: "Pushing commits to GitHub..." }), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -5768,7 +5834,7 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    expect(await screen.findByText("WF-5")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /Implement/i }))
     const commands = [
       ["Retry failed step", "POST", "/api/v1/app/jobs/42/workflows/5/retry_step"],
@@ -8359,6 +8425,8 @@ function dashboardWorkflowItem(overrides: Record<string, unknown> = {}) {
   return {
     type: "workflow",
     id: 9,
+    slug: "WF-9",
+    path: "/jobs/42?tab=workflows#workflow-9",
     state: "running",
     trigger_kind: "manual",
     agent_provider: "codex",

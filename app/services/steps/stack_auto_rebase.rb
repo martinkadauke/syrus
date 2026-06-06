@@ -1,7 +1,7 @@
 module Steps
   class StackAutoRebase < Base
     def call
-      log("stack_auto_rebase: attempting deterministic stack rebase (workflow ##{workflow.id})")
+      log("stack_auto_rebase: attempting deterministic stack rebase (#{workflow.slug})")
 
       results = []
       pending = []

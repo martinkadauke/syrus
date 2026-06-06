@@ -80,7 +80,7 @@ class LandingQueueProcessor
       job.start_landing!
       job.save!
       workflow = Workflows::AutoMerge.instantiate(job: job)
-      audit(job, "landing_queue: dispatching auto-merge workflow ##{workflow.id}")
+      audit(job, "landing_queue: dispatching auto-merge #{workflow.slug}")
       landed = true
     end
     return unless landed

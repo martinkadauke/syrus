@@ -71,7 +71,7 @@ class PollMergeStateJob < ApplicationJob
     return if repo_rebase_concurrency_reached?
 
     workflow = RebaseWorkflowSelector.instantiate(job: @job, pr: @pr)
-    audit("auto_merge: dispatching rebase workflow ##{workflow.id} before merge")
+    audit("auto_merge: dispatching rebase #{workflow.slug} before merge")
     Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} needs rebase before merge-state evaluation")
     StepDispatcher.start_workflow(workflow)
   end

@@ -499,6 +499,8 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["items"].sole).to include(
         "type" => "workflow",
         "id" => old_workflow.id,
+        "slug" => "WF-#{old_workflow.id}",
+        "path" => "/jobs/#{job.id}?tab=workflows#workflow-#{old_workflow.id}",
         "state" => "succeeded",
         "job" => include("title" => "Old aqueduct")
       )

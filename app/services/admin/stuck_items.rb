@@ -68,7 +68,7 @@ module Admin
         Item.new(
           kind:      :nearly_pruned,
           severity:  :warn,
-          detail:    "Workflow ##{wf.id} (#{wf.trigger_kind}) failed — workspace about to be pruned",
+          detail:    "#{wf.slug} (#{wf.trigger_kind}) failed — workspace about to be pruned",
           age_label: age_label_for(wf.finished_at),
           run:       nil,
           workflow:  wf,

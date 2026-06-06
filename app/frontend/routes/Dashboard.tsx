@@ -8,6 +8,7 @@ import { OnboardingEmptyState, useSetupStatus } from "../components/OnboardingEm
 import { NoticeToast } from "../components/NoticeToast"
 import { StatusPill, TonePill } from "../components/StatusPill"
 import { FilterBar, filterTreeFromPayload, smartFolderFiltersFromTree, topFilterChildren } from "../components/FilterBar"
+import { workflowSlug } from "../lib/slugs"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { bulkDashboardEpics, bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardEpicState, updateDashboardPreferences, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
@@ -776,9 +777,10 @@ function KanbanCard({ item, onDragEnd, onDragStart, prefix }: { item: DashboardI
   }
 
   if (item.type === "workflow") {
+    const slug = workflowLabel(item)
     return (
       <article className="rounded border border-gray-200 bg-white p-3 shadow-sm">
-        <div className="text-sm font-medium text-gray-900">Workflow #{item.id}</div>
+        <Link className="text-sm font-medium text-blue-600 hover:underline" to={withRoutePrefix(item.path, prefix)}>{slug}</Link>
         <Link className="mt-1 block text-sm text-blue-600 hover:underline" to={withRoutePrefix(item.job.path, prefix)}>{item.job.title}</Link>
         <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
           <StatusPill state={item.state} />
@@ -1350,15 +1352,16 @@ function MobileWorkflowsList({ items, prefix }: { items: DashboardWorkflowItem[]
 function MobileWorkflowRow({ workflow, prefix }: { prefix: string; workflow: DashboardWorkflowItem }) {
   const startedAt = workflow.started_at || workflow.created_at
   const finishedAt = workflow.finished_at || workflow.cleaned_up_at
+  const slug = workflowLabel(workflow)
 
   return (
-    <Link aria-label={`Workflow #${workflow.id} ${workflow.job.title}`} className="grid grid-cols-[7.25rem_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(workflow.job.path, prefix)}>
+    <Link aria-label={`${slug} ${workflow.job.title}`} className="grid grid-cols-[7.25rem_minmax(0,1fr)] gap-3 px-4 py-3 text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" to={withRoutePrefix(workflow.path, prefix)}>
       <div className="pt-1">
         <StatusPill state={workflow.state} />
       </div>
       <div className="min-w-0">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span className="font-mono text-xs font-semibold uppercase tracking-wide text-gray-500">Workflow #{workflow.id}</span>
+          <span className="font-mono text-xs font-semibold uppercase tracking-wide text-gray-500">{slug}</span>
           <span className="text-sm font-semibold leading-snug text-blue-600 underline">{workflow.job.title}</span>
         </div>
         <div className="mt-1 font-mono text-xs text-gray-500">{workflow.job.repository.slug}</div>
@@ -1397,7 +1400,13 @@ function SortableColumnHeader({ subject, column, sortState }: { subject: Dashboa
 }
 
 function WorkflowCell({ workflow, column, prefix }: { workflow: DashboardWorkflowItem; column: string; prefix: string }) {
-  if (column === "workflow" || column === "title") return <td className="px-4 py-3 font-medium text-gray-900">Workflow #{workflow.id}</td>
+  if (column === "workflow" || column === "title") {
+    return (
+      <td className="px-4 py-3 font-medium">
+        <Link className="text-blue-600 hover:underline" to={withRoutePrefix(workflow.path, prefix)}>{workflowLabel(workflow)}</Link>
+      </td>
+    )
+  }
   if (column === "state") return <td className="px-4 py-3"><StatusPill state={workflow.state} /></td>
   if (column === "job") {
     return (
@@ -1416,6 +1425,10 @@ function WorkflowCell({ workflow, column, prefix }: { workflow: DashboardWorkflo
   if (column === "finished") return <td className="px-4 py-3 text-gray-500">{formatDate(workflow.finished_at)}</td>
 
   return <td className="px-4 py-3 text-gray-500">{formatDate(workflowDateValue(workflow, column))}</td>
+}
+
+function workflowLabel(workflow: Pick<DashboardWorkflowItem, "id" | "slug">) {
+  return workflow.slug || workflowSlug(workflow.id)
 }
 
 function Pagination({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {

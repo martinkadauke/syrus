@@ -26,7 +26,7 @@ module Steps
 
       pushes.each do |entry|
         branch = entry.fetch("branch_name")
-        log("stack_force_push: pushing rebased #{branch} (workflow ##{workflow.id})")
+        log("stack_force_push: pushing rebased #{branch} (#{workflow.slug})")
         git.run("push", force_with_lease_arg(entry), push_url, "#{branch}:refs/heads/#{branch}", chdir: workspace.path.to_s)
       rescue GitRunner::GitError => e
         raise unless e.output.to_s.match?(/stale info|fetch first|rejected/i)

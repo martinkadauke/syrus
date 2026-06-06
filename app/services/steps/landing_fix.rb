@@ -6,7 +6,7 @@ module Steps
   class LandingFix < Base
     def call
       perform_agentic_change_step(
-        log_message: "invoking agent for landing_fix step (workflow ##{workflow.id}, auto_merge)",
+        log_message: "invoking agent for landing_fix step (#{workflow.slug}, auto_merge)",
         commit_message: "Syrus pre-merge fix"
       ) do
         run.update!(prompt: compose_prompt) if run.prompt.blank?

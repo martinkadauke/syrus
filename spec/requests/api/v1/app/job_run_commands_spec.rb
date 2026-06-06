@@ -177,7 +177,7 @@ RSpec.describe "App API job run commands", type: :request do
     expect(job.reload).to be_queued
     expect(failed_step.reload).to be_queued
     expect(new_run.agent_provider).to eq(workflow.agent_provider)
-    expect(parse_body).to include("message" => "Retrying summarize for workflow ##{workflow.id}...")
+    expect(parse_body).to include("message" => "Retrying summarize for WF-#{workflow.id}...")
     expect(parse_body.dig("job", "state")).to eq("queued")
   end
 

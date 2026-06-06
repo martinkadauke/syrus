@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation } from "react-router-dom"
 import { fetchAdminStuck, type StuckItem } from "../api/adminStuck"
+import { workflowSlug } from "../lib/slugs"
 
 const POLL_INTERVAL_MS = 30_000
 
@@ -112,7 +113,7 @@ function contextLabel(item: StuckItem) {
   if (item.run_id) parts.push(`Run #${item.run_id}`)
   if (item.workflow_trigger_kind) parts.push(item.workflow_trigger_kind)
   if (item.step_kind) parts.push(`step ${item.step_kind}`)
-  if (parts.length === 0 && item.workflow_id) parts.push(`Workflow #${item.workflow_id}`)
+  if (parts.length === 0 && item.workflow_id) parts.push(workflowSlug(item.workflow_id))
 
   return parts.join(" · ") || "-"
 }

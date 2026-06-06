@@ -24,7 +24,7 @@ module Steps
 
       run.update!(prompt: Prompts::Summarize.new.to_s) if run.prompt.blank?
 
-      log("invoking agent for summarize step (workflow ##{workflow.id}, --resume from implement)")
+      log("invoking agent for summarize step (#{workflow.slug}, --resume from implement)")
 
       run_agent(prompt: run.prompt, max_turns: SUMMARIZE_TURN_BUDGET)
 

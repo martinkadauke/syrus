@@ -6,6 +6,7 @@ import { ApiError } from "../api/client"
 import { CloseIcon } from "../components/CloseIcon"
 import { NoticeToast } from "../components/NoticeToast"
 import { StatusPill } from "../components/StatusPill"
+import { workflowSlug } from "../lib/slugs"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import {
   createJobAttachments,
@@ -736,10 +737,10 @@ function WorkflowCard({ workflow, payload, command }: { workflow: JobWorkflow; p
   const stepItems = workflowStepItems(workflow.steps)
 
   return (
-    <section className="rounded border border-gray-200 bg-white p-4">
+    <section className="rounded border border-gray-200 bg-white p-4" id={`workflow-${workflow.id}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">Workflow #{workflow.id}</h2>
+          <h2 className="text-sm font-semibold text-gray-900">{workflowSlug(workflow.id)}</h2>
           <p className="text-xs text-gray-500">{workflow.trigger_kind} · {workflow.agent_provider || "default agent"} · created {formatDate(workflow.created_at)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

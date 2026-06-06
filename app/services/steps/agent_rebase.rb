@@ -11,7 +11,7 @@ module Steps
       workspace.setup
       run.update!(prompt: compose_prompt) if run.prompt.blank?
 
-      log("invoking agent for agent_rebase step (workflow ##{workflow.id})")
+      log("invoking agent for agent_rebase step (#{workflow.slug})")
       pre_sha = head_sha
       run_agent(prompt: run.prompt)
 

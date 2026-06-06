@@ -31,6 +31,10 @@ class Workflow < ApplicationRecord
   scope :terminal, -> { where(state: %w[ succeeded failed cancelled ]) }
   scope :ordered, -> { order(:created_at) }
 
+  def slug
+    "WF-#{id}"
+  end
+
   aasm column: :state, whiny_transitions: false do
     after_all_transitions :record_state_transition!
     state :queued, initial: true

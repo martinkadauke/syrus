@@ -5,7 +5,7 @@ module Steps
   class Push < Base
     def call
       workspace.setup
-      log("push: pushing branch #{workspace.branch_name} (workflow ##{workflow.id})")
+      log("push: pushing branch #{workspace.branch_name} (#{workflow.slug})")
       git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
       push_url = repository.authenticated_push_url(GithubClient.for(repository: repository, user: job.user).access_token)
       git.run("push", push_url, "HEAD:refs/heads/#{workspace.branch_name}",

@@ -105,7 +105,7 @@ class RunJob < ApplicationJob
     end
 
     if @workflow.terminal?
-      log("workflow ##{@workflow.id} already terminal (#{@workflow.state}); abandoning run")
+      log("#{@workflow.slug} already terminal (#{@workflow.state}); abandoning run")
       @run.cancel! if @run.may_cancel?
       @run.save!
       return
@@ -165,7 +165,7 @@ class RunJob < ApplicationJob
     @run.save!
     @step.succeed!
     @step.save!
-    log("step #{@step.kind} done (workflow ##{@workflow.id})")
+    log("step #{@step.kind} done (#{@workflow.slug})")
   end
 
   # Snapshot the diagnostic, fail the Run, and let Run/Step
@@ -303,7 +303,7 @@ class RunJob < ApplicationJob
     @job.update!(started_at: Time.current) if @job.started_at.nil?
 
     log("pull request already merged (PR ##{merged_pr[:number]}); " \
-        "marking workflow ##{@workflow.id} succeeded and closing job")
+        "marking #{@workflow.slug} succeeded and closing job")
     cancel_downstream_steps!(reason: "pull request already merged")
 
     @run.succeed!

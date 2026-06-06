@@ -54,7 +54,7 @@ module Jobs
         events << Event.new(
           at: wf.created_at, kind: :info, source: "workflow",
           transition_source: nil,
-          title: "Workflow ##{wf.id} (#{wf.trigger_kind}) created",
+          title: "#{wf.slug} (#{wf.trigger_kind}) created",
           detail: nil,
           ref: { workflow_id: wf.id }
         )
@@ -229,8 +229,9 @@ module Jobs
         # verbs, so render Job transitions as explicit state moves.
         "Job state #{t.from_state} → #{t.to_state}"
       when "Workflow"
-        verb ? "Workflow ##{t.subject_id} #{verb}" :
-               "Workflow ##{t.subject_id} #{t.from_state} → #{t.to_state}"
+        slug = Workflow.find_by(id: t.subject_id)&.slug || "WF-#{t.subject_id}"
+        verb ? "#{slug} #{verb}" :
+               "#{slug} #{t.from_state} → #{t.to_state}"
       when "Step"
         step = Step.find_by(id: t.subject_id)
         kind = step&.kind || "?"

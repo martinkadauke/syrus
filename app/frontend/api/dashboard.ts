@@ -119,6 +119,8 @@ export type DashboardEpicItem = {
 export type DashboardWorkflowItem = {
   type: "workflow"
   id: number
+  slug: string
+  path: string
   state: string
   trigger_kind: string
   agent_provider: string

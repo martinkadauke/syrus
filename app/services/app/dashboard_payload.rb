@@ -675,6 +675,8 @@ module App
       {
         type: "workflow",
         id: workflow.id,
+        slug: workflow.slug,
+        path: job_path(job, tab: "workflows", anchor: "workflow-#{workflow.id}"),
         state: workflow.state,
         trigger_kind: workflow.trigger_kind,
         agent_provider: workflow.agent_provider,

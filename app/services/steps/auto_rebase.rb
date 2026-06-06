@@ -7,7 +7,7 @@ module Steps
   # On conflict, lets the chain proceed to AgentRebase.
   class AutoRebase < Base
     def call
-      log("auto_rebase: attempting deterministic rebase (workflow ##{workflow.id})")
+      log("auto_rebase: attempting deterministic rebase (#{workflow.slug})")
       result = ::AutoRebase.new(job, base_branch: rebase_base_branch).call
       workflow.set_artifact!("auto_rebase_result", result.to_h)
 

@@ -183,7 +183,7 @@ module Steps
 
       unless rebase_workflow_active?
         rebase_workflow = RebaseWorkflowSelector.instantiate(job: job, pr: gate.pr)
-        log("auto_merge: dispatched rebase workflow ##{rebase_workflow.id}", kind: "system")
+        log("auto_merge: dispatched rebase #{rebase_workflow.slug}", kind: "system")
         StepDispatcher.start_workflow(rebase_workflow)
       end
 

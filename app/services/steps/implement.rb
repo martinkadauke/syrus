@@ -11,7 +11,7 @@ module Steps
   class Implement < Base
     def call
       perform_agentic_change_step(
-        log_message: "invoking agent for #{target_label} (workflow ##{workflow.id}, step ##{step.id} implement)",
+        log_message: "invoking agent for #{target_label} (#{workflow.slug}, step ##{step.id} implement)",
         commit_message: "Syrus implement step (will be rewritten by summarize)"
       ) do
         persist_prompt_if_needed

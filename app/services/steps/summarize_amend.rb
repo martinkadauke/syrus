@@ -15,7 +15,7 @@ module Steps
       workspace.setup
       run.update!(prompt: Prompts::SummarizeAmend.new.to_s) if run.prompt.blank?
 
-      log("invoking agent for summarize_amend step (workflow ##{workflow.id}, --resume)")
+      log("invoking agent for summarize_amend step (#{workflow.slug}, --resume)")
       run_agent(prompt: run.prompt, max_turns: SUMMARIZE_TURN_BUDGET)
 
       promote_artifacts!
