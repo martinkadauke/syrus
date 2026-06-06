@@ -304,6 +304,7 @@ class Job < ApplicationRecord
 
   after_update_commit :rebase_stack_children_after_merge, if: :saved_change_to_pr_merged_terminal?
   after_update_commit :start_dependent_jobs_after_implementation, if: :saved_change_to_implemented?
+  after_update_commit :start_dependent_jobs_after_approval, if: :saved_change_to_approved?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
   after_update_commit :broadcast_app_job_updated
 
@@ -679,9 +680,21 @@ class Job < ApplicationRecord
     saved_change_to_state? && implemented?
   end
 
+  def saved_change_to_approved?
+    saved_change_to_state? && approved?
+  end
+
   def start_dependent_jobs_after_implementation
     return if branch_name.blank? || pr_number.blank?
 
+    start_dependent_jobs_if_ready
+  end
+
+  def start_dependent_jobs_after_approval
+    start_dependent_jobs_if_ready
+  end
+
+  def start_dependent_jobs_if_ready
     dependents.open_threads.find_each do |dependent|
       dependent.start_pending_workflows_if_dependencies_satisfied!
     end

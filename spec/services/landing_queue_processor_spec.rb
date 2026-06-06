@@ -129,6 +129,30 @@ RSpec.describe LandingQueueProcessor do
     expect(entry.waiting_for_jobs.map(&:issue_number)).to eq([ 2 ])
   end
 
+  it "starts queued epic siblings once their same-epic dependencies are approved" do
+    epic = Factories.epic(user: user, repository: repository, state: "in_progress")
+    first = queue_job(issue_number: 1, approved_at: 3.minutes.ago, epic: epic)
+    second = queue_job(issue_number: 2, approved_at: 2.minutes.ago, epic: epic)
+    queued = Factories.job_record(
+      user: user,
+      repository: repository,
+      epic: epic,
+      issue_number: 3,
+      state: "queued"
+    )
+    workflow = Workflows::Initial.instantiate(job: queued)
+    first_step = workflow.first_step
+    JobDependency.create!(job: queued, depends_on_job: first, source: "manual")
+    JobDependency.create!(job: queued, depends_on_job: second, source: "manual")
+
+    expect(first_step.runs.count).to eq(0)
+
+    expect(described_class.call).to be_nil
+    expect(first_step.runs.reload.count).to eq(1)
+    expect(first.reload).to be_approved
+    expect(second.reload).to be_approved
+  end
+
   it "ignores closed epic siblings when checking whether every open sibling is approved" do
     epic = Factories.epic(user: user, repository: repository, state: "in_progress")
     approved = queue_job(issue_number: 1, approved_at: 1.minute.ago, epic: epic)

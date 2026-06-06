@@ -810,6 +810,27 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       expect(job.reload.parent_job).to eq(prerequisite)
     end
 
+    it "starts a dependent queued workflow when a same-Epic dependency is approved" do
+      epic = Factories.epic(user: user, repository: repository, state: "in_progress")
+      prerequisite = Job.create!(user: user, repository: repository, epic: epic, issue_number: 42)
+      prerequisite.advance_after_triage!
+      job = Job.create!(user: user, repository: repository, epic: epic, issue_number: 43, issue_body: "Depends-on: #42")
+      job.advance_after_triage!
+      first_step = job.reload.latest_workflow.first_step
+
+      expect(job).to be_queued
+      expect(first_step.runs.count).to eq(0)
+
+      prerequisite.update!(branch_name: "syrus/issue-42-#{prerequisite.id}", pr_number: 7)
+      prerequisite.update_columns(state: "implemented")
+
+      expect {
+        prerequisite.approve!(via: "github_review")
+        prerequisite.save!
+      }.to change { first_step.runs.reload.count }.by(1)
+      expect(job.reload.parent_job).to be_nil
+    end
+
     it "waits on multiple unmerged dependencies until only one remains as parent" do
       first = Job.create!(user: user, repository: repository, issue_number: 41)
       second = Job.create!(user: user, repository: repository, issue_number: 42)

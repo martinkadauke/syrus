@@ -123,6 +123,39 @@ RSpec.describe JobDependency do
     end
   end
 
+  describe "#dependency_succeeded?" do
+    it "treats an approved dependency in the same Epic as satisfied" do
+      epic = Factories.epic(user: user, repository: repository)
+      prerequisite = Factories.job_record(user: user, repository: repository, epic: epic, issue_number: 10, state: "approved")
+      dependent = Factories.job_record(user: user, repository: repository, epic: epic, issue_number: 11, state: "queued")
+
+      dependency = described_class.create!(job: dependent, depends_on_job: prerequisite, source: "manual")
+
+      expect(dependency).to be_dependency_succeeded
+    end
+
+    it "treats a landing dependency in the same Epic as satisfied" do
+      epic = Factories.epic(user: user, repository: repository)
+      prerequisite = Factories.job_record(user: user, repository: repository, epic: epic, issue_number: 10, state: "landing")
+      dependent = Factories.job_record(user: user, repository: repository, epic: epic, issue_number: 11, state: "queued")
+
+      dependency = described_class.create!(job: dependent, depends_on_job: prerequisite, source: "manual")
+
+      expect(dependency).to be_dependency_succeeded
+    end
+
+    it "does not treat an approved dependency from a different Epic as satisfied" do
+      upstream_epic = Factories.epic(user: user, repository: repository)
+      dependent_epic = Factories.epic(user: user, repository: repository)
+      prerequisite = Factories.job_record(user: user, repository: repository, epic: upstream_epic, issue_number: 10, state: "approved")
+      dependent = Factories.job_record(user: user, repository: repository, epic: dependent_epic, issue_number: 11, state: "queued")
+
+      dependency = described_class.create!(job: dependent, depends_on_job: prerequisite, source: "manual")
+
+      expect(dependency).not_to be_dependency_succeeded
+    end
+  end
+
   describe "Epic dependency derivation" do
     it "creates a derived EpicDependency for cross-Epic Job dependencies" do
       upstream_epic = Factories.epic(user: user, repository: repository)

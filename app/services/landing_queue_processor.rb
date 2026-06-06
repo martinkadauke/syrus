@@ -36,6 +36,8 @@ class LandingQueueProcessor
   end
 
   def call
+    start_ready_epic_sibling_jobs!
+
     occupied_repo_ids = Set.new(Job.landing.pluck(:repository_id))
     landed_workflows = []
 
@@ -65,6 +67,16 @@ class LandingQueueProcessor
     scope.where(state: %w[ approved landing ])
          .includes(:user, :repository, :epic, :parent_job, dependencies: :depends_on_job)
          .order(Arel.sql("COALESCE(jobs.approved_at, jobs.updated_at) ASC"), :id)
+  end
+
+  def start_ready_epic_sibling_jobs!
+    epic_ids = Job.approved.where.not(epic_id: nil).distinct.pluck(:epic_id)
+    return if epic_ids.blank?
+
+    Job.queued
+       .where(epic_id: epic_ids)
+       .includes(:repository, :workflows, dependencies: :depends_on_job)
+       .find_each(&:start_pending_workflows_if_dependencies_satisfied!)
   end
 
   def land(job)

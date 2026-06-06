@@ -31,7 +31,7 @@ class JobDependency < ApplicationRecord
   end
 
   def dependency_succeeded?
-    return depends_on_job.dependency_succeeded? if resolved?
+    return resolved_dependency_succeeded? if resolved?
 
     referenced_epic&.done? == true
   end
@@ -62,6 +62,17 @@ class JobDependency < ApplicationRecord
   end
 
   private
+
+  def resolved_dependency_succeeded?
+    depends_on_job.dependency_succeeded? || same_epic_dependency_approved?
+  end
+
+  def same_epic_dependency_approved?
+    return false if job&.epic_id.blank?
+    return false unless depends_on_job&.epic_id == job.epic_id
+
+    depends_on_job.approved? || depends_on_job.landing?
+  end
 
   def unresolved_github_issue_url
     "https://github.com/#{unresolved_owner}/#{unresolved_repo}/issues/#{unresolved_number}"
@@ -118,5 +129,4 @@ class JobDependency < ApplicationRecord
       derived: true
     )
   end
-
 end
