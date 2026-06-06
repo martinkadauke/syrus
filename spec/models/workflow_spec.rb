@@ -183,6 +183,33 @@ describe "Job state propagation (Phase 2)" do
       expect(job.landing_failure_reason).to eq("auto_merge workflow failed")
     end
 
+    it "pauses landing and keeps auto_merge Jobs approved when workflow failure is infrastructure-blocked" do
+      job.update!(state: "implemented")
+      job.approve!(via: "github_review")
+      approved_at = job.approved_at
+      job.start_landing!
+      job.save!
+      wf = Workflows::AutoMerge.instantiate(job: job)
+      wf.update!(state: "running", started_at: 1.minute.ago)
+      run = wf.steps.last.runs.create!(
+        job: job,
+        trigger_kind: "auto_merge",
+        agent_provider: wf.agent_provider,
+        state: "failed"
+      )
+      run.create_run_diagnostic!(
+        error_class: "Errno::ENOSPC",
+        error_message: "No space left on device @ rb_sysopen - /home/rails/.syrus/workflows/123"
+      )
+
+      expect { wf.fail!; wf.save! }
+        .to change { job.reload.state }.from("landing").to("approved")
+
+      expect(job.approved_at).to eq(approved_at)
+      expect(job.landing_failure_reason).to include("No space left on device")
+      expect(job.user.reload.landing_paused).to eq(true)
+    end
+
     it "cleans unrepaired auto_merge workspaces on workflow.fail!" do
       job.update!(state: "landing")
       wf = Workflows::AutoMerge.instantiate(job: job)

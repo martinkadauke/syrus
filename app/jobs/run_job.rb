@@ -211,9 +211,7 @@ class RunJob < ApplicationJob
     return unless @job&.landing?
     return if loop_controlled_grade_failure?
 
-    @job.landing_failure_reason = "#{exception.class}: #{exception.message}".truncate(500)
-    @job.fail_landing! if @job.may_fail_landing?
-    @job.save!
+    LandingFailureHandler.call(job: @job, reason: "#{exception.class}: #{exception.message}", run: @run)
   end
 
   # A failure is "loop-controlled" when the dispatcher's per-kind
