@@ -1,5 +1,5 @@
 class LandingQueueProcessor
-  Entry = Struct.new(:job, :position, :blocked_reason, :waiting_for, keyword_init: true) do
+  Entry = Struct.new(:job, :position, :blocked_reason, :waiting_for, :waiting_for_jobs, keyword_init: true) do
     def eligible?
       blocked_reason.blank?
     end
@@ -93,7 +93,7 @@ class LandingQueueProcessor
   end
 
   def blockage_for(job)
-    return { blocked_reason: nil, waiting_for: nil } if job.landing?
+    return { blocked_reason: nil, waiting_for: nil, waiting_for_jobs: [] } if job.landing?
     return blocked("landing paused") if job.user.landing_paused?
     return blocked("repository archived") if job.repository.archived?
     # Don't burn a fail_landing cycle on a Job whose repo isn't set
@@ -106,7 +106,10 @@ class LandingQueueProcessor
     return blocked("active workflow") if job.workflows.active.exists?
     return blocked(RebaseLoopGuard::BLOCK_REASON) if RebaseLoopGuard.waiting_after_noop?(job)
     return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?
-    return blocked("waiting for epic siblings to be approved") if job.epic && !job.epic.all_jobs_approved?
+    if job.epic
+      unapproved_siblings = unapproved_epic_siblings(job)
+      return blocked("waiting for epic siblings to be approved", waiting_for_jobs: unapproved_siblings) if unapproved_siblings.any?
+    end
 
     parent = job.parent_job
     if parent && !merged?(parent)
@@ -119,11 +122,19 @@ class LandingQueueProcessor
       return blocked("waiting for #{dependency_label(waiting)} to merge", waiting)
     end
 
-    { blocked_reason: nil, waiting_for: nil }
+    { blocked_reason: nil, waiting_for: nil, waiting_for_jobs: [] }
   end
 
-  def blocked(reason, waiting_for = nil)
-    { blocked_reason: reason, waiting_for: waiting_for }
+  def blocked(reason, waiting_for = nil, waiting_for_jobs: [])
+    { blocked_reason: reason, waiting_for: waiting_for, waiting_for_jobs: waiting_for_jobs }
+  end
+
+  def unapproved_epic_siblings(job)
+    job.epic.jobs
+       .where.not(id: job.id)
+       .where.not(state: %w[ approved closed ])
+       .order(:id)
+       .to_a
   end
 
   def merged?(job)

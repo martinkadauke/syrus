@@ -419,6 +419,19 @@ function SummaryTab({ payload, command, prefix }: { payload: JobDetailPayload; c
         <PanelMessage>
           In landing queue: position #{payload.landing_queue_entry.position}
           {payload.landing_queue_entry.blocked_reason ? ` (${payload.landing_queue_entry.blocked_reason})` : ""}
+          {payload.landing_queue_entry.waiting_for_jobs.length > 0 ? (
+            <>
+              {" "}
+              Waiting for: {payload.landing_queue_entry.waiting_for_jobs.map((job, index) => (
+                <span key={job.id}>
+                  {index > 0 ? ", " : null}
+                  <Link className="font-medium text-blue-700 underline hover:no-underline" to={`${prefix}${job.job_path}`}>
+                    {job.label} {job.title}
+                  </Link>
+                </span>
+              ))}
+            </>
+          ) : null}
         </PanelMessage>
       ) : null}
       {payload.job.landing_failure_reason ? <PanelMessage tone="error">Landing failed: {payload.job.landing_failure_reason}</PanelMessage> : null}

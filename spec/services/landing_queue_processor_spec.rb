@@ -99,6 +99,7 @@ RSpec.describe LandingQueueProcessor do
     expect(approved.reload).to be_approved
     entry = described_class.entries(Job.where(id: approved.id)).first
     expect(entry.blocked_reason).to eq("waiting for epic siblings to be approved")
+    expect(entry.waiting_for_jobs.map(&:issue_number)).to eq([ 2 ])
   end
 
   it "ignores closed epic siblings when checking whether every open sibling is approved" do

@@ -252,7 +252,17 @@ module App
 
       {
         position: entry.position,
-        blocked_reason: entry.blocked_reason
+        blocked_reason: entry.blocked_reason,
+        waiting_for_jobs: entry.waiting_for_jobs.map { |job| landing_queue_waiting_job_json(job) }
+      }
+    end
+
+    def landing_queue_waiting_job_json(job)
+      {
+        id: job.id,
+        label: job.issue_number.present? ? "##{job.issue_number}" : App::Presentation.job_slug(job),
+        title: job.issue_title.presence || App::Presentation.job_slug(job),
+        job_path: "/jobs/#{job.id}"
       }
     end
 

@@ -142,6 +142,12 @@ export type JobSummary = {
 export type JobLandingQueueEntry = {
   position: number
   blocked_reason: string | null
+  waiting_for_jobs: Array<{
+    id: number
+    label: string
+    title: string
+    job_path: string
+  }>
 }
 
 export type JobWorkflowsPagination = {

@@ -4929,6 +4929,13 @@ describe("App", () => {
 
   it("renders a Job detail page and runs commands through the app API", async () => {
     const payload = jobDetailPayload({
+      landing_queue_entry: {
+        position: 1,
+        blocked_reason: "waiting for epic siblings to be approved",
+        waiting_for_jobs: [
+          { id: 43, label: "#43", title: "Approve sibling aqueduct", job_path: "/jobs/43" }
+        ]
+      },
       dependents: [
         {
           id: 12,
@@ -4998,6 +5005,8 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "acme/widgets #11" })).toHaveAttribute("href", "/app-shell/jobs/41")
     expect(screen.getByText("Water should climb the hill.")).toBeInTheDocument()
     expect(screen.getByText("Moved the uphill water simulation.")).toBeInTheDocument()
+    expect(screen.getByText(/In landing queue: position #1/)).toHaveTextContent("waiting for epic siblings to be approved")
+    expect(screen.getByRole("link", { name: "#43 Approve sibling aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/43")
     expect(screen.queryByRole("button", { name: "Show timeline" })).not.toBeInTheDocument()
     expect(screen.getByPlaceholderText("Add tag")).toBeInTheDocument()
 

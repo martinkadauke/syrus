@@ -309,6 +309,43 @@ RSpec.describe "App API job detail", type: :request do
     expect(dependent["job"]).to include("id" => target.id, "issue_number" => 42)
   end
 
+  it "returns landing queue sibling blockers as clickable job targets" do
+    repo.update!(auto_merge_enabled: true)
+    epic = Factories.epic(user: user, repository: repo, state: "in_progress")
+    job.update!(
+      state: "approved",
+      approved_at: Time.current,
+      approved_via: "operator",
+      epic: epic
+    )
+    job.workflows.update_all(state: "succeeded")
+    sibling = Factories.job_record(
+      user: user,
+      repository: repo,
+      epic: epic,
+      issue_number: 43,
+      issue_title: "Approve the sibling aqueduct",
+      pr_number: 8,
+      state: "implemented"
+    )
+
+    get "/api/v1/app/jobs/#{job.id}"
+
+    entry = parse_body.fetch("landing_queue_entry")
+    expect(entry).to include(
+      "position" => 1,
+      "blocked_reason" => "waiting for epic siblings to be approved"
+    )
+    expect(entry.fetch("waiting_for_jobs")).to contain_exactly(
+      include(
+        "id" => sibling.id,
+        "label" => "#43",
+        "title" => "Approve the sibling aqueduct",
+        "job_path" => "/jobs/#{sibling.id}"
+      )
+    )
+  end
+
   it "returns admin-only diagnostic detail to admins" do
     user.update!(admin: true)
     run = job.initial_run
