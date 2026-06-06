@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter } from "react-router-dom"
 import { App } from "./App"
 import type { BootstrapPayload } from "../api/bootstrap"
@@ -78,6 +78,8 @@ vi.mock("mermaid", () => ({
   }
 }))
 
+let restoreClipboardMock: (() => void) | null = null
+
 describe("App", () => {
   beforeEach(() => {
     document.getElementById("syrus-bootstrap-data")?.remove()
@@ -86,6 +88,11 @@ describe("App", () => {
     excalidrawMock.addFiles.mockClear()
     excalidrawMock.lastInitialData = null
     excalidrawMock.updateScene.mockClear()
+  })
+
+  afterEach(() => {
+    restoreClipboardMock?.()
+    restoreClipboardMock = null
   })
 
   it("loads bootstrap data into the SPA shell", async () => {
@@ -5016,6 +5023,7 @@ describe("App", () => {
     gradeStep.display_name = "tests"
     gradeStep.details = { name: "tests", command: "bin/rspec" }
     gradeStep.runs[0].app_grade_log_path = "/api/v1/app/jobs/42/runs/9/grade_log?name=tests&workflow_id=5"
+    const clipboardWrite = mockClipboardWrite()
     let artifactFetchCount = 0
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -5058,6 +5066,10 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Job" })).toBeInTheDocument()
     expect(await screen.findByRole("heading", { level: 1, name: "Repair aqueduct" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    const copySlugButton = screen.getByRole("button", { name: "Copy JOB-42 to clipboard" })
+    expect(copySlugButton).toHaveTextContent("JOB-42")
+    fireEvent.click(copySlugButton)
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledWith("JOB-42"))
     expect(screen.getByRole("link", { name: "acme/widgets JOB-41" })).toHaveAttribute("href", "/app-shell/jobs/41")
     expect(screen.getByText("Water should climb the hill.")).toBeInTheDocument()
     expect(screen.getByText("Moved the uphill water simulation.")).toBeInTheDocument()
@@ -8750,6 +8762,26 @@ function setViewportWidth(width: number) {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: originalWidth })
     window.dispatchEvent(new Event("resize"))
   }
+}
+
+function mockClipboardWrite() {
+  const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard")
+  const writeText = vi.fn().mockResolvedValue(undefined)
+
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText }
+  })
+
+  restoreClipboardMock = () => {
+    if (originalClipboard) {
+      Object.defineProperty(navigator, "clipboard", originalClipboard)
+    } else {
+      Reflect.deleteProperty(navigator, "clipboard")
+    }
+  }
+
+  return writeText
 }
 
 function stubVisualViewport(initialHeight: number) {

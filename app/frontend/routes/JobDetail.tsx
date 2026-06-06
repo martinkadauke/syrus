@@ -120,11 +120,12 @@ function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefix }: { 
               {payload.job.agent_provider ? <SmallPill>{payload.job.agent_provider}</SmallPill> : null}
               {payload.job.credential_mode ? <SmallPill>{payload.job.credential_mode}</SmallPill> : null}
             </div>
-            <p className="mt-1 text-sm text-gray-500">
-              {jobSlug(payload.job.id)} · {payload.job.workflows_count} {plural(payload.job.workflows_count, "workflow")} · {payload.job.runs_count} {plural(payload.job.runs_count, "run")}
-              {payload.job.total_cost_usd == null ? null : <> · {formatCurrency(payload.job.total_cost_usd)}</>}
-              {payload.job.prepare_skipped ? <span className="font-medium text-amber-700"> · prepare skipped</span> : null}
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-1 text-sm text-gray-500">
+              <CopyableJobSlug slug={jobSlug(payload.job.id)} />
+              <span>· {payload.job.workflows_count} {plural(payload.job.workflows_count, "workflow")} · {payload.job.runs_count} {plural(payload.job.runs_count, "run")}</span>
+              {payload.job.total_cost_usd == null ? null : <span>· {formatCurrency(payload.job.total_cost_usd)}</span>}
+              {payload.job.prepare_skipped ? <span className="font-medium text-amber-700">· prepare skipped</span> : null}
+            </div>
           </div>
           <HeaderActions command={command} payload={payload} />
         </div>
@@ -344,6 +345,50 @@ function CommandButton({ children, command, input, tone = "primary" }: { childre
     <button className={buttonClass(tone)} disabled={command.isPending} onClick={() => command.mutate(input)} type="button">
       {children}
     </button>
+  )
+}
+
+function CopyableJobSlug({ slug }: { slug: string }) {
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!copied) return
+
+    const timeout = window.setTimeout(() => setCopied(false), 1500)
+    return () => window.clearTimeout(timeout)
+  }, [copied])
+
+  async function copySlug() {
+    if (!navigator.clipboard?.writeText) return
+
+    try {
+      await navigator.clipboard.writeText(slug)
+      setCopied(true)
+    } catch {
+      setCopied(false)
+    }
+  }
+
+  return (
+    <button
+      aria-label={`Copy ${slug} to clipboard`}
+      className="group inline-flex items-center gap-1 rounded px-1 py-0.5 font-mono text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      onClick={copySlug}
+      title={copied ? "Copied" : `Copy ${slug}`}
+      type="button"
+    >
+      <span>{slug}</span>
+      <CopyIcon className={`h-3.5 w-3.5 ${copied ? "text-green-600" : "text-gray-400 group-hover:text-gray-600"}`} />
+    </button>
+  )
+}
+
+function CopyIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 20 20">
+      <rect height="11" rx="2" stroke="currentColor" strokeWidth="1.8" width="11" x="6" y="3" />
+      <path d="M3 7v8a2 2 0 0 0 2 2h8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
   )
 }
 
