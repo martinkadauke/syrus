@@ -749,10 +749,10 @@ function WorkflowCard({ workflow, payload, command }: { workflow: JobWorkflow; p
         </div>
       </div>
       <div className="mt-4 overflow-hidden rounded border border-gray-200">
-        {stepItems.map((item) => item.type === "loop" ? (
+        {stepItems.map((item, index) => item.type === "loop" ? (
           <LoopGroup command={command} item={item} key={item.loopId} payload={payload} />
         ) : (
-          <StepCard command={command} key={item.step.id} numberLabel={item.step.position + 1} payload={payload} step={item.step} />
+          <DisplayStepCard command={command} item={item} key={displayStepItemKey(item)} numberLabel={index + 1} payload={payload} />
         ))}
       </div>
     </section>
@@ -787,8 +787,8 @@ function LoopGroup({ item, payload, command }: { item: LoopStepItem; payload: Jo
               <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs font-semibold uppercase text-gray-500">
                 Iteration {iteration.iteration}
               </div>
-              {iteration.steps.map((step, index) => (
-                <StepCard command={command} key={step.id} numberLabel={index + 1} payload={payload} step={step} />
+              {iteration.items.map((stepItem, index) => (
+                <DisplayStepCard command={command} item={stepItem} key={displayStepItemKey(stepItem)} numberLabel={index + 1} payload={payload} />
               ))}
             </section>
           ))}
@@ -798,7 +798,57 @@ function LoopGroup({ item, payload, command }: { item: LoopStepItem; payload: Jo
   )
 }
 
-function StepCard({ step, payload, command, numberLabel }: { step: JobStep; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; numberLabel: number }) {
+function DisplayStepCard({ item, payload, command, numberLabel }: { item: DisplayStepItem; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; numberLabel: number | string }) {
+  if (item.type === "grade") return <GradeGroup command={command} item={item} numberLabel={numberLabel} payload={payload} />
+
+  return <StepCard command={command} numberLabel={numberLabel} payload={payload} step={item.step} />
+}
+
+function GradeGroup({ item, payload, command, numberLabel }: { item: GradeStepItem; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; numberLabel: number | string }) {
+  const [open, setOpen] = useState(false)
+  const status = gradeDisplayStatus(item)
+  const phases = gradePhases(item)
+
+  return (
+    <div className="border-b border-gray-200 bg-white last:border-b-0">
+      <button
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 bg-violet-50/50 px-3 py-2 text-left hover:bg-violet-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="w-6 shrink-0 text-right font-mono text-xs text-gray-400">{numberLabel}.</span>
+          <span className="truncate text-sm font-medium text-gray-900">Grade</span>
+          {item.graders.length > 0 ? <SmallPill>{item.graders.length} {plural(item.graders.length, "check")}</SmallPill> : null}
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {status ? <StatusPill state={status} /> : null}
+          <span aria-hidden="true" className="text-gray-400">{open ? "−" : "+"}</span>
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-violet-100 bg-violet-50/20 p-3">
+          <div className="overflow-hidden rounded border border-violet-100 bg-white">
+            {phases.map((phase, index) => (
+              <StepCard
+                command={command}
+                displayName={phase.displayName}
+                key={phase.step.id}
+                metadataLabel={phase.metadataLabel}
+                numberLabel={index + 1}
+                payload={payload}
+                step={phase.step}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function StepCard({ step, payload, command, numberLabel, displayName, metadataLabel }: { step: JobStep; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; numberLabel: number | string; displayName?: string; metadataLabel?: string }) {
   const [open, setOpen] = useState(false)
   const runs = sortedRunsNewestFirst(step.runs)
   const activeRun = runs.find((run) => isActiveState(run.state))
@@ -814,7 +864,7 @@ function StepCard({ step, payload, command, numberLabel }: { step: JobStep; payl
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="w-6 shrink-0 text-right font-mono text-xs text-gray-400">{numberLabel}.</span>
-          <span className="truncate text-sm font-medium text-gray-900">{step.display_name}</span>
+          <span className="truncate text-sm font-medium text-gray-900">{displayName || step.display_name}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2">
           {displayStatus ? <StatusPill state={displayStatus} /> : null}
@@ -824,7 +874,7 @@ function StepCard({ step, payload, command, numberLabel }: { step: JobStep; payl
       {open ? (
         <div className="border-t border-gray-100 bg-gray-50 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <span>{step.kind}</span>
+            <span>{metadataLabel || step.kind}</span>
             {step.loop_id ? <span>iteration {step.iteration ?? 1}</span> : null}
             {activeRun && step.state !== activeRun.state ? <SmallPill>step {step.state.replaceAll("_", " ")}</SmallPill> : null}
             {step.latest ? <SmallPill>latest</SmallPill> : null}
@@ -1513,36 +1563,82 @@ function plural(count: number, singular: string) {
 }
 
 type WorkflowStepItem =
-  | { type: "step"; step: JobStep }
+  | DisplayStepItem
   | LoopStepItem
+
+type DisplayStepItem =
+  | { type: "step"; step: JobStep }
+  | GradeStepItem
+
+type GradeStepItem = {
+  type: "grade"
+  key: string
+  steps: JobStep[]
+  graders: JobStep[]
+}
 
 type LoopStepItem = {
   type: "loop"
   loopId: string
-  iterations: Array<{ iteration: number; steps: JobStep[] }>
+  iterations: Array<{ iteration: number; steps: JobStep[]; items: DisplayStepItem[] }>
 }
 
 function workflowStepItems(steps: JobStep[]): WorkflowStepItem[] {
   const items: WorkflowStepItem[] = []
   const consumedLoopIds = new Set<string>()
 
-  for (const step of steps) {
+  for (let index = 0; index < steps.length;) {
+    const step = steps[index]
     if (!step.loop_id) {
-      items.push({ type: "step", step })
+      const unloopedSteps: JobStep[] = []
+      while (index < steps.length && !steps[index].loop_id) {
+        unloopedSteps.push(steps[index])
+        index += 1
+      }
+      items.push(...displayStepItems(unloopedSteps))
       continue
     }
 
+    index += 1
     if (consumedLoopIds.has(step.loop_id)) continue
     consumedLoopIds.add(step.loop_id)
 
     const loopSteps = steps.filter((candidate) => candidate.loop_id === step.loop_id)
     const iterations = loopIterations(loopSteps)
     if (iterations.length <= 1) {
-      loopSteps.forEach((loopStep) => items.push({ type: "step", step: loopStep }))
+      items.push(...displayStepItems(loopSteps))
       continue
     }
 
     items.push({ type: "loop", loopId: step.loop_id, iterations })
+  }
+
+  return items
+}
+
+function displayStepItems(steps: JobStep[]): DisplayStepItem[] {
+  const items: DisplayStepItem[] = []
+  const sortedSteps = [...steps].sort((left, right) => left.position - right.position)
+
+  for (let index = 0; index < sortedSteps.length;) {
+    const step = sortedSteps[index]
+    if (!isGradeDisplayStep(step)) {
+      items.push({ type: "step", step })
+      index += 1
+      continue
+    }
+
+    const gradeSteps: JobStep[] = []
+    while (index < sortedSteps.length && isGradeDisplayStep(sortedSteps[index])) {
+      gradeSteps.push(sortedSteps[index])
+      index += 1
+    }
+    items.push({
+      type: "grade",
+      key: `grade-${gradeSteps.map((gradeStep) => gradeStep.id).join("-")}`,
+      steps: gradeSteps,
+      graders: gradeSteps.filter((gradeStep) => gradeStep.kind === "grader" || gradeStep.kind === "grade")
+    })
   }
 
   return items
@@ -1559,8 +1655,36 @@ function loopIterations(steps: JobStep[]) {
     .sort(([left], [right]) => left - right)
     .map(([iteration, iterationSteps]) => ({
       iteration,
-      steps: iterationSteps.sort((left, right) => left.position - right.position)
+      steps: iterationSteps.sort((left, right) => left.position - right.position),
+      items: displayStepItems(iterationSteps)
     }))
+}
+
+function isGradeDisplayStep(step: JobStep) {
+  return step.kind === "grader_fanout" || step.kind === "grader" || step.kind === "grader_collect" || step.kind === "grade"
+}
+
+function displayStepItemKey(item: DisplayStepItem) {
+  return item.type === "grade" ? item.key : `step-${item.step.id}`
+}
+
+function gradePhases(item: GradeStepItem) {
+  return item.steps.map((step) => {
+    if (step.kind === "grader_fanout") return { step, displayName: "Setup", metadataLabel: "grade setup" }
+    if (step.kind === "grader_collect") return { step, displayName: "Result", metadataLabel: "grade result" }
+    if (step.kind === "grade") return { step, displayName: step.display_name || "Grade", metadataLabel: "grade" }
+    return { step, displayName: step.display_name, metadataLabel: "grader" }
+  })
+}
+
+function gradeDisplayStatus(item: GradeStepItem) {
+  const statuses = item.steps.map((step) => effectiveStepStatus(step)).filter((status): status is string => Boolean(status))
+  if (statuses.includes("running")) return "running"
+  if (statuses.includes("queued")) return "queued"
+  if (statuses.includes("failed")) return "failed"
+  if (statuses.includes("cancelled")) return "cancelled"
+  if (item.steps.length > 0 && item.steps.every((step) => effectiveStepStatus(step) === "succeeded")) return "succeeded"
+  return null
 }
 
 function loopDisplayName(item: LoopStepItem) {

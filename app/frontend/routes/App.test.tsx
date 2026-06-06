@@ -5091,6 +5091,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
     expect(await screen.findByText("Workflow #5")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Grade/i }))
     fireEvent.click(screen.getByRole("button", { name: /tests/i }))
     expect(screen.getByText("Run #9")).toBeInTheDocument()
     expect(screen.queryByPlaceholderText("Add tag")).not.toBeInTheDocument()
@@ -5852,6 +5853,59 @@ describe("App", () => {
     expect(screen.getByText("Run #10").compareDocumentPosition(screen.getByText("Run #9"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
   })
 
+  it("groups grader setup and aggregation under one Grade step", async () => {
+    const base = jobDetailPayload()
+    const workflow = base.workflows[0]
+    const template = workflow.steps[0] as JobStep
+    const step = (attrs: Partial<JobStep>): JobStep => ({
+      ...template,
+      loop_id: null,
+      runs: [],
+      details: null,
+      latest: false,
+      ...attrs
+    })
+
+    vi.spyOn(window, "fetch").mockImplementation(() => {
+      return Promise.resolve(new Response(JSON.stringify(jobDetailPayload({
+        workflows: [
+          {
+            ...workflow,
+            steps: [
+              step({ id: 61, kind: "prepare", display_name: "Prepare workspace", display_status: "succeeded", position: 0, state: "succeeded" }),
+              step({ id: 62, kind: "grader_fanout", display_name: "Plan graders", display_status: "succeeded", position: 1, loop_id: "grade-loop", iteration: 1, state: "succeeded" }),
+              step({ id: 63, kind: "grader", display_name: "rspec", display_status: "failed", position: 2, loop_id: "grade-loop", iteration: 1, state: "failed", details: { name: "rspec" } }),
+              step({ id: 64, kind: "grader_collect", display_name: "Aggregate graders", display_status: "failed", position: 3, loop_id: "grade-loop", iteration: 1, state: "failed" }),
+              step({ id: 65, kind: "push", display_name: "Push", display_status: null, position: 4, state: "queued" })
+            ]
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42?tab=workflows"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("button", { name: /Prepare workspace/i })).toBeInTheDocument()
+    const grade = screen.getByRole("button", { name: /Grade/i })
+    expect(within(grade).getByText(/failed/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Push/i })).toBeInTheDocument()
+    expect(screen.queryByText("Plan graders")).not.toBeInTheDocument()
+    expect(screen.queryByText("Aggregate graders")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /rspec/i })).not.toBeInTheDocument()
+
+    fireEvent.click(grade)
+
+    expect(screen.getByRole("button", { name: /Setup/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /rspec/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Result/i })).toBeInTheDocument()
+  })
+
   it("groups repeated loop iterations on the workflows tab", async () => {
     const base = jobDetailPayload()
     const workflow = base.workflows[0]
@@ -5926,7 +5980,13 @@ describe("App", () => {
 
     expect(screen.getByText("Iteration 1")).toBeInTheDocument()
     expect(screen.getByText("Iteration 2")).toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: /rspec/i })).toHaveLength(2)
+    expect(screen.queryByText("Plan graders")).not.toBeInTheDocument()
+    expect(screen.queryByText("Aggregate graders")).not.toBeInTheDocument()
+    const iterationOne = screen.getByText("Iteration 1").closest("section")!
+    fireEvent.click(within(iterationOne).getByRole("button", { name: /Grade/i }))
+    expect(within(iterationOne).getByRole("button", { name: /rspec/i })).toBeInTheDocument()
+    expect(within(iterationOne).getByRole("button", { name: /Setup/i })).toBeInTheDocument()
+    expect(within(iterationOne).getByRole("button", { name: /Result/i })).toBeInTheDocument()
   })
 
   it("shows the grade loop status from the latest iteration", async () => {
