@@ -5033,8 +5033,8 @@ describe("App", () => {
         return Promise.resolve(new Response(JSON.stringify({
           job_id: 42,
           run_id: 9,
-          agent_diff: "diff --git a/app.rb b/app.rb\n+puts 'forum'\n",
-          agent_diff_bytes: 44,
+          agent_diff: "diff --git a/app.rb b/app.rb\nindex 1111111..2222222 100644\n--- a/app.rb\n+++ b/app.rb\n@@ -1,2 +1,2 @@\n-puts 'old forum'\n+puts 'forum'\n context\n",
+          agent_diff_bytes: 140,
           logs_count: artifactFetchCount > 1 ? 3 : 2,
           logs: [
             { id: 1, sequence: 0, kind: "assistant_text", chunk: "digging trench", created_at: "2026-05-30T10:02:00Z" },
@@ -5121,6 +5121,9 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Diff" }))
     expect(await screen.findByText(/diff --git a\/app.rb b\/app.rb/)).toBeInTheDocument()
+    expect(screen.getByText("puts 'old forum'").closest("tr")).toHaveAttribute("data-diff-kind", "delete")
+    expect(screen.getByText("puts 'forum'").closest("tr")).toHaveAttribute("data-diff-kind", "add")
+    expect(screen.getByText("context").closest("tr")).toHaveAttribute("data-diff-kind", "context")
 
     fireEvent.click(screen.getByRole("button", { name: "Grade log" }))
     await waitFor(() => {

@@ -884,7 +884,7 @@ function RunArtifactsPanel({ payload, view }: { payload: Awaited<ReturnType<type
       <section className="mt-3 rounded border border-gray-200 bg-gray-50">
         <h4 className="border-b border-gray-200 px-3 py-2 text-xs font-semibold uppercase text-gray-500">Agent diff</h4>
         {payload.agent_diff ? (
-          <pre className="max-h-[32rem] overflow-auto p-3 font-mono text-xs text-gray-800 whitespace-pre-wrap">{payload.agent_diff}</pre>
+          <AgentDiff diff={payload.agent_diff} />
         ) : <p className="p-3 text-sm text-gray-400">No diff captured for this run.</p>}
       </section>
     )
@@ -896,6 +896,108 @@ function RunArtifactsPanel({ payload, view }: { payload: Awaited<ReturnType<type
       {payload.logs.length > 0 ? <RunTranscriptLogs logs={payload.logs} /> : <p className="p-3 text-sm text-gray-400">No transcript rows captured for this run.</p>}
     </section>
   )
+}
+
+type DiffLineKind = "file" | "meta" | "hunk" | "add" | "delete" | "context"
+type DiffLine = {
+  kind: DiffLineKind
+  oldLine: number | null
+  newLine: number | null
+  marker: string
+  code: string
+}
+
+function AgentDiff({ diff }: { diff: string }) {
+  const lines = parseUnifiedDiff(diff)
+
+  return (
+    <div className="max-h-[32rem] overflow-auto bg-white font-mono text-xs" data-testid="agent-diff-viewer">
+      <table className="min-w-full border-separate border-spacing-0">
+        <tbody>
+          {lines.map((line, index) => (
+            <tr className={diffLineClass(line.kind)} data-diff-kind={line.kind} key={`${index}-${line.kind}-${line.oldLine || ""}-${line.newLine || ""}`}>
+              <td className={diffGutterClass(line.kind)}>{line.oldLine ?? ""}</td>
+              <td className={diffGutterClass(line.kind)}>{line.newLine ?? ""}</td>
+              <td className={diffMarkerClass(line.kind)}>{line.marker}</td>
+              <td className="min-w-[40rem] whitespace-pre px-3 py-0.5 text-gray-900">{line.code || " "}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function parseUnifiedDiff(diff: string) {
+  const rawLines = diff.replace(/\r\n/g, "\n").split("\n")
+  if (rawLines.at(-1) === "") rawLines.pop()
+
+  const lines: DiffLine[] = []
+  let oldLine: number | null = null
+  let newLine: number | null = null
+
+  for (const rawLine of rawLines) {
+    const hunk = rawLine.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/)
+    if (hunk) {
+      oldLine = Number(hunk[1])
+      newLine = Number(hunk[2])
+      lines.push(diffLine("hunk", rawLine))
+      continue
+    }
+
+    if (rawLine.startsWith("diff --git ")) {
+      lines.push(diffLine("file", rawLine))
+    } else if (rawLine.startsWith("+") && !rawLine.startsWith("+++")) {
+      lines.push(diffLine("add", rawLine.slice(1), null, newLine, "+"))
+      if (newLine !== null) newLine += 1
+    } else if (rawLine.startsWith("-") && !rawLine.startsWith("---")) {
+      lines.push(diffLine("delete", rawLine.slice(1), oldLine, null, "-"))
+      if (oldLine !== null) oldLine += 1
+    } else if (rawLine.startsWith(" ") && oldLine !== null && newLine !== null) {
+      lines.push(diffLine("context", rawLine.slice(1), oldLine, newLine))
+      oldLine += 1
+      newLine += 1
+    } else {
+      lines.push(diffLine("meta", rawLine))
+    }
+  }
+
+  return lines
+}
+
+function diffLine(kind: DiffLineKind, code: string, oldLine: number | null = null, newLine: number | null = null, marker = "") {
+  return { kind, oldLine, newLine, marker, code }
+}
+
+function diffLineClass(kind: DiffLineKind) {
+  switch (kind) {
+    case "add": return "bg-green-50"
+    case "delete": return "bg-red-50"
+    case "hunk": return "bg-blue-50 text-blue-800"
+    case "file": return "bg-gray-100 font-semibold"
+    case "meta": return "bg-gray-50 text-gray-500"
+    default: return "bg-white"
+  }
+}
+
+function diffGutterClass(kind: DiffLineKind) {
+  const base = "w-12 select-none border-r px-2 py-0.5 text-right text-gray-400"
+  switch (kind) {
+    case "add": return `${base} border-green-200 bg-green-100 text-green-700`
+    case "delete": return `${base} border-red-200 bg-red-100 text-red-700`
+    case "hunk": return `${base} border-blue-200 bg-blue-100 text-blue-700`
+    default: return `${base} border-gray-200 bg-gray-50`
+  }
+}
+
+function diffMarkerClass(kind: DiffLineKind) {
+  const base = "w-6 select-none px-2 py-0.5 text-center"
+  switch (kind) {
+    case "add": return `${base} text-green-700`
+    case "delete": return `${base} text-red-700`
+    case "hunk": return `${base} text-blue-700`
+    default: return `${base} text-gray-300`
+  }
 }
 
 function RunTranscriptLogs({ logs }: { logs: Awaited<ReturnType<typeof fetchJobRunArtifacts>>["logs"] }) {
