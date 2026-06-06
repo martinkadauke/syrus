@@ -76,7 +76,10 @@ function StuckTable({ items, prefix }: { items: StuckItem[]; prefix: string }) {
               <td className="px-4 py-2 text-xs text-gray-600">{contextLabel(item)}</td>
               <td className="px-4 py-2 text-xs text-gray-500">{item.age_label}</td>
               <td className="space-x-3 px-4 py-2 text-right text-xs">
-                {item.job_id ? <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(`/jobs/${item.job_id}`, prefix)}>Job</Link> : null}
+                {item.workflow_path ? (
+                  <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(item.workflow_path, prefix)}>{item.workflow_slug || "Workflow"}</Link>
+                ) : null}
+                {item.job_id ? <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(item.job_path || `/jobs/${item.job_id}`, prefix)}>Job</Link> : null}
                 {item.run_id && item.has_transcript ? (
                   <Link className="text-indigo-600 underline hover:no-underline" to={withRoutePrefix(`/admin/runs/${item.run_id}/transcript`, prefix)}>Transcript</Link>
                 ) : null}
@@ -113,7 +116,7 @@ function contextLabel(item: StuckItem) {
   if (item.run_id) parts.push(`Run #${item.run_id}`)
   if (item.workflow_trigger_kind) parts.push(item.workflow_trigger_kind)
   if (item.step_kind) parts.push(`step ${item.step_kind}`)
-  if (parts.length === 0 && item.workflow_id) parts.push(workflowSlug(item.workflow_id))
+  if (parts.length === 0 && item.workflow_id) parts.push(item.workflow_slug || workflowSlug(item.workflow_id))
 
   return parts.join(" · ") || "-"
 }

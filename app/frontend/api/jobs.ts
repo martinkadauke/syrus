@@ -164,6 +164,8 @@ export type JobWorkflowsPagination = {
 
 export type JobWorkflow = {
   id: number
+  slug: string
+  path: string
   trigger_kind: string
   agent_provider: string | null
   state: string
@@ -324,7 +326,9 @@ export type JobTimelinePayload = {
     transition_source: string | null
     title: string
     detail: string | null
-    ref: string | null
+    ref: Record<string, unknown> | string | null
+    ref_label: string | null
+    workflow_path: string | null
   }>
 }
 

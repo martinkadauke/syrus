@@ -61,7 +61,11 @@ RSpec.describe "API: /api/v1/app/admin/overview", type: :request do
     expect(body["stuck"].first).to include(
       "kind" => "stale_heartbeat",
       "run_id" => run.id,
-      "job_id" => job.id
+      "workflow_id" => run.step.workflow.id,
+      "workflow_slug" => "WF-#{run.step.workflow.id}",
+      "workflow_path" => "/jobs/#{job.id}?tab=workflows#workflow-#{run.step.workflow.id}",
+      "job_id" => job.id,
+      "job_path" => "/jobs/#{job.id}"
     )
   end
 end

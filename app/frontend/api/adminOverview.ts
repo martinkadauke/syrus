@@ -57,9 +57,12 @@ export type AdminOverviewPayload = {
     age_label: string
     run_id: number | null
     workflow_id: number | null
+    workflow_slug?: string | null
+    workflow_path?: string | null
     workflow_trigger_kind?: string | null
     step_kind?: string | null
     job_id: number | null
+    job_path?: string | null
     has_transcript?: boolean
   }>
 }

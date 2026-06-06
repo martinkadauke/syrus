@@ -11,6 +11,7 @@ import {
   killAdminProcess,
   type SpawnedProcessPayload
 } from "../api/adminProcesses"
+import { workflowSlug } from "../lib/slugs"
 
 export function AdminProcessesIndex() {
   const location = useLocation()
@@ -188,7 +189,13 @@ function ProcessDetail({ process, prefix }: { process: SpawnedProcessPayload; pr
         {process.workflow_id ? (
           <>
             <dt className="text-gray-500">Workflow</dt>
-            <dd>#{process.workflow_id}</dd>
+            <dd>
+              {process.workflow_path ? (
+                <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(process.workflow_path, prefix)}>
+                  {process.workflow_slug || workflowSlug(process.workflow_id)}
+                </Link>
+              ) : process.workflow_slug || workflowSlug(process.workflow_id)}
+            </dd>
           </>
         ) : null}
         {process.kill_requested_at ? (

@@ -97,13 +97,26 @@ function tabFromLocation(pathname: string, search: string): JobTab {
 }
 
 function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefix }: { payload: JobDetailPayload; queryKey: JobDetailQueryKey; activeTab: JobTab; onSelectTab: (tab: JobTab) => void; prefix: string }) {
+  const location = useLocation()
   const [notice, setNotice] = useState<string | null>(payload.message || null)
   const command = useJobCommand(payload.job.id, queryKey, setNotice)
   const title = payload.job.issue_title || jobSourceLabel(payload)
+  const workflowAnchor = location.hash.startsWith("#workflow-") ? location.hash.slice(1) : null
+  const renderedWorkflowIds = payload.workflows.map((workflow) => workflow.id).join(",")
 
   useEffect(() => {
     setNotice(payload.message || null)
   }, [payload.job.id, payload.message])
+
+  useEffect(() => {
+    if (activeTab !== "workflows" || !workflowAnchor) return undefined
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(workflowAnchor)?.scrollIntoView({ block: "start" })
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [activeTab, workflowAnchor, renderedWorkflowIds])
 
   return (
     <>
@@ -511,7 +524,7 @@ function SummaryTab({ payload, command, prefix }: { payload: JobDetailPayload; c
         </section>
       </div>
 
-      <TimelinePanel canView={payload.actions.can_view_timeline} jobId={payload.job.id} />
+      <TimelinePanel canView={payload.actions.can_view_timeline} jobId={payload.job.id} prefix={prefix} />
       <AttachmentPreview attachments={payload.attachments} />
     </div>
   )
@@ -653,7 +666,7 @@ function DependenciesPanel({ payload, command, prefix }: { payload: JobDetailPay
   )
 }
 
-function TimelinePanel({ canView, jobId }: { canView: boolean; jobId: number }) {
+function TimelinePanel({ canView, jobId, prefix }: { canView: boolean; jobId: number; prefix: string }) {
   const [expanded, setExpanded] = useState(false)
   const timeline = useQuery({
     queryKey: ["jobs", String(jobId), "timeline"],
@@ -682,8 +695,22 @@ function TimelinePanel({ canView, jobId }: { canView: boolean; jobId: number }) 
         <ol className="mt-3 space-y-3">
           {timeline.data.events.map((event, index) => (
             <li className="border-l border-gray-200 pl-3 text-sm" key={`${event.at}-${event.title}-${index}`}>
-              <div className="font-medium text-gray-900">{event.title}</div>
-              <div className="text-xs text-gray-500">{formatDate(event.at)} · {event.source}{event.ref ? ` · ${event.ref}` : ""}</div>
+              <div className="font-medium text-gray-900">
+                {event.workflow_path ? (
+                  <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(event.workflow_path, prefix)}>{event.title}</Link>
+                ) : event.title}
+              </div>
+              <div className="text-xs text-gray-500">
+                {formatDate(event.at)} · {event.source}
+                {event.ref_label ? (
+                  <>
+                    {" · "}
+                    {event.workflow_path ? (
+                      <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(event.workflow_path, prefix)}>{event.ref_label}</Link>
+                    ) : event.ref_label}
+                  </>
+                ) : null}
+              </div>
               {event.detail ? <div className="mt-1 text-gray-600">{event.detail}</div> : null}
             </li>
           ))}
@@ -712,7 +739,7 @@ function WorkflowsTab({ payload, command, prefix }: { payload: JobDetailPayload;
   return (
     <div className="space-y-4">
       <WorkflowsPagination payload={payload} prefix={prefix} />
-      {payload.workflows.map((workflow) => <WorkflowCard command={command} key={workflow.id} payload={payload} workflow={workflow} />)}
+      {payload.workflows.map((workflow) => <WorkflowCard command={command} key={workflow.id} payload={payload} prefix={prefix} workflow={workflow} />)}
       <WorkflowsPagination payload={payload} prefix={prefix} />
     </div>
   )
@@ -733,14 +760,16 @@ function WorkflowsPagination({ payload, prefix }: { payload: JobDetailPayload; p
   )
 }
 
-function WorkflowCard({ workflow, payload, command }: { workflow: JobWorkflow; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {
+function WorkflowCard({ workflow, payload, command, prefix }: { workflow: JobWorkflow; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; prefix: string }) {
   const stepItems = workflowStepItems(workflow.steps)
 
   return (
     <section className="rounded border border-gray-200 bg-white p-4" id={`workflow-${workflow.id}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-900">{workflowSlug(workflow.id)}</h2>
+          <h2 className="text-sm font-semibold text-gray-900">
+            <Link className="hover:underline" to={withRoutePrefix(workflow.path, prefix)}>{workflow.slug || workflowSlug(workflow.id)}</Link>
+          </h2>
           <p className="text-xs text-gray-500">{workflow.trigger_kind} · {workflow.agent_provider || "default agent"} · created {formatDate(workflow.created_at)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

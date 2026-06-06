@@ -91,6 +91,8 @@ module Admin
           silent_timeout_s: process.silent_timeout_s,
           run_id: process.run_id,
           workflow_id: process.workflow_id,
+          workflow_slug: process.workflow&.slug,
+          workflow_path: process.workflow ? App::WorkflowNavigation.path(process.workflow) : nil,
           stale: process.stale?,
           kill_requested_at: process.kill_requested_at&.iso8601,
           kill_requested_by_user_id: process.kill_requested_by_user_id

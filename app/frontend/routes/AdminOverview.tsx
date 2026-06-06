@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
-import { fetchAdminOverview } from "../api/adminOverview"
+import { fetchAdminOverview, type AdminOverviewPayload } from "../api/adminOverview"
 
 export function AdminOverview() {
   const location = useLocation()
@@ -51,7 +51,7 @@ export function AdminOverview() {
           <ul className="divide-y divide-gray-100">
             {data.stuck.map((item) => (
               <li className="flex items-center justify-between gap-3 px-4 py-3 text-sm" key={`${item.kind}-${item.run_id}-${item.workflow_id}`}>
-                <span className="text-gray-800">{item.detail}</span>
+                <StuckDetail item={item} prefix={prefix} />
                 <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">{item.age_label}</span>
               </li>
             ))}
@@ -59,6 +59,17 @@ export function AdminOverview() {
         </section>
       ) : null}
     </main>
+  )
+}
+
+function StuckDetail({ item, prefix }: { item: AdminOverviewPayload["stuck"][number]; prefix: string }) {
+  const href = item.workflow_path || item.job_path
+  if (!href) return <span className="text-gray-800">{item.detail}</span>
+
+  return (
+    <Link className="text-blue-600 underline hover:no-underline" to={withRoutePrefix(href, prefix)}>
+      {item.detail}
+    </Link>
   )
 }
 

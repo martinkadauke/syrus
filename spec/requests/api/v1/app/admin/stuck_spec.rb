@@ -43,9 +43,12 @@ RSpec.describe "API: /api/v1/app/admin/stuck", type: :request do
       "severity" => "warn",
       "run_id" => run.id,
       "workflow_id" => run.step.workflow.id,
+      "workflow_slug" => "WF-#{run.step.workflow.id}",
+      "workflow_path" => "/jobs/#{job.id}?tab=workflows#workflow-#{run.step.workflow.id}",
       "workflow_trigger_kind" => "initial",
       "step_kind" => "prepare",
       "job_id" => job.id,
+      "job_path" => "/jobs/#{job.id}",
       "has_transcript" => false
     )
   end

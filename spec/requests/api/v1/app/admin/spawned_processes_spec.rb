@@ -92,7 +92,9 @@ RSpec.describe "API: /api/v1/app/admin/processes", type: :request do
 
   it "returns process detail with host metrics key" do
     sign_in_as(admin)
-    process = fixture
+    job = Factories.job(user: admin)
+    workflow = job.latest_workflow
+    process = fixture(workflow: workflow)
 
     get "/api/v1/app/admin/processes/#{process.id}"
 
@@ -100,6 +102,9 @@ RSpec.describe "API: /api/v1/app/admin/processes", type: :request do
     expect(parse_body).to include(
       "id" => process.id,
       "kind" => "agent",
+      "workflow_id" => workflow.id,
+      "workflow_slug" => "WF-#{workflow.id}",
+      "workflow_path" => "/jobs/#{job.id}?tab=workflows#workflow-#{workflow.id}",
       "host_metrics" => nil
     )
   end

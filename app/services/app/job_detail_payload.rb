@@ -1,7 +1,7 @@
 module App
   class JobDetailPayload
     include Rails.application.routes.url_helpers
-    WORKFLOWS_PER_PAGE = 10
+    WORKFLOWS_PER_PAGE = App::WorkflowNavigation::PER_PAGE
 
     def self.build(job:, user:, params: {})
       new(job: job, user: user, params: params).payload
@@ -271,6 +271,8 @@ module App
       paginated_workflows.map do |workflow|
         {
           id: workflow.id,
+          slug: workflow.slug,
+          path: App::WorkflowNavigation.path(workflow),
           trigger_kind: workflow.trigger_kind,
           agent_provider: workflow.agent_provider,
           state: workflow.state,
@@ -565,6 +567,7 @@ module App
     end
 
     def timeline_event_json(event)
+      workflow = timeline_workflow(event.ref)
       {
         at: iso8601(event.at),
         kind: event.kind.to_s,
@@ -572,8 +575,29 @@ module App
         transition_source: event.transition_source,
         title: event.title,
         detail: event.detail,
-        ref: event.ref
+        ref: event.ref,
+        ref_label: timeline_ref_label(event.ref, workflow: workflow),
+        workflow_path: workflow ? App::WorkflowNavigation.path(workflow) : nil
       }
+    end
+
+    def timeline_workflow(ref)
+      return unless ref.is_a?(Hash)
+
+      workflow_id = ref[:workflow_id] || ref["workflow_id"]
+      return unless workflow_id
+
+      @timeline_workflows ||= @job.workflows.index_by(&:id)
+      @timeline_workflows[workflow_id.to_i]
+    end
+
+    def timeline_ref_label(ref, workflow:)
+      return if ref.blank?
+      return workflow.slug if workflow
+      return unless ref.is_a?(Hash)
+
+      workflow_id = ref[:workflow_id] || ref["workflow_id"]
+      workflow_id ? "WF-#{workflow_id}" : nil
     end
 
     def summary_state(job)

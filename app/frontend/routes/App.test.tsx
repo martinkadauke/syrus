@@ -893,7 +893,12 @@ describe("App", () => {
               age_label: "10m",
               run_id: 4,
               workflow_id: 2,
-              job_id: 1
+              workflow_slug: "WF-2",
+              workflow_path: "/jobs/1?tab=workflows#workflow-2",
+              workflow_trigger_kind: "initial",
+              step_kind: "implement",
+              job_id: 1,
+              job_path: "/jobs/1"
             }
           ]
         }),
@@ -924,8 +929,8 @@ describe("App", () => {
     expect(within(adminNav).getByRole("link", { name: "Invitations" })).toHaveAttribute("href", "/app-shell/invitations")
     expect(screen.getByRole("link", { name: /Active runs/ })).toHaveAttribute("href", "/app-shell/admin/queue/active")
     expect(screen.getByRole("link", { name: /Stuck things/ })).toHaveAttribute("href", "/app-shell/admin/stuck")
+    expect(screen.getByRole("link", { name: "Run #4 silent for 10m" })).toHaveAttribute("href", "/app-shell/jobs/1?tab=workflows#workflow-2")
     expect(screen.getByText("2")).toBeInTheDocument()
-    expect(screen.getByText("Run #4 silent for 10m")).toBeInTheDocument()
   })
 
   it("renders the migrated /admin route from the same admin overview component", async () => {
@@ -2547,9 +2552,12 @@ describe("App", () => {
               age_label: "10m",
               run_id: 4,
               workflow_id: 2,
+              workflow_slug: "WF-2",
+              workflow_path: "/jobs/1?tab=workflows#workflow-2",
               workflow_trigger_kind: "initial",
               step_kind: "implement",
               job_id: 1,
+              job_path: "/jobs/1",
               has_transcript: true
             }
           ]
@@ -2571,6 +2579,7 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /Refresh/ })).toHaveClass("shrink-0")
     expect(await screen.findByText("Run #4 silent for 10m")).toBeInTheDocument()
     expect(screen.getByText("stale_heartbeat")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "WF-2" })).toHaveAttribute("href", "/app-shell/jobs/1?tab=workflows#workflow-2")
     expect(screen.getByRole("link", { name: "Job" })).toHaveAttribute("href", "/app-shell/jobs/1")
     expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript")
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -2702,6 +2711,8 @@ describe("App", () => {
           silent_timeout_s: 300,
           run_id: 4,
           workflow_id: 2,
+          workflow_slug: "WF-2",
+          workflow_path: "/jobs/42?tab=workflows#workflow-2",
           stale: false,
           kill_requested_at: null,
           kill_requested_by_user_id: null,
@@ -2724,6 +2735,7 @@ describe("App", () => {
     expect(await within(processDetail).findByText("claude --print")).toBeInTheDocument()
     expect(within(processDetail).getByRole("link", { name: "Processes" })).toHaveAttribute("href", "/app-shell/admin/processes")
     expect(within(processDetail).getByRole("link", { name: "#4" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript")
+    expect(within(processDetail).getByRole("link", { name: "WF-2" })).toHaveAttribute("href", "/app-shell/jobs/42?tab=workflows#workflow-2")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/processes/8",
       expect.objectContaining({
@@ -5344,6 +5356,8 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show timeline" }))
 
     expect(await screen.findByText("Workflow created")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Workflow created" })).toHaveAttribute("href", "/app-shell/jobs/42?tab=workflows#workflow-5")
+    expect(screen.getByRole("link", { name: "WF-5" })).toHaveAttribute("href", "/app-shell/jobs/42?tab=workflows#workflow-5")
     expect(screen.getByRole("button", { name: "Hide timeline" })).toHaveAttribute("aria-expanded", "true")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/jobs/42/timeline",
@@ -5355,8 +5369,8 @@ describe("App", () => {
     const payload = jobDetailPayload({
       job: { workflows_count: 12 },
       workflows: [
-        { ...jobDetailPayload().workflows[0], id: 15, trigger_kind: "retry", steps: [] },
-        { ...jobDetailPayload().workflows[0], id: 16, trigger_kind: "pr_comment", steps: [] }
+        { ...jobDetailPayload().workflows[0], id: 15, slug: "WF-15", path: "/jobs/42?tab=workflows&workflows_page=2#workflow-15", trigger_kind: "retry", steps: [] },
+        { ...jobDetailPayload().workflows[0], id: 16, slug: "WF-16", path: "/jobs/42?tab=workflows&workflows_page=2#workflow-16", trigger_kind: "pr_comment", steps: [] }
       ],
       workflows_pagination: {
         page: 2,
@@ -8595,6 +8609,8 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
     workflows: [
       {
         id: 5,
+        slug: "WF-5",
+        path: "/jobs/42?tab=workflows#workflow-5",
         trigger_kind: "initial",
         agent_provider: "codex",
         state: "succeeded",
@@ -8757,7 +8773,9 @@ function jobTimelinePayload() {
         transition_source: null,
         title: "Workflow created",
         detail: "Initial workflow queued.",
-        ref: "5"
+        ref: { workflow_id: 5 },
+        ref_label: "WF-5",
+        workflow_path: "/jobs/42?tab=workflows#workflow-5"
       }
     ]
   }

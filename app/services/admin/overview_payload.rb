@@ -125,9 +125,12 @@ module Admin
         age_label: item.age_label,
         run_id: item.run&.id,
         workflow_id: item.workflow&.id,
+        workflow_slug: item.workflow&.slug,
+        workflow_path: item.workflow ? App::WorkflowNavigation.path(item.workflow) : nil,
         workflow_trigger_kind: item.workflow&.trigger_kind,
         step_kind: item.workflow&.current_step&.kind,
         job_id: item.job&.id,
+        job_path: item.job ? "/jobs/#{item.job.id}" : nil,
         has_transcript: item.run&.claude_session.present?
       }
     end

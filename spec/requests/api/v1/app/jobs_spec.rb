@@ -398,7 +398,16 @@ RSpec.describe "App API job detail", type: :request do
       include("source" => "workflow", "title" => include("created")),
       include("source" => "run", "title" => "Run ##{run.id} failed")
     )
-    expect(body["events"].first).to include("at", "kind", "source", "title", "ref")
+    workflow_event = body["events"].find { |event| event["source"] == "workflow" }
+    expect(workflow_event).to include(
+      "at",
+      "kind",
+      "source",
+      "title",
+      "ref" => { "workflow_id" => job.latest_workflow.id },
+      "ref_label" => "WF-#{job.latest_workflow.id}",
+      "workflow_path" => "/jobs/#{job.id}?tab=workflows#workflow-#{job.latest_workflow.id}"
+    )
   end
 
   it "blocks timeline payloads for non-admin users" do

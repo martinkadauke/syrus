@@ -486,21 +486,32 @@ RSpec.describe "App API dashboard commands", type: :request do
         trigger_kind: "initial",
         agent_provider: "claude",
         state: "succeeded",
+        created_at: 30.days.ago,
         started_at: 30.days.ago,
         finished_at: 29.days.ago
       )
+      10.times do |index|
+        Workflow.create!(
+          job: job,
+          trigger_kind: "retry",
+          agent_provider: "claude",
+          state: "succeeded",
+          created_at: index.days.ago
+        )
+      end
 
       get "/api/v1/app/dashboard", params: { subject: "workflow", view: "list" }
 
       expect(response).to have_http_status(:ok)
       body = parse_body
       expect(body["subject"]).to eq("workflow")
-      expect(body["total"]).to eq(1)
-      expect(body["items"].sole).to include(
+      expect(body["total"]).to eq(11)
+      old_item = body["items"].find { |item| item["id"] == old_workflow.id }
+      expect(old_item).to include(
         "type" => "workflow",
         "id" => old_workflow.id,
         "slug" => "WF-#{old_workflow.id}",
-        "path" => "/jobs/#{job.id}?tab=workflows#workflow-#{old_workflow.id}",
+        "path" => "/jobs/#{job.id}?tab=workflows&workflows_page=2#workflow-#{old_workflow.id}",
         "state" => "succeeded",
         "job" => include("title" => "Old aqueduct")
       )
