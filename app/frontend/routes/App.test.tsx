@@ -6846,6 +6846,37 @@ describe("App", () => {
     expect(screen.getByText("Cancelled by operator.")).toBeInTheDocument()
   })
 
+  it("renders unmatched text tool results like assistant messages", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({
+        messages: [
+          {
+            type: "message",
+            id: 10,
+            role: "tool_result",
+            tool_name: "tool_result",
+            content: { result: [{ type: "text", text: "Perfect! Now I have all the information I need.\n\n## Queue setup\n\nThe report is ready." }] },
+            text: "",
+            bookmarkable: false
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Perfect! Now I have all the information I need.")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Queue setup" })).toBeInTheDocument()
+    expect(screen.queryByText("tool_result")).not.toBeInTheDocument()
+    expect(screen.queryByText(/"result"/)).not.toBeInTheDocument()
+  })
+
   it("runs chat commands through the app API", async () => {
     const search = "?attachment_type=Repository&attachment_query=tools"
     const proposalMessage = {
