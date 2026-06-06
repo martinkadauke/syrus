@@ -1784,42 +1784,63 @@ function toolLabel(name: string) {
   return name.startsWith("mcp__") ? name.split("__", 3).at(-1) || name : name
 }
 
+const CHAT_REPOSITORY_ROOT_PATTERN = /(?:\/[^\s'"`,:;\])}]+)+\/\.syrus\/chat-workspaces\/\d+\/repositories\/[^/\s'"`,:;\])}]+\/[^/\s'"`,:;\])}]+\/?/g
+
 function toolDetail(name: string, input: Record<string, unknown>) {
+  let detail = ""
+
   switch (name) {
     case "Bash":
-      return firstLine(stringValue(input.command))
+      detail = firstLine(stringValue(input.command))
+      break
     case "Read":
     case "Edit":
     case "Write":
-      return stringValue(input.file_path)
+      detail = stringValue(input.file_path)
+      break
     case "NotebookEdit":
-      return stringValue(input.notebook_path)
+      detail = stringValue(input.notebook_path)
+      break
     case "Glob":
-      return stringValue(input.pattern)
+      detail = stringValue(input.pattern)
+      break
     case "Grep": {
       const base = stringValue(input.pattern)
       const path = stringValue(input.path)
-      return path ? `${base} in ${path}` : base
+      detail = path ? `${base} in ${path}` : base
+      break
     }
     case "WebFetch":
-      return stringValue(input.url)
+      detail = stringValue(input.url)
+      break
     case "WebSearch":
-      return stringValue(input.query)
+      detail = stringValue(input.query)
+      break
     case "TodoWrite":
-      return `${Array.isArray(input.todos) ? input.todos.length : 0} item(s)`
+      detail = `${Array.isArray(input.todos) ? input.todos.length : 0} item(s)`
+      break
     case "Task":
     case "Agent":
-      return stringValue(input.description) || firstLine(stringValue(input.prompt))
+      detail = stringValue(input.description) || firstLine(stringValue(input.prompt))
+      break
     case "ToolSearch":
-      return stringValue(input.query)
+      detail = stringValue(input.query)
+      break
     default:
       if (name.startsWith("mcp__")) {
         const candidate = Object.values(input).find((value) => typeof value === "string" && value.length > 0)
-        return firstLine(stringValue(candidate))
+        detail = firstLine(stringValue(candidate))
+        break
       }
 
-      return firstLine(JSON.stringify(input))
+      detail = firstLine(JSON.stringify(input))
   }
+
+  return shortenChatRepositoryPaths(detail)
+}
+
+function shortenChatRepositoryPaths(value: string) {
+  return value.replace(CHAT_REPOSITORY_ROOT_PATTERN, (match) => match.endsWith("/") ? "" : ".")
 }
 
 function fullResultBody(content: unknown): string {

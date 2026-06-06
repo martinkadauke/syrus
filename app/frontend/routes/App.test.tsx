@@ -6723,7 +6723,7 @@ describe("App", () => {
             id: 10,
             role: "tool_use",
             tool_name: "Read",
-            content: { input: { file_path: "app/models/chat.rb" } },
+            content: { input: { file_path: "/syrus-home/.syrus/chat-workspaces/5/repositories/tkadauke/syrus/app/models/chat.rb" } },
             text: "",
             bookmarkable: false
           },
@@ -6733,6 +6733,15 @@ describe("App", () => {
             role: "tool_result",
             tool_name: "Read",
             content: { result: [{ type: "text", text: "class Chat\nend" }] },
+            text: "",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 19,
+            role: "tool_use",
+            tool_name: "Bash",
+            content: { input: { command: "rg queue_as /syrus-home/.syrus/chat-workspaces/5/repositories/tkadauke/syrus/app/jobs" } },
             text: "",
             bookmarkable: false
           },
@@ -6813,6 +6822,9 @@ describe("App", () => {
 
     expect(await screen.findByText("Read")).toBeInTheDocument()
     expect(screen.getAllByText("app/models/chat.rb").length).toBeGreaterThan(0)
+    expect(screen.getByText("Bash")).toBeInTheDocument()
+    expect(screen.getAllByText("rg queue_as app/jobs").length).toBeGreaterThan(0)
+    expect(screen.queryByText(/\/syrus-home\/\.syrus\/chat-workspaces/)).not.toBeInTheDocument()
     expect(screen.getByText(/class Chat\s+end/)).toBeInTheDocument()
     expect(screen.queryByText(/Agent run succeeded/)).not.toBeInTheDocument()
     expect(screen.queryByText(/MCP connected: syrus-chat-sidecar/)).not.toBeInTheDocument()
