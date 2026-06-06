@@ -6998,7 +6998,7 @@ describe("App", () => {
             id: 21,
             role: "tool_result",
             tool_name: "Read",
-            content: { result: [{ type: "text", text: "Loaded /syrus-home/.syrus/workflows/5185/spec/rails_helper.rb" }] },
+            content: { result: [{ type: "text", text: "1  # RSpec config\n2  RSpec.configure do |config|\n3    config.expect_with :rspec do |expectations|\n4      expectations.include_chain_clauses_in_custom_matcher_descriptions = true\n5    end\n6  end" }] },
             text: "",
             bookmarkable: false
           },
@@ -7098,13 +7098,18 @@ describe("App", () => {
     expect(await screen.findByText("Read")).toBeInTheDocument()
     expect(screen.getAllByText(/app\/models\/chat\.rb/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/spec\/rails_helper\.rb/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/Loaded spec\/rails_helper\.rb/)).toBeInTheDocument()
+    expect(screen.getByText("# RSpec config")).toHaveClass("text-gray-400")
+    expect(screen.getAllByText("do")[0]).toHaveClass("font-semibold", "text-blue-700")
+    expect(screen.getByText(":rspec")).toHaveClass("text-violet-700")
+    expect(screen.getByText("true")).toHaveClass("font-semibold", "text-blue-700")
     expect(screen.getByText("Bash")).toBeInTheDocument()
     expect(screen.getAllByText(/rg queue_as app\/jobs/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/bin\/rspec spec\/models\/job_spec\.rb/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/\/syrus-home\/\.syrus\/chat-workspaces/)).not.toBeInTheDocument()
     expect(screen.queryByText(/\/syrus-home\/\.syrus\/workflows/)).not.toBeInTheDocument()
-    expect(screen.getByText(/class Chat\s+end/)).toBeInTheDocument()
+    expect(screen.getAllByText("class")[0]).toHaveClass("font-semibold", "text-blue-700")
+    expect(screen.getByText("Chat")).toHaveClass("text-cyan-700")
+    expect(screen.getAllByText("end")[0]).toHaveClass("font-semibold", "text-blue-700")
     expect(screen.queryByText(/Agent run succeeded/)).not.toBeInTheDocument()
     expect(screen.queryByText(/MCP connected: syrus-chat-sidecar/)).not.toBeInTheDocument()
     expect(screen.queryByText(/MCP starting: syrus-chat-sidecar/)).not.toBeInTheDocument()
