@@ -268,6 +268,15 @@ across web/worker processes.
 - **GitHub issue actions** — Repository pages can list GitHub issues and
   comment, close, delegate (add the trigger label), or bulk delegate/close
   them through `GithubClient`. Keep single and bulk paths in sync.
+- **Syrus Epic issue markers are body-only.** `PollRepositoryJob` parses
+  `Epic:` markers from the GitHub issue body, not from the title. When filing
+  a GitHub issue that should become a Syrus Epic, put a standalone
+  `Epic: <epic name>` line near the top of the body. A title like
+  `Epic: ...` is only display text and will be ingested as a normal Job. Child
+  Jobs under an Epic need a standalone `Epic: #<issue-number>` body line. When
+  filing child issues immediately after an Epic issue, first verify the Epic
+  exists through the admin API or create the Epic via the admin API; otherwise
+  the children remain in `pending_epic_ref`.
 - **GitHub identifiers are links.** Whenever the UI renders a GitHub issue
   or pull request identifier (`#123`, `PR #123`, `owner/repo#123`), make it
   clickable to the matching GitHub page when a URL can be derived. Plain
@@ -452,6 +461,21 @@ and opens a PR there:
 gh issue create -R "$SYRUS_TEST_REPO" --label syrus \
   --title "..." --body "..."
 ```
+
+For Syrus Epics, the body must contain the marker line. The title alone is not
+enough:
+
+```
+Epic: <epic name>
+
+## Goal
+...
+```
+
+Child issues that belong to that Epic use `Epic: #<epic-issue-number>` in
+their body. If you create the Epic and child issues in one batch, verify the
+Epic record exists in Syrus before filing children, or create the Epic through
+the admin API first.
 
 Don't run `bin/dev` and stub things to simulate the agent — file a
 real issue and watch the real flow. Test issues should be small
