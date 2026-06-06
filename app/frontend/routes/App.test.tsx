@@ -5440,6 +5440,34 @@ describe("App", () => {
     }
   })
 
+  it("labels approval as reapproval after a landing failure", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(new Response(JSON.stringify(jobDetailPayload({
+      job: {
+        landing_failure_reason: "auto_merge: PR mergeable_state is \"dirty\" and rebase cap reached"
+      },
+      actions: {
+        can_approve: true,
+        can_retry: false,
+        can_poll_feedback: false,
+        can_rebase: false,
+        can_check_mergeability: false,
+        can_restart: false,
+        can_cancel: false
+      }
+    })), { status: 200, headers: { "Content-Type": "application/json" } }))
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("button", { name: "Reapprove" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument()
+  })
+
   it("sends retry feedback from the Job header More menu", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)

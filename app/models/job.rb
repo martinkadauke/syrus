@@ -926,6 +926,7 @@ class Job < ApplicationRecord
     self.approved_via = options.fetch(:via)
     self.approved_by_user = options[:by_user]
     self.approval_evidence = options[:evidence].presence || {}
+    self.landing_failure_reason = nil
   end
 
   def clear_approval_metadata

@@ -201,7 +201,7 @@ function headerActions(payload: JobDetailPayload): HeaderAction[] {
   if (actions.can_retry) available.push({ key: "retry", label: "Retry", input: { method: "post", path: paths.app_run_again_path }, tone: "primary" })
   if (actions.can_retry) available.push({ key: "retry_feedback", label: "Retry with feedback", input: { method: "post", path: paths.app_run_again_path }, tone: "secondary" })
   if (actions.can_restart) available.push({ key: "restart", label: "Start over", input: { method: "post", path: paths.app_restart_path, confirm: "Start over with a new Job and abandon this branch?" }, tone: "secondary" })
-  if (actions.can_approve) available.push({ key: "approve", label: "Approve", input: { method: "post", path: paths.app_approve_path }, tone: "success" })
+  if (actions.can_approve) available.push({ key: "approve", label: payload.job.landing_failure_reason ? "Reapprove" : "Approve", input: { method: "post", path: paths.app_approve_path }, tone: "success" })
   if (actions.can_unapprove) available.push({ key: "unapprove", label: "Unapprove", input: { method: "post", path: paths.app_unapprove_path, confirm: "Move this Job back to implemented?" }, tone: "secondary" })
   if (actions.can_cancel) available.push({ key: "cancel", label: "Cancel", input: { method: "post", path: paths.app_cancel_path, confirm: "Cancel any running work and close this Job?" }, tone: "danger" })
   if (actions.can_reopen) available.push({ key: "reopen", label: "Reopen", input: { method: "post", path: paths.app_reopen_path }, tone: "success" })

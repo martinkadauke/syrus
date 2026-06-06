@@ -98,7 +98,10 @@ module Api
 
           job.approve!(via: "operator", by_user: Current.user)
           github_note = Job::ApprovalPropagator.approve(job, user: Current.user).message
-          render_job(job.reload, message: [ "Job approved.", github_note ].compact.join(" "), changed: [ "state", "approval" ])
+          landing_workflow = LandingQueueProcessor.try_land!(job)
+          landing_note = landing_workflow ? "Landing workflow enqueued." : nil
+          changed = landing_workflow ? [ "state", "approval", "workflows", "runs" ] : [ "state", "approval" ]
+          render_job(job.reload, message: [ "Job approved.", github_note, landing_note ].compact.join(" "), changed: changed)
         end
 
         def unapprove

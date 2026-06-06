@@ -101,6 +101,29 @@ RSpec.describe "App API job lifecycle commands", type: :request do
     expect(parse_body).to include("message" => "Job unapproved.")
   end
 
+  it "reapproves a landing failure and immediately dispatches landing" do
+    repo.update!(approval_propagates_to_github: false)
+    job.update!(
+      state: "implemented",
+      pr_number: 7,
+      branch_name: "syrus/issue-42",
+      landing_failure_reason: "auto_merge: PR mergeable_state is \"dirty\" and rebase cap reached"
+    )
+    job.latest_workflow.update!(state: "succeeded")
+    job.initial_run.update_columns(state: "succeeded")
+
+    expect {
+      post app_job_path(job, "approve"), as: :json
+    }.to change { job.reload.workflows.where(trigger_kind: "auto_merge").count }.by(1)
+      .and have_enqueued_job(RunJob)
+
+    expect(response).to have_http_status(:ok)
+    expect(job.reload).to be_landing
+    expect(job.landing_failure_reason).to be_nil
+    expect(parse_body["message"]).to eq("Job approved. Landing workflow enqueued.")
+    expect(parse_body.dig("job", "state")).to eq("landing")
+  end
+
   it "rejects approval when auto-merge is disabled" do
     repo.update!(auto_merge_enabled: false)
     job.update!(state: "implemented")
