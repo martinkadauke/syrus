@@ -892,7 +892,8 @@ module App
     def repository_json(repository)
       {
         id: repository.id,
-        slug: repository.slug
+        slug: repository.slug,
+        repository_path: repository_path(repository)
       }
     end
 

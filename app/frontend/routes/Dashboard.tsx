@@ -9,7 +9,7 @@ import { NoticeToast } from "../components/NoticeToast"
 import { StatusPill, TonePill } from "../components/StatusPill"
 import { FilterBar, filterTreeFromPayload, smartFolderFiltersFromTree, topFilterChildren } from "../components/FilterBar"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
-import { bulkDashboardEpics, bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardEpicState, updateDashboardPreferences, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardEpics, bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardEpicState, updateDashboardPreferences, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 const KANBAN_CARDS_PER_PAGE = 20
 
@@ -767,7 +767,7 @@ function KanbanCard({ item, onDragEnd, onDragStart, prefix }: { item: DashboardI
         <div className="mt-2 flex flex-wrap gap-1 text-xs text-gray-500">
           <StatusPill state={item.summary_state} />
           <ActiveWorkflowTriggerPill job={item} />
-          <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.repository.slug}</span>
+          <RepositorySlugLink className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-500 hover:text-blue-700 hover:underline" prefix={prefix} repository={item.repository} />
           <OwnerBadge badge={item.owner_badge} />
           {item.pr_number ? <ExternalMetadataLink className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-500 hover:text-blue-700 hover:underline" href={item.pr_url}>PR #{item.pr_number}</ExternalMetadataLink> : null}
         </div>
@@ -802,7 +802,7 @@ function KanbanCard({ item, onDragEnd, onDragStart, prefix }: { item: DashboardI
         <NeutralStatePill state={item.state} />
         <OwnerBadge badge={item.owner_badge} />
         <EpicProgressPill epic={item} />
-        <span className="rounded bg-gray-100 px-1.5 py-0.5">{item.repository.slug}</span>
+        <RepositorySlugLink className="rounded bg-gray-100 px-1.5 py-0.5 text-gray-500 hover:text-blue-700 hover:underline" prefix={prefix} repository={item.repository} />
       </div>
     </article>
   )
@@ -1009,7 +1009,7 @@ function MobileJobRow({ job, selected, onToggleOne, prefix }: { job: DashboardJo
           <StatusPill state={job.summary_state} />
           <ActiveWorkflowTriggerPill job={job} />
           {job.total_cost_usd == null ? null : <span className="text-xs font-medium text-gray-500">{formatCurrency(job.total_cost_usd, 2)}</span>}
-          <span className="font-mono text-xs text-gray-500">{job.repository.slug}</span>
+          <RepositorySlugLink prefix={prefix} repository={job.repository} />
           <OwnerBadge badge={job.owner_badge} />
         </div>
         <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -1062,7 +1062,9 @@ function JobCell({ job, column, selected, onToggleOne, prefix }: { job: Dashboar
       </td>
     )
   }
-  if (column === "repository") return <td className="px-4 py-3 font-mono text-xs text-gray-600">{job.repository.slug}</td>
+  if (column === "repository") {
+    return <td className="px-4 py-3"><RepositorySlugLink className="font-mono text-xs text-gray-600 hover:text-blue-700 hover:underline" prefix={prefix} repository={job.repository} /></td>
+  }
   if (column === "latest") return <LatestWorkflowCell job={job} />
   if (column === "workflows_count") return <td className="px-4 py-3 text-gray-700">{job.workflows_count}</td>
 
@@ -1133,6 +1135,10 @@ function ExternalMetadataLink({ children, className = "text-gray-500 hover:text-
   if (!href) return <span className={className}>{children}</span>
 
   return <a className={className} href={href} rel="noopener noreferrer" target="_blank">{children}</a>
+}
+
+function RepositorySlugLink({ className = "font-mono text-xs text-gray-500 hover:text-blue-700 hover:underline", prefix, repository }: { className?: string; prefix: string; repository: DashboardRepository }) {
+  return <Link className={className} to={withRoutePrefix(repository.repository_path, prefix)}>{repository.slug}</Link>
 }
 
 function EpicsTable({ items, columns, prefix, sortState }: { items: DashboardEpicItem[]; columns: string[]; prefix: string; sortState: DashboardSortState }) {
@@ -1258,7 +1264,7 @@ function MobileEpicRow({ epic, selected, onToggleOne, prefix }: { epic: Dashboar
         </div>
         {compactText(epic.description) ? <p className="mt-1 line-clamp-2 text-sm leading-snug text-gray-500">{compactText(epic.description)}</p> : null}
         <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs text-gray-500">
-          <span className="font-mono">{epic.repository.slug}</span>
+          <RepositorySlugLink prefix={prefix} repository={epic.repository} />
           <OwnerBadge badge={epic.owner_badge} />
         </div>
       </div>
@@ -1289,7 +1295,9 @@ function EpicCell({ epic, column, selected, onToggleOne, prefix }: { epic: Dashb
     )
   }
   if (column === "owner") return <td className="px-4 py-3 text-xs text-gray-600"><OwnerBadge badge={epic.owner_badge} /></td>
-  if (column === "repository") return <td className="px-4 py-3 font-mono text-xs text-gray-600">{epic.repository.slug}</td>
+  if (column === "repository") {
+    return <td className="px-4 py-3"><RepositorySlugLink className="font-mono text-xs text-gray-600 hover:text-blue-700 hover:underline" prefix={prefix} repository={epic.repository} /></td>
+  }
   if (column === "updated") return <td className="px-4 py-3 text-gray-500">{formatDate(epic.updated_at)}</td>
 
   return <td className="px-4 py-3 text-gray-500">{formatDate(epicDateValue(epic, column))}</td>
@@ -1393,7 +1401,7 @@ function WorkflowCell({ workflow, column, prefix }: { workflow: DashboardWorkflo
       <td className="max-w-md px-4 py-3">
         <Link className="font-medium text-blue-600 hover:underline" to={withRoutePrefix(workflow.job.path, prefix)}>{workflow.job.title}</Link>
         <div className="mt-1 flex flex-wrap gap-1 text-xs text-gray-500">
-          <span className="font-mono">{workflow.job.repository.slug}</span>
+          <RepositorySlugLink prefix={prefix} repository={workflow.job.repository} />
           <OwnerBadge badge={workflow.job.owner_badge} />
         </div>
       </td>

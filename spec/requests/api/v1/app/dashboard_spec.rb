@@ -62,7 +62,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "issue_url" => "https://github.com/acme/widgets/issues/1",
         "pr_url" => "https://github.com/acme/widgets/pull/17",
         "active_workflow_trigger_kind" => nil,
-        "repository" => include("slug" => "acme/widgets"),
+        "repository" => include("slug" => "acme/widgets", "repository_path" => repository_path(repo)),
         "epic" => {
           "id" => epic.id,
           "number" => epic.number,

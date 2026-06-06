@@ -8,6 +8,7 @@ export type DashboardSubject = "job" | "epic" | "workflow"
 export type DashboardRepository = {
   id: number
   slug: string
+  repository_path: string
 }
 
 export type DashboardOwner = {

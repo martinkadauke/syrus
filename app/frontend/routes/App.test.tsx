@@ -1078,6 +1078,7 @@ describe("App", () => {
     for (const label of screen.getAllByText("Retryable failure")) {
       expect(label.closest("[data-status-pill='true']")).toHaveClass("rounded-full", "ring-1")
     }
+    expect(screen.getAllByRole("link", { name: "acme/widgets" }).some((link) => link.getAttribute("href") === "/app-shell/repositories/3")).toBe(true)
     expect(screen.getAllByText("acme/widgets").length).toBeGreaterThan(0)
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
     expect(screen.getByRole("link", { name: "Epics" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
@@ -8083,7 +8084,7 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     last_seen_comment_at: null,
     pr_mergeable_checked_at: null,
     workflows_count: 1,
-    repository: { id: 3, slug: "acme/widgets" },
+    repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
     epic: null,
     owner_user: { id: 1, name: "Operator", email_address: "operator@example.com" },
     owner_badge: null,
@@ -8115,7 +8116,7 @@ function dashboardEpicItem(overrides: Record<string, unknown> = {}) {
     updated_at: "2026-05-30T12:00:00Z",
     done_at: null,
     archived_at: null,
-    repository: { id: 3, slug: "acme/widgets" },
+    repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
     paths: {
       epic_path: "/epics/7",
       edit_epic_path: "/epics/7/edit",
@@ -8142,7 +8143,7 @@ function dashboardWorkflowItem(overrides: Record<string, unknown> = {}) {
       id: 42,
       title: "Repair aqueduct",
       state: "open",
-      repository: { id: 3, slug: "acme/widgets" },
+      repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
       owner_user: { id: 1, name: "Operator", email_address: "operator@example.com" },
       owner_badge: null,
       path: "/jobs/42"
