@@ -37,7 +37,7 @@ module Steps
         cancel_workflow!
         return
       when :needs_rebase
-        handle_needs_rebase!(gate)
+        handle_needs_rebase!(gate, client: client)
         return
       end
 
@@ -65,7 +65,7 @@ module Steps
       )
     rescue Octokit::MethodNotAllowed => e
       if rebase_merge_rejected?(e)
-        handle_rebase_merge_rejection!(gate, e)
+        handle_rebase_merge_rejection!(gate, e, client: client)
         nil
       elsif retryable_method_not_allowed?(e)
         defer_after_transient_merge_error!(e)
@@ -95,7 +95,7 @@ module Steps
       REBASE_MERGE_REJECTED_ERROR.match?(error.message.to_s)
     end
 
-    def handle_rebase_merge_rejection!(gate, error)
+    def handle_rebase_merge_rejection!(gate, error, client:)
       reason = "GitHub rejected rebase merge: #{transient_error_message(error)}"
       rebase_gate = AutoMergeGate::Result.new(
         outcome: :needs_rebase,
@@ -103,7 +103,7 @@ module Steps
         reason: reason,
         pr: gate.pr
       )
-      handle_needs_rebase!(rebase_gate, defer_reason: reason)
+      handle_needs_rebase!(rebase_gate, defer_reason: reason, client: client)
     end
 
     def transient_error_message(error)
@@ -165,8 +165,8 @@ module Steps
     # rebase workflows have failed, fail_landing instead — the
     # operator needs to intervene (manual rebase, conflict
     # resolution offline, etc.) before we burn more agent turns.
-    def handle_needs_rebase!(gate, defer_reason: "mergeable_state=#{deferred_mergeable_state(gate)}")
-      if RebaseLoopGuard.noop_rebase_for?(job: job, pr: gate.pr)
+    def handle_needs_rebase!(gate, defer_reason: "mergeable_state=#{deferred_mergeable_state(gate)}", client:)
+      if RebaseLoopGuard.noop_rebase_for?(job: job, pr: gate.pr, client: client)
         log("auto_merge: deferred - #{defer_reason}; latest rebase was a no-op for this PR head/base, waiting for GitHub mergeability to refresh", kind: "system")
         defer_landing_if_possible!
         cancel_workflow!

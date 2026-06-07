@@ -4,11 +4,15 @@ require "ostruct"
 RSpec.describe RebaseLoopGuard do
   let(:job) { Factories.job(pr_mergeable: false) }
 
-  def pr(head_sha: "head", base_sha: nil)
+  def pr(head_sha: "head", base_sha: nil, base_ref: "main")
     OpenStruct.new(
       head: OpenStruct.new(sha: head_sha),
-      base: OpenStruct.new(sha: base_sha)
+      base: OpenStruct.new(sha: base_sha, ref: base_ref)
     )
+  end
+
+  def client(base_sha)
+    instance_double(GithubClient, branch_head_sha: base_sha)
   end
 
   def no_op_rebase(post_sha: "head", base_sha: "base")
@@ -41,5 +45,25 @@ RSpec.describe RebaseLoopGuard do
     no_op_rebase(base_sha: "old-base")
 
     expect(described_class.noop_rebase_for?(job: job, pr: pr(base_sha: "new-base"))).to be false
+  end
+
+  it "does not match when the live base branch advanced beyond GitHub's PR payload" do
+    no_op_rebase(base_sha: "old-base")
+
+    expect(
+      described_class.noop_rebase_for?(
+        job: job,
+        pr: pr(base_sha: "old-base", base_ref: "main"),
+        client: client("new-live-base")
+      )
+    ).to be false
+  end
+
+  it "fetches the live base branch named by the PR" do
+    no_op_rebase(base_sha: "base")
+    github = client("base")
+
+    expect(described_class.noop_rebase_for?(job: job, pr: pr(base_ref: "syrus/parent"), client: github)).to be true
+    expect(github).to have_received(:branch_head_sha).with(job.repository.slug, "syrus/parent")
   end
 end

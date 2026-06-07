@@ -12,7 +12,7 @@ class RebaseLoopGuard
     job.pr_mergeable == false && latest_noop_rebase(job).present?
   end
 
-  def self.noop_rebase_for?(job:, pr:)
+  def self.noop_rebase_for?(job:, pr:, client: nil)
     workflow = latest_noop_rebase(job)
     return false unless workflow
 
@@ -22,7 +22,7 @@ class RebaseLoopGuard
     return false unless post_sha == pr_head_sha(pr)
 
     base_sha = result["base_sha"].presence
-    current_base_sha = pr_base_sha(pr)
+    current_base_sha = current_base_sha(job: job, pr: pr, client: client)
     return true if base_sha.blank? || current_base_sha.blank?
 
     base_sha == current_base_sha
@@ -50,4 +50,27 @@ class RebaseLoopGuard
     pr.base&.sha.to_s.presence
   end
   private_class_method :pr_base_sha
+
+  def self.pr_base_ref(pr)
+    pr.base&.ref.to_s.presence
+  end
+  private_class_method :pr_base_ref
+
+  def self.current_base_sha(job:, pr:, client:)
+    live_base_sha(job: job, pr: pr, client: client) || pr_base_sha(pr)
+  rescue StandardError => e
+    Rails.logger.warn("[RebaseLoopGuard] live base lookup failed for job #{job.id}: #{e.class}: #{e.message}")
+    pr_base_sha(pr)
+  end
+  private_class_method :current_base_sha
+
+  def self.live_base_sha(job:, pr:, client:)
+    return unless client
+
+    branch = pr_base_ref(pr) || job.effective_base_branch
+    return if branch.blank?
+
+    client.branch_head_sha(job.repository.slug, branch).to_s.presence
+  end
+  private_class_method :live_base_sha
 end

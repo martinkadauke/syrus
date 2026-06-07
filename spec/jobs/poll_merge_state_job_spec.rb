@@ -27,6 +27,7 @@ RSpec.describe PollMergeStateJob do
     allow_any_instance_of(GithubClient).to receive(:pr_reviews).and_return([ OpenStruct.new(state: "APPROVED") ])
     allow_any_instance_of(GithubClient).to receive(:pr_issue_comments).and_return([])
     allow_any_instance_of(GithubClient).to receive(:pr_commits).and_return([])
+    allow_any_instance_of(GithubClient).to receive(:branch_head_sha).and_return("base")
   end
 
   it "marks clean approved PRs approved for the landing queue" do
@@ -120,6 +121,26 @@ RSpec.describe PollMergeStateJob do
     expect {
       described_class.perform_now(job.id)
     }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+  end
+
+  it "dispatches Rebase when GitHub's PR base sha is stale after a no-op rebase" do
+    Workflows::Rebase.instantiate(job: job).update!(
+      state: "succeeded",
+      artifacts: {
+        "auto_rebase_result" => {
+          "reason" => "rebased",
+          "changed" => false,
+          "post_sha" => "abc",
+          "base_sha" => "old-base"
+        }
+      }
+    )
+    allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(mergeable_state: "behind", mergeable: false, base_sha: "old-base"))
+    allow_any_instance_of(GithubClient).to receive(:branch_head_sha).with("acme/widgets", "main").and_return("new-live-base")
+
+    expect {
+      described_class.perform_now(job.id)
+    }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
   end
 
   it "waits on failing checks instead of rebasing" do

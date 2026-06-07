@@ -37,6 +37,7 @@ RSpec.describe Steps::AutoMerge do
     allow(client).to receive(:pr_reviews).and_return([ OpenStruct.new(state: "APPROVED") ])
     allow(client).to receive(:pr_issue_comments).and_return([])
     allow(client).to receive(:pr_commits).and_return([])
+    allow(client).to receive(:branch_head_sha).and_return("base")
   end
 
   def octokit_error(error_class, status:, message:)
@@ -152,6 +153,32 @@ RSpec.describe Steps::AutoMerge do
     expect(job.pr_mergeable).to be false
     expect(run.reload).to be_cancelled
     expect(StepDispatcher).not_to have_received(:start_workflow)
+  end
+
+  it "dispatches a fresh Rebase workflow when GitHub's PR base sha is stale after a no-op rebase" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    Workflows::Rebase.instantiate(job: job).update!(
+      state: "succeeded",
+      artifacts: {
+        "auto_rebase_result" => {
+          "reason" => "rebased",
+          "changed" => false,
+          "post_sha" => "abc",
+          "base_sha" => "old-base"
+        }
+      }
+    )
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "dirty", mergeable: false, base_sha: "old-base"))
+    allow(client).to receive(:branch_head_sha).with("acme/widgets", "main").and_return("new-live-base")
+    allow(StepDispatcher).to receive(:start_workflow)
+
+    expect {
+      described_class.new(run).call
+    }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+
+    expect(StepDispatcher).to have_received(:start_workflow).with(an_instance_of(Workflow))
   end
 
   it "fails landing instead of dispatching a rebase once REBASE_ATTEMPT_CAP consecutive rebases have failed" do

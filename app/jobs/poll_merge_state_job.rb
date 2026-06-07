@@ -61,7 +61,7 @@ class PollMergeStateJob < ApplicationJob
   end
 
   def dispatch_rebase
-    if RebaseLoopGuard.noop_rebase_for?(job: @job, pr: @pr)
+    if RebaseLoopGuard.noop_rebase_for?(job: @job, pr: @pr, client: @client)
       audit("auto_merge: #{mergeable_state} for same head/base after a no-op rebase; waiting for GitHub mergeability to refresh")
       Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} still #{mergeable_state} after no-op rebase; waiting")
       return

@@ -223,6 +223,15 @@ class GithubClient
     raise
   end
 
+  def branch_head_sha(repo_slug, branch)
+    client = -> { uncached_client }
+    ref = track_rate_limits(response_client: client) { client.call.ref(repo_slug, "heads/#{branch}") }
+    ref.object&.sha
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited fetching #{repo_slug}@#{branch}: #{e.message}")
+    raise
+  end
+
   def pull_request_diff(repo_slug, pr_number)
     track_rate_limits do
       @client.get(

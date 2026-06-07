@@ -18,6 +18,7 @@ RSpec.describe PollRebaseJob do
 
   def stub_pr(pr)
     allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr)
+    allow_any_instance_of(GithubClient).to receive(:branch_head_sha).and_return("base")
   end
 
   describe "happy path" do
@@ -153,6 +154,26 @@ RSpec.describe PollRebaseJob do
       }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
     end
 
+    it "does not treat a no-op rebase as covering the current PR when the live base branch advanced" do
+      stub_pr(pr_resource(mergeable: false, base_sha: "old-base"))
+      allow_any_instance_of(GithubClient).to receive(:branch_head_sha).with("acme/widgets", "main").and_return("new-live-base")
+      Workflows::Rebase.instantiate(job: job).update!(
+        state: "succeeded",
+        artifacts: {
+          "auto_rebase_result" => {
+            "reason" => "rebased",
+            "changed" => false,
+            "post_sha" => "abc",
+            "base_sha" => "old-base"
+          }
+        }
+      )
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+    end
+
     def rebase_workflow(state)
       Workflow.create!(job: job, trigger_kind: "rebase", state: state)
     end
@@ -190,6 +211,24 @@ RSpec.describe PollRebaseJob do
         expect {
           described_class.perform_now(job.id)
         }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+      end
+
+      it "ignores old rebase failures that do not match the current PR head/base" do
+        stub_pr(pr_resource(mergeable: false, head_sha: "new-head", base_sha: "new-base"))
+        5.times do
+          rebase_workflow("failed").set_artifact!(
+            "auto_rebase_result",
+            {
+              "reason" => "conflicted",
+              "pre_sha" => "old-head",
+              "base_sha" => "old-base"
+            }
+          )
+        end
+
+        expect {
+          described_class.perform_now(job.id)
+        }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
       end
     end
 
