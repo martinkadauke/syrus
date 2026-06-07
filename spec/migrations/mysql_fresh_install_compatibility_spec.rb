@@ -35,5 +35,24 @@ RSpec.describe "MySQL fresh install compatibility" do
       .to include("add_column :epics, :owner_id, :bigint")
     expect(migration_sources.fetch("20260603012937_add_owner_user_to_jobs.rb"))
       .to include("add_column :jobs, :owner_user_id, :bigint")
+    expect(migration_sources.fetch("20260603034657_add_execution_owner_to_workflows_and_runs.rb"))
+      .to include("add_column :workflows, :user_id, :bigint")
+      .and include("add_column :runs, :user_id, :bigint")
+  end
+
+  # Generic guard so the next hand-rolled FK column can't reintroduce the
+  # int-vs-bigint mismatch. Rails primary keys are bigint on MySQL; an
+  # :integer foreign-key column referencing one fails with
+  # MismatchedForeignKey on db:prepare (SQLite silently tolerates it, so
+  # dev/test/CI stay green while every MySQL deploy crash-loops the web
+  # pod's db-prepare init container).
+  it "never adds an :integer column whose name ends in _id" do
+    offenders = migration_sources.flat_map do |filename, source|
+      source.scan(/add_column\s+:\w+,\s+:(\w*_id),\s+:integer/).map do |(column)|
+        "#{filename}: #{column}"
+      end
+    end
+
+    expect(offenders).to be_empty
   end
 end

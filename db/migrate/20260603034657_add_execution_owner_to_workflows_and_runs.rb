@@ -1,10 +1,19 @@
 class AddExecutionOwnerToWorkflowsAndRuns < ActiveRecord::Migration[8.1]
   def up
-    add_column :workflows, :user_id, :integer unless column_exists?(:workflows, :user_id)
+    # users.id is bigint, so the FK columns MUST be bigint too — MySQL
+    # rejects an :integer column referencing a bigint primary key with
+    # MismatchedForeignKey (fk_rails_... incompatible). SQLite ignores
+    # the type difference, which is why the original :integer version
+    # passed dev/test/CI but crash-looped every MySQL db:prepare. The
+    # change_column repairs partially-applied DBs where the column was
+    # already created as :integer before add_foreign_key blew up.
+    add_column :workflows, :user_id, :bigint unless column_exists?(:workflows, :user_id)
+    change_column :workflows, :user_id, :bigint if column_exists?(:workflows, :user_id)
     add_index :workflows, :user_id unless index_exists?(:workflows, :user_id)
     add_foreign_key :workflows, :users, column: :user_id unless foreign_key_exists?(:workflows, :users, column: :user_id)
 
-    add_column :runs, :user_id, :integer unless column_exists?(:runs, :user_id)
+    add_column :runs, :user_id, :bigint unless column_exists?(:runs, :user_id)
+    change_column :runs, :user_id, :bigint if column_exists?(:runs, :user_id)
     add_index :runs, :user_id unless index_exists?(:runs, :user_id)
     add_foreign_key :runs, :users, column: :user_id unless foreign_key_exists?(:runs, :users, column: :user_id)
 
