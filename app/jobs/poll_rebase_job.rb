@@ -46,7 +46,7 @@ class PollRebaseJob < ApplicationJob
     # Cache what GitHub told us so the show page doesn't have to call
     # back here on every render. Persist BEFORE any early returns so
     # closed/merged/draft PRs also show their last-known status.
-    persist_mergeable(pr.mergeable)
+    persist_mergeability(pr)
 
     return if pr.merged
     return if pr.state == "closed"
@@ -68,13 +68,10 @@ class PollRebaseJob < ApplicationJob
     StepDispatcher.start_workflow(workflow)
   end
 
-  def persist_mergeable(value)
+  def persist_mergeability(pr)
     # update! (not update_columns) so callbacks observing mergeability
     # changes still fire.
-    @job.update!(
-      pr_mergeable: value,
-      pr_mergeable_checked_at: Time.current
-    )
+    MergeabilityRecorder.record_github!(job: @job, pr: pr)
   end
 
   private

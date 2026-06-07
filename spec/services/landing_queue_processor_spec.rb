@@ -105,6 +105,36 @@ RSpec.describe LandingQueueProcessor do
     expect(entry.blocked_reason).to eq(RebaseLoopGuard::BLOCK_REASON)
   end
 
+  it "briefly blocks approved Jobs after an unknown GitHub mergeability preflight passed locally" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    job.update!(
+      github_mergeable_state: "unknown",
+      mergeability_checked_at: Time.current,
+      local_mergeable: true,
+      local_mergeable_state: "clean"
+    )
+
+    expect(described_class.call).to be_nil
+    expect(job.reload).to be_approved
+    entry = described_class.entries(Job.where(id: job.id)).first
+    expect(entry.blocked_reason).to eq(described_class::MERGEABILITY_WAIT_REASON)
+  end
+
+  it "retries approved Jobs after the GitHub mergeability cooldown expires" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    job.update!(
+      github_mergeable_state: "unknown",
+      mergeability_checked_at: described_class::MERGEABILITY_RECHECK_DELAY.ago - 1.second,
+      local_mergeable: true,
+      local_mergeable_state: "clean"
+    )
+
+    workflow = described_class.call
+
+    expect(workflow.job).to eq(job)
+    expect(job.reload).to be_landing
+  end
+
   it "blocks approved Jobs whose rebase cap is exhausted while GitHub still reports unmergeable" do
     job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
     job.update!(pr_mergeable: false, landing_failure_reason: "auto_merge: dirty and rebase cap reached")

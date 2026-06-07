@@ -1,7 +1,7 @@
 module Workflows
   # Approved PR is ready to land.
   #
-  #   prepare → retry_until(grader_fanout → grader_collect, repair: landing_fix) → push → auto_merge
+  #   mergeability_preflight → prepare → retry_until(grader_fanout → grader_collect, repair: landing_fix) → push → auto_merge
   #
   # The final gate starts with graders on the exact PR branch Syrus
   # is about to merge, after any final rebase. landing_fix only runs
@@ -9,7 +9,8 @@ module Workflows
   # iteration, and auto_merge re-fetches PR state immediately before
   # calling GitHub's merge API.
   class AutoMerge < Base
-    steps :prepare,
+    steps :mergeability_preflight,
+          :prepare,
           Workflows::RetryUntil.new(
             repair_first: false,
             repair: [ :landing_fix ],
@@ -22,6 +23,7 @@ module Workflows
 
     def self.steps_for(_job)
       [
+        "mergeability_preflight",
         "prepare",
         Workflows::RetryUntil.new(
           max_iterations: AppSetting.grade_max_iterations,

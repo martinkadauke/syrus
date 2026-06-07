@@ -21,6 +21,7 @@ class Step
       Entry.new(kind: "stack_auto_rebase", handler: "StackAutoRebase", label: "Stack auto-rebase", style: "bg-teal-100 text-teal-700", agentic: false),
       Entry.new(kind: "stack_agent_rebase", handler: "StackAgentRebase", label: "Stack agent rebase", style: "bg-teal-100 text-teal-700", agentic: true),
       Entry.new(kind: "stack_force_push", handler: "StackForcePush", label: "Stack force-push", style: "bg-amber-100 text-amber-700", agentic: false),
+      Entry.new(kind: "mergeability_preflight", handler: "MergeabilityPreflight", label: "Mergeability preflight", style: "bg-sky-100 text-sky-700", agentic: false),
       Entry.new(kind: "grade", handler: "Grade", label: "Grade", style: "bg-violet-100 text-violet-700", agentic: false),
       Entry.new(kind: "grader", handler: "Grader", label: "Grader", style: "bg-violet-100 text-violet-700", agentic: false),
       Entry.new(kind: "grader_fanout", handler: "GraderFanout", label: "Plan graders", style: "bg-violet-100 text-violet-700", agentic: false),

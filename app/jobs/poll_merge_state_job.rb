@@ -21,7 +21,7 @@ class PollMergeStateJob < ApplicationJob
 
     @client = GithubClient.for(repository: @job.repository, user: @job.user)
     @pr = @client.pull_request(@job.repository.slug, pr_number, bypass_cache: false)
-    persist_mergeable(@pr.mergeable)
+    persist_mergeability(@pr)
 
     return if @pr.merged
     return if @pr.state == "closed"
@@ -37,11 +37,8 @@ class PollMergeStateJob < ApplicationJob
 
   private
 
-  def persist_mergeable(value)
-    @job.update!(
-      pr_mergeable: value,
-      pr_mergeable_checked_at: Time.current
-    )
+  def persist_mergeability(pr)
+    MergeabilityRecorder.record_github!(job: @job, pr: pr)
   end
 
   def mergeable_state

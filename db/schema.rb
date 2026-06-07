@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_06_235251) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_07_210109) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -426,6 +426,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_235251) do
     t.integer "external_pr_number"
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
+    t.boolean "github_mergeable"
+    t.string "github_mergeable_state"
     t.json "invalidation_evidence", null: false
     t.text "invalidation_reason"
     t.text "issue_body"
@@ -436,6 +438,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_06_235251) do
     t.string "last_ci_handled_sha"
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
+    t.string "local_mergeability_base_sha"
+    t.datetime "local_mergeability_checked_at"
+    t.string "local_mergeability_head_sha"
+    t.boolean "local_mergeable"
+    t.string "local_mergeable_state"
+    t.string "mergeability_base_ref"
+    t.string "mergeability_base_sha"
+    t.datetime "mergeability_checked_at"
+    t.string "mergeability_head_sha"
     t.integer "owner_user_id"
     t.integer "parent_job_id"
     t.json "pending_epic_reference", null: false

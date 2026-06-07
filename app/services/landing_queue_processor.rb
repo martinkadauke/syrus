@@ -1,4 +1,7 @@
 class LandingQueueProcessor
+  MERGEABILITY_RECHECK_DELAY = 1.minute
+  MERGEABILITY_WAIT_REASON = "waiting for GitHub mergeability".freeze
+
   Entry = Struct.new(:job, :position, :blocked_reason, :waiting_for, :waiting_for_jobs, keyword_init: true) do
     def eligible?
       blocked_reason.blank?
@@ -166,6 +169,7 @@ class LandingQueueProcessor
     return blocked("auto-merge not enabled for repository") unless job.repository.auto_merge_enabled?
     return blocked("missing pull request") if job.pr_number.blank?
     return blocked("active workflow") if job.workflows.active.exists?
+    return blocked(MERGEABILITY_WAIT_REASON) if waiting_for_github_mergeability?(job)
     return blocked(RebaseLoopGuard::BLOCK_REASON) if RebaseLoopGuard.waiting_after_noop?(job)
     return blocked(RebaseAttemptGuard::BLOCK_REASON) if RebaseAttemptGuard.blocking_landing?(job)
     return blocked("waiting for Epic to release") if job.blocked_by_epic_before_execution?
@@ -190,6 +194,14 @@ class LandingQueueProcessor
 
   def blocked(reason, waiting_for = nil, waiting_for_jobs: [])
     { blocked_reason: reason, waiting_for: waiting_for, waiting_for_jobs: waiting_for_jobs }
+  end
+
+  def waiting_for_github_mergeability?(job)
+    return false unless AutoMergeGate::TRANSIENT_MERGEABLE_STATES.include?(job.github_mergeable_state.to_s)
+    return false if job.local_mergeable == false
+    return false if job.mergeability_checked_at.blank?
+
+    job.mergeability_checked_at > MERGEABILITY_RECHECK_DELAY.ago
   end
 
   def unapproved_epic_siblings(job)

@@ -142,6 +142,17 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       job.update!(
         pr_mergeable: true,
         pr_mergeable_checked_at: Time.current,
+        github_mergeable: nil,
+        github_mergeable_state: "unknown",
+        mergeability_head_sha: "head123",
+        mergeability_base_sha: "base123",
+        mergeability_base_ref: "main",
+        mergeability_checked_at: Time.current,
+        local_mergeable: true,
+        local_mergeable_state: "clean",
+        local_mergeability_head_sha: "head123",
+        local_mergeability_base_sha: "base123",
+        local_mergeability_checked_at: Time.current,
         last_seen_comment_at: 5.minutes.ago,
         last_feedback_addressed_at: 6.minutes.ago,
         last_ci_handled_sha: "abc123"
@@ -175,6 +186,17 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(body["repository"]["slug"]).to eq(job.repository.slug)
       expect(body["repository"]["credential_mode"]).to eq(job.repository.credential_mode)
       expect(body["pr_mergeable"]).to be true
+      expect(body["github_mergeable"]).to be_nil
+      expect(body["github_mergeable_state"]).to eq("unknown")
+      expect(body["mergeability_head_sha"]).to eq("head123")
+      expect(body["mergeability_base_sha"]).to eq("base123")
+      expect(body["mergeability_base_ref"]).to eq("main")
+      expect(body["mergeability_checked_at"]).to be_present
+      expect(body["local_mergeable"]).to be true
+      expect(body["local_mergeable_state"]).to eq("clean")
+      expect(body["local_mergeability_head_sha"]).to eq("head123")
+      expect(body["local_mergeability_base_sha"]).to eq("base123")
+      expect(body["local_mergeability_checked_at"]).to be_present
       expect(body["last_seen_comment_at"]).to be_present
       expect(body["last_feedback_addressed_at"]).to be_present
       expect(body["last_ci_handled_sha"]).to eq("abc123")
@@ -377,7 +399,11 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(row).to include(
         "id", "state", "kind", "credential_mode", "agent_provider", "repository",
         "issue_number", "pr_number", "branch_name", "pr_mergeable",
-        "pr_mergeable_checked_at", "last_seen_comment_at",
+        "pr_mergeable_checked_at", "github_mergeable", "github_mergeable_state",
+        "mergeability_head_sha", "mergeability_base_sha", "mergeability_base_ref",
+        "mergeability_checked_at", "local_mergeable", "local_mergeable_state",
+        "local_mergeability_head_sha", "local_mergeability_base_sha",
+        "local_mergeability_checked_at", "last_seen_comment_at",
         "last_feedback_addressed_at", "last_ci_handled_sha"
       )
       expect(row["repository"]).to eq("acme/widgets")

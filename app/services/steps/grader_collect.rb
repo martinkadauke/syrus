@@ -24,6 +24,7 @@ module Steps
 
       if failed_required.empty?
         log("[grader_collect] all required graders passed (#{grader_steps.size} grader Step(s) ran)")
+        record_landing_validation! if workflow.trigger_kind == "auto_merge"
         return
       end
 
@@ -69,6 +70,23 @@ module Steps
         }
       end
       workflow.set_artifact!("iterations", iterations)
+    end
+
+    def record_landing_validation!
+      head_sha = GitRunner.new.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
+      base_sha = job.mergeability_base_sha.presence
+      base_ref = job.mergeability_base_ref.presence
+      return if head_sha.blank? || base_sha.blank?
+
+      LandingValidationCache.record!(
+        workflow: workflow,
+        head_sha: head_sha,
+        base_sha: base_sha,
+        base_ref: base_ref
+      )
+    rescue StandardError => e
+      Rails.logger.warn("[GraderCollect] landing validation capture failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
+      nil
     end
   end
 end

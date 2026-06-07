@@ -1,5 +1,7 @@
 module Steps
   class AutoMerge < Base
+    include AutoMergeControl
+
     TRANSIENT_MERGE_ERRORS = [
       Octokit::Conflict,
       Octokit::ServiceUnavailable,
@@ -16,7 +18,7 @@ module Steps
       end
 
       gate = AutoMergeGate.new(job: job, client: client, bypass_cache: true).evaluate
-      persist_mergeable(gate.pr)
+      persist_github_mergeability(gate.pr)
 
       # Every early-exit path here must transition the Job out of
       # :landing before cancelling the workflow — otherwise
@@ -122,86 +124,6 @@ module Steps
       workflow.set_artifact!("pending_auto_merge", "waiting_for_parent")
       log("auto_merge: waiting for parent ##{parent.pr_number || parent.id} to merge; queued auto-merge will re-evaluate after stack rebase", kind: "system")
       cancel_workflow!
-    end
-
-    def cancel_workflow!
-      run.cancel! if run.may_cancel?
-      run.save!
-      step.cancel! if step.may_cancel?
-      step.save!
-      workflow.cancel! if workflow.may_cancel?
-      workflow.save!
-    end
-
-    # Send the Job back to :approved so the landing queue isn't
-    # blocked by a Job in :landing with no active auto_merge
-    # workflow. The approval persists across the defer; the queue
-    # will re-attempt landing once the blocker clears. Idempotent.
-    def defer_landing_if_possible!
-      return unless job.may_defer_landing?
-
-      job.defer_landing!
-      job.save! if job.changed?
-    end
-
-    def persist_mergeable(pr)
-      return unless pr&.respond_to?(:mergeable)
-
-      job.update!(
-        pr_mergeable: pr.mergeable,
-        pr_mergeable_checked_at: Time.current
-      )
-    end
-
-    # PR's mergeable_state is `behind` or `dirty`. Both are
-    # recoverable via the agent-driven rebase chain (auto_rebase →
-    # agent_rebase → force_push). Trigger the rebase inline if one
-    # isn't already running and we haven't hit the consecutive-
-    # failure cap — when the rebase succeeds, Workflow#succeed's
-    # dispatch_post_rebase_landing! re-fires auto_merge without
-    # waiting for the next LandingQueueProcessor tick.
-    #
-    # Loop guard: if PollRebaseJob::REBASE_ATTEMPT_CAP consecutive
-    # rebase workflows have failed, fail_landing instead — the
-    # operator needs to intervene (manual rebase, conflict
-    # resolution offline, etc.) before we burn more agent turns.
-    def handle_needs_rebase!(gate, defer_reason: "mergeable_state=#{deferred_mergeable_state(gate)}", client:)
-      if RebaseLoopGuard.noop_rebase_for?(job: job, pr: gate.pr, client: client)
-        log("auto_merge: deferred - #{defer_reason}; latest rebase was a no-op for this PR head/base, waiting for GitHub mergeability to refresh", kind: "system")
-        defer_landing_if_possible!
-        cancel_workflow!
-        return
-      end
-
-      if rebase_attempt_cap_reached?(gate.pr)
-        log("auto_merge: needs_rebase but #{PollRebaseJob::REBASE_ATTEMPT_CAP} consecutive rebase attempts have failed; failing landing", kind: "system")
-        raise StepFailed, "auto_merge: #{gate.reason} and rebase cap reached"
-      end
-
-      log("auto_merge: deferred - #{defer_reason}; dispatching rebase workflow inline", kind: "system")
-      defer_landing_if_possible!
-
-      unless rebase_workflow_active?
-        rebase_workflow = RebaseWorkflowSelector.instantiate(job: job, pr: gate.pr)
-        log("auto_merge: dispatched rebase #{rebase_workflow.slug}", kind: "system")
-        StepDispatcher.start_workflow(rebase_workflow)
-      end
-
-      cancel_workflow!
-    end
-
-    def rebase_workflow_active?
-      RebaseWorkflowSelector.active_for_stack?(job)
-    end
-
-    def rebase_attempt_cap_reached?(pr)
-      RebaseAttemptGuard.cap_reached?(job, pr: pr)
-    end
-
-    def deferred_mergeable_state(gate)
-      pr = gate.pr
-      state = pr.mergeable_state if pr.respond_to?(:mergeable_state)
-      state || "nil"
     end
 
     def job_url

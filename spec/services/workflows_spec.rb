@@ -349,11 +349,12 @@ RSpec.describe Workflows do
       expect(wf.artifact("rebase_base_sha")).to eq("main-sha")
     end
 
-    it "instantiates AutoMerge with prepare and a final grade gate before push and merge" do
+    it "instantiates AutoMerge with an early mergeability preflight before prepare and final grade gate" do
       wf = Workflows::AutoMerge.instantiate(job: job)
-      expect(wf.steps.pluck(:kind)).to eq(%w[ prepare grader_fanout grader_collect push auto_merge ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ mergeability_preflight prepare grader_fanout grader_collect push auto_merge ])
       expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ grader_fanout grader_collect ])
       expect(wf.chain_template).to include(
+        { "type" => "step", "kind" => "mergeability_preflight" },
         { "type" => "step", "kind" => "prepare" },
         {
           "type" => "retry_until",
