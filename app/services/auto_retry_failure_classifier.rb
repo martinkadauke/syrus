@@ -77,7 +77,7 @@ class AutoRetryFailureClassifier
       return retryable("transient_process_failure", "retryable diagnostic message") if RETRYABLE_MESSAGE_PATTERNS.any? { |pattern| message.match?(pattern) }
     end
 
-    non_retryable(outcome || diagnostic&.error_class || "unknown", "failure is not classified as transient")
+    non_retryable(outcome || diagnostic&.error_class || "unknown", "failure is not retryable")
   end
 
   private

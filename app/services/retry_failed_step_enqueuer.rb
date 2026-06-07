@@ -5,8 +5,11 @@ class RetryFailedStepEnqueuer
 
   def self.call(...) = new(...).call
 
-  def initialize(workflow:)
+  def initialize(workflow:, parent_session_id: nil, prompt: nil, agent_provider: nil)
     @workflow = workflow
+    @parent_session_id = parent_session_id
+    @prompt = prompt
+    @agent_provider = agent_provider.to_s.presence
   end
 
   def call
@@ -24,7 +27,9 @@ class RetryFailedStepEnqueuer
     run = failed_step.runs.create!(
       job: workflow.job,
       trigger_kind: workflow.trigger_kind,
-      agent_provider: workflow.agent_provider
+      agent_provider: agent_provider || workflow.agent_provider,
+      parent_session_id: parent_session_id,
+      prompt: prompt
     )
 
     Result.new(run: run, workflow: workflow, step: failed_step, error: nil)
@@ -32,7 +37,7 @@ class RetryFailedStepEnqueuer
 
   private
 
-  attr_reader :workflow
+  attr_reader :workflow, :parent_session_id, :prompt, :agent_provider
 
   def failure(message)
     Result.new(run: nil, workflow: workflow, step: nil, error: message)

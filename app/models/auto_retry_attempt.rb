@@ -1,5 +1,5 @@
 class AutoRetryAttempt < ApplicationRecord
-  RETRY_KINDS = %w[ failed_step retry_workflow ].freeze
+  RETRY_KINDS = %w[ failed_step resume_failed_step retry_workflow ].freeze
 
   belongs_to :job
   belongs_to :workflow

@@ -17,10 +17,10 @@ RSpec.describe AutoRetryScheduler do
   end
 
   def fail_workflow!(agent_outcome: "worker_died", cleaned_up: false)
-    run.update!(state: "failed", agent_outcome: agent_outcome, agent_provider: "claude", finished_at: Time.current)
-    step.update!(state: "failed", finished_at: Time.current)
-    workflow.update!(state: "failed", finished_at: Time.current, cleaned_up_at: (Time.current if cleaned_up))
-    job.update!(state: "failed")
+    run.update_columns(state: "failed", agent_outcome: agent_outcome, agent_provider: "claude", finished_at: Time.current)
+    step.update_columns(state: "failed", finished_at: Time.current)
+    workflow.update_columns(state: "failed", finished_at: Time.current, cleaned_up_at: (Time.current if cleaned_up))
+    job.update_columns(state: "failed")
   end
 
   it "schedules a delayed failed-step retry for retryable failures with workspace available" do
@@ -46,6 +46,67 @@ RSpec.describe AutoRetryScheduler do
     end
   end
 
+  it "schedules an in-place failed-step resume for retryable agentic failures with a captured session" do
+    agent_step = workflow.steps.find_by!(kind: "implement")
+    agent_run = agent_step.runs.create!(
+      job: job,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: "claude",
+      state: "failed",
+      agent_outcome: "worker_died",
+      finished_at: Time.current
+    )
+    ClaudeSession.create!(
+      resumable: agent_run,
+      provider: "claude",
+      session_id: "claude-session-1",
+      transcript_jsonl: "{}\n"
+    )
+    agent_step.update_columns(state: "failed", finished_at: Time.current)
+    workflow.update_columns(state: "failed", finished_at: Time.current)
+    job.update_columns(state: "failed")
+
+    freeze_time do
+      expect {
+        described_class.schedule_for_workflow(workflow: workflow)
+      }.to change { AutoRetryAttempt.count }.by(1)
+        .and have_enqueued_job(AutoRetryJob)
+
+      attempt = AutoRetryAttempt.last
+      expect(attempt).to have_attributes(
+        job_id: job.id,
+        workflow_id: workflow.id,
+        run_id: agent_run.id,
+        agent_provider: "claude",
+        failure_classification: "worker_died",
+        retry_kind: "resume_failed_step",
+        attempt_number: 1,
+        scheduled_at: 5.minutes.from_now
+      )
+    end
+  end
+
+  it "falls back to failed-step retry for agentic failures without a captured session" do
+    agent_step = workflow.steps.find_by!(kind: "implement")
+    agent_run = agent_step.runs.create!(
+      job: job,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: "claude",
+      state: "failed",
+      agent_outcome: "worker_died",
+      finished_at: Time.current
+    )
+    agent_step.update_columns(state: "failed", finished_at: Time.current)
+    workflow.update_columns(state: "failed", finished_at: Time.current)
+    job.update_columns(state: "failed")
+
+    described_class.schedule_for_workflow(workflow: workflow)
+
+    attempt = AutoRetryAttempt.last
+    expect(attempt.run_id).to eq(agent_run.id)
+    expect(attempt.retry_kind).to eq("failed_step")
+  end
+
   it "does not schedule non-retryable failures" do
     fail_workflow!(agent_outcome: "error_max_turns")
 
@@ -68,6 +129,24 @@ RSpec.describe AutoRetryScheduler do
         scheduled_at: Time.current
       )
     end
+
+    expect {
+      described_class.schedule_for_workflow(workflow: workflow)
+    }.not_to change { AutoRetryAttempt.count }
+  end
+
+  it "does not schedule a duplicate while an attempt is already pending" do
+    fail_workflow!
+    AutoRetryAttempt.create!(
+      job: job,
+      workflow: workflow,
+      run: run,
+      agent_provider: "claude",
+      failure_classification: "worker_died",
+      retry_kind: "failed_step",
+      attempt_number: 1,
+      scheduled_at: 5.minutes.from_now
+    )
 
     expect {
       described_class.schedule_for_workflow(workflow: workflow)

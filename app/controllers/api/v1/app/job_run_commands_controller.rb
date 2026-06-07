@@ -30,25 +30,13 @@ module Api
             render_error("not_found", "Source Run not found.", status: :not_found)
             return
           end
-          unless %w[ failed cancelled ].include?(source_run.state)
-            render_error("validation_failed", "Only failed or cancelled Runs are resumable.", status: :unprocessable_content)
+          result = ResumeWorkflowEnqueuer.call(job: job, source_run: source_run)
+          unless result.success?
+            render_error("validation_failed", result.error, status: :unprocessable_content)
             return
           end
 
-          session = source_run.claude_session
-          unless session
-            render_error("validation_failed", "No agent session captured for that Run - try Retry instead.", status: :unprocessable_content)
-            return
-          end
-
-          workflow = Workflows::Resume.instantiate(job: job, agent_provider: session.provider)
-          run = StepDispatcher.start_workflow(
-            workflow,
-            parent_session_id: session.session_id,
-            prompt: Prompts::Resume.new.to_s
-          )
-
-          render_job(job.reload, message: "Resume workflow enqueued.", changed: [ "workflows", "runs" ], run: run&.reload, workflow: workflow.reload, tab: "workflows")
+          render_job(job.reload, message: "Resume workflow enqueued.", changed: [ "workflows", "runs" ], run: result.run.reload, workflow: result.workflow.reload, tab: "workflows")
         end
 
         def check_mergeability

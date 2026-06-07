@@ -40,12 +40,14 @@ class ReapStaleRunsJob < ApplicationJob
   # :running with no enqueued/active job is by definition
   # orphaned.
   ORPHAN_RUN_GRACE_PERIOD = 2.minutes
+  MISSED_AUTO_RETRY_LOOKBACK = 24.hours
 
   def perform
     reap_runs_with_pruned_workers   # fast path
     reap_orphaned_running_runs      # ~3-min path
     reap_runs_with_stale_heartbeat  # 30-min backstop
     finish_orphaned_terminal_workflows
+    reconcile_missed_worker_died_auto_retries
   end
 
   private
@@ -178,12 +180,34 @@ class ReapStaleRunsJob < ApplicationJob
     # on its own when Run.fail above triggers Step.fail (via Step's
     # after_update_commit) which triggers Workflow.fail. The reaper
     # only needs to make sure the Run+Step both transition.
-    if run.step && run.step.may_fail?
-      run.step.fail!
-      run.step.save!
+    step = run.step
+    if step&.may_fail?
+      step.fail!
+      step.save!
+    end
+    if step
+      step.reload
+      StepDispatcher.fail_from(step) if step.failed?
     end
   rescue StandardError => e
     Rails.logger.warn("[ReapStaleRunsJob] reap failed for Run ##{run.id}: #{e.class}: #{e.message}")
+  end
+
+  # Backstop for deploy/crash failures that reached Workflow#failed
+  # before auto-retry scheduling was reliable. Keep it deliberately
+  # narrow: recent workflows only, and only when the latest failed
+  # Run was reaped as worker_died.
+  def reconcile_missed_worker_died_auto_retries
+    Workflow.failed
+            .where("finished_at >= ?", MISSED_AUTO_RETRY_LOOKBACK.ago)
+            .find_each do |workflow|
+      next if workflow.auto_retry_attempts.where(performed_at: nil, skipped_reason: nil).exists?
+
+      latest_failed_run = workflow.runs.where(state: "failed").order(created_at: :desc).first
+      next unless latest_failed_run&.agent_outcome == "worker_died"
+
+      AutoRetryScheduler.schedule_for_workflow(workflow: workflow)
+    end
   end
 
   # Recovery for the post-step gap: the last Run and Step reached a

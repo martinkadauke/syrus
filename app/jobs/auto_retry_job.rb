@@ -4,19 +4,10 @@ class AutoRetryJob < ApplicationJob
   discard_on ActiveRecord::RecordNotFound
 
   def perform(auto_retry_attempt_id)
-    attempt = AutoRetryAttempt.includes(:job, :workflow).find(auto_retry_attempt_id)
+    attempt = AutoRetryAttempt.includes(:job, :workflow, run: :claude_session).find(auto_retry_attempt_id)
     return if attempt.performed_at.present? || attempt.skipped_reason.present?
 
-    result = if attempt.retry_kind == "failed_step" && attempt.workflow.retry_available?
-      RetryFailedStepEnqueuer.call(workflow: attempt.workflow)
-    else
-      RetryWorkflowEnqueuer.call(
-        job: attempt.job,
-        agent_provider: attempt.agent_provider,
-        artifacts: { "auto_retry_attempt_id" => attempt.id },
-        provider_validation: :none
-      )
-    end
+    result = perform_retry(attempt)
 
     if result.success?
       attempt.update!(performed_at: Time.current)
@@ -28,6 +19,42 @@ class AutoRetryJob < ApplicationJob
   end
 
   private
+
+  def perform_retry(attempt)
+    case attempt.retry_kind
+    when "failed_step"
+      if attempt.workflow.retry_available?
+        RetryFailedStepEnqueuer.call(workflow: attempt.workflow)
+      else
+        retry_workflow(attempt)
+      end
+    when "resume_failed_step"
+      resume_failed_step(attempt)
+    else
+      retry_workflow(attempt)
+    end
+  end
+
+  def retry_workflow(attempt)
+    RetryWorkflowEnqueuer.call(
+      job: attempt.job,
+      agent_provider: attempt.agent_provider,
+      artifacts: { "auto_retry_attempt_id" => attempt.id },
+      provider_validation: :none
+    )
+  end
+
+  def resume_failed_step(attempt)
+    session = attempt.run&.claude_session
+    return retry_workflow(attempt) unless session && attempt.workflow.retry_available? && attempt.run.step&.agentic?
+
+    RetryFailedStepEnqueuer.call(
+      workflow: attempt.workflow,
+      parent_session_id: session.session_id,
+      prompt: Prompts::Resume.new.to_s,
+      agent_provider: session.provider.presence || attempt.agent_provider
+    )
+  end
 
   def log(attempt, message)
     run = attempt.job.runs.order(created_at: :desc).first

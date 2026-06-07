@@ -108,6 +108,36 @@ RSpec.describe ReapStaleRunsJob do
       expect(r2.reload.state).to eq("failed")
     end
 
+    it "schedules a missing retry for a recent already-failed deploy interruption" do
+      workflow = job.latest_workflow
+      agent_step = workflow.steps.find_by!(kind: "implement")
+      agent_run = agent_step.runs.create!(
+        job: job,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: "claude",
+        state: "failed",
+        agent_outcome: "worker_died",
+        finished_at: 10.minutes.ago
+      )
+      ClaudeSession.create!(
+        resumable: agent_run,
+        provider: "claude",
+        session_id: "deploy-interrupted-thread",
+        transcript_jsonl: "{}\n"
+      )
+      agent_step.update_columns(state: "failed", finished_at: 10.minutes.ago)
+      workflow.update_columns(state: "failed", finished_at: 10.minutes.ago)
+      job.update_columns(state: "failed")
+
+      expect {
+        described_class.perform_now
+      }.to change { AutoRetryAttempt.where(retry_kind: "resume_failed_step").count }.by(1)
+
+      attempt = AutoRetryAttempt.last
+      expect(attempt.workflow_id).to eq(workflow.id)
+      expect(attempt.run_id).to eq(agent_run.id)
+    end
+
     describe "fast path: SolidQueue::ProcessPrunedError (post-deploy zombies)" do
       # SolidQueue tables aren't loaded in the test DB (single-database
       # test setup), so we stub the helper that reads them. The
@@ -167,6 +197,25 @@ RSpec.describe ReapStaleRunsJob do
         expect(inline_run.reload.state).to eq("failed")
         expect(inline_run.agent_outcome).to eq("worker_died")
       end
+
+      it "schedules step resume for a reaped agentic inline Run with a captured session" do
+        _workflow, root_run, inline_run = inline_workflow_runs
+        ClaudeSession.create!(
+          resumable: inline_run,
+          provider: inline_run.agent_provider,
+          session_id: "agent-thread",
+          transcript_jsonl: "{}\n"
+        )
+        stub_pruned_roots(root_run.id)
+
+        expect {
+          described_class.perform_now
+        }.to change { AutoRetryAttempt.where(retry_kind: "resume_failed_step").count }.by(1)
+
+        attempt = AutoRetryAttempt.last
+        expect(attempt.run_id).to eq(inline_run.id)
+        expect(attempt.workflow_id).to eq(inline_run.workflow_id)
+      end
     end
 
     describe "orphan-run path: Run :running but no SQ::Job" do
@@ -192,6 +241,25 @@ RSpec.describe ReapStaleRunsJob do
         described_class.perform_now
         expect(run.reload.state).to eq("failed")
         expect(run.agent_outcome).to eq("worker_died")
+      end
+
+      it "schedules failed-step retry for a reaped deterministic inline Run" do
+        workflow = Workflow.create!(job: job, trigger_kind: "initial")
+        step = Step.create!(workflow: workflow, kind: "prepare", position: 0)
+        age = ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds
+        run = step.runs.create!(job: job, trigger_kind: "initial")
+        run.update_columns(
+          state: "running",
+          started_at: age.ago,
+          last_heartbeat_at: age.ago
+        )
+        stub_active_run_ids
+
+        expect {
+          described_class.perform_now
+        }.to change { AutoRetryAttempt.where(retry_kind: "failed_step").count }.by(1)
+
+        expect(AutoRetryAttempt.last.run_id).to eq(run.id)
       end
 
       it "leaves a Run alone when its SQ::Job is still active" do

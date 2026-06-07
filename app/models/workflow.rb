@@ -79,7 +79,6 @@ class Workflow < ApplicationRecord
         cancel_orphan_active_runs!
         propagate_fail_to_job!
         dispatch_hook(:after_fail)
-        AutoRetryScheduler.schedule_for_workflow(workflow: self)
       }
     end
 
@@ -109,6 +108,12 @@ class Workflow < ApplicationRecord
         propagate_reopen_to_job!
       }
     end
+  end
+
+  after_update_commit :schedule_auto_retry!, if: :saved_change_to_state_to_failed?
+
+  def saved_change_to_state_to_failed?
+    saved_change_to_state? && state == "failed"
   end
 
   # Best-effort workspace teardown. Errors are swallowed (logged at
@@ -315,6 +320,10 @@ class Workflow < ApplicationRecord
       fail!
       save!
     end
+  end
+
+  def schedule_auto_retry!
+    AutoRetryScheduler.schedule_for_workflow(workflow: self)
   end
 
   def first_step

@@ -10,6 +10,7 @@ class AutoRetryScheduler
 
   def schedule_for_workflow
     return unless workflow.failed?
+    return if pending_attempt_exists?
 
     classification = AutoRetryFailureClassifier.call(workflow: workflow)
     unless classification.retryable?
@@ -25,8 +26,8 @@ class AutoRetryScheduler
       return
     end
 
-    retry_kind = workflow.retry_available? ? "failed_step" : "retry_workflow"
-    return unless retry_kind == "failed_step" || retry_workflow_safe?
+    retry_kind = retry_kind_for(run)
+    return if retry_kind.nil?
 
     attempt = AutoRetryAttempt.create!(
       job: workflow.job,
@@ -63,11 +64,27 @@ class AutoRetryScheduler
     ).count + 1
   end
 
+  def pending_attempt_exists?
+    workflow.auto_retry_attempts.where(performed_at: nil, skipped_reason: nil).exists?
+  end
+
   def retry_workflow_safe?
     workflow.retry_as_new_workflow_available? &&
       workflow.job.open? &&
       !workflow.job.any_active_run? &&
       workflow.trigger_kind != "auto_merge"
+  end
+
+  def retry_kind_for(run)
+    return "resume_failed_step" if workflow.retry_available? && resumable_agent_run?(run)
+    return "failed_step" if workflow.retry_available?
+    return "retry_workflow" if retry_workflow_safe?
+
+    nil
+  end
+
+  def resumable_agent_run?(run)
+    run&.step&.agentic? && run.claude_session.present?
   end
 
   def log(message)
