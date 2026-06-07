@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_04_001607) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_06_235251) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -296,6 +296,22 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_04_001607) do
     t.index ["repository_id"], name: "index_epics_on_repository_id"
     t.index ["user_id", "state"], name: "index_epics_on_user_id_and_state"
     t.index ["user_id"], name: "index_epics_on_user_id"
+  end
+
+  create_table "filter_usages", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.json "filter_node", null: false
+    t.string "fingerprint", null: false
+    t.string "label", null: false
+    t.datetime "last_used_at", null: false
+    t.string "subject", null: false
+    t.string "surface", null: false
+    t.datetime "updated_at", null: false
+    t.integer "use_count", default: 0, null: false
+    t.integer "user_id", null: false
+    t.index ["user_id", "surface", "subject", "fingerprint"], name: "index_filter_usages_on_user_surface_subject_fingerprint", unique: true
+    t.index ["user_id", "surface", "subject", "last_used_at"], name: "index_filter_usages_on_user_surface_subject_recent"
+    t.index ["user_id"], name: "index_filter_usages_on_user_id"
   end
 
   create_table "installations", force: :cascade do |t|
@@ -827,6 +843,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_04_001607) do
   add_foreign_key "epics", "users"
   add_foreign_key "epics", "users", column: "owner_id"
   add_foreign_key "epics", "users", column: "owner_user_id"
+  add_foreign_key "filter_usages", "users"
   add_foreign_key "installations", "users"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "job_dependencies", "jobs"

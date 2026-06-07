@@ -194,6 +194,14 @@ export type DashboardFilterSchemaField = {
   expansions?: Record<string, unknown>
 }
 
+export type DashboardFilterSuggestion = {
+  id: number
+  label: string
+  filter: Record<string, unknown>
+  use_count?: number
+  last_used_at?: string | null
+}
+
 export type DashboardPayload = {
   subject: DashboardSubject
   view: string
@@ -233,6 +241,7 @@ export type DashboardPayload = {
     }
     kanban_lanes: DashboardKanbanLaneOption[]
     filter_schema: DashboardFilterSchemaField[]
+    filter_suggestions: DashboardFilterSuggestion[]
   }
   landing_queue: {
     visible: boolean

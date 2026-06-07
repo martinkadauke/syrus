@@ -8429,6 +8429,7 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
         { key: "landing", title: "Landing" },
         { key: "failed", title: "Failed" }
       ],
+      filter_suggestions: [],
       filter_schema: [
         {
           field: "state",

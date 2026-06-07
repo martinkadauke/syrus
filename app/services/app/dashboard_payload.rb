@@ -84,6 +84,7 @@ module App
     def call
       persist_subject_preferences
       SmartFolder.ensure_builtins!
+      record_filter_usage
 
       {
         subject: subject,
@@ -895,8 +896,29 @@ module App
         sort_directions: User::DASHBOARD_SORT_DIRECTIONS,
         columns: column_options_json,
         kanban_lanes: kanban_lane_options_json,
-        filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user)
+        filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user),
+        filter_suggestions: filter_suggestions_json
       }
+    end
+
+    def record_filter_usage
+      return unless current_filter.active?
+
+      Filters::Suggestions.record!(
+        user: user,
+        surface: "dashboard",
+        subject: subject,
+        tree: current_filter.to_h
+      )
+    end
+
+    def filter_suggestions_json
+      Filters::Suggestions.for(
+        user: user,
+        surface: "dashboard",
+        subject: subject,
+        active_tree: current_filter.to_h
+      )
     end
 
     def ownership_scope_json

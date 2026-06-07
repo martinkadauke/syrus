@@ -502,6 +502,7 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
       legacyFilterKeys={legacyFilterKeys}
       pathname={pathname}
       search={search}
+      suggestions={payload.controls.filter_suggestions}
     />
   )
 }

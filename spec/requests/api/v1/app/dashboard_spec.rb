@@ -132,6 +132,46 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
     end
 
+    it "records dashboard filter usage and returns ranked suggestions" do
+      state_tree = {
+        "and" => [
+          { "field" => "state", "op" => "is", "value" => "running" }
+        ]
+      }
+      repository_tree = {
+        "and" => [
+          { "field" => "repository_id", "op" => "is", "value" => repo.id.to_s }
+        ]
+      }
+
+      2.times do
+        get "/api/v1/app/dashboard", params: { subject: "job", q: Filters::QueryParam.encode(state_tree) }
+        expect(response).to have_http_status(:ok)
+      end
+      get "/api/v1/app/dashboard", params: { subject: "job", q: Filters::QueryParam.encode(repository_tree) }
+      expect(response).to have_http_status(:ok)
+
+      get "/api/v1/app/dashboard", params: { subject: "job" }
+
+      expect(response).to have_http_status(:ok)
+      suggestions = parse_body.dig("controls", "filter_suggestions")
+      expect(suggestions.map { |suggestion| suggestion.fetch("label") }).to eq([
+        "State is Running",
+        "Repository is acme/widgets"
+      ])
+      expect(suggestions.first).to include(
+        "filter" => { "field" => "state", "op" => "is", "value" => "running" },
+        "use_count" => 2
+      )
+
+      get "/api/v1/app/dashboard", params: { subject: "job", q: Filters::QueryParam.encode(state_tree) }
+
+      expect(response).to have_http_status(:ok)
+      active_suggestions = parse_body.dig("controls", "filter_suggestions")
+      expect(active_suggestions.map { |suggestion| suggestion.fetch("label") }).not_to include("State is Running")
+      expect(active_suggestions.map { |suggestion| suggestion.fetch("label") }).to include("Repository is acme/widgets")
+    end
+
     it "keeps running jobs in the running Kanban lane even when blocked diagnostics are visible" do
       user.update_dashboard_kanban_lanes!(subject: :jobs, lanes: %w[blocked queued running])
       prerequisite = Factories.job_record(repository: repo, owner_user: user, issue_number: 5, issue_title: "Finish paving", state: "queued")

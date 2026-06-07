@@ -135,6 +135,40 @@ describe("FilterBar", () => {
     )
   })
 
+  it("shows suggested filters above the regular add-filter menu and applies them immediately", async () => {
+    render(
+      <MemoryRouter initialEntries={["/dashboard/jobs"]}>
+        <FilterBar
+          filter={{ and: [] }}
+          filterSchema={filterSchema}
+          pathname="/dashboard/jobs"
+          search=""
+          suggestions={[
+            {
+              id: 1,
+              label: "State is Closed",
+              filter: { field: "state", op: "is", value: "closed" }
+            }
+          ]}
+        />
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+
+    expect(screen.getByText("Suggested")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "State is Closed" }).compareDocumentPosition(screen.getByRole("button", { name: "State enum" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "State is Closed" }))
+
+    await waitFor(() => {
+      expect(decodedFilterFromLocation()).toEqual({
+        and: [{ field: "state", op: "is", value: "closed" }]
+      })
+    })
+  })
+
   it("does not show a value placeholder for predicate filters", () => {
     render(
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>

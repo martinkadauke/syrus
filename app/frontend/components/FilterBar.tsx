@@ -18,6 +18,14 @@ export type FilterSchemaField = {
   expansions?: Record<string, unknown>
 }
 
+export type FilterSuggestion = {
+  id: number
+  label: string
+  filter: Record<string, unknown>
+  use_count?: number
+  last_used_at?: string | null
+}
+
 export type FilterChip = {
   field: string
   op: string
@@ -45,10 +53,12 @@ export function FilterBar({
   search,
   legacyFilterKeys = [],
   className = "space-y-2",
+  suggestions = [],
   buildLink = linkFromSearch
 }: {
   filter?: Record<string, unknown> | null
   filterSchema: FilterSchemaField[]
+  suggestions?: FilterSuggestion[]
   pathname: string
   search: string
   legacyFilterKeys?: string[]
@@ -70,6 +80,10 @@ export function FilterBar({
   const filteredSchema = filterSchema.filter((field) => {
     const query = addQuery.trim().toLowerCase()
     return !query || field.field.toLowerCase().includes(query) || field.label.toLowerCase().includes(query)
+  })
+  const filteredSuggestions = suggestions.filter((suggestion) => {
+    const query = addQuery.trim().toLowerCase()
+    return !addAlternativePath && (!query || suggestion.label.toLowerCase().includes(query))
   })
   const editingChip = editingPath ? filterNodeAtPath(draftTree, editingPath) : null
   const editingMeta = editingChip && "field" in editingChip ? filterMetaFor(filterSchema, editingChip.field) : null
@@ -183,6 +197,20 @@ export function FilterBar({
     applyTree(nextTree)
   }
 
+  function addSuggestedFilter(suggestion: FilterSuggestion) {
+    const node = suggestionFilterNode(suggestion)
+    if (!node) return
+
+    const children = topFilterChildren(draftTree).slice()
+    children.push(node)
+
+    const nextTree = { and: children }
+    updateTree(nextTree, null)
+    setAddMenuOpen(false)
+    setAddAlternativePath(null)
+    applyTree(nextTree)
+  }
+
   function addOrAlternative(path: FilterPath, meta: FilterSchemaField) {
     const children = topFilterChildren(draftTree).slice()
     const index = path[0]
@@ -258,6 +286,21 @@ export function FilterBar({
               value={addQuery}
             />
             <div className="max-h-72 overflow-y-auto py-1">
+              {filteredSuggestions.length > 0 ? (
+                <div className="border-b border-gray-100 pb-1">
+                  <div className="px-3 py-1.5 text-xs font-semibold uppercase text-gray-400">Suggested</div>
+                  {filteredSuggestions.map((suggestion) => (
+                    <button
+                      className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-50"
+                      key={suggestion.id}
+                      onClick={() => addSuggestedFilter(suggestion)}
+                      type="button"
+                    >
+                      {suggestion.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               {filteredSchema.map((field) => (
                 <button
                   aria-label={`${field.label} ${field.bucket}`}
@@ -705,6 +748,10 @@ export function topFilterChildren(tree: FilterTree | FilterNode | null): FilterN
   if ("and" in tree && Array.isArray(tree.and)) return tree.and
   if (isFilterChip(tree) || ("or" in tree && Array.isArray(tree.or)) || ("not" in tree && tree.not)) return [tree as FilterNode]
   return []
+}
+
+function suggestionFilterNode(suggestion: FilterSuggestion): FilterNode | null {
+  return topFilterChildren(suggestion.filter as FilterNode)[0] || null
 }
 
 function isFilterChip(node: unknown): node is FilterChip {
