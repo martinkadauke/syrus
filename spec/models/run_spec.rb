@@ -213,7 +213,7 @@ RSpec.describe Run do
       expect(run_jobs.last[:priority]).to eq(Job::PRIORITY_TO_SQ["medium"])
     end
 
-    it "enqueues AutoMerge workflow runs on the runs queue because the merge gate can invoke the agent" do
+    it "enqueues AutoMerge workflow runs on the merges queue" do
       job
       ActiveJob::Base.queue_adapter.enqueued_jobs.clear
       workflow = Workflows::AutoMerge.instantiate(job: job)
@@ -225,7 +225,37 @@ RSpec.describe Run do
           trigger_kind: workflow.trigger_kind,
           agent_provider: workflow.agent_provider
         )
-      }.to have_enqueued_job(RunJob).on_queue("runs")
+      }.to have_enqueued_job(RunJob).on_queue("merges")
+    end
+
+    it "enqueues Rebase workflow runs on the merges queue" do
+      job
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      workflow = Workflows::Rebase.instantiate(job: job)
+      step = workflow.steps.first
+
+      expect {
+        step.runs.create!(
+          job: job,
+          trigger_kind: workflow.trigger_kind,
+          agent_provider: workflow.agent_provider
+        )
+      }.to have_enqueued_job(RunJob).on_queue("merges")
+    end
+
+    it "enqueues StackRebase workflow runs on the merges queue" do
+      job
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      workflow = Workflows::StackRebase.instantiate(job: job)
+      step = workflow.steps.first
+
+      expect {
+        step.runs.create!(
+          job: job,
+          trigger_kind: workflow.trigger_kind,
+          agent_provider: workflow.agent_provider
+        )
+      }.to have_enqueued_job(RunJob).on_queue("merges")
     end
 
     it "enqueues Initial workflow runs on the runs queue" do

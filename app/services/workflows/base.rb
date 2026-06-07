@@ -33,6 +33,8 @@ module Workflows
 
     def self.agentic? = true
 
+    def self.queue_name = :runs
+
     # Lifecycle hooks. The Workflow model invokes the matching hook
     # on the workflow-template class via Workflow#dispatch_hook after
     # the model handles generic concerns (timestamps, workspace

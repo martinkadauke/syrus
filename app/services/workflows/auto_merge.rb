@@ -21,6 +21,8 @@ module Workflows
 
     def self.trigger_kind = "auto_merge"
 
+    def self.queue_name = :merges
+
     def self.steps_for(_job)
       [
         "mergeability_preflight",

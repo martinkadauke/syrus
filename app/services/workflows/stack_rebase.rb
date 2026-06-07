@@ -4,6 +4,8 @@ module Workflows
 
     def self.trigger_kind = "stack_rebase"
 
+    def self.queue_name = :merges
+
     def self.instantiate(job:, artifacts: nil, agent_provider: nil, pr: nil, base_branch: nil)
       super(
         job: job,
