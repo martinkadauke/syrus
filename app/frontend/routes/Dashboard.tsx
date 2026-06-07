@@ -1089,6 +1089,10 @@ function DashboardOwnerLabel({ job, prefix, quiet = false }: { job: DashboardJob
 }
 
 function LatestWorkflowCell({ job }: { job: DashboardJobItem }) {
+  if (job.latest_workflow_id == null) {
+    return <td className="px-4 py-3" />
+  }
+
   if (!job.latest_workflow_trigger_kind) {
     return <td className="px-4 py-3"><StatusPill state={job.latest_workflow_state} /></td>
   }

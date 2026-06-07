@@ -1353,6 +1353,62 @@ describe("App", () => {
     expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
   }, 15000)
 
+  it("leaves the latest workflow cell empty for dashboard jobs with no workflows", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/dashboard?view=list&subject=job") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                view: "list",
+                preferences: {
+                  sort: { column: "created_at", direction: "desc" },
+                  visible_columns: ["checkbox", "issue", "state", "latest"],
+                  kanban_lanes: ["queued", "running", "succeeded"],
+                  raw: {}
+                },
+                items: [
+                  dashboardJobItem({
+                    id: 523,
+                    title: "Blocked child",
+                    state: "blocked_by_epic",
+                    summary_state: "blocked_by_epic",
+                    active_workflow_trigger_kind: null,
+                    latest_workflow_id: null,
+                    latest_workflow_trigger_kind: null,
+                    latest_workflow_state: "queued",
+                    workflows_count: 0
+                  })
+                ]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Blocked child")).toBeInTheDocument()
+    const row = screen.getByRole("row", { name: /Blocked child/i })
+    const cells = within(row).getAllByRole("cell")
+    expect(cells[3]).toBeEmptyDOMElement()
+    expect(within(row).queryByText("Queued")).not.toBeInTheDocument()
+
+    fetchSpy.mockRestore()
+  })
+
   it("disambiguates GitHub issue numbers from Syrus Job ids on the dashboard", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
@@ -8834,6 +8890,7 @@ function dashboardJobItem(overrides: Record<string, unknown> = {}) {
     branch_name: "syrus/issue-12",
     pr_number: 34,
     active_workflow_trigger_kind: "rebase",
+    latest_workflow_id: 77,
     latest_workflow_trigger_kind: "rebase",
     pr_url: "https://github.com/acme/widgets/pull/34",
     latest_workflow_state: "running",

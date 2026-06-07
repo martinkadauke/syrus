@@ -402,6 +402,12 @@ class Job < ApplicationRecord
     workflows.last
   end
 
+  def latest_workflow_id
+    return self[:latest_workflow_id] if has_attribute?(:latest_workflow_id)
+
+    latest_workflow&.id
+  end
+
   def latest_workflow_state
     return self[:latest_workflow_state].presence || "queued" if has_attribute?(:latest_workflow_state)
 

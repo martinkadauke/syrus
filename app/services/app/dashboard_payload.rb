@@ -669,6 +669,7 @@ module App
         branch_name: job.branch_name,
         pr_number: job.pr_number || job.external_pr_number,
         active_workflow_trigger_kind: active_workflow_trigger_kind(job),
+        latest_workflow_id: job.latest_workflow_id,
         latest_workflow_trigger_kind: job.latest_workflow_trigger_kind,
         pr_url: job.pr_number.present? ? App::Presentation.job_pr_url(job) : App::Presentation.external_pr_url(job),
         latest_workflow_state: job.latest_workflow_state,

@@ -29,7 +29,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       epic = Factories.epic(user: user, repository: repo, title: "Raise the forum")
       first = Factories.job_record(repository: repo, epic: epic, issue_number: 1, issue_title: "Build aqueduct", state: "queued", pr_number: 17, owner_user: user)
       second = Factories.job_record(repository: repo, issue_number: 2, issue_title: "Chart forum", state: "running", owner_user: user)
-      Workflow.create!(job: second, trigger_kind: "rebase", state: "running")
+      second_workflow = Workflow.create!(job: second, trigger_kind: "rebase", state: "running")
       first.update!(claimed_by_user: user, claimed_at: Time.zone.parse("2026-06-03 05:45:00 UTC"))
       first.tags << tag
       archived_repo = Factories.repository(user: user, owner: "acme", name: "archived", archived_at: Time.current)
@@ -54,6 +54,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "type" => "job",
         "title" => "Build aqueduct",
         "state" => "queued",
+        "latest_workflow_id" => nil,
         "latest_workflow_trigger_kind" => nil,
         "latest_workflow_state" => "queued",
         "total_cost_usd" => nil,
@@ -82,6 +83,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       )
       expect(body["items"].find { |item| item.fetch("id") == second.id }).to include(
         "active_workflow_trigger_kind" => "rebase",
+        "latest_workflow_id" => second_workflow.id,
         "latest_workflow_trigger_kind" => "rebase",
         "latest_workflow_state" => "running"
       )
