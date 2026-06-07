@@ -72,7 +72,17 @@ module Api
         # cleaned_up_at column gets stamped either way.
         def cleanup_workspace
           workflow = Workflow.find(params[:id])
-          ::WorkflowWorkspace.cleanup_for(workflow)
+          unless workflow.cleanup_workspace!
+            render json: {
+              ok: false,
+              error: {
+                code: "workspace_active",
+                message: "Workflow workspace is still in use by active steps or runs."
+              }
+            }, status: :conflict
+            return
+          end
+
           render json: {
             ok: true,
             workflow_id: workflow.id,

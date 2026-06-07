@@ -167,7 +167,7 @@ class Step < ApplicationRecord
   def cancel_workflow_if_idle!
     wf = workflow
     return unless wf.may_cancel?
-    return if wf.steps.active.exists?
+    return if wf.active_descendants?
 
     wf.cancel!
     wf.save!

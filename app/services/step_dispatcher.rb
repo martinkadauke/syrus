@@ -278,7 +278,9 @@ class StepDispatcher
   MERGEABILITY_RECHECK_DELAY = 30.seconds
 
   def finish_workflow!
+    return if @workflow.live_descendants?
     return unless @workflow.may_succeed?
+
     @workflow.succeed!
     @workflow.save!
     StackRebaseCoordinator.parent_amended(@workflow.job) if pushed_workflow? && @workflow.trigger_kind != "stack_rebase"

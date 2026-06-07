@@ -109,6 +109,21 @@ RSpec.describe StepDispatcher do
       expect(workflow.reload).to be_succeeded
     end
 
+    it "does not finish the Workflow while another descendant Step or Run is still active" do
+      workflow.start!
+      workflow.save!
+      s1.update_columns(state: "running", started_at: 1.minute.ago)
+      run = s1.runs.create!(job: job, trigger_kind: "initial")
+      run.update_columns(state: "running", started_at: 1.minute.ago, last_heartbeat_at: Time.current)
+      s3.update_columns(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+      allow(WorkflowWorkspace).to receive(:cleanup_for)
+
+      described_class.advance_from(s3)
+
+      expect(workflow.reload).to be_running
+      expect(WorkflowWorkspace).not_to have_received(:cleanup_for)
+    end
+
     it "schedules a merge-state poll after a pending stacked auto-merge rebase push" do
       clear_enqueued_jobs
       job.repository.update!(auto_merge_enabled: true)

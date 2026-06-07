@@ -74,13 +74,37 @@ RSpec.describe "API: /api/v1/admin/workflows/:id/*", type: :request do
 
   describe "POST /workflows/:id/cleanup_workspace" do
     it "stamps cleaned_up_at and returns the new value" do
+      workflow.update!(state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+      workflow.steps.update_all(state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+      workflow.runs.update_all(state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
       expect(workflow.cleaned_up_at).to be_nil
+
       post "/api/v1/admin/workflows/#{workflow.id}/cleanup_workspace", headers: auth
+
       expect(response).to be_successful
       body = parse_body
       expect(body["ok"]).to be true
       expect(body["cleaned_up_at"]).to be_present
       expect(workflow.reload.cleaned_up_at).to be_present
+    end
+
+    it "refuses to clean up an active workflow workspace" do
+      workflow.update!(state: "running", started_at: 1.minute.ago)
+      step = workflow.steps.find_by!(kind: "implement")
+      step.update!(state: "running", started_at: 1.minute.ago)
+      step.runs.create!(
+        job: job,
+        trigger_kind: workflow.trigger_kind,
+        state: "running",
+        started_at: 1.minute.ago,
+        last_heartbeat_at: Time.current
+      )
+
+      post "/api/v1/admin/workflows/#{workflow.id}/cleanup_workspace", headers: auth
+
+      expect(response).to have_http_status(:conflict)
+      expect(parse_body.dig("error", "code")).to eq("workspace_active")
+      expect(workflow.reload.cleaned_up_at).to be_nil
     end
 
     it "401s without a token" do

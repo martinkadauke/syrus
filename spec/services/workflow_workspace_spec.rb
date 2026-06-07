@@ -462,7 +462,8 @@ RSpec.describe WorkflowWorkspace do
 
     it "logs cleanup start/end to the latest run's JobLog when a run exists" do
       step = workflow.steps.create!(kind: "implement", position: 0)
-      run  = step.runs.create!(job: job, trigger_kind: "initial")
+      run  = step.runs.create!(job: job, trigger_kind: "initial", state: "succeeded",
+                               started_at: 1.minute.ago, finished_at: Time.current)
 
       ws = described_class.new(workflow)
       ws.setup

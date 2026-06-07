@@ -135,7 +135,40 @@ RSpec.describe Workflow do
     end
   end
 
-describe "Job state propagation (Phase 2)" do
+  describe "#cleanup_workspace!" do
+    it "defers cleanup while a descendant Run is still active" do
+      wf = described_class.create!(job: job, trigger_kind: "initial", state: "running", started_at: 1.minute.ago)
+      step = Step.create!(workflow: wf, kind: "implement", position: 0, state: "running", started_at: 1.minute.ago)
+      step.runs.create!(
+        job: job,
+        trigger_kind: "initial",
+        state: "running",
+        started_at: 1.minute.ago,
+        last_heartbeat_at: Time.current
+      )
+      allow(WorkflowWorkspace).to receive(:cleanup_for)
+
+      expect(wf.cleanup_workspace!).to eq(false)
+
+      expect(WorkflowWorkspace).not_to have_received(:cleanup_for)
+      expect(wf.reload.cleaned_up_at).to be_nil
+    end
+
+    it "allows cleanup of a terminal workflow with only queued retry-tail Steps" do
+      wf = described_class.create!(job: job, trigger_kind: "initial", state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+      Step.create!(workflow: wf, kind: "summarize", position: 0)
+      allow(WorkflowWorkspace).to receive(:cleanup_for) do |workflow|
+        workflow.update_columns(cleaned_up_at: Time.current)
+      end
+
+      expect(wf.cleanup_workspace!).to eq(true)
+
+      expect(WorkflowWorkspace).to have_received(:cleanup_for).with(wf)
+      expect(wf.reload.cleaned_up_at).to be_present
+    end
+  end
+
+  describe "Job state propagation (Phase 2)" do
     let(:user) { Factories.user }
     let(:repository) { Factories.repository(user: user) }
     let(:job) { Factories.job_record(user: user, repository: repository, state: "queued") }

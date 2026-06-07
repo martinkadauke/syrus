@@ -114,6 +114,11 @@ class Workflow < ApplicationRecord
   # to the latest run so absence of the log lines signals a missed
   # cleanup.
   def cleanup_workspace!
+    if cleanup_blocked_by_active_descendants?
+      log_workspace_event("[workspace] cleanup deferred — workflow still has active steps or runs")
+      return false
+    end
+
     log_workspace_event("[workspace] cleanup starting")
     WorkflowWorkspace.cleanup_for(self)
     if self.class.where(id: id).pick(:cleaned_up_at).present?
@@ -121,6 +126,19 @@ class Workflow < ApplicationRecord
     else
       log_workspace_event("[workspace] cleanup incomplete — directory may still be on disk; prune job will retry")
     end
+    true
+  end
+
+  def active_descendants?
+    steps.active.exists? || runs.active.exists?
+  end
+
+  def live_descendants?
+    runs.active.exists? || steps.where(state: "running").exists?
+  end
+
+  def cleanup_blocked_by_active_descendants?
+    live_descendants?
   end
 
   # Cancel every still-active Step + Run under this Workflow. Called
