@@ -43,6 +43,7 @@ per-user/private:
 team-visible:
   - app/controllers/api/v1/app/profiles_controller.rb
 public/session:
+  - app/controllers/concerns/authentication.rb
   - app/controllers/api/v1/app/auth_controller.rb
 admin-only:
   - app/controllers/admin/base_controller.rb
@@ -128,6 +129,7 @@ as optional session context.
 
 | File | Classification | Reason |
 | --- | --- | --- |
+| `app/controllers/concerns/authentication.rb` | public/current session | Authentication redirects use `Current.user` after session resume to send incomplete first-run users to onboarding. |
 | `app/controllers/api/v1/app/auth_controller.rb` | public/current session | Status returns the current session user when one exists; auth creation paths are otherwise public and session-scoped. |
 
 ## Admin-only
