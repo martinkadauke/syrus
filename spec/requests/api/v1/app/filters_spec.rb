@@ -118,4 +118,73 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
     expect(parse_body.dig("error", "code")).to eq("unknown_field")
     expect(parse_body.dig("error", "message")).to eq("Unknown filter field.")
   end
+
+  it "suggests complete filters from FK value matches" do
+    user = Factories.user
+    repo = Factories.repository(user:, owner: "tkadauke", name: "syrus")
+    other_repo = Factories.repository(user: Factories.user, owner: "tkadauke", name: "syrus-private")
+    sign_in_as(user)
+
+    get "/api/v1/app/filters/suggestions", params: { surface: "dashboard", subject: "job", q: "sy" }
+
+    expect(response).to have_http_status(:ok)
+    suggestions = parse_body.fetch("suggestions")
+    expect(suggestions).to include(
+      include(
+        "label" => "Repository is tkadauke/syrus",
+        "filter" => { "field" => "repository_id", "op" => "is", "value" => repo.id },
+        "source" => "value"
+      )
+    )
+    expect(suggestions.map { |suggestion| suggestion.dig("filter", "value") }).not_to include(other_repo.id)
+  end
+
+  it "ranks learned matching filters ahead of generated value suggestions" do
+    user = Factories.user
+    sign_in_as(user)
+    filter = { "field" => "state", "op" => "is", "value" => "running" }
+    FilterUsage.create!(
+      user: user,
+      surface: "dashboard",
+      subject: "job",
+      fingerprint: "state-running",
+      label: "State is Running",
+      filter_node: filter,
+      use_count: 3,
+      last_used_at: Time.current
+    )
+
+    get "/api/v1/app/filters/suggestions", params: { surface: "dashboard", subject: "job", q: "run" }
+
+    expect(response).to have_http_status(:ok)
+    suggestions = parse_body.fetch("suggestions")
+    expect(suggestions.first).to include(
+      "label" => "State is Running",
+      "filter" => filter,
+      "source" => "frequent"
+    )
+    expect(suggestions.count { |suggestion| suggestion.fetch("label") == "State is Running" }).to eq(1)
+  end
+
+  it "does not suggest filters that are already active" do
+    user = Factories.user
+    repo = Factories.repository(user:, owner: "tkadauke", name: "syrus")
+    sign_in_as(user)
+    active_tree = {
+      "and" => [
+        { "field" => "repository_id", "op" => "is", "value" => repo.id }
+      ]
+    }
+
+    get "/api/v1/app/filters/suggestions",
+        params: {
+          surface: "dashboard",
+          subject: "job",
+          q: "sy",
+          active_q: Filters::QueryParam.encode(active_tree)
+        }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.fetch("suggestions").map { |suggestion| suggestion.fetch("label") }).not_to include("Repository is tkadauke/syrus")
+  end
 end

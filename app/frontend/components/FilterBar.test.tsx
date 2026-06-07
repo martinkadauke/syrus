@@ -169,6 +169,65 @@ describe("FilterBar", () => {
     })
   })
 
+  it("loads matching RHS filter suggestions from the server while searching", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = new URL(String(input), "http://example.test")
+      if (url.pathname !== "/api/v1/app/filters/suggestions") {
+        return Promise.reject(new Error(`Unexpected fetch: ${url.pathname}`))
+      }
+
+      expect(url.searchParams.get("surface")).toBe("dashboard")
+      expect(url.searchParams.get("subject")).toBe("job")
+      expect(url.searchParams.get("q")).toBe("sy")
+      expect(url.searchParams.has("active_q")).toBe(false)
+
+      return Promise.resolve(jsonResponse({
+        suggestions: [
+          {
+            id: "value-repository",
+            label: "Repository is tkadauke/syrus",
+            filter: { field: "repository_id", op: "is", value: 2 },
+            source: "value"
+          }
+        ]
+      }))
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/dashboard/jobs"]}>
+        <FilterBar
+          filter={{ and: [] }}
+          filterSchema={filterSchema}
+          pathname="/dashboard/jobs"
+          search=""
+          suggestionSearch={{ surface: "dashboard", subject: "job" }}
+        />
+        <LocationProbe />
+      </MemoryRouter>
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+    fireEvent.change(screen.getByPlaceholderText("Search filters..."), { target: { value: "sy" } })
+
+    const suggestion = await screen.findByRole("button", { name: "Repository is tkadauke/syrus" })
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/filters/suggestions?surface=dashboard&subject=job&q=sy",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { Accept: "application/json" },
+        signal: expect.any(AbortSignal)
+      })
+    )
+
+    fireEvent.click(suggestion)
+
+    await waitFor(() => {
+      expect(decodedFilterFromLocation()).toEqual({
+        and: [{ field: "repository_id", op: "is", value: 2 }]
+      })
+    })
+  })
+
   it("does not show a value placeholder for predicate filters", () => {
     render(
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>

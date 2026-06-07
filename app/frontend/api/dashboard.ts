@@ -195,9 +195,10 @@ export type DashboardFilterSchemaField = {
 }
 
 export type DashboardFilterSuggestion = {
-  id: number
+  id: number | string
   label: string
   filter: Record<string, unknown>
+  source?: string
   use_count?: number
   last_used_at?: string | null
 }

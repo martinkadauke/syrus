@@ -19,9 +19,10 @@ export type FilterSchemaField = {
 }
 
 export type FilterSuggestion = {
-  id: number
+  id: number | string
   label: string
   filter: Record<string, unknown>
+  source?: string
   use_count?: number
   last_used_at?: string | null
 }
@@ -43,6 +44,10 @@ export type FilterTree = FilterGroup
 
 type FilterPath = number[]
 type FilterLinkUpdates = Record<string, string | number | null | undefined>
+type FilterSuggestionSearchConfig = {
+  surface: string
+  subject: string
+}
 
 export type FilterLinkBuilder = (path: string, search: string, updates: FilterLinkUpdates) => string
 
@@ -54,11 +59,13 @@ export function FilterBar({
   legacyFilterKeys = [],
   className = "space-y-2",
   suggestions = [],
+  suggestionSearch,
   buildLink = linkFromSearch
 }: {
   filter?: Record<string, unknown> | null
   filterSchema: FilterSchemaField[]
   suggestions?: FilterSuggestion[]
+  suggestionSearch?: FilterSuggestionSearchConfig
   pathname: string
   search: string
   legacyFilterKeys?: string[]
@@ -76,12 +83,17 @@ export function FilterBar({
   const params = new URLSearchParams(search)
   const appliedTree = useMemo(() => filterTreeFromPayload(filter), [filter])
   const draftChildren = topFilterChildren(draftTree)
+  const activeSuggestionQ = useMemo(() => topFilterChildren(appliedTree).length > 0 ? encodeFilterTree(appliedTree) : "", [appliedTree])
+  const [searchedSuggestions, setSearchedSuggestions] = useState<FilterSuggestion[]>([])
   const hasFilters = draftChildren.length > 0 || params.has("q") || params.has("smart_folder_id") || legacyFilterKeys.some((key) => params.has(key))
+  const suggestionQuery = addQuery.trim()
+  const usesRemoteSuggestions = Boolean(suggestionSearch && addMenuOpen && !addAlternativePath && suggestionQuery.length >= 2)
+  const activeSuggestions = usesRemoteSuggestions ? searchedSuggestions : suggestions
   const filteredSchema = filterSchema.filter((field) => {
     const query = addQuery.trim().toLowerCase()
     return !query || field.field.toLowerCase().includes(query) || field.label.toLowerCase().includes(query)
   })
-  const filteredSuggestions = suggestions.filter((suggestion) => {
+  const filteredSuggestions = activeSuggestions.filter((suggestion) => {
     const query = addQuery.trim().toLowerCase()
     return !addAlternativePath && (!query || suggestion.label.toLowerCase().includes(query))
   })
@@ -121,6 +133,29 @@ export function FilterBar({
       window.removeEventListener("pointerdown", closeOnOutsidePointer)
     }
   }, [addMenuOpen])
+
+  useEffect(() => {
+    if (!usesRemoteSuggestions || !suggestionSearch) {
+      setSearchedSuggestions([])
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+
+    void loadFilterSuggestions(suggestionSearch, suggestionQuery, activeSuggestionQ, controller.signal).then((loadedSuggestions) => {
+      if (!cancelled) setSearchedSuggestions(loadedSuggestions)
+    }).catch((error: unknown) => {
+      if (!cancelled && !(error instanceof DOMException && error.name === "AbortError")) {
+        setSearchedSuggestions([])
+      }
+    })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [activeSuggestionQ, suggestionQuery, suggestionSearch?.subject, suggestionSearch?.surface, usesRemoteSuggestions])
 
   useEffect(() => {
     if (!editingPath) return
@@ -313,7 +348,7 @@ export function FilterBar({
                   <span className="text-xs text-gray-400">{field.bucket}</span>
                 </button>
               ))}
-              {filteredSchema.length === 0 ? <div className="px-3 py-2 text-sm text-gray-400">No matching filters</div> : null}
+              {filteredSchema.length === 0 && filteredSuggestions.length === 0 ? <div className="px-3 py-2 text-sm text-gray-400">No matching filters</div> : null}
             </div>
           </div>
         ) : null}
@@ -984,4 +1019,24 @@ async function loadFkOptions(field: string, { q, ids }: { q?: string; ids?: stri
 
   const payload = await response.json() as { options?: FilterOption[] }
   return payload.options || []
+}
+
+async function loadFilterSuggestions(config: FilterSuggestionSearchConfig, q: string, activeQ: string, signal: AbortSignal): Promise<FilterSuggestion[]> {
+  const params = new URLSearchParams({
+    surface: config.surface,
+    subject: config.subject,
+    q
+  })
+  if (activeQ) params.set("active_q", activeQ)
+
+  const response = await fetch(`/api/v1/app/filters/suggestions?${params}`, {
+    credentials: "same-origin",
+    headers: { Accept: "application/json" },
+    signal
+  })
+
+  if (!response.ok) throw new Error(`Failed to load filter suggestions: ${response.status}`)
+
+  const payload = await response.json() as { suggestions?: FilterSuggestion[] }
+  return payload.suggestions || []
 }
