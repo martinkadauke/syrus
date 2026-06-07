@@ -296,13 +296,10 @@ Source content:
 | `docs/release_notes.md` | Future `/docs/release-notes` or changelog | Preserve for now | Do not add route until launch/update workflow exists |
 | `docs/issues/sluggish-then-unreachable-on-staging.md` | None | Preserve internal | Incident note; not public docs |
 | `docs/plans/complete/*` | None | Preserve internal/archive | Completed implementation plans should not appear in public IA |
-| `docs/plans/react-spa-route-inventory.md` | None | Preserve internal | App UI inventory, not public website content |
 | `docs/plans/*magic-constants*` | `/docs/configuration`, if settings remain user-facing | Selectively merge | Only expose current configurable settings |
-| `docs/plans/per-repo-chat*.md` | Future docs if feature is public | Preserve internal | Not in launch IA |
 | `docs/plans/gh-stack-integration.md` | Future workflows/recipes | Preserve internal | Not in launch IA unless feature ships |
 | `docs/plans/syrus-as-dev-environment.md` | `/evaluate`, `/docs/deployment/try-it-locally` | Selectively merge | Use only current local-dev behavior |
 | `docs/plans/syrus-native-ci.md` | Future workflows/recipes | Preserve internal | Not launch docs |
-| `docs/plans/epic-filters.md` | Future app/admin docs | Preserve internal | Not public product docs unless admin docs expand |
 | `docs/plans/lenient-prepare.md` | `/docs/configuration`, `/docs/troubleshooting` | Selectively merge | Use for prepare behavior if current |
 | `lib/agent_skills/*.md` | Future recipes or extension docs | Preserve | Not part of launch IA |
 | `website/src/pages/*` | Public top-level pages | Preserve and polish | Current files define route contracts |

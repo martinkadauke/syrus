@@ -2,6 +2,12 @@
 
 _Captured 2026-05-16._
 
+_Status check 2026-06-07: complete. The implementation shipped through
+the React dashboard/app API route shape rather than the older ERB
+`/` + `subject=` partial shape: canonical routes are
+`/dashboard/epics`, `/dashboard/jobs`, and `/dashboard/workflows`, with
+`/epics`, `/jobs`, and `/workflows` compatibility redirects._
+
 ## Context
 
 Search filters exist for Jobs (`Jobs::Filter`, `Filters::Chips::*`, the
@@ -280,22 +286,22 @@ EPIC_BUILTINS = [
 
 ## Acceptance (whole plan)
 
-- [ ] Phase 1: inventory comment + chip-DSL guard test land. No
+- [x] Phase 1: inventory comment + chip-DSL guard test land. No
       behaviour change.
-- [ ] Phase 2: `Filters::Subject` exists. `Filters::Registry.for(:job)`
+- [x] Phase 2: `Filters::Subject` exists. `Filters::Registry.for(:job)`
       / `Filters::Schema.for(subject: :job)` work. Job filter
       end-to-end behaviour byte-identical (spec-verified).
-- [ ] Phase 3: Job chips live under `Filters::Chips::Jobs::*`.
+- [x] Phase 3: Job chips live under `Filters::Chips::Jobs::*`.
       Filter-name strings unchanged. URL/SmartFolder back-compat
       preserved.
-- [ ] Phase 4a: `smart_folders.subject_type` column with default
+- [x] Phase 4a: `smart_folders.subject_type` column with default
       `'job'`. Existing rows backfilled. Uniqueness scoped per
       subject_type.
-- [ ] Phase 4b/c: `Epics::Filter` + the listed Epic chip set ship.
+- [x] Phase 4b/c: `Epics::Filter` + the listed Epic chip set ship.
       The 6 epic builtin SmartFolders seed correctly.
-- [ ] Phase 4d: `EpicsController#index` accepts `q=` chip-bar URLs and
-      renders the sidebar. Chip-bar UI is subject-aware.
-- [ ] No regressions: full Job filter spec suite passes unchanged.
+- [x] Phase 4d: the React dashboard accepts `q=` chip-bar URLs and
+      renders the subject-aware sidebar and chip-bar UI.
+- [x] No regressions: full Job filter spec suite passes unchanged.
 
 ## Out of scope
 
@@ -434,22 +440,23 @@ their Runs do, not by operator action).
 
 ### Acceptance
 
-- [ ] `/` honours `subject=` and `view=` URL params; defaults from
-      `users.dashboard_preferences` when unset
-- [ ] `/jobs` and `/epics` 302 to `/?subject=job` / `/?subject=epic`
-      for back-compat with existing bookmarks
-- [ ] Subject toggle visibly switches the chip-bar, sidebar, and
+- [x] `/dashboard/*` honours the subject route and `view=` URL params;
+      `/dashboard` defaults from `users.dashboard_preferences` when
+      unset
+- [x] `/jobs` and `/epics` 302 to `/dashboard/jobs` /
+      `/dashboard/epics` for back-compat with existing bookmarks
+- [x] Subject toggle visibly switches the chip-bar, sidebar, and
       content area; filter state isolated per subject
-- [ ] View toggle switches between List and Kanban for the current
+- [x] View toggle switches between List and Kanban for the current
       subject; filter state preserved across the switch
-- [ ] Epic kanban: columns `backlog → ready → in_progress → done`;
+- [x] Epic kanban: columns `backlog → ready → in_progress → done`;
       drag-and-drop transitions work via the existing controller
-- [ ] Job kanban: columns derived from `latest_workflow_state`; no
+- [x] Job kanban: columns derived from `latest_workflow_state`; no
       drag-and-drop in v1 (read-only kanban)
-- [ ] Workflow kanban: lands in Phase 6
-- [ ] Persisted preference: refreshing `/` lands on the last subject +
-      view the user used
-- [ ] Spec coverage: each (subject × view) combination round-trips
+- [x] Workflow kanban: lands in Phase 6
+- [x] Persisted preference: refreshing `/dashboard` lands on the last
+      subject + view the user used
+- [x] Spec coverage: each (subject × view) combination round-trips
       through URL + chip-bar + filter without state leaking across
       subjects
 
@@ -577,20 +584,20 @@ Add `Workflow` to the dashboard's subject toggle (Phase 5). Wire:
 
 ### Acceptance (Phase 6 as a whole)
 
-- [ ] `Workflows::Filter`, `Filters::Chips::Workflows::*` chip set,
+- [x] `Workflows::Filter`, `Filters::Chips::Workflows::*` chip set,
       and `Filters::SUBJECTS[:workflow]` exist and pass the
       chip-DSL contract spec
-- [ ] `SmartFolder.for_subject(:workflow)` seeds the 4 builtins on
+- [x] `SmartFolder.for_subject(:workflow)` seeds the 4 builtins on
       first boot
-- [ ] Dashboard subject toggle includes `Workflow`; both list and
+- [x] Dashboard subject toggle includes `Workflow`; both list and
       kanban views render correctly
-- [ ] Workflow kanban columns match the chosen layout (default: 3
+- [x] Workflow kanban columns match the chosen layout (default: 3
       columns)
-- [ ] No drag-and-drop on Workflow kanban; cards are read-only with
+- [x] No drag-and-drop on Workflow kanban; cards are read-only with
       click-through to Workflow detail
-- [ ] Specs cover each chip class plus integration tests for the 4
+- [x] Specs cover each chip class plus integration tests for the 4
       attention presets
-- [ ] No regressions on Job / Epic sides
+- [x] No regressions on Job / Epic sides
 
 ### Out of scope
 

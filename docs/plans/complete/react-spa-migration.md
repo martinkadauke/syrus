@@ -6,6 +6,12 @@ keeps the domain model, jobs, GitHub integration, auth, queues,
 workers, and deployment shape. ERB/Hotwire becomes an interim
 compatibility layer and is removed page-by-page._
 
+_Status check 2026-06-07: complete. Authenticated operator, admin,
+settings, repository, dashboard, job, chat, and setup surfaces are
+owned by the React SPA and `/api/v1/app/*` JSON APIs. Legacy app
+ERB/Stimulus/Hotwire surfaces have been removed; the remaining
+server-rendered templates are mailers, PWA assets, and the SPA shell._
+
 ## Why this is a real migration
 
 The current UI is not "Rails views with a little JavaScript." It is a
@@ -98,7 +104,7 @@ new React routes must coexist until M10 retires Hotwire.
 Outcome: every current page has an owner, migration bucket, and API
 contract sketch.
 
-- Add `docs/plans/react-spa-route-inventory.md`.
+- Add `docs/plans/complete/react-spa-route-inventory.md`.
 - Classify every route:
   - `spa-core`: must be first-class React route.
   - `spa-admin`: admin route, can migrate after core.

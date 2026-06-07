@@ -1,19 +1,19 @@
 # Per-repo chat — whiteboard extension
 
-_Captured 2026-05-13. Extension to `docs/plans/per-repo-chat.md`.
+_Captured 2026-05-13. Extension to
+`docs/plans/complete/per-repo-chat.md`.
 Adds a collaborative Excalidraw canvas to the chat page where both
 the operator and the embedded agent can sketch architecture
 diagrams, UI mockups, flow charts, etc. The chat is the
 conversation; the whiteboard is the visual artifact the
 conversation refines._
 
-_Status check 2026-05-15: shipped as an extension to the per-repo chat
-work. `ChatWhiteboard`, the whiteboard controller/view, chat layout
-controllers, and chat MCP canvas tools (`read_scene`, `draw_*`,
-`move_element`, `delete_element`, `clear_canvas`, `update_scene`) are
-present. Remaining follow-ups are the deferred items below, especially
-raster export / `read_canvas_image()` and richer proposal-body image
-support._
+_Status check 2026-06-07: complete as the v1 whiteboard extension.
+`Whiteboard`, the React Excalidraw chat surface, chat layout, and chat
+MCP canvas tools (`read_scene`, `draw_*`, `move_element`,
+`delete_element`, `clear_canvas`, `update_scene`) are present. Raster
+export / `read_canvas_image()` and richer proposal-body image support
+remain deferred items explicitly outside this archived plan._
 
 ## Context
 

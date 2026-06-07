@@ -1,6 +1,11 @@
 # React SPA route inventory
 
-_Captured 2026-05-30 as M0 for `react-spa-migration.md`._
+_Captured 2026-05-30 as M0 for
+`docs/plans/complete/react-spa-migration.md`._
+
+_Status check 2026-06-07: complete as the migration inventory. The
+routes listed here now describe the React-owned app shell, app JSON
+APIs, and legacy compatibility redirects._
 
 This inventory groups the current Rails routes into migration buckets.
 It is not a pasted `bin/rails routes` dump; the source of truth remains

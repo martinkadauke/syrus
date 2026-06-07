@@ -11,8 +11,9 @@ present. Still future: a fully configurable arbitrary pipeline, browser
 tooling, adversarial review, repo scaffolding, preview environments,
 continuous deploy, team roles, Codex-backed chat, and the larger
 "unified session + issue pipeline" architecture. See
-`per-repo-chat.md` for chat follow-ups and `syrus-native-ci.md` Build
-order step 4 for the remaining `ci_failure` cleanup._
+`complete/per-repo-chat.md` for archived chat context and
+`syrus-native-ci.md` Build order step 4 for the remaining `ci_failure`
+cleanup._
 
 The current Syrus is "issue → PR automation harness." The next
 Syrus is "the place where a small team (or a solo operator) builds
