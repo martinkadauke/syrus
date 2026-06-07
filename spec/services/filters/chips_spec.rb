@@ -114,23 +114,46 @@ RSpec.describe "Filters::Chips" do
       expect(run(field: "attention", op: "is", value: "pinned")).to contain_exactly(pinned)
     end
 
-    it "in_progress: includes active rebases deferred back to approved" do
+    it "in_progress: includes running work but excludes queued workflows" do
       running = Factories.job_record(repository: repo, issue_number: 1, state: "running")
-      landing = Factories.job_record(repository: repo, issue_number: 2, state: "landing")
+      landing_running = Factories.job_record(repository: repo, issue_number: 2, state: "landing")
       queued_rebase = Factories.job_record(repository: repo, issue_number: 3, state: "approved")
       running_rebase = Factories.job_record(repository: repo, issue_number: 4, state: "approved")
       finished_rebase = Factories.job_record(repository: repo, issue_number: 5, state: "approved")
-      Factories.job_record(repository: repo, issue_number: 6, state: "approved")
+      landing_queued = Factories.job_record(repository: repo, issue_number: 6, state: "landing")
+      Factories.job_record(repository: repo, issue_number: 7, state: "approved")
 
       Workflow.create!(job: queued_rebase, trigger_kind: "rebase", state: "queued")
       Workflow.create!(job: running_rebase, trigger_kind: "rebase", state: "running")
       Workflow.create!(job: finished_rebase, trigger_kind: "rebase", state: "succeeded")
+      Workflow.create!(job: landing_running, trigger_kind: "auto_merge", state: "running")
+      Workflow.create!(job: landing_queued, trigger_kind: "auto_merge", state: "queued")
 
       expect(run(field: "attention", op: "is", value: "in_progress")).to contain_exactly(
         running,
-        landing,
-        queued_rebase,
+        landing_running,
         running_rebase
+      )
+    end
+
+    it "queued: returns queued jobs and jobs whose latest workflow is queued" do
+      queued = Factories.job_record(repository: repo, issue_number: 21, state: "queued")
+      queued_rebase = Factories.job_record(repository: repo, issue_number: 22, state: "approved")
+      queued_landing = Factories.job_record(repository: repo, issue_number: 23, state: "landing")
+      Factories.job_record(repository: repo, issue_number: 24, state: "approved")
+      running_rebase = Factories.job_record(repository: repo, issue_number: 25, state: "approved")
+      superseded_queue = Factories.job_record(repository: repo, issue_number: 26, state: "approved")
+
+      Workflow.create!(job: queued_rebase, trigger_kind: "rebase", state: "queued")
+      Workflow.create!(job: queued_landing, trigger_kind: "auto_merge", state: "queued")
+      Workflow.create!(job: running_rebase, trigger_kind: "rebase", state: "running")
+      Workflow.create!(job: superseded_queue, trigger_kind: "rebase", state: "queued")
+      Workflow.create!(job: superseded_queue, trigger_kind: "rebase", state: "running")
+
+      expect(run(field: "attention", op: "is", value: "queued")).to contain_exactly(
+        queued,
+        queued_rebase,
+        queued_landing
       )
     end
 

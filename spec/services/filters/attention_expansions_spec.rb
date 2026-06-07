@@ -34,6 +34,16 @@ RSpec.describe Filters::Chips::Jobs::Attention do
       )
     end
 
+    it "expands queued as queued jobs or jobs with a queued latest workflow" do
+      queued = described_class.expansion_for("queued")
+      expect(queued).to eq(
+        "or" => [
+          { "field" => "state", "op" => "is", "value" => "queued" },
+          { "field" => "latest_workflow_state", "op" => "is", "value" => "queued" }
+        ]
+      )
+    end
+
     it "expands inbox lossily — the OR group covers actionable primitives" do
       inbox = described_class.expansion_for("inbox")
       expect(inbox).to have_key("and")
@@ -64,7 +74,7 @@ RSpec.describe Filters::Chips::Jobs::Attention do
     it "includes every defined expansion as parsed AST nodes" do
       expansions = described_class.expansions
       expect(expansions.keys).to match_array(%w[
-        pinned in_progress inbox awaiting_approval just_failed
+        pinned in_progress queued inbox awaiting_approval just_failed
         stale blocked merged_this_week awaiting_epic needs_review
       ])
     end

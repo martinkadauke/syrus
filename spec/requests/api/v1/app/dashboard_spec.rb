@@ -538,6 +538,11 @@ RSpec.describe "App API dashboard commands", type: :request do
         "visibility" => "when_present",
         "count" => 1
       )
+      expect(folders_by_name.fetch("Queued")).to include(
+        "kind" => "builtin",
+        "visibility" => "when_present",
+        "count" => 1
+      )
       expect(folders_by_name).not_to have_key("Landing queue")
       expect(folders_by_name.fetch("Merged this week")).to include(
         "visibility" => "on_demand",

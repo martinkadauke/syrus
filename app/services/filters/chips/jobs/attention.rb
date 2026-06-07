@@ -2,7 +2,7 @@ module Filters
   module Chips
     module Jobs
       # Preset macro chip — value selects a named composite filter
-      # (pinned / in_progress / inbox / awaiting_approval / just_failed /
+      # (pinned / in_progress / queued / inbox / awaiting_approval / just_failed /
       # stale / blocked / merged_this_week / awaiting_epic /
       # needs_review / landing_queue). Each
       # preset compiles to whatever sub-scope it needs; the UI will
@@ -15,7 +15,7 @@ module Filters
         operators :is
 
         PRESETS = %w[
-          pinned in_progress inbox awaiting_approval just_failed
+          pinned in_progress queued inbox awaiting_approval just_failed
           stale blocked merged_this_week awaiting_epic needs_review landing_queue
         ].freeze
 
@@ -36,11 +36,21 @@ module Filters
           "pinned"             => -> { chip_node("pinned_by_me", "is_true", nil) },
           "in_progress"        => -> {
             or_node(
-              chip_node("state", "is_one_of", %w[running landing]),
+              chip_node("state", "is", "running"),
+              and_node(
+                chip_node("state", "is", "landing"),
+                chip_node("latest_workflow_state", "is", "running")
+              ),
               and_node(
                 chip_node("latest_workflow_trigger_kind", "is", "rebase"),
-                chip_node("latest_workflow_state", "is_one_of", %w[queued running])
+                chip_node("latest_workflow_state", "is", "running")
               )
+            )
+          },
+          "queued"             => -> {
+            or_node(
+              chip_node("state", "is", "queued"),
+              chip_node("latest_workflow_state", "is", "queued")
             )
           },
           # `inbox` is the union of actionable operator work: review,
@@ -137,13 +147,22 @@ module Filters
         def apply_in_progress
           # Phase 4 simplification: Job.state is now authoritative.
           # `:running` covers initial/retry/pr_comment/ci_failure
-          # workflow execution; `:landing` covers active auto_merge
-          # work. Landing can defer back to :approved while a rebase
-          # Workflow is queued/running, so include that active Workflow
-          # explicitly.
-          active_rebase_job_ids = Workflow.active.where(trigger_kind: "rebase").select(:job_id)
-          scope.where(state: %w[running landing])
-               .or(scope.open_threads.where(id: active_rebase_job_ids))
+          # workflow execution. `:landing` starts before the auto_merge
+          # Workflow leaves :queued, so only count landing work here once
+          # the active Workflow is actually running. Rebase workflows can
+          # run while the Job is deferred back to :approved, so include
+          # those explicitly.
+          running_workflow_job_ids = latest_workflow_job_ids("running")
+          running_rebase_job_ids = latest_workflow_job_ids("running", trigger_kind: "rebase")
+
+          scope.where(state: "running")
+               .or(scope.where(state: "landing", id: running_workflow_job_ids))
+               .or(scope.open_threads.where(id: running_rebase_job_ids))
+        end
+
+        def apply_queued
+          queued_workflow_job_ids = latest_workflow_job_ids("queued")
+          scope.where(state: "queued").or(scope.open_threads.where(id: queued_workflow_job_ids))
         end
 
         def apply_inbox
@@ -217,6 +236,20 @@ module Filters
                     )
                   SQL
                   .select(:job_id)
+        end
+
+        def latest_workflow_job_ids(states, trigger_kind: nil)
+          relation = Workflow.where(state: Array(states))
+          relation = relation.where(trigger_kind: trigger_kind) if trigger_kind
+          relation.where(<<~SQL.squish)
+            workflows.id = (
+              SELECT latest_workflows.id FROM workflows latest_workflows
+              WHERE latest_workflows.job_id = workflows.job_id
+              ORDER BY latest_workflows.created_at DESC, latest_workflows.id DESC
+              LIMIT 1
+            )
+          SQL
+            .select(:job_id)
         end
 
         def awaiting_epic_ids
