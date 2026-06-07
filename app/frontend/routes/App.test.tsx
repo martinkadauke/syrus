@@ -7701,10 +7701,6 @@ function setupStatusPayload(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function defaultSetupStatus() {
-  return setupStatus()
-}
-
 function publicBootstrapPayload(overrides: Partial<BootstrapPayload["public"]> = {}) {
   return {
     ...bootstrapPayload(),
