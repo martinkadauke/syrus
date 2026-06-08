@@ -79,23 +79,39 @@ per group, and merge in order.
 
 Syrus builds a *train* from one Epic's child Jobs: topologically sort the
 Epic's ready children, rebase them in order into a single integration
-branch, run graders **once** on the integration tip, and if green, land
-the whole integration branch into the base in a **single atomic merge**.
-If red, bisect over the topological order to isolate the culprit.
+branch, then run a **grade & fix loop on the integration tip** — the same
+`retry_until(graders, repair: landing_fix)` used for single-PR landing.
+If it goes green, land the whole integration branch into the base in a
+**single atomic merge**. If the fix loop exhausts its budget, the whole
+Epic attempt fails and **nothing lands**.
 
 The defining property is **Epic consistency**: an Epic advances as a
 whole, green, dependency-closed set, or it does not advance at all. There
 are never half-merged Epics on `main` — no state where child 3 has landed
 but child 5 (which child 7 depends on) is still open or failing.
 
+**No bisection.** An integration failure is frequently *not* attributable
+to a single child — two children that each pass alone can break a grader
+in combination (a logical conflict). There is no "culprit" to isolate;
+the fix is a reconciliation commit that belongs to neither PR. The agentic
+`landing_fix` step, working on the whole integrated tree, commits that
+reconciliation directly on the integration branch, which then lands with
+the atomic merge. This is both simpler than bisection *and* strictly more
+capable for the combinatorial case (bisection would eject a child that was
+fine). Bisection is noted only as a possible future optimization if the
+fix loop proves insufficient in practice.
+
 - **Pros:** one grade per Epic attempt instead of one per child; atomic
   landing eliminates partial-Epic states; the Epic is the *natural*
   batching unit (shared base, shared intent, already dependency-linked);
   topological order is already computed (`dependency_order`); reuses
-  graders, rebase chain, workspace, and `landing_fix`. Stays poll-driven.
-- **Cons:** Syrus owns the train state machine, speculation, and bisection.
+  graders, rebase chain, workspace, and `landing_fix` *as-is* — no new
+  bisection machinery. Stays poll-driven.
+- **Cons:** Syrus owns the train state machine and build/integration.
   Atomic landing of the integration branch means child PRs show **Closed**
-  rather than **Merged** on GitHub (see "Atomicity vs. PR status").
+  rather than **Merged** on GitHub (see "Atomicity vs. PR status"). One
+  genuinely-unfixable child blocks the whole Epic until an operator
+  intervenes (same semantics as a single PR `landing_fix` can't save).
 
 The rest of this doc designs Option B.
 
@@ -113,17 +129,14 @@ Non-Epic Jobs keep today's single-Job `AutoMerge` path unchanged — the
 train is purely additive and Epic-scoped, which keeps the blast radius
 small.
 
-**Readiness policy** (`AppSetting.merge_train_readiness`):
-
-- `whole_epic` (default, the strong reading of "no half-merged Epics"):
-  dispatch only when **every** open child of the Epic is `approved` (or
-  already merged). The Epic then lands all-or-nothing. Maximizes
-  consistency; trades latency (waits for the slowest child).
-- `green_prefix` (throughput fallback): dispatch when the largest
-  dependency-closed prefix of approved children is non-empty; land that
-  prefix atomically, leave the rest for a later train. Still never leaves
-  a dangling dependent (a prefix is dependency-closed), but the Epic can
-  be partially on `main` between trains.
+**Readiness policy:** dispatch only when **every** open child of the Epic
+is `approved` (or already merged). The Epic then lands all-or-nothing.
+This is the strong reading of "no half-merged Epics": maximal consistency,
+at the cost of latency (the train waits for the slowest child). Dropping
+bisection also drops the `green_prefix` partial-landing variant — its only
+cheap implementation was prefix-grading, which *is* bisection. `whole_epic`
+is the model; a partial-landing policy can be revisited later if the wait
+proves painful.
 
 ### Steps
 
@@ -145,35 +158,33 @@ merge_train_assemble -> merge_train_build ->
    create integration branch `syrus/merge-train-epic-<epic_id>-<n>` at the
    base tip; rebase each member's branch onto the integration tip in
    topological order (reuse `AutoRebase`; on conflict, the agent rebase
-   chain). A member that won't rebase cleanly **ejects the Epic attempt**
-   under `whole_epic` (you can't skip a child and stay consistent), or is
-   deferred-with-dependents under `green_prefix`.
-3. **graders** — run **once** on the integration tip (the exact tree that
-   will exist on base after the Epic merges). Reuse
-   `grader_fanout`/`grader_collect`. On failure, one `landing_fix` repair
-   iteration on the integration branch, then re-grade.
+   chain). A member that won't rebase cleanly **fails the Epic attempt**
+   (you can't skip a child and stay consistent); the conflict surfaces for
+   operator/agent handling and the next attempt retries the whole Epic.
+3. **grade & fix loop** — `retry_until(graders, repair: landing_fix)` on
+   the integration tip (the exact tree that will exist on base after the
+   Epic merges), reusing the existing steps verbatim. The common green
+   path is exactly one grade for the whole Epic. On a grader failure the
+   agent commits a reconciliation fix on the integration branch and
+   re-grades, bounded by `AppSetting.grade_max_iterations`.
 4. **`merge_train_land`** (non-agentic) — green → land the integration
    branch into base in a **single merge**, then reconcile child PRs
    (close with a "landed via Epic merge-train" comment linking the merge).
    Mark each child Job `closed/pr_merged`. Close the Epic if all children
    are now merged.
 
-### Bisection (red integration)
+### Failure handling (no bisection)
 
-Because members are in topological order, every **prefix** is
-dependency-closed and independently meaningful. On a grade failure that
-`landing_fix` can't repair:
+If the grade & fix loop exhausts `grade_max_iterations` without going
+green, the train **fails and lands nothing** — Epic consistency is
+preserved by construction. The Job(s) revert to `approved`; the failure
+(with the final grader output) surfaces for operator/agent attention,
+exactly as a single PR whose `landing_fix` can't repair it does today. A
+fresh train re-attempts the whole Epic once the blocker clears.
 
-1. Binary-search over prefix length: grade prefix `[0..mid]`.
-2. Find the **largest green prefix** `P`.
-3. The first member after `P` is the culprit. Under `whole_epic`, **land
-   nothing**, eject the culprit (+ its transitive dependents) back to
-   per-Job handling (fail landing → operator/agent repairs it), and the
-   next train re-attempts the Epic without it. Under `green_prefix`, land
-   `P` atomically and defer the rest.
-
-Bisection costs `O(log N)` extra grades **only on failure**; the common
-green path is exactly one grade for the whole Epic.
+The agent's reconciliation commits live on the integration branch and
+land with the atomic merge; the child PR branches are discarded (the PRs
+are closed, not merged), so there's no need to back-port fixes onto them.
 
 ### Atomicity vs. PR status (decision)
 
@@ -193,21 +204,21 @@ not ancestors of base (they were rebased), so GitHub marks them
 
 `merge_trains`: `id, epic_id, repository_id, base_branch, state
 (building|grading|landing|succeeded|failed|cancelled), integration_branch,
-integration_sha, readiness_policy, created_at, finished_at`.
+integration_sha, created_at, finished_at`.
 
 `merge_train_members`: `merge_train_id, job_id, position, state
-(included|ejected|merged|deferred), reason`.
+(included|merged|failed), reason`.
 
 Jobs gain no new AASM state — members ride the normal
-`landing → closed/pr_merged` on success or revert to `approved` when
-ejected/deferred. The Epic is the unit; the train is its single landing
+`landing → closed/pr_merged` on success or revert to `approved` when the
+attempt fails. The Epic is the unit; the train is its single landing
 occupant for the repo.
 
 ### Control flow / integration with LandingQueueProcessor
 
 - `LandingQueueProcessor#call` gains an Epic branch: for each repo not
-  already occupied, if an Epic meets the readiness policy and the flag is
-  on, dispatch a `MergeTrain` for that Epic instead of single-Job
+  already occupied, if an Epic is ready (all children approved) and the
+  flag is on, dispatch a `MergeTrain` for that Epic instead of single-Job
   `AutoMerge`s for its children. Loose (non-Epic) approved Jobs continue
   through the existing per-Job path.
 - The existing same-Epic dependency relaxation (a stack inside one Epic
@@ -222,43 +233,48 @@ Stronger than per-PR landing: graders run on the **exact integrated tree**
 that will exist on base after the Epic merges, and the Epic lands as that
 graded tree in one operation. No clean-rebase-trust needed inside a train
 (`trust_clean_rebase_grade` is a per-PR optimization for the non-train
-path). Bisection guarantees one bad child can't wedge the whole Epic.
+path). Consistency is guaranteed *by construction* — all-or-nothing
+landing — not by isolating a culprit.
 
 ### Rollout
 
 - `AppSetting.merge_train_enabled` (default **off**),
-  `merge_train_readiness` (`whole_epic` default), `merge_train_max_size`
-  (cap members per attempt; very large Epics bisect/land in chunks).
+  `merge_train_max_size` (cap members per attempt; very large Epics land
+  in capped chunks, each still a consistent dependency-closed prefix).
 - Ship dark; enable for `tkadauke/raytracer` first (the Epic-batch repo).
-- Metrics: merges/hour, grades per Epic landed, ejections per train,
-  build failures, time-from-all-approved to Epic-landed.
+- Metrics: merges/hour, grades per Epic landed, fix-loop iterations per
+  Epic, build/grade failures, time-from-all-approved to Epic-landed.
 
 ### Testing
 
-- Assemble: topological order within an Epic; readiness-policy gating;
-  size cap.
-- Build: clean rebases, conflict handling per policy, base-moved-mid-build.
-- Grade + bisection: injected failing child isolates to the right member;
-  largest-green-prefix math; dependents of the culprit are held.
+- Assemble: topological order within an Epic; readiness gating (waits for
+  all children approved); size cap.
+- Build: clean rebases, irreparable conflict fails the attempt,
+  base-moved-mid-build.
+- Grade & fix: green-on-first-grade lands; a repair commit on the
+  integration tip turns red→green and lands with the merge; exhausting
+  `grade_max_iterations` lands nothing and reverts members to `approved`.
 - Land: atomic merge closes child PRs + marks Jobs merged + closes Epic;
-  `whole_epic` lands nothing on a red attempt; per-repo serialization holds.
+  per-repo serialization holds.
 - All via existing seams (`RunJob.agent_runner`, stubbed graders, WebMock
   for Octokit). No real `claude`/GitHub.
 
 ## Estimate
 
-Medium-large: 2 models + migration, 1 workflow + 3 step handlers, the
-LandingQueueProcessor Epic branch, AppSettings, and a focused spec suite.
-Land behind the disabled flag, then enable per-repo.
+Medium: 2 models + migration, 1 workflow + 3 step handlers (assemble,
+build, land) that *reuse* the existing grader and `landing_fix` steps
+unchanged, the LandingQueueProcessor Epic branch, AppSettings, and a
+focused spec suite. Dropping bisection removes the most complex part
+(speculative prefix grading + dependent ejection). Land behind the
+disabled flag, then enable per-repo.
 
 ## Decisions needed
 
 1. Option A (GitHub merge queue) vs **B (internal, per-Epic train)** —
    recommends B.
-2. Readiness policy default: **`whole_epic`** (strongest "no half-merged
-   Epics", higher latency) vs `green_prefix` (lands consistent prefixes
-   sooner). Recommends `whole_epic` default, `green_prefix` configurable.
-3. Atomicity: accept child PRs showing **Closed** (recommended) to keep
+2. Atomicity: accept child PRs showing **Closed** (recommended) to keep
    the merge truly atomic?
-4. Loose (non-Epic) Jobs: leave on the per-Job path for v1 (recommended),
+3. Loose (non-Epic) Jobs: leave on the per-Job path for v1 (recommended),
    or generalize the train to same-base non-Epic batches later?
+4. Confirm dropping bisection in favor of the integration-tip grade & fix
+   loop, with whole-attempt failure on budget exhaustion (recommended).
