@@ -94,6 +94,30 @@ logical conflict. Repositories can opt into **Trust clean rebases**
 passed graders and the only change since was a conflict-free rebase —
 trading a small logical-conflict risk for landing throughput.
 
+### MergeTrain (Epic merge-train)
+
+Trigger: an Epic whose every open child is approved, when the merge-train
+is enabled (`AppSetting.merge_train_enabled`, default off). Steps:
+`merge_train_assemble -> merge_train_build -> prepare ->
+retry_until(grader_fanout -> grader_collect, repair: landing_fix) ->
+merge_train_land`.
+
+Instead of landing an Epic's PRs one at a time (each rebased onto the
+previous merge and graded again), the train integrates all of the Epic's
+children — topologically sorted by dependency — into a single integration
+branch, runs the graders **once** on the combined tree, lets the agent
+commit reconciliation fixes if needed, and then lands the whole branch in
+a **single atomic merge**. The child PRs are closed with a back-link to
+the integration merge and their Jobs marked merged.
+
+The guarantee is **Epic consistency**: an Epic advances as a whole,
+green, dependency-closed set or not at all — there are never half-merged
+Epics on the base branch. If the grade-and-fix loop can't make the
+integrated tree green (or a child won't integrate), the whole attempt
+fails and nothing lands; the children revert to needing re-approval, and
+re-approving them re-dispatches a fresh train. While the flag is on, Epic
+children land only via the train, never individually.
+
 ### Manual
 
 Trigger: an operator starts a free-form run. Steps: `manual`. The operator's
@@ -135,6 +159,9 @@ same Job.
 | `agent_rebase` | Yes | Resolve rebase conflicts with the agent |
 | `force_push` | No | Force-push a rebased branch with an explicit `--force-with-lease` lease |
 | `auto_merge` | No | Re-check GitHub merge gates and merge the approved PR |
+| `merge_train_assemble` | No | Validate an Epic train's locked members |
+| `merge_train_build` | No | Merge the Epic's members into one integration branch |
+| `merge_train_land` | No | Atomically merge the integration branch and close member PRs |
 | `manual` | Yes | Run an operator-supplied prompt |
 
 Planned Step kinds include
@@ -154,6 +181,7 @@ Syrus chooses the template from the trigger kind:
 | `rebase` | `Workflows::Rebase` |
 | `stack_rebase` | `Workflows::StackRebase` |
 | `auto_merge` | `Workflows::AutoMerge` |
+| `merge_train` | `Workflows::MergeTrain` |
 | `retry` | `Workflows::Retry` |
 | `manual` | `Workflows::Manual` |
 | `local_dev` | `Workflows::LocalDev` |

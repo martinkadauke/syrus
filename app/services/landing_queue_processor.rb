@@ -56,6 +56,13 @@ class LandingQueueProcessor
 
   def try_land!(job)
     return if landing_in_progress_for_repository?(job.repository_id)
+
+    # When merge-trains are on, an Epic child lands only as part of its
+    # Epic's atomic train — never individually (that would create a
+    # half-merged Epic). Route it to the train dispatcher instead of the
+    # per-Job path.
+    return MergeTrainDispatcher.try_dispatch!(job.epic) if merge_train_for_epic_child?(job)
+
     return unless job.approved?
     return unless blockage_for(job)[:blocked_reason].blank?
 
@@ -67,6 +74,8 @@ class LandingQueueProcessor
 
     occupied_repo_ids = Set.new(Job.landing.pluck(:repository_id))
     landed_workflows = []
+
+    dispatch_merge_trains!(occupied_repo_ids, landed_workflows) if AppSetting.merge_train_enabled?
 
     entries(Job.approved.includes(:user, :repository, :epic, :parent_job, dependencies: :depends_on_job)).each do |entry|
       next if occupied_repo_ids.include?(entry.job.repository_id)
@@ -80,6 +89,24 @@ class LandingQueueProcessor
     end
 
     landed_workflows.first
+  end
+
+  # Dispatch an atomic merge-train for each repository whose Epic is
+  # ready (all open children approved). One train per repo per tick;
+  # marks the repo occupied so the per-Job loop skips it.
+  def dispatch_merge_trains!(occupied_repo_ids, landed_workflows)
+    candidate_epic_ids = Job.approved.where.not(epic_id: nil).distinct.pluck(:epic_id)
+    return if candidate_epic_ids.empty?
+
+    Epic.where(id: candidate_epic_ids).includes(:repository).find_each do |epic|
+      next if occupied_repo_ids.include?(epic.repository_id)
+
+      workflow = MergeTrainDispatcher.try_dispatch!(epic)
+      next unless workflow
+
+      occupied_repo_ids << epic.repository_id
+      landed_workflows << workflow
+    end
   end
 
   def entries(scope = Job.all)
@@ -189,10 +216,19 @@ class LandingQueueProcessor
     Job.landing.where(repository_id: repository_id).exists?
   end
 
+  def merge_train_for_epic_child?(job)
+    AppSetting.merge_train_enabled? && job.epic_id.present?
+  end
+
   def blockage_for(job)
     return { blocked_reason: nil, waiting_for: nil, waiting_for_jobs: [] } if job.landing?
     return blocked("landing paused") if job.user.landing_paused?
     return blocked("repository archived") if job.repository.archived?
+    # With merge-trains on, Epic children never land via the per-Job
+    # path — they land atomically as part of their Epic's train. Keep
+    # them in :approved with a clear reason; MergeTrainDispatcher picks
+    # the Epic up once every child is approved.
+    return blocked("waiting for Epic merge-train") if merge_train_for_epic_child?(job)
     # Don't burn a fail_landing cycle on a Job whose repo isn't set
     # up for auto-merge — that wipes the operator's approval without
     # surfacing the real misconfiguration. Keep the Job in :approved

@@ -1,6 +1,33 @@
 # Landing merge-train (Fix 4)
 
-Status: **proposed** — design for review, not yet implemented.
+Status: **implemented (v1)** — behind `AppSetting.merge_train_enabled`
+(default off). Enable per environment once validated.
+
+## Implementation status (v1)
+
+Shipped: `MergeTrain`/`MergeTrainMember` models, `MergeTrainAssembler`
+(Epic readiness + topo order), `Workflows::MergeTrain`
+(`merge_train_assemble → merge_train_build → prepare →
+retry_until(graders, repair: landing_fix) → merge_train_land`),
+`MergeTrainDispatcher` (queue dispatch + member locking),
+`MergeTrainFailureHandler` (revert members), and `EpicLandingRetrier`
+(bulk re-approve). `LandingQueueProcessor` dispatches a train for a ready
+Epic and keeps Epic children off the per-Job path when the flag is on.
+
+v1 deviations / deferred:
+- **Build uses merge-based integration** (`git merge --no-ff` each member
+  in topo order), not rebase. A **textual** conflict fails the whole
+  attempt — no agent-assisted *build* conflict resolution yet (logical
+  conflicts are still handled by the grade & fix loop). 
+- **Land** opens one synthetic integration PR (integration branch → base)
+  and merges it; member PRs are closed with a back-link (they show
+  "Closed", not "Merged" — the accepted atomicity tradeoff).
+- **Epic-level retry** ships as the `EpicLandingRetrier` service; a
+  dashboard button / admin endpoint is not yet wired (operator can
+  re-approve children via the existing per-Job UI in the meantime).
+- **Readiness = `whole_epic` only**; no `green_prefix`, no chunking of
+  Epics larger than `merge_train_max_size` (those fall back to the
+  per-Job path).
 
 ## Why
 
