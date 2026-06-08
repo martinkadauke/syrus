@@ -13,6 +13,7 @@ class Workflow
       Entry.new(kind: "rebase", template: "Rebase", label: "Rebase", style: "bg-teal-100 text-teal-700"),
       Entry.new(kind: "stack_rebase", template: "StackRebase", label: "Stack rebase", style: "bg-teal-100 text-teal-700"),
       Entry.new(kind: "auto_merge", template: "AutoMerge", label: "Auto-merge", style: "bg-green-100 text-green-700"),
+      Entry.new(kind: "merge_train", template: "MergeTrain", label: "Epic merge-train", style: "bg-green-100 text-green-800"),
       Entry.new(kind: "retry", template: "Retry", label: "Retry", style: "bg-amber-100 text-amber-700"),
       Entry.new(kind: "replay", template: "Retry", label: "Retry", style: "bg-amber-100 text-amber-700"),
       Entry.new(kind: "manual", template: "Manual", label: "Manual", style: "bg-gray-100 text-gray-700"),
