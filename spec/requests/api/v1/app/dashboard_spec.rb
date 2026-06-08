@@ -174,6 +174,20 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(active_suggestions.map { |suggestion| suggestion.fetch("label") }).to include("Repository is acme/widgets")
     end
 
+    it "still returns the dashboard when filter usage recording hits a lock timeout" do
+      tree = {
+        "and" => [
+          { "field" => "state", "op" => "is", "value" => "running" }
+        ]
+      }
+      allow(Filters::Suggestions).to receive(:record!).and_raise(ActiveRecord::LockWaitTimeout, "Lock wait timeout exceeded")
+
+      get "/api/v1/app/dashboard", params: { subject: "job", q: Filters::QueryParam.encode(tree) }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body.fetch("subject")).to eq("job")
+    end
+
     it "keeps running jobs in the running Kanban lane even when blocked diagnostics are visible" do
       user.update_dashboard_kanban_lanes!(subject: :jobs, lanes: %w[blocked queued running])
       prerequisite = Factories.job_record(repository: repo, owner_user: user, issue_number: 5, issue_title: "Finish paving", state: "queued")

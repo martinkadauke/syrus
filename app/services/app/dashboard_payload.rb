@@ -911,6 +911,8 @@ module App
         subject: subject,
         tree: current_filter.to_h
       )
+    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+      Rails.logger.warn("[Filters::Suggestions] skipped dashboard usage recording: #{e.class}: #{e.message}")
     end
 
     def filter_suggestions_json
