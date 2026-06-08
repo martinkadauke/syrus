@@ -176,15 +176,41 @@ merge_train_assemble -> merge_train_build ->
 ### Failure handling (no bisection)
 
 If the grade & fix loop exhausts `grade_max_iterations` without going
-green, the train **fails and lands nothing** — Epic consistency is
-preserved by construction. The Job(s) revert to `approved`; the failure
-(with the final grader output) surfaces for operator/agent attention,
-exactly as a single PR whose `landing_fix` can't repair it does today. A
-fresh train re-attempts the whole Epic once the blocker clears.
+green (or build hits an irreparable conflict), the train **fails and
+lands nothing** — Epic consistency is preserved by construction.
 
 The agent's reconciliation commits live on the integration branch and
 land with the atomic merge; the child PR branches are discarded (the PRs
 are closed, not merged), so there's no need to back-port fixes onto them.
+When the attempt fails, the integration branch is discarded and the child
+PRs are left untouched.
+
+#### What happens to the member Jobs (and how the operator retries)
+
+Reuse the existing per-PR landing-failure semantics, applied to every
+member, via `LandingFailureHandler` keyed on the failure reason:
+
+- **Transient blocker** (infra: ENOSPC/disk; flaky GitHub; rebase still
+  settling) → `defer_landing` each member (`landing → approved`, approval
+  preserved). The Epic stays ready, and the next `LandingQueueProcessor`
+  tick **re-attempts the train automatically**. No operator action.
+- **Genuine failure** (graders still red after the fix budget; irreparable
+  build conflict) → `fail_landing` each member (`landing → implemented`,
+  **`approved_at` cleared**). This is the deliberate "give up; require
+  re-approval" path that already exists for single PRs — it stops an
+  infinite auto-retry loop on a genuinely-broken Epic and surfaces it for
+  a human, with the final grader output on the run.
+
+So **the operator re-triggers a failed Epic landing by re-approving its
+children** — re-approval resets `approved_at`, the Epic becomes "all
+children approved" again, and the next tick dispatches a fresh train.
+Typically the operator first fixes the offending child (Retry → new
+implementation, or a `pr_comment` follow-up), then re-approves.
+
+Because re-approving N children one by one is tedious, the train needs an
+**Epic-level "Retry landing" affordance**: one action that bulk-re-approves
+all of the Epic's `implemented` (formerly-approved) children at once. This
+reuses the existing bulk-approve path scoped to the Epic; no new Job state.
 
 ### Atomicity vs. PR status (decision)
 
@@ -252,8 +278,13 @@ landing — not by isolating a culprit.
 - Build: clean rebases, irreparable conflict fails the attempt,
   base-moved-mid-build.
 - Grade & fix: green-on-first-grade lands; a repair commit on the
-  integration tip turns red→green and lands with the merge; exhausting
-  `grade_max_iterations` lands nothing and reverts members to `approved`.
+  integration tip turns red→green and lands with the merge.
+- Failure recovery: a transient blocker `defer_landing`s members (stay
+  `approved`, auto-retry next tick); a genuine red after the fix budget
+  `fail_landing`s members (`implemented`, `approved_at` cleared) and lands
+  nothing; re-approving the children re-dispatches a fresh train; the
+  Epic-level "Retry landing" bulk-re-approves all formerly-approved
+  children.
 - Land: atomic merge closes child PRs + marks Jobs merged + closes Epic;
   per-repo serialization holds.
 - All via existing seams (`RunJob.agent_runner`, stubbed graders, WebMock
@@ -278,3 +309,7 @@ disabled flag, then enable per-repo.
    or generalize the train to same-base non-Epic batches later?
 4. Confirm dropping bisection in favor of the integration-tip grade & fix
    loop, with whole-attempt failure on budget exhaustion (recommended).
+5. Operator retry: on genuine failure, `fail_landing` members so re-approval
+   is required (recommended — reuses the existing path, avoids auto-retry
+   loops), plus an Epic-level "Retry landing" bulk re-approve. Transient
+   failures `defer_landing` and auto-retry.
