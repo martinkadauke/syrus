@@ -9,6 +9,27 @@ module Steps
     ].freeze
     REBASE_MERGE_REJECTED_ERROR = /(?:can(?:not|'t)|could not) be rebased/i
 
+    # GitHub computes PR mergeability asynchronously: for a few
+    # seconds after a push the API returns mergeable_state="unknown"
+    # while it recomputes. The push step immediately precedes this
+    # step, so a naive check almost always sees "unknown" right after
+    # our own push. Deferring on that first "unknown" cancels the
+    # whole workflow and throws away a completed, green grader run —
+    # the next landing attempt then re-grades from scratch. Instead,
+    # poll a few times for the state to settle before giving up; it
+    # usually resolves to "clean" within a few seconds and merges.
+    MERGEABILITY_SETTLE_ATTEMPTS = 5
+    MERGEABILITY_SETTLE_DELAY = 3.seconds
+
+    class << self
+      # Test seam: specs set this to 0 so the settle loop never sleeps.
+      attr_writer :mergeability_settle_delay
+
+      def mergeability_settle_delay
+        @mergeability_settle_delay || MERGEABILITY_SETTLE_DELAY
+      end
+    end
+
     def call
       client = GithubClient.for(repository: repository, user: job.user)
 
@@ -17,7 +38,7 @@ module Steps
         return
       end
 
-      gate = AutoMergeGate.new(job: job, client: client, bypass_cache: true).evaluate
+      gate = settle_transient_mergeability(client)
       persist_github_mergeability(gate.pr)
 
       # Every early-exit path here must transition the Job out of
@@ -57,6 +78,38 @@ module Steps
     end
 
     private
+
+    # Evaluate the merge gate, but if GitHub reports a transient
+    # mergeable_state (it's still recomputing after our push), poll a
+    # bounded number of times for it to resolve before returning.
+    # Returns the first non-transient gate, or the last transient gate
+    # if the budget is exhausted (the caller's :transient branch then
+    # defers as before).
+    def settle_transient_mergeability(client)
+      gate = evaluate_gate(client)
+      return gate unless gate.transient?
+
+      MERGEABILITY_SETTLE_ATTEMPTS.times do |attempt|
+        log(
+          "auto_merge: mergeable_state=#{deferred_mergeable_state(gate)} (GitHub still computing after push); waiting for it to settle (attempt #{attempt + 1}/#{MERGEABILITY_SETTLE_ATTEMPTS})",
+          kind: "system"
+        )
+        settle_sleep
+        gate = evaluate_gate(client)
+        break unless gate.transient?
+      end
+
+      gate
+    end
+
+    def evaluate_gate(client)
+      AutoMergeGate.new(job: job, client: client, bypass_cache: true).evaluate
+    end
+
+    def settle_sleep
+      delay = self.class.mergeability_settle_delay.to_f
+      sleep(delay) if delay.positive?
+    end
 
     def merge_pull_request(client, gate)
       client.merge_pull_request(

@@ -208,6 +208,43 @@ RSpec.describe Steps::AutoMerge do
     expect(job.approved_at).to eq(original_approved_at)
   end
 
+  it "waits out a transient 'unknown' (GitHub recomputing after our push) and merges once it settles to clean" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    # First check is "unknown" (GitHub still recomputing after the
+    # push step); a beat later it resolves to "clean".
+    allow(client).to receive(:pull_request).and_return(
+      pr(mergeable_state: "unknown"),
+      pr(mergeable_state: "clean")
+    )
+    allow(client).to receive(:merge_pull_request).and_return(OpenStruct.new(merged: true))
+    allow(client).to receive(:add_issue_comment)
+
+    described_class.new(run).call
+
+    expect(client).to have_received(:merge_pull_request)
+      .with("acme/widgets", 7, hash_including(merge_method: "rebase"))
+    expect(job.reload).to be_closed
+    expect(job.closure_reason).to eq("pr_merged")
+  end
+
+  it "gives up and defers only after the settle budget is exhausted" do
+    job.approve!(via: "github_review")
+    job.start_landing!
+    job.save!
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "unknown"))
+    allow(client).to receive(:merge_pull_request)
+
+    described_class.new(run).call
+
+    # Initial evaluation + MERGEABILITY_SETTLE_ATTEMPTS retries.
+    expect(client).to have_received(:pull_request)
+      .at_least(described_class::MERGEABILITY_SETTLE_ATTEMPTS + 1).times
+    expect(client).not_to have_received(:merge_pull_request)
+    expect(job.reload).to be_approved
+  end
+
   it "queues the merge attempt while a stack parent is still open" do
     parent = Factories.job(user: user, repository: repository, issue_number: 41, pr_number: 6)
     job.update!(parent_job: parent)
