@@ -7,6 +7,10 @@ class Repository < ApplicationRecord
   attribute :pr_cost_footer_enabled, :boolean, default: true
   attribute :auto_merge_enabled, :boolean, default: false
   attribute :approval_propagates_to_github, :boolean, default: true
+  # Opt-in: reuse a PR's green grade across a clean (conflict-free)
+  # rebase instead of re-running the landing graders. Trades a small
+  # logical-conflict risk for landing throughput. See Steps::ForcePush.
+  attribute :trust_clean_rebase_grade, :boolean, default: false
 
   belongs_to :user
   belongs_to :installation, optional: true

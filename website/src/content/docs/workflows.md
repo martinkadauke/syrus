@@ -82,7 +82,17 @@ the grader output and gets a bounded `landing_fix` repair iteration before
 the graders run again. `push` publishes any final fix commits, and
 `auto_merge` re-checks GitHub approval,
 mergeability, branch state, and repository policy immediately before
-calling the merge API.
+calling the merge API. Because GitHub recomputes mergeability
+asynchronously after a push, `auto_merge` briefly polls for a transient
+`unknown` state to settle before deferring, so a completed green grade is
+not thrown away just because GitHub had not finished recomputing yet.
+
+By default every landing attempt re-runs the graders on the rebased
+branch, since a clean (conflict-free) rebase can still introduce a
+logical conflict. Repositories can opt into **Trust clean rebases**
+(`trust_clean_rebase_grade`) to skip that re-grade when a PR already
+passed graders and the only change since was a conflict-free rebase —
+trading a small logical-conflict risk for landing throughput.
 
 ### Manual
 

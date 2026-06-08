@@ -22,8 +22,27 @@ class LandingValidationCache
     matching_artifact(job, head_sha: head_sha, base_sha: base_sha).present?
   end
 
+  # Did this Job pass required graders at some point (any head/base)?
+  # Used by the opt-in clean-rebase carry-forward (Steps::ForcePush) to
+  # decide whether there's a green grade worth carrying across a clean
+  # rebase under Repository#trust_clean_rebase_grade.
+  def self.green_validation_present?(job)
+    recorded_workflows(job).any? do |workflow|
+      artifact = workflow.artifact(ARTIFACT_KEY)
+      artifact.is_a?(Hash) && artifact["required_graders_passed"] == true
+    end
+  end
+
+  # auto_merge workflows write the validation when graders pass; rebase
+  # workflows write it when carrying a green grade across a clean rebase
+  # (opt-in). Both are valid sources for skip-on-revalidation.
+  def self.recorded_workflows(job)
+    job.workflows.where(trigger_kind: %w[ auto_merge rebase ]).reorder(id: :desc)
+  end
+  private_class_method :recorded_workflows
+
   def self.matching_artifact(job, head_sha:, base_sha:)
-    job.workflows.where(trigger_kind: "auto_merge").reorder(id: :desc).detect do |workflow|
+    recorded_workflows(job).detect do |workflow|
       artifact = workflow.artifact(ARTIFACT_KEY)
       artifact.is_a?(Hash) &&
         artifact["required_graders_passed"] == true &&

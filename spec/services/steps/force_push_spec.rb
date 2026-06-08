@@ -109,4 +109,71 @@ RSpec.describe Steps::ForcePush do
     expect { handler.call }.to raise_error(Steps::Base::StepFailed, /lease rejected/)
     expect(run.job_logs.pluck(:chunk).join("\n")).to include("remote branch moved")
   end
+
+  describe "carry-forward of a green grade across a clean rebase (opt-in)" do
+    def stub_git(handler, head: "newhead789")
+      workspace = instance_double(WorkflowWorkspace, setup: nil, branch_name: "syrus/issue-42", path: Pathname.new("/tmp/workspace"))
+      git = instance_double(GitRunner)
+      allow(handler).to receive(:workspace).and_return(workspace)
+      allow(handler).to receive(:streaming_git).and_return(git)
+      allow(GithubClient).to receive(:for).and_return(instance_double(GithubClient, access_token: "token"))
+      allow(job.repository).to receive(:authenticated_push_url).and_return("https://push.example/repo.git")
+      allow(git).to receive(:run)
+      allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: "/tmp/workspace").and_return("#{head}\n")
+      git
+    end
+
+    before do
+      workflow.set_artifact!("auto_rebase_result", { "reason" => "rebased", "changed" => true, "succeeded" => true, "pre_sha" => "old", "post_sha" => "new" })
+      job.update!(mergeability_base_sha: "basesha", mergeability_base_ref: "master")
+      prior = Workflows::AutoMerge.instantiate(job: job)
+      LandingValidationCache.record!(workflow: prior, head_sha: "oldhead", base_sha: "oldbase", base_ref: "master")
+    end
+
+    it "re-stamps the landing validation for the new head/base when the repo trusts clean rebases" do
+      job.repository.update!(trust_clean_rebase_grade: true)
+      handler = described_class.new(run)
+      stub_git(handler)
+
+      handler.call
+
+      artifact = workflow.reload.artifact("landing_validation")
+      expect(artifact).to be_present
+      expect(artifact["head_sha"]).to eq("newhead789")
+      expect(artifact["base_sha"]).to eq("basesha")
+      expect(artifact["required_graders_passed"]).to be(true)
+    end
+
+    it "does not re-stamp when the repository does not trust clean rebases" do
+      job.repository.update!(trust_clean_rebase_grade: false)
+      handler = described_class.new(run)
+      stub_git(handler)
+
+      handler.call
+
+      expect(workflow.reload.artifact("landing_validation")).to be_nil
+    end
+
+    it "does not re-stamp when the rebase was not clean (agent resolved conflicts)" do
+      job.repository.update!(trust_clean_rebase_grade: true)
+      workflow.set_artifact!("auto_rebase_result", { "reason" => "conflict", "succeeded" => false })
+      handler = described_class.new(run)
+      stub_git(handler)
+
+      handler.call
+
+      expect(workflow.reload.artifact("landing_validation")).to be_nil
+    end
+
+    it "does not re-stamp when the PR has no prior green grade to carry forward" do
+      job.repository.update!(trust_clean_rebase_grade: true)
+      job.workflows.where(trigger_kind: "auto_merge").find_each { |wf| wf.update!(artifacts: {}) }
+      handler = described_class.new(run)
+      stub_git(handler)
+
+      handler.call
+
+      expect(workflow.reload.artifact("landing_validation")).to be_nil
+    end
+  end
 end

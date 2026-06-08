@@ -378,6 +378,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
           <Checkbox label="Run prepare step on this repository's Workflows" onChange={(checked) => setValues({ ...values, prepare_enabled: checked })} value={values.prepare_enabled} />
           <Checkbox label="Add Syrus cost footer to PR descriptions" onChange={(checked) => setValues({ ...values, pr_cost_footer_enabled: checked })} value={values.pr_cost_footer_enabled} />
           <Checkbox label="Auto-merge approved Syrus PRs" onChange={(checked) => setValues({ ...values, auto_merge_enabled: checked })} value={values.auto_merge_enabled} />
+          <Checkbox label="Trust clean rebases (skip re-grading after a conflict-free rebase)" onChange={(checked) => setValues({ ...values, trust_clean_rebase_grade: checked })} value={values.trust_clean_rebase_grade} />
         </section>
 
         <section className="space-y-3">
@@ -420,6 +421,7 @@ function inputFromPayload(payload: RepositoryFormPayload): RepositoryInput {
     prepare_enabled: payload.repository.prepare_enabled,
     pr_cost_footer_enabled: payload.repository.pr_cost_footer_enabled,
     auto_merge_enabled: payload.repository.auto_merge_enabled,
+    trust_clean_rebase_grade: payload.repository.trust_clean_rebase_grade,
     agent_provider: payload.repository.agent_provider,
     auto_approve_mode: payload.repository.auto_approve_mode,
     github_owner_id: payload.repository.github_owner_id == null ? "" : String(payload.repository.github_owner_id),

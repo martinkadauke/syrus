@@ -48,6 +48,7 @@ export type RepositoryFormRecord = {
   prepare_enabled: boolean
   pr_cost_footer_enabled: boolean
   auto_merge_enabled: boolean
+  trust_clean_rebase_grade: boolean
   agent_provider: string
   auto_approve_mode: string
   github_owner_id: number | null
@@ -86,6 +87,7 @@ export type RepositoryInput = {
   prepare_enabled: boolean
   pr_cost_footer_enabled: boolean
   auto_merge_enabled: boolean
+  trust_clean_rebase_grade: boolean
   agent_provider: string
   auto_approve_mode: string
   github_owner_id: string

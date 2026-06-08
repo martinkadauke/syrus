@@ -20,6 +20,8 @@ module Steps
       git.run("push", force_with_lease_arg, push_url,
               "HEAD:refs/heads/#{workspace.branch_name}",
               chdir: workspace.path.to_s)
+
+      carry_forward_landing_validation!
     rescue GitRunner::GitError => e
       raise unless lease_rejected?(e)
 
@@ -30,6 +32,38 @@ module Steps
     end
 
     private
+
+    # Opt-in (Repository#trust_clean_rebase_grade): when a PR already
+    # passed required graders and the only change since is a *clean*
+    # (conflict-free, agent-untouched) rebase onto a new base, re-stamp
+    # the landing validation for the just-pushed head/base so the next
+    # auto_merge preflight skips re-grading. The operator accepts the
+    # residual risk that a clean rebase can still produce a logical
+    # conflict the graders would have caught. Recording the *exact*
+    # post-rebase head/base SHAs keeps the consumer
+    # (LandingValidationCache.valid_for?) unchanged and safe: a wrong
+    # SHA is merely a cache miss (re-grade), never an unsafe merge.
+    def carry_forward_landing_validation!
+      return unless repository.trust_clean_rebase_grade?
+      return unless clean_auto_rebase?
+      return unless LandingValidationCache.green_validation_present?(job)
+
+      head_sha = streaming_git.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
+      base_sha = job.mergeability_base_sha.presence
+      base_ref = job.mergeability_base_ref.presence
+      return if head_sha.blank? || base_sha.blank?
+
+      LandingValidationCache.record!(workflow: workflow, head_sha: head_sha, base_sha: base_sha, base_ref: base_ref)
+      log("force_push: carried green grade across clean rebase (#{repository.slug}: trust_clean_rebase_grade); next landing will skip re-grading head #{head_sha.first(7)}")
+    rescue StandardError => e
+      Rails.logger.warn("[ForcePush] carry-forward landing validation failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
+      nil
+    end
+
+    def clean_auto_rebase?
+      result = workflow.artifact("auto_rebase_result")
+      result.is_a?(Hash) && result["succeeded"] == true
+    end
 
     def noop_auto_rebase?
       result = workflow.artifact("auto_rebase_result")

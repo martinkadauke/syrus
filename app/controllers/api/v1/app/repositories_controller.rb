@@ -416,6 +416,7 @@ module Api
             prepare_enabled: repository.prepare_enabled?,
             pr_cost_footer_enabled: repository.pr_cost_footer_enabled?,
             auto_merge_enabled: repository.auto_merge_enabled?,
+            trust_clean_rebase_grade: repository.trust_clean_rebase_grade?,
             agent_provider: repository.agent_provider.to_s,
             auto_approve_mode: repository.auto_approve_mode,
             github_owner_id: repository.github_owner_id,
@@ -631,6 +632,7 @@ module Api
             :agent_provider,
             :pr_cost_footer_enabled,
             :auto_merge_enabled,
+            :trust_clean_rebase_grade,
             :auto_approve_mode,
             :github_repository_id,
             :github_owner_id
