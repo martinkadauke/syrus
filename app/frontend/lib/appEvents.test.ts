@@ -1,6 +1,10 @@
 import { QueryClient } from "@tanstack/react-query"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { applyAppEvent, queryKeysFor } from "./appEvents"
+
+afterEach(() => {
+  vi.useRealTimers()
+})
 
 describe("queryKeysFor", () => {
   it("maps resource events to the query keys they invalidate", () => {
@@ -23,15 +27,40 @@ describe("queryKeysFor", () => {
 })
 
 describe("applyAppEvent", () => {
-  it("invalidates every mapped query key", () => {
+  it("invalidates non-dashboard query keys immediately", () => {
     const queryClient = new QueryClient()
     const invalidate = vi.spyOn(queryClient, "invalidateQueries")
 
     applyAppEvent(queryClient, event("job", 42))
 
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["dashboard"] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs"] })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs", "42"] })
+  })
+
+  it("coalesces dashboard invalidations from event bursts", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-05-30T12:00:00.000Z"))
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+
+    applyAppEvent(queryClient, event("job", 42))
+    applyAppEvent(queryClient, event("workflow", 7))
+
+    expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ["dashboard"] })
+
+    vi.runOnlyPendingTimers()
+
+    expect(dashboardInvalidationCount(invalidate)).toBe(1)
+
+    applyAppEvent(queryClient, event("job", 42))
+    applyAppEvent(queryClient, event("workflow", 7))
+    vi.advanceTimersByTime(4_999)
+
+    expect(dashboardInvalidationCount(invalidate)).toBe(1)
+
+    vi.advanceTimersByTime(1)
+
+    expect(dashboardInvalidationCount(invalidate)).toBe(2)
   })
 
   it("applies chat replace-tail payloads directly to cached chat data", () => {
@@ -147,6 +176,18 @@ function event(resource: string, id: number | null) {
     changed: [],
     occurred_at: "2026-05-30T12:00:00.000Z"
   }
+}
+
+function dashboardInvalidationCount(invalidate: { mock: { calls: unknown[][] } }) {
+  return invalidate.mock.calls.filter((call) => {
+    const args = call[0] as { queryKey?: unknown } | undefined
+    return (
+      args != null &&
+      Array.isArray(args.queryKey) &&
+      args.queryKey.length === 1 &&
+      args.queryKey[0] === "dashboard"
+    )
+  }).length
 }
 
 function message(id: number, role: "user" | "assistant" | "tool_use" | "tool_result" | "system", text: string, overrides: Record<string, unknown> = {}) {

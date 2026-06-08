@@ -1,6 +1,17 @@
 import type { QueryClient, QueryKey } from "@tanstack/react-query"
 import type { ChatMessageItem, ChatPayload, ChatRecord } from "../api/chats"
 
+const DASHBOARD_INVALIDATION_MIN_INTERVAL_MS = 5_000
+const DASHBOARD_INVALIDATION_RETRY_MS = 1_000
+
+type DashboardInvalidationState = {
+  lastInvalidatedAt: number
+  pending: boolean
+  timer: ReturnType<typeof setTimeout> | null
+}
+
+const dashboardInvalidations = new WeakMap<QueryClient, DashboardInvalidationState>()
+
 export type AppEvent = {
   type: string
   resource: string
@@ -13,9 +24,16 @@ export type AppEvent = {
 export function applyAppEvent(queryClient: QueryClient, event: AppEvent) {
   if (applyChatPayloadEvent(queryClient, event)) return
 
+  let dashboardChanged = false
   for (const queryKey of queryKeysFor(event)) {
+    if (isDashboardQueryKey(queryKey)) {
+      dashboardChanged = true
+      continue
+    }
+
     void queryClient.invalidateQueries({ queryKey })
   }
+  if (dashboardChanged) scheduleDashboardInvalidation(queryClient)
 }
 
 export function queryKeysFor(event: AppEvent): QueryKey[] {
@@ -37,6 +55,43 @@ export function queryKeysFor(event: AppEvent): QueryKey[] {
     default:
       return []
   }
+}
+
+function isDashboardQueryKey(queryKey: QueryKey) {
+  return queryKey.length === 1 && queryKey[0] === "dashboard"
+}
+
+function scheduleDashboardInvalidation(queryClient: QueryClient) {
+  const state = dashboardInvalidations.get(queryClient) ?? {
+    lastInvalidatedAt: 0,
+    pending: false,
+    timer: null
+  }
+  state.pending = true
+  dashboardInvalidations.set(queryClient, state)
+
+  if (state.timer) return
+
+  const elapsed = Date.now() - state.lastInvalidatedAt
+  const delay = Math.max(0, DASHBOARD_INVALIDATION_MIN_INTERVAL_MS - elapsed)
+  state.timer = setTimeout(() => flushDashboardInvalidation(queryClient), delay)
+}
+
+function flushDashboardInvalidation(queryClient: QueryClient) {
+  const state = dashboardInvalidations.get(queryClient)
+  if (!state) return
+
+  state.timer = null
+  if (!state.pending) return
+
+  if (queryClient.isFetching({ queryKey: ["dashboard"] }) > 0) {
+    state.timer = setTimeout(() => flushDashboardInvalidation(queryClient), DASHBOARD_INVALIDATION_RETRY_MS)
+    return
+  }
+
+  state.pending = false
+  state.lastInvalidatedAt = Date.now()
+  void queryClient.invalidateQueries({ queryKey: ["dashboard"] })
 }
 
 function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
