@@ -43,9 +43,10 @@ class ReapStaleRunsJob < ApplicationJob
   MISSED_AUTO_RETRY_LOOKBACK = 24.hours
 
   def perform
-    reap_runs_with_pruned_workers   # fast path
-    reap_orphaned_running_runs      # ~3-min path
-    reap_runs_with_stale_heartbeat  # 30-min backstop
+    reap_runs_with_pruned_workers     # fast path
+    reap_orphaned_running_runs        # ~3-min path
+    reap_runs_with_stale_heartbeat    # 30-min backstop
+    requeue_orphaned_queued_runs      # inline-drive successor never enqueued
     finish_orphaned_terminal_workflows
     reconcile_missed_worker_died_auto_retries
   end
@@ -76,6 +77,62 @@ class ReapStaleRunsJob < ApplicationJob
     Run.stale.find_each do |run|
       reap!(run, reason: "no heartbeat in #{Run::STALE_HEARTBEAT_THRESHOLD.inspect}")
     end
+  end
+
+  # Re-enqueue Runs orphaned in :queued state. RunJob drives a
+  # Workflow's Step chain depth-first inside one worker process: when a
+  # Step succeeds, StepDispatcher creates the next Step's Run and
+  # Run#enqueue_run_job is *suppressed* — the in-process loop is
+  # expected to pick the successor up rather than bounce it through
+  # SolidQueue. If the worker dies in the window between creating that
+  # successor Run (:queued) and running it inline (deploy SIGKILL, OOM,
+  # node eviction), the Run is orphaned: :queued forever with no
+  # SolidQueue::Job. The :running-orphan path above never sees it
+  # because it never started, and finish_orphaned_terminal_workflows
+  # skips its Workflow because a :queued Run still counts as active.
+  # That wedged Job 814 in `landing` for 17h.
+  #
+  # A :queued Run that has never started has no side effects, so the
+  # correct recovery is to re-enqueue (resume) it, not fail it.
+  # Run#enqueue_run_job reuses the right queue + priority. Guard: only
+  # act when NO active RunJob is driving the Run's Workflow — if one
+  # is, the inline loop still owns the successor and re-enqueuing would
+  # duplicate it (and risk a false worker_died if both reach the Run).
+  # The grace period covers the create/enqueue commit race for a
+  # Workflow's very first Run.
+  def requeue_orphaned_queued_runs
+    cutoff = ORPHAN_RUN_GRACE_PERIOD.ago
+    candidates = Run.where(state: "queued").where("created_at < ?", cutoff).to_a
+    return if candidates.empty?
+
+    driven_workflow_ids = workflow_ids_with_active_run_jobs
+    candidates.each do |run|
+      workflow = run.step&.workflow
+      next unless workflow&.running?
+      next if driven_workflow_ids.include?(workflow.id)
+
+      Rails.logger.info("[ReapStaleRunsJob] Run ##{run.id} re-enqueued: :queued with no SolidQueue::Job and no active worker driving Workflow ##{workflow.id} (inline-drive orphan)")
+      run.reenqueue!
+    end
+  rescue ActiveRecord::StatementInvalid => e
+    Rails.logger.debug("[ReapStaleRunsJob] SolidQueue tables unreachable (#{e.class}); skipping queued-orphan path")
+  end
+
+  # Workflow ids that have at least one non-finalized RunJob in
+  # SolidQueue (the root Run the SQ::Job names belongs to that
+  # Workflow, and the inline driver advances through the rest of its
+  # chain). A queued Run inside one of these Workflows is still owned
+  # by a live worker and must NOT be re-enqueued.
+  def workflow_ids_with_active_run_jobs
+    root_run_ids = active_run_job_root_run_ids
+    return Set.new if root_run_ids.empty?
+
+    Run.joins(:step)
+       .where(id: root_run_ids)
+       .distinct
+       .pluck("steps.workflow_id")
+       .compact
+       .to_set
   end
 
   # Finds Runs in :running state with no active SQ::Job referencing

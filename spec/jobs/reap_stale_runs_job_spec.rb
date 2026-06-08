@@ -295,6 +295,83 @@ RSpec.describe ReapStaleRunsJob do
       end
     end
 
+    describe "queued-orphan path: Run :queued never enqueued (inline-drive successor)" do
+      # SolidQueue tables aren't loaded in the test DB, so stub the
+      # root-run lookup. active_run_job_root_run_ids is the only method
+      # that hits SolidQueue::Job; workflow_ids_with_active_run_jobs
+      # builds on it.
+      def stub_active_root_run_ids(*ids)
+        allow_any_instance_of(described_class)
+          .to receive(:active_run_job_root_run_ids)
+          .and_return(ids.map(&:to_i))
+      end
+
+      # A :queued Run, older than the grace window, on a :running
+      # Workflow — the shape left behind when a worker dies between
+      # StepDispatcher creating the next Step's Run and the inline loop
+      # running it.
+      def queued_orphan
+        workflow = Workflow.create!(job: job, trigger_kind: "auto_merge")
+        workflow.update_columns(state: "running", started_at: 20.minutes.ago)
+        step = Step.create!(workflow: workflow, kind: "grader", position: 0)
+        step.update_columns(state: "running")
+        run = step.runs.create!(job: job, trigger_kind: "auto_merge")
+        run.update_columns(
+          state: "queued",
+          started_at: nil,
+          created_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 1.minute).ago
+        )
+        [ workflow, step, run ]
+      end
+
+      it "re-enqueues a queued orphan when no active RunJob drives its Workflow" do
+        _workflow, _step, run = queued_orphan
+        stub_active_root_run_ids  # nothing driving anything
+
+        expect {
+          described_class.perform_now
+        }.to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+
+        expect(run.reload.state).to eq("queued")  # resumed, not failed
+      end
+
+      it "leaves the queued orphan alone when an active RunJob owns its Workflow" do
+        _workflow, step, run = queued_orphan
+        # A sibling Run on the same Workflow is named by a live SQ::Job
+        # (the inline driver still owns the chain).
+        root_run = step.runs.create!(job: job, trigger_kind: "auto_merge")
+        stub_active_root_run_ids(root_run.id)
+
+        expect {
+          described_class.perform_now
+        }.not_to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+      end
+
+      it "leaves a just-created queued Run alone (inside the grace window)" do
+        workflow = Workflow.create!(job: job, trigger_kind: "auto_merge")
+        workflow.update_columns(state: "running", started_at: 20.minutes.ago)
+        step = Step.create!(workflow: workflow, kind: "grader", position: 0)
+        step.update_columns(state: "running")
+        run = step.runs.create!(job: job, trigger_kind: "auto_merge")
+        run.update_columns(state: "queued", started_at: nil)  # created_at = now
+        stub_active_root_run_ids
+
+        expect {
+          described_class.perform_now
+        }.not_to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+      end
+
+      it "leaves a queued Run alone when its Workflow is not running" do
+        _workflow, _step, run = queued_orphan
+        run.step.workflow.update_columns(state: "succeeded", finished_at: 1.minute.ago)
+        stub_active_root_run_ids
+
+        expect {
+          described_class.perform_now
+        }.not_to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+      end
+    end
+
     describe "orphan-workflow path: Workflow :running but all descendants are terminal" do
       def terminal_rebase_workflow(job:, step_states:)
         workflow = Workflows::Rebase.instantiate(job: job)

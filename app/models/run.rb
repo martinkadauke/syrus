@@ -165,6 +165,14 @@ class Run < ApplicationRecord
       cache_read_input_tokens.present?
   end
 
+  # Sanctioned re-dispatch for a non-terminal Run that lost its
+  # SolidQueue::Job (e.g. an inline-drive successor orphaned when the
+  # worker died before picking it up — see ReapStaleRunsJob). Reuses
+  # the same queue + priority logic as the create-commit enqueue.
+  def reenqueue!
+    enqueue_run_job
+  end
+
   private
 
   def default_user_from_job
