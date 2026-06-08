@@ -2,6 +2,16 @@ class LandingQueueProcessor
   MERGEABILITY_RECHECK_DELAY = 1.minute
   MERGEABILITY_WAIT_REASON = "waiting for GitHub mergeability".freeze
 
+  # How many Jobs at the front of a repository's landing queue are
+  # worth keeping rebased ahead of time. Proactive rebasing of the
+  # whole approved backlog is O(N^2) waste: every merge moves the base
+  # and re-dirties all the others, so rebasing PR #30 thirty times
+  # before it ever reaches the front is pure churn. The front Job is
+  # rebased inline by the auto_merge preflight when it lands anyway;
+  # this only warms up the next couple so they're ready when they
+  # advance. See PollMergeStateJob#dispatch_rebase.
+  REBASE_PREFETCH_DEPTH = 3
+
   Entry = Struct.new(:job, :position, :blocked_reason, :waiting_for, :waiting_for_jobs, keyword_init: true) do
     def eligible?
       blocked_reason.blank?
@@ -14,6 +24,13 @@ class LandingQueueProcessor
 
   def self.entries(scope = Job.all)
     new.entries(scope)
+  end
+
+  # Is this Job within the first `depth` of its repository's landing
+  # queue order? Used by PollMergeStateJob to limit proactive rebases
+  # to the Jobs about to land.
+  def self.rebase_prefetch_candidate?(job, depth: REBASE_PREFETCH_DEPTH)
+    new.rebase_prefetch_candidate?(job, depth: depth)
   end
 
   # Try to land a specific Job right now. Used by callers that have
@@ -62,6 +79,14 @@ class LandingQueueProcessor
     ordered_queue(scope).map.with_index(1) do |job, position|
       Entry.new(job: job, position: position, **blockage_for(job))
     end
+  end
+
+  def rebase_prefetch_candidate?(job, depth: REBASE_PREFETCH_DEPTH)
+    return false unless job.repository_id
+
+    ordered_queue(Job.where(repository_id: job.repository_id))
+      .first(depth)
+      .any? { |candidate| candidate.id == job.id }
   end
 
   private

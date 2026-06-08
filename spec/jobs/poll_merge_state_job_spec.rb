@@ -104,6 +104,42 @@ RSpec.describe PollMergeStateJob do
     }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
   end
 
+  describe "proactive rebase is limited to the front of the landing queue" do
+    before do
+      allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(
+        pr(mergeable_state: "behind", mergeable: false)
+      )
+    end
+
+    def approved_sibling(pr_number, approved_at)
+      sibling = Factories.job(user: user, repository: repository, pr_number: pr_number, branch_name: "syrus/sib-#{pr_number}")
+      sibling.update_columns(state: "approved", approved_at: approved_at, approved_via: "operator")
+      sibling
+    end
+
+    it "skips the rebase for an approved Job far back in the queue" do
+      job.update_columns(state: "approved", approved_at: 1.minute.ago, approved_via: "operator")
+      # Fill the prefetch window with siblings approved earlier, so the
+      # target Job sorts behind all of them.
+      LandingQueueProcessor::REBASE_PREFETCH_DEPTH.times do |i|
+        approved_sibling(100 + i, (10 + i).minutes.ago)
+      end
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "rebase").count }
+    end
+
+    it "still rebases an approved Job at the front of the queue" do
+      job.update_columns(state: "approved", approved_at: 30.minutes.ago, approved_via: "operator")
+      approved_sibling(200, 1.minute.ago) # approved later → sorts behind the target
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.workflows.where(trigger_kind: "rebase").count }.by(1)
+    end
+  end
+
   it "does not dispatch Rebase when the latest no-op rebase already covered the same head/base" do
     Workflows::Rebase.instantiate(job: job).update!(
       state: "succeeded",

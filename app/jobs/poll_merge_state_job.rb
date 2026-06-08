@@ -58,6 +58,12 @@ class PollMergeStateJob < ApplicationJob
   end
 
   def dispatch_rebase
+    if rebase_deferred_until_front_of_queue?
+      audit("auto_merge: PR ##{@job.pr_number} is #{mergeable_state} but not near the front of the landing queue; deferring rebase until it advances")
+      Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} #{mergeable_state} but far back in landing queue; skipping proactive rebase")
+      return
+    end
+
     if RebaseLoopGuard.noop_rebase_for?(job: @job, pr: @pr, client: @client)
       audit("auto_merge: #{mergeable_state} for same head/base after a no-op rebase; waiting for GitHub mergeability to refresh")
       Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} still #{mergeable_state} after no-op rebase; waiting")
@@ -71,6 +77,16 @@ class PollMergeStateJob < ApplicationJob
     audit("auto_merge: dispatching rebase #{workflow.slug} before merge")
     Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} needs rebase before merge-state evaluation")
     StepDispatcher.start_workflow(workflow)
+  end
+
+  # An approved Job that's behind/dirty but far back in the landing
+  # queue doesn't need a proactive rebase — the base will move again
+  # (re-dirtying it) before it reaches the front, and the auto_merge
+  # preflight rebases the front Job inline when it lands. Only Jobs not
+  # yet approved (still working toward mergeable so they can BE
+  # approved) and the front-of-queue prefetch set get rebased here.
+  def rebase_deferred_until_front_of_queue?
+    @job.approved? && !LandingQueueProcessor.rebase_prefetch_candidate?(@job)
   end
 
   def we_control_head?(pr)
