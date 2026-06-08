@@ -326,6 +326,15 @@ export type DashboardSmartFolderCreateInput = {
   filters: Record<string, string>
 }
 
+export type DashboardFilterUsageInput = {
+  subject: DashboardSubject
+  filter: Record<string, unknown>
+}
+
+export type DashboardFilterUsagePayload = {
+  recorded: boolean
+}
+
 export type DashboardSmartFolderCreatePayload = {
   message: string
   redirect_to: string
@@ -363,6 +372,14 @@ export function updateDashboardEpicState(path: string, targetState: string) {
 
 export function toggleDashboardLandingPause(path: string) {
   return postJson<DashboardLandingPausePayload>(path, {})
+}
+
+export function recordDashboardFilterUsage(input: DashboardFilterUsageInput) {
+  return postJson<DashboardFilterUsagePayload>("/api/v1/app/filters/usage", {
+    surface: "dashboard",
+    subject: input.subject,
+    filter: input.filter
+  })
 }
 
 export function createDashboardSmartFolder(input: DashboardSmartFolderCreateInput) {

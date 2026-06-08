@@ -10,7 +10,7 @@ import { StatusPill, TonePill } from "../components/StatusPill"
 import { FilterBar, filterTreeFromPayload, smartFolderFiltersFromTree, topFilterChildren } from "../components/FilterBar"
 import { workflowSlug } from "../lib/slugs"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
-import { bulkDashboardEpics, bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, toggleDashboardLandingPause, updateDashboardEpicState, updateDashboardPreferences, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardEpics, bulkDashboardJobs, createDashboardSmartFolder, fetchDashboard, recordDashboardFilterUsage, toggleDashboardLandingPause, updateDashboardEpicState, updateDashboardPreferences, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSmartFolder, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 
 const KANBAN_CARDS_PER_PAGE = 20
 
@@ -500,6 +500,9 @@ function DashboardFilterBar({ payload, pathname, search }: { payload: DashboardP
       filter={payload.filter}
       filterSchema={payload.controls.filter_schema}
       legacyFilterKeys={legacyFilterKeys}
+      onFilterApplied={(tree) => {
+        void recordDashboardFilterUsage({ subject: payload.subject, filter: tree as Record<string, unknown> }).catch(() => {})
+      }}
       pathname={pathname}
       search={search}
       suggestionSearch={{ surface: "dashboard", subject: payload.subject }}

@@ -119,6 +119,70 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
     expect(parse_body.dig("error", "message")).to eq("Unknown filter field.")
   end
 
+  it "records filter usage through the explicit usage endpoint" do
+    user = Factories.user
+    repo = Factories.repository(user:, owner: "acme", name: "widgets")
+    sign_in_as(user)
+    state_tree = {
+      "and" => [
+        { "field" => "state", "op" => "is", "value" => "running" }
+      ]
+    }
+    repository_tree = {
+      "and" => [
+        { "field" => "repository_id", "op" => "is", "value" => repo.id.to_s }
+      ]
+    }
+
+    2.times do
+      post "/api/v1/app/filters/usage", params: { surface: "dashboard", subject: "job", filter: state_tree }
+      expect(response).to have_http_status(:ok)
+      expect(parse_body).to eq("recorded" => true)
+    end
+    post "/api/v1/app/filters/usage", params: { surface: "dashboard", subject: "job", filter: repository_tree }
+
+    expect(response).to have_http_status(:ok)
+    expect(FilterUsage.find_by!(user:, surface: "dashboard", subject: "job", label: "State is Running").use_count).to eq(2)
+    expect(FilterUsage.find_by!(user:, surface: "dashboard", subject: "job", label: "Repository is acme/widgets").use_count).to eq(1)
+  end
+
+  it "does not record incomplete value filters" do
+    user = Factories.user
+    sign_in_as(user)
+
+    post "/api/v1/app/filters/usage",
+         params: {
+           surface: "dashboard",
+           subject: "job",
+           filter: {
+             "and" => [
+               { "field" => "repository_id", "op" => "is", "value" => "" },
+               { "field" => "state", "op" => "is_none_of", "value" => [] },
+               { "field" => "has_parent_job", "op" => "is_true", "value" => nil }
+             ]
+           }
+         }
+
+    expect(response).to have_http_status(:ok)
+    expect(FilterUsage.pluck(:label)).to eq([ "Has parent is true" ])
+  end
+
+  it "does not fail the usage endpoint when recording hits a lock timeout" do
+    user = Factories.user
+    sign_in_as(user)
+    allow(Filters::Suggestions).to receive(:record!).and_raise(ActiveRecord::LockWaitTimeout, "Lock wait timeout exceeded")
+
+    post "/api/v1/app/filters/usage",
+         params: {
+           surface: "dashboard",
+           subject: "job",
+           filter: { "and" => [{ "field" => "state", "op" => "is", "value" => "running" }] }
+         }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to eq("recorded" => false)
+  end
+
   it "suggests complete filters from FK value matches" do
     user = Factories.user
     repo = Factories.repository(user:, owner: "tkadauke", name: "syrus")

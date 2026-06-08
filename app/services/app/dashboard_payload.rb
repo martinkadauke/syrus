@@ -84,7 +84,6 @@ module App
     def call
       persist_subject_preferences
       SmartFolder.ensure_builtins!
-      record_filter_usage
 
       {
         subject: subject,
@@ -900,19 +899,6 @@ module App
         filter_schema: Filters::Schema.for(subject: subject.to_sym, user: user),
         filter_suggestions: filter_suggestions_json
       }
-    end
-
-    def record_filter_usage
-      return unless current_filter.active?
-
-      Filters::Suggestions.record!(
-        user: user,
-        surface: "dashboard",
-        subject: subject,
-        tree: current_filter.to_h
-      )
-    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
-      Rails.logger.warn("[Filters::Suggestions] skipped dashboard usage recording: #{e.class}: #{e.message}")
     end
 
     def filter_suggestions_json

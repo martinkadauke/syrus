@@ -2,6 +2,22 @@ module Api
   module V1
     module App
       class FiltersController < BaseController
+        def usage
+          ::Filters::Suggestions.record!(
+            user: Current.user,
+            surface: params[:surface].presence || "dashboard",
+            subject: params[:subject].presence || "job",
+            tree: usage_tree
+          )
+
+          render json: { recorded: true }
+        rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+          Rails.logger.warn("[Filters::Suggestions] skipped usage recording: #{e.class}: #{e.message}")
+          render json: { recorded: false }
+        rescue ArgumentError
+          render_error("invalid_filter_usage", "Invalid filter usage request.", status: :bad_request)
+        end
+
         def suggestions
           render json: {
             suggestions: ::Filters::SuggestionSearch.call(
@@ -23,6 +39,19 @@ module Api
           }
         rescue ::Filters::FkOptionsResolver::UnknownField
           render_error("unknown_field", "Unknown filter field.", status: :bad_request)
+        end
+
+        private
+
+        def usage_tree
+          if params.key?(:filter)
+            filter = params.require(:filter)
+            raise ArgumentError unless filter.respond_to?(:to_unsafe_h)
+
+            filter.to_unsafe_h
+          else
+            ::Filters::QueryParam.decode(params[:q])
+          end
         end
       end
     end

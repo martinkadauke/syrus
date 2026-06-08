@@ -60,12 +60,14 @@ export function FilterBar({
   className = "space-y-2",
   suggestions = [],
   suggestionSearch,
+  onFilterApplied,
   buildLink = linkFromSearch
 }: {
   filter?: Record<string, unknown> | null
   filterSchema: FilterSchemaField[]
   suggestions?: FilterSuggestion[]
   suggestionSearch?: FilterSuggestionSearchConfig
+  onFilterApplied?: (tree: FilterTree) => void
   pathname: string
   search: string
   legacyFilterKeys?: string[]
@@ -197,6 +199,7 @@ export function FilterBar({
     for (const key of legacyFilterKeys) updates[key] = null
 
     navigate(buildLink(pathname, search, updates))
+    if (nextQ) onFilterApplied?.(normalized)
   }
 
   function openAddMenu() {

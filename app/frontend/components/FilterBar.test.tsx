@@ -136,11 +136,14 @@ describe("FilterBar", () => {
   })
 
   it("shows suggested filters above the regular add-filter menu and applies them immediately", async () => {
+    const onFilterApplied = vi.fn()
+
     render(
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>
         <FilterBar
           filter={{ and: [] }}
           filterSchema={filterSchema}
+          onFilterApplied={onFilterApplied}
           pathname="/dashboard/jobs"
           search=""
           suggestions={[
@@ -166,6 +169,9 @@ describe("FilterBar", () => {
       expect(decodedFilterFromLocation()).toEqual({
         and: [{ field: "state", op: "is", value: "closed" }]
       })
+    })
+    expect(onFilterApplied).toHaveBeenCalledWith({
+      and: [{ field: "state", op: "is", value: "closed" }]
     })
   })
 

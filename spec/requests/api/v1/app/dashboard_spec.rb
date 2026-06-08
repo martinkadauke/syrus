@@ -134,7 +134,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
     end
 
-    it "records dashboard filter usage and returns ranked suggestions" do
+    it "returns ranked suggestions from recorded filter usage" do
       state_tree = {
         "and" => [
           { "field" => "state", "op" => "is", "value" => "running" }
@@ -147,11 +147,9 @@ RSpec.describe "App API dashboard commands", type: :request do
       }
 
       2.times do
-        get "/api/v1/app/dashboard", params: { subject: "job", q: Filters::QueryParam.encode(state_tree) }
-        expect(response).to have_http_status(:ok)
+        Filters::Suggestions.record!(user: user, surface: "dashboard", subject: "job", tree: state_tree)
       end
-      get "/api/v1/app/dashboard", params: { subject: "job", q: Filters::QueryParam.encode(repository_tree) }
-      expect(response).to have_http_status(:ok)
+      Filters::Suggestions.record!(user: user, surface: "dashboard", subject: "job", tree: repository_tree)
 
       get "/api/v1/app/dashboard", params: { subject: "job" }
 
@@ -174,13 +172,13 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(active_suggestions.map { |suggestion| suggestion.fetch("label") }).to include("Repository is acme/widgets")
     end
 
-    it "still returns the dashboard when filter usage recording hits a lock timeout" do
+    it "does not record filter usage while rendering the dashboard" do
       tree = {
         "and" => [
           { "field" => "state", "op" => "is", "value" => "running" }
         ]
       }
-      allow(Filters::Suggestions).to receive(:record!).and_raise(ActiveRecord::LockWaitTimeout, "Lock wait timeout exceeded")
+      expect(Filters::Suggestions).not_to receive(:record!)
 
       get "/api/v1/app/dashboard", params: { subject: "job", q: Filters::QueryParam.encode(tree) }
 

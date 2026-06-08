@@ -74,7 +74,7 @@ module Filters
       nodes = top_level_nodes(tree)
       nodes.each do |node|
         normalized = normalized_node(node)
-        yield normalized if normalized && known_node?(normalized)
+        yield normalized if normalized && known_node?(normalized) && recordable_node?(normalized)
       end
     end
 
@@ -106,6 +106,29 @@ module Filters
         end
       else
         false
+      end
+    end
+
+    def recordable_node?(node)
+      if node["field"]
+        predicate_op?(node.fetch("op", "is")) || present_filter_value?(node["value"])
+      elsif node["or"].is_a?(Array)
+        node.fetch("or").any? && node.fetch("or").all? { |child| recordable_node?(child) }
+      elsif node["not"].is_a?(Hash)
+        recordable_node?(node.fetch("not"))
+      else
+        false
+      end
+    end
+
+    def present_filter_value?(value)
+      case value
+      when Array
+        value.any? { |child| present_filter_value?(child) }
+      when Hash
+        value.any? { |_key, child| present_filter_value?(child) }
+      else
+        !value.nil? && value != ""
       end
     end
 
