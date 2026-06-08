@@ -5,6 +5,19 @@ module AgentProviders
     private
 
     def invoke(workspace_path:, prompt:, log_sink:, timeout:, mcp:, resume_session_id:, **_ignored)
+      CodexAuth.with_refresh_lock(user: job.user) do
+        invoke_with_auth(
+          workspace_path: workspace_path,
+          prompt: prompt,
+          log_sink: log_sink,
+          timeout: timeout,
+          mcp: mcp,
+          resume_session_id: resume_session_id
+        )
+      end
+    end
+
+    def invoke_with_auth(workspace_path:, prompt:, log_sink:, timeout:, mcp:, resume_session_id:)
       codex_home = WorkflowWorkspace.agent_home_for(workflow, provider)
       codex_auth = CodexAuth.new(user: job.user, codex_home: codex_home)
       auth = codex_auth.prepare!

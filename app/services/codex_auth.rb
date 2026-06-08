@@ -4,7 +4,61 @@ require "json"
 class CodexAuth
   class Error < AgentProviders::ConfigurationError; end
 
+  DEFAULT_REFRESH_LOCK_TIMEOUT_SECONDS = 30.minutes.to_i
+
   Result = Data.define(:api_key)
+
+  class << self
+    def with_refresh_lock(user:, timeout: DEFAULT_REFRESH_LOCK_TIMEOUT_SECONDS)
+      return yield unless user.codex_auth_mode == "chatgpt_login"
+
+      if mysql?
+        with_mysql_refresh_lock(user, timeout: timeout) { yield }
+      else
+        with_local_refresh_lock(user) { yield }
+      end
+    end
+
+    private
+
+    def mysql?
+      ActiveRecord::Base.connection.adapter_name.match?(/mysql/i)
+    end
+
+    def with_mysql_refresh_lock(user, timeout:)
+      lock_name = "syrus:codex_auth:user:#{user.id}"
+
+      ActiveRecord::Base.connection_pool.with_connection do |connection|
+        quoted_name = connection.quote(lock_name)
+        result = connection.select_value("SELECT GET_LOCK(#{quoted_name}, #{Integer(timeout)})")
+        unless result.to_i == 1
+          raise Error, "Timed out waiting for another Codex ChatGPT login refresh to finish"
+        end
+
+        begin
+          user.reload
+          yield
+        ensure
+          connection.select_value("SELECT RELEASE_LOCK(#{quoted_name})")
+        end
+      end
+    end
+
+    def with_local_refresh_lock(user)
+      local_refresh_mutex_for(user.id).synchronize do
+        user.reload
+        yield
+      end
+    end
+
+    def local_refresh_mutex_for(user_id)
+      @local_refresh_mutex_guard ||= Mutex.new
+      @local_refresh_mutexes ||= {}
+      @local_refresh_mutex_guard.synchronize do
+        @local_refresh_mutexes[user_id] ||= Mutex.new
+      end
+    end
+  end
 
   def initialize(user:, codex_home:, runner: nil)
     @user = user
@@ -28,6 +82,7 @@ class CodexAuth
     return unless File.exist?(auth_path)
 
     auth_json = normalized_auth_json(File.read(auth_path))
+    @user.reload
     @user.update!(codex_auth_json: auth_json) if @user.codex_auth_json != auth_json
   rescue StandardError => e
     Rails.logger.warn(

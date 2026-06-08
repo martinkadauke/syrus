@@ -5,6 +5,27 @@ RSpec.describe CodexAuth do
   let(:auth_json) { Factories.codex_auth_json(access_token: "access-token") }
   let(:user) { Factories.user(codex_api_key: "sk-test", codex_auth_json: auth_json) }
 
+  describe ".with_refresh_lock" do
+    it "does not reload users in api_key mode" do
+      stale_user = User.find(user.id)
+      user.update!(name: "Updated")
+
+      described_class.with_refresh_lock(user: stale_user) do
+        expect(stale_user.name).not_to eq("Updated")
+      end
+    end
+
+    it "reloads ChatGPT auth before yielding" do
+      user.update!(codex_auth_mode: "chatgpt_login")
+      stale_user = User.find(user.id)
+      user.update!(codex_auth_json: Factories.codex_auth_json(access_token: "fresh-access-token"))
+
+      described_class.with_refresh_lock(user: stale_user) do
+        expect(stale_user.codex_auth_json).to include("fresh-access-token")
+      end
+    end
+  end
+
   describe "#prepare!" do
     it "returns the API key and does not run login in api_key mode" do
       called = false

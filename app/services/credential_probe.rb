@@ -119,38 +119,41 @@ class CredentialProbe
     Dir.mktmpdir("syrus-codex-probe-") do |workspace|
       codex_home = File.join(workspace, ".codex")
       FileUtils.mkdir_p(codex_home)
-      auth = CodexAuth.new(user: user, codex_home: codex_home).prepare!
-      File.write(File.join(codex_home, "config.toml"), codex_config)
+      CodexAuth.with_refresh_lock(user: user) do
+        codex_auth = CodexAuth.new(user: user, codex_home: codex_home)
+        auth = codex_auth.prepare!
+        File.write(File.join(codex_home, "config.toml"), codex_config)
 
-      output = +""
-      result = ProcessRunner.new(
-        env: ProcessRunner.forwarded_env(
-          AgentInvocation::ENV_FORWARD,
-          extra: {
-            "CODEX_HOME" => codex_home,
-            "CODEX_API_KEY" => auth.api_key.presence
-          }
-        ),
-        command: [
-          "codex", "exec",
-          "--cd", workspace,
-          "--dangerously-bypass-approvals-and-sandbox",
-          "--json",
-          "Reply with OK."
-        ],
-        chdir: workspace,
-        timeout: TIMEOUT_SECONDS,
-        silent_timeout: 15,
-        kind: "agent",
-        on_output_chunk: ->(chunk) { append_output(output, chunk) }
-      ).run
+        output = +""
+        result = ProcessRunner.new(
+          env: ProcessRunner.forwarded_env(
+            AgentInvocation::ENV_FORWARD,
+            extra: {
+              "CODEX_HOME" => codex_home,
+              "CODEX_API_KEY" => auth.api_key.presence
+            }
+          ),
+          command: [
+            "codex", "exec",
+            "--cd", workspace,
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--json",
+            "Reply with OK."
+          ],
+          chdir: workspace,
+          timeout: TIMEOUT_SECONDS,
+          silent_timeout: 15,
+          kind: "agent",
+          on_output_chunk: ->(chunk) { append_output(output, chunk) }
+        ).run
 
-      if result.success?
-        CodexAuth.new(user: user, codex_home: codex_home).persist_updated_auth_json
-        return success(credential, "Codex credentials are valid.")
+        if result.success?
+          codex_auth.persist_updated_auth_json
+          return success(credential, "Codex credentials are valid.")
+        end
+
+        failure("Codex probe failed: #{probe_failure_reason(result, output)}")
       end
-
-      failure("Codex probe failed: #{probe_failure_reason(result, output)}")
     end
   rescue CodexAuth::Error => e
     failure(e.message)

@@ -250,19 +250,22 @@ class IngestionClassifier
           ).run
         when "codex"
           codex_home = File.join(WorkflowWorkspace.data_root, "agent_homes", "ingestion_classifier", @user.id.to_s, "codex")
-          auth = CodexAuth.new(user: @user, codex_home: codex_home).prepare!
-          begin
-            CodexInvocation.new(
-              workspace_path,
-              prompt: prompt,
-              api_key: auth.api_key,
-              log_sink: log_sink,
-              runner: RunJob.agent_runner,
-              timeout: timeout,
-              codex_home: codex_home
-            ).run
-          ensure
-            CodexAuth.new(user: @user, codex_home: codex_home).persist_updated_auth_json
+          CodexAuth.with_refresh_lock(user: @user) do
+            codex_auth = CodexAuth.new(user: @user, codex_home: codex_home)
+            auth = codex_auth.prepare!
+            begin
+              CodexInvocation.new(
+                workspace_path,
+                prompt: prompt,
+                api_key: auth.api_key,
+                log_sink: log_sink,
+                runner: RunJob.agent_runner,
+                timeout: timeout,
+                codex_home: codex_home
+              ).run
+            ensure
+              codex_auth.persist_updated_auth_json
+            end
           end
         else
           raise AgentProviders::ConfigurationError, "Unknown agent provider: #{@provider.inspect}"
