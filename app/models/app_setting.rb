@@ -29,6 +29,16 @@ class AppSetting < ApplicationRecord
     current.grade_max_iterations
   end
 
+  # Epic merge-train (see docs/plans/landing-merge-train.md). Default
+  # off; landing keeps the per-Job auto_merge path until enabled.
+  def self.merge_train_enabled?
+    current.merge_train_enabled
+  end
+
+  def self.merge_train_max_size
+    current.merge_train_max_size
+  end
+
   # Operator-console kill switches. Polling jobs and RunJob check
   # these and short-circuit / re-enqueue when set. Used to halt
   # the system safely during incident response without hard-killing

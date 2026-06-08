@@ -33,6 +33,13 @@ class LandingQueueProcessor
     new.rebase_prefetch_candidate?(job, depth: depth)
   end
 
+  # Topologically sort a set of Jobs by their landing-queue
+  # prerequisites (parent_job + satisfied dependencies). Used by the
+  # Epic merge-train to order members for integration.
+  def self.dependency_ordered(jobs)
+    new.send(:dependency_order, jobs.to_a)
+  end
+
   # Try to land a specific Job right now. Used by callers that have
   # just made a Job land-able and don't want to wait for the next
   # recurring tick — e.g. a Rebase workflow's success callback when

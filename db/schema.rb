@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_08_183612) do
+ActiveRecord::Schema[8.1].define(version: 2026_06_08_190645) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -58,6 +58,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_183612) do
     t.string "github_app_slug"
     t.integer "grade_max_iterations", default: 5, null: false
     t.integer "max_job_failures", default: 3, null: false
+    t.boolean "merge_train_enabled", default: false, null: false
+    t.integer "merge_train_max_size", default: 20, null: false
     t.boolean "polling_paused", default: false, null: false
     t.boolean "runs_paused", default: false, null: false
     t.boolean "signups_open", default: false, null: false
@@ -484,6 +486,35 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_183612) do
     t.index ["validity"], name: "index_jobs_on_validity"
   end
 
+  create_table "merge_train_members", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.integer "job_id", null: false
+    t.integer "merge_train_id", null: false
+    t.integer "position", default: 0, null: false
+    t.string "reason", limit: 500
+    t.string "state", default: "included", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_id"], name: "index_merge_train_members_on_job_id"
+    t.index ["merge_train_id", "job_id"], name: "index_merge_train_members_on_merge_train_id_and_job_id", unique: true
+    t.index ["merge_train_id", "position"], name: "index_merge_train_members_on_merge_train_id_and_position"
+    t.index ["merge_train_id"], name: "index_merge_train_members_on_merge_train_id"
+  end
+
+  create_table "merge_trains", force: :cascade do |t|
+    t.string "base_branch", null: false
+    t.datetime "created_at", null: false
+    t.integer "epic_id", null: false
+    t.string "failure_reason", limit: 500
+    t.datetime "finished_at"
+    t.string "integration_branch"
+    t.string "integration_sha"
+    t.integer "repository_id", null: false
+    t.string "state", default: "building", null: false
+    t.datetime "updated_at", null: false
+    t.index ["epic_id"], name: "index_merge_trains_on_epic_id"
+    t.index ["repository_id"], name: "index_merge_trains_on_repository_id"
+  end
+
   create_table "repositories", force: :cascade do |t|
     t.string "agent_provider"
     t.boolean "approval_propagates_to_github", default: true
@@ -877,6 +908,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_08_183612) do
   add_foreign_key "jobs", "users", column: "claimed_by_user_id"
   add_foreign_key "jobs", "users", column: "dependencies_overridden_by_user_id"
   add_foreign_key "jobs", "users", column: "owner_user_id"
+  add_foreign_key "merge_train_members", "jobs"
+  add_foreign_key "merge_train_members", "merge_trains"
+  add_foreign_key "merge_trains", "epics"
+  add_foreign_key "merge_trains", "repositories"
   add_foreign_key "repositories", "installations"
   add_foreign_key "repositories", "users"
   add_foreign_key "repository_notes", "repositories"
