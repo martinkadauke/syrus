@@ -18,7 +18,7 @@ class InstanceVersionSupervisor
 
       @mutex ||= Mutex.new
       @mutex.synchronize do
-        @instance ||= register_instance!
+        @instance ||= register_instance_safely
         return if @thread&.alive?
         @thread = spawn_heartbeat_thread
         @at_exit_registered ||= install_at_exit_hook
@@ -38,7 +38,10 @@ class InstanceVersionSupervisor
     # Public for tests. Bumps last_heartbeat_at on the instance row,
     # creating it if it was reaped between registration and now.
     def heartbeat(instance = @instance, now: Time.current)
-      return unless instance
+      unless instance
+        @instance = register_instance_safely(now: now)
+        return
+      end
 
       rows = InstanceVersion.where(id: instance.id, finished_at: nil)
                             .update_all(last_heartbeat_at: now)
@@ -46,7 +49,7 @@ class InstanceVersionSupervisor
 
       # Reaper finalized us between heartbeats — re-register a fresh
       # row so the table reflects current reality.
-      @instance = register_instance!(now: now)
+      @instance = register_instance_safely(now: now)
     end
 
     # Public for tests. Stamps finished_at; idempotent.
@@ -61,6 +64,13 @@ class InstanceVersionSupervisor
 
     def disabled?
       Rails.env.test? || !SyrusVersion.server_process?
+    end
+
+    def register_instance_safely(now: Time.current)
+      register_instance!(now: now)
+    rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked => e
+      Rails.logger.warn("[InstanceVersionSupervisor] registration skipped: #{e.class}: #{e.message}")
+      nil
     end
 
     # Insert or refresh the (hostname, role) row. If a stale row exists
