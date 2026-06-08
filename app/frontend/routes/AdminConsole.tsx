@@ -54,6 +54,14 @@ function ConsoleView({ payload }: { payload: AdminConsolePayload }) {
           value={payload.settings.runs_paused ? "paused" : "running"}
           warning={payload.settings.runs_paused}
         />
+        <TogglePanel
+          command={payload.settings.merge_train_enabled ? "disable_merge_train" : "enable_merge_train"}
+          description="When on, an Epic's children land together as one atomic merge (graded once) instead of individually. While enabled, Epic children land only via the train, never via the per-Job path."
+          label={payload.settings.merge_train_enabled ? "Disable merge-train" : "Enable merge-train"}
+          title="Epic merge-train"
+          value={payload.settings.merge_train_enabled ? "enabled" : "disabled"}
+          warning={!payload.settings.merge_train_enabled}
+        />
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">

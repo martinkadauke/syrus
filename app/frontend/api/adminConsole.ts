@@ -7,6 +7,7 @@ export type ConsoleSettings = {
   signups_open: boolean
   max_job_failures: number
   grade_max_iterations: number
+  merge_train_enabled: boolean
 }
 
 export type ConsoleUser = {
@@ -36,6 +37,8 @@ export type ConsoleCommand =
   | "unpause_polling"
   | "pause_runs"
   | "unpause_runs"
+  | "enable_merge_train"
+  | "disable_merge_train"
 
 export function fetchAdminConsole() {
   return getJson<AdminConsolePayload>("/api/v1/app/admin/console")

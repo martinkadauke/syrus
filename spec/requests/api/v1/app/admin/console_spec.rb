@@ -76,6 +76,22 @@ RSpec.describe "API: /api/v1/app/admin/console", type: :request do
       .and change { AdminAction.where(action: "unpause_runs").count }.by(1)
   end
 
+  it "enables and disables the Epic merge-train" do
+    sign_in_as(admin)
+
+    expect {
+      post "/api/v1/app/admin/console/enable_merge_train"
+    }.to change { AppSetting.current.tap(&:reload).merge_train_enabled }.from(false).to(true)
+      .and change { AdminAction.where(action: "enable_merge_train").count }.by(1)
+    expect(parse_body.dig("settings", "merge_train_enabled")).to be true
+
+    expect {
+      post "/api/v1/app/admin/console/disable_merge_train"
+    }.to change { AppSetting.current.tap(&:reload).merge_train_enabled }.from(true).to(false)
+      .and change { AdminAction.where(action: "disable_merge_train").count }.by(1)
+    expect(parse_body.dig("settings", "merge_train_enabled")).to be false
+  end
+
   it "clears GitHub cache entries" do
     sign_in_as(admin)
     target = Factories.user(email_address: "target@example.com")

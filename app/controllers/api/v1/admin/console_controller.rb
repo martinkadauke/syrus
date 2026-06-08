@@ -29,6 +29,14 @@ module Api
           render json: console_payload.unpause_runs(source: "api")
         end
 
+        def enable_merge_train
+          render json: console_payload.enable_merge_train(source: "api")
+        end
+
+        def disable_merge_train
+          render json: console_payload.disable_merge_train(source: "api")
+        end
+
         private
 
         def console_payload
