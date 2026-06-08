@@ -76,7 +76,7 @@ RSpec.describe "Steps::MergeTrain*" do
       expect(train.integration_sha).to eq("intsha999")
     end
 
-    it "fails the attempt (and aborts) on a textual conflict" do
+    it "lets the agent resolve a conflict, then completes the merge" do
       a = member_job(issue_number: 1)
       train = build_train([ a ])
       handler = step_handler(described_class, "merge_train_build", train, a)
@@ -84,8 +84,34 @@ RSpec.describe "Steps::MergeTrain*" do
       allow(git).to receive(:run)
         .with("merge", "--no-ff", "-m", anything, "FETCH_HEAD", chdir: "/tmp/ws")
         .and_raise(GitRunner::GitError.new([ "merge" ], 1, "CONFLICT (content)"))
+      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "MERGE_HEAD", chdir: "/tmp/ws").and_return("deadbeef")
+      allow(git).to receive(:run).with("ls-files", "-u", chdir: "/tmp/ws").and_return("")
+      allow(handler).to receive(:run_agent)
 
-      expect { handler.call }.to raise_error(Steps::Base::StepFailed, /textual conflict/)
+      handler.call
+
+      expect(handler).to have_received(:run_agent)
+      expect(git).to have_received(:run).with("add", "-A", chdir: "/tmp/ws")
+      expect(git).to have_received(:run).with("commit", "--no-edit", chdir: "/tmp/ws")
+      expect(train.reload.state).to eq("grading")
+    end
+
+    it "fails (and aborts) when the agent leaves unresolved conflict markers" do
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      handler = step_handler(described_class, "merge_train_build", train, a)
+      git = stub_git(handler)
+      allow(git).to receive(:run)
+        .with("merge", "--no-ff", "-m", anything, "FETCH_HEAD", chdir: "/tmp/ws")
+        .and_raise(GitRunner::GitError.new([ "merge" ], 1, "CONFLICT (content)"))
+      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "MERGE_HEAD", chdir: "/tmp/ws").and_return("deadbeef")
+      allow(git).to receive(:run).with("ls-files", "-u", chdir: "/tmp/ws").and_return("")
+      allow(git).to receive(:run)
+        .with("diff", "--cached", "--check", chdir: "/tmp/ws")
+        .and_raise(GitRunner::GitError.new([ "diff" ], 2, "leftover <<<<<<< markers"))
+      allow(handler).to receive(:run_agent)
+
+      expect { handler.call }.to raise_error(Steps::Base::StepFailed, /unresolved conflict markers/)
       expect(git).to have_received(:run).with("merge", "--abort", chdir: "/tmp/ws")
       expect(train.reload.state).not_to eq("grading")
     end

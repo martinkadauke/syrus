@@ -60,4 +60,21 @@ RSpec.describe MergeTrainDispatcher do
     expect(described_class.try_dispatch!(epic)).to be_nil
     expect(MergeTrain.count).to eq(0)
   end
+
+  it "does not re-dispatch during the cooldown after a failed train" do
+    approved_child(1)
+    MergeTrain.create!(epic: epic, repository: repository, base_branch: "master",
+                       state: "failed", finished_at: 5.minutes.ago)
+
+    expect(described_class.try_dispatch!(epic)).to be_nil
+    expect(MergeTrain.where(state: "building").count).to eq(0)
+  end
+
+  it "re-dispatches once the cooldown has elapsed" do
+    approved_child(1)
+    MergeTrain.create!(epic: epic, repository: repository, base_branch: "master",
+                       state: "failed", finished_at: (described_class::RETRY_COOLDOWN + 1.minute).ago)
+
+    expect(described_class.try_dispatch!(epic)).to be_present
+  end
 end

@@ -5,6 +5,14 @@
 # LandingQueueProcessor#land's transactional locking so it races safely
 # with the recurring queue tick. See docs/plans/landing-merge-train.md.
 class MergeTrainDispatcher
+  # After a train fails (e.g. an unresolvable build conflict), don't
+  # immediately re-dispatch — fail_landing reverts members to
+  # :implemented and PollMergeStateJob may auto-re-approve them, which
+  # would otherwise spin a doomed train every tick. Wait out a cooldown
+  # so a genuinely-stuck Epic surfaces for an operator instead of
+  # churning.
+  RETRY_COOLDOWN = 30.minutes
+
   def self.try_dispatch!(epic) = new(epic).try_dispatch!
 
   def initialize(epic)
@@ -14,6 +22,7 @@ class MergeTrainDispatcher
   def try_dispatch!
     return unless AppSetting.merge_train_enabled?
     return if landing_in_progress?
+    return if cooling_down?
 
     result = MergeTrainAssembler.call(@epic)
     return unless result.ready?
@@ -54,5 +63,10 @@ class MergeTrainDispatcher
 
   def landing_in_progress?
     Job.landing.where(repository_id: @epic.repository_id).exists?
+  end
+
+  def cooling_down?
+    last_failure = MergeTrain.where(epic_id: @epic.id, state: "failed").maximum(:finished_at)
+    last_failure.present? && last_failure > RETRY_COOLDOWN.ago
   end
 end

@@ -16,9 +16,16 @@ Epic and keeps Epic children off the per-Job path when the flag is on.
 
 v1 deviations / deferred:
 - **Build uses merge-based integration** (`git merge --no-ff` each member
-  in topo order), not rebase. A **textual** conflict fails the whole
-  attempt — no agent-assisted *build* conflict resolution yet (logical
-  conflicts are still handled by the grade & fix loop). 
+  in topo order), not rebase. A clean merge is the fast path; on a
+  **textual** conflict the agent resolves it in the working tree and
+  Syrus completes the merge (`merge_train_build` is agentic). Only an
+  unresolvable conflict (or agent failure) fails the whole attempt.
+  Logical conflicts are still caught by the grade & fix loop.
+- **Retry storm guard:** after a train fails,
+  `MergeTrainDispatcher::RETRY_COOLDOWN` (30 min) blocks re-dispatch for
+  that Epic, so a genuinely-stuck Epic surfaces for an operator instead
+  of re-training every tick (fail_landing → auto-re-approve → doomed
+  train). 
 - **Land** opens one synthetic integration PR (integration branch → base)
   and merges it; member PRs are closed with a back-link (they show
   "Closed", not "Merged" — the accepted atomicity tradeoff).
