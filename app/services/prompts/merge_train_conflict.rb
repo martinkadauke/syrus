@@ -1,13 +1,12 @@
 module Prompts
   # Prompt for resolving a textual conflict while integrating an Epic's
-  # member branch into the merge-train integration branch. Syrus rebases
-  # the member's commits onto the integration tip; when git stops on a
-  # conflict, the agent resolves the markers in the working tree and Syrus
-  # continues the rebase. Reuses the rebase skill's conflict-resolution
-  # instructions; the agent must NOT run git commands itself.
+  # member branch into the merge-train integration branch. Syrus has a
+  # `git rebase` onto the integration branch already IN PROGRESS and
+  # stopped at a conflict; the agent resolves it and completes that same
+  # rebase. Deliberately self-contained — it does NOT load the rebase
+  # skill, because that skill rebases onto the repo's default branch
+  # (master), which is the wrong target here.
   class MergeTrainConflict
-    SKILL_FILE = Rails.root.join(".claude/skills/rebase/SKILL.md").freeze
-
     def initialize(repo_slug:, member_branch:, integration_branch:, pr_number:)
       @repo_slug = repo_slug
       @member_branch = member_branch
@@ -16,21 +15,30 @@ module Prompts
     end
 
     def to_s
-      context = <<~CONTEXT.strip
-        This is an **Epic merge-train integration** run. Syrus is rebasing the member
+      <<~PROMPT.strip
+        This is an **Epic merge-train integration** run. A `git rebase` of the member
         pull request `#{@repo_slug}##{@pr_number}` (branch `#{@member_branch}`) onto the
-        shared integration branch `#{@integration_branch}`, and `git rebase` stopped on
-        a conflict.
+        local branch `#{@integration_branch}` is **already in progress** in this
+        workspace and has stopped on a merge conflict.
 
-        Resolve every conflict in the working tree so the combined result is correct —
-        keep the intent of BOTH the member's change and everything already on the
-        integration branch. Edit the conflicted files to remove all conflict markers.
+        Resolve the conflict(s) and **complete the in-progress rebase**:
 
-        IMPORTANT: do NOT run `git add`, `git commit`, `git rebase --continue`,
-        `git push`, or `git checkout`. Syrus continues the rebase after you finish.
-        Only edit files to resolve the conflicts.
-      CONTEXT
-      SkillLoader.render(SKILL_FILE, context)
+        1. Edit each conflicted file so the result keeps the intent of BOTH the
+           member's change and everything already on `#{@integration_branch}`. Remove
+           every conflict marker.
+        2. `git add` the resolved files, then `git rebase --continue`. Repeat until the
+           rebase finishes (there may be more than one conflicting commit).
+
+        Hard rules — do not break these:
+        - Stay on THIS in-progress rebase. Do NOT run `git rebase --abort`, do NOT start
+          a new rebase, and do NOT rebase onto `origin/master`, `master`, or any branch
+          other than the one already being rebased onto.
+        - Do NOT push, do NOT open or edit pull requests, do NOT switch branches.
+
+        When you are done the end state MUST be: no rebase in progress, a clean working
+        tree (`git status` shows nothing to commit), and `#{@integration_branch}` is an
+        ancestor of `HEAD`.
+      PROMPT
     end
   end
 end

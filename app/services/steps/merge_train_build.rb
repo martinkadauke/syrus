@@ -3,21 +3,22 @@ module Steps
   # each member's branch in topological order by REBASING the member's
   # commits onto the growing integration tip.
   #
-  # The mechanical `git rebase` is always tried first — a member that
-  # only needs to move forward (or whose changes don't overlap) replays
-  # cleanly with no agent. Only when git stops on a real conflict does
-  # the agent resolve it in the working tree; Syrus then continues the
-  # rebase. git's patch-id detection skips commits already integrated, so
-  # stacked members replay only their own commits. An unresolvable
-  # conflict (or agent failure) aborts and fails the whole Epic attempt.
-  # Leaves HEAD on the integration branch for the prepare / grader /
-  # landing_fix steps.
+  # The mechanical `git rebase` runs first — a member that only needs to
+  # move forward (or whose changes don't overlap) replays cleanly with no
+  # agent. On a genuine conflict, Syrus leaves that rebase (already
+  # targeting the integration branch) in progress and hands the agent ONE
+  # task: resolve the conflicts and finish the in-progress rebase. Syrus
+  # then verifies the outcome deterministically — the rebase must be
+  # finished, the worktree clean, and the integration branch an ancestor
+  # of the result — and fast-forwards the integration branch.
+  #
+  # Why agent-owns-completion rather than agent-edits-then-Syrus-continues:
+  # the agent (esp. codex) autonomously runs git, so Syrus can't assume the
+  # rebase is still mid-flight after the agent runs. Tolerating completion
+  # and verifying the end state is robust to that; a single agent call also
+  # avoids a duplicate claude_session capture.
   class MergeTrainBuild < Base
     include MergeTrainStep
-
-    # Safety bound on per-member conflict iterations (a rebase can stop
-    # once per replayed commit). Far above any real member.
-    MAX_CONFLICT_STEPS = 100
 
     def call
       train = merge_train
@@ -49,69 +50,55 @@ module Steps
 
     private
 
-    # Replay the member's commits onto the current integration tip, then
-    # fast-forward the integration branch to the result.
+    # Replay the member's commits onto the integration tip on a scratch
+    # branch, then fast-forward the integration branch to the result.
     def integrate!(member, branch)
       temp = "__mt_member_#{member.id}"
       @git.run("checkout", "-B", temp, "FETCH_HEAD", chdir: @chdir)
       rebase_member!(member, branch)
+      verify_rebased!(branch, temp)
       @git.run("checkout", @integration, chdir: @chdir)
       @git.run("merge", "--ff-only", temp, chdir: @chdir)
       @git.run("branch", "-D", temp, chdir: @chdir)
     end
 
-    # Mechanical attempt first: `git rebase <integration>` replays the
-    # checked-out member branch's commits onto the integration tip. Only
-    # on a genuine conflict (rebase stops mid-flight) does the agent step in.
+    # Mechanical attempt first; only a genuine conflict (rebase stops with
+    # REBASE_HEAD set) escalates to the agent.
     def rebase_member!(member, branch)
       @git.run("rebase", @integration, chdir: @chdir)
     rescue GitRunner::GitError
       raise unless rebase_in_progress?
 
-      resolve_rebase_with_agent!(member, branch)
+      resolve_with_agent!(member, branch)
     end
 
-    def resolve_rebase_with_agent!(member, branch)
-      log("merge_train: conflict rebasing #{branch} onto integration; invoking agent to resolve", kind: "system")
+    # Hand the in-progress (correctly-targeted) rebase to the agent to
+    # resolve and complete. Single agent call.
+    def resolve_with_agent!(member, branch)
+      log("merge_train: conflict integrating #{branch}; agent resolving the in-progress rebase", kind: "system")
       run.update!(prompt: conflict_prompt(member, branch))
+      run_agent(prompt: run.prompt)
 
-      steps = 0
-      loop do
-        raise StepFailed, "merge_train: too many conflict iterations integrating #{branch}" if (steps += 1) > MAX_CONFLICT_STEPS
-
-        run_agent(prompt: run.prompt)
-        stage_and_verify_resolution!(branch)
-        continue_rebase!
-        break unless rebase_in_progress?
+      if rebase_in_progress?
+        abort_rebase!
+        raise StepFailed, "merge_train: agent did not finish the rebase integrating #{branch}"
       end
-      log("merge_train: agent resolved conflicts integrating #{branch}", kind: "system")
-    rescue Steps::Base::StepFailed
-      abort_rebase!
-      raise
     end
 
-    # `git rebase --continue` after the conflict is staged. A non-zero
-    # exit with the rebase still in progress means the *next* replayed
-    # commit conflicted — the caller loops and resolves again. A non-zero
-    # exit with no rebase in progress is a real error.
-    def continue_rebase!
-      @git.run("rebase", "--continue", chdir: @chdir)
-    rescue GitRunner::GitError
-      raise unless rebase_in_progress?
-    end
+    # Deterministic verification that the member was correctly integrated:
+    # no rebase left in progress, a clean worktree, and the integration
+    # branch is an ancestor of the rebased result (i.e. it was rebased onto
+    # the integration tip, not master or anything else).
+    def verify_rebased!(branch, temp)
+      @git.run("checkout", temp, chdir: @chdir)
 
-    def stage_and_verify_resolution!(branch)
-      @git.run("add", "-A", chdir: @chdir)
+      status = @git.run("status", "--porcelain", chdir: @chdir).to_s.strip
+      raise StepFailed, "merge_train: integrating #{branch} left a dirty worktree" unless status.empty?
 
-      unmerged = @git.run("ls-files", "-u", chdir: @chdir).to_s.strip
-      raise StepFailed, "merge_train: agent left unmerged paths integrating #{branch}" unless unmerged.empty?
-
-      # `git diff --cached --check` exits non-zero if any staged content
-      # still contains conflict markers.
       begin
-        @git.run("diff", "--cached", "--check", chdir: @chdir)
+        @git.run("merge-base", "--is-ancestor", @integration, temp, chdir: @chdir)
       rescue GitRunner::GitError
-        raise StepFailed, "merge_train: agent left unresolved conflict markers integrating #{branch}"
+        raise StepFailed, "merge_train: #{branch} was not rebased onto the integration branch"
       end
     end
 

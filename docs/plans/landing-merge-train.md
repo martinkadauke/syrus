@@ -20,10 +20,14 @@ v1 deviations / deferred:
   needs to move forward or whose changes don't overlap replays cleanly
   with no agent (git's patch-id detection skips already-integrated
   commits, so stacked members replay only their own). Only when git stops
-  on a real conflict does the agent resolve it in the working tree and
-  Syrus continues the rebase (`merge_train_build` is agentic). An
-  unresolvable conflict (or agent failure) aborts and fails the whole
-  attempt; logical conflicts are still caught by the grade & fix loop.
+  on a real conflict does Syrus hand that in-progress rebase (already
+  targeting the integration branch) to the agent in a single call to
+  resolve AND complete; Syrus then verifies the outcome deterministically
+  (rebase finished, worktree clean, integration branch is an ancestor)
+  and fast-forwards. The agent owns completion because it runs git
+  autonomously, so Syrus can't assume the rebase is still mid-flight
+  afterward. A failure to finish / wrong target / agent failure fails the
+  whole attempt; logical conflicts are still caught by the grade & fix loop.
   (`git rerere` to reuse resolutions across retries is a planned follow-up.)
 - **Retry storm guard:** after a train fails,
   `MergeTrainDispatcher::RETRY_COOLDOWN` (30 min) blocks re-dispatch for
