@@ -948,14 +948,16 @@ function BulkJobActions({ selectedIds, onClear }: { selectedIds: number[]; onCle
   )
 }
 
-// Group key for the landing-queue epic delineation: each Epic is its own
-// group; all epicless jobs share one ("none") so a contiguous run of them
-// reads as a single block.
+// Group key for the landing-queue delineation: one key per *landing unit*.
+// An Epic lands atomically (a merge-train), so all its jobs share a key; an
+// epicless job lands on its own, so each gets its own key (a "single-job
+// epic"). Sorted by queue position, the separators then trace the relative
+// order of lands within a repository.
 export function epicGroupKey(job: DashboardJobItem) {
-  return job.epic ? `epic-${job.epic.id}` : "none"
+  return job.epic ? `epic-${job.epic.id}` : `job-${job.id}`
 }
 
-// True when this row begins a new Epic group relative to the previous row.
+// True when this row begins a new landing unit relative to the previous row.
 // Only meaningful when the list is ordered by queue position.
 export function startsNewEpicGroup(items: DashboardJobItem[], index: number, enabled: boolean) {
   if (!enabled || index === 0) return false
