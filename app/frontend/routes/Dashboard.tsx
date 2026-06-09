@@ -948,6 +948,20 @@ function BulkJobActions({ selectedIds, onClear }: { selectedIds: number[]; onCle
   )
 }
 
+// Group key for the landing-queue epic delineation: each Epic is its own
+// group; all epicless jobs share one ("none") so a contiguous run of them
+// reads as a single block.
+export function epicGroupKey(job: DashboardJobItem) {
+  return job.epic ? `epic-${job.epic.id}` : "none"
+}
+
+// True when this row begins a new Epic group relative to the previous row.
+// Only meaningful when the list is ordered by queue position.
+export function startsNewEpicGroup(items: DashboardJobItem[], index: number, enabled: boolean) {
+  if (!enabled || index === 0) return false
+  return epicGroupKey(items[index]) !== epicGroupKey(items[index - 1])
+}
+
 function JobsTable({
   items,
   columns,
@@ -968,8 +982,11 @@ function JobsTable({
   sortState: DashboardSortState
 }) {
   const isDesktop = useMediaQuery("(min-width: 1024px)", true)
+  // Only group by Epic when the rows are actually in queue order — in any
+  // other sort the Epics aren't contiguous, so a separator would mislead.
+  const groupByEpic = sortState.column === "landing_queue_position"
 
-  if (!isDesktop) return <MobileJobsList items={items} onToggleOne={onToggleOne} prefix={prefix} selectedIds={selectedIds} />
+  if (!isDesktop) return <MobileJobsList groupByEpic={groupByEpic} items={items} onToggleOne={onToggleOne} prefix={prefix} selectedIds={selectedIds} />
 
   return (
     <div className="overflow-x-auto rounded border border-gray-200 bg-white">
@@ -984,8 +1001,8 @@ function JobsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {items.map((job) => (
-            <tr key={job.id}>
+          {items.map((job, index) => (
+            <tr className={startsNewEpicGroup(items, index, groupByEpic) ? "border-t-4 border-gray-300" : undefined} key={job.id}>
               {columns.map((column) => <JobCell column={column} job={job} key={column} onToggleOne={onToggleOne} prefix={prefix} selected={selectedIds.has(job.id)} />)}
             </tr>
           ))}
@@ -995,21 +1012,21 @@ function JobsTable({
   )
 }
 
-function MobileJobsList({ items, selectedIds, onToggleOne, prefix }: { items: DashboardJobItem[]; selectedIds: Set<number>; onToggleOne: (id: number) => void; prefix: string }) {
+function MobileJobsList({ items, selectedIds, onToggleOne, prefix, groupByEpic }: { items: DashboardJobItem[]; selectedIds: Set<number>; onToggleOne: (id: number) => void; prefix: string; groupByEpic: boolean }) {
   return (
     <div className="rounded border border-gray-200 bg-white">
       <div className="divide-y divide-gray-100">
-        {items.map((job) => <MobileJobRow job={job} key={job.id} onToggleOne={onToggleOne} prefix={prefix} selected={selectedIds.has(job.id)} />)}
+        {items.map((job, index) => <MobileJobRow job={job} key={job.id} onToggleOne={onToggleOne} prefix={prefix} selected={selectedIds.has(job.id)} topSeparator={startsNewEpicGroup(items, index, groupByEpic)} />)}
       </div>
     </div>
   )
 }
 
-function MobileJobRow({ job, selected, onToggleOne, prefix }: { job: DashboardJobItem; selected: boolean; onToggleOne: (id: number) => void; prefix: string }) {
+function MobileJobRow({ job, selected, onToggleOne, prefix, topSeparator = false }: { job: DashboardJobItem; selected: boolean; onToggleOne: (id: number) => void; prefix: string; topSeparator?: boolean }) {
   const approvalLabel = job.approved_at ? "Approved" : "Not approved"
 
   return (
-    <article aria-label={job.title} className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3">
+    <article aria-label={job.title} className={`grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3${topSeparator ? " border-t-4 border-gray-300" : ""}`}>
       <input aria-label={`Select ${job.title}`} checked={selected} className="mt-1" onChange={() => onToggleOne(job.id)} type="checkbox" />
       <div className="min-w-0 text-gray-700">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
