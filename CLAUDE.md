@@ -325,6 +325,11 @@ across web/worker processes.
   or pull request identifier (`#123`, `PR #123`, `owner/repo#123`), make it
   clickable to the matching GitHub page when a URL can be derived. Plain
   identifiers are only acceptable when the target is genuinely unknown.
+- **UTF-8 byte truncation** — never call `String#byteslice` directly outside
+  the `String#safe_byteslice` core extension. Use
+  `text.safe_byteslice(start, length)` whenever truncating by bytes before
+  persistence, logging, prompt rendering, or UI serialization so multibyte
+  characters cannot be split into invalid UTF-8.
 - **Form validation UI** — React forms should use native validity
   attributes plus route-local error rendering.
 - **Close icons** — React close/dismiss/remove controls should render the

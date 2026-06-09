@@ -89,6 +89,6 @@ module SyrusChatMcp
   end
 
   def self.safe_byteslice(text, start, length)
-    text.byteslice(start, length).to_s.encode("UTF-8", invalid: :replace, undef: :replace)
+    text.to_s.safe_byteslice(start, length)
   end
 end

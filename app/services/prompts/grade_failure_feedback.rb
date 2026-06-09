@@ -99,10 +99,10 @@ module Prompts
         omitted = output.bytesize - HEAD_BYTES - TAIL_BYTES
         <<~OUTPUT.chomp
             Head:
-        #{indent(output.byteslice(0, HEAD_BYTES), by: 6)}
+        #{indent(output.safe_byteslice(0, HEAD_BYTES), by: 6)}
             ... [truncated #{omitted} bytes] ...
             Tail:
-        #{indent(output.byteslice(-TAIL_BYTES, TAIL_BYTES), by: 6)}
+        #{indent(output.safe_byteslice(-TAIL_BYTES, TAIL_BYTES), by: 6)}
             Full log: #{log_path(entry, iteration)}
         OUTPUT
       end

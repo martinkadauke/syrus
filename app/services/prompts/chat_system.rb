@@ -409,7 +409,7 @@ module Prompts
       text = text.to_s
       return text if text.bytesize <= max_bytes
 
-      "#{text.byteslice(0, max_bytes).to_s.encode("UTF-8", invalid: :replace, undef: :replace)}..."
+      "#{text.safe_byteslice(0, max_bytes)}..."
     end
   end
 end

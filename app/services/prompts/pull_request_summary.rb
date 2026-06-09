@@ -43,7 +43,7 @@ module Prompts
 
     def trimmed_diff
       return @diff if @diff.bytesize <= MAX_DIFF_BYTES
-      "#{@diff.byteslice(0, MAX_DIFF_BYTES)}\n…[truncated, #{@diff.bytesize - MAX_DIFF_BYTES} more bytes]"
+      "#{@diff.safe_byteslice(0, MAX_DIFF_BYTES)}\n…[truncated, #{@diff.bytesize - MAX_DIFF_BYTES} more bytes]"
     end
   end
 end

@@ -137,7 +137,7 @@ module SyrusChatMcp
         omitted = text.bytesize - MAX_TEXT_BYTES
         note = "\n\n[Document truncated after #{MAX_TEXT_BYTES} bytes; omitted #{omitted} bytes.]"
         head_bytes = MAX_TEXT_BYTES - note.bytesize
-        "#{SyrusChatMcp.safe_byteslice(text, 0, head_bytes)}#{note}"
+        "#{text.safe_byteslice(0, head_bytes)}#{note}"
       end
 
       def text_block(text)

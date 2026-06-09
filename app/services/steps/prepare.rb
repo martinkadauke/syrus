@@ -90,7 +90,7 @@ module Steps
     def append_output_tail(tail, chunk)
       tail << chunk.to_s
       overflow = tail.bytesize - OUTPUT_TAIL_BYTES
-      tail.byteslice(0, overflow)&.bytesize&.then { |bytes| tail.bytesplice(0, bytes, "") } if overflow.positive?
+      tail.replace(tail.safe_byteslice(-OUTPUT_TAIL_BYTES, OUTPUT_TAIL_BYTES)) if overflow.positive?
     end
 
     def prepare_failure_payload(cmd, result, tail)

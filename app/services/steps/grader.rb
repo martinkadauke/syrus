@@ -86,7 +86,7 @@ module Steps
     def grader_output_excerpt(path)
       return "" unless path.exist?
       output = path.binread
-      output = output.byteslice(-OUTPUT_INLINE_BYTES, OUTPUT_INLINE_BYTES) if output.bytesize > OUTPUT_INLINE_BYTES
+      output = output.safe_byteslice(-OUTPUT_INLINE_BYTES, OUTPUT_INLINE_BYTES) if output.bytesize > OUTPUT_INLINE_BYTES
       output.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "?")
     end
 

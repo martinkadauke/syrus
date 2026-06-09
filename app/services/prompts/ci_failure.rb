@@ -101,7 +101,7 @@ module Prompts
 
       error_block = context["error_block"].to_s
       if error_block.bytesize > MAX_ERROR_BLOCK_BYTES
-        context["error_block"] = "#{error_block.byteslice(0, MAX_ERROR_BLOCK_BYTES)}\n...[truncated]"
+        context["error_block"] = "#{error_block.safe_byteslice(0, MAX_ERROR_BLOCK_BYTES)}\n...[truncated]"
       end
       context
     end

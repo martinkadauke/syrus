@@ -118,6 +118,24 @@ RSpec.describe ProcessRunner do
     expect(spawned_processes.first.reload).to be_finished
   end
 
+  it "records truncated command strings without splitting UTF-8 characters" do
+    prefix = [ ruby, "-e", "exit 0", "" ].join(" ")
+    filler = "a" * (4095 - prefix.bytesize)
+
+    result = described_class.new(
+      env: {},
+      command: [ ruby, "-e", "exit 0", "#{filler}€tail" ],
+      chdir: @dir,
+      timeout: 5,
+      kind: "agent"
+    ).run
+
+    process = SpawnedProcess.order(:id).last
+    expect(result).to be_success
+    expect(process.command.bytesize).to be <= 4096
+    expect(process.command).to be_valid_encoding
+  end
+
   it "kills the subprocess when silent_timeout elapses with no output" do
     # The subprocess prints once and then sleeps — past silent_timeout
     # with no further output, ProcessRunner must terminate it and

@@ -290,7 +290,7 @@ class ProcessRunner
   end
 
   def command_string
-    @command.compact.map(&:to_s).join(" ").byteslice(0, 4096)
+    @command.compact.map(&:to_s).join(" ").safe_byteslice(0, 4096)
   end
 
   def write_stdin(stdin)
