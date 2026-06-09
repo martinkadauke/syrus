@@ -61,30 +61,40 @@ RSpec.describe "Steps::MergeTrain*" do
   end
 
   describe Steps::MergeTrainBuild do
-    it "builds the integration branch by merging members in order and marks the train grading" do
+    it "rebases each member onto the integration tip (mechanically) and marks the train grading" do
       a = member_job(issue_number: 1)
       b = member_job(issue_number: 2)
       train = build_train([ a, b ])
       handler = step_handler(described_class, "merge_train_build", train, b)
       git = stub_git(handler)
+      allow(handler).to receive(:run_agent)
 
       handler.call
 
       expect(git).to have_received(:run).with("checkout", "-B", train.integration_branch, "FETCH_HEAD", chdir: "/tmp/ws")
-      expect(git).to have_received(:run).with("merge", "--no-ff", "-m", anything, "FETCH_HEAD", chdir: "/tmp/ws").twice
+      # Mechanical rebase per member; no agent on the clean path.
+      expect(git).to have_received(:run).with("rebase", train.integration_branch, chdir: "/tmp/ws").twice
+      expect(git).to have_received(:run).with("merge", "--ff-only", anything, chdir: "/tmp/ws").twice
+      expect(handler).not_to have_received(:run_agent)
       expect(train.reload.state).to eq("grading")
       expect(train.integration_sha).to eq("intsha999")
     end
 
-    it "lets the agent resolve a conflict, then completes the merge" do
+    it "invokes the agent only when the mechanical rebase conflicts, then continues" do
       a = member_job(issue_number: 1)
       train = build_train([ a ])
       handler = step_handler(described_class, "merge_train_build", train, a)
       git = stub_git(handler)
       allow(git).to receive(:run)
-        .with("merge", "--no-ff", "-m", anything, "FETCH_HEAD", chdir: "/tmp/ws")
-        .and_raise(GitRunner::GitError.new([ "merge" ], 1, "CONFLICT (content)"))
-      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "MERGE_HEAD", chdir: "/tmp/ws").and_return("deadbeef")
+        .with("rebase", train.integration_branch, chdir: "/tmp/ws")
+        .and_raise(GitRunner::GitError.new([ "rebase" ], 1, "CONFLICT (content)"))
+      # REBASE_HEAD present on conflict detection, gone after --continue.
+      rebase_head_calls = 0
+      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "REBASE_HEAD", chdir: "/tmp/ws") do
+        rebase_head_calls += 1
+        raise GitRunner::GitError.new([ "rev-parse" ], 1, "") if rebase_head_calls >= 2
+        "rebasehead"
+      end
       allow(git).to receive(:run).with("ls-files", "-u", chdir: "/tmp/ws").and_return("")
       allow(handler).to receive(:run_agent)
 
@@ -92,19 +102,19 @@ RSpec.describe "Steps::MergeTrain*" do
 
       expect(handler).to have_received(:run_agent)
       expect(git).to have_received(:run).with("add", "-A", chdir: "/tmp/ws")
-      expect(git).to have_received(:run).with("commit", "--no-edit", chdir: "/tmp/ws")
+      expect(git).to have_received(:run).with("rebase", "--continue", chdir: "/tmp/ws")
       expect(train.reload.state).to eq("grading")
     end
 
-    it "fails (and aborts) when the agent leaves unresolved conflict markers" do
+    it "fails (and aborts the rebase) when the agent leaves unresolved conflict markers" do
       a = member_job(issue_number: 1)
       train = build_train([ a ])
       handler = step_handler(described_class, "merge_train_build", train, a)
       git = stub_git(handler)
       allow(git).to receive(:run)
-        .with("merge", "--no-ff", "-m", anything, "FETCH_HEAD", chdir: "/tmp/ws")
-        .and_raise(GitRunner::GitError.new([ "merge" ], 1, "CONFLICT (content)"))
-      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "MERGE_HEAD", chdir: "/tmp/ws").and_return("deadbeef")
+        .with("rebase", train.integration_branch, chdir: "/tmp/ws")
+        .and_raise(GitRunner::GitError.new([ "rebase" ], 1, "CONFLICT (content)"))
+      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "REBASE_HEAD", chdir: "/tmp/ws").and_return("rebasehead")
       allow(git).to receive(:run).with("ls-files", "-u", chdir: "/tmp/ws").and_return("")
       allow(git).to receive(:run)
         .with("diff", "--cached", "--check", chdir: "/tmp/ws")
@@ -112,7 +122,7 @@ RSpec.describe "Steps::MergeTrain*" do
       allow(handler).to receive(:run_agent)
 
       expect { handler.call }.to raise_error(Steps::Base::StepFailed, /unresolved conflict markers/)
-      expect(git).to have_received(:run).with("merge", "--abort", chdir: "/tmp/ws")
+      expect(git).to have_received(:run).with("rebase", "--abort", chdir: "/tmp/ws")
       expect(train.reload.state).not_to eq("grading")
     end
   end

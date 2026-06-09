@@ -15,12 +15,16 @@ retry_until(graders, repair: landing_fix) → merge_train_land`),
 Epic and keeps Epic children off the per-Job path when the flag is on.
 
 v1 deviations / deferred:
-- **Build uses merge-based integration** (`git merge --no-ff` each member
-  in topo order), not rebase. A clean merge is the fast path; on a
-  **textual** conflict the agent resolves it in the working tree and
-  Syrus completes the merge (`merge_train_build` is agentic). Only an
-  unresolvable conflict (or agent failure) fails the whole attempt.
-  Logical conflicts are still caught by the grade & fix loop.
+- **Build rebases each member onto the integration tip** in topo order.
+  The mechanical `git rebase` is always tried first — a member that only
+  needs to move forward or whose changes don't overlap replays cleanly
+  with no agent (git's patch-id detection skips already-integrated
+  commits, so stacked members replay only their own). Only when git stops
+  on a real conflict does the agent resolve it in the working tree and
+  Syrus continues the rebase (`merge_train_build` is agentic). An
+  unresolvable conflict (or agent failure) aborts and fails the whole
+  attempt; logical conflicts are still caught by the grade & fix loop.
+  (`git rerere` to reuse resolutions across retries is a planned follow-up.)
 - **Retry storm guard:** after a train fails,
   `MergeTrainDispatcher::RETRY_COOLDOWN` (30 min) blocks re-dispatch for
   that Epic, so a genuinely-stuck Epic surfaces for an operator instead
