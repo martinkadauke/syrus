@@ -219,4 +219,42 @@ RSpec.describe PollMergeStateJob do
 
     described_class.perform_now(external.id)
   end
+
+  describe "finalizing preempted Jobs whose external PR is terminal" do
+    def preempted_job(external_pr_number: 99)
+      job = Factories.job(user: user, repository: repository, pr_number: nil)
+      job.update!(state: "closed", closure_reason: "preempted",
+                  external_pr_number: external_pr_number, finished_at: Time.current)
+      job.workflows.update_all(state: "succeeded")
+      job
+    end
+
+    it "finalizes to external_pr_merged and stops bumping mergeability when the external PR merged" do
+      preempted = preempted_job
+      allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(merged: true, state: "closed"))
+
+      described_class.perform_now(preempted.id)
+
+      expect(preempted.reload.closure_reason).to eq("external_pr_merged")
+      expect(preempted.pr_mergeable_checked_at).to be_nil # persist_mergeability skipped
+    end
+
+    it "finalizes to external_pr_closed when the external PR was closed unmerged" do
+      preempted = preempted_job
+      allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(merged: false, state: "closed"))
+
+      described_class.perform_now(preempted.id)
+
+      expect(preempted.reload.closure_reason).to eq("external_pr_closed")
+    end
+
+    it "leaves a preempted Job alone while its external PR is still open" do
+      preempted = preempted_job
+      allow_any_instance_of(GithubClient).to receive(:pull_request).and_return(pr(merged: false, state: "open"))
+
+      described_class.perform_now(preempted.id)
+
+      expect(preempted.reload.closure_reason).to eq("preempted")
+    end
+  end
 end

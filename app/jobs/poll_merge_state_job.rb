@@ -21,6 +21,16 @@ class PollMergeStateJob < ApplicationJob
 
     @client = GithubClient.for(repository: @job.repository, user: @job.user)
     @pr = @client.pull_request(@job.repository.slug, pr_number, bypass_cache: false)
+
+    # A preempted Job tracks an external PR only to keep it rebased while
+    # that PR is open. Once the external PR reaches a terminal state,
+    # finalize the Job so PollAllMergeStatesJob stops re-selecting it —
+    # otherwise it re-fetches the PR and bumps the Job (via
+    # persist_mergeability) every poll forever, surfacing long-closed
+    # work as "recent activity". (PollExternalPrJob does this for *open*
+    # Jobs; closed-preempted Jobs only flow through here.)
+    return if finalize_terminal_external_pr(@pr)
+
     persist_mergeability(@pr)
 
     return if @pr.merged
@@ -39,6 +49,24 @@ class PollMergeStateJob < ApplicationJob
 
   def persist_mergeability(pr)
     MergeabilityRecorder.record_github!(job: @job, pr: pr)
+  end
+
+  # Finalize a preempted Job whose tracked external PR has merged or
+  # closed, retiring it from the polling scope. Returns true when it acted.
+  def finalize_terminal_external_pr(pr)
+    return false unless @job.closed? && @job.closure_reason == "preempted"
+    return false if @job.external_pr_number.blank?
+
+    if pr.merged
+      @job.update!(closure_reason: "external_pr_merged")
+    elsif pr.state == "closed"
+      @job.update!(closure_reason: "external_pr_closed")
+    else
+      return false
+    end
+
+    Rails.logger.info("[PollMergeStateJob] finalized preempted job #{@job.id}: external PR ##{@job.external_pr_number} -> #{@job.closure_reason}")
+    true
   end
 
   def mergeable_state
