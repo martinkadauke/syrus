@@ -80,7 +80,7 @@ RSpec.describe "Steps::MergeTrain*" do
       expect(train.integration_sha).to eq("intsha999")
     end
 
-    it "hands the in-progress rebase to the agent on conflict, then verifies and integrates" do
+    it "hands the in-progress rebase to the agent on conflict, then verifies by end-state and integrates" do
       a = member_job(issue_number: 1)
       train = build_train([ a ])
       handler = step_handler(described_class, "merge_train_build", train, a)
@@ -88,26 +88,21 @@ RSpec.describe "Steps::MergeTrain*" do
       allow(git).to receive(:run)
         .with("rebase", train.integration_branch, chdir: "/tmp/ws")
         .and_raise(GitRunner::GitError.new([ "rebase" ], 1, "CONFLICT (content)"))
-      # REBASE_HEAD present when the conflict is detected, gone after the
-      # agent completes the rebase.
-      rebase_head_calls = 0
-      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "REBASE_HEAD", chdir: "/tmp/ws") do
-        rebase_head_calls += 1
-        raise GitRunner::GitError.new([ "rev-parse" ], 1, "") if rebase_head_calls >= 2
-        "rebasehead"
-      end
+      # Agent completed: checkout of the scratch branch succeeds, clean
+      # tree, integration is an ancestor (all default-stub success).
       allow(handler).to receive(:run_agent)
 
       handler.call
 
       expect(handler).to have_received(:run_agent).once
-      # Syrus does NOT run `git rebase --continue` itself.
-      expect(git).not_to have_received(:run).with("rebase", "--continue", chdir: "/tmp/ws")
+      # End-state verification, not rebase-internal refs.
+      expect(git).not_to have_received(:run).with("rev-parse", "-q", "--verify", "REBASE_HEAD", chdir: "/tmp/ws")
+      expect(git).to have_received(:run).with("checkout", "__mt_member_#{a.id}", chdir: "/tmp/ws")
       expect(git).to have_received(:run).with("merge-base", "--is-ancestor", train.integration_branch, "__mt_member_#{a.id}", chdir: "/tmp/ws")
       expect(train.reload.state).to eq("grading")
     end
 
-    it "fails (and aborts) when the agent leaves the rebase unfinished" do
+    it "fails (and aborts) when the rebase is still mid-flight (scratch checkout refused)" do
       a = member_job(issue_number: 1)
       train = build_train([ a ])
       handler = step_handler(described_class, "merge_train_build", train, a)
@@ -115,16 +110,17 @@ RSpec.describe "Steps::MergeTrain*" do
       allow(git).to receive(:run)
         .with("rebase", train.integration_branch, chdir: "/tmp/ws")
         .and_raise(GitRunner::GitError.new([ "rebase" ], 1, "CONFLICT (content)"))
-      # Still in progress after the agent runs.
-      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "REBASE_HEAD", chdir: "/tmp/ws").and_return("rebasehead")
+      allow(git).to receive(:run)
+        .with("checkout", "__mt_member_#{a.id}", chdir: "/tmp/ws")
+        .and_raise(GitRunner::GitError.new([ "checkout" ], 1, "rebase in progress"))
       allow(handler).to receive(:run_agent)
 
-      expect { handler.call }.to raise_error(Steps::Base::StepFailed, /did not finish the rebase/)
+      expect { handler.call }.to raise_error(Steps::Base::StepFailed, /was not completed/)
       expect(git).to have_received(:run).with("rebase", "--abort", chdir: "/tmp/ws")
       expect(train.reload.state).not_to eq("grading")
     end
 
-    it "fails when the agent rebased onto the wrong base (integration not an ancestor)" do
+    it "fails when the result was rebased onto the wrong base (integration not an ancestor)" do
       a = member_job(issue_number: 1)
       train = build_train([ a ])
       handler = step_handler(described_class, "merge_train_build", train, a)
@@ -132,12 +128,6 @@ RSpec.describe "Steps::MergeTrain*" do
       allow(git).to receive(:run)
         .with("rebase", train.integration_branch, chdir: "/tmp/ws")
         .and_raise(GitRunner::GitError.new([ "rebase" ], 1, "CONFLICT (content)"))
-      rebase_head_calls = 0
-      allow(git).to receive(:run).with("rev-parse", "-q", "--verify", "REBASE_HEAD", chdir: "/tmp/ws") do
-        rebase_head_calls += 1
-        raise GitRunner::GitError.new([ "rev-parse" ], 1, "") if rebase_head_calls >= 2
-        "rebasehead"
-      end
       allow(git).to receive(:run)
         .with("merge-base", "--is-ancestor", train.integration_branch, "__mt_member_#{a.id}", chdir: "/tmp/ws")
         .and_raise(GitRunner::GitError.new([ "merge-base" ], 1, "not an ancestor"))

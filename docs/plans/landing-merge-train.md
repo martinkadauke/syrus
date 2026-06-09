@@ -22,12 +22,17 @@ v1 deviations / deferred:
   commits, so stacked members replay only their own). Only when git stops
   on a real conflict does Syrus hand that in-progress rebase (already
   targeting the integration branch) to the agent in a single call to
-  resolve AND complete; Syrus then verifies the outcome deterministically
-  (rebase finished, worktree clean, integration branch is an ancestor)
-  and fast-forwards. The agent owns completion because it runs git
-  autonomously, so Syrus can't assume the rebase is still mid-flight
-  afterward. A failure to finish / wrong target / agent failure fails the
-  whole attempt; logical conflicts are still caught by the grade & fix loop.
+  resolve AND complete; Syrus then verifies the outcome by observable
+  end-state and fast-forwards. Verification does NOT use rebase-internal
+  refs (`REBASE_HEAD` persists after a rebase completes, so it can't tell
+  "still rebasing" from "done"): it checks out the scratch branch (git
+  refuses checkout while a rebase is mid-flight), requires a clean
+  worktree, and requires the integration branch to be an ancestor of the
+  result (catching a wrong-base rebase). The agent owns completion because
+  it runs git autonomously, so Syrus can't assume the rebase is still
+  mid-flight afterward. A failure to finish / wrong target / agent failure
+  fails the whole attempt; logical conflicts are still caught by the grade
+  & fix loop.
   (`git rerere` to reuse resolutions across retries is a planned follow-up.)
 - **Retry storm guard:** after a train fails,
   `MergeTrainDispatcher::RETRY_COOLDOWN` (30 min) blocks re-dispatch for
