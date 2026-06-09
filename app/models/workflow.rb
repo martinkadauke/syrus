@@ -169,7 +169,7 @@ class Workflow < ApplicationRecord
   # Skips for auto_merge so Workflow#start on auto_merge doesn't
   # spuriously try to transition an :approved Job to :running.
   def propagate_start_to_job!
-    return if trigger_kind == "auto_merge"
+    return if landing_workflow?
     return unless job.may_start_running?
 
     StateTransition.with_source("propagate") do
@@ -183,7 +183,7 @@ class Workflow < ApplicationRecord
   # auto_merge — that has its own fail_landing flow that returns
   # :landing → :implemented (RunJob#record_landing_failure!).
   def propagate_fail_to_job!
-    return if trigger_kind == "auto_merge"
+    return if landing_workflow?
     return unless job.may_mark_failed?
 
     StateTransition.with_source("propagate") do
@@ -211,7 +211,7 @@ class Workflow < ApplicationRecord
   #      because may_start_running? rejects :failed. Without the
   #      escape, the Job would silently stay :failed forever.
   def propagate_succeed_to_job!
-    return if trigger_kind == "auto_merge"
+    return if landing_workflow?
     return if job.implemented? || job.approved? || job.landing? || job.closed?
 
     StateTransition.with_source("propagate") do
@@ -233,7 +233,7 @@ class Workflow < ApplicationRecord
   # first returns it to :queued; start_running! then makes the
   # dashboard reflect that work is active again.
   def propagate_reopen_to_job!
-    return if trigger_kind == "auto_merge"
+    return if landing_workflow?
 
     StateTransition.with_source("propagate") do
       if job.failed? && job.may_retry_after_failure?
@@ -350,6 +350,17 @@ class Workflow < ApplicationRecord
 
   def trigger_kind_humanized
     trigger_kind.tr("_", " ")
+  end
+
+  # Landing-flow workflows own their Job's state through their own
+  # machinery (LandingQueueProcessor#start_landing!, the merge/land step,
+  # and the fail handler that reverts members), so the generic
+  # workflow→Job state propagation (propagate_*_to_job!) and the
+  # new-workflow auto-retry path must NOT touch the Job for them.
+  LANDING_TRIGGER_KINDS = %w[ auto_merge merge_train ].freeze
+
+  def landing_workflow?
+    LANDING_TRIGGER_KINDS.include?(trigger_kind)
   end
 
   private

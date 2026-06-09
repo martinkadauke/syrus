@@ -72,7 +72,7 @@ class AutoRetryScheduler
     workflow.retry_as_new_workflow_available? &&
       workflow.job.open? &&
       !workflow.job.any_active_run? &&
-      workflow.trigger_kind != "auto_merge"
+      !workflow.landing_workflow?
   end
 
   def retry_kind_for(run)

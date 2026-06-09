@@ -205,5 +205,30 @@ RSpec.describe "Steps::MergeTrain*" do
       expect(a.reload.state).to eq("approved")
       expect(train.reload.state).to eq("failed")
     end
+
+    # Regression: a failing merge_train workflow used to drive its tip
+    # Job (the workflow's job) to :failed via the generic
+    # propagate_fail_to_job!, so the tip needed a wasteful full Retry
+    # while the other members only needed re-approval. merge_train is now
+    # a landing workflow, so the fail handler is the sole authority and
+    # every member — tip included — lands on :implemented.
+    it "leaves the tip member :implemented (not :failed) when the whole workflow fails" do
+      a = member_job(issue_number: 1)
+      tip = member_job(issue_number: 2)
+      train = build_train([ a, tip ])
+      workflow = Workflow.create!(job: tip, trigger_kind: "merge_train",
+                                  artifacts: { "merge_train_id" => train.id })
+      Step.create!(workflow: workflow, kind: "merge_train_build", position: 0)
+      workflow.start!
+      workflow.save!
+      workflow.failure_reason = "merge_train: textual conflict integrating member"
+
+      workflow.fail!
+      workflow.save!
+
+      expect(tip.reload.state).to eq("implemented")
+      expect(a.reload.state).to eq("implemented")
+      expect(train.reload.state).to eq("failed")
+    end
   end
 end
