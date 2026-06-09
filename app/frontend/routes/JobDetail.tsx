@@ -896,7 +896,6 @@ function GradeGroup({ item, payload, command, numberLabel }: { item: GradeStepIt
       </button>
       {open ? (
         <div className="border-t border-violet-100 bg-violet-50/20 p-3">
-          {summaries.length > 0 ? <GradeSummaryTable summaries={summaries} /> : null}
           <div className="overflow-hidden rounded border border-violet-100 bg-white">
             {phases.map((phase, index) => (
               <StepCard
@@ -936,27 +935,46 @@ function GradeSummaryPills({ summaries }: { summaries: GradeSummary[] }) {
   )
 }
 
-function GradeSummaryTable({ summaries }: { summaries: GradeSummary[] }) {
+const GRADER_DESCRIPTION_LIMIT = 220
+
+// Compact, human-friendly view of a grader Step's details: whether it's
+// required, its description (collapsed with "Read more" when long), and the
+// command. The raw fields (output, log_path, exit_code, duration_s,
+// log_bytes, timeout_minutes) are intentionally hidden — the grade log
+// button on the run exposes the output.
+function GraderDetails({ details }: { details: Record<string, unknown> }) {
+  const [expanded, setExpanded] = useState(false)
+  const description = (stringValue(details.description) || "").replace(/\s+/g, " ").trim()
+  const command = (stringValue(details.command) || "").trim()
+  const required = booleanValue(details.required)
+  const isLong = description.length > GRADER_DESCRIPTION_LIMIT
+  const shownDescription = expanded || !isLong ? description : `${description.slice(0, GRADER_DESCRIPTION_LIMIT).trimEnd()}…`
+
   return (
-    <div className="mb-3 overflow-hidden rounded border border-violet-100 bg-white text-xs">
-      <div className="border-b border-violet-100 bg-white px-3 py-2 font-semibold uppercase text-gray-500">Grade summary</div>
-      <div className="divide-y divide-gray-100">
-        {summaries.map((summary) => (
-          <div className="grid items-center gap-2 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_7rem_6rem_6rem_6rem]" key={summary.name}>
-            <div className="min-w-0">
-              <div className="truncate font-medium text-gray-900">{summary.name}</div>
-              <div className="text-gray-500">{summary.required === false ? "optional" : "required"}</div>
-            </div>
-            <StatusPill state={summary.status} />
-            <div className="text-gray-600">{summary.exitCode === null ? "-" : `exit ${summary.exitCode}`}</div>
-            <div className="text-gray-600">{summary.duration === null ? "-" : `${summary.duration.toFixed(1)}s`}</div>
-            <div className="text-gray-600">{summary.logBytes === null ? "-" : formatBytes(summary.logBytes)}</div>
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-gray-100 px-3 py-2 text-gray-500">
-        Open an individual grader below to view raw logs.
-      </div>
+    <div className="mt-2 space-y-2 text-xs">
+      <SmallPill>{required === false ? "optional" : "required"}</SmallPill>
+      {description ? (
+        <p className="text-gray-700">
+          {shownDescription}
+          {isLong ? (
+            <button
+              className="ml-1 font-medium text-blue-600 hover:text-blue-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              onClick={() => setExpanded((current) => !current)}
+              type="button"
+            >
+              {expanded ? "Read less" : "Read more"}
+            </button>
+          ) : null}
+        </p>
+      ) : (
+        <p className="italic text-gray-400">No description.</p>
+      )}
+      {command ? (
+        <div>
+          <div className="mb-1 font-medium uppercase tracking-wide text-gray-400">Command</div>
+          <pre className="overflow-x-auto rounded bg-white p-2 font-mono text-[11px] text-gray-700">{command}</pre>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -1002,7 +1020,11 @@ function StepCard({ step, payload, command, numberLabel, displayName, metadataLa
             </div>
           ) : null}
           {prepareFailure ? <PrepareFailurePanel failure={prepareFailure} /> : null}
-          {step.details && !prepareFailure ? <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs text-gray-600">{stringify(step.details)}</pre> : null}
+          {step.details && !prepareFailure ? (
+            step.kind === "grader"
+              ? <GraderDetails details={objectDetails(step.details)} />
+              : <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs text-gray-600">{stringify(step.details)}</pre>
+          ) : null}
           {runs.length > 0 ? (
             <div className="mt-3 space-y-2">
               {runs.map((run) => <RunRow active={activeRun?.id === run.id} command={command} key={run.id} payload={payload} run={run} />)}

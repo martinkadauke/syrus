@@ -6334,7 +6334,7 @@ describe("App", () => {
                 loop_id: "grade-loop",
                 iteration: 1,
                 state: "failed",
-                details: { name: "rspec", required: true, exit_code: 1, duration_s: 2.4, log_bytes: 2048 }
+                details: { name: "rspec", required: true, exit_code: 1, duration_s: 2.4, log_bytes: 2048, description: "Full RSpec suite.", command: "bin/rspec" }
               }),
               step({ id: 64, kind: "grader_collect", display_name: "Aggregate graders", display_status: "failed", position: 3, loop_id: "grade-loop", iteration: 1, state: "failed" }),
               step({ id: 65, kind: "push", display_name: "Push", display_status: null, position: 4, state: "queued" })
@@ -6363,15 +6363,20 @@ describe("App", () => {
 
     fireEvent.click(grade)
 
-    expect(screen.getByText("Grade summary")).toBeInTheDocument()
-    expect(screen.getByText("required")).toBeInTheDocument()
-    expect(screen.getByText("exit 1")).toBeInTheDocument()
-    expect(screen.getByText("2.4s")).toBeInTheDocument()
-    expect(screen.getByText("2.0 KB")).toBeInTheDocument()
-    expect(screen.getByText("Open an individual grader below to view raw logs.")).toBeInTheDocument()
+    // The redundant "Grade summary" table is gone; the per-grader phase
+    // cards remain.
+    expect(screen.queryByText("Grade summary")).not.toBeInTheDocument()
+    expect(screen.queryByText("Open an individual grader below to view raw logs.")).not.toBeInTheDocument()
+    expect(screen.queryByText("exit 1")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Setup/i })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /rspec/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /Result/i })).toBeInTheDocument()
+
+    // Expanding a grader shows the compact details (no raw JSON).
+    fireEvent.click(screen.getByRole("button", { name: /rspec/i }))
+    expect(screen.getByText("required")).toBeInTheDocument()
+    expect(screen.getByText("Full RSpec suite.")).toBeInTheDocument()
+    expect(screen.getByText("bin/rspec")).toBeInTheDocument()
+    expect(screen.queryByText(/"log_bytes"/)).not.toBeInTheDocument()
   })
 
   it("groups repeated loop iterations on the workflows tab", async () => {
