@@ -68,6 +68,11 @@ the in-flight turn instead of crashing the CLI process. Unlike the admin
 REST endpoints above, chat streaming accepts the owning user's API token
 for chats that user can access.
 
+From a local checkout whose `origin` remote matches the Job's repository,
+use `syrus checkout JOB-456` to fetch and check out the Job branch. If the
+Job has not created a branch yet, the CLI exits with a clear state-specific
+message instead of changing the checkout.
+
 ## Create a Direct Job
 
 `POST /api/v1/admin/jobs` creates a direct Job and starts the normal
