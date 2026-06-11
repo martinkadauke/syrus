@@ -141,6 +141,12 @@ syrus epic search "launch"
 syrus epic show 12
 syrus epic create
 syrus epic open 12
+
+syrus schedule list
+syrus schedule create
+syrus schedule show 42
+syrus schedule delete 42
+syrus schedule run 42
 ```
 
 `job log` pages completed transcripts through `$PAGER` and streams
@@ -158,6 +164,11 @@ prompts for a title and multi-line description, defaults to the current
 GitHub checkout's repository, and accepts `--repo owner/name` and `--yes`.
 `job checkout` verifies the current checkout matches the Job repository,
 fetches the Syrus branch from `origin`, and checks it out locally.
+
+Schedule commands use the app scheduled-task API with the same API token.
+`schedule list` scopes to the current checkout when possible and otherwise
+shows all schedules. `schedule create` must run from a configured repository
+checkout because scheduled tasks are repository-owned.
 
 ## Create a Direct Job
 
