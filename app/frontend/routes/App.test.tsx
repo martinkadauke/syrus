@@ -6224,12 +6224,43 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(screen.queryByText("Active run #10")).not.toBeInTheDocument()
+    expect(screen.queryByText(/Run #10 is running/)).not.toBeInTheDocument()
     fireEvent.click(await screen.findByRole("button", { name: /Implement/i }))
-    expect(await screen.findByText("Active run #10")).toBeInTheDocument()
-    expect(screen.getByText("is running")).toBeInTheDocument()
+    expect(await screen.findByText(/Run #10 is running/)).toBeInTheDocument()
     expect(screen.getByText("step failed")).toBeInTheDocument()
     expect(screen.getByText("Run #10").compareDocumentPosition(screen.getByText("Run #9"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING)
+  })
+
+  it("shows a queued run as waiting for a worker, not a hang", async () => {
+    const base = jobDetailPayload()
+    const workflow = base.workflows[0]
+    const step = workflow.steps[0] as JobStep
+    const queuedRun = {
+      ...step.runs[0],
+      id: 30,
+      state: "queued",
+      started_at: null,
+      finished_at: null,
+      created_at: "2026-05-30T10:00:00Z",
+      updated_at: "2026-05-30T10:00:00Z"
+    }
+    vi.spyOn(window, "fetch").mockImplementation(() =>
+      Promise.resolve(new Response(JSON.stringify(jobDetailPayload({
+        job: { state: "open", summary_state: "running", any_active_run: true },
+        workflows: [ { ...workflow, state: "running", finished_at: null, steps: [ { ...step, state: "queued", display_status: "queued", finished_at: null, runs: [queuedRun] } ] } ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } })))
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/jobs/42?tab=workflows"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    fireEvent.click(await screen.findByRole("button", { name: /Implement/i }))
+    expect(await screen.findByText(/Run #30 is waiting for a worker/)).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /pending queue/i })).toHaveAttribute("href", "/app-shell/admin/queue/pending")
   })
 
   it("renders prepare failures as setup failures on the workflows tab", async () => {

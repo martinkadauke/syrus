@@ -1012,13 +1012,7 @@ function StepCard({ step, payload, command, numberLabel, displayName, metadataLa
             {step.latest ? <SmallPill>latest</SmallPill> : null}
             <span>{formatDate(step.started_at || step.created_at)}</span>
           </div>
-          {activeRun ? (
-            <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-              <span className="font-semibold">Active run #{activeRun.id}</span>
-              <span> is {activeRun.state.replaceAll("_", " ")}</span>
-              <span> since {formatDate(activeRun.started_at || activeRun.created_at)}</span>
-            </div>
-          ) : null}
+          {activeRun ? <ActiveRunBanner run={activeRun} /> : null}
           {prepareFailure ? <PrepareFailurePanel failure={prepareFailure} /> : null}
           {step.details && !prepareFailure ? (
             step.kind === "grader"
@@ -1976,6 +1970,59 @@ function runSortTime(run: JobRun) {
 
 function isActiveState(state: string) {
   return state === "queued" || state === "running"
+}
+
+// Live wall-clock, ticking every second while `active`. Used so a
+// queued/running Run's elapsed time updates in place.
+function useNow(active: boolean) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (!active) return undefined
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [active])
+  return now
+}
+
+function formatElapsed(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds))
+  if (total < 60) return `${total}s`
+  const minutes = Math.floor(total / 60)
+  if (minutes < 60) return `${minutes}m ${total % 60}s`
+  const hours = Math.floor(minutes / 60)
+  return `${hours}h ${minutes % 60}m`
+}
+
+// A queued Run hasn't started_at yet — it's waiting for a free worker in
+// the SolidQueue pool, NOT "starting the agent". Surface that honestly
+// (with how long it's been waiting) so a capacity wait doesn't read as a
+// hung job; a running Run shows how long it's been going.
+function ActiveRunBanner({ run }: { run: JobRun }) {
+  const location = useLocation()
+  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
+  const queued = run.state === "queued" || !run.started_at
+  const now = useNow(true)
+  const sinceIso = queued ? run.created_at : run.started_at
+  const elapsed = sinceIso ? formatElapsed((now - new Date(sinceIso).getTime()) / 1000) : null
+
+  if (queued) {
+    return (
+      <div className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <span className="font-semibold">Run #{run.id} is waiting for a worker{elapsed ? ` · queued ${elapsed}` : ""}</span>
+        <span className="mt-1 block text-amber-700">
+          The run-worker pool is busy — this run starts as soon as a slot frees up, it is not stuck. Check the{" "}
+          <Link className="underline hover:text-amber-900" to={withRoutePrefix("/admin/queue/pending", prefix)}>pending queue</Link> for the backlog.
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+      <span className="font-semibold">Run #{run.id} is running{elapsed ? ` · ${elapsed}` : ""}</span>
+      <span> (since {formatDate(run.started_at)})</span>
+    </div>
+  )
 }
 
 function prepareFailureDetails(step: JobStep): PrepareFailure | null {
