@@ -99,6 +99,19 @@ On success the command prints `Approved JOB-456. Landing will begin shortly.`
 If Syrus rejects the approval, for example because the Job is not ready or
 auto-merge is disabled, the CLI prints the API error and exits non-zero.
 
+Use `syrus status` to list active Jobs across repositories:
+
+```bash
+syrus status
+syrus status --repo acme/widgets
+syrus status --closed
+```
+
+The command calls `GET /api/v1/admin/jobs?state=open` by default and prints
+a compact 80-column table with Job ID, repository, title, state, and PR
+number. Terminals with color support highlight running, implemented,
+approved, failed, and queued states.
+
 ## Create a Direct Job
 
 `POST /api/v1/admin/jobs` creates a direct Job and starts the normal
