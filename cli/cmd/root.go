@@ -23,5 +23,6 @@ func NewRootCommand() *cobra.Command {
 	rootCmd.AddCommand(NewChatCommand())
 	rootCmd.AddCommand(NewCheckoutCommand())
 	rootCmd.AddCommand(NewTestPlanCommand())
+	rootCmd.AddCommand(NewApproveCommand())
 	return rootCmd
 }
