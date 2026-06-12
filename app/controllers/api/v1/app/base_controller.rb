@@ -1,10 +1,12 @@
 module Api
   module V1
     module App
-      # JSON API for the browser SPA and narrow CLI actions. Browser requests
-      # use the signed session cookie; CLI requests may use a bearer token.
+      # JSON API for the browser SPA and app-scoped CLI calls. Browser
+      # requests use session cookies; CLI requests may use bearer tokens.
       class BaseController < ApplicationController
-        include ActionController::HttpAuthentication::Token::ControllerMethods
+        TokenSession = Struct.new(:user, keyword_init: true) do
+          def destroy; end
+        end
 
         skip_before_action :compute_system_alerts
 
@@ -18,15 +20,18 @@ module Api
 
         private
 
-        def require_authentication
-          authenticate_via_api_token || super
+        def resume_session
+          super || resume_api_token_session
         end
 
-        def authenticate_via_api_token
-          authenticate_with_http_token do |token, _options|
-            user = User.find_by(api_token: token)
-            Current.api_user = user if user
-          end
+        def resume_api_token_session
+          token = request.authorization.to_s[/\ABearer\s+(.+)\z/i, 1]
+          return if token.blank?
+
+          user = User.find_by(api_token: token)
+          return unless user
+
+          Current.session = TokenSession.new(user: user)
         end
 
         def request_authentication

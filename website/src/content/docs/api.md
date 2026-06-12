@@ -18,8 +18,8 @@ tokens return a JSON `401` error.
 
 ## Command Line Client
 
-The repository includes a standalone Go CLI scaffold under `cli/`. It is
-separate from the Rails app and builds to a single `syrus` binary:
+The repository includes a standalone Go CLI under `cli/`. It is separate
+from the Rails app and builds to a single `syrus` binary:
 
 ```bash
 cd cli
@@ -112,6 +112,78 @@ a compact 80-column table with Job ID, repository, title, state, and PR
 number. Terminals with color support highlight running, implemented,
 approved, failed, and queued states.
 
+Read-only inspect commands use the app-scoped API and work with the
+configured user's own Jobs, Epics, and repositories. When run inside a
+GitHub checkout, list/search commands scope to that repository's
+`owner/name`; outside a checkout they fall back to all repositories the
+user can see, except `job create` which requires `--repo` outside a checkout.
+
+```bash
+syrus whoami
+syrus repo list
+syrus inbox
+syrus inbox --watch
+syrus inbox --repo tkadauke/myapp
+
+syrus job list --state open --limit 20
+syrus job search "dark mode"
+syrus job show 456
+syrus job log 456
+syrus job watch 456
+syrus job diff 456
+syrus job create
+syrus job approve 456
+syrus job cancel 456
+syrus job retry 456
+syrus job rebase 456
+syrus job checkout 456
+syrus job test-plan 456
+syrus job open 456
+
+syrus epic list
+syrus epic search "launch"
+syrus epic show 12
+syrus epic create
+syrus epic open 12
+
+syrus schedule list
+syrus schedule create
+syrus schedule show 42
+syrus schedule delete 42
+syrus schedule run 42
+```
+
+`job log` pages completed transcripts through `$PAGER` and streams
+running transcripts until the Job finishes or the command is interrupted.
+`job diff` fetches the pull request diff through Syrus' GitHub credential;
+if no GitHub token is available, it prints the pull request URL instead.
+`epic create` must run inside a GitHub checkout. It prompts for a title and
+multi-line description, confirms the current repository, creates the Epic
+through the app API as the configured user, then prints the Epic ID and URL.
+Use `--yes` to skip the confirmation prompt. `epic open EPIC-ID` opens the
+Epic URL for the configured Syrus instance in the default browser.
+
+`inbox` opens an interactive terminal view for Jobs that need operator
+attention: `implemented` Jobs awaiting approval and `failed` Jobs awaiting
+retry. It scopes to the current GitHub checkout when possible, accepts
+`--repo owner/name` as an override, and falls back to all visible
+repositories outside a checkout. The TUI can approve implemented Jobs,
+retry failed Jobs, open PRs, checkout branches from the matching local repo,
+and page diffs or logs through `$PAGER`. With `--watch`, an empty inbox
+stays open and refreshes every 30 seconds.
+
+Action commands use the app API with the same bearer token. `job create`
+prompts for a title and multi-line description, defaults to the current
+GitHub checkout's repository, and accepts `--repo owner/name` and `--yes`.
+`job checkout` verifies the current checkout matches the Job repository,
+fetches the Syrus branch from `origin`, and checks it out locally.
+
+The standalone Go CLI schedule commands use the app scheduled-task API with
+the same API token.
+`schedule list` scopes to the current checkout when possible and otherwise
+shows all schedules. `schedule create` must run from a configured repository
+checkout because scheduled tasks are repository-owned.
+
 ## Create a Direct Job
 
 `POST /api/v1/admin/jobs` creates a direct Job and starts the normal
@@ -159,3 +231,19 @@ curl -X POST https://syrus.example.com/api/v1/admin/epics \
 
 Optional fields are `github_issue_url`, `owner_user_id`, and
 `auto_approve_mode`.
+
+User-scoped clients can also create Epics through the app API with any
+user API token:
+
+```bash
+curl -X POST https://syrus.example.com/api/v1/app/epics \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "epic": {
+      "repository_id": 123,
+      "title": "Documentation cleanup",
+      "description": "Group the docs polish work."
+    }
+  }'
+```

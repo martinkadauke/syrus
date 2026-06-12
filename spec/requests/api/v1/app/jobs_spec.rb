@@ -37,6 +37,48 @@ RSpec.describe "App API job detail", type: :request do
     path.write(contents)
   end
 
+  it "lists jobs for bearer-token CLI clients without admin access" do
+    user.update!(api_token: "syrus_cli_token", admin: false)
+    job
+    Factories.job(repository: Factories.repository(user: Factories.user, owner: "other", name: "repo"), issue_title: "Private")
+
+    get "/api/v1/app/jobs", params: { repo: "acme/widgets", state: "all", limit: 5 },
+      headers: { "Authorization" => "Bearer syrus_cli_token" }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["jobs"]).to contain_exactly(include(
+      "id" => job.id,
+      "title" => "Repair aqueduct",
+      "issue_title" => "Repair aqueduct",
+      "repository_slug" => "acme/widgets",
+      "branch_name" => "syrus/issue-42",
+      "pr_number" => 7
+    ))
+    expect(body.to_s).not_to include("Private")
+  end
+
+  it "returns the latest run transcript for CLI clients" do
+    user.update!(api_token: "syrus_cli_token")
+    run = job.initial_run
+    run.start!
+    run.succeed!
+    run.save!
+    run.job_logs.create!(sequence: 0, kind: "stdout", chunk: "digging trench")
+    run.job_logs.create!(sequence: 1, kind: "stdout", chunk: "water flows")
+
+    get "/api/v1/app/jobs/#{job.id}/transcript", headers: { "Authorization" => "Bearer syrus_cli_token" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include(
+      "job_id" => job.id,
+      "run_id" => run.id,
+      "state" => "succeeded",
+      "complete" => true,
+      "lines" => [ "digging trench", "water flows" ]
+    )
+  end
+
   it "returns a structured job detail payload for React rendering" do
     user.update!(admin: false)
     owner = Factories.user(email_address: "owner@example.com")
