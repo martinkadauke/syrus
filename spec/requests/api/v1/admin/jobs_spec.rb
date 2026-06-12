@@ -162,6 +162,10 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       # the implement step with a succeeded Run + captured agent session so
       # the assertions below match real production-shape data.
       wf = job.workflows.last
+      wf.set_artifact!("test_plan", {
+        steps: [ "Run bin/rspec spec/services/steps/test_plan_spec.rb" ],
+        notes: "Verify admin payload exposure."
+      })
       implement = wf.steps.find_by(kind: "implement")
       run = implement.runs.create!(job: job, trigger_kind: "initial",
                                    agent_provider: "codex",
@@ -215,6 +219,10 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       wf = body["workflows"].first
       expect(wf["trigger_kind"]).to eq("initial")
       expect(wf["state"]).to eq("succeeded")
+      expect(wf["artifacts"]["test_plan"]).to eq(
+        "steps" => [ "Run bin/rspec spec/services/steps/test_plan_spec.rb" ],
+        "notes" => "Verify admin payload exposure."
+      )
       expect(wf["cleaned_up_at"]).to be_present
       expect(wf["retry_available"]).to be false  # cleaned up
       expect(wf["created_at"]).to be_present
@@ -398,7 +406,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       row = parse_body["jobs"].first
       expect(row).to include(
         "id", "state", "kind", "credential_mode", "agent_provider", "repository",
-        "issue_number", "pr_number", "branch_name", "pr_mergeable",
+        "issue_number", "issue_title", "pr_number", "branch_name", "pr_mergeable",
         "pr_mergeable_checked_at", "github_mergeable", "github_mergeable_state",
         "mergeability_head_sha", "mergeability_base_sha", "mergeability_base_ref",
         "mergeability_checked_at", "local_mergeable", "local_mergeable_state",
@@ -407,6 +415,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
         "last_feedback_addressed_at", "last_ci_handled_sha"
       )
       expect(row["repository"]).to eq("acme/widgets")
+      expect(row["issue_title"]).to eq(job_124.issue_title)
       expect(row["agent_provider"]).to eq(job_124.agent_provider)
       expect(row).not_to have_key("workflows")
     end

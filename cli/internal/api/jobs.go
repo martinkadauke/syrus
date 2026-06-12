@@ -8,11 +8,29 @@ import (
 )
 
 type JobList struct {
-	Count int             `json:"count"`
-	Jobs  json.RawMessage `json:"jobs"`
+	Count int   `json:"count"`
+	Jobs  []Job `json:"jobs"`
+}
+
+type Job struct {
+	ID          int64  `json:"id"`
+	Repository  string `json:"repository"`
+	IssueTitle  string `json:"issue_title"`
+	State       string `json:"state"`
+	PRNumber    *int64 `json:"pr_number"`
+	IssueNumber *int64 `json:"issue_number"`
 }
 
 type JobResponse json.RawMessage
+
+type JobDetail struct {
+	ID         int    `json:"id"`
+	State      string `json:"state"`
+	BranchName string `json:"branch_name"`
+	Repository struct {
+		Slug string `json:"slug"`
+	} `json:"repository"`
+}
 
 type CreateJobRequest struct {
 	Job CreateJobParams `json:"job"`
@@ -45,8 +63,18 @@ func (c *Client) GetJob(ctx context.Context, id string) (JobResponse, error) {
 	return JobResponse(out), err
 }
 
+func (c *Client) GetJobDetail(ctx context.Context, id string) (JobDetail, error) {
+	var out JobDetail
+	err := c.do(ctx, http.MethodGet, "/api/v1/admin/jobs/"+url.PathEscape(id), nil, &out)
+	return out, err
+}
+
 func (c *Client) CreateDirectJob(ctx context.Context, params CreateJobParams) (JobResponse, error) {
 	var out json.RawMessage
 	err := c.do(ctx, http.MethodPost, "/api/v1/admin/jobs", CreateJobRequest{Job: params}, &out)
 	return JobResponse(out), err
+}
+
+func (c *Client) ApproveJob(ctx context.Context, id string) error {
+	return c.do(ctx, http.MethodPost, "/api/v1/app/jobs/"+url.PathEscape(id)+"/approve", nil, nil)
 }

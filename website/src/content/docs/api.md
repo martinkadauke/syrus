@@ -68,6 +68,50 @@ the in-flight turn instead of crashing the CLI process. Unlike the admin
 REST endpoints above, chat streaming accepts the owning user's API token
 for chats that user can access.
 
+From a local checkout whose `origin` remote matches the Job's repository,
+use `syrus checkout JOB-456` to fetch and check out the Job branch. If the
+Job has not created a branch yet, the CLI exits with a clear state-specific
+message instead of changing the checkout.
+
+## Print a Job Test Plan
+
+`syrus test-plan JOB-456` fetches `GET /api/v1/admin/jobs/456`
+and prints the newest completed workflow's `test_plan` artifact as a
+numbered checklist, followed by notes when present.
+
+Run `syrus login` first with an admin user's API token, then ask for the
+plan:
+
+```bash
+syrus test-plan JOB-456
+```
+
+If no completed workflow has published a test plan yet, the command says
+the plan is not available and that the Job may still be implementing.
+
+After reviewing and testing a Job locally, approve it from the terminal:
+
+```bash
+syrus approve JOB-456
+```
+
+On success the command prints `Approved JOB-456. Landing will begin shortly.`
+If Syrus rejects the approval, for example because the Job is not ready or
+auto-merge is disabled, the CLI prints the API error and exits non-zero.
+
+Use `syrus status` to list active Jobs across repositories:
+
+```bash
+syrus status
+syrus status --repo acme/widgets
+syrus status --closed
+```
+
+The command calls `GET /api/v1/admin/jobs?state=open` by default and prints
+a compact 80-column table with Job ID, repository, title, state, and PR
+number. Terminals with color support highlight running, implemented,
+approved, failed, and queued states.
+
 ## Create a Direct Job
 
 `POST /api/v1/admin/jobs` creates a direct Job and starts the normal
