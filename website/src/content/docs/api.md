@@ -165,7 +165,8 @@ GitHub checkout's repository, and accepts `--repo owner/name` and `--yes`.
 `job checkout` verifies the current checkout matches the Job repository,
 fetches the Syrus branch from `origin`, and checks it out locally.
 
-Schedule commands use the app scheduled-task API with the same API token.
+The standalone Go CLI schedule commands use the app scheduled-task API with
+the same API token.
 `schedule list` scopes to the current checkout when possible and otherwise
 shows all schedules. `schedule create` must run from a configured repository
 checkout because scheduled tasks are repository-owned.
