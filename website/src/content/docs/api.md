@@ -139,8 +139,6 @@ syrus job open 456
 syrus epic list
 syrus epic search "launch"
 syrus epic show 12
-syrus epic create
-syrus epic open 12
 ```
 
 `job log` pages completed transcripts through `$PAGER` and streams
@@ -153,13 +151,6 @@ prompts for a title and multi-line description, defaults to the current
 GitHub checkout's repository, and accepts `--repo owner/name` and `--yes`.
 `job checkout` verifies the current checkout matches the Job repository,
 fetches the Syrus branch from `origin`, and checks it out locally.
-
-`epic create` runs from a GitHub checkout, prompts for a title and
-multi-line description, confirms the current repository, creates the Epic,
-and prints the Epic ID plus app URL. It uses the app API as the configured
-user, so the current repository must be attached to that account. Use
-`--yes` to skip the confirmation prompt. `epic open EPIC-ID` opens the Epic
-URL for the configured Syrus instance in the default browser.
 
 ## Create a Direct Job
 
