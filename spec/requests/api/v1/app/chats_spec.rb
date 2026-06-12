@@ -15,6 +15,16 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body.dig("error", "code")).to eq("unauthorized")
   end
 
+  it "accepts bearer-token authentication for CLI app API access" do
+    user.update!(api_token: "cli-token")
+    repository
+
+    get "/api/v1/app/chats/new", headers: { "Authorization" => "Bearer cli-token" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body["repositories"]).to contain_exactly(include("id" => repository.id, "slug" => "acme/widgets"))
+  end
+
   it "returns the new chat form payload with active repositories" do
     sign_in_as(user)
     repository
@@ -29,6 +39,41 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body.to_s).not_to include("old/repo")
     expect(parse_body.to_s).not_to include("other/private")
     expect(parse_body["repositories_path"]).to eq(repositories_path)
+  end
+
+  it "lists recent chats and active repositories for CLI session picking" do
+    sign_in_as(user)
+    repository
+    other_repo = Factories.repository(user: user, owner: "acme", name: "api")
+    current_chat = ChatSession.create!(
+      user: user,
+      repository: repository,
+      title: "Planning open source release",
+      last_message_at: 2.hours.ago
+    )
+    older_chat = ChatSession.create!(
+      user: user,
+      repository: other_repo,
+      title: "Auth refactor discussion",
+      last_message_at: 1.day.ago
+    )
+    ChatSession.create!(user: Factories.user, title: "Foreign chat", last_message_at: Time.current)
+
+    get "/api/v1/app/chats"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["repositories"]).to contain_exactly(
+      include("id" => repository.id, "slug" => "acme/widgets"),
+      include("id" => other_repo.id, "slug" => "acme/api")
+    )
+    expect(body["chats"].map { |chat| chat["id"] }).to eq([ current_chat.id, older_chat.id ])
+    expect(body["chats"].first).to include(
+      "title" => "Planning open source release",
+      "repository" => include("id" => repository.id, "slug" => "acme/widgets")
+    )
+    expect(body["chats"].first["last_message_at"]).to be_present
+    expect(body.to_s).not_to include("Foreign chat")
   end
 
   it "creates a fresh chat with an optional repository attachment" do
@@ -619,6 +664,28 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body["message"]).to eq("Message sent.")
     expect(parse_body["turn_in_flight"]).to eq(true)
     expect(parse_body["agent_busy"]).to eq(false)
+  end
+
+  it "streams a chat turn as server-sent events for CLI clients" do
+    user.update!(api_token: "cli-token")
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: 1.day.ago)
+    allow(ChatTurnJob).to receive(:perform_later) do |chat_id, _message_id|
+      ChatSession.find(chat_id).messages.create!(role: "assistant", content: { text: "Built **aqueducts**." })
+    end
+
+    post "/api/v1/app/chats/#{chat.id}/message",
+         params: { content: "Now inspect proposals" },
+         headers: {
+           "Authorization" => "Bearer cli-token",
+           "Accept" => "text/event-stream"
+         }
+
+    expect(response).to have_http_status(:ok)
+    expect(response.media_type).to eq("text/event-stream")
+    expect(response.body).to include("event: text_chunk")
+    expect(response.body).to include("Built **aqueducts**.")
+    expect(response.body).to include("event: turn_complete")
+    expect(chat.reload.messages.where(role: "user").last.content).to eq("text" => "Now inspect proposals")
   end
 
   it "uses the first user message for a delayed initial title" do
