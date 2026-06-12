@@ -29,7 +29,7 @@ module Steps
       @git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0", "GIT_EDITOR" => "true" })
       @integration = train.integration_branch.presence || "syrus/merge-train-epic-#{train.epic_id}-#{train.id}"
 
-      @git.run("fetch", "origin", train.base_branch, chdir: @chdir)
+      fetch_branch!(train.base_branch)
       @git.run("checkout", "-B", @integration, "FETCH_HEAD", chdir: @chdir)
       log("merge_train: integration branch #{@integration} started at #{train.base_branch}")
 
@@ -37,7 +37,7 @@ module Steps
         branch = member.branch_name
         raise StepFailed, "merge_train: member Job ##{member.id} has no branch" if branch.blank?
 
-        @git.run("fetch", "origin", branch, chdir: @chdir)
+        fetch_branch!(branch)
         integrate!(member, branch)
       end
 
@@ -49,6 +49,17 @@ module Steps
     end
 
     private
+
+    def fetch_branch!(branch)
+      @git.run("fetch", authenticated_url, "refs/heads/#{branch}", chdir: @chdir)
+    end
+
+    def authenticated_url
+      @authenticated_url ||= begin
+        token = GithubClient.for(repository: repository, user: job.user).access_token
+        repository.authenticated_push_url(token)
+      end
+    end
 
     # Replay the member's commits onto the integration tip on a scratch
     # branch, then fast-forward the integration branch to the result.

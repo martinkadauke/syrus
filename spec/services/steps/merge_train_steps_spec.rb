@@ -61,6 +61,16 @@ RSpec.describe "Steps::MergeTrain*" do
   end
 
   describe Steps::MergeTrainBuild do
+    let(:authenticated_fetch_url) { "https://token.example/acme/widgets.git" }
+
+    before do
+      client = instance_double(GithubClient, access_token: "ghs_train")
+      allow(GithubClient).to receive(:for).and_return(client)
+      allow_any_instance_of(Repository).to receive(:authenticated_push_url)
+        .with("ghs_train")
+        .and_return(authenticated_fetch_url)
+    end
+
     it "rebases each member onto the integration tip (mechanically) and marks the train grading" do
       a = member_job(issue_number: 1)
       b = member_job(issue_number: 2)
@@ -71,6 +81,10 @@ RSpec.describe "Steps::MergeTrain*" do
 
       handler.call
 
+      expect(git).to have_received(:run).with("fetch", authenticated_fetch_url, "refs/heads/master", chdir: "/tmp/ws")
+      expect(git).to have_received(:run).with("fetch", authenticated_fetch_url, "refs/heads/syrus/issue-1", chdir: "/tmp/ws")
+      expect(git).to have_received(:run).with("fetch", authenticated_fetch_url, "refs/heads/syrus/issue-2", chdir: "/tmp/ws")
+      expect(git).not_to have_received(:run).with("fetch", "origin", anything, any_args)
       expect(git).to have_received(:run).with("checkout", "-B", train.integration_branch, "FETCH_HEAD", chdir: "/tmp/ws")
       # Mechanical rebase per member; no agent on the clean path.
       expect(git).to have_received(:run).with("rebase", train.integration_branch, chdir: "/tmp/ws").twice
