@@ -29,7 +29,8 @@ module Steps
         comments: hydrate_comments(comments),
         cutoff: cutoff,
         prior_summaries: prior_pr_comment_summaries,
-        recent_commits: recent_branch_commits
+        recent_commits: recent_branch_commits,
+        epic: job.epic
       ).to_s
 
       return prompt unless run.iteration > 1

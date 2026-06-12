@@ -5,12 +5,19 @@ module Prompts
   # direct Jobs carry the operator's prompt as-is — just append the
   # standard safety and submit-summary footers.
   class DirectJob
-    def initialize(prompt:)
+    def initialize(prompt:, epic: nil)
       @prompt = prompt
+      @epic = epic
     end
 
     def to_s
-      [ @prompt.strip, GitSafety::TEXT, SubmitSummaryInstructions::TEXT ].join("\n\n")
+      [ @prompt.strip, epic_context, GitSafety::TEXT, SubmitSummaryInstructions::TEXT ].compact_blank.join("\n\n")
+    end
+
+    private
+
+    def epic_context
+      Prompts::EpicContext.new(epic: @epic).to_s
     end
   end
 end

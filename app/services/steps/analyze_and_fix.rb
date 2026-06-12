@@ -26,7 +26,8 @@ module Steps
         repo_slug: repository.slug,
         branch_name: job.branch_name,
         head_sha: head_sha,
-        failed_checks: failed
+        failed_checks: failed,
+        epic: job.epic
       ).to_s
     end
   end

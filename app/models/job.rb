@@ -745,7 +745,7 @@ class Job < ApplicationRecord
   # phase is now its own attemptable step.
   def create_initial_run
     workflow = Workflows::Initial.instantiate(job: self, agent_provider: agent_provider)
-    prompt = direct? ? Prompts::DirectJob.new(prompt: issue_body.to_s).to_s : nil
+    prompt = direct? ? Prompts::DirectJob.new(prompt: issue_body.to_s, epic: epic).to_s : nil
     StepDispatcher.start_workflow(workflow, prompt: prompt)
   end
 

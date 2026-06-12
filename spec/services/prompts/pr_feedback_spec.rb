@@ -75,6 +75,21 @@ RSpec.describe Prompts::PrFeedback do
     expect(out).to include("abc0000 Initial implementation")
   end
 
+  it "includes Epic context before the review thread when supplied" do
+    epic = instance_double(
+      Epic,
+      display_number: "EPIC-70",
+      title: "Syrus CLI and test planning",
+      description: "Keep follow-up work aligned with the CLI track."
+    )
+
+    out = described_class.new(issue: issue, comments: [ conversation ], epic: epic).to_s
+
+    expect(out).to include("EPIC-70: Syrus CLI and test planning")
+    expect(out).to include("Do not implement the entire Epic")
+    expect(out.index("EPIC-70")).to be < out.index("PR review thread")
+  end
+
   it "appends the submit_summary instruction so follow-up runs also volunteer PR copy" do
     out = described_class.new(issue: issue, comments: [ conversation ]).to_s
 

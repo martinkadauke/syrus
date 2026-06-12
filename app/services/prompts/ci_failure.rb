@@ -10,13 +10,14 @@ module Prompts
     MAX_SUMMARY_BYTES = 2_000
     MAX_ERROR_BLOCK_BYTES = 6_000
 
-    def initialize(issue:, pr_number:, repo_slug:, branch_name:, head_sha:, failed_checks:)
+    def initialize(issue:, pr_number:, repo_slug:, branch_name:, head_sha:, failed_checks:, epic: nil)
       @issue        = issue
       @pr_number    = pr_number
       @repo_slug    = repo_slug
       @branch_name  = branch_name
       @head_sha     = head_sha
       @failed_checks = failed_checks
+      @epic = epic
     end
 
     def to_s
@@ -28,6 +29,8 @@ module Prompts
 
         Body:
         #{@issue.body.to_s.strip.presence || '(empty)'}
+
+        #{epic_context}
 
         # Failing checks (#{@failed_checks.size} total, showing up to #{MAX_CHECKS})
         #{render_checks}
@@ -54,6 +57,10 @@ module Prompts
     end
 
     private
+
+    def epic_context
+      Prompts::EpicContext.new(epic: @epic).to_s
+    end
 
     def render_checks
       @failed_checks.first(MAX_CHECKS).map { |c| render_check(c) }.join("\n\n")

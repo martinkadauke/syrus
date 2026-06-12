@@ -36,6 +36,26 @@ RSpec.describe Prompts::DirectJob do
       expect(safety_pos).to be < summary_pos
     end
 
+    it "includes Epic context between the operator prompt and git safety when present" do
+      epic = instance_double(
+        Epic,
+        display_number: "EPIC-70",
+        title: "Syrus CLI and test planning",
+        description: "The Epic covers a Go CLI and a Rails test planning step."
+      )
+
+      out = described_class.new(prompt: "Implement the Go checkout command.", epic: epic).to_s
+
+      prompt_pos = out.index("Implement the Go checkout command.")
+      epic_pos = out.index("EPIC-70: Syrus CLI and test planning")
+      guard_pos = out.index("Do not implement the entire Epic")
+      safety_pos = out.index(Prompts::GitSafety::TEXT)
+
+      expect(prompt_pos).to be < epic_pos
+      expect(epic_pos).to be < safety_pos
+      expect(guard_pos).to be < safety_pos
+    end
+
     context "when the prompt is a skill invocation" do
       it "passes the skill slash-command through unchanged" do
         out = described_class.new(prompt: "/configure-syrus-prep").to_s

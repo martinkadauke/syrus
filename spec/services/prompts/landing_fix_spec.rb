@@ -20,4 +20,27 @@ RSpec.describe Prompts::LandingFix do
     expect(output).to include("If there is no concrete problem to fix, make no code changes.")
     expect(output).to include(Prompts::GitSafety::TEXT)
   end
+
+  it "includes Epic context before recent commits when supplied" do
+    issue = Struct.new(:title, :body).new("Keep dashboard honest", "Run the final checks after rebasing.")
+    epic = instance_double(
+      Epic,
+      display_number: "EPIC-70",
+      title: "Syrus CLI and test planning",
+      description: "Do not turn a final fix into a broader Epic implementation."
+    )
+
+    output = described_class.new(
+      issue: issue,
+      pr_number: 123,
+      repo_slug: "acme/widgets",
+      branch_name: "syrus/issue-42-9",
+      recent_commits: [ { sha: "abcdef123456", subject: "Fix dashboard state" } ],
+      epic: epic
+    ).to_s
+
+    expect(output).to include("EPIC-70: Syrus CLI and test planning")
+    expect(output).to include("Do not implement the entire Epic")
+    expect(output.index("EPIC-70")).to be < output.index("Recent commits")
+  end
 end

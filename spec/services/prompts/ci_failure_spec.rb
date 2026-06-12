@@ -36,6 +36,21 @@ RSpec.describe Prompts::CiFailure do
     expect(out).to match(/submit_summary/)
   end
 
+  it "includes Epic context before the failing checks when supplied" do
+    epic = instance_double(
+      Epic,
+      display_number: "EPIC-70",
+      title: "Syrus CLI and test planning",
+      description: "Keep repairs aligned with the current child Job."
+    )
+
+    out = build(epic: epic).to_s
+
+    expect(out).to include("EPIC-70: Syrus CLI and test planning")
+    expect(out).to include("Do not implement the entire Epic")
+    expect(out.index("EPIC-70")).to be < out.index("# Failing checks")
+  end
+
   it "shows '(no summary provided)' when GitHub omits a summary" do
     out = build(failed_checks: [ { name: "vague", conclusion: "failure", html_url: "u", summary: nil } ]).to_s
     expect(out).to include("(no summary provided)")

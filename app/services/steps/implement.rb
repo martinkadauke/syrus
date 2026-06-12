@@ -77,7 +77,7 @@ module Steps
     end
 
     def implement_prompt(issue:, issue_comments:, replay_context:)
-      prompt = Prompts::Implement.new(issue: issue, issue_comments: issue_comments, replay_context: replay_context).to_s
+      prompt = Prompts::Implement.new(issue: issue, issue_comments: issue_comments, replay_context: replay_context, epic: job.epic).to_s
       return prompt unless run.iteration > 1
 
       [

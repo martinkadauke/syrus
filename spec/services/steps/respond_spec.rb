@@ -60,6 +60,21 @@ RSpec.describe Steps::Respond do
     expect(run.prompt).not_to include("quality graders flagged issues")
   end
 
+  it "includes Epic context in the feedback prompt" do
+    epic = Factories.epic(
+      user: user,
+      repository: repository,
+      title: "Syrus CLI and test planning",
+      description: "Keep feedback fixes aligned with the current child Job."
+    )
+    job.update!(epic: epic)
+
+    handler.call
+
+    expect(run.reload.prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+    expect(run.prompt).to include("Do not implement the entire Epic")
+  end
+
   it "tags new comments with [NEW] when the artifact carries a feedback_cutoff" do
     cutoff = 1.minute.ago
     # one prior + one new

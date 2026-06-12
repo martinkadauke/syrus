@@ -22,7 +22,8 @@ module Steps
         pr_number: job.pr_number,
         repo_slug: repository.slug,
         branch_name: job.branch_name,
-        recent_commits: recent_branch_commits
+        recent_commits: recent_branch_commits,
+        epic: job.epic
       ).to_s
 
       return prompt unless run.iteration > 1

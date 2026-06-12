@@ -5,14 +5,22 @@ module Prompts
   # here once we have data from real runs about where the agent gets
   # stuck.
   class Initial
-    def initialize(issue:)
+    def initialize(issue:, epic: nil)
       @issue = issue
+      @epic = epic
     end
 
     def to_s
       [ "#{@issue.title}\n\n#{@issue.body}".strip,
+        epic_context,
         GitSafety::TEXT,
-        SubmitSummaryInstructions::TEXT ].join("\n\n")
+        SubmitSummaryInstructions::TEXT ].compact_blank.join("\n\n")
+    end
+
+    private
+
+    def epic_context
+      Prompts::EpicContext.new(epic: @epic).to_s
     end
   end
 end

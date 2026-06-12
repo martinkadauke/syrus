@@ -51,6 +51,21 @@ RSpec.describe Steps::AnalyzeAndFix do
     expect(run.prompt).to include("rspec")
   end
 
+  it "includes Epic context in the CI repair prompt" do
+    epic = Factories.epic(
+      user: user,
+      repository: repository,
+      title: "Syrus CLI and test planning",
+      description: "Keep repair work aligned with the current child Job."
+    )
+    job.update!(epic: epic)
+
+    handler.call
+
+    expect(run.reload.prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+    expect(run.prompt).to include("Do not implement the entire Epic")
+  end
+
   it "skips prompt rebuild when run.prompt is already set" do
     run.update!(prompt: "pre-set prompt content")
 

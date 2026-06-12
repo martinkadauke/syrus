@@ -427,6 +427,26 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       expect(job.runs.first.prompt).to eq(Prompts::DirectJob.new(prompt: "specific body").to_s)
     end
 
+    it "includes Epic context in direct child jobs' initial run prompt" do
+      epic = Factories.epic(
+        user: user,
+        repository: repository,
+        title: "Syrus CLI and test planning",
+        description: "The Epic combines a Rails workflow track with a Go CLI track.",
+        state: "in_progress"
+      )
+      job = Job.create!(user: user, repository: repository, epic: epic, kind: "direct",
+                        issue_number: nil, issue_title: "t", issue_body: "Build the Go checkout command.")
+
+      job.advance_after_triage!
+
+      prompt = job.runs.first.prompt
+      expect(prompt).to include("Build the Go checkout command.")
+      expect(prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+      expect(prompt).to include("Do not implement the entire Epic")
+      expect(prompt).to include("Implement only the Job described above")
+    end
+
     it "does not create a workflow for cron jobs (those are seeded by PollScheduledTasksJob)" do
       task = ScheduledTask.create!(
         user: user, repository: repository, kind: "one_shot",

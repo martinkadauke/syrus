@@ -42,6 +42,21 @@ RSpec.describe Steps::LandingFix do
     expect(run.prompt).to include("abcdef1 Fix dashboard state")
   end
 
+  it "includes Epic context in the landing fix prompt" do
+    epic = Factories.epic(
+      user: user,
+      repository: repository,
+      title: "Syrus CLI and test planning",
+      description: "Keep landing repairs scoped to the current child Job."
+    )
+    job.update!(epic: epic)
+
+    handler.call
+
+    expect(run.reload.prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+    expect(run.prompt).to include("Do not implement the entire Epic")
+  end
+
   it "appends grade failure feedback on later loop iterations" do
     workflow.set_artifact!("iterations", [
       [

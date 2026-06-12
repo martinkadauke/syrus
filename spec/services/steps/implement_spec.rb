@@ -58,6 +58,24 @@ RSpec.describe Steps::Implement do
       expect(run.reload.prompt).not_to include("Subsequent issue comments")
     end
 
+    it "includes Epic context without expanding the current Job scope" do
+      epic = Factories.epic(
+        user: job.user,
+        repository: job.repository,
+        title: "Syrus CLI and test planning",
+        description: "Track one builds the Rails planning step. Track two builds the Go CLI."
+      )
+      job.update!(epic: epic)
+
+      handler.call
+
+      prompt = run.reload.prompt
+      expect(prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+      expect(prompt).to include("Track one builds the Rails planning step")
+      expect(prompt).to include("Do not implement the entire Epic")
+      expect(prompt).to include("Implement only the Job described above")
+    end
+
     it "records initial issue comments and includes them in the implement prompt" do
       comments = [
         { "author" => "octavia", "body" => "The original scope is too broad; only update the API.", "created_at" => "2026-05-01T10:00:00Z" },

@@ -9,14 +9,16 @@ module Prompts
   class Implement
     SKILL_FILE = Rails.root.join(".claude/skills/implement/SKILL.md").freeze
 
-    def initialize(issue:, issue_comments: [], replay_context: nil)
+    def initialize(issue:, issue_comments: [], replay_context: nil, epic: nil)
       @issue = issue
       @issue_comments = issue_comments
       @replay_context = replay_context
+      @epic = epic
     end
 
     def to_s
       input = [ issue_context ]
+      input << epic_context if epic_context.present?
       input << comments_context if @issue_comments.present?
       input << "Additional context from the operator:\n\n#{@replay_context}" if @replay_context.present?
       SkillLoader.render(SKILL_FILE, input.join("\n\n"))
@@ -29,6 +31,10 @@ module Prompts
         "Issue title:\n\n#{@issue.title}",
         "Original issue body:\n\n#{@issue.body.presence || '(No issue body provided.)'}"
       ].join("\n\n")
+    end
+
+    def epic_context
+      @epic_context ||= Prompts::EpicContext.new(epic: @epic).to_s
     end
 
     def comments_context

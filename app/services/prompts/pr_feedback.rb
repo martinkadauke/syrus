@@ -17,17 +17,19 @@ module Prompts
   # can cross-reference what actually shipped against what was
   # promised in the prior summaries.
   class PrFeedback
-    def initialize(issue:, comments:, cutoff: nil, prior_summaries: [], recent_commits: [])
+    def initialize(issue:, comments:, cutoff: nil, prior_summaries: [], recent_commits: [], epic: nil)
       @issue = issue
       @comments = comments
       @cutoff = cutoff
       @prior_summaries = prior_summaries || []
       @recent_commits = recent_commits || []
+      @epic = epic
     end
 
     def to_s
       sections = [
         issue_section,
+        epic_context,
         prior_context_section,
         comments_section,
         commits_section,
@@ -46,6 +48,10 @@ module Prompts
 
         #{@issue.body}
       SECTION
+    end
+
+    def epic_context
+      Prompts::EpicContext.new(epic: @epic).to_s.presence
     end
 
     def prior_context_section
