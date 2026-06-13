@@ -487,7 +487,7 @@ RSpec.describe RunJob do
 
   # ----- Retry workflow ------------------------------------------
 
-  describe "Retry workflow (retry → implement → grade → summarize → pr_open)" do
+  describe "Retry workflow (retry → implement → grade → summarize → test_plan → pr_open)" do
     before do
       # Initial workflow first so retry reuses a real existing branch.
       job; drain_workflow!(job)
@@ -513,6 +513,8 @@ RSpec.describe RunJob do
             agent_pr_body: "Retries the greeting helper implementation.",
             agent_summary: "Retried implementation."
           )
+        when "test_plan"
+          current.workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
         end
         AgentInvocation::Result.new(turns: 4, exit_status: 0, timed_out: false, is_error: false,
                                     outcome: "success", final_text: nil, session_id: "I-#{current.iteration}",
@@ -531,6 +533,7 @@ RSpec.describe RunJob do
       ])
       expect(wf.steps.find_by(kind: "implement", iteration: 2).runs.first.parent_session_id).to eq("I-1")
       expect(wf.steps.find_by(kind: "summarize").runs.first).to be_succeeded
+      expect(wf.steps.find_by(kind: "test_plan").runs.first).to be_succeeded
       expect(wf.steps.find_by(kind: "pr_open").runs.first).to be_succeeded
     end
 

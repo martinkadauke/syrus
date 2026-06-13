@@ -8,6 +8,7 @@ module Workflows
     steps :prepare,
           Workflows::RetryUntil.new(repair: [ :implement ], check: [ :grader_fanout, :grader_collect ]),
           :summarize,
+          :test_plan,
           :pr_open
 
     def self.trigger_kind = "retry"
@@ -21,6 +22,7 @@ module Workflows
           check: [ :grader_fanout, :grader_collect ]
         ),
         "summarize",
+        "test_plan",
         "pr_open"
       ]
       prepare_skipped_for?(job) ? chain.reject { |node| node == "prepare" } : chain

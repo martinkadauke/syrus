@@ -65,7 +65,7 @@ RSpec.describe Workflows do
 
       wf = Workflows::Retry.instantiate(job: job)
 
-      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize pr_open ])
+      expect(wf.steps.pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect summarize test_plan pr_open ])
       expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ implement grader_fanout grader_collect ])
       expect(wf.trigger_kind).to eq("retry")
     end
