@@ -31,8 +31,9 @@ type inboxAPI interface {
 }
 
 type inboxOptions struct {
-	watch bool
-	repo  string
+	watch  bool
+	repo   string
+	appURL string
 }
 
 type inboxRefreshMsg struct {
@@ -92,14 +93,14 @@ func NewInboxCommand() *cobra.Command {
 		Use:   "inbox",
 		Short: "Review implemented and failed Syrus jobs",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, _, err := apiClient()
+			client, creds, err := apiClient()
 			if err != nil {
 				return err
 			}
 			if repo == "" {
 				repo = currentRepoSlug()
 			}
-			options := inboxOptions{watch: watch, repo: repo}
+			options := inboxOptions{watch: watch, repo: repo, appURL: creds.URL}
 			jobs, err := fetchInboxJobs(cmd.Context(), client, repo)
 			if err != nil {
 				return err
@@ -263,6 +264,12 @@ func (m inboxModel) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = fmt.Sprintf("Opened PR for JOB-%d", job.ID)
 			return m, tea.ExecProcess(openURLCommand(job.PRURL), nil)
 		}
+	case "s":
+		if job, ok := m.selectedJob(); ok {
+			m.markRead(job.ID, "open Syrus")
+			m.status = fmt.Sprintf("Opened Syrus page for JOB-%d", job.ID)
+			return m, tea.ExecProcess(openURLCommand(appURL(m.options.appURL, fmt.Sprintf("/jobs/%d", job.ID))), nil)
+		}
 	case "c":
 		if job, ok := m.selectedJob(); ok {
 			return m, checkoutJobCmd(m.client, job.ID)
@@ -421,9 +428,9 @@ func (m inboxModel) View() string {
 	if m.confirm != "" {
 		lines = append(lines, fmt.Sprintf("Confirm %s JOB-%d? y/N", m.confirm, m.pendingID))
 	} else if m.help {
-		lines = append(lines, "↑/↓ j/k navigate · enter details · a approve · o open PR · c checkout · d diff · l log · r retry · R refresh · ? help · q quit")
+		lines = append(lines, "↑/↓ j/k navigate · enter details · a approve · s open Syrus · o open PR · c checkout · d diff · l log · r retry · R refresh · ? help · q quit")
 	} else {
-		lines = append(lines, "a approve  o open PR  c checkout  d diff  l log  r retry  R refresh  ? help  q quit")
+		lines = append(lines, "a approve  s open Syrus  o open PR  c checkout  d diff  l log  r retry  R refresh  ? help  q quit")
 	}
 	if m.loading {
 		lines = append(lines, subtleStyle.Render("Refreshing..."))

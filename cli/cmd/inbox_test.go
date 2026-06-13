@@ -169,6 +169,24 @@ func TestInboxOpenPRMarksRowRead(t *testing.T) {
 	}
 }
 
+func TestInboxOpenSyrusMarksRowRead(t *testing.T) {
+	model := newInboxModel(&fakeInboxClient{}, inboxOptions{appURL: "https://syrus.example.com"})
+	model.jobs = []api.JobItem{{ID: 5, State: "implemented"}}
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	model = updated.(inboxModel)
+
+	if cmd == nil {
+		t.Fatalf("expected open Syrus command")
+	}
+	if !model.isRead(5) {
+		t.Fatalf("opened Syrus row was not marked read")
+	}
+	if !strings.Contains(model.status, "Opened Syrus page for JOB-5") {
+		t.Fatalf("status = %q", model.status)
+	}
+}
+
 func TestInboxSuccessfulReadActionsMarkRowsRead(t *testing.T) {
 	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
 	model.jobs = []api.JobItem{{ID: 9, State: "implemented"}, {ID: 10, State: "implemented"}}
