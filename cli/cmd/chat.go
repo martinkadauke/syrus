@@ -124,10 +124,12 @@ func (i *chatBusyIndicator) Start() {
 	go func() {
 		defer close(i.stopped)
 		frames := []string{"|", "/", "-", "\\"}
+		phrases := chatBusyPhrases()
 		ticker := time.NewTicker(120 * time.Millisecond)
 		defer ticker.Stop()
 		frame := 0
-		i.write(fmt.Sprintf("\r%s Syrus is thinking...", frames[frame]))
+		phrase := phrases[int(time.Now().UnixNano()%int64(len(phrases)))]
+		i.write(fmt.Sprintf("\r%s %s...", frames[frame], phrase))
 		for {
 			select {
 			case <-i.done:
@@ -135,7 +137,7 @@ func (i *chatBusyIndicator) Start() {
 				return
 			case <-ticker.C:
 				frame = (frame + 1) % len(frames)
-				i.write(fmt.Sprintf("\r%s Syrus is thinking...", frames[frame]))
+				i.write(fmt.Sprintf("\r%s %s...", frames[frame], phrase))
 			}
 		}
 	}()
@@ -155,6 +157,32 @@ func (i *chatBusyIndicator) write(text string) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 	fmt.Fprint(i.out, text)
+}
+
+func chatBusyPhrases() []string {
+	return []string{
+		"Accingitur",
+		"Cogitans",
+		"Machinans",
+		"Moliens",
+		"Meditans",
+		"Excogitans",
+		"Elaborans",
+		"Perscrutans",
+		"Computans",
+		"Conficiens",
+		"Agitans",
+		"Evolvens",
+		"Ponderans",
+		"Consilians",
+		"Exsequens",
+		"Investigans",
+		"Versans",
+		"Struens",
+		"Nectens",
+		"Vigilans",
+		"Expediens",
+	}
 }
 
 func proposalHandler(client *api.Client, reader *bufio.Reader, out io.Writer) func(context.Context, api.ChatProposal) error {

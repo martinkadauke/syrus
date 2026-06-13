@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 )
 
@@ -32,6 +33,26 @@ type ChatSession struct {
 type ChatList struct {
 	Chats        []ChatSession    `json:"chats"`
 	Repositories []ChatRepository `json:"repositories"`
+}
+
+type ChatMessage struct {
+	ID       int64          `json:"id"`
+	Role     string         `json:"role"`
+	ToolName string         `json:"tool_name"`
+	Content  map[string]any `json:"content"`
+	Text     string         `json:"text"`
+	Proposal *ChatProposal  `json:"proposal"`
+}
+
+type ChatPayload struct {
+	Chat         ChatSession   `json:"chat"`
+	HasMoreOlder bool          `json:"has_more_older"`
+	Messages     []ChatMessage `json:"messages"`
+}
+
+type ChatMessagesPayload struct {
+	HasMoreOlder bool          `json:"has_more_older"`
+	Messages     []ChatMessage `json:"messages"`
 }
 
 type ChatProposal struct {
@@ -81,6 +102,25 @@ type ChatStreamEvent struct {
 func (c *Client) ListChats(ctx context.Context) (ChatList, error) {
 	var out ChatList
 	err := c.do(ctx, http.MethodGet, "/api/v1/app/chats", nil, &out)
+	return out, err
+}
+
+func (c *Client) GetChat(ctx context.Context, chatID string) (ChatPayload, error) {
+	var out ChatPayload
+	err := c.do(ctx, http.MethodGet, "/api/v1/app/chats/"+url.PathEscape(chatID), nil, &out)
+	return out, err
+}
+
+func (c *Client) GetChatMessages(ctx context.Context, chatID string, beforeID int64) (ChatMessagesPayload, error) {
+	path := "/api/v1/app/chats/" + url.PathEscape(chatID) + "/messages"
+	if beforeID > 0 {
+		values := url.Values{}
+		values.Set("before", strconv.FormatInt(beforeID, 10))
+		path += "?" + values.Encode()
+	}
+
+	var out ChatMessagesPayload
+	err := c.do(ctx, http.MethodGet, path, nil, &out)
 	return out, err
 }
 

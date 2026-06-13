@@ -63,6 +63,9 @@ func TestRootCommandSelectsExistingSessionAndRunsREPL(t *testing.T) {
 		case "/api/v1/app/chats":
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"chats":[{"id":42,"title":"Planning open source release","repository":{"id":7,"slug":"tkadauke/syrus"},"updated_at":"2026-06-11T12:00:00Z"}],"repositories":[{"id":7,"slug":"tkadauke/syrus"}]}`))
+		case "/api/v1/app/chats/42":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"chat":{"id":42,"title":"Planning open source release","repository":{"id":7,"slug":"tkadauke/syrus"}},"has_more_older":false,"messages":[{"id":1,"role":"user","text":"Earlier question"},{"id":2,"role":"assistant","text":"Earlier answer"}]}`))
 		case "/api/v1/app/chats/42/message":
 			body := new(bytes.Buffer)
 			body.ReadFrom(r.Body)
@@ -90,7 +93,7 @@ func TestRootCommandSelectsExistingSessionAndRunsREPL(t *testing.T) {
 	if streamedBody != `{"content":"hello"}` {
 		t.Fatalf("streamed body = %q", streamedBody)
 	}
-	if got := output.String(); !strings.Contains(got, "Recent sessions:") || !strings.Contains(got, "> ") || !strings.Contains(got, "Ave") {
+	if got := output.String(); !strings.Contains(got, "Recent sessions:") || !strings.Contains(got, "Earlier question") || !strings.Contains(got, "> ") || !strings.Contains(got, "Ave") {
 		t.Fatalf("output = %q", got)
 	}
 }
@@ -159,6 +162,9 @@ func TestRootCommandCreatesRepoAttachedSession(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
 			w.Write([]byte(`{"chat":{"id":99,"title":"syrus","repository":{"id":7,"slug":"tkadauke/syrus"}}}`))
+		case "/api/v1/app/chats/99":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"chat":{"id":99,"title":"syrus","repository":{"id":7,"slug":"tkadauke/syrus"}},"has_more_older":false,"messages":[]}`))
 		case "/api/v1/app/chats/99/message":
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Write([]byte("event: text_chunk\ndata: {\"content\":\"Done\"}\n\n"))
@@ -195,6 +201,9 @@ func TestRootCommandHandlesMultipleChatProposalsSequentially(t *testing.T) {
 		case "/api/v1/app/chats":
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"chats":[{"id":42,"title":"Planning","repository":{"id":7,"slug":"tkadauke/syrus"},"updated_at":"2026-06-11T12:00:00Z"}],"repositories":[{"id":7,"slug":"tkadauke/syrus"}]}`))
+		case "/api/v1/app/chats/42":
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"chat":{"id":42,"title":"Planning","repository":{"id":7,"slug":"tkadauke/syrus"}},"has_more_older":false,"messages":[]}`))
 		case "/api/v1/app/chats/42/message":
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.Write([]byte("event: text_chunk\ndata: {\"content\":\"Proposal proposed.\",\"message\":{\"proposal\":{\"id\":5,\"title\":\"Add dark mode\"}}}\n\n"))

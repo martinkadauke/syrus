@@ -79,6 +79,60 @@ func TestCreateChatPostsRepositoryID(t *testing.T) {
 	}
 }
 
+func TestGetChatFetchesMessages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/app/chats/42" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer secret-token" {
+			t.Fatalf("Authorization = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"chat":{"id":42,"title":"Planning"},"has_more_older":true,"messages":[{"id":7,"role":"assistant","text":"Ave"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "secret-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := client.GetChat(context.Background(), "42")
+	if err != nil {
+		t.Fatalf("GetChat returned error: %v", err)
+	}
+	if payload.Chat.ID != 42 || !payload.HasMoreOlder || len(payload.Messages) != 1 || payload.Messages[0].Text != "Ave" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
+func TestGetChatMessagesSendsBeforeCursor(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/app/chats/42/messages" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("before"); got != "12" {
+			t.Fatalf("before = %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"has_more_older":false,"messages":[{"id":3,"role":"user","text":"Salve"}]}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "secret-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	payload, err := client.GetChatMessages(context.Background(), "42", 12)
+	if err != nil {
+		t.Fatalf("GetChatMessages returned error: %v", err)
+	}
+	if payload.HasMoreOlder || len(payload.Messages) != 1 || payload.Messages[0].ID != 3 {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
 func TestParseChatStreamDispatchesMultilineSSEEvents(t *testing.T) {
 	var events []ChatStreamEvent
 	err := ParseChatStream(strings.NewReader("event: text_chunk\ndata: {\"content\":\"hello\"}\n\nevent: turn_complete\ndata: {}\n\n"), func(event ChatStreamEvent) error {
