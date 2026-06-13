@@ -9,6 +9,7 @@ module Api
         end
 
         skip_before_action :compute_system_alerts
+        skip_forgery_protection if: :authenticated_bearer_token_request?
 
         rescue_from ActiveRecord::RecordNotFound do |e|
           render_error("not_found", e.message, status: :not_found)
@@ -25,13 +26,21 @@ module Api
         end
 
         def resume_api_token_session
-          token = request.authorization.to_s[/\ABearer\s+(.+)\z/i, 1]
-          return if token.blank?
-
-          user = User.find_by(api_token: token)
+          user = bearer_token_user
           return unless user
 
           Current.session = TokenSession.new(user: user)
+        end
+
+        def authenticated_bearer_token_request?
+          bearer_token_user.present?
+        end
+
+        def bearer_token_user
+          token = request.authorization.to_s[/\ABearer\s+(.+)\z/i, 1]
+          return if token.blank?
+
+          @bearer_token_user ||= User.find_by(api_token: token)
         end
 
         def request_authentication

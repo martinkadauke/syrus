@@ -46,6 +46,20 @@ RSpec.describe "App API job lifecycle commands", type: :request do
     expect(parse_body.dig("paths", "job_path")).to eq(job_path(job, tab: "workflows"))
   end
 
+  it "retries a completed job with bearer token auth when forgery protection is enabled", :skip_sign_in do
+    token = user.generate_api_token!
+    job.initial_run.tap { |run| run.start!; run.succeed!; run.save! }
+
+    previous_forgery_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    expect {
+      post app_job_path(job, "run_again"), headers: { "Authorization" => "Bearer #{token}" }
+    }.to change { job.reload.workflows.where(trigger_kind: "retry").count }.by(1)
+      .and have_enqueued_job(RunJob)
+  ensure
+    ActionController::Base.allow_forgery_protection = previous_forgery_protection
+  end
+
   it "restarts a job with a replacement job" do
     job.initial_run.tap { |run| run.start!; run.succeed!; run.save! }
     original_id = job.id
