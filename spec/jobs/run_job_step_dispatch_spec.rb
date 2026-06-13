@@ -230,6 +230,24 @@ RSpec.describe RunJob, "step-dispatch path" do
       expect(run.agent_outcome).to eq("worker_died")
     end
 
+    it "reconciles a completed pr_open run on re-entrancy instead of failing it" do
+      job.update!(state: "running", pr_number: 123, branch_name: "syrus/issue-42-#{job.id}")
+      workflow.update!(state: "running", started_at: 5.minutes.ago)
+      s_implement.update_columns(state: "succeeded", started_at: 5.minutes.ago, finished_at: 4.minutes.ago)
+      s_summarize.update_columns(state: "succeeded", started_at: 4.minutes.ago, finished_at: 3.minutes.ago)
+      s_pr_open.update_columns(state: "running", started_at: 2.minutes.ago)
+      run = s_pr_open.runs.create!(job: job, trigger_kind: workflow.trigger_kind)
+      run.update!(state: "running", started_at: 2.minutes.ago, last_heartbeat_at: 2.minutes.ago)
+      JobLog.append!(run: run, chunk: 'pr_open: opened PR #123 ("Add greeting helper")')
+
+      described_class.perform_now(run.id)
+
+      expect(run.reload).to be_succeeded
+      expect(s_pr_open.reload).to be_succeeded
+      expect(workflow.reload).to be_succeeded
+      expect(job.reload).to be_implemented
+    end
+
     it "refuses to execute a Run whose explicit owner does not match the Job owner" do
       other_user = Factories.user
       run = StepDispatcher.start_workflow(workflow)
@@ -241,6 +259,5 @@ RSpec.describe RunJob, "step-dispatch path" do
       expect(run.agent_outcome).to eq("execution_owner_mismatch")
       expect(Steps).not_to have_received(:handler_for)
     end
-
   end
 end

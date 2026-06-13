@@ -39,6 +39,10 @@ RSpec.describe ReapStaleRunsJob do
     [ workflow, root_run, inline_run ]
   end
 
+  def enqueued_run_job_count(run)
+    ActiveJob::Base.queue_adapter.enqueued_jobs.count { |entry| entry[:job] == RunJob && entry[:args] == [ run.id ] }
+  end
+
   describe "#perform" do
     it "marks a run with stale heartbeat as failed" do
       run = running_run(heartbeat_age: Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes)
@@ -106,6 +110,54 @@ RSpec.describe ReapStaleRunsJob do
       described_class.perform_now
       expect(r1.reload.state).to eq("failed")
       expect(r2.reload.state).to eq("failed")
+    end
+
+    it "reconciles a stale pr_open run that already opened its PR" do
+      repo = Factories.repository
+      job = Factories.job_record(repository: repo, state: "running", issue_number: 42, pr_number: 652, branch_name: "syrus/issue-42-1000")
+      workflow = Workflow.create!(job: job, trigger_kind: "initial")
+      workflow.update_columns(state: "running", started_at: 10.minutes.ago)
+      step = Step.create!(workflow: workflow, kind: "pr_open", position: 0)
+      step.update_columns(state: "running", started_at: 10.minutes.ago)
+      run = step.runs.create!(job: job, trigger_kind: workflow.trigger_kind)
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      run.update_columns(
+        state: "running",
+        started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
+        last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago
+      )
+      JobLog.append!(run: run, chunk: 'pr_open: opened PR #652 ("Define canonical tracing parity fixtures for tests")')
+
+      described_class.perform_now
+
+      expect(run.reload).to be_succeeded
+      expect(step.reload).to be_succeeded
+      expect(workflow.reload).to be_succeeded
+      expect(job.reload).to be_implemented
+    end
+
+    it "reconciles a stale pr_open run that already pushed an existing PR" do
+      repo = Factories.repository
+      job = Factories.job_record(repository: repo, state: "running", issue_number: 42, pr_number: 652, branch_name: "syrus/issue-42-1000")
+      workflow = Workflow.create!(job: job, trigger_kind: "retry")
+      workflow.update_columns(state: "running", started_at: 10.minutes.ago)
+      step = Step.create!(workflow: workflow, kind: "pr_open", position: 0)
+      step.update_columns(state: "running", started_at: 10.minutes.ago)
+      run = step.runs.create!(job: job, trigger_kind: workflow.trigger_kind)
+      ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+      run.update_columns(
+        state: "running",
+        started_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago,
+        last_heartbeat_at: (Run::STALE_HEARTBEAT_THRESHOLD + 5.minutes).ago
+      )
+      JobLog.append!(run: run, chunk: "pr_open: branch pushed for existing PR #652")
+
+      described_class.perform_now
+
+      expect(run.reload).to be_succeeded
+      expect(step.reload).to be_succeeded
+      expect(workflow.reload).to be_succeeded
+      expect(job.reload).to be_implemented
     end
 
     it "schedules a missing retry for a recent already-failed deploy interruption" do
@@ -296,6 +348,8 @@ RSpec.describe ReapStaleRunsJob do
     end
 
     describe "queued-orphan path: Run :queued never enqueued (inline-drive successor)" do
+      before { ActiveJob::Base.queue_adapter.enqueued_jobs.clear }
+
       # SolidQueue tables aren't loaded in the test DB, so stub the
       # root-run lookup. active_run_job_root_run_ids is the only method
       # that hits SolidQueue::Job; workflow_ids_with_active_run_jobs
@@ -327,10 +381,10 @@ RSpec.describe ReapStaleRunsJob do
       it "re-enqueues a queued orphan when no active RunJob drives its Workflow" do
         _workflow, _step, run = queued_orphan
         stub_active_root_run_ids  # nothing driving anything
+        ActiveJob::Base.queue_adapter.enqueued_jobs.clear
 
-        expect {
-          described_class.perform_now
-        }.to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+        expect { described_class.perform_now }
+          .to change { enqueued_run_job_count(run) }.by(1)
 
         expect(run.reload.state).to eq("queued")  # resumed, not failed
       end
@@ -341,10 +395,10 @@ RSpec.describe ReapStaleRunsJob do
         # (the inline driver still owns the chain).
         root_run = step.runs.create!(job: job, trigger_kind: "auto_merge")
         stub_active_root_run_ids(root_run.id)
+        ActiveJob::Base.queue_adapter.enqueued_jobs.clear
 
-        expect {
-          described_class.perform_now
-        }.not_to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+        expect { described_class.perform_now }
+          .not_to change { enqueued_run_job_count(run) }
       end
 
       it "leaves a just-created queued Run alone (inside the grace window)" do
@@ -355,20 +409,20 @@ RSpec.describe ReapStaleRunsJob do
         run = step.runs.create!(job: job, trigger_kind: "auto_merge")
         run.update_columns(state: "queued", started_at: nil)  # created_at = now
         stub_active_root_run_ids
+        ActiveJob::Base.queue_adapter.enqueued_jobs.clear
 
-        expect {
-          described_class.perform_now
-        }.not_to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+        expect { described_class.perform_now }
+          .not_to change { enqueued_run_job_count(run) }
       end
 
       it "leaves a queued Run alone when its Workflow is not running" do
         _workflow, _step, run = queued_orphan
         run.step.workflow.update_columns(state: "succeeded", finished_at: 1.minute.ago)
         stub_active_root_run_ids
+        ActiveJob::Base.queue_adapter.enqueued_jobs.clear
 
-        expect {
-          described_class.perform_now
-        }.not_to have_enqueued_job(RunJob).with { |id| expect(id).to eq(run.id) }
+        expect { described_class.perform_now }
+          .not_to change { enqueued_run_job_count(run) }
       end
     end
 

@@ -16,6 +16,7 @@ module Steps
 
       push_branch
       if job.pr_number.present?  # idempotent for retry
+        log("pr_open: branch pushed for existing PR ##{job.pr_number}")
         transition_job_to_implemented!
         return
       end
@@ -27,10 +28,10 @@ module Steps
         body: body,
         job: job
       )
+      log("pr_open: opened PR ##{pr_number} (#{title.inspect})")
       job.update!(pr_number: pr_number, branch_name: workspace.branch_name)
       transition_job_to_implemented!
       refresh_stack_footer
-      log("pr_open: opened PR ##{pr_number} (#{title.inspect})")
     end
 
     private

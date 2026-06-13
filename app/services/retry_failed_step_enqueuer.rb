@@ -4,6 +4,9 @@ class RetryFailedStepEnqueuer
   end
 
   def self.call(...) = new(...).call
+  def self.failed_step_for(workflow)
+    workflow.steps.where(state: "failed").reorder(position: :desc, id: :desc).first
+  end
 
   def initialize(workflow:, parent_session_id: nil, prompt: nil, agent_provider: nil)
     @workflow = workflow
@@ -16,7 +19,7 @@ class RetryFailedStepEnqueuer
     return failure("Workflow is not in a failed state.") unless workflow.failed?
     return failure("Workspace already cleaned up - use Start over.") unless workflow.retry_available?
 
-    failed_step = workflow.steps.where(state: "failed").order(:position).first
+    failed_step = self.class.failed_step_for(workflow)
     return failure("No failed step to retry.") unless failed_step
 
     workflow.reopen!

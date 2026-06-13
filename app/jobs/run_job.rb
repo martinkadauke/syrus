@@ -132,6 +132,11 @@ class RunJob < ApplicationJob
       # Worker died mid-perform on a prior attempt (or SQ re-claimed
       # us after a process prune). Fail with worker_died so the
       # operator gets a Retry button on the dashboard.
+      if (reconciliation = RunCompletionReconciler.call(@run)).reconciled?
+        log("run reconciled on re-entry: #{reconciliation.reason}")
+        return
+      end
+
       @run.agent_outcome = "worker_died"
       @run.fail!
       @run.save!

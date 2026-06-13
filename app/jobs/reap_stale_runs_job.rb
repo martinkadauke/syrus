@@ -226,6 +226,11 @@ class ReapStaleRunsJob < ApplicationJob
   end
 
   def reap!(run, reason:)
+    if (reconciliation = RunCompletionReconciler.call(run)).reconciled?
+      Rails.logger.info("[ReapStaleRunsJob] Run ##{run.id} reconciled instead of reaped: #{reconciliation.reason}")
+      return
+    end
+
     return unless run.may_fail?
 
     Rails.logger.info("[ReapStaleRunsJob] Run ##{run.id} reaped: #{reason}")
