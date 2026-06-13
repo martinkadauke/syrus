@@ -68,6 +68,7 @@ func (PlainRenderer) Render(markdown string) (string, error) {
 
 type StreamTurnOptions struct {
 	Out             io.Writer
+	DebugOut        io.Writer
 	Renderer        ChatTurnRenderer
 	ProposalHandler func(context.Context, ChatProposal) error
 }
@@ -130,7 +131,7 @@ func (c *Client) StreamTurn(ctx context.Context, chatID string, message string, 
 	}
 
 	return ParseChatStream(resp.Body, func(event ChatStreamEvent) error {
-		return handleChatStreamEvent(ctx, event, out, renderer, options.ProposalHandler)
+		return handleChatStreamEvent(ctx, event, out, options.DebugOut, renderer, options.ProposalHandler)
 	})
 }
 
@@ -197,7 +198,12 @@ func ParseChatStream(r io.Reader, handle func(ChatStreamEvent) error) error {
 	return dispatch()
 }
 
-func handleChatStreamEvent(ctx context.Context, event ChatStreamEvent, out io.Writer, renderer ChatTurnRenderer, proposalHandler func(context.Context, ChatProposal) error) error {
+type chatStreamMessageRecord struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
+}
+
+func handleChatStreamEvent(ctx context.Context, event ChatStreamEvent, out, debugOut io.Writer, renderer ChatTurnRenderer, proposalHandler func(context.Context, ChatProposal) error) error {
 	switch event.Event {
 	case "text_chunk":
 		var payload struct {
@@ -246,12 +252,17 @@ func handleChatStreamEvent(ctx context.Context, event ChatStreamEvent, out io.Wr
 		}
 	case "error":
 		var payload struct {
-			Message string `json:"message"`
+			Message       string                   `json:"message"`
+			MessageRecord *chatStreamMessageRecord `json:"message_record"`
 		}
 		if err := json.Unmarshal(event.Data, &payload); err != nil {
 			return err
 		}
 		if payload.Message != "" {
+			if hiddenChatSystemMessage(payload.Message, payload.MessageRecord) {
+				writeChatDebug(debugOut, payload.Message)
+				return nil
+			}
 			_, err := fmt.Fprintf(out, "Error: %s\n", payload.Message)
 			return err
 		}
@@ -259,4 +270,19 @@ func handleChatStreamEvent(ctx context.Context, event ChatStreamEvent, out io.Wr
 		return nil
 	}
 	return nil
+}
+
+func hiddenChatSystemMessage(message string, record *chatStreamMessageRecord) bool {
+	text := strings.TrimSpace(message)
+	if text == "" {
+		return true
+	}
+	return strings.HasPrefix(text, "[mcp_servers]") || strings.HasPrefix(text, "[result]")
+}
+
+func writeChatDebug(debugOut io.Writer, message string) {
+	if debugOut == nil {
+		return
+	}
+	fmt.Fprintf(debugOut, "Debug: %s\n", message)
 }

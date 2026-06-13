@@ -46,15 +46,38 @@ func pickChatSession(ctx context.Context, client *api.Client, reader *bufio.Read
 	currentSlug, _ := repo.DetectSlug()
 	chats := orderChatsForRepository(list.Chats, currentSlug)
 	newSessionIndex := len(chats) + 1
+	newSessionLabel := "New session"
+	if currentSlug != "" {
+		newSessionLabel = "New session in " + currentSlug
+	}
 
 	fmt.Fprintln(out, "Recent sessions:")
-	for index, chat := range chats {
-		fmt.Fprintf(out, "  %d. %s\n", index+1, chatPickerLabel(chat))
+	if currentSlug != "" {
+		current, other := partitionChatsForRepository(chats, currentSlug)
+		index := 1
+		if len(current) > 0 {
+			fmt.Fprintf(out, "  %s:\n", currentSlug)
+			for _, chat := range current {
+				fmt.Fprintf(out, "    %d. %s\n", index, chatPickerLabel(chat, false))
+				index++
+			}
+		}
+		if len(other) > 0 {
+			fmt.Fprintln(out, "  Other repositories:")
+			for _, chat := range other {
+				fmt.Fprintf(out, "    %d. %s\n", index, chatPickerLabel(chat, true))
+				index++
+			}
+		}
+	} else {
+		for index, chat := range chats {
+			fmt.Fprintf(out, "  %d. %s\n", index+1, chatPickerLabel(chat, true))
+		}
 	}
-	fmt.Fprintf(out, "  %d. New session\n", newSessionIndex)
+	fmt.Fprintf(out, "  %d. %s\n", newSessionIndex, newSessionLabel)
 
 	for {
-		fmt.Fprintf(out, "Attach to [1-%d]: ", newSessionIndex)
+		fmt.Fprintf(out, "Choose [1-%d]: ", newSessionIndex)
 		line, err := reader.ReadString('\n')
 		if err != nil && !(errors.Is(err, io.EOF) && strings.TrimSpace(line) != "") {
 			return api.ChatSession{}, err
@@ -73,7 +96,7 @@ func pickChatSession(ctx context.Context, client *api.Client, reader *bufio.Read
 
 func runChatREPL(ctx context.Context, client *api.Client, chatID string, reader *bufio.Reader, out, errOut io.Writer) error {
 	for {
-		fmt.Fprint(out, "You: ")
+		fmt.Fprint(out, "> ")
 		line, err := reader.ReadString('\n')
 		if errors.Is(err, io.EOF) && strings.TrimSpace(line) == "" {
 			fmt.Fprintln(out)
@@ -118,6 +141,19 @@ func orderChatsForRepository(chats []api.ChatSession, slug string) []api.ChatSes
 	return ordered
 }
 
+func partitionChatsForRepository(chats []api.ChatSession, slug string) ([]api.ChatSession, []api.ChatSession) {
+	var current []api.ChatSession
+	var other []api.ChatSession
+	for _, chat := range chats {
+		if chat.Repository != nil && chat.Repository.Slug == slug {
+			current = append(current, chat)
+		} else {
+			other = append(other, chat)
+		}
+	}
+	return current, other
+}
+
 func chatRepositoryIDForSlug(repositories []api.ChatRepository, slug string) int64 {
 	for _, repository := range repositories {
 		if repository.Slug == slug {
@@ -127,14 +163,17 @@ func chatRepositoryIDForSlug(repositories []api.ChatRepository, slug string) int
 	return 0
 }
 
-func chatPickerLabel(chat api.ChatSession) string {
-	repository := "No repository"
-	if chat.Repository != nil && chat.Repository.Slug != "" {
-		repository = chat.Repository.Slug
-	}
+func chatPickerLabel(chat api.ChatSession, showRepository bool) string {
 	title := strings.TrimSpace(chat.Title)
 	if title == "" {
 		title = "Untitled chat"
+	}
+	if !showRepository {
+		return fmt.Sprintf("%s (%s)", title, relativeChatTime(chat))
+	}
+	repository := "No repository"
+	if chat.Repository != nil && chat.Repository.Slug != "" {
+		repository = chat.Repository.Slug
 	}
 	return fmt.Sprintf("%s  - %s (%s)", repository, title, relativeChatTime(chat))
 }

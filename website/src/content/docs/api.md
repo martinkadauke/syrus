@@ -44,11 +44,14 @@ new session, and enter the interactive chat REPL:
 syrus
 ```
 
-The picker calls `GET /api/v1/app/chats`, puts sessions attached to the
+The picker calls `GET /api/v1/app/chats`, groups sessions attached to the
 current GitHub repository first when run inside a checkout, and uses
-`POST /api/v1/app/chats` for a new session. The REPL sends each line as a
-streaming turn until Ctrl+D exits. Ctrl+C stops the active turn and returns
-to the prompt.
+`POST /api/v1/app/chats` for a new session attached to that repo when one
+is detected. The REPL uses a
+compact `>` prompt and sends each line as a streaming turn until Ctrl+D
+exits. Ctrl+C stops the active turn and returns to the prompt. Pass
+`--debug` when you need raw chat stream diagnostics such as MCP sidecar
+health and provider result events.
 
 When a chat turn proposes a Job or Epic, the CLI pauses the stream and shows
 an inline proposal card. Press `c` to confirm and file it through the app

@@ -90,7 +90,7 @@ func TestRootCommandSelectsExistingSessionAndRunsREPL(t *testing.T) {
 	if streamedBody != `{"content":"hello"}` {
 		t.Fatalf("streamed body = %q", streamedBody)
 	}
-	if got := output.String(); !strings.Contains(got, "Recent sessions:") || !strings.Contains(got, "You: ") || !strings.Contains(got, "Ave") {
+	if got := output.String(); !strings.Contains(got, "Recent sessions:") || !strings.Contains(got, "> ") || !strings.Contains(got, "Ave") {
 		t.Fatalf("output = %q", got)
 	}
 }

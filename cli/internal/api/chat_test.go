@@ -180,6 +180,86 @@ func TestStreamTurnDispatchesProposalEventsWithoutRenderingPlaceholderText(t *te
 	}
 }
 
+func TestStreamTurnHidesSystemTelemetryByDefault(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("event: error\ndata: {\"message\":\"[mcp_servers] syrus-chat-sidecar=connected\",\"message_record\":{\"role\":\"system\",\"text\":\"[mcp_servers] syrus-chat-sidecar=connected\"}}\n\n"))
+		w.Write([]byte("event: error\ndata: {\"message\":\"[result] subtype=success, is_error=false, turns=1\"}\n\n"))
+		w.Write([]byte("event: text_chunk\ndata: {\"content\":\"Hello\"}\n\n"))
+		w.Write([]byte("event: turn_complete\ndata: {}\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "secret-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := &bytes.Buffer{}
+	err = client.StreamTurn(context.Background(), "42", "hello", StreamTurnOptions{
+		Out:      out,
+		Renderer: PlainRenderer{},
+	})
+	if err != nil {
+		t.Fatalf("StreamTurn returned error: %v", err)
+	}
+	if got := out.String(); got != "Hello\n" {
+		t.Fatalf("output = %q", got)
+	}
+}
+
+func TestStreamTurnCanDebugHiddenSystemTelemetry(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("event: error\ndata: {\"message\":\"[mcp_servers] syrus-chat-sidecar=connected\"}\n\n"))
+		w.Write([]byte("event: turn_complete\ndata: {}\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "secret-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := &bytes.Buffer{}
+	debugOut := &bytes.Buffer{}
+	err = client.StreamTurn(context.Background(), "42", "hello", StreamTurnOptions{
+		Out:      out,
+		DebugOut: debugOut,
+	})
+	if err != nil {
+		t.Fatalf("StreamTurn returned error: %v", err)
+	}
+	if out.String() != "" {
+		t.Fatalf("output = %q", out.String())
+	}
+	if !strings.Contains(debugOut.String(), "Debug: [mcp_servers] syrus-chat-sidecar=connected") {
+		t.Fatalf("debug output = %q", debugOut.String())
+	}
+}
+
+func TestStreamTurnStillPrintsRealErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("event: error\ndata: {\"message\":\"Chat turn timed out while waiting for the agent response.\"}\n\n"))
+		w.Write([]byte("event: turn_complete\ndata: {}\n\n"))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "secret-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := &bytes.Buffer{}
+	err = client.StreamTurn(context.Background(), "42", "hello", StreamTurnOptions{
+		Out: out,
+	})
+	if err != nil {
+		t.Fatalf("StreamTurn returned error: %v", err)
+	}
+	if got := out.String(); got != "Error: Chat turn timed out while waiting for the agent response.\n" {
+		t.Fatalf("output = %q", got)
+	}
+}
+
 func TestStreamTurnReturnsCanceledContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

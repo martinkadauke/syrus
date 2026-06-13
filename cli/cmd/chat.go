@@ -9,11 +9,14 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tkadauke/syrus/cli/internal/api"
 	"github.com/tkadauke/syrus/cli/internal/config"
 	"github.com/tkadauke/syrus/cli/internal/render"
+	"golang.org/x/term"
 )
 
 func NewChatCommand() *cobra.Command {
@@ -55,10 +58,20 @@ func streamTurnWithClient(parent context.Context, client *api.Client, chatID str
 	ctx, stop := signal.NotifyContext(parent, os.Interrupt)
 	defer stop()
 
+	debugOut := io.Writer(nil)
+	if chatDebugEnabled() {
+		debugOut = errOut
+	}
+	busy := newChatBusyIndicator(out)
+	streamOut := chatStreamWriter{out: out, busy: busy}
+	busy.Start()
+	defer busy.Stop()
+
 	err := client.StreamTurn(ctx, chatID, message, api.StreamTurnOptions{
-		Out:             out,
+		Out:             streamOut,
+		DebugOut:        debugOut,
 		Renderer:        render.NewMarkdownRenderer(out),
-		ProposalHandler: proposalHandler(client, reader, out),
+		ProposalHandler: proposalHandler(client, reader, streamOut),
 	})
 	if errors.Is(err, context.Canceled) {
 		fmt.Fprintln(errOut, "Cancelling chat turn...")
@@ -68,6 +81,80 @@ func streamTurnWithClient(parent context.Context, client *api.Client, chatID str
 		return nil
 	}
 	return err
+}
+
+type chatStreamWriter struct {
+	out  io.Writer
+	busy *chatBusyIndicator
+}
+
+func (w chatStreamWriter) Write(p []byte) (int, error) {
+	if w.busy != nil {
+		w.busy.Stop()
+	}
+	return w.out.Write(p)
+}
+
+type chatBusyIndicator struct {
+	out     io.Writer
+	enabled bool
+	done    chan struct{}
+	stopped chan struct{}
+	once    sync.Once
+	mu      sync.Mutex
+}
+
+func newChatBusyIndicator(out io.Writer) *chatBusyIndicator {
+	file, ok := out.(interface{ Fd() uintptr })
+	if !ok || !term.IsTerminal(int(file.Fd())) {
+		return &chatBusyIndicator{}
+	}
+	return &chatBusyIndicator{
+		out:     out,
+		enabled: true,
+		done:    make(chan struct{}),
+		stopped: make(chan struct{}),
+	}
+}
+
+func (i *chatBusyIndicator) Start() {
+	if !i.enabled {
+		return
+	}
+	go func() {
+		defer close(i.stopped)
+		frames := []string{"|", "/", "-", "\\"}
+		ticker := time.NewTicker(120 * time.Millisecond)
+		defer ticker.Stop()
+		frame := 0
+		i.write(fmt.Sprintf("\r%s Syrus is thinking...", frames[frame]))
+		for {
+			select {
+			case <-i.done:
+				i.write("\r\033[2K")
+				return
+			case <-ticker.C:
+				frame = (frame + 1) % len(frames)
+				i.write(fmt.Sprintf("\r%s Syrus is thinking...", frames[frame]))
+			}
+		}
+	}()
+}
+
+func (i *chatBusyIndicator) Stop() {
+	if !i.enabled {
+		return
+	}
+	i.once.Do(func() {
+		close(i.done)
+		<-i.stopped
+	})
+}
+
+func (i *chatBusyIndicator) write(text string) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	fmt.Fprint(i.out, text)
 }
 
 func proposalHandler(client *api.Client, reader *bufio.Reader, out io.Writer) func(context.Context, api.ChatProposal) error {

@@ -7,9 +7,11 @@ RSpec.describe Prompts::ChatSystem do
     out = described_class.new(repository: repo).to_s
 
     expect(out).to include(<<~TEXT.strip)
-      You are an embedded research and planning assistant for the
-      acme/widgets repository.
+      You are Syrus Chat, an embedded research and planning assistant
+      for the acme/widgets repository.
     TEXT
+    expect(out).to include("answer as Syrus Chat attached to\nthis workspace or repository")
+    expect(out).to include("do not\nintroduce yourself primarily as Claude")
   end
 
   it "frames chat as planning and proposal drafting, not editing" do
@@ -188,7 +190,7 @@ RSpec.describe Prompts::ChatSystem do
 
     out = described_class.new(repository: nil, chat_session: chat).to_s
 
-    expect(out).to include("embedded research and planning assistant for the\nchat workspace")
+    expect(out).to include("Syrus Chat, an embedded research and planning assistant\nfor the chat workspace")
     expect(out).to include("Use `attach_repository(slug)`")
     expect(out).to include("Repository context:")
     expect(out).to include("No repository is attached yet.")
