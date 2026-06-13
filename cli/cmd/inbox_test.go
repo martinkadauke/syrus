@@ -98,13 +98,19 @@ func TestInboxApproveMarksRowHandledAfterConfirmation(t *testing.T) {
 		t.Fatalf("approved = %v", got)
 	}
 
-	updated, _ = model.Update(msg)
+	updated, refreshCmd := model.Update(msg)
 	model = updated.(inboxModel)
+	if refreshCmd == nil {
+		t.Fatalf("expected refresh after handled action")
+	}
 	if len(model.jobs) != 1 {
 		t.Fatalf("jobs after approve = %v", model.jobs)
 	}
 	if model.handled[456] != "approve" {
 		t.Fatalf("handled marker = %q", model.handled[456])
+	}
+	if !model.isRead(456) {
+		t.Fatalf("approved row was not marked read")
 	}
 	if !strings.Contains(model.View(), "done: approved") {
 		t.Fatalf("view does not show handled marker:\n%s", model.View())
@@ -118,9 +124,11 @@ func TestInboxRefreshPreservesExistingOrderAndHandledRows(t *testing.T) {
 		{ID: 2, State: "failed", Title: "Second"},
 	}
 	model.handled[1] = "approve"
+	model.read[1] = "approve"
 
 	updated, _ := model.Update(inboxRefreshMsg{jobs: []api.JobItem{
-		{ID: 3, State: "implemented", Title: "Third"},
+		{ID: 3, State: "implemented", Title: "Third", UpdatedAt: "2026-06-12T12:00:00Z"},
+		{ID: 4, State: "implemented", Title: "Fourth", UpdatedAt: "2026-06-12T11:00:00Z"},
 		{ID: 2, State: "failed", Title: "Second refreshed"},
 	}})
 	model = updated.(inboxModel)
@@ -129,7 +137,7 @@ func TestInboxRefreshPreservesExistingOrderAndHandledRows(t *testing.T) {
 	for _, job := range model.jobs {
 		ids = append(ids, job.ID)
 	}
-	if want := []int64{1, 2, 3}; !reflect.DeepEqual(ids, want) {
+	if want := []int64{1, 2, 4, 3}; !reflect.DeepEqual(ids, want) {
 		t.Fatalf("ids after refresh = %v, want %v", ids, want)
 	}
 	if model.jobs[1].Title != "Second refreshed" {
@@ -137,6 +145,44 @@ func TestInboxRefreshPreservesExistingOrderAndHandledRows(t *testing.T) {
 	}
 	if model.handled[1] != "approve" {
 		t.Fatalf("handled row lost marker")
+	}
+	if !model.isRead(1) {
+		t.Fatalf("read row lost marker")
+	}
+	if model.isRead(3) || model.isRead(4) {
+		t.Fatalf("new rows should start unread")
+	}
+}
+
+func TestInboxOpenPRMarksRowRead(t *testing.T) {
+	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
+	model.jobs = []api.JobItem{{ID: 5, State: "implemented", PRURL: "https://example.com/pr"}}
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("o")})
+	model = updated.(inboxModel)
+
+	if cmd == nil {
+		t.Fatalf("expected open URL command")
+	}
+	if !model.isRead(5) {
+		t.Fatalf("opened PR row was not marked read")
+	}
+}
+
+func TestInboxSuccessfulReadActionsMarkRowsRead(t *testing.T) {
+	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
+	model.jobs = []api.JobItem{{ID: 9, State: "implemented"}, {ID: 10, State: "implemented"}}
+
+	updated, _ := model.Update(inboxActionMsg{jobID: 9, kind: "checkout", read: true})
+	model = updated.(inboxModel)
+	updated, _ = model.Update(inboxActionMsg{jobID: 10, kind: "diff", read: true})
+	model = updated.(inboxModel)
+
+	if !model.isRead(9) {
+		t.Fatalf("checkout row was not marked read")
+	}
+	if !model.isRead(10) {
+		t.Fatalf("diff row was not marked read")
 	}
 }
 
@@ -240,6 +286,11 @@ func TestInboxRetryOnlyAppliesToFailedJobs(t *testing.T) {
 	}
 	if got := client.retried; len(got) != 1 || got[0] != strconv.Itoa(8) {
 		t.Fatalf("retried = %v", got)
+	}
+	updated, _ = model.Update(msg)
+	model = updated.(inboxModel)
+	if !model.isRead(8) {
+		t.Fatalf("retried row was not marked read")
 	}
 }
 

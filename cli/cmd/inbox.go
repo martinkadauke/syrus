@@ -50,6 +50,7 @@ type inboxActionMsg struct {
 	jobID   int64
 	kind    string
 	handled bool
+	read    bool
 	err     error
 }
 
@@ -81,6 +82,7 @@ type inboxModel struct {
 	pendingID  int64
 	pending    map[int64]string
 	handled    map[int64]string
+	read       map[int64]string
 }
 
 func NewInboxCommand() *cobra.Command {
@@ -127,6 +129,7 @@ func newInboxModel(client inboxAPI, options inboxOptions) inboxModel {
 		detailDone: map[int64]bool{},
 		pending:    map[int64]string{},
 		handled:    map[int64]string{},
+		read:       map[int64]string{},
 	}
 }
 
@@ -178,6 +181,13 @@ func (m inboxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.handled {
 			m.handled[msg.jobID] = msg.kind
 		}
+		if msg.read {
+			m.markRead(msg.jobID, msg.kind)
+		}
+		if msg.handled {
+			m.loading = true
+			return m, refreshInboxCmd(m.client, m.options.repo)
+		}
 		return m, nil
 	case inboxPageMsg:
 		if msg.err != nil {
@@ -185,7 +195,7 @@ func (m inboxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, tea.ExecProcess(pagerCommand(msg.text), func(err error) tea.Msg {
-			return inboxActionMsg{jobID: msg.jobID, kind: msg.kind, err: err}
+			return inboxActionMsg{jobID: msg.jobID, kind: msg.kind, read: msg.kind == "diff", err: err}
 		})
 	case inboxTickMsg:
 		if m.quitting {
@@ -249,6 +259,8 @@ func (m inboxModel) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "o":
 		if job, ok := m.selectedJob(); ok && job.PRURL != "" {
+			m.markRead(job.ID, "open PR")
+			m.status = fmt.Sprintf("Opened PR for JOB-%d", job.ID)
 			return m, tea.ExecProcess(openURLCommand(job.PRURL), nil)
 		}
 	case "c":
@@ -280,7 +292,7 @@ func (m inboxModel) confirmAction() (tea.Model, tea.Cmd) {
 		} else {
 			err = m.client.RetryJob(context.Background(), id)
 		}
-		return inboxActionMsg{jobID: jobID, kind: kind, handled: true, err: err}
+		return inboxActionMsg{jobID: jobID, kind: kind, handled: true, read: true, err: err}
 	}
 }
 
@@ -297,17 +309,30 @@ func (m *inboxModel) mergeRefresh(jobs []api.JobItem) {
 		}
 		seen[job.ID] = true
 	}
+	var newJobs []api.JobItem
 	for _, job := range jobs {
 		if seen[job.ID] {
 			continue
 		}
-		m.jobs = append(m.jobs, job)
+		newJobs = append(newJobs, job)
 		seen[job.ID] = true
 	}
+	slices.SortFunc(newJobs, func(a, b api.JobItem) int {
+		return strings.Compare(a.UpdatedAt, b.UpdatedAt)
+	})
+	m.jobs = append(m.jobs, newJobs...)
 }
 
 func (m inboxModel) isHandled(jobID int64) bool {
 	return m.handled[jobID] != ""
+}
+
+func (m inboxModel) isRead(jobID int64) bool {
+	return m.read[jobID] != ""
+}
+
+func (m inboxModel) markRead(jobID int64, reason string) {
+	m.read[jobID] = reason
 }
 
 func inboxHandledLabel(kind string) string {
@@ -376,6 +401,9 @@ func (m inboxModel) View() string {
 			pending,
 			handled,
 		)
+		if !m.isRead(job.ID) {
+			line = unreadStyle.Render(line)
+		}
 		lines = append(lines, line)
 	}
 
@@ -547,6 +575,7 @@ func stateStyle(state string) lipgloss.Style {
 
 var (
 	headerStyle  = lipgloss.NewStyle().Bold(true)
+	unreadStyle  = lipgloss.NewStyle().Bold(true)
 	ruleStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	subtleStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	errorStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
@@ -583,7 +612,7 @@ func checkoutJobCmd(client inboxAPI, jobID int64) tea.Cmd {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		err = cmd.Run()
-		return inboxActionMsg{jobID: jobID, kind: "checkout", err: err}
+		return inboxActionMsg{jobID: jobID, kind: "checkout", read: err == nil, err: err}
 	}
 }
 
