@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -72,7 +74,7 @@ func TestFetchInboxJobsScopesToRepoAndAttentionStates(t *testing.T) {
 	}
 }
 
-func TestInboxApproveRemovesRowAfterConfirmation(t *testing.T) {
+func TestInboxApproveMarksRowHandledAfterConfirmation(t *testing.T) {
 	client := &fakeInboxClient{lists: map[string][]api.JobItem{}}
 	model := newInboxModel(client, inboxOptions{})
 	model.jobs = []api.JobItem{{ID: 456, State: "implemented", Title: "Add dark mode"}}
@@ -95,8 +97,43 @@ func TestInboxApproveRemovesRowAfterConfirmation(t *testing.T) {
 
 	updated, _ = model.Update(msg)
 	model = updated.(inboxModel)
-	if len(model.jobs) != 0 {
+	if len(model.jobs) != 1 {
 		t.Fatalf("jobs after approve = %v", model.jobs)
+	}
+	if model.handled[456] != "approve" {
+		t.Fatalf("handled marker = %q", model.handled[456])
+	}
+	if !strings.Contains(model.View(), "done: approved") {
+		t.Fatalf("view does not show handled marker:\n%s", model.View())
+	}
+}
+
+func TestInboxRefreshPreservesExistingOrderAndHandledRows(t *testing.T) {
+	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
+	model.jobs = []api.JobItem{
+		{ID: 1, State: "implemented", Title: "First"},
+		{ID: 2, State: "failed", Title: "Second"},
+	}
+	model.handled[1] = "approve"
+
+	updated, _ := model.Update(inboxRefreshMsg{jobs: []api.JobItem{
+		{ID: 3, State: "implemented", Title: "Third"},
+		{ID: 2, State: "failed", Title: "Second refreshed"},
+	}})
+	model = updated.(inboxModel)
+
+	var ids []int64
+	for _, job := range model.jobs {
+		ids = append(ids, job.ID)
+	}
+	if want := []int64{1, 2, 3}; !reflect.DeepEqual(ids, want) {
+		t.Fatalf("ids after refresh = %v, want %v", ids, want)
+	}
+	if model.jobs[1].Title != "Second refreshed" {
+		t.Fatalf("existing row did not refresh: %q", model.jobs[1].Title)
+	}
+	if model.handled[1] != "approve" {
+		t.Fatalf("handled row lost marker")
 	}
 }
 
@@ -132,7 +169,7 @@ func TestInboxActionErrorKeepsRow(t *testing.T) {
 	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
 	model.jobs = []api.JobItem{{ID: 9, State: "implemented"}}
 
-	updated, _ := model.Update(inboxActionMsg{jobID: 9, kind: "approve", remove: true, err: errors.New("nope")})
+	updated, _ := model.Update(inboxActionMsg{jobID: 9, kind: "approve", handled: true, err: errors.New("nope")})
 	model = updated.(inboxModel)
 
 	if len(model.jobs) != 1 {

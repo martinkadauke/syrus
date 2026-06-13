@@ -46,10 +46,10 @@ type inboxDetailMsg struct {
 }
 
 type inboxActionMsg struct {
-	jobID  int64
-	kind   string
-	remove bool
-	err    error
+	jobID   int64
+	kind    string
+	handled bool
+	err     error
 }
 
 type inboxPageMsg struct {
@@ -77,6 +77,7 @@ type inboxModel struct {
 	confirm    string
 	pendingID  int64
 	pending    map[int64]string
+	handled    map[int64]string
 }
 
 func NewInboxCommand() *cobra.Command {
@@ -120,6 +121,7 @@ func newInboxModel(client inboxAPI, options inboxOptions) inboxModel {
 		options: options,
 		details: map[int64]string{},
 		pending: map[int64]string{},
+		handled: map[int64]string{},
 	}
 }
 
@@ -138,7 +140,7 @@ func (m inboxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, inboxTick()
 		}
 		m.err = ""
-		m.jobs = msg.jobs
+		m.mergeRefresh(msg.jobs)
 		if m.cursor >= len(m.jobs) {
 			m.cursor = max(0, len(m.jobs)-1)
 		}
@@ -162,12 +164,8 @@ func (m inboxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = ""
 		m.status = fmt.Sprintf("%s succeeded for JOB-%d", msg.kind, msg.jobID)
-		if msg.remove {
-			m.jobs = slices.DeleteFunc(m.jobs, func(job api.JobItem) bool { return job.ID == msg.jobID })
-			if m.cursor >= len(m.jobs) {
-				m.cursor = max(0, len(m.jobs)-1)
-			}
-			return m, refreshInboxCmd(m.client, m.options.repo)
+		if msg.handled {
+			m.handled[msg.jobID] = msg.kind
 		}
 		return m, nil
 	case inboxPageMsg:
@@ -228,12 +226,12 @@ func (m inboxModel) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.loading = true
 		return m, refreshInboxCmd(m.client, m.options.repo)
 	case "a":
-		if job, ok := m.selectedJob(); ok && job.State == "implemented" {
+		if job, ok := m.selectedJob(); ok && job.State == "implemented" && !m.isHandled(job.ID) {
 			m.confirm = "approve"
 			m.pendingID = job.ID
 		}
 	case "r":
-		if job, ok := m.selectedJob(); ok && job.State == "failed" {
+		if job, ok := m.selectedJob(); ok && job.State == "failed" && !m.isHandled(job.ID) {
 			m.confirm = "retry"
 			m.pendingID = job.ID
 		}
@@ -270,7 +268,44 @@ func (m inboxModel) confirmAction() (tea.Model, tea.Cmd) {
 		} else {
 			err = m.client.RetryJob(context.Background(), id)
 		}
-		return inboxActionMsg{jobID: jobID, kind: kind, remove: true, err: err}
+		return inboxActionMsg{jobID: jobID, kind: kind, handled: true, err: err}
+	}
+}
+
+func (m *inboxModel) mergeRefresh(jobs []api.JobItem) {
+	refreshedByID := make(map[int64]api.JobItem, len(jobs))
+	for _, job := range jobs {
+		refreshedByID[job.ID] = job
+	}
+
+	seen := make(map[int64]bool, len(m.jobs)+len(jobs))
+	for index, job := range m.jobs {
+		if refreshed, ok := refreshedByID[job.ID]; ok {
+			m.jobs[index] = refreshed
+		}
+		seen[job.ID] = true
+	}
+	for _, job := range jobs {
+		if seen[job.ID] {
+			continue
+		}
+		m.jobs = append(m.jobs, job)
+		seen[job.ID] = true
+	}
+}
+
+func (m inboxModel) isHandled(jobID int64) bool {
+	return m.handled[jobID] != ""
+}
+
+func inboxHandledLabel(kind string) string {
+	switch kind {
+	case "approve":
+		return "approved"
+	case "retry":
+		return "retried"
+	default:
+		return kind
 	}
 }
 
@@ -303,7 +338,11 @@ func (m inboxModel) View() string {
 		if pending != "" {
 			pending = "  " + spinnerStyle.Render(pending+"...")
 		}
-		lines = append(lines, fmt.Sprintf("%s JOB-%-5d %-34s %-13s %s%s", pointer, job.ID, truncate(job.Title, 34), stateStyle(job.State).Render(job.State), pr, pending))
+		handled := ""
+		if kind := m.handled[job.ID]; kind != "" {
+			handled = "  " + subtleStyle.Render("done: "+inboxHandledLabel(kind))
+		}
+		lines = append(lines, fmt.Sprintf("%s JOB-%-5d %-34s %-13s %s%s%s", pointer, job.ID, truncate(job.Title, 34), stateStyle(job.State).Render(job.State), pr, pending, handled))
 	}
 
 	if m.detailOpen {
