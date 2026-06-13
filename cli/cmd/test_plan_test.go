@@ -68,7 +68,7 @@ func TestPlanFetchesAdminJobAndPrintsNewestCompletedPlan(t *testing.T) {
 		w.Write([]byte(payload))
 	}))
 	defer server.Close()
-	writeTestCredentials(t, home, server.URL)
+	writeCredentials(t, home, server.URL, "secret-token")
 
 	command := NewTestPlanCommand()
 	command.SetOut(&stdout)
@@ -115,7 +115,7 @@ func TestPlanPrintsPendingMessageWhenNoCompletedWorkflowHasPlan(t *testing.T) {
 		w.Write([]byte(payload))
 	}))
 	defer server.Close()
-	writeTestCredentials(t, home, server.URL)
+	writeCredentials(t, home, server.URL, "secret-token")
 
 	command := NewTestPlanCommand()
 	command.SetOut(&stdout)

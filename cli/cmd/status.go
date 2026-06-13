@@ -43,7 +43,7 @@ func runStatus(ctx context.Context, out io.Writer, opts *statusOptions, color bo
 	creds, err := config.LoadDefaultCredentials()
 	if err != nil {
 		if errors.Is(err, config.ErrMissingCredentials) || errors.Is(err, config.ErrIncompleteCredentials) {
-			return errors.New(configureMessage)
+			return errors.New(loginMessage)
 		}
 		return err
 	}

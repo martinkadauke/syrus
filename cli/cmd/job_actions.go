@@ -141,9 +141,13 @@ func runJobCreate(cmd *cobra.Command, repo string, yes bool) error {
 	if err != nil {
 		return err
 	}
-	repositoryID, err := repositoryIDForSlug(cmd, client, repo)
+	repositories, err := client.ListRepositories(cmd.Context())
 	if err != nil {
 		return err
+	}
+	repositoryID, ok := repositoryIDForSlug(repositories.AvailableRepositories(), repo)
+	if !ok {
+		return fmt.Errorf("repository %s is not configured for this Syrus account", repo)
 	}
 	job, err := client.CreateDirectJob(cmd.Context(), api.CreateJobParams{
 		RepositoryID: repositoryID,
@@ -192,19 +196,6 @@ func confirm(reader *bufio.Reader, out io.Writer, label string) (bool, error) {
 	return answer == "y" || answer == "yes", nil
 }
 
-func repositoryIDForSlug(cmd *cobra.Command, client *api.Client, slug string) (int64, error) {
-	repos, err := client.ListRepositories(cmd.Context())
-	if err != nil {
-		return 0, err
-	}
-	for _, repo := range repos.Repositories {
-		if repo.Slug == slug {
-			return repo.ID, nil
-		}
-	}
-	return 0, fmt.Errorf("repository %s is not configured for this Syrus account", slug)
-}
-
 func runJobCheckout(cmd *cobra.Command, id string) error {
 	client, _, err := apiClient()
 	if err != nil {
@@ -229,22 +220,10 @@ func runJobCheckout(cmd *cobra.Command, id string) error {
 	if current != repo {
 		return fmt.Errorf("current checkout is %s, but Job #%s belongs to %s", current, id, repo)
 	}
-	if err := runGit("fetch", "origin", branch+":"+branch); err != nil {
-		return err
-	}
-	if err := runGit("checkout", branch); err != nil {
+	if err := checkoutJobBranch(cmd.Context(), checkoutRunGit, repo, branch); err != nil {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "Checked out %s. Run: syrus job test-plan %s\n", branch, id)
-	return nil
-}
-
-func runGit(args ...string) error {
-	command := exec.Command("git", args...)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git %s failed: %s", strings.Join(args, " "), strings.TrimSpace(string(output)))
-	}
 	return nil
 }
 

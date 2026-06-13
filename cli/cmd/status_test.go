@@ -22,21 +22,21 @@ func TestStatusCommandListsOpenJobs(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer secret-token" {
 			t.Fatalf("Authorization = %q", got)
 		}
-		if r.URL.Path != "/api/v1/admin/jobs" {
+		if r.URL.Path != "/api/v1/app/jobs" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{
 			"count": 3,
 			"jobs": [
-				{"id":42,"repository":"tkadauke/myapp","issue_title":"Add avatar upload","state":"implemented","pr_number":98},
-				{"id":43,"repository":"tkadauke/myapp","issue_title":"Fix password reset email","state":"running","pr_number":null},
-				{"id":44,"repository":"tkadauke/other-repo","issue_title":"Upgrade Rails to 8.1","state":"queued","pr_number":null}
+				{"id":42,"repository_slug":"tkadauke/myapp","title":"Add avatar upload","state":"implemented","pr_number":98},
+				{"id":43,"repository_slug":"tkadauke/myapp","title":"Fix password reset email","state":"running","pr_number":null},
+				{"id":44,"repository_slug":"tkadauke/other-repo","title":"Upgrade Rails to 8.1","state":"queued","pr_number":null}
 			]
 		}`))
 	}))
 	defer server.Close()
-	writeCredentials(t, home, server.URL)
+	writeStatusCredentials(t, home, server.URL)
 
 	output := &bytes.Buffer{}
 	command := NewRootCommand()
@@ -85,7 +85,7 @@ func TestStatusCommandFiltersClosedJobsByRepo(t *testing.T) {
 		w.Write([]byte(`{"count":0,"jobs":[]}`))
 	}))
 	defer server.Close()
-	writeCredentials(t, home, server.URL)
+	writeStatusCredentials(t, home, server.URL)
 
 	command := NewRootCommand()
 	command.SetOut(&bytes.Buffer{})
@@ -122,7 +122,7 @@ func TestStatusCommandTruncatesLongTitlesForEightyColumns(t *testing.T) {
 	}
 }
 
-func writeCredentials(t *testing.T, home string, serverURL string) {
+func writeStatusCredentials(t *testing.T, home string, serverURL string) {
 	t.Helper()
 	path := filepath.Join(home, ".syrus", "credentials")
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

@@ -2,21 +2,14 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os/exec"
-	"regexp"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 	"github.com/tkadauke/syrus/cli/internal/api"
-	"github.com/tkadauke/syrus/cli/internal/config"
 )
-
-var detectCurrentRepoSlug = currentRepoSlug
 
 func NewScheduleCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "schedule", Short: "Manage Syrus schedules"}
@@ -30,7 +23,7 @@ func newScheduleListCommand() *cobra.Command {
 		Short: "List schedules",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := apiClient()
+			client, _, err := apiClient()
 			if err != nil {
 				return err
 			}
@@ -69,7 +62,7 @@ func newScheduleShowCommand() *cobra.Command {
 		Short: "Show a schedule",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := apiClient()
+			client, _, err := apiClient()
 			if err != nil {
 				return err
 			}
@@ -109,7 +102,7 @@ func newScheduleDeleteCommand() *cobra.Command {
 		Short: "Delete a schedule",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := apiClient()
+			client, _, err := apiClient()
 			if err != nil {
 				return err
 			}
@@ -141,7 +134,7 @@ func newScheduleRunCommand() *cobra.Command {
 		Short: "Run a schedule now",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := apiClient()
+			client, _, err := apiClient()
 			if err != nil {
 				return err
 			}
@@ -166,7 +159,7 @@ func runScheduleCreate(cmd *cobra.Command, yes bool) error {
 	if repo == "" {
 		return errors.New("syrus schedule create requires a GitHub repository checkout")
 	}
-	client, err := apiClient()
+	client, _, err := apiClient()
 	if err != nil {
 		return err
 	}
@@ -228,25 +221,6 @@ func runScheduleCreate(cmd *cobra.Command, yes bool) error {
 	return nil
 }
 
-func apiClient() (*api.Client, error) {
-	creds, err := loadCredentials()
-	if err != nil {
-		return nil, err
-	}
-	return api.NewClient(creds.URL, creds.Token)
-}
-
-func loadCredentials() (config.Credentials, error) {
-	creds, err := config.LoadDefaultCredentials()
-	if err != nil {
-		if errors.Is(err, config.ErrMissingCredentials) || errors.Is(err, config.ErrIncompleteCredentials) {
-			return config.Credentials{}, errors.New(loginMessage)
-		}
-		return config.Credentials{}, err
-	}
-	return creds, nil
-}
-
 func tasksForCurrentRepo(tasks []api.ScheduledTask) []api.ScheduledTask {
 	repo := detectCurrentRepoSlug()
 	if repo == "" {
@@ -264,63 +238,9 @@ func tasksForCurrentRepo(tasks []api.ScheduledTask) []api.ScheduledTask {
 	return scoped
 }
 
-func repositoryIDForSlug(repositories []api.Repository, slug string) (int64, bool) {
-	for _, repository := range repositories {
-		if repository.Slug == slug {
-			return repository.ID, true
-		}
-	}
-	return 0, false
-}
-
-func readMultiline(reader *bufio.Reader) (string, error) {
-	var lines []string
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil && err != io.EOF {
-			return "", err
-		}
-		line = strings.TrimSuffix(line, "\n")
-		line = strings.TrimSuffix(line, "\r")
-		if line == "" {
-			return strings.Join(lines, "\n"), nil
-		}
-		lines = append(lines, line)
-		if err == io.EOF {
-			return strings.Join(lines, "\n"), nil
-		}
-	}
-}
-
-func confirmed(answer string) bool {
-	switch strings.ToLower(strings.TrimSpace(answer)) {
-	case "y", "yes":
-		return true
-	default:
-		return false
-	}
-}
-
 func valueOrDash(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "-"
 	}
 	return value
-}
-
-func currentRepoSlug() string {
-	out, err := exec.CommandContext(context.Background(), "git", "config", "--get", "remote.origin.url").Output()
-	if err != nil {
-		return ""
-	}
-	return parseGitHubSlug(strings.TrimSpace(string(out)))
-}
-
-func parseGitHubSlug(remote string) string {
-	pattern := regexp.MustCompile(`github\.com[:/]([^/]+)/([^/]+?)(?:\.git)?$`)
-	match := pattern.FindStringSubmatch(remote)
-	if len(match) == 3 {
-		return match[1] + "/" + match[2]
-	}
-	return ""
 }

@@ -42,7 +42,7 @@ func TestJobCreatePostsDirectJob(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	writeTestCredentials(t, server.URL)
+	writeJobActionTestCredentials(t, server.URL)
 
 	output := &bytes.Buffer{}
 	command := NewRootCommand()
@@ -67,7 +67,7 @@ func TestJobActionPostsEndpoint(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
-	writeTestCredentials(t, server.URL)
+	writeJobActionTestCredentials(t, server.URL)
 
 	output := &bytes.Buffer{}
 	command := NewRootCommand()
@@ -98,7 +98,7 @@ func TestJobTestPlanRendersLatestCompletedPlan(t *testing.T) {
 		}`))
 	}))
 	defer server.Close()
-	writeTestCredentials(t, server.URL)
+	writeJobActionTestCredentials(t, server.URL)
 
 	output := &bytes.Buffer{}
 	command := NewRootCommand()
@@ -123,7 +123,7 @@ func TestJobCheckoutFailsWhenBranchMissing(t *testing.T) {
 		w.Write([]byte(`{"job":{"id":456},"repository":{"slug":"acme/widgets"}}`))
 	}))
 	defer server.Close()
-	writeTestCredentials(t, server.URL)
+	writeJobActionTestCredentials(t, server.URL)
 
 	command := NewRootCommand()
 	command.SetOut(&bytes.Buffer{})
@@ -137,7 +137,7 @@ func TestJobCheckoutFailsWhenBranchMissing(t *testing.T) {
 }
 
 func TestJobOpenUsesConfiguredInstanceURL(t *testing.T) {
-	writeTestCredentials(t, "https://syrus.example.test/")
+	writeJobActionTestCredentials(t, "https://syrus.example.test/")
 	var opened string
 	previous := openBrowser
 	openBrowser = func(target string) error {
@@ -160,7 +160,7 @@ func TestJobOpenUsesConfiguredInstanceURL(t *testing.T) {
 	}
 }
 
-func writeTestCredentials(t *testing.T, url string) {
+func writeJobActionTestCredentials(t *testing.T, url string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)

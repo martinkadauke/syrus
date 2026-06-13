@@ -21,6 +21,9 @@ vendor/bundle/
 node_modules/
 .byebug_history
 
+# Go CLI build output
+/cli/bin/
+
 # Secrets
 .env
 .env.*

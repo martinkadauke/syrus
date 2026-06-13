@@ -55,7 +55,7 @@ func TestLoginCommandWritesCredentials(t *testing.T) {
 func TestRootCommandSelectsExistingSessionAndRunsREPL(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	writeTestCredentials(t, home, "")
+	writeRootTestCredentials(t, home, "")
 
 	var streamedBody string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -75,7 +75,7 @@ func TestRootCommandSelectsExistingSessionAndRunsREPL(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	writeTestCredentials(t, home, server.URL)
+	writeRootTestCredentials(t, home, server.URL)
 
 	output := &bytes.Buffer{}
 	command := NewRootCommand()
@@ -168,7 +168,7 @@ func TestRootCommandCreatesRepoAttachedSession(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	writeTestCredentials(t, home, server.URL)
+	writeRootTestCredentials(t, home, server.URL)
 
 	command := NewRootCommand()
 	command.SetIn(strings.NewReader("1\nstart\n"))
@@ -187,7 +187,7 @@ func TestRootCommandCreatesRepoAttachedSession(t *testing.T) {
 func TestRootCommandHandlesMultipleChatProposalsSequentially(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	writeTestCredentials(t, home, "")
+	writeRootTestCredentials(t, home, "")
 
 	var actions []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -214,7 +214,7 @@ func TestRootCommandHandlesMultipleChatProposalsSequentially(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	writeTestCredentials(t, home, server.URL)
+	writeRootTestCredentials(t, home, server.URL)
 
 	output := &bytes.Buffer{}
 	command := NewRootCommand()
@@ -240,7 +240,7 @@ func TestRootCommandHandlesMultipleChatProposalsSequentially(t *testing.T) {
 	}
 }
 
-func writeTestCredentials(t *testing.T, home string, serverURL string) {
+func writeRootTestCredentials(t *testing.T, home string, serverURL string) {
 	t.Helper()
 	if serverURL == "" {
 		serverURL = "https://syrus.example.com"

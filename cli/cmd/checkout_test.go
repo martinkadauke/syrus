@@ -15,14 +15,14 @@ import (
 
 func TestCheckoutCommandFetchesAndChecksOutJobBranch(t *testing.T) {
 	server := checkoutServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/admin/jobs/456" {
+		if r.URL.Path != "/api/v1/app/jobs/456" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
 		if got := r.Header.Get("Authorization"); got != "Bearer secret-token" {
 			t.Fatalf("Authorization = %q", got)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"id":456,"state":"running","branch_name":"syrus/issue-42-456","repository":{"slug":"acme/widgets"}}`)
+		fmt.Fprint(w, `{"job":{"id":456,"state":"running","branch_name":"syrus/issue-42-456"},"repository":{"slug":"acme/widgets"}}`)
 	})
 	writeTestCredentials(t, server.URL)
 
@@ -73,7 +73,7 @@ func TestCheckoutCommandFetchesAndChecksOutJobBranch(t *testing.T) {
 func TestCheckoutCommandHandlesAlreadyCheckedOutBranch(t *testing.T) {
 	server := checkoutServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"id":456,"state":"running","branch_name":"syrus/issue-42-456","repository":{"slug":"acme/widgets"}}`)
+		fmt.Fprint(w, `{"job":{"id":456,"state":"running","branch_name":"syrus/issue-42-456"},"repository":{"slug":"acme/widgets"}}`)
 	})
 	writeTestCredentials(t, server.URL)
 
@@ -119,7 +119,7 @@ func TestCheckoutCommandHandlesAlreadyCheckedOutBranch(t *testing.T) {
 func TestCheckoutCommandReportsMissingBranch(t *testing.T) {
 	server := checkoutServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"id":456,"state":"queued","branch_name":"","repository":{"slug":"acme/widgets"}}`)
+		fmt.Fprint(w, `{"job":{"id":456,"state":"queued","branch_name":""},"repository":{"slug":"acme/widgets"}}`)
 	})
 	writeTestCredentials(t, server.URL)
 
@@ -146,7 +146,7 @@ func TestCheckoutCommandReportsMissingBranch(t *testing.T) {
 func TestCheckoutCommandRejectsWrongRepository(t *testing.T) {
 	server := checkoutServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"id":456,"state":"running","branch_name":"syrus/issue-42-456","repository":{"slug":"acme/widgets"}}`)
+		fmt.Fprint(w, `{"job":{"id":456,"state":"running","branch_name":"syrus/issue-42-456"},"repository":{"slug":"acme/widgets"}}`)
 	})
 	writeTestCredentials(t, server.URL)
 

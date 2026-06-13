@@ -10,7 +10,6 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
-	"runtime"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -516,19 +515,6 @@ func appURL(base string, path string) string {
 		return strings.TrimRight(base, "/") + "/" + strings.TrimLeft(path, "/")
 	}
 	return parsed.ResolveReference(relative).String()
-}
-
-func openBrowser(target string) error {
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		command = exec.Command("open", target)
-	case "windows":
-		command = exec.Command("cmd", "/c", "start", "", target)
-	default:
-		command = exec.Command("xdg-open", target)
-	}
-	return command.Run()
 }
 
 func currentRepoSlug() string {

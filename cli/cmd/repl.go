@@ -62,7 +62,7 @@ func pickChatSession(ctx context.Context, client *api.Client, reader *bufio.Read
 		selection, parseErr := strconv.Atoi(strings.TrimSpace(line))
 		if parseErr == nil && selection >= 1 && selection <= newSessionIndex {
 			if selection == newSessionIndex {
-				repositoryID := repositoryIDForSlug(list.Repositories, currentSlug)
+				repositoryID := chatRepositoryIDForSlug(list.Repositories, currentSlug)
 				return client.CreateChat(ctx, repositoryID)
 			}
 			return chats[selection-1], nil
@@ -91,7 +91,7 @@ func runChatREPL(ctx context.Context, client *api.Client, chatID string, reader 
 			}
 			continue
 		}
-		if err := streamTurnWithClient(ctx, client, chatID, message, out, errOut); err != nil {
+		if err := streamTurnWithClient(ctx, client, chatID, message, reader, out, errOut); err != nil {
 			return err
 		}
 		if errors.Is(err, io.EOF) {
@@ -118,7 +118,7 @@ func orderChatsForRepository(chats []api.ChatSession, slug string) []api.ChatSes
 	return ordered
 }
 
-func repositoryIDForSlug(repositories []api.ChatRepository, slug string) int64 {
+func chatRepositoryIDForSlug(repositories []api.ChatRepository, slug string) int64 {
 	for _, repository := range repositories {
 		if repository.Slug == slug {
 			return repository.ID

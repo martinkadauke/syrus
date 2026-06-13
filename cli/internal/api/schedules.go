@@ -12,40 +12,30 @@ type ScheduledTaskList struct {
 
 type ScheduledTaskDetail struct {
 	Task       ScheduledTask `json:"task"`
-	RecentJobs []ScheduleJob  `json:"recent_jobs"`
+	RecentJobs []ScheduleJob `json:"recent_jobs"`
 }
 
 type ScheduledTask struct {
-	ID                 int64      `json:"id"`
-	Name               string     `json:"name"`
-	State              string     `json:"state"`
-	Kind               string     `json:"kind"`
-	Repository         Repository `json:"repository"`
-	CronExpression     string     `json:"cron_expression"`
-	NextFireAt         string     `json:"next_fire_at"`
-	PrPileupPolicy     string     `json:"pr_pileup_policy"`
-	AutoApproveMode    string     `json:"auto_approve_mode"`
-	Prompt             string     `json:"prompt"`
-	ConsecutiveFailure int        `json:"consecutive_failure_count"`
+	ID                 int64          `json:"id"`
+	Name               string         `json:"name"`
+	State              string         `json:"state"`
+	Kind               string         `json:"kind"`
+	Repository         RepositoryItem `json:"repository"`
+	CronExpression     string         `json:"cron_expression"`
+	NextFireAt         string         `json:"next_fire_at"`
+	PrPileupPolicy     string         `json:"pr_pileup_policy"`
+	AutoApproveMode    string         `json:"auto_approve_mode"`
+	Prompt             string         `json:"prompt"`
+	ConsecutiveFailure int            `json:"consecutive_failure_count"`
 }
 
 type ScheduleJob struct {
-	ID             int64  `json:"id"`
-	State          string `json:"state"`
-	ClosureReason  string `json:"closure_reason"`
-	PRNumber       int64  `json:"pr_number"`
-	ExternalPR     int64  `json:"external_pr_number"`
-	CreatedAt      string `json:"created_at"`
-}
-
-type RepositoryList struct {
-	ActiveRepositories []Repository `json:"active_repositories"`
-	Repositories       []Repository `json:"repositories"`
-}
-
-type Repository struct {
-	ID   int64  `json:"id"`
-	Slug string `json:"slug"`
+	ID            int64  `json:"id"`
+	State         string `json:"state"`
+	ClosureReason string `json:"closure_reason"`
+	PRNumber      int64  `json:"pr_number"`
+	ExternalPR    int64  `json:"external_pr_number"`
+	CreatedAt     string `json:"created_at"`
 }
 
 type CreateScheduleRequest struct {
@@ -53,23 +43,23 @@ type CreateScheduleRequest struct {
 }
 
 type CreateScheduleParams struct {
-	Name             string `json:"name"`
-	Kind             string `json:"kind"`
-	CronExpression   string `json:"cron_expression"`
-	PrPileupPolicy   string `json:"pr_pileup_policy"`
-	Prompt           string `json:"prompt"`
+	Name           string `json:"name"`
+	Kind           string `json:"kind"`
+	CronExpression string `json:"cron_expression"`
+	PrPileupPolicy string `json:"pr_pileup_policy"`
+	Prompt         string `json:"prompt"`
 }
 
 type FireScheduleResponse struct {
 	Message    string `json:"message"`
 	FireResult struct {
-		Fired bool   `json:"fired"`
-		JobID int64  `json:"job_id"`
+		Fired  bool   `json:"fired"`
+		JobID  int64  `json:"job_id"`
 		Reason string `json:"reason"`
 	} `json:"fire_result"`
 }
 
-func (l RepositoryList) AvailableRepositories() []Repository {
+func (l RepositoryList) AvailableRepositories() []RepositoryItem {
 	if len(l.ActiveRepositories) > 0 {
 		return l.ActiveRepositories
 	}
@@ -85,12 +75,6 @@ func (c *Client) ListScheduledTasks(ctx context.Context) (ScheduledTaskList, err
 func (c *Client) GetScheduledTask(ctx context.Context, id string) (ScheduledTaskDetail, error) {
 	var out ScheduledTaskDetail
 	err := c.do(ctx, http.MethodGet, "/api/v1/app/scheduled_tasks/"+url.PathEscape(id), nil, &out)
-	return out, err
-}
-
-func (c *Client) ListRepositories(ctx context.Context) (RepositoryList, error) {
-	var out RepositoryList
-	err := c.do(ctx, http.MethodGet, "/api/v1/app/repositories", nil, &out)
 	return out, err
 }
 

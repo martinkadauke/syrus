@@ -61,11 +61,11 @@ type JobDetail struct {
 }
 
 type AdminJobDetail struct {
-	ID          int64           `json:"id"`
-	IssueTitle  string          `json:"issue_title"`
-	BranchName  string          `json:"branch_name"`
-	Repository  AdminRepository `json:"repository"`
-	Workflows   []AdminWorkflow `json:"workflows"`
+	ID         int64           `json:"id"`
+	IssueTitle string          `json:"issue_title"`
+	BranchName string          `json:"branch_name"`
+	Repository AdminRepository `json:"repository"`
+	Workflows  []AdminWorkflow `json:"workflows"`
 }
 
 type AdminRepository struct {
@@ -133,6 +133,12 @@ func (c *Client) ListJobs(ctx context.Context, filters url.Values) (JobList, err
 func (c *Client) GetJob(ctx context.Context, id string) (JobResponse, error) {
 	var out json.RawMessage
 	err := c.do(ctx, http.MethodGet, "/api/v1/app/jobs/"+url.PathEscape(id), nil, &out)
+	return JobResponse(out), err
+}
+
+func (c *Client) GetAdminJobRaw(ctx context.Context, id string) (JobResponse, error) {
+	var out json.RawMessage
+	err := c.do(ctx, http.MethodGet, "/api/v1/admin/jobs/"+url.PathEscape(id), nil, &out)
 	return JobResponse(out), err
 }
 

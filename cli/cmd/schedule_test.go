@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -203,26 +201,6 @@ func TestScheduleRunPrintsCreatedJob(t *testing.T) {
 	if output.String() != "Created job #99\n" {
 		t.Fatalf("output = %q", output.String())
 	}
-}
-
-func withCredentials(t *testing.T, url string, token string) {
-	t.Helper()
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	path := filepath.Join(home, ".syrus", "credentials")
-	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("url="+url+"\ntoken="+token+"\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func withRepoSlug(t *testing.T, slug string) {
-	t.Helper()
-	oldDetect := detectCurrentRepoSlug
-	detectCurrentRepoSlug = func() string { return slug }
-	t.Cleanup(func() { detectCurrentRepoSlug = oldDetect })
 }
 
 func requireAuth(t *testing.T, r *http.Request) {

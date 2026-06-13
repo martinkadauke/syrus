@@ -8,8 +8,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tkadauke/syrus/cli/internal/api"
-	"github.com/tkadauke/syrus/cli/internal/config"
 )
 
 type gitRunner func(ctx context.Context, dir string, args ...string) (string, error)
@@ -29,15 +27,7 @@ func NewCheckoutCommand() *cobra.Command {
 				return err
 			}
 
-			creds, err := config.LoadDefaultCredentials()
-			if err != nil {
-				if errors.Is(err, config.ErrMissingCredentials) || errors.Is(err, config.ErrIncompleteCredentials) {
-					return errors.New(loginMessage)
-				}
-				return err
-			}
-
-			client, err := api.NewClient(creds.URL, creds.Token)
+			client, _, err := apiClient()
 			if err != nil {
 				return err
 			}

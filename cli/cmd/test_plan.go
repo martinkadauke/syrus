@@ -26,8 +26,8 @@ type adminJobPayload struct {
 type workflowPayload struct {
 	ID         int                        `json:"id"`
 	State      string                     `json:"state"`
-	FinishedAt string                    `json:"finished_at"`
-	CreatedAt  string                    `json:"created_at"`
+	FinishedAt string                     `json:"finished_at"`
+	CreatedAt  string                     `json:"created_at"`
 	Artifacts  map[string]json.RawMessage `json:"artifacts"`
 }
 
@@ -93,7 +93,7 @@ func runTestPlan(ctx context.Context, slug string, stdout io.Writer) error {
 }
 
 func fetchAdminJob(ctx context.Context, client *api.Client, jobID string) (adminJobPayload, error) {
-	raw, err := client.GetJob(ctx, jobID)
+	raw, err := client.GetAdminJobRaw(ctx, jobID)
 	if err != nil {
 		return adminJobPayload{}, err
 	}
