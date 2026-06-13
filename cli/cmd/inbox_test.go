@@ -140,6 +140,26 @@ func TestInboxRefreshPreservesExistingOrderAndHandledRows(t *testing.T) {
 	}
 }
 
+func TestInboxUsesAvailableTerminalWidth(t *testing.T) {
+	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
+	model.jobs = []api.JobItem{{
+		ID:    12,
+		State: "implemented",
+		Title: "This title keeps going beyond the old fixed inbox title width",
+	}}
+
+	updated, _ := model.Update(tea.WindowSizeMsg{Width: 118, Height: 40})
+	model = updated.(inboxModel)
+	view := model.View()
+
+	if !strings.Contains(view, strings.Repeat("─", 118)) {
+		t.Fatalf("view does not use full terminal width:\n%s", view)
+	}
+	if !strings.Contains(view, "beyond the old fixed inbox title width") {
+		t.Fatalf("job title was still truncated to the old fixed width:\n%s", view)
+	}
+}
+
 func TestInboxOpenDetailShowsLoadingBeforeFetchCompletes(t *testing.T) {
 	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
 	model.jobs = []api.JobItem{{ID: 12, State: "implemented", Title: "Summarize me"}}

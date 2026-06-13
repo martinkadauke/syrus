@@ -19,6 +19,7 @@ import (
 )
 
 const inboxRefreshInterval = 30 * time.Second
+const defaultInboxWidth = 80
 
 type inboxAPI interface {
 	ListJobs(context.Context, url.Values) (api.JobList, error)
@@ -67,6 +68,7 @@ type inboxModel struct {
 
 	jobs       []api.JobItem
 	cursor     int
+	width      int
 	detailOpen bool
 	details    map[int64]string
 	detailDone map[int64]bool
@@ -120,6 +122,7 @@ func newInboxModel(client inboxAPI, options inboxOptions) inboxModel {
 	return inboxModel{
 		client:     client,
 		options:    options,
+		width:      defaultInboxWidth,
 		details:    map[int64]string{},
 		detailDone: map[int64]bool{},
 		pending:    map[int64]string{},
@@ -135,6 +138,11 @@ func (m inboxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.updateKey(msg)
+	case tea.WindowSizeMsg:
+		if msg.Width > 0 {
+			m.width = msg.Width
+		}
+		return m, nil
 	case inboxRefreshMsg:
 		m.loading = false
 		if msg.err != nil {
@@ -342,7 +350,8 @@ func (m inboxModel) View() string {
 	if m.options.repo != "" {
 		scope = m.options.repo
 	}
-	lines := []string{fmt.Sprintf("%s  %d jobs · %s", header, len(m.jobs), scope), ruleStyle.Render(strings.Repeat("─", 66))}
+	width := m.renderWidth()
+	lines := []string{fmt.Sprintf("%s  %d jobs · %s", header, len(m.jobs), scope), ruleStyle.Render(strings.Repeat("─", width))}
 
 	for i, job := range m.jobs {
 		pointer := " "
@@ -358,7 +367,16 @@ func (m inboxModel) View() string {
 		if kind := m.handled[job.ID]; kind != "" {
 			handled = "  " + subtleStyle.Render("done: "+inboxHandledLabel(kind))
 		}
-		lines = append(lines, fmt.Sprintf("%s JOB-%-5d %-34s %-13s %s%s%s", pointer, job.ID, truncate(job.Title, 34), stateStyle(job.State).Render(job.State), pr, pending, handled))
+		line := fmt.Sprintf("%s JOB-%-5d %s %-13s %s%s%s",
+			pointer,
+			job.ID,
+			padRight(truncate(job.Title, m.titleWidth()), m.titleWidth()),
+			stateStyle(job.State).Render(job.State),
+			pr,
+			pending,
+			handled,
+		)
+		lines = append(lines, line)
 	}
 
 	if m.detailOpen {
@@ -367,11 +385,11 @@ func (m inboxModel) View() string {
 			if !m.detailDone[job.ID] && m.pending[job.ID] == "detail" {
 				summary = "Loading details..."
 			}
-			lines = append(lines, renderInboxDetail(job, summary))
+			lines = append(lines, renderInboxDetail(job, summary, width-2))
 		}
 	}
 
-	lines = append(lines, ruleStyle.Render(strings.Repeat("─", 66)))
+	lines = append(lines, ruleStyle.Render(strings.Repeat("─", width)))
 	if m.confirm != "" {
 		lines = append(lines, fmt.Sprintf("Confirm %s JOB-%d? y/N", m.confirm, m.pendingID))
 	} else if m.help {
@@ -389,6 +407,17 @@ func (m inboxModel) View() string {
 		lines = append(lines, errorStyle.Render(m.err))
 	}
 	return strings.Join(lines, "\n") + "\n"
+}
+
+func (m inboxModel) renderWidth() int {
+	if m.width < 40 {
+		return defaultInboxWidth
+	}
+	return m.width
+}
+
+func (m inboxModel) titleWidth() int {
+	return max(18, m.renderWidth()-46)
 }
 
 func fetchInboxJobs(ctx context.Context, client inboxAPI, repo string) ([]api.JobItem, error) {
@@ -488,19 +517,20 @@ func formatJobDetailStatus(job api.JobItem) string {
 	return strings.Join(parts, " · ")
 }
 
-func renderInboxDetail(job api.JobItem, summary string) string {
+func renderInboxDetail(job api.JobItem, summary string, width int) string {
 	if strings.TrimSpace(summary) == "" {
 		summary = "No summary captured yet."
 	}
-	width := 64
-	title := fmt.Sprintf(" JOB-%d · %s ", job.ID, truncate(job.Title, 42))
+	contentWidth := max(34, width)
+	title := truncate(fmt.Sprintf(" JOB-%d · %s ", job.ID, job.Title), contentWidth)
+	bodyWidth := contentWidth - 2
 	var out []string
-	out = append(out, "┌─"+title+strings.Repeat("─", max(0, width-len(title)))+"┐")
-	out = append(out, fmt.Sprintf("│ %-62s │", truncate(formatJobDetailStatus(job), 62)))
+	out = append(out, "┌"+title+strings.Repeat("─", max(0, contentWidth-len([]rune(title))))+"┐")
+	out = append(out, "│ "+padRight(truncate(formatJobDetailStatus(job), bodyWidth), bodyWidth)+" │")
 	for _, line := range strings.Split(summary, "\n") {
-		out = append(out, fmt.Sprintf("│ %-62s │", truncate(line, 62)))
+		out = append(out, "│ "+padRight(truncate(line, bodyWidth), bodyWidth)+" │")
 	}
-	out = append(out, "└"+strings.Repeat("─", width+2)+"┘")
+	out = append(out, "└"+strings.Repeat("─", contentWidth)+"┘")
 	return strings.Join(out, "\n")
 }
 
