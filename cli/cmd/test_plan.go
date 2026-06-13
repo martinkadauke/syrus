@@ -16,6 +16,12 @@ import (
 )
 
 var jobSlugPattern = regexp.MustCompile(`(?i)^JOB-(\d+)$`)
+var jobBranchPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`^syrus/issue-\d+-(\d+)$`),
+	regexp.MustCompile(`^syrus/direct-(\d+)$`),
+	regexp.MustCompile(`^syrus/scheduled-\d+-(\d+)$`),
+	regexp.MustCompile(`^syrus/local-(\d+)$`),
+}
 
 type adminJobPayload struct {
 	ID         int               `json:"id"`
@@ -38,13 +44,13 @@ type testPlanArtifact struct {
 
 func NewTestPlanCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:           "test-plan JOB-ID",
+		Use:           "test-plan [JOB-ID]",
 		Short:         "Print the latest completed Job test plan",
-		Args:          cobra.ExactArgs(1),
+		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTestPlan(cmd.Context(), args[0], cmd.OutOrStdout())
+			return runTestPlanCommand(cmd, args)
 		},
 	}
 }
@@ -56,6 +62,47 @@ func parseJobID(slug string) (string, error) {
 	}
 
 	return matches[1], nil
+}
+
+func runTestPlanCommand(cmd *cobra.Command, args []string) error {
+	slug := ""
+	if len(args) > 0 {
+		slug = args[0]
+	} else {
+		inferred, err := inferJobSlugFromCurrentBranch(cmd.Context(), checkoutRunGit)
+		if err != nil {
+			return err
+		}
+		slug = inferred
+	}
+	return runTestPlan(cmd.Context(), slug, cmd.OutOrStdout())
+}
+
+func inferJobSlugFromCurrentBranch(ctx context.Context, runner gitRunner) (string, error) {
+	inside, err := runner(ctx, "", "rev-parse", "--is-inside-work-tree")
+	if err != nil || strings.TrimSpace(inside) != "true" {
+		return "", errors.New("job argument required when not in a git checkout")
+	}
+
+	branch, err := runner(ctx, "", "branch", "--show-current")
+	if err != nil {
+		return "", fmt.Errorf("could not read current git branch: %w", err)
+	}
+	jobID, ok := jobIDFromBranch(strings.TrimSpace(branch))
+	if !ok {
+		return "", errors.New("job argument required unless current branch is a Syrus job branch")
+	}
+	return "JOB-" + jobID, nil
+}
+
+func jobIDFromBranch(branch string) (string, bool) {
+	for _, pattern := range jobBranchPatterns {
+		matches := pattern.FindStringSubmatch(branch)
+		if matches != nil {
+			return matches[1], true
+		}
+	}
+	return "", false
 }
 
 func runTestPlan(ctx context.Context, slug string, stdout io.Writer) error {
