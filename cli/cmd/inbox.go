@@ -69,6 +69,7 @@ type inboxModel struct {
 	cursor     int
 	detailOpen bool
 	details    map[int64]string
+	detailDone map[int64]bool
 	help       bool
 	loading    bool
 	quitting   bool
@@ -117,11 +118,12 @@ func NewInboxCommand() *cobra.Command {
 
 func newInboxModel(client inboxAPI, options inboxOptions) inboxModel {
 	return inboxModel{
-		client:  client,
-		options: options,
-		details: map[int64]string{},
-		pending: map[int64]string{},
-		handled: map[int64]string{},
+		client:     client,
+		options:    options,
+		details:    map[int64]string{},
+		detailDone: map[int64]bool{},
+		pending:    map[int64]string{},
+		handled:    map[int64]string{},
 	}
 }
 
@@ -151,6 +153,7 @@ func (m inboxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err.Error()
 		} else {
 			m.details[msg.jobID] = msg.summary
+			m.detailDone[msg.jobID] = true
 			m.err = ""
 		}
 		return m, nil
@@ -205,20 +208,21 @@ func (m inboxModel) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
+			return m.fetchSelectedDetailIfOpen()
 		}
 	case "down", "j":
 		if m.cursor < len(m.jobs)-1 {
 			m.cursor++
+			return m.fetchSelectedDetailIfOpen()
 		}
 	case "enter":
-		job, ok := m.selectedJob()
+		_, ok := m.selectedJob()
 		if !ok {
 			return m, nil
 		}
 		m.detailOpen = !m.detailOpen
 		if m.detailOpen {
-			m.pending[job.ID] = "detail"
-			return m, fetchInboxDetailCmd(m.client, job.ID)
+			return m.fetchSelectedDetailIfOpen()
 		}
 	case "?":
 		m.help = !m.help
@@ -316,6 +320,18 @@ func (m inboxModel) selectedJob() (api.JobItem, bool) {
 	return m.jobs[m.cursor], true
 }
 
+func (m inboxModel) fetchSelectedDetailIfOpen() (tea.Model, tea.Cmd) {
+	if !m.detailOpen {
+		return m, nil
+	}
+	job, ok := m.selectedJob()
+	if !ok || m.detailDone[job.ID] || m.pending[job.ID] == "detail" {
+		return m, nil
+	}
+	m.pending[job.ID] = "detail"
+	return m, fetchInboxDetailCmd(m.client, job.ID)
+}
+
 func (m inboxModel) View() string {
 	if len(m.jobs) == 0 {
 		return "Nothing in your inbox. Syrus is on it.\n"
@@ -347,7 +363,11 @@ func (m inboxModel) View() string {
 
 	if m.detailOpen {
 		if job, ok := m.selectedJob(); ok {
-			lines = append(lines, renderInboxDetail(job, m.details[job.ID]))
+			summary := m.details[job.ID]
+			if !m.detailDone[job.ID] && m.pending[job.ID] == "detail" {
+				summary = "Loading details..."
+			}
+			lines = append(lines, renderInboxDetail(job, summary))
 		}
 	}
 

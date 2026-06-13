@@ -14,10 +14,12 @@ import (
 )
 
 type fakeInboxClient struct {
-	lists       map[string][]api.JobItem
-	listFilters []url.Values
-	approved    []string
-	retried     []string
+	lists          map[string][]api.JobItem
+	details        map[string]api.JobDetail
+	listFilters    []url.Values
+	detailRequests []string
+	approved       []string
+	retried        []string
 }
 
 func (f *fakeInboxClient) ListJobs(_ context.Context, filters url.Values) (api.JobList, error) {
@@ -26,8 +28,9 @@ func (f *fakeInboxClient) ListJobs(_ context.Context, filters url.Values) (api.J
 	return api.JobList{Count: len(f.lists[state]), Jobs: f.lists[state]}, nil
 }
 
-func (f *fakeInboxClient) GetJobDetail(context.Context, string) (api.JobDetail, error) {
-	return api.JobDetail{}, nil
+func (f *fakeInboxClient) GetJobDetail(_ context.Context, id string) (api.JobDetail, error) {
+	f.detailRequests = append(f.detailRequests, id)
+	return f.details[id], nil
 }
 
 func (f *fakeInboxClient) GetJobTranscript(context.Context, string) (api.JobTranscript, error) {
@@ -134,6 +137,61 @@ func TestInboxRefreshPreservesExistingOrderAndHandledRows(t *testing.T) {
 	}
 	if model.handled[1] != "approve" {
 		t.Fatalf("handled row lost marker")
+	}
+}
+
+func TestInboxOpenDetailShowsLoadingBeforeFetchCompletes(t *testing.T) {
+	model := newInboxModel(&fakeInboxClient{}, inboxOptions{})
+	model.jobs = []api.JobItem{{ID: 12, State: "implemented", Title: "Summarize me"}}
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(inboxModel)
+
+	if cmd == nil {
+		t.Fatalf("expected detail fetch command")
+	}
+	if !strings.Contains(model.View(), "Loading details...") {
+		t.Fatalf("view does not show loading detail state:\n%s", model.View())
+	}
+	if strings.Contains(model.View(), "No summary captured yet.") {
+		t.Fatalf("view shows empty summary before detail fetch completes:\n%s", model.View())
+	}
+}
+
+func TestInboxFetchesDetailWhenSelectionChangesWithPanelOpen(t *testing.T) {
+	client := &fakeInboxClient{details: map[string]api.JobDetail{
+		"2": {Summary: &api.JobSummary{Text: "Second job summary"}},
+	}}
+	model := newInboxModel(client, inboxOptions{})
+	model.jobs = []api.JobItem{
+		{ID: 1, State: "implemented", Title: "First"},
+		{ID: 2, State: "implemented", Title: "Second"},
+	}
+	model.detailOpen = true
+	model.details[1] = "First job summary"
+	model.detailDone[1] = true
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(inboxModel)
+
+	if model.cursor != 1 {
+		t.Fatalf("cursor = %d, want 1", model.cursor)
+	}
+	if cmd == nil {
+		t.Fatalf("expected detail fetch command")
+	}
+	msg := cmd().(inboxDetailMsg)
+	if msg.err != nil {
+		t.Fatal(msg.err)
+	}
+	updated, _ = model.Update(msg)
+	model = updated.(inboxModel)
+
+	if !reflect.DeepEqual(client.detailRequests, []string{"2"}) {
+		t.Fatalf("detail requests = %v", client.detailRequests)
+	}
+	if !strings.Contains(model.View(), "Second job summary") {
+		t.Fatalf("view does not show fetched detail:\n%s", model.View())
 	}
 }
 
