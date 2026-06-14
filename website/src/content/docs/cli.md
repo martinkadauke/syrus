@@ -1,0 +1,241 @@
+---
+title: Syrus CLI
+description: Install, authenticate, chat, review, and manage Syrus work from the terminal.
+---
+
+# Syrus CLI
+
+The Syrus CLI is a standalone Go binary under `cli/`. It talks to the
+same app and admin JSON APIs as the React UI, but keeps the common
+operator loop close to the checkout: chat with Syrus, review inbox items,
+open PRs, check out Job branches, and print test plans.
+
+## Build
+
+Build the binary from the repository:
+
+```bash
+cd cli
+make build
+```
+
+The build writes `bin/syrus`. Put that binary on your `PATH`, or run it
+directly from `cli/bin/syrus`.
+
+## Log In
+
+Run `syrus login` once:
+
+```bash
+syrus login
+```
+
+It asks for the Syrus instance URL and an API token, then writes
+`~/.syrus/credentials`:
+
+```text
+url=https://syrus.example.com
+token=your-api-token
+```
+
+Most commands accept a normal user API token and scope themselves to
+what that user can see. Commands that read admin-only payloads, such as
+top-level `syrus test-plan`, require an admin token.
+
+## Repository Detection
+
+When a command runs inside a GitHub checkout, Syrus reads the `origin`
+remote and uses the detected `owner/name` repository. That keeps commands
+like `syrus inbox`, `syrus job list`, `syrus job create`, `syrus epic
+create`, and `syrus schedule create` focused on the repository in front
+of you.
+
+Outside a checkout, list commands fall back to all repositories visible
+to the configured user. Creation commands that need a repository require
+`--repo owner/name`.
+
+## Chat
+
+Run `syrus` with no subcommand to pick from recent chat sessions or start
+a new session:
+
+```bash
+syrus
+```
+
+The terminal picker groups sessions for the current checkout first. The
+REPL uses a compact `>` prompt, loads recent history, streams the
+assistant response, and shows a single Latin busy phrase for the whole
+turn. Ctrl+C stops the active turn; Ctrl+D exits.
+
+Pass `--debug` when you need raw stream diagnostics such as MCP sidecar
+events and provider result events:
+
+```bash
+syrus --debug
+```
+
+You can also send one message to an existing chat session:
+
+```bash
+syrus chat 123 "Inspect the queued proposals"
+```
+
+When a chat turn proposes a Job or Epic, the CLI pauses and asks whether
+to confirm or skip the proposal before returning to the prompt.
+
+## Inbox
+
+`syrus inbox` opens an interactive review queue for implemented Jobs
+awaiting approval and failed Jobs awaiting retry:
+
+```bash
+syrus inbox
+syrus inbox --watch
+syrus inbox --repo tkadauke/myapp
+```
+
+The inbox keeps a stable list while you work through it. New items appear
+at the bottom, and items become read after you approve, retry, open a PR,
+check out a branch, view a diff, or view a log.
+
+Common keys:
+
+| Key | Action |
+| --- | --- |
+| `j` / `down` | Move down |
+| `k` / `up` | Move up |
+| `a` | Approve an implemented Job |
+| `r` | Retry a failed Job |
+| `o` | Open the PR |
+| `s` | Open the Job in Syrus |
+| `c` | Check out the Job branch |
+| `d` | View the diff in `$PAGER` |
+| `l` | View the log in `$PAGER` |
+| `R` | Refresh |
+| `?` | Toggle help |
+| `q` | Quit |
+
+With `--watch`, an empty inbox stays open and refreshes every 30 seconds.
+
+## Jobs
+
+Use `syrus job` commands for direct Job work:
+
+```bash
+syrus job list --state open --limit 20
+syrus job search "dark mode"
+syrus job show 456
+syrus job log 456
+syrus job watch 456
+syrus job diff 456
+syrus job create
+syrus job approve 456
+syrus job cancel 456
+syrus job retry 456
+syrus job rebase 456
+syrus job checkout 456
+syrus job test-plan 456
+syrus job open 456
+```
+
+`job create` prompts for a title and multi-line description, defaults to
+the current checkout repository, and accepts `--repo owner/name` and
+`--yes`.
+
+`job log` pages completed transcripts through `$PAGER` and streams
+running transcripts until the Job finishes or the command is interrupted.
+`job diff` fetches the pull request diff through Syrus' GitHub
+credential; if no GitHub token is available, it prints the PR URL.
+
+`job checkout` verifies that the current checkout matches the Job's
+repository, fetches the Syrus branch from `origin`, and checks it out.
+
+## Test Plans
+
+The top-level test-plan shortcut accepts `JOB-123` slugs:
+
+```bash
+syrus test-plan JOB-456
+```
+
+When you are already on a Syrus Job branch, the argument is optional:
+
+```bash
+syrus test-plan
+```
+
+It infers the Job from branches like `syrus/issue-42-456`,
+`syrus/direct-456`, `syrus/scheduled-10-456`, and `syrus/local-456`.
+The command prints the newest completed workflow's `test_plan` artifact
+as a numbered checklist.
+
+After reviewing and testing locally, approve from the terminal:
+
+```bash
+syrus approve JOB-456
+```
+
+On success, Syrus queues the landing workflow.
+
+## Epics
+
+Use `syrus epic` to inspect and create Epics:
+
+```bash
+syrus epic list
+syrus epic search "launch"
+syrus epic show 12
+syrus epic create
+syrus epic open 12
+```
+
+`epic create` must run inside a GitHub checkout. It prompts for a title
+and multi-line description, confirms the repository, creates the Epic,
+and prints the Epic URL. Use `--yes` to skip the confirmation prompt.
+
+## Repositories and Identity
+
+These commands show the configured account and visible repositories:
+
+```bash
+syrus whoami
+syrus repo list
+syrus status
+syrus status --repo acme/widgets
+syrus status --closed
+```
+
+`status` lists active Jobs across repositories by default and can scope
+to one repository.
+
+## Schedules
+
+Schedule commands use the app scheduled-task API:
+
+```bash
+syrus schedule list
+syrus schedule create
+syrus schedule show 42
+syrus schedule delete 42
+syrus schedule run 42
+```
+
+`schedule list` scopes to the current checkout when possible and
+otherwise shows all schedules. `schedule create` must run from a
+configured repository checkout because scheduled tasks are
+repository-owned.
+
+## Troubleshooting
+
+If credentials are missing or incomplete, the CLI prints:
+
+```text
+Run 'syrus login' to set up your Syrus instance URL and API token.
+```
+
+If a repository-scoped command cannot detect a checkout, run it from a
+GitHub repository or pass `--repo owner/name` when the command supports
+it. If `checkout` refuses to run, compare the current `origin` remote
+with the Job's repository; Syrus deliberately avoids checking out a
+branch into the wrong repository.

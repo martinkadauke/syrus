@@ -35,6 +35,8 @@ recipes needed to run Syrus without reading the Rails source.
   feedback, CI failures, retries, rebases, direct Jobs, and local dev.
 - [Configuration](/docs/configuration): `.syrus.yml`, user settings,
   repository settings, credentials, and worker environment.
+- [Syrus CLI](/docs/cli): terminal chat, inbox review, checkout,
+  test-plan, Job, Epic, repository, and schedule commands.
 - [Recipes](/docs/recipes): common how-tos for CI failures, PR feedback,
   scheduled tasks, custom workflows, direct Jobs, and stopping work.
 - [Troubleshooting](/docs/troubleshooting): failure modes and concrete

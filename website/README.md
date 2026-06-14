@@ -41,6 +41,7 @@ website/
 │   │       ├── configuration.md
 │   │       ├── workflows.md
 │   │       ├── architecture.md
+│   │       ├── cli.md
 │   │       ├── api.md
 │   │       ├── recipes.md        # "How-tos and recipes"
 │   │       ├── troubleshooting.md
@@ -68,7 +69,7 @@ The public website should browse in this order:
 
 Reference pages stay in the docs sidebar after the main learning path:
 `/docs/configuration`, `/docs/workflows`, `/docs/architecture`,
-`/docs/api`, `/docs/faq`, and `/docs/deployment/*`.
+`/docs/cli`, `/docs/api`, `/docs/faq`, and `/docs/deployment/*`.
 
 ## Information Architecture
 
@@ -96,8 +97,9 @@ Recommended sidebar order once Starlight lands:
 10. Recipes
 11. Troubleshooting
 12. Architecture
-13. API
-14. FAQ
+13. Syrus CLI
+14. API
+15. FAQ
 
 ## Contributing
 
