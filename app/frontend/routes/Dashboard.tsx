@@ -19,7 +19,7 @@ export function DashboardRoute() {
   const search = dashboardApiSearch(location.pathname, location.search)
   const dashboard = useQuery({
     queryKey: ["dashboard", search],
-    queryFn: () => fetchDashboard(search),
+    queryFn: ({ signal }) => fetchDashboard(search, { signal }),
     placeholderData: (previousData) => previousData
   })
 

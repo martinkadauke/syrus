@@ -17,12 +17,13 @@ export class ApiError extends Error {
   }
 }
 
-export async function getJson<T>(path: string): Promise<T> {
+export async function getJson<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
     headers: {
       Accept: "application/json"
-    }
+    },
+    signal: options.signal
   })
 
   if (response.status === 401) {

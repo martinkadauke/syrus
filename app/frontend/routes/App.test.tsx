@@ -1272,7 +1272,8 @@ describe("App", () => {
       "/api/v1/app/dashboard?view=list&subject=job",
       expect.objectContaining({
         credentials: "same-origin",
-        headers: { Accept: "application/json" }
+        headers: { Accept: "application/json" },
+        signal: expect.any(AbortSignal)
       })
     )
 

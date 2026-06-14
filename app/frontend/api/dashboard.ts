@@ -350,8 +350,8 @@ export type DashboardEpicStatePayload = {
   message?: string | null
 }
 
-export function fetchDashboard(search = "") {
-  return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`)
+export function fetchDashboard(search = "", options: { signal?: AbortSignal } = {}) {
+  return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`, options)
 }
 
 export function updateDashboardPreferences(input: DashboardPreferencesInput) {
