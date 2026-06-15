@@ -76,7 +76,8 @@ RSpec.describe "App API job run commands", type: :request do
 
   it "does not stack rebase workflows" do
     job.update!(pr_number: 7)
-    Workflow.create!(job: job, trigger_kind: "rebase", state: "queued")
+    workflow = Workflows::Rebase.instantiate(job: job)
+    workflow.first_step.runs.create!(job: job, trigger_kind: "rebase", agent_provider: job.agent_provider)
 
     expect {
       post app_job_path("/rebase"), as: :json

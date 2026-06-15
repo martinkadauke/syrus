@@ -21,8 +21,14 @@ class StepDispatcher
     first = workflow.first_step
     return unless first
     return if first.runs.any?
-    return unless workflow.job.stack_ready_for_execution?
-    return unless workflow.job.ready_for_execution?
+
+    unless workflow.job.stack_ready_for_execution?
+      return cancel_unstartable_rebase_workflow!(workflow, "stack_dependencies_not_ready")
+    end
+
+    unless workflow.job.ready_for_execution?
+      return cancel_unstartable_rebase_workflow!(workflow, "job_not_ready_for_execution")
+    end
 
     run = create_run_and_enqueue(first, workflow,
                                  parent_session_id: parent_session_id,
@@ -30,6 +36,18 @@ class StepDispatcher
     workflow.job.log_pending_dependency_warnings!
     log_prepare_skip(run, workflow)
     run
+  end
+
+  def self.cancel_unstartable_rebase_workflow!(workflow, reason)
+    return unless RebaseWorkflowSelector::TRIGGER_KINDS.include?(workflow.trigger_kind)
+
+    workflow.artifacts = (workflow.artifacts || {}).merge(
+      "start_blocked_reason" => reason,
+      "start_blocked_at" => Time.current.iso8601
+    )
+    workflow.cancel! if workflow.may_cancel?
+    workflow.save!
+    nil
   end
 
   # Single point that creates a Run on a Step. Run's

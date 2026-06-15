@@ -62,6 +62,31 @@ RSpec.describe StepDispatcher do
       }.to change { s1.runs.count }.by(1)
     end
 
+    it "cancels blocked rebase workflows instead of leaving them active with no Run" do
+      prerequisite = Factories.job_record(repository: job.repository, issue_number: 99, state: "closed", closure_reason: "pr_closed")
+      blocked_job = Factories.job_record(
+        user: job.user,
+        repository: job.repository,
+        issue_number: 100,
+        state: "approved",
+        pr_number: 100,
+        branch_name: "syrus/issue-100-#{job.id}"
+      )
+      JobDependency.create!(job: blocked_job, depends_on_job: prerequisite, source: "manual")
+      rebase = Workflows::Rebase.instantiate(job: blocked_job)
+
+      expect(RebaseWorkflowSelector.active_for_stack?(blocked_job)).to be(false)
+
+      expect {
+        described_class.start_workflow(rebase)
+      }.not_to change { Run.count }
+
+      expect(rebase.reload).to be_cancelled
+      expect(rebase.artifact("start_blocked_reason")).to eq("stack_dependencies_not_ready")
+      expect(rebase.steps.pluck(:state).uniq).to eq([ "cancelled" ])
+      expect(RebaseWorkflowSelector.active_for_stack?(blocked_job)).to be(false)
+    end
+
     it "starts on an open dependency PR after resolving it as the stack parent" do
       prerequisite = Factories.job(repository: job.repository, issue_number: 99)
       prerequisite.update!(branch_name: "syrus/issue-99-#{prerequisite.id}", pr_number: 99)

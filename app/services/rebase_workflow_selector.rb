@@ -26,15 +26,30 @@ class RebaseWorkflowSelector
   end
 
   def self.active_for_stack?(job)
-    Workflow.active
-            .where(trigger_kind: TRIGGER_KINDS, job_id: StackRebasePlan.related_job_ids_for(job))
-            .exists?
+    runnable_active_scope(
+      Workflow.active.where(trigger_kind: TRIGGER_KINDS, job_id: StackRebasePlan.related_job_ids_for(job))
+    ).exists?
   end
 
   def self.active_in_repository(repository)
-    Workflow.active
-            .where(trigger_kind: TRIGGER_KINDS)
-            .joins(:job)
-            .where(jobs: { repository_id: repository.id })
+    runnable_active_scope(
+      Workflow.active
+              .where(trigger_kind: TRIGGER_KINDS)
+              .joins(:job)
+              .where(jobs: { repository_id: repository.id })
+    )
   end
+
+  def self.runnable_active_scope(scope)
+    scope.where(<<~SQL.squish, "running")
+      workflows.state = ?
+      OR EXISTS (
+        SELECT 1
+        FROM steps
+        INNER JOIN runs ON runs.step_id = steps.id
+        WHERE steps.workflow_id = workflows.id
+      )
+    SQL
+  end
+  private_class_method :runnable_active_scope
 end
