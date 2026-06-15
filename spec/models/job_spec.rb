@@ -799,6 +799,17 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       expect(job.reload).to be_dependencies_satisfied
     end
 
+    it "treats no_changes as a successful dependency closure" do
+      prerequisite = Job.create!(user: user, repository: repository, issue_number: 42)
+      job = Job.create!(user: user, repository: repository, issue_number: 43, issue_body: "Depends-on: #42")
+
+      prerequisite.close_with_reason!("no_changes")
+
+      expect(job.reload).to be_dependencies_satisfied
+      expect(job).to be_stack_ready_for_execution
+      expect(job.parent_job).to be_nil
+    end
+
     it "can start on a single open dependency by making it the stack parent" do
       prerequisite = Job.create!(user: user, repository: repository, issue_number: 42)
       prerequisite.update!(branch_name: "syrus/issue-42-#{prerequisite.id}", pr_number: 7)

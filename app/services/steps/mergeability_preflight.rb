@@ -11,7 +11,7 @@ module Steps
       case gate.outcome
       when :closed
         log("auto_merge: PR ##{job.pr_number} is already closed; cancelling workflow", kind: "system")
-        job.close_with_reason!("pr_closed") if job.open?
+        close_job_for_closed_pull_request!(pr, client)
         cancel_workflow!
       when :transient
         handle_transient!(gate)
@@ -25,6 +25,12 @@ module Steps
     end
 
     private
+
+    def close_job_for_closed_pull_request!(pr, client)
+      return unless job.open?
+
+      job.close_with_reason!(ClosedPullRequestResolution.reason(job: job, pr: pr, client: client))
+    end
 
     def handle_transient!(gate)
       local = LocalMergeabilityCheck.new(job: job, pr: gate.pr).call

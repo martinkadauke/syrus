@@ -98,6 +98,25 @@ RSpec.describe StackRebaseCoordinator do
       .with(repository.slug, child.pr_number, base: repository.default_branch)
   end
 
+  it "re-points children to main and rebases them when the parent closes with no changes" do
+    client = instance_double(
+      GithubClient,
+      update_pull_request_base: nil,
+      pull_request: OpenStruct.new(body: ""),
+      update_pull_request_body: nil
+    )
+    allow(GithubClient).to receive(:for).and_return(client)
+
+    expect {
+      parent.close_with_reason!("no_changes")
+    }.to change { child.reload.parent_job_id }.from(parent.id).to(nil)
+      .and change { child.workflows.where(trigger_kind: "rebase").count }.by(1)
+      .and change { enqueued_jobs.count { |job| job[:job] == RunJob } }.by(1)
+
+    expect(client).to have_received(:update_pull_request_base)
+      .with(repository.slug, child.pr_number, base: repository.default_branch)
+  end
+
   it "does not unwind children when the parent closes without merging" do
     parent.close_with_reason!("pr_closed")
 

@@ -51,7 +51,7 @@ module Steps
       case gate.outcome
       when :closed
         log("auto_merge: PR ##{job.pr_number} is already closed; cancelling workflow", kind: "system")
-        job.close_with_reason!("pr_closed") if job.open?
+        close_job_for_closed_pull_request!(gate.pr, client)
         cancel_workflow!
         return
       when :transient
@@ -104,6 +104,12 @@ module Steps
 
     def evaluate_gate(client)
       AutoMergeGate.new(job: job, client: client, bypass_cache: true).evaluate
+    end
+
+    def close_job_for_closed_pull_request!(pr, client)
+      return unless job.open?
+
+      job.close_with_reason!(ClosedPullRequestResolution.reason(job: job, pr: pr, client: client))
     end
 
     def settle_sleep

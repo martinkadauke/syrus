@@ -302,7 +302,7 @@ class Job < ApplicationRecord
   after_commit :reopen_recent_closed_epic, if: :saved_change_to_epic_id?
   after_commit :suggest_stale_closed_epic_assignment, if: :stale_closed_epic_assignment?
 
-  after_update_commit :rebase_stack_children_after_merge, if: :saved_change_to_pr_merged_terminal?
+  after_update_commit :rebase_stack_children_after_successful_parent_close, if: :saved_change_to_stack_parent_resolved_terminal?
   after_update_commit :start_dependent_jobs_after_implementation, if: :saved_change_to_implemented?
   after_update_commit :start_dependent_jobs_after_approval, if: :saved_change_to_approved?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
@@ -979,13 +979,13 @@ class Job < ApplicationRecord
     errors.add(:issue_number, "must be blank for direct Jobs") if issue_number.present?
   end
 
-  def saved_change_to_pr_merged_terminal?
-    saved_change_to_state? && closed? && closure_reason == "pr_merged"
+  def saved_change_to_stack_parent_resolved_terminal?
+    saved_change_to_state? && closed? && closure_reason.in?(%w[ pr_merged no_changes ])
   end
 
   def saved_change_needs_landing_queue_processor?
     return true if saved_change_to_state? && approved?
-    return true if saved_change_to_state? && closed? && closure_reason == "pr_merged"
+    return true if saved_change_to_state? && closed? && closure_reason.in?(%w[ pr_merged no_changes ])
 
     false
   end
@@ -994,7 +994,7 @@ class Job < ApplicationRecord
     LandingQueueProcessorJob.perform_later
   end
 
-  def rebase_stack_children_after_merge
+  def rebase_stack_children_after_successful_parent_close
     StackRebaseCoordinator.parent_merged(self)
   end
 end

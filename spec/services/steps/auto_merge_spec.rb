@@ -61,6 +61,7 @@ RSpec.describe Steps::AutoMerge do
   end
 
   it "cancels the run and workflow when the PR was already closed" do
+    allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
     allow(client).to receive(:pull_request).and_return(pr(state: "closed"))
 
     described_class.new(run).call
@@ -78,6 +79,7 @@ RSpec.describe Steps::AutoMerge do
     job.approve!(via: "github_review")
     job.start_landing!
     job.save!
+    allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
     allow(client).to receive(:pull_request).and_return(pr(state: "closed"))
 
     described_class.new(run).call

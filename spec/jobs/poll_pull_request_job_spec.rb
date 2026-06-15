@@ -88,9 +88,19 @@ RSpec.describe PollPullRequestJob do
     end
 
     it "closes the Job with reason=pr_closed when the PR is closed but not merged" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
       stub_pr(state: "closed", merged: false)
       described_class.perform_now(job.id)
       expect(job.reload.closure_reason).to eq("pr_closed")
+    end
+
+    it "closes the Job with reason=no_changes when a closed PR has no unique patches left" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("no_changes")
+      stub_pr(state: "closed", merged: false)
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.closure_reason).to eq("no_changes")
     end
 
     it "closes the Job with reason=syrus_stop when the PR carries the syrus-stop label" do

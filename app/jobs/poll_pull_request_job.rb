@@ -39,7 +39,7 @@ class PollPullRequestJob < ApplicationJob
     @job.user.clear_gh_api_blocked!
 
     return close_with("pr_merged") if @pr.merged
-    return close_with("pr_closed") if @pr.state == "closed"
+    return close_with(closed_pull_request_reason) if @pr.state == "closed"
     return close_with("syrus_stop") if has_label?(@pr, "syrus-stop")
 
     react_to_pr_reviews
@@ -63,6 +63,10 @@ class PollPullRequestJob < ApplicationJob
     end
     @job.close_with_reason!(reason)
     StackRebaseCoordinator.parent_closed(@job) if reason == "pr_closed"
+  end
+
+  def closed_pull_request_reason
+    ClosedPullRequestResolution.reason(job: @job, pr: @pr, client: @client)
   end
 
   def has_label?(pr, name)
