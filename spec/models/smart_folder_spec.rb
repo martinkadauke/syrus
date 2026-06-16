@@ -74,6 +74,15 @@ RSpec.describe SmartFolder do
     expect(described_class.builtins(:spawned_process).pluck(:subject_type).uniq).to eq([ "spawned_process" ])
   end
 
+  it "can ensure only one built-in subject" do
+    expect { described_class.ensure_builtins_for_subject!(:job) }
+      .to change(described_class, :count).by(described_class::JOB_BUILTINS.size)
+
+    expect(described_class.distinct.pluck(:subject_type)).to eq([ "job" ])
+    expect(described_class.builtins(:job).pluck(:name)).to eq(described_class::JOB_BUILTINS.map { |definition| definition.fetch(:name) })
+    expect(described_class.builtins(:epic)).to be_empty
+  end
+
   it "sweeps retired built-ins on next ensure_builtins!" do
     described_class.create!(name: "Ghost", kind: "builtin", filter: { "attention" => "ghost" }, position: 99)
     described_class.create!(name: "Ghost", subject_type: "epic", kind: "builtin", filter: { "attention" => "ghost" }, position: 99)

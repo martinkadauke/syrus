@@ -131,7 +131,16 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body.dig("paths", "dashboard_jobs_path")).to eq(dashboard_jobs_path)
       expect(body.dig("paths", "new_epic_path")).to eq(new_epic_path)
       expect(body.dig("paths", "new_job_path")).to eq(new_job_path)
-      expect(user.reload.dashboard_preferences).to include("last_subject" => "job", "last_view" => "kanban")
+    end
+
+    it "does not persist dashboard navigation during a read" do
+      original_preferences = user.dashboard_preferences
+
+      get "/api/v1/app/dashboard", params: { subject: "workflow", view: "kanban", scope: "team" }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body).to include("subject" => "workflow", "view" => "kanban")
+      expect(user.reload.dashboard_preferences).to eq(original_preferences)
     end
 
     it "returns ranked suggestions from recorded filter usage" do
@@ -330,7 +339,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(parse_body.fetch("items").map { |item| item.fetch("id") }).to eq([ second.id, first.id ])
     end
 
-    it "filters dashboard records by ownership scope and persists the preference" do
+    it "filters dashboard records by ownership scope" do
       teammate = Factories.user(email_address: "teammate@example.com")
       mine = Factories.job_record(repository: repo, issue_number: 11, issue_title: "My aqueduct", owner_user: user)
       teammate_job = Factories.job_record(repository: repo, issue_number: 12, issue_title: "Their forum", owner_user: teammate)
@@ -350,7 +359,6 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["items"].map { |item| item.fetch("id") }).to eq([ mine.id ])
       expect(body.dig("counts", "jobs")).to eq(1)
       expect(body.dig("preferences", "ownership_scope")).to eq("mine")
-      expect(user.reload.dashboard_preferences).to include("last_ownership_scope" => "mine")
 
       get "/api/v1/app/dashboard", params: { subject: "job", scope: "claimable" }
 
@@ -366,10 +374,6 @@ RSpec.describe "App API dashboard commands", type: :request do
         "email_address" => "teammate@example.com"
       )
       expect(body["items"].map { |item| item.fetch("id") }).to eq([ teammate_job.id ])
-      expect(user.reload.dashboard_preferences).to include(
-        "last_ownership_scope" => "user",
-        "last_owner_user_id" => teammate.id.to_s
-      )
 
       get "/api/v1/app/dashboard", params: { subject: "epic", scope: "mine" }
 
@@ -408,7 +412,6 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body.dig("ownership_scope", "scope")).to eq("team")
       expect(body.dig("ownership_scope", "owner_user_id")).to be_nil
       expect(body["items"].map { |item| item.fetch("id") }).to contain_exactly(mine.id, claimable.id)
-      expect(user.reload.dashboard_preferences).to include("last_ownership_scope" => "team")
 
       get "/api/v1/app/dashboard", params: { subject: "workflow" }
 
@@ -752,8 +755,6 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body.dig("ownership", "scope")).to eq("user")
       expect(body.dig("ownership", "owner_id")).to eq(teammate.id)
       expect(body["items"].map { |item| item.fetch("id") }).to eq([ theirs.id ])
-      expect(user.reload.dashboard_preferences.dig("jobs", "ownership_scope")).to eq("user")
-      expect(user.dashboard_preferences.dig("jobs", "owner_id")).to eq(teammate.id.to_s)
     end
 
     it "suppresses ownership badges for single-user dashboards" do

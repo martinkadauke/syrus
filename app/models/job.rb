@@ -91,38 +91,36 @@ class Job < ApplicationRecord
   scope :with_pr, -> { where("pr_number IS NOT NULL OR external_pr_number IS NOT NULL") }
   scope :without_pr, -> { where(pr_number: nil, external_pr_number: nil) }
   scope :with_latest_workflow_snapshot, -> {
-    joins(<<~SQL.squish)
-      LEFT JOIN (
-        SELECT
-          latest_workflows.id AS latest_workflow_id,
-          latest_workflows.job_id AS latest_workflow_job_id,
-          latest_workflows.state AS latest_workflow_state,
-          latest_workflows.trigger_kind AS latest_workflow_trigger_kind,
-          latest_workflows.created_at AS latest_workflow_created_at
-        FROM (
-          SELECT
-            workflows.*,
-            ROW_NUMBER() OVER (
-              PARTITION BY workflows.job_id
-              ORDER BY workflows.created_at DESC, workflows.id DESC
-            ) AS rn
-          FROM workflows
-        ) latest_workflows
-        WHERE latest_workflows.rn = 1
-      ) latest_workflow_per_job
-        ON latest_workflow_per_job.latest_workflow_job_id = jobs.id
-    SQL
-      .select(
-        "jobs.*",
-        "latest_workflow_per_job.latest_workflow_id AS latest_workflow_id",
-        "COALESCE(latest_workflow_per_job.latest_workflow_state, 'queued') AS latest_workflow_state",
-        "latest_workflow_per_job.latest_workflow_trigger_kind AS latest_workflow_trigger_kind",
-        "latest_workflow_per_job.latest_workflow_created_at AS latest_workflow_created_at"
-      )
+    latest_workflow_id = Job.latest_workflow_snapshot_sql("id")
+    latest_workflow_state = Job.latest_workflow_snapshot_sql("state")
+    latest_workflow_trigger_kind = Job.latest_workflow_snapshot_sql("trigger_kind")
+    latest_workflow_created_at = Job.latest_workflow_snapshot_sql("created_at")
+
+    select(
+      "jobs.*",
+      "#{latest_workflow_id} AS latest_workflow_id",
+      "COALESCE(#{latest_workflow_state}, 'queued') AS latest_workflow_state",
+      "#{latest_workflow_trigger_kind} AS latest_workflow_trigger_kind",
+      "#{latest_workflow_created_at} AS latest_workflow_created_at"
+    )
   }
 
   def issue?
     kind == "issue"
+  end
+
+  def self.latest_workflow_snapshot_sql(column)
+    raise ArgumentError, "unknown workflow snapshot column" unless %w[id state trigger_kind created_at].include?(column.to_s)
+
+    <<~SQL.squish
+      (
+        SELECT workflows.#{column}
+        FROM workflows
+        WHERE workflows.job_id = jobs.id
+        ORDER BY workflows.created_at DESC, workflows.id DESC
+        LIMIT 1
+      )
+    SQL
   end
 
   def cron?

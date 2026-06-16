@@ -36,6 +36,41 @@ RSpec.describe Job do
     end
   end
 
+  describe ".with_latest_workflow_snapshot" do
+    it "selects the newest workflow metadata without requiring a workflow row" do
+      job_without_workflow = Factories.job_record(issue_number: 1, issue_title: "Survey the forum")
+      job_with_workflows = Factories.job_record(repository: job_without_workflow.repository, issue_number: 2, issue_title: "Pave the road")
+      older_workflow = Workflow.create!(
+        job: job_with_workflows,
+        trigger_kind: "initial",
+        state: "failed",
+        created_at: 2.hours.ago
+      )
+      latest_workflow = Workflow.create!(
+        job: job_with_workflows,
+        trigger_kind: "rebase",
+        state: "running",
+        created_at: 1.hour.ago
+      )
+
+      rows = described_class.where(id: [ job_without_workflow.id, job_with_workflows.id ])
+                            .with_latest_workflow_snapshot
+                            .index_by(&:id)
+
+      expect(rows.fetch(job_without_workflow.id).latest_workflow_id).to be_nil
+      expect(rows.fetch(job_without_workflow.id).latest_workflow_state).to eq("queued")
+      expect(rows.fetch(job_without_workflow.id).latest_workflow_trigger_kind).to be_nil
+      expect(rows.fetch(job_without_workflow.id).latest_workflow_created_at).to be_nil
+
+      row = rows.fetch(job_with_workflows.id)
+      expect(row.latest_workflow_id).to eq(latest_workflow.id)
+      expect(row.latest_workflow_id).not_to eq(older_workflow.id)
+      expect(row.latest_workflow_state).to eq("running")
+      expect(row.latest_workflow_trigger_kind).to eq("rebase")
+      expect(row.latest_workflow_created_at.to_i).to eq(latest_workflow.created_at.to_i)
+    end
+  end
+
   describe "thread state machine" do
     it "starts as an open thread" do
       job = Factories.job

@@ -134,12 +134,14 @@ class SmartFolder < ApplicationRecord
   scope :built_in_sidebar_order, -> { builtin.where(user_id: nil).order(:position, :id) }
 
   def self.ensure_builtins!
-    ensure_builtin_set!(:job, BUILTIN_DEFINITIONS)
-    ensure_epic_builtins!
-    ensure_workflow_builtins!
-    ensure_admin_user_builtins!
-    ensure_admin_queue_builtins!
-    ensure_spawned_process_builtins!
+    BUILTINS_BY_SUBJECT.each do |subject, definitions|
+      ensure_builtin_set!(subject, definitions)
+    end
+  end
+
+  def self.ensure_builtins_for_subject!(subject)
+    subject = subject.to_s
+    ensure_builtin_set!(subject, BUILTINS_BY_SUBJECT.fetch(subject))
   end
 
   def self.ensure_epic_builtins!
@@ -163,11 +165,14 @@ class SmartFolder < ApplicationRecord
   end
 
   def self.ensure_builtin_set!(subject, definitions)
+    subject = subject.to_s
+    existing_by_name = builtin.where(user_id: nil, subject_type: subject).index_by(&:name)
+
     definitions.each_with_index do |definition, index|
-      folder = find_or_initialize_by(user_id: nil, subject_type: subject.to_s, name: definition.fetch(:name))
+      folder = existing_by_name[definition.fetch(:name)] || new(user_id: nil, subject_type: subject, name: definition.fetch(:name))
       folder.assign_attributes(
         kind: "builtin",
-        subject_type: subject.to_s,
+        subject_type: subject,
         filter: definition.fetch(:filter),
         position: index
       )
@@ -177,7 +182,7 @@ class SmartFolder < ApplicationRecord
     # Sweep retired built-ins so they don't keep appearing in the
     # sidebar after we remove or rename a definition. ("Awaiting your
     # move" used to live here; its filter resolved to relation.none.)
-    builtin.where(user_id: nil, subject_type: subject.to_s).where.not(name: definitions.map { |d| d.fetch(:name) }).destroy_all
+    builtin.where(user_id: nil, subject_type: subject).where.not(name: definitions.map { |d| d.fetch(:name) }).destroy_all
   end
 
   # Sidebar tier for this folder — see BUILTIN_DEFINITIONS for the

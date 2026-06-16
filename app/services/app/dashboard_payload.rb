@@ -82,8 +82,7 @@ module App
     end
 
     def call
-      persist_subject_preferences
-      SmartFolder.ensure_builtins!
+      SmartFolder.ensure_builtins_for_subject!(subject)
 
       {
         subject: subject,
@@ -1069,22 +1068,6 @@ module App
       return nil unless summary_state(job) == "running"
 
       job.active_workflow_trigger_kind
-    end
-
-    def persist_subject_preferences
-      return unless params.key?(:subject) || params.key?(:view) || params.key?(:scope) || params.key?(:ownership_scope) || params.key?(:owner_id) || params.key?(:owner_user_id)
-
-      user.update_dashboard_preferences!(
-        subject: subject,
-        view: view,
-        ownership_scope: ownership_param_present? ? ownership_scope : nil,
-        owner_user_id: ownership_param_present? && ownership_scope == "user" ? selected_owner_user.id : nil
-      )
-      user.update_dashboard_ownership!(
-        subject: subject,
-        scope: ownership_scope,
-        owner_id: ownership_scope == "user" ? selected_owner_user.id : nil
-      )
     end
 
     def ownership_param_present?
