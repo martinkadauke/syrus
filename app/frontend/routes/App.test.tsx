@@ -23,6 +23,13 @@ const html2canvasMock = vi.hoisted(() => vi.fn(async () => ({
   }
 })))
 
+const mermaidMock = vi.hoisted(() => ({
+  initialize: vi.fn(),
+  render: vi.fn(async (_id: string, definition: string) => ({
+    svg: `<svg role="img" aria-label="Dependency graph"><text>${definition}</text></svg>`
+  }))
+}))
+
 vi.mock("@rails/actioncable", () => ({
   createConsumer: () => ({
     subscriptions: {
@@ -70,12 +77,7 @@ vi.mock("html2canvas-pro", () => ({
 }))
 
 vi.mock("mermaid", () => ({
-  default: {
-    initialize: vi.fn(),
-    render: vi.fn(async (_id: string, definition: string) => ({
-      svg: `<svg role="img" aria-label="Dependency graph"><text>${definition}</text></svg>`
-    }))
-  }
+  default: mermaidMock
 }))
 
 let restoreClipboardMock: (() => void) | null = null
@@ -84,11 +86,15 @@ describe("App", () => {
   beforeEach(() => {
     document.getElementById("syrus-bootstrap-data")?.remove()
     window.localStorage.clear()
+    document.documentElement.classList.remove("dark")
     excalidrawMock.throwOnRender = false
     excalidrawMock.addFiles.mockClear()
     excalidrawMock.lastInitialData = null
     excalidrawMock.updateScene.mockClear()
     html2canvasMock.mockClear()
+    mermaidMock.initialize.mockClear()
+    mermaidMock.render.mockClear()
+    document.documentElement.classList.remove("dark")
   })
 
   afterEach(() => {
@@ -111,7 +117,8 @@ describe("App", () => {
             scheduling_paused: false,
             landing_paused: false,
             agent_provider: "claude",
-            agent_max_turns: 200
+            agent_max_turns: 200,
+            theme: "light"
           },
           team_user_count: 1,
           app: {
@@ -576,6 +583,56 @@ describe("App", () => {
       expect(fetchSpy).not.toHaveBeenCalled()
     } finally {
       randomSpy.mockRestore()
+      script.remove()
+    }
+  })
+
+  it("toggles and persists the app shell theme", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      current_user: {
+        ...bootstrapPayload().current_user,
+        theme: "dark"
+      }
+    }))
+    document.body.appendChild(script)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ theme: "light" }), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const accountNav = await screen.findByRole("navigation", { name: "Account" })
+      expect(document.documentElement).toHaveClass("dark")
+
+      fireEvent.click(within(accountNav).getByRole("button", { name: "Switch to light mode" }))
+
+      expect(document.documentElement).not.toHaveClass("dark")
+      expect(within(accountNav).getByRole("button", { name: "Switch to dark mode" })).toBeInTheDocument()
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/theme",
+          expect.objectContaining({
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: expect.objectContaining({
+              Accept: "application/json",
+              "Content-Type": "application/json"
+            }),
+            body: JSON.stringify({ theme: "light" })
+          })
+        )
+      })
+    } finally {
       script.remove()
     }
   })
@@ -1229,7 +1286,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Dashboard" }).closest("header")).not.toHaveClass("border-b")
     const subjectNav = screen.getByRole("navigation", { name: "Dashboard subjects" })
     expect(subjectNav.parentElement).toHaveClass("lg:grid-cols-[16rem_minmax(0,1fr)]")
-    expect(subjectNav).toHaveClass("inline-flex", "w-max", "overflow-hidden", "rounded", "border", "border-gray-300", "bg-white")
+    expect(subjectNav).toHaveClass("inline-flex", "w-max", "overflow-hidden", "rounded", "border", "border-gray-300", "bg-white", "dark:border-gray-700", "dark:bg-gray-900")
     expect(screen.getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues/12")
     expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("target", "_blank")
@@ -1245,7 +1302,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "kanban" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=kanban")
     expect(screen.getByRole("link", { name: "Epics" })).toHaveAttribute("href", "/app-shell/dashboard/epics?view=list")
     expect(screen.getByRole("link", { name: "Jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
-    expect(screen.getByRole("link", { name: "Jobs" })).toHaveClass("bg-blue-50", "text-blue-700", "ring-blue-600")
+    expect(screen.getByRole("link", { name: "Jobs" })).toHaveClass("bg-blue-50", "text-blue-700", "ring-blue-600", "dark:bg-blue-950", "dark:text-blue-200")
     expect(screen.getByRole("link", { name: "Workflows" })).toHaveAttribute("href", "/app-shell/dashboard/workflows?view=list")
     expect(screen.getByRole("link", { name: "New Epic" })).toHaveAttribute("href", "/app-shell/epics/new")
     expect(screen.getByRole("link", { name: "New Epic" })).toHaveClass("bg-blue-600", "text-white")
@@ -4469,7 +4526,9 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "New direct job" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "New direct job" })).toHaveClass("dark:text-gray-100")
     expect(await screen.findByDisplayValue("acme/widgets")).toBeInTheDocument()
+    expect(screen.getByText("Target").closest("section")).toHaveClass("dark:bg-gray-900", "dark:border-gray-700")
     expect(screen.getByLabelText("Create More")).toBeChecked()
     expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/app-shell/dashboard/jobs")
     fireEvent.click(screen.getByRole("button", { name: /Configure Syrus build dependencies/ }))
@@ -5287,6 +5346,8 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "Edit Epic" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "Edit Epic" })).toHaveClass("dark:text-gray-100")
+    expect(screen.getByLabelText("Title")).toHaveClass("dark:bg-gray-950", "dark:text-gray-100")
     expect(await screen.findByRole("link", { name: "Back to Epic" })).toHaveAttribute("href", "/app-shell/epics/7")
     expect(screen.getByRole("link", { name: "Cancel" })).toHaveAttribute("href", "/app-shell/epics/7")
   })
@@ -5326,6 +5387,7 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Epic" })).toBeInTheDocument()
     expect(await screen.findByText("EPIC-7")).toBeInTheDocument()
     expect(screen.getByText("Raise the forum")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /EPIC-7/ })).toHaveClass("dark:text-gray-100")
     expect(screen.queryByRole("link", { name: "Back to Epics" })).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/epics/7/edit")
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
@@ -5334,6 +5396,7 @@ describe("App", () => {
     expect(screen.getByText("columns")).toBeInTheDocument()
     expect(screen.getByText("(1 epic dep, 0 job blockers)")).toBeInTheDocument()
     expect(await screen.findByRole("img", { name: "Dependency graph" })).toBeInTheDocument()
+    expect(screen.getByText("Dependency graph").closest("details")).toHaveClass("dark:bg-gray-900", "dark:border-gray-700")
     expect(document.querySelector("[data-controller='mermaid-graph']")).toBeNull()
     expect(screen.getByText("Survey forum")).toBeInTheDocument()
     expect(screen.getByText("1/1 done")).toBeInTheDocument()
@@ -5358,6 +5421,24 @@ describe("App", () => {
       "Edit",
       "Archive"
     ])
+  })
+
+  it("initializes the Epic dependency graph with Mermaid dark theme when dark mode is active", async () => {
+    document.documentElement.classList.add("dark")
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(epicDetailPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/epics/7"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("img", { name: "Dependency graph" })).toBeInTheDocument()
+    expect(mermaidMock.initialize).toHaveBeenLastCalledWith(expect.objectContaining({ theme: "dark" }))
   })
 
   it("claims and unclaims an Epic from the detail controls", async () => {
@@ -5559,7 +5640,7 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "Job" })).toBeInTheDocument()
-    expect(await screen.findByRole("heading", { level: 1, name: "Repair aqueduct" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { level: 1, name: "Repair aqueduct" })).toHaveClass("dark:text-gray-100")
     expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
     expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("href", "https://github.com/acme/widgets/issues/12")
     expect(screen.getByRole("link", { name: "#12" })).toHaveAttribute("target", "_blank")
@@ -5599,6 +5680,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Workflows (1)" }))
     expect(await screen.findByText("WF-5")).toBeInTheDocument()
+    expect(screen.getByText("WF-5").closest("section")).toHaveClass("dark:bg-gray-900", "dark:border-gray-700")
     fireEvent.click(screen.getByRole("button", { name: /Grade/i }))
     fireEvent.click(screen.getByRole("button", { name: /tests/i }))
     expect(screen.getByText("Run #9")).toBeInTheDocument()
@@ -5613,6 +5695,7 @@ describe("App", () => {
     })
     expect(await screen.findByText("digging trench")).toBeInTheDocument()
     expect(screen.getByText("Agent")).toBeInTheDocument()
+    expect(screen.getByTestId("run-transcript-log-stream")).toHaveClass("dark:divide-gray-800")
     expect(screen.getByText("Tool")).toBeInTheDocument()
     expect(screen.queryByText("assistant_text")).not.toBeInTheDocument()
     expect(screen.queryByText("tool_call")).not.toBeInTheDocument()
@@ -6820,8 +6903,10 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Aqueduct planning" })).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "New chat" })).not.toBeInTheDocument()
     expect(screen.getByTestId("chat-message-stream")).toHaveClass("h-full", "min-h-0", "overflow-y-auto")
-    expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("min-h-0")
-    expect(screen.getByRole("navigation", { name: "Chat workspace tabs" })).toBeInTheDocument()
+    expect(screen.getByText("Discuss aqueducts.").closest(".chat-prose")).toHaveClass("dark:text-gray-100")
+    expect(screen.getByText("Discuss aqueducts.").closest(".chat-prose")?.parentElement).toHaveClass("dark:bg-gray-900", "dark:border-gray-700")
+    expect(screen.getByRole("complementary", { name: "Chat workspace" })).toHaveClass("min-h-0", "dark:bg-gray-900", "dark:border-gray-700")
+    expect(screen.getByRole("navigation", { name: "Chat workspace tabs" })).toHaveClass("dark:border-gray-700")
     expect(screen.getByRole("button", { name: "Resize chat workspace" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Refresh repo" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Reset workspace" })).not.toBeInTheDocument()
@@ -6841,10 +6926,14 @@ describe("App", () => {
     expect(screen.queryByText("Launch notes")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Context" }))
     expect(screen.getByText("Launch notes")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Attachments" })).toHaveClass("dark:text-gray-100")
     expect(screen.getByRole("button", { name: "acme/widgets" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "acme/widgets" })).toHaveClass("dark:bg-gray-800", "dark:text-gray-300")
+    expect(screen.getByRole("heading", { name: "Add attachment" }).parentElement).toHaveClass("dark:bg-gray-800", "dark:border-gray-700")
     fireEvent.click(screen.getByRole("button", { name: "Chats" }))
     expect(screen.getByRole("navigation", { name: "Recent chats" })).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /Road survey/ })).toHaveAttribute("href", "/app-shell/chats/4")
+    expect(screen.getByRole("link", { name: /Road survey/ })).toHaveClass("dark:bg-gray-800", "dark:text-gray-300")
     expect(screen.getByText("Bookmarks in this chat")).toBeInTheDocument()
     expect(screen.getByText("Aqueducts")).toBeInTheDocument()
     fireEvent.change(screen.getByPlaceholderText("Title, repo, or id"), { target: { value: "roads" } })
@@ -6852,6 +6941,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: /Road survey/ })).toBeInTheDocument()
     expect(screen.getByText("12.4k in", { exact: false })).toBeInTheDocument()
     expect(screen.getAllByRole("link", { name: "New chat" }).map((link) => link.getAttribute("href"))).toContain("/app-shell/chats/new")
+    expect(screen.getByPlaceholderText("Ask about this repository...")).toHaveClass("dark:bg-gray-950", "dark:text-gray-100")
     fireEvent.change(screen.getByPlaceholderText("Ask about this repository..."), { target: { value: "Now inspect proposals" } })
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
 
@@ -6866,6 +6956,7 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Now inspect proposals")).toBeInTheDocument()
+    expect(screen.getByText("Now inspect proposals").closest(".chat-prose")).toHaveClass("chat-prose-invert", "dark:bg-blue-500")
     expect(screen.queryByText("Message sent.")).not.toBeInTheDocument()
   })
 
@@ -8145,7 +8236,8 @@ function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: R
       scheduling_paused: false,
       landing_paused: false,
       agent_provider: "claude",
-      agent_max_turns: 200
+      agent_max_turns: 200,
+      theme: "light"
     },
     team_user_count: 1,
     app: {

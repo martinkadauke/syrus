@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html class="<%= current_user&.theme == 'dark' ? 'dark' : '' %>">
   <head>
     <title>Syrus</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -21,7 +21,7 @@
     <% end %>
   </head>
 
-  <body class="bg-gray-50 text-gray-900">
+  <body class="bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-white">
     <%= yield %>
   </body>
 </html>
