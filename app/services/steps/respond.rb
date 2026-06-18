@@ -20,18 +20,7 @@ module Steps
     private
 
     def compose_prompt
-      comments = feedback_comments
-      cutoff = parse_cutoff(workflow.artifact("feedback_cutoff"))
-      issue = job.issue? ? GithubClient.for(repository: repository, user: job.user).fetch_issue(repository.slug, job.issue_number) : job.synthetic_issue
-
-      prompt = Prompts::PrFeedback.new(
-        issue: issue,
-        comments: hydrate_comments(comments),
-        cutoff: cutoff,
-        prior_summaries: prior_pr_comment_summaries,
-        recent_commits: recent_branch_commits,
-        epic: job.epic
-      ).to_s
+      prompt = workflow.trigger_kind == "chat_feedback" ? compose_chat_feedback_prompt : compose_pr_feedback_prompt
 
       return prompt unless run.iteration > 1
 
@@ -43,19 +32,32 @@ module Steps
       ].join("\n\n")
     end
 
-    def feedback_comments
-      return workflow.artifact("pr_comments") || [] unless workflow.trigger_kind == "chat_feedback"
+    def compose_pr_feedback_prompt
+      comments = workflow.artifact("pr_comments") || []
+      cutoff = parse_cutoff(workflow.artifact("feedback_cutoff"))
 
-      feedback = workflow.artifact("chat_feedback").to_s
-      return [] if feedback.blank?
+      Prompts::PrFeedback.new(
+        issue: issue_for_prompt,
+        comments: hydrate_comments(comments),
+        cutoff: cutoff,
+        prior_summaries: prior_feedback_summaries(%w[pr_comment]),
+        recent_commits: recent_branch_commits,
+        epic: job.epic
+      ).to_s
+    end
 
-      [
-        {
-          "author" => "Syrus Chat",
-          "body" => feedback,
-          "created_at" => workflow.created_at&.iso8601
-        }
-      ]
+    def compose_chat_feedback_prompt
+      Prompts::ChatFeedback.new(
+        issue: issue_for_prompt,
+        feedback: workflow.artifact("chat_feedback").to_s,
+        prior_summaries: prior_feedback_summaries(%w[pr_comment chat_feedback]),
+        recent_commits: recent_branch_commits,
+        epic: job.epic
+      ).to_s
+    end
+
+    def issue_for_prompt
+      job.issue? ? GithubClient.for(repository: repository, user: job.user).fetch_issue(repository.slug, job.issue_number) : job.synthetic_issue
     end
 
     def parse_cutoff(raw)
@@ -70,9 +72,9 @@ module Steps
     # current workflow is excluded — the summary it will produce is
     # not relevant to this Step's own prompt. Skips Workflows that
     # never reached summarize_amend (no agent_summary on any Run).
-    def prior_pr_comment_summaries
+    def prior_feedback_summaries(trigger_kinds)
       prior_workflows = job.workflows
-                           .where(trigger_kind: "pr_comment")
+                           .where(trigger_kind: trigger_kinds)
                            .where("id < ?", workflow.id)
                            .order(:created_at)
                            .to_a
