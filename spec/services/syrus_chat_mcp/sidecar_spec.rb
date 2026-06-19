@@ -19,10 +19,14 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::DeleteProposalTool,
         SyrusChatMcp::ReadEpicTool,
         SyrusChatMcp::ReadJobTool,
+        SyrusChatMcp::ListJobWorkflowsTool,
+        SyrusChatMcp::ReadWorkflowTool,
+        SyrusChatMcp::ReadRunTranscriptTool,
         SyrusChatMcp::ListJobsTool,
         SyrusChatMcp::CancelJobTool,
         SyrusChatMcp::RetryJobTool,
         SyrusChatMcp::RebaseJobTool,
+        SyrusChatMcp::SubmitChatFeedbackTool,
         SyrusChatMcp::ReadPrTool,
         SyrusChatMcp::RepoInfoTool,
         SyrusChatMcp::ListRepoDocumentsTool,
@@ -85,10 +89,14 @@ RSpec.describe SyrusChatMcp::Sidecar do
         delete_proposal
         read_epic
         read_job
+        list_job_workflows
+        read_workflow
+        read_run_transcript
         list_jobs
         cancel_job
         retry_job
         rebase_job
+        submit_chat_feedback
         read_pr
         repo_info
         list_repo_documents
