@@ -1,7 +1,13 @@
 require "active_support/core_ext/integer/time"
+require_relative "../active_record_encryption"
 
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
+
+  # Active Record encryption keys for development. Uses ACTIVE_RECORD_ENCRYPTION_*
+  # env vars when present, otherwise fixed non-secret dev keys so a fresh clone
+  # (no master.key) can save encrypted credentials without a 500.
+  ActiveRecordEncryptionConfig.apply_development_defaults!(config)
 
   # Make code changes take effect immediately without server restart.
   config.enable_reloading = true

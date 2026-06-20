@@ -52,4 +52,33 @@ RSpec.describe ActiveRecordEncryptionConfig do
       "Missing Active Record encryption environment variables: ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY, ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT"
     )
   end
+
+  describe ".apply_development_defaults!" do
+    it "falls back to fixed development keys when no env keys are present" do
+      config = app_config
+
+      described_class.apply_development_defaults!(config, env: {})
+
+      expect(config.active_record.encryption.primary_key).to eq(described_class::DEVELOPMENT_KEYS[:primary_key])
+      expect(config.active_record.encryption.deterministic_key).to eq(described_class::DEVELOPMENT_KEYS[:deterministic_key])
+      expect(config.active_record.encryption.key_derivation_salt).to eq(described_class::DEVELOPMENT_KEYS[:key_derivation_salt])
+    end
+
+    it "prefers env keys over the development fallback" do
+      config = app_config
+
+      described_class.apply_development_defaults!(
+        config,
+        env: {
+          "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" => "primary",
+          "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY" => "deterministic",
+          "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT" => "salt"
+        }
+      )
+
+      expect(config.active_record.encryption.primary_key).to eq("primary")
+      expect(config.active_record.encryption.deterministic_key).to eq("deterministic")
+      expect(config.active_record.encryption.key_derivation_salt).to eq("salt")
+    end
+  end
 end
