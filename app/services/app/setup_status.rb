@@ -76,6 +76,7 @@ module App
     def credentials
       {
         github_token: user.github_token.present?,
+        github_app: AppSetting.github_app_registered?,
         selected_agent_provider: user.agent_provider,
         selected_agent_provider_configured: user.agent_provider_configured?(user.agent_provider),
         configured_agent_providers: user.configured_agent_providers,
@@ -136,8 +137,9 @@ module App
       github_credentials_ready? && user.agent_provider_configured?(user.agent_provider)
     end
 
+    # Onboarding requires BOTH a PAT and the GitHub App.
     def github_credentials_ready?
-      user.github_token.present? || AppSetting.github_app_registered?
+      user.github_token.present? && AppSetting.github_app_registered?
     end
 
     def active_repository?

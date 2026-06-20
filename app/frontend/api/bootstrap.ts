@@ -36,6 +36,8 @@ export type BootstrapPayload = {
     onboarding_chat_started: boolean
     credential_status: {
       github: boolean
+      github_pat: boolean
+      github_app: boolean
       agent: boolean
       active_agent_provider: "claude" | "codex"
     }

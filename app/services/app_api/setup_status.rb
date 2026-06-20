@@ -65,8 +65,19 @@ module AppApi
       user.agent_provider_configured?(user.agent_provider)
     end
 
+    # Onboarding wants BOTH a personal access token and the GitHub App for
+    # best results (PAT covers private clones / fallback; the App gives a bot
+    # identity + independent rate limit). Both are required to finish the step.
     def github_credential_configured?
-      user.github_token.present? || AppSetting.github_app_registered?
+      github_token_configured? && github_app_configured?
+    end
+
+    def github_token_configured?
+      user.github_token.present?
+    end
+
+    def github_app_configured?
+      AppSetting.github_app_registered?
     end
 
     def repository_configured?
@@ -101,6 +112,10 @@ module AppApi
     def credential_status
       {
         github: github_credential_configured?,
+        # `github_pat` (not `github_token`) so this status blob never contains
+        # the write-only secret's column name.
+        github_pat: github_token_configured?,
+        github_app: github_app_configured?,
         agent: agent_credential_configured?,
         active_agent_provider: user.agent_provider
       }

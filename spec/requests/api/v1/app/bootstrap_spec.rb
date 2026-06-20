@@ -129,6 +129,7 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
   end
 
   it "reports credentials-only setup status without exposing write-only credential values" do
+    AppSetting.current.update!(github_app_id: 1, github_app_slug: "test-syrus")
     user = Factories.user(
       github_token: "ghp_secret_pat",
       claude_oauth_token: "claude_secret_token"
@@ -149,6 +150,8 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
     )
     expect(setup.fetch("credential_status")).to eq(
       "github" => true,
+      "github_pat" => true,
+      "github_app" => true,
       "agent" => true,
       "active_agent_provider" => "claude"
     )
@@ -228,6 +231,7 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
   end
 
   it "reports ready-for-first-chat setup status before an Epic lands" do
+    AppSetting.current.update!(github_app_id: 1, github_app_slug: "test-syrus")
     user = Factories.user(
       github_token: "ghp_secret_pat",
       claude_oauth_token: "claude_secret_token"
@@ -253,6 +257,7 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
   end
 
   it "reports completed setup status once the first Epic lands" do
+    AppSetting.current.update!(github_app_id: 1, github_app_slug: "test-syrus")
     user = Factories.user(
       github_token: "ghp_secret_pat",
       claude_oauth_token: "claude_secret_token"

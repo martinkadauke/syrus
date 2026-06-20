@@ -82,31 +82,41 @@ describe("GithubTokenModal", () => {
     expect(screen.getByRole("button", { name: "Save and continue" })).toBeDisabled()
   })
 
-  it("PATCHes only the github token after a valid test, then closes and signals saved", async () => {
+  it("saves the token then advances to the GitHub App step (does not close)", async () => {
     const fetchSpy = mockRoutes({
       test: () => jsonResponse({ credential_test: okResult }),
       save: () => jsonResponse({ message: "Credentials updated." })
     })
     const onClose = vi.fn()
-    const onSaved = vi.fn()
-    renderModal({ onClose, onSaved })
+    renderModal({ onClose })
 
     fireEvent.change(screen.getByPlaceholderText("ghp_…"), { target: { value: "ghp_good" } })
     await waitFor(() => expect(screen.getByRole("button", { name: "Save and continue" })).toBeEnabled())
     fireEvent.click(screen.getByRole("button", { name: "Save and continue" }))
 
-    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
-    expect(onSaved).toHaveBeenCalledTimes(1)
+    // Non-admin: after the token saves, the flow moves to the GitHub App step
+    // (the PAT form is gone) but the modal stays open.
+    await waitFor(() => expect(screen.queryByPlaceholderText("ghp_…")).not.toBeInTheDocument())
+    expect(screen.getByText(/ask an\s+admin to register it/)).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
 
     const saveCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/credentials"))
-    expect(saveCall).toBeDefined()
-    expect(saveCall?.[1]?.method).toBe("PATCH")
     expect(JSON.parse(saveCall?.[1]?.body as string)).toEqual({ user: { github_token: "ghp_good" } })
   })
 
-  it("shows GitHub App + PAT tabs for admins, defaulting to the App tab", async () => {
+  it("requires both steps: explains both are needed and starts on the token step", () => {
+    renderModal()
+
+    expect(screen.getByText(/Syrus needs/)).toHaveTextContent(/both/)
+    // Both steps are named in the stepper; the token step is active first.
+    expect(screen.getByText("Personal access token")).toBeInTheDocument()
+    expect(screen.getByText("GitHub App")).toBeInTheDocument()
+    expect(screen.getByPlaceholderText("ghp_…")).toBeInTheDocument()
+  })
+
+  it("admin: advances to the GitHub App registration after the token is saved", async () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    client.setQueryData(["bootstrap"], { current_user: { admin: true } })
+    client.setQueryData(["bootstrap"], { current_user: { admin: true }, setup_status: { credential_status: { github_pat: true, github_app: false } } })
     vi.spyOn(window, "fetch").mockImplementation(async (input) => {
       const url = String(input)
       if (url.endsWith("/admin/github_app/register")) {
@@ -118,7 +128,7 @@ describe("GithubTokenModal", () => {
         })
       }
       if (url.endsWith("/admin/github_app/confirm")) return jsonResponse({ github_app: { registered: false, id: null, slug: null, registered_at: null, install_url: null } })
-      if (url.endsWith("/api/v1/app/bootstrap")) return jsonResponse({ current_user: { admin: true } })
+      if (url.endsWith("/api/v1/app/bootstrap")) return jsonResponse({ current_user: { admin: true }, setup_status: { credential_status: { github_pat: true, github_app: false } } })
       return jsonResponse({})
     })
 
@@ -128,14 +138,8 @@ describe("GithubTokenModal", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("tab", { name: /GitHub App/ })).toHaveAttribute("aria-selected", "true")
-    expect(screen.getByRole("tab", { name: "Personal access token" })).toBeInTheDocument()
-    // App tab is active: the manifest register button shows, not the PAT field.
+    // Token already saved (github_token: true) → straight to the App step.
     expect(await screen.findByRole("button", { name: /Register GitHub App/ })).toBeInTheDocument()
     expect(screen.queryByPlaceholderText("ghp_…")).not.toBeInTheDocument()
-
-    // Switching to the PAT tab reveals the token field.
-    fireEvent.click(screen.getByRole("tab", { name: "Personal access token" }))
-    expect(screen.getByPlaceholderText("ghp_…")).toBeInTheDocument()
   })
 })

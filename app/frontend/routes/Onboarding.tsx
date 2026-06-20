@@ -142,7 +142,7 @@ function checklistSteps(setup: SetupStatus, user: NonNullable<BootstrapPayload["
     {
       key: "github",
       title: "GitHub credentials",
-      detail: setup.credential_status.github ? "GitHub authentication is available." : "Connect a GitHub token or register the GitHub App.",
+      detail: githubStepDetail(setup),
       complete: setup.credential_status.github,
       ctaLabel: "Configure GitHub",
       ctaPath: "/credentials/edit",
@@ -194,6 +194,14 @@ function epicStepDetail(setup: SetupStatus) {
   if (setup.first_epic_started) return "Your first Epic is in progress. Approve its Jobs so they can land."
   if (setup.first_epic_created) return "Your first Epic is drafted. Move it to In Progress in chat to start it."
   return "In the chat, create your first Epic, move it to In Progress, and approve its Jobs so they land."
+}
+
+function githubStepDetail(setup: SetupStatus) {
+  const status = setup.credential_status
+  if (status.github) return "GitHub token and App are both connected."
+  if (status.github_pat) return "Token saved. Register the GitHub App to finish — both are required."
+  if (status.github_app) return "GitHub App registered. Add a personal access token to finish — both are required."
+  return "Connect a personal access token and the GitHub App — both are required."
 }
 
 function providerLabel(provider: SetupStatus["credential_status"]["active_agent_provider"]) {

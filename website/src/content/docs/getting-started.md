@@ -117,28 +117,25 @@ matching credential:
 Set **Max turns** to the cap you want for agent runs. The default is meant
 to prevent runaway loops while still allowing normal implementation work.
 
-Then configure GitHub access. Syrus considers GitHub authentication ready
-when either a user PAT exists or a GitHub App is registered for the
-instance. On the **First-run setup** checklist, the **Configure GitHub**
-step opens a guided modal with two tabs — **GitHub App** (recommended) and
-**Personal access token**.
+Then configure GitHub access. For best results Syrus uses **both** a
+personal access token and a GitHub App, so the **Configure GitHub** step
+requires both — set up one at a time, the token first, then the App:
 
-- A **GitHub App installation** is preferred. On the **GitHub App** tab
-  (admin only), Syrus creates the singleton Syrus GitHub App from a manifest:
-  click the button, GitHub creates the App and redirects back, then Syrus
-  shows an **Install** link so you can install it on the repositories it
-  should manage. Registering the App satisfies the GitHub step; repositories
-  with an active installation use App credentials (actions appear as a bot,
-  with an independent rate limit and auto-refreshing tokens).
-- A **GitHub personal access token** is the fallback credential. It must
-  be able to list issues, read PRs and checks, push branches, open pull
-  requests, and post updates for the repositories Syrus will manage. On the
-  **Personal access token** tab, Syrus links straight to
-  [github.com/settings/tokens](https://github.com/settings/tokens), tells you
-  to create a *classic* token with **No expiration** and the `repo` and
-  `workflow` scopes, then verifies the token the moment you paste it — a green
-  check confirms it works, while a clear message flags an invalid token or a
-  missing scope before you save.
+1. **Personal access token.** Syrus links straight to
+   [github.com/settings/tokens](https://github.com/settings/tokens), tells you
+   to create a *classic* token with **No expiration** and the `repo` and
+   `workflow` scopes, then verifies the token the moment you paste it — a green
+   check confirms it works, while a clear message flags an invalid token or a
+   missing scope before you save. The PAT covers private clones and is the
+   fallback for repositories without an active App installation.
+2. **GitHub App** (admin only). Syrus creates the singleton Syrus GitHub App
+   from a manifest: click the button, GitHub creates the App and redirects
+   back, then Syrus shows an **Install** link so you can install it on the
+   repositories it should manage. Repositories with an active installation use
+   App credentials — actions appear as a bot, with an independent rate limit
+   and auto-refreshing tokens.
+
+The GitHub step completes once both are in place.
 
 Syrus records the credential mode on repositories and Jobs so operators
 can tell whether a run used App credentials or PAT fallback.

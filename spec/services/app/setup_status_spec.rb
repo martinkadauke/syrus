@@ -15,6 +15,7 @@ RSpec.describe App::SetupStatus do
   end
 
   it "advances through repository and chat states until the first Epic lands" do
+    AppSetting.current.update!(github_app_id: 1, github_app_slug: "test-syrus")
     user = Factories.user(github_token: "ghp_test", claude_oauth_token: "oat-test")
     expect(described_class.call(user: user)[:next_step]).to eq("repository")
 
@@ -38,6 +39,7 @@ RSpec.describe App::SetupStatus do
   end
 
   it "reports chat_started and the onboarding chat path once the chat begins" do
+    AppSetting.current.update!(github_app_id: 1, github_app_slug: "test-syrus")
     user = Factories.user(github_token: "ghp_test", claude_oauth_token: "oat-test")
     repository = Factories.repository(user: user)
 
@@ -54,16 +56,23 @@ RSpec.describe App::SetupStatus do
     expect(after[:complete]).to eq(false)
   end
 
-  it "treats a registered GitHub App as ready GitHub credentials" do
+  it "requires both a registered GitHub App and a personal access token" do
     AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
     user = Factories.user(github_token: nil, claude_oauth_token: "oat-test")
 
-    payload = described_class.call(user: user)
+    # App alone is not enough — credentials stay incomplete.
+    app_only = described_class.call(user: user)
+    expect(app_only.dig(:credentials, :ready)).to eq(false)
+    expect(app_only.dig(:credentials, :github_app)).to eq(true)
+    expect(app_only.dig(:credentials, :github_token)).to eq(false)
+    expect(app_only[:next_step]).to eq("credentials")
 
-    expect(payload[:next_step]).to eq("repository")
-    expect(payload.dig(:credentials, :ready)).to eq(true)
-    expect(payload.dig(:github_app, :registered)).to eq(true)
-    credentials_step = payload.dig(:progress, :steps).find { |step| step[:key] == "credentials" }
+    # Adding the token completes the credentials step.
+    user.update!(github_token: "ghp_test")
+    both = described_class.call(user: user)
+    expect(both.dig(:credentials, :ready)).to eq(true)
+    expect(both[:next_step]).to eq("repository")
+    credentials_step = both.dig(:progress, :steps).find { |step| step[:key] == "credentials" }
     expect(credentials_step).to include(complete: true)
   end
 end
