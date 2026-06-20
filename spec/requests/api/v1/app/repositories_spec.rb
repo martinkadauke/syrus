@@ -98,34 +98,6 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     )
   end
 
-  it "returns a repo-targeted GitHub App install URL when the App is registered but not installed" do
-    AppSetting.current.update!(github_app_id: 1, github_app_slug: "operator-syrus")
-    sign_in_as(user)
-
-    post "/api/v1/app/repositories", params: {
-      repository: {
-        owner: "acme", name: "widgets", default_branch: "main", trigger_label: "syrus",
-        github_owner_id: 100, github_repository_id: 200
-      }
-    }
-
-    expect(response).to have_http_status(:created)
-    expect(parse_body["app_install_url"]).to eq(
-      "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=100&repository_ids[]=200"
-    )
-  end
-
-  it "omits the install URL when the GitHub App is not registered" do
-    sign_in_as(user)
-
-    post "/api/v1/app/repositories", params: {
-      repository: { owner: "acme", name: "widgets", default_branch: "main", trigger_label: "syrus", github_owner_id: 100, github_repository_id: 200 }
-    }
-
-    expect(response).to have_http_status(:created)
-    expect(parse_body["app_install_url"]).to be_nil
-  end
-
   it "rejects duplicate GitHub slugs for the same user with a clear owner-scoped message" do
     sign_in_as(user)
     Factories.repository(user: user, owner: "acme", name: "widgets")

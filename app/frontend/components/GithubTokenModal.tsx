@@ -22,13 +22,14 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
   const isAdmin = !!bootstrap.data?.current_user?.admin
   const credStatus = bootstrap.data?.setup_status?.credential_status
 
-  // Local optimistic flags so the flow advances immediately on success,
-  // before the bootstrap refetch lands.
+  // Local optimistic flag so the flow advances to the App step immediately
+  // after the token saves, before the bootstrap refetch lands.
   const [patSaved, setPatSaved] = useState(false)
-  const [appSaved, setAppSaved] = useState(false)
   const patDone = !!credStatus?.github_pat || patSaved
-  const appDone = !!credStatus?.github_app || appSaved
-  const phase: "pat" | "app" | "done" = patDone && appDone ? "done" : patDone ? "app" : "pat"
+  const appDone = !!credStatus?.github_app // for the stepper only
+  // First the token, then the GitHub App step (which itself does create →
+  // install, owned by GithubAppPanel).
+  const phase: "pat" | "app" = patDone ? "app" : "pat"
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -37,11 +38,6 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [onClose])
-
-  useEffect(() => {
-    if (phase === "done") onSaved?.()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase])
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -75,22 +71,14 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
 
           {phase === "pat" ? (
             <TokenStep onSaved={() => setPatSaved(true)} />
-          ) : phase === "app" ? (
-            isAdmin ? (
-              <GithubAppPanel onClose={onClose} onSaved={() => setAppSaved(true)} />
-            ) : (
-              <Box tone="muted">
-                A personal access token is saved. The GitHub App is registered once per instance by an admin — ask an
-                admin to register it to finish this step.
-              </Box>
-            )
+          ) : isAdmin ? (
+            // Create → install the GitHub App, owned by the panel.
+            <GithubAppPanel onClose={onClose} onSaved={onSaved} />
           ) : (
-            <div className="space-y-4">
-              <Box tone="ok">GitHub is connected — both a personal access token and the GitHub App are set up.</Box>
-              <div className="flex justify-end">
-                <button className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" onClick={onClose} type="button">Done</button>
-              </div>
-            </div>
+            <Box tone="muted">
+              A personal access token is saved. The GitHub App is registered once per instance by an admin — ask an
+              admin to register it to finish this step.
+            </Box>
           )}
         </div>
       </section>
@@ -98,7 +86,7 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
   )
 }
 
-function Stepper({ patDone, appDone, active }: { patDone: boolean; appDone: boolean; active: "pat" | "app" | "done" }) {
+function Stepper({ patDone, appDone, active }: { patDone: boolean; appDone: boolean; active: "pat" | "app" }) {
   const steps = [
     { key: "pat", label: "Personal access token", done: patDone },
     { key: "app", label: "GitHub App", done: appDone }
