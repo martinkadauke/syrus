@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import type { BootstrapPayload } from "../api/bootstrap"
 import { startOnboardingChat } from "../api/chats"
@@ -36,6 +37,7 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
   }
 
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [openModal, setOpenModal] = useState<ChecklistStep["ctaModal"] | null>(null)
   const [startingChat, setStartingChat] = useState(false)
   const [chatError, setChatError] = useState<string | null>(null)
@@ -45,6 +47,9 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
     setStartingChat(true)
     try {
       const result = await startOnboardingChat()
+      // Refresh bootstrap so the chrome reveals the other nav tabs (gated on
+      // setup.chat_started) without needing a page reload.
+      await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
       navigate(withRoutePrefix(result.redirect_to, prefix))
     } catch {
       setChatError("Could not start the Syrus chat. Try again.")

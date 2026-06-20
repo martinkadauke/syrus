@@ -781,6 +781,58 @@ describe("App", () => {
     }
   })
 
+  it("reveals the other nav tabs as soon as the onboarding chat starts, without a reload", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(incompleteOnboardingBootstrap())
+    document.body.appendChild(script)
+
+    const started = bootstrapPayload({
+      setup: setupStatusPayload({ complete: false, chat_started: true, onboarding_chat_path: "/chats/5", next_step: "epic" }),
+      setup_status: setupStatus({
+        state: "first_chat_started",
+        next_step: "start_first_chat",
+        next_step_path: "/onboarding",
+        first_successful_job_completed: false,
+        first_epic_landed: false,
+        onboarding_chat_started: true
+      })
+    })
+
+    vi.spyOn(window, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith("/api/v1/app/chats/onboarding") && (init as RequestInit)?.method === "POST") {
+        return new Response(JSON.stringify({ message: "Chat created.", redirect_to: "/chats/5", chat: {} }), { status: 201, headers: { "Content-Type": "application/json" } })
+      }
+      if (url.endsWith("/api/v1/app/bootstrap")) {
+        return new Response(JSON.stringify(started), { status: 200, headers: { "Content-Type": "application/json" } })
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } })
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/onboarding"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
+      // Tabs are hidden before the onboarding chat starts.
+      expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "Start Syrus chat" }))
+
+      // Starting the chat refreshes bootstrap, revealing the nav tabs in place.
+      expect(await screen.findByRole("link", { name: "Dashboard" })).toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
+  })
+
   it("shows completion on onboarding once the first Epic lands", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
