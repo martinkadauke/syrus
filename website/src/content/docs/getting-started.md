@@ -72,8 +72,9 @@ A real Syrus instance needs:
 
 The first-run checklist in the authenticated UI follows this sequence:
 account and admin access, GitHub credentials, agent credentials and
-provider, repository, first issue or direct Job, then watching the first
-Job until one closes successfully.
+provider, repository, then meeting Syrus in chat to create and land your
+first Epic. Onboarding completes when that Epic lands (all of its child
+Jobs merge), at which point the **Setup** tab drops off the navigation.
 
 ## First Successful Run
 
@@ -179,27 +180,28 @@ from lockfiles such as `Gemfile`, `yarn.lock`, `pnpm-lock.yaml`,
 `package-lock.json`, or `package.json`. Use `prepare: []` or
 `prepare: false` only when no setup should run.
 
-### 4. Start the first Job
+### 4. Meet Syrus in chat and land your first Epic
 
-For the full GitHub loop, create or edit a GitHub issue in the registered
-repository and add the trigger label.
+The final first-run step sends you into a **Syrus chat**. Click **Start
+Syrus chat** on the checklist; Syrus opens a chat attached to your
+repository and greets you. It explains how Jobs and Epics work, then helps
+you create your first **Epic**. The recommended first Epic is onboarding
+the repository itself to Syrus — for example adding an `AGENTS.md` (an
+agent guide) and a `.syrus.yml` with `prepare` commands and `graders`
+(test/lint/typecheck commands) that fit the repo — but you can pick a
+different first Epic.
 
-Good first issue:
+Syrus proposes the Epic and its child Jobs as a proposal card you accept.
+Once accepted, Syrus offers to move the Epic to **In Progress**, which is
+what actually triggers it to implement the Jobs. Within an Epic, **every**
+child Job must be approved before **any** of them land — the Epic lands
+atomically as a unit.
 
-```text
-Title: Fix typo in README setup section
-
-The README says "instal" in the setup section. Please correct it and run
-the smallest relevant check.
-```
-
-Syrus polls GitHub instead of receiving inbound webhooks, so the Job may
-not appear immediately.
-
-You can also create a **direct Job** from the web UI after a repository
-exists. Direct Jobs are useful for operator-supplied prompts, but a
-labelled GitHub issue is the clearest first proof that polling and issue
-delegation work.
+Once the Jobs run, the GitHub loop is the same as for any Job. You can also
+file work directly: create or edit a GitHub issue in the registered
+repository and add the trigger label, or create a **direct Job** from the
+web UI. Syrus polls GitHub instead of receiving inbound webhooks, so a
+labelled issue's Job may not appear immediately.
 
 ### 5. Watch the Job, Workflow, and Run
 
@@ -238,7 +240,8 @@ and create a follow-up Workflow on the same Job. If CI failures are
 enabled for your installation, failing checks can also create repair
 Workflows on Syrus-owned PRs.
 
-The first-run guide is complete when at least one Job closes successfully.
+The first-run guide is complete when your first Epic lands (all of its
+child Jobs merge); the **Setup** tab then drops off the navigation.
 After that, the dashboard becomes the normal working surface for Jobs,
 PRs, retries, schedules, direct Jobs, and operational follow-up. The Jobs
 list opens to the Inbox smart folder by default so actionable work is
