@@ -108,7 +108,15 @@ instance.
 
 - A **GitHub personal access token** is the fallback credential. It must
   be able to list issues, read PRs and checks, push branches, open pull
-  requests, and post updates for the repositories Syrus will manage.
+  requests, and post updates for the repositories Syrus will manage. On the
+  **First-run setup** checklist, the **Configure GitHub** step opens a guided
+  modal: it links straight to
+  [github.com/settings/tokens](https://github.com/settings/tokens), tells you
+  to create a *classic* token with **No expiration** and the `repo` and
+  `workflow` scopes, then verifies the token the moment you paste it — a green
+  check confirms it works, while a clear message flags an invalid token or a
+  missing scope before you save. A valid token advances the wizard to the next
+  step.
 - A **GitHub App installation** is preferred when available. Admins
   register the singleton Syrus GitHub App, then install it on the relevant
   owner or repository. Repositories with an active installation use App

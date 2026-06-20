@@ -2,6 +2,10 @@ module Api
   module V1
     module App
       class CredentialsController < BaseController
+        # Scopes a classic GitHub PAT must carry for Syrus to clone, branch,
+        # open PRs, and update GitHub Actions workflows.
+        GITHUB_REQUIRED_SCOPES = %w[ repo workflow ].freeze
+
         def show
           render json: credentials_payload(Current.user)
         end
@@ -37,6 +41,20 @@ module Api
           end
 
           result = CredentialProbe.call(user: Current.user, credential: credential)
+          render json: {
+            credential_test: result.as_json,
+            message: result.message
+          }
+        end
+
+        # Validate a pasted-but-unsaved GitHub token (onboarding modal). Probes
+        # GitHub and reports whether the token authenticates and carries the
+        # scopes Syrus needs before the operator commits it.
+        def test_github_token
+          result = CredentialProbe.github_token(
+            token: params[:github_token].to_s,
+            required_scopes: GITHUB_REQUIRED_SCOPES
+          )
           render json: {
             credential_test: result.as_json,
             message: result.message

@@ -1,5 +1,7 @@
+import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import type { BootstrapPayload } from "../api/bootstrap"
+import { GithubTokenModal } from "../components/GithubTokenModal"
 
 type SetupStatus = NonNullable<BootstrapPayload["setup_status"]>
 
@@ -10,6 +12,8 @@ type ChecklistStep = {
   complete: boolean
   ctaLabel: string
   ctaPath: string
+  // When set, the CTA opens an in-page flow instead of navigating away.
+  ctaModal?: "github_token"
 }
 
 export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | null | undefined }) {
@@ -25,6 +29,8 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
       </main>
     )
   }
+
+  const [openModal, setOpenModal] = useState<ChecklistStep["ctaModal"] | null>(null)
 
   const steps = checklistSteps(setup, user)
   const completedCount = steps.filter((step) => step.complete).length
@@ -63,6 +69,10 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
                 </div>
                 {step.complete ? (
                   <span className="self-start rounded bg-green-50 dark:bg-green-950/40 px-2.5 py-1 text-xs font-medium text-green-700 dark:text-green-300 sm:self-center">Complete</span>
+                ) : step.ctaModal ? (
+                  <button className={primaryCtaClass(current)} onClick={() => setOpenModal(step.ctaModal ?? null)} type="button">
+                    {step.ctaLabel}
+                  </button>
                 ) : (
                   <Link className={primaryCtaClass(current)} to={withRoutePrefix(step.ctaPath, prefix)}>
                     {step.ctaLabel}
@@ -83,6 +93,8 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
           </Link>
         </section>
       ) : null}
+
+      {openModal === "github_token" ? <GithubTokenModal onClose={() => setOpenModal(null)} /> : null}
     </main>
   )
 }
@@ -103,7 +115,8 @@ function checklistSteps(setup: SetupStatus, user: NonNullable<BootstrapPayload["
       detail: setup.credential_status.github ? "GitHub authentication is available." : "Connect a GitHub token or register the GitHub App.",
       complete: setup.credential_status.github,
       ctaLabel: "Configure GitHub",
-      ctaPath: "/credentials/edit"
+      ctaPath: "/credentials/edit",
+      ctaModal: "github_token"
     },
     {
       key: "agent",

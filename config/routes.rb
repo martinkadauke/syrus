@@ -34,6 +34,7 @@ Rails.application.routes.draw do
         resource :credentials, only: %i[ show update ] do
           post :clear_credential
           post :test_credential
+          post :test_github_token
           post :rotate_api_token
           delete :revoke_api_token
           resources :documents, only: %i[ index create destroy ], controller: "credentials/documents"

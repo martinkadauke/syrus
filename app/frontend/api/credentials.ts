@@ -82,6 +82,7 @@ export type CredentialTestResult = {
     login?: string
     scopes?: string[]
     accepted_scopes?: string[]
+    missing_scopes?: string[]
   }
 }
 
@@ -130,6 +131,15 @@ export function updateCredentials(values: CredentialsInput) {
   })
 }
 
+// Saves only the GitHub token. The credentials controller updates just the
+// keys present in the payload, so this leaves every other profile/credential
+// field untouched — used by the onboarding "Configure GitHub" modal.
+export function saveGithubToken(githubToken: string) {
+  return patchJson<CredentialsPayload>("/api/v1/app/credentials", {
+    user: { github_token: githubToken }
+  })
+}
+
 export function clearCredential(credential: string) {
   return postJson<CredentialsPayload>("/api/v1/app/credentials/clear_credential", {
     credential
@@ -139,6 +149,14 @@ export function clearCredential(credential: string) {
 export function testCredential(credential: string) {
   return postJson<CredentialTestPayload>("/api/v1/app/credentials/test_credential", {
     credential
+  })
+}
+
+// Probe a pasted-but-unsaved GitHub token: reports whether it authenticates
+// and whether it carries the repo + workflow scopes Syrus requires.
+export function testGithubToken(githubToken: string) {
+  return postJson<CredentialTestPayload>("/api/v1/app/credentials/test_github_token", {
+    github_token: githubToken
   })
 }
 

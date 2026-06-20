@@ -47,6 +47,57 @@ RSpec.describe CredentialProbe do
     )
   end
 
+  describe ".github_token" do
+    def stub_user(token, scopes:, status: 200, login: "ada")
+      stub_request(:get, "https://api.github.com/user")
+        .with(headers: { "Authorization" => "token #{token}" })
+        .to_return(
+          status: status,
+          headers: { "Content-Type" => "application/json", "x-oauth-scopes" => scopes },
+          body: { login: login }.to_json
+        )
+    end
+
+    it "is ok when an unsaved token carries every required scope" do
+      stub_user("ghp_unsaved", scopes: "repo, workflow")
+
+      result = described_class.github_token(token: "ghp_unsaved", required_scopes: %w[ repo workflow ])
+
+      expect(result.ok).to be true
+      expect(result.details).to include(login: "ada", missing_scopes: [])
+    end
+
+    it "is not ok and names the missing scope when under-scoped" do
+      stub_user("ghp_partial", scopes: "repo")
+
+      result = described_class.github_token(token: "ghp_partial", required_scopes: %w[ repo workflow ])
+
+      expect(result.ok).to be false
+      expect(result.message).to include("missing the workflow scope")
+      expect(result.details).to include(login: "ada", missing_scopes: %w[ workflow ])
+    end
+
+    it "is not ok with a helpful message when GitHub rejects the token" do
+      stub_request(:get, "https://api.github.com/user")
+        .with(headers: { "Authorization" => "token ghp_bad" })
+        .to_return(status: 401, body: { message: "Bad credentials" }.to_json, headers: { "Content-Type" => "application/json" })
+
+      result = described_class.github_token(token: "ghp_bad", required_scopes: %w[ repo workflow ])
+
+      expect(result.ok).to be false
+      expect(result.message).to include("GitHub rejected this token")
+      expect(result.details).to eq({})
+    end
+
+    it "refuses a blank token without calling GitHub" do
+      result = described_class.github_token(token: "  ", required_scopes: %w[ repo workflow ])
+
+      expect(result.ok).to be false
+      expect(result.message).to eq("Paste a token to test it.")
+      expect(WebMock).not_to have_requested(:get, "https://api.github.com/user")
+    end
+  end
+
   it "reports a missing Claude token without spawning a process" do
     user.update!(claude_oauth_token: nil)
     expect(ProcessRunner).not_to receive(:new)

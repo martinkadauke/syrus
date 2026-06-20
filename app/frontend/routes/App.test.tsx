@@ -715,7 +715,8 @@ describe("App", () => {
 
       expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
       expect(screen.getByRole("heading", { name: "Set up Syrus" })).toBeInTheDocument()
-      expect(screen.getByRole("link", { name: "Configure GitHub" })).toHaveAttribute("href", "/credentials/edit")
+      // "Configure GitHub" opens an in-page token modal rather than navigating away.
+      expect(screen.getByRole("button", { name: "Configure GitHub" })).toBeInTheDocument()
       expect(fetchSpy).not.toHaveBeenCalled()
     } finally {
       script.remove()
