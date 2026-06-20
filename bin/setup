@@ -16,6 +16,28 @@ FileUtils.chdir APP_ROOT do
   system("bundle check") || system!("bundle install")
   system!("npm ci") if File.exist?("package-lock.json")
 
+  unless ARGV.include?("--skip-cli")
+    puts "\n== Building Syrus CLI =="
+    if system("command -v go > /dev/null 2>&1")
+      # The Go CLI under cli/ talks to the app-scoped JSON API. Build it
+      # into cli/bin/syrus so operators can run it straight from the
+      # checkout. Pass --install-cli to also copy it onto PATH via
+      # `make install` (honors PREFIX, default /usr/local).
+      FileUtils.chdir("cli") do
+        if ARGV.include?("--install-cli")
+          prefix = ENV.fetch("PREFIX", "/usr/local")
+          system!("make", "install", "PREFIX=#{prefix}")
+          puts "Installed syrus to #{prefix}/bin/syrus"
+        else
+          system!("make", "build")
+          puts "Built cli/bin/syrus (pass --install-cli to install onto PATH)"
+        end
+      end
+    else
+      puts "Skipping: `go` not found on PATH. Install Go to build the Syrus CLI."
+    end
+  end
+
   puts "\n== Registering git merge drivers =="
   # Per-clone registration. Git intentionally requires the driver
   # config to live in .git/config (not just .gitattributes) since the

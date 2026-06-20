@@ -12,11 +12,23 @@ open PRs, check out Job branches, and print test plans.
 
 ## Build
 
-Build the binary from the repository:
+`bin/setup` builds the CLI automatically as part of the normal dev
+setup (skipped with a notice if Go isn't on your `PATH`). Pass
+`--install-cli` to also copy the binary onto your `PATH`, and
+`--skip-cli` to skip the CLI entirely:
+
+```bash
+bin/setup                          # builds cli/bin/syrus
+bin/setup --install-cli            # also installs to /usr/local/bin/syrus
+PREFIX=~/.local bin/setup --install-cli   # install elsewhere
+```
+
+To build (or install) the binary on its own, from the repository:
 
 ```bash
 cd cli
-make build
+make build                 # writes bin/syrus
+make install               # installs to /usr/local/bin (honors PREFIX)
 ```
 
 The build writes `bin/syrus`. Put that binary on your `PATH`, or run it
