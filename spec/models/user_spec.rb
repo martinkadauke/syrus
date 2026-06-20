@@ -491,4 +491,32 @@ RSpec.describe User do
       expect(user.reload.gh_api_blocked_reason.length).to be <= 500
     end
   end
+
+  describe "first-run setup completion" do
+    let(:setup_user) { Factories.user }
+
+    it "is incomplete with no Epics, and a merged Job alone does not finish onboarding" do
+      repository = Factories.repository(user: setup_user)
+      Factories.job_record(user: setup_user, repository: repository, state: "closed", closure_reason: "pr_merged")
+
+      expect(setup_user.first_epic_created?).to be false
+      expect(setup_user.first_run_setup_complete?).to be false
+    end
+
+    it "tracks the first Epic from created → started → landed" do
+      repository = Factories.repository(user: setup_user)
+      epic = Factories.epic(user: setup_user, repository: repository, state: "backlog")
+      expect(setup_user.first_epic_created?).to be true
+      expect(setup_user.first_epic_started?).to be false
+      expect(setup_user.first_run_setup_complete?).to be false
+
+      epic.update!(state: "in_progress")
+      expect(setup_user.first_epic_started?).to be true
+      expect(setup_user.first_run_setup_complete?).to be false
+
+      epic.update!(state: "done")
+      expect(setup_user.first_epic_landed?).to be true
+      expect(setup_user.first_run_setup_complete?).to be true
+    end
+  end
 end

@@ -93,6 +93,36 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body.dig("chat", "repository", "slug")).to eq("acme/widgets")
   end
 
+  it "creates the onboarding chat attached to the first repository, seeded and flagged" do
+    sign_in_as(user)
+    repository
+
+    expect {
+      post "/api/v1/app/chats/onboarding"
+    }.to change(ChatSession, :count).by(1)
+      .and change(ChatMessage, :count).by(1)
+      .and have_enqueued_job(ChatTurnJob)
+
+    expect(response).to have_http_status(:created)
+    chat = ChatSession.last
+    expect(chat.onboarding?).to be true
+    expect(chat.repository).to eq(repository)
+    expect(chat.messages.last.role).to eq("user")
+    expect(chat.messages.last.content["text"]).to include("setting up Syrus")
+    expect(parse_body).to include("redirect_to" => chat_path(chat))
+  end
+
+  it "creates the onboarding chat even with no repository yet" do
+    sign_in_as(user)
+
+    expect {
+      post "/api/v1/app/chats/onboarding"
+    }.to change(ChatSession, :count).by(1)
+
+    expect(ChatSession.last.repository).to be_nil
+    expect(ChatSession.last.onboarding?).to be true
+  end
+
   it "does not create a chat with an archived repository attachment" do
     sign_in_as(user)
     repository.archive!

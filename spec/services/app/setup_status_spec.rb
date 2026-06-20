@@ -14,26 +14,27 @@ RSpec.describe App::SetupStatus do
     expect(payload.dig(:progress, :completed)).to eq(0)
   end
 
-  it "advances through repository, first job, and watch states" do
+  it "advances through repository and chat states until the first Epic lands" do
     user = Factories.user(github_token: "ghp_test", claude_oauth_token: "oat-test")
     expect(described_class.call(user: user)[:next_step]).to eq("repository")
 
     repository = Factories.repository(user: user, owner: "acme", name: "widgets", trigger_label: "syrus")
     repository_payload = described_class.call(user: user)
-    expect(repository_payload[:next_step]).to eq("first_job")
+    expect(repository_payload[:next_step]).to eq("chat")
     expect(repository_payload.dig(:repositories, :first, :slug)).to eq("acme/widgets")
     expect(repository_payload.dig(:repositories, :first, :credential_mode)).to eq("pat")
 
-    job = Factories.job_record(user: user, repository: repository, issue_number: 7, issue_title: "First task", state: "running")
-    watch_payload = described_class.call(user: user)
-    expect(watch_payload[:next_step]).to eq("watch_job")
-    expect(watch_payload.dig(:first_job, :job, :title)).to eq("First task")
+    # An Epic that has not landed yet keeps the chat step open.
+    epic = Factories.epic(user: user, repository: repository, state: "in_progress")
+    in_progress_payload = described_class.call(user: user)
+    expect(in_progress_payload[:complete]).to eq(false)
+    expect(in_progress_payload[:next_step]).to eq("chat")
 
-    job.update!(state: "closed", closure_reason: "pr_merged")
+    epic.update!(state: "done")
     complete_payload = described_class.call(user: user)
     expect(complete_payload[:complete]).to eq(true)
     expect(complete_payload[:next_step]).to eq("complete")
-    expect(complete_payload.dig(:progress, :completed)).to eq(4)
+    expect(complete_payload.dig(:progress, :completed)).to eq(3)
   end
 
   it "treats a registered GitHub App as ready GitHub credentials" do

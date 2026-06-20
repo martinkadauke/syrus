@@ -1,6 +1,7 @@
 import { useState } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import type { BootstrapPayload } from "../api/bootstrap"
+import { startOnboardingChat } from "../api/chats"
 import { GithubTokenModal } from "../components/GithubTokenModal"
 import { ConfigureAgentModal } from "../components/ConfigureAgentModal"
 import { AddRepositoryModal } from "../components/AddRepositoryModal"
@@ -16,6 +17,8 @@ type ChecklistStep = {
   ctaPath: string
   // When set, the CTA opens an in-page flow instead of navigating away.
   ctaModal?: "github_token" | "configure_agent" | "add_repository"
+  // When set, the CTA runs an action (and may navigate away) instead of linking.
+  ctaAction?: "start_chat"
 }
 
 export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | null | undefined }) {
@@ -32,7 +35,22 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
     )
   }
 
+  const navigate = useNavigate()
   const [openModal, setOpenModal] = useState<ChecklistStep["ctaModal"] | null>(null)
+  const [startingChat, setStartingChat] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
+
+  async function launchChat() {
+    setChatError(null)
+    setStartingChat(true)
+    try {
+      const result = await startOnboardingChat()
+      navigate(withRoutePrefix(result.redirect_to, prefix))
+    } catch {
+      setChatError("Could not start the Syrus chat. Try again.")
+      setStartingChat(false)
+    }
+  }
 
   const steps = checklistSteps(setup, user)
   const completedCount = steps.filter((step) => step.complete).length
@@ -75,6 +93,10 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
                   <button className={primaryCtaClass(current)} onClick={() => setOpenModal(step.ctaModal ?? null)} type="button">
                     {step.ctaLabel}
                   </button>
+                ) : step.ctaAction === "start_chat" ? (
+                  <button className={primaryCtaClass(current)} disabled={startingChat} onClick={launchChat} type="button">
+                    {startingChat ? "Opening chat…" : step.ctaLabel}
+                  </button>
                 ) : (
                   <Link className={primaryCtaClass(current)} to={withRoutePrefix(step.ctaPath, prefix)}>
                     {step.ctaLabel}
@@ -86,10 +108,14 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
         </ol>
       </section>
 
+      {chatError ? (
+        <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300" role="alert">{chatError}</p>
+      ) : null}
+
       {complete ? (
         <section className="rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40 p-4">
           <h2 className="text-sm font-medium text-green-900 dark:text-green-100">Ready for normal operations</h2>
-          <p className="mt-1 text-sm text-green-800 dark:text-green-200">Syrus has completed at least one successful job.</p>
+          <p className="mt-1 text-sm text-green-800 dark:text-green-200">Your first Epic has landed — Syrus is set up. The Setup tab will drop off the nav.</p>
           <Link className="mt-3 inline-flex rounded bg-green-700 px-3 py-2 text-sm font-medium text-white hover:bg-green-800" to={withRoutePrefix("/dashboard/jobs?view=list", prefix)}>
             Open dashboard
           </Link>
@@ -141,22 +167,22 @@ function checklistSteps(setup: SetupStatus, user: NonNullable<BootstrapPayload["
       ctaModal: "add_repository"
     },
     {
-      key: "first_job",
-      title: "First issue or direct job",
-      detail: setup.first_job_started ? "The first job has been created." : "Create a direct job or delegate a GitHub issue to start the first run.",
-      complete: setup.first_job_started,
-      ctaLabel: "Start direct job",
-      ctaPath: "/jobs/new"
-    },
-    {
-      key: "watch_job",
-      title: "Watch first job",
-      detail: setup.first_successful_job_completed ? "At least one job closed successfully." : "Track the first run until it closes successfully.",
-      complete: setup.first_successful_job_completed,
-      ctaLabel: "Watch jobs",
-      ctaPath: "/dashboard/jobs?view=list"
+      key: "chat",
+      title: "Meet Syrus and land your first Epic",
+      detail: chatStepDetail(setup),
+      complete: setup.first_epic_landed,
+      ctaLabel: setup.first_epic_started ? "Open Syrus chat" : "Start Syrus chat",
+      ctaPath: "/onboarding",
+      ctaAction: "start_chat"
     }
   ]
+}
+
+function chatStepDetail(setup: SetupStatus) {
+  if (setup.first_epic_landed) return "Your first Epic landed — Syrus is fully set up."
+  if (setup.first_epic_started) return "Your first Epic is in progress. Approve its Jobs so they can land."
+  if (setup.first_epic_created) return "Your first Epic is drafted. Move it to In Progress in chat to start it."
+  return "Chat with Syrus. It will explain Epics and Jobs and help you create and land your first Epic."
 }
 
 function providerLabel(provider: SetupStatus["credential_status"]["active_agent_provider"]) {

@@ -227,43 +227,38 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
     expect(setup.fetch("counts")).to include("repositories" => 1, "jobs" => 0, "successful_jobs" => 0)
   end
 
-  it "reports first-job-started setup status before a successful close" do
+  it "reports ready-for-first-chat setup status before an Epic lands" do
     user = Factories.user(
       github_token: "ghp_secret_pat",
       claude_oauth_token: "claude_secret_token"
     )
     repository = Factories.repository(user: user)
-    Factories.job_record(user: user, repository: repository, state: "running")
+    Factories.epic(user: user, repository: repository, state: "in_progress")
     sign_in_as(user)
 
     get api_v1_app_bootstrap_path
 
     setup = parse_body.fetch("setup_status")
     expect(setup).to include(
-      "state" => "first_job_started",
-      "next_step" => "watch_first_job",
-      "next_step_path" => "/dashboard/jobs?view=list",
+      "state" => "first_chat_started",
+      "next_step" => "start_first_chat",
+      "next_step_path" => "/onboarding",
       "credentials_configured" => true,
       "repository_configured" => true,
-      "first_job_started" => true,
+      "first_epic_created" => true,
+      "first_epic_started" => true,
+      "first_epic_landed" => false,
       "first_successful_job_completed" => false
     )
-    expect(setup.fetch("counts")).to include("repositories" => 1, "jobs" => 1, "successful_jobs" => 0)
   end
 
-  it "reports first-successful-job setup status" do
+  it "reports completed setup status once the first Epic lands" do
     user = Factories.user(
       github_token: "ghp_secret_pat",
       claude_oauth_token: "claude_secret_token"
     )
     repository = Factories.repository(user: user)
-    Factories.job_record(
-      user: user,
-      repository: repository,
-      state: "closed",
-      closure_reason: "pr_merged",
-      finished_at: Time.current
-    )
+    Factories.epic(user: user, repository: repository, state: "done")
     sign_in_as(user)
 
     get api_v1_app_bootstrap_path
@@ -275,10 +270,9 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
       "next_step_path" => nil,
       "credentials_configured" => true,
       "repository_configured" => true,
-      "first_job_started" => true,
+      "first_epic_landed" => true,
       "first_successful_job_completed" => true
     )
-    expect(setup.fetch("counts")).to include("repositories" => 1, "jobs" => 1, "successful_jobs" => 1)
   end
 
   it "uses the configured GitHub repository for non-dev revision links" do

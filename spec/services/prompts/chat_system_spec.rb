@@ -14,6 +14,17 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("do not\nintroduce yourself primarily as Claude")
   end
 
+  it "appends the onboarding script only for onboarding chats" do
+    standard = ChatSession.create!(user: repo.user, repository: repo)
+    onboarding = ChatSession.create!(user: repo.user, repository: repo, onboarding: true)
+
+    expect(described_class.new(repository: repo, chat_session: standard).to_s).not_to include("FIRST-RUN ONBOARDING")
+
+    out = described_class.new(repository: repo, chat_session: onboarding).to_s
+    expect(out).to include("FIRST-RUN ONBOARDING")
+    expect(out).to include("propose_epic_with_jobs")
+  end
+
   it "frames chat as planning and proposal drafting, not editing" do
     out = described_class.new(repository: repo).to_s
 

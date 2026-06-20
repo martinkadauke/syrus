@@ -33,25 +33,24 @@ module App
 
     attr_reader :user
 
+    # Onboarding completes when the first Epic lands (all child Jobs merged).
     def complete?
-      successful_first_job?
+      user.first_run_setup_complete?
     end
 
     def next_step
       return "complete" if complete?
       return "credentials" unless credentials_ready?
       return "repository" unless active_repository?
-      return "first_job" unless any_job?
 
-      "watch_job"
+      "chat"
     end
 
     def progress
       steps = [
         { key: "credentials", label: "Add credentials", complete: credentials_ready? },
         { key: "repository", label: "Add a repository", complete: active_repository? },
-        { key: "first_job", label: "Start the first Job", complete: any_job? },
-        { key: "watch_job", label: "Watch the first successful Job or PR", complete: successful_first_job? }
+        { key: "chat", label: "Meet Syrus in chat and land your first Epic", complete: complete? }
       ]
 
       {

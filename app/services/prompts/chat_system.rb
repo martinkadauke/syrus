@@ -257,10 +257,17 @@ module Prompts
           - When attached context is relevant, use the attachment details
             above directly. Use `read_epic`, `read_job`, or
             `read_repo_document` when you need full detail.
+        #{onboarding_guidance}
       PROMPT
     end
 
     private
+
+    def onboarding_guidance
+      return "" unless @chat_session&.onboarding?
+
+      "\n" + Prompts::ChatOnboarding.new(repository: @repository).to_s
+    end
 
     def chat_scope
       return "chat workspace" unless @repository

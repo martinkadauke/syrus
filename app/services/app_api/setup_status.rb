@@ -3,8 +3,7 @@ module AppApi
     NEXT_STEP_PATHS = {
       "configure_credentials" => "/credentials/edit",
       "add_repository" => "/repositories/new",
-      "start_first_job" => "/jobs/new",
-      "watch_first_job" => "/dashboard/jobs?view=list"
+      "start_first_chat" => "/onboarding"
     }.freeze
 
     def initialize(user)
@@ -21,6 +20,9 @@ module AppApi
         repository_configured: repository_configured?,
         first_job_started: first_job_started?,
         first_successful_job_completed: first_successful_job_completed?,
+        first_epic_created: first_epic_created?,
+        first_epic_started: first_epic_started?,
+        first_epic_landed: first_epic_landed?,
         credential_status: credential_status,
         readiness: readiness,
         counts: counts
@@ -35,8 +37,8 @@ module AppApi
       return "first_successful_job" if first_successful_job_completed?
       return "credentials_only" if credentials_configured? && !repository_configured?
       return "repository_only" if repository_configured? && !credentials_configured?
-      return "first_job_started" if first_job_started?
-      return "ready_for_first_job" if credentials_configured? && repository_configured?
+      return "first_chat_started" if first_epic_started?
+      return "ready_for_first_chat" if credentials_configured? && repository_configured?
       return "first_admin" if first_admin?
 
       "not_started"
@@ -46,9 +48,8 @@ module AppApi
       return nil if first_successful_job_completed?
       return "configure_credentials" unless credentials_configured?
       return "add_repository" unless repository_configured?
-      return "watch_first_job" if first_job_started?
 
-      "start_first_job"
+      "start_first_chat"
     end
 
     def first_admin?
@@ -71,8 +72,21 @@ module AppApi
       active_repository_count.positive?
     end
 
+    # Onboarding completes when the first Epic lands.
     def first_successful_job_completed?
-      successful_job_count.positive?
+      first_epic_landed?
+    end
+
+    def first_epic_landed?
+      user.first_epic_landed?
+    end
+
+    def first_epic_started?
+      user.first_epic_started?
+    end
+
+    def first_epic_created?
+      user.first_epic_created?
     end
 
     def first_job_started?

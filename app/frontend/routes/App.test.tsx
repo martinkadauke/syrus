@@ -723,20 +723,22 @@ describe("App", () => {
     }
   })
 
-  it("renders the next useful onboarding step for a job already in flight", async () => {
+  it("renders the chat step as the next onboarding action when the Epic is in progress", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
       setup_status: setupStatus({
-        state: "first_job_started",
-        next_step: "watch_first_job",
-        next_step_path: "/dashboard/jobs?view=list",
-        first_job_started: true,
+        state: "first_chat_started",
+        next_step: "start_first_chat",
+        next_step_path: "/onboarding",
         first_successful_job_completed: false,
+        first_epic_created: true,
+        first_epic_started: true,
+        first_epic_landed: false,
         counts: {
           repositories: 1,
-          jobs: 1,
+          jobs: 0,
           successful_jobs: 0
         }
       })
@@ -754,14 +756,15 @@ describe("App", () => {
 
       expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
       expect(screen.getByText("5")).toBeInTheDocument()
-      expect(screen.getByRole("link", { name: "Watch jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list")
-      expect(screen.queryByRole("link", { name: "Start direct job" })).not.toBeInTheDocument()
+      // The chat step is a button (it launches a seeded chat), not a link.
+      expect(screen.getByRole("button", { name: "Open Syrus chat" })).toBeInTheDocument()
+      expect(screen.queryByRole("link", { name: "Watch jobs" })).not.toBeInTheDocument()
     } finally {
       script.remove()
     }
   })
 
-  it("shows completion on onboarding once the first successful job exists", async () => {
+  it("shows completion on onboarding once the first Epic lands", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
@@ -8339,6 +8342,9 @@ function setupStatus(overrides: Record<string, unknown> = {}) {
     repository_configured: true,
     first_job_started: true,
     first_successful_job_completed: true,
+    first_epic_created: true,
+    first_epic_started: true,
+    first_epic_landed: true,
     credential_status: {
       github: true,
       agent: true,

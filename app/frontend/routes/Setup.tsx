@@ -110,8 +110,7 @@ function primaryAction(payload: SetupStatusPayload) {
 function actionForStep(payload: SetupStatusPayload, key: SetupStepKey) {
   if (key === "credentials") return { label: "Open credentials", path: payload.paths.credentials_path, description: "Add a GitHub PAT and credentials for the selected agent provider." }
   if (key === "repository") return { label: "Add repository", path: payload.paths.new_repository_path, description: "Register the first repository Syrus should poll." }
-  if (key === "first_job") return { label: "Create direct Job", path: payload.paths.new_job_path, description: "Create a direct Job, or label a GitHub issue from the repository issues tab." }
-  if (key === "watch_job" && payload.first_job.job) return { label: "Watch Job", path: payload.first_job.job.job_path, description: "Watch the current Job until it succeeds, opens a PR, or shows a failure to diagnose." }
+  if (key === "chat") return { label: "Open onboarding", path: "/onboarding", description: "Meet Syrus in chat and create + land your first Epic." }
   return null
 }
 
@@ -125,12 +124,8 @@ function stepDescription(payload: SetupStatusPayload, key: SetupStepKey) {
     if (payload.repositories.first) return `${payload.repositories.first.slug} uses ${payload.repositories.first.credential_mode === "app" ? "the GitHub App" : "PAT fallback"}.`
     return "Add an active repository with a default branch and trigger label."
   }
-  if (key === "first_job") {
-    if (payload.first_job.job) return `${payload.first_job.job.title} is ${payload.first_job.job.state}.`
-    return payload.repositories.first ? `Create a direct Job or label an issue with ${payload.repositories.first.trigger_label}.` : "Create the first Job after a repository exists."
-  }
-  if (payload.first_job.successful) return "A successful Job or PR exists."
-  return "Keep the first Job page open while Syrus runs prepare, implement, summarize, and push."
+  if (payload.complete) return "Your first Epic landed."
+  return "Chat with Syrus to create and land your first Epic."
 }
 
 function titleize(value: string) {

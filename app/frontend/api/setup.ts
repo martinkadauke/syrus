@@ -1,6 +1,6 @@
 import { getJson } from "./client"
 
-export type SetupStepKey = "credentials" | "repository" | "first_job" | "watch_job"
+export type SetupStepKey = "credentials" | "repository" | "chat"
 export type SetupNextStep = SetupStepKey | "complete"
 
 export type SetupStatusPayload = {

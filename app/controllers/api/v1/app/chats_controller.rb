@@ -33,6 +33,42 @@ module Api
           }
         end
 
+        # Create the first-run onboarding chat: attached to the operator's
+        # first active repository, flagged onboarding (so the agent gets the
+        # onboarding script), and seeded with a kickoff message so the agent
+        # welcomes the operator immediately.
+        def onboarding
+          repository = Current.user.repositories.active.order(:owner, :name).first
+          chat_session = nil
+          user_message = nil
+
+          ApplicationRecord.transaction do
+            chat_session = ChatSession.create!(
+              user: Current.user,
+              repository: repository,
+              onboarding: true,
+              last_message_at: Time.current
+            )
+            user_message = chat_session.messages.create!(
+              role: "user",
+              content: { "text" => "I just finished setting up Syrus. Show me how it works and help me get started." }
+            )
+          end
+
+          enqueue_chat_title(chat_session, user_message)
+          enqueue_chat_turn(chat_session, user_message)
+
+          render json: {
+            message: "Chat created.",
+            redirect_to: chat_path(chat_session),
+            chat: chat_json(chat_session)
+          }, status: :created
+        rescue ActiveRecord::LockWaitTimeout, ActiveRecord::Deadlocked, ActiveRecord::StatementTimeout, SolidQueue::Job::EnqueueError => e
+          raise unless transient_chat_lock_error?(e)
+
+          render_temporary_chat_lock_error
+        end
+
         def create
           chat_session = create_chat_session
 

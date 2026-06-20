@@ -263,6 +263,12 @@ export function createChat(values: CreateChatInput) {
   })
 }
 
+// Create the first-run onboarding chat (seeded so the agent greets the
+// operator and walks them through their first Epic).
+export function startOnboardingChat() {
+  return postJson<ChatCreatedPayload>("/api/v1/app/chats/onboarding")
+}
+
 export function sendChatMessage(path: string, text: string) {
   return postJson<ChatPayload>(path, { chat_message: { text } })
 }

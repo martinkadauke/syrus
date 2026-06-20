@@ -103,6 +103,7 @@ Rails.application.routes.draw do
         get "chats/new", to: "chats#new"
         get "chats", to: "chats#index"
         post "chats", to: "chats#create"
+        post "chats/onboarding", to: "chats#onboarding"
         get "chats/:id", to: "chats#show", constraints: { id: /\d+/ }
         get "chats/:id/messages", to: "chats#messages", constraints: { id: /\d+/ }
         get "chats/:id/whiteboard", to: "chat_whiteboards#show", constraints: { id: /\d+/ }

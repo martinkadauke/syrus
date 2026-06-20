@@ -24,15 +24,10 @@ const setupCopy: Record<NonNullable<SetupStatus["next_step"]>, { title: string; 
     description: "Credentials are ready. Add a repository so Syrus knows where to watch issues and where direct jobs can run.",
     action: "Add repository"
   },
-  start_first_job: {
-    title: "Start the first job",
-    description: "Credentials and a repository are ready. Create a direct job or label a GitHub issue to send work through the pipeline.",
-    action: "Create direct job"
-  },
-  watch_first_job: {
-    title: "Watch the first job",
-    description: "The first job has started. Watch it finish so Syrus can confirm whether it opens a PR, records a successful no-change result, or reports what needs attention.",
-    action: "Open dashboard"
+  start_first_chat: {
+    title: "Meet Syrus in chat",
+    description: "Credentials and a repository are ready. Chat with Syrus to create and land your first Epic — it will explain how Jobs and Epics flow through the pipeline.",
+    action: "Start Syrus chat"
   }
 }
 

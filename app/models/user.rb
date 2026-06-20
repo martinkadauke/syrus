@@ -300,8 +300,23 @@ class User < ApplicationRecord
     configured_agent_providers - [ agent_provider ]
   end
 
+  # Onboarding finishes when the operator's first Epic lands (all its child
+  # Jobs merged → Epic `done`). This is the single source of truth for the
+  # first-run setup surfaces and the Setup nav tab.
   def first_run_setup_complete?
-    jobs.where(state: "closed", closure_reason: Job::SUCCESSFUL_CLOSURE_REASONS).exists?
+    first_epic_landed?
+  end
+
+  def first_epic_landed?
+    epics.where(state: "done").exists?
+  end
+
+  def first_epic_started?
+    epics.where(state: %w[ in_progress done ]).exists?
+  end
+
+  def first_epic_created?
+    epics.exists?
   end
 
   def chat_available?
