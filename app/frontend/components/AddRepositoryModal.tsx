@@ -13,7 +13,6 @@ import { ApiError } from "../api/client"
 import { CloseIcon } from "./CloseIcon"
 
 type OwnerOption = { login: string; type: "user" | "org" }
-type Mode = "select" | "manual"
 
 export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   const queryClient = useQueryClient()
@@ -21,13 +20,13 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
   const owners = useQuery({ queryKey: ["repositories", "owners"], queryFn: fetchRepositoryOwners })
 
   const [values, setValues] = useState<RepositoryInput | null>(null)
-  const [ownerMode, setOwnerMode] = useState<Mode>("manual")
-  const [nameMode, setNameMode] = useState<Mode>("manual")
-  const [branchMode, setBranchMode] = useState<Mode>("manual")
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([])
   const [repoOptions, setRepoOptions] = useState<GitHubRepositoryOption[]>([])
   const [branchOptions, setBranchOptions] = useState<string[]>([])
-  const [notice, setNotice] = useState<string | null>(null)
+  const [loadingRepos, setLoadingRepos] = useState(false)
+  const [loadingBranches, setLoadingBranches] = useState(false)
+  const [ownersNotice, setOwnersNotice] = useState<string | null>(null)
+  const [reposNotice, setReposNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -38,15 +37,15 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [onClose])
 
-  // Seed form values from the standard new-repository defaults, then apply the
-  // onboarding overrides: auto-merge on, inherit the user's default agent, and
-  // no upstream for now.
+  // Seed defaults from the standard new-repository form, then apply the
+  // onboarding overrides: auto-merge on, inherit the user's default agent,
+  // keep the syrus trigger label, and no upstream.
   useEffect(() => {
     if (!form.isSuccess || values) return
     const r = form.data.repository
     setValues({
-      owner: r.owner,
-      name: r.name,
+      owner: "",
+      name: "",
       default_branch: r.default_branch || "main",
       upstream_owner: "",
       upstream_name: "",
@@ -64,20 +63,17 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
     })
   }, [form.isSuccess, form.data, values])
 
-  // Build the "Working owner" dropdown from the viewer + their orgs.
+  // Build the User/Org dropdown from the viewer + their orgs.
   useEffect(() => {
     if (!owners.isSuccess) return
     if (owners.data.error) {
-      setNotice(ownerErrorMessage(owners.data.error))
-      setOwnerMode("manual")
+      setOwnersNotice(ownerErrorMessage(owners.data.error))
       return
     }
-    const options = [
+    setOwnerOptions([
       owners.data.user ? ({ login: owners.data.user, type: "user" } as OwnerOption) : null,
       ...(owners.data.orgs || []).map((org) => ({ login: org, type: "org" } as OwnerOption))
-    ].filter((o): o is OwnerOption => o !== null)
-    setOwnerOptions(options)
-    if (options.length > 0) setOwnerMode("select")
+    ].filter((o): o is OwnerOption => o !== null))
   }, [owners.isSuccess, owners.data])
 
   const selectedOwnerType = useMemo(
@@ -85,46 +81,52 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
     [ownerOptions, values?.owner]
   )
 
-  // When an owner is picked in select mode, load its repositories.
+  // Load repositories once a User/Org is picked.
   useEffect(() => {
-    if (ownerMode !== "select" || !values?.owner) return
+    if (!values?.owner) return
     let cancelled = false
+    setLoadingRepos(true)
+    setReposNotice(null)
     fetchRepositoryOptions(values.owner, selectedOwnerType).then((data) => {
       if (cancelled) return
+      setLoadingRepos(false)
       if (data.error || !data.repos) {
-        setNameMode("manual")
         setRepoOptions([])
+        setReposNotice(repoErrorMessage(data.error))
         return
       }
       const options = data.repos.map((repo) =>
         typeof repo === "string" ? { name: repo, github_repository_id: null, github_owner_id: null } : repo
       )
       setRepoOptions(options)
-      setNameMode(options.length > 0 ? "select" : "manual")
+      if (options.length === 0) setReposNotice("No repositories found for this owner.")
+    }).catch(() => {
+      if (cancelled) return
+      setLoadingRepos(false)
+      setRepoOptions([])
+      setReposNotice("Unable to load repositories.")
     })
     return () => {
       cancelled = true
     }
-  }, [ownerMode, selectedOwnerType, values?.owner])
+  }, [selectedOwnerType, values?.owner])
 
-  // Load branches once owner + name are known: turn Default branch into a
-  // dropdown (like repo#add) and suggest main/master.
+  // Load branches once a repository is picked, then suggest main/master.
   useEffect(() => {
     if (!values?.owner || !values?.name) return
     let cancelled = false
+    setLoadingBranches(true)
     fetchRepositoryBranches(values.owner, values.name).then((data) => {
       if (cancelled) return
-      if (data.error || !(data.branches && data.branches.length > 0)) {
-        setBranchMode("manual")
-        setBranchOptions([])
-        return
+      setLoadingBranches(false)
+      const branches = data.error ? [] : data.branches || []
+      setBranchOptions(branches)
+      if (branches.length > 0) {
+        setValues((current) => (current ? { ...current, default_branch: suggestBranch(branches, data.default_branch) } : current))
       }
-      setBranchOptions(data.branches)
-      setBranchMode("select")
-      setValues((current) => (current ? { ...current, default_branch: suggestBranch(data.branches, data.default_branch) } : current))
     }).catch(() => {
       if (cancelled) return
-      setBranchMode("manual")
+      setLoadingBranches(false)
       setBranchOptions([])
     })
     return () => {
@@ -141,32 +143,39 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
       onClose()
     },
     onError: (err) => {
-      setError(err instanceof ApiError ? err.message : "Could not add the repository. Check the details and try again.")
+      setError(err instanceof ApiError ? err.message : "Could not add the repository. Try again.")
     }
   })
 
-  function update(patch: Partial<RepositoryInput>) {
-    setValues((current) => (current ? { ...current, ...patch } : current))
+  function chooseOwner(owner: string) {
+    setRepoOptions([])
+    setBranchOptions([])
+    setReposNotice(null)
+    setValues((current) => (current ? { ...current, owner, name: "", github_owner_id: "", github_repository_id: "" } : current))
   }
 
   function chooseRepo(name: string) {
     const selected = repoOptions.find((r) => r.name === name)
-    update({
+    setBranchOptions([])
+    setValues((current) => (current ? {
+      ...current,
       name,
       github_owner_id: selected?.github_owner_id == null ? "" : String(selected.github_owner_id),
       github_repository_id: selected?.github_repository_id == null ? "" : String(selected.github_repository_id)
-    })
+    } : current))
   }
 
   function submit(event: React.FormEvent) {
     event.preventDefault()
     setError(null)
-    if (!values || values.owner.trim().length === 0 || values.name.trim().length === 0) {
-      setError("Choose an owner and repository name.")
+    if (!values || !values.owner || !values.name) {
+      setError("Choose a user/org and repository.")
       return
     }
     save.mutate()
   }
+
+  const ownersLoading = !owners.isSuccess && !ownersNotice
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -197,8 +206,6 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
             </button>
           </div>
 
-          {notice ? <Box tone="muted">{notice}</Box> : null}
-
           {!values ? (
             <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" role="status">
               <Spinner /> Loading…
@@ -206,36 +213,44 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
           ) : (
             <>
               <Field label="User/Org">
-                {ownerMode === "select" && ownerOptions.length > 0 ? (
-                  <SelectWithManual label="User/Org" onManual={() => setOwnerMode("manual")} onChange={(owner) => update({ owner, name: "", github_owner_id: "", github_repository_id: "" })} value={values.owner}>
+                {ownersNotice ? (
+                  <Box tone="error">{ownersNotice}</Box>
+                ) : ownersLoading ? (
+                  <Loading>Loading your GitHub accounts…</Loading>
+                ) : (
+                  <select aria-label="User/Org" className={selectClass()} onChange={(event) => chooseOwner(event.target.value)} value={values.owner}>
                     <option value="">Select user or org…</option>
                     {ownerOptions.map((o) => <option key={o.login} value={o.login}>{o.login}</option>)}
-                  </SelectWithManual>
-                ) : (
-                  <input aria-label="User/Org" className={inputClass()} onChange={(event) => update({ owner: event.target.value, github_owner_id: "", github_repository_id: "" })} placeholder="user or org" value={values.owner} />
+                  </select>
                 )}
               </Field>
 
-              <Field label="Repository">
-                {nameMode === "select" && repoOptions.length > 0 ? (
-                  <SelectWithManual label="Repository" onManual={() => setNameMode("manual")} onChange={chooseRepo} value={values.name}>
-                    <option value="">Select repository…</option>
-                    {repoOptions.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
-                  </SelectWithManual>
-                ) : (
-                  <input aria-label="Repository" className={inputClass()} onChange={(event) => update({ name: event.target.value, github_repository_id: "" })} placeholder="repository" value={values.name} />
-                )}
-              </Field>
+              {values.owner ? (
+                <Field label="Repository">
+                  {loadingRepos ? (
+                    <Loading>Loading repositories…</Loading>
+                  ) : reposNotice ? (
+                    <Box tone="error">{reposNotice}</Box>
+                  ) : (
+                    <select aria-label="Repository" className={selectClass()} onChange={(event) => chooseRepo(event.target.value)} value={values.name}>
+                      <option value="">Select repository…</option>
+                      {repoOptions.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
+                    </select>
+                  )}
+                </Field>
+              ) : null}
 
-              <Field label="Default branch">
-                {branchMode === "select" && branchOptions.length > 0 ? (
-                  <SelectWithManual label="Default branch" onManual={() => setBranchMode("manual")} onChange={(branch) => update({ default_branch: branch })} value={values.default_branch}>
-                    {branchOptions.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
-                  </SelectWithManual>
-                ) : (
-                  <input aria-label="Default branch" className={inputClass()} onChange={(event) => update({ default_branch: event.target.value })} placeholder="main" value={values.default_branch} />
-                )}
-              </Field>
+              {values.name ? (
+                <Field label="Default branch">
+                  {loadingBranches ? (
+                    <Loading>Loading branches…</Loading>
+                  ) : (
+                    <select aria-label="Default branch" className={selectClass()} onChange={(event) => setValues((c) => (c ? { ...c, default_branch: event.target.value } : c))} value={values.default_branch}>
+                      {branchOptions.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
+                    </select>
+                  )}
+                </Field>
+              ) : null}
 
               <Box tone="muted">
                 Runs will use your default agent ({form.data?.user_agent_provider_label || "your default"}). The{" "}
@@ -250,7 +265,7 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
                 <button className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" onClick={onClose} type="button">
                   Cancel
                 </button>
-                <button className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60" disabled={save.isPending} type="submit">
+                <button className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60" disabled={save.isPending || !values.owner || !values.name} type="submit">
                   {save.isPending ? <><Spinner light /> Adding…</> : "Add repository"}
                 </button>
               </div>
@@ -262,29 +277,11 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
   )
 }
 
-function suggestBranch(branches: string[] | undefined, defaultBranch: string | undefined) {
-  if (defaultBranch) return defaultBranch
-  const list = branches || []
-  if (list.includes("main")) return "main"
-  if (list.includes("master")) return "master"
-  return list[0] || "main"
-}
-
-function SelectWithManual({ children, label, onChange, onManual, value }: {
-  children: React.ReactNode
-  label: string
-  onChange: (value: string) => void
-  onManual: () => void
-  value: string
-}) {
-  return (
-    <div>
-      <select aria-label={label} className={`${inputClass()} font-mono`} onChange={(event) => onChange(event.target.value)} value={value}>
-        {children}
-      </select>
-      <button className="mt-1 text-xs text-gray-500 dark:text-gray-400 underline hover:no-underline" onClick={onManual} type="button">Enter manually</button>
-    </div>
-  )
+function suggestBranch(branches: string[], defaultBranch: string | undefined) {
+  if (defaultBranch && branches.includes(defaultBranch)) return defaultBranch
+  if (branches.includes("main")) return "main"
+  if (branches.includes("master")) return "master"
+  return branches[0] || "main"
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -293,6 +290,14 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {label}
       <div className="mt-2">{children}</div>
     </label>
+  )
+}
+
+function Loading({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" role="status">
+      <Spinner /> {children}
+    </p>
   )
 }
 
@@ -312,12 +317,18 @@ function Spinner({ light }: { light?: boolean }) {
   )
 }
 
-function inputClass() {
-  return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm shadow-sm focus:outline-blue-600"
+function selectClass() {
+  return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm font-mono shadow-sm focus:outline-blue-600"
 }
 
 function ownerErrorMessage(error: string) {
-  if (error === "no_token") return "No GitHub token configured yet. Enter the owner and repository manually."
-  if (error === "unauthorized") return "GitHub rejected the configured credentials. Enter the repository manually or revisit Configure GitHub."
-  return "Unable to load GitHub owners. Enter the repository manually."
+  if (error === "no_token") return "No GitHub token configured yet — revisit Configure GitHub first."
+  if (error === "unauthorized") return "GitHub rejected the configured credentials. Revisit Configure GitHub."
+  return "Unable to load your GitHub accounts. Revisit Configure GitHub."
+}
+
+function repoErrorMessage(error?: string) {
+  if (error === "no_token") return "No GitHub token configured — revisit Configure GitHub."
+  if (error === "not_found") return "Owner not found or not accessible."
+  return "Unable to load repositories for this owner."
 }

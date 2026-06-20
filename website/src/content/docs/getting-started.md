@@ -137,11 +137,12 @@ can tell whether a run used App credentials or PAT fallback.
 ### 3. Add a repository
 
 On the **First-run setup** checklist, the **Add repository** step opens a
-guided modal for your *first* repository: it offers **User/Org** and
-**Repository** dropdowns (populated from GitHub when your token can list them,
-with manual entry as a fallback). Once you pick a repository,
-**Default branch** becomes a dropdown of its branches with `main`/`master`
-pre-selected. The modal applies the `syrus` trigger label by default,
+guided modal for your *first* repository. It walks you through GitHub
+dropdowns: pick a **User/Org**, then the **Repository** dropdown for that owner
+appears, and once you choose a repository the **Default branch** dropdown lists
+its branches with `main`/`master` pre-selected. (There is no free-text entry —
+the dropdowns come from GitHub, so if they can't load you fix **Configure
+GitHub** first.) The modal applies the `syrus` trigger label by default,
 inherits the default agent you chose earlier, and turns on auto-merge plus the
 standard repository defaults. It skips the upstream/fork fields. Additional
 repositories — and any fine-tuning, including the trigger label — happen later

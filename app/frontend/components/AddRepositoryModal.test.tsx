@@ -63,25 +63,30 @@ describe("AddRepositoryModal", () => {
     vi.restoreAllMocks()
   })
 
-  it("offers User/Org and Repository dropdowns, suggests main, and defaults the syrus label silently", async () => {
+  it("shows only the User/Org dropdown first and defaults the syrus label silently", async () => {
     mockRoutes()
     renderModal()
 
     const owner = (await screen.findByRole("combobox", { name: "User/Org" })) as HTMLSelectElement
     expect(Array.from(owner.options).map((o) => o.value)).toEqual(["", "octocat", "acme"])
-    expect((screen.getByLabelText("Default branch") as HTMLInputElement).value).toBe("main")
-    // Trigger label is not a field — it defaults to syrus and is set later.
-    expect(screen.queryByLabelText("Trigger label")).not.toBeInTheDocument()
+    // Repository and branch fields are hidden until a User/Org is picked.
+    expect(screen.queryByRole("combobox", { name: "Repository" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("combobox", { name: "Default branch" })).not.toBeInTheDocument()
+    // No manual entry, no trigger-label field; the label defaults to syrus.
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
     expect(screen.getByText("syrus")).toBeInTheDocument()
     expect(screen.getByText(/add more later/i)).toBeInTheDocument()
   })
 
-  it("turns Default branch into a dropdown once the repository is selected", async () => {
+  it("reveals the Repository dropdown after a User/Org is selected, then a branch dropdown", async () => {
     mockRoutes()
     renderModal()
 
     fireEvent.change(await screen.findByRole("combobox", { name: "User/Org" }), { target: { value: "octocat" } })
-    fireEvent.change(await screen.findByRole("combobox", { name: "Repository" }), { target: { value: "hello-world" } })
+
+    const repo = (await screen.findByRole("combobox", { name: "Repository" })) as HTMLSelectElement
+    expect(Array.from(repo.options).map((o) => o.value)).toEqual(["", "hello-world"])
+    fireEvent.change(repo, { target: { value: "hello-world" } })
 
     const branch = (await screen.findByRole("combobox", { name: "Default branch" })) as HTMLSelectElement
     expect(Array.from(branch.options).map((o) => o.value)).toEqual(["main", "dev"])
@@ -120,12 +125,14 @@ describe("AddRepositoryModal", () => {
     })
   })
 
-  it("falls back to manual entry when GitHub owners can't be loaded", async () => {
+  it("shows a notice (no manual entry) when GitHub owners can't be loaded", async () => {
     mockRoutes({ owners: () => jsonResponse({ error: "no_token" }) })
     renderModal()
 
     await waitFor(() => expect(screen.getByText(/No GitHub token configured/)).toBeInTheDocument())
-    expect(screen.getByRole("textbox", { name: "User/Org" })).toBeInTheDocument()
-    expect(screen.getByRole("textbox", { name: "Repository" })).toBeInTheDocument()
+    // No dropdown and no manual fallback — the operator fixes GitHub first.
+    expect(screen.queryByRole("combobox", { name: "User/Org" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Add repository" })).toBeDisabled()
   })
 })
