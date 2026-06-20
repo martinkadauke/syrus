@@ -57,17 +57,118 @@ Run Syrus on infrastructure you control, register repositories whose code and
 setup commands you are willing to execute, scope GitHub tokens narrowly, keep
 secrets out of repositories, and review generated PRs before merging.
 
-## Getting started
+## Getting started (macOS, bare metal)
 
-Requires Ruby 3.2.3 (see `.ruby-version`). MySQL is **not** needed for local dev.
+This is the full from-nothing setup on a Mac with Homebrew. Every command is
+copy‑pasteable. It assumes you have **nothing** installed yet — you can run the
+steps by hand, or point a coding agent at this section and let it work through
+them. `bin/setup` is idempotent, so it's safe to re‑run.
 
-```sh
-bin/setup    # bundle, db:prepare, log:clear; tails into bin/dev
-bin/dev      # foreman: web (rails s) + worker (bin/jobs) + css (tailwind:watch)
-bin/test     # run Ruby, legacy JS, and React/TypeScript tests
+What you'll end up with: Ruby 3.2.3 (pinned in `.ruby-version`), Node + npm,
+Go 1.22+, libvips (for image processing), and the GitHub CLI. **No MySQL and no
+secrets/master key are needed for local dev** — development and test use SQLite,
+and the app self-provides Active Record encryption keys in development.
+
+### 1. Xcode Command Line Tools + Homebrew
+
+The Command Line Tools give you a compiler, `make`, and `git`. Homebrew is the
+package manager. (Both are usually already present if you've ever used `git`;
+the `|| true` makes the first command safe to re-run.)
+
+```bash
+xcode-select --install || true
+
+# Install Homebrew if `brew` isn't already on your PATH:
+if ! command -v brew >/dev/null; then
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+
+# Put brew on your PATH for this and future shells (Apple Silicon path shown):
+echo 'eval "$(/opt/homebrew/bin/brew shellenv)"' >> ~/.zprofile
+eval "$(/opt/homebrew/bin/brew shellenv)"
 ```
 
-`bin/setup --skip-server` if you want to bootstrap without booting the dev server.
+> Note: the CLT and Homebrew installers may prompt for your password and a
+> confirmation. On Intel Macs Homebrew lives at `/usr/local` instead of
+> `/opt/homebrew` — use whichever path `brew` prints.
+
+### 2. Install system dependencies
+
+```bash
+brew update
+brew install rbenv ruby-build node go vips gh
+# Libraries the Ruby build links against:
+brew install openssl@3 readline libyaml
+```
+
+### 3. Install Ruby 3.2.3 with rbenv
+
+```bash
+# Hook rbenv into your shell (zsh is the macOS default), then reload it:
+echo 'eval "$(rbenv init - zsh)"' >> ~/.zshrc
+eval "$(rbenv init - zsh)"
+
+rbenv install 3.2.3 --skip-existing
+rbenv global 3.2.3
+ruby -v   # should print: ruby 3.2.3
+```
+
+### 4. Clone the repository
+
+The repo is private, so authenticate with GitHub once (the CLI handles SSH/HTTPS
+for you):
+
+```bash
+gh auth login        # choose GitHub.com → follow the browser prompt
+gh repo clone tkadauke/syrus
+cd syrus
+```
+
+(If you prefer SSH and already have keys on GitHub:
+`git clone git@github.com:tkadauke/syrus.git`.)
+
+### 5. Set up and run
+
+```bash
+bin/setup
+```
+
+`bin/setup` installs Ruby gems (`bundle install`), JS deps (`npm ci`), builds
+the Go CLI under `cli/`, registers the git merge driver, prepares the SQLite
+databases, and then boots the dev server. To set up without auto-starting:
+
+```bash
+bin/setup --skip-server   # everything except booting the server
+bin/dev                   # web + worker + tailwind + JS watch, on port 3000
+```
+
+Open **http://localhost:3000**. The **first account you create becomes the
+admin**, and the first-run wizard walks you through GitHub credentials (a
+classic PAT + the GitHub App), the agent, a repository, and a guided chat to
+create and land your first Epic.
+
+### 6. Install the Claude Code CLI (needed to actually run agents)
+
+Syrus's worker shells out to the `claude` CLI to run Jobs and chats. Install it
+and sign in once:
+
+```bash
+npm install -g @anthropic-ai/claude-code
+claude            # sign in interactively (needs a Claude Pro/Max/Team/Enterprise plan)
+```
+
+In the wizard's **Configure agent** step, Syrus detects an existing `claude`
+login on this machine; otherwise it walks you through authorizing one. (Codex is
+not yet wired up — use Claude for now.)
+
+### Handy commands
+
+```bash
+bin/dev          # foreman: web (rails s) + worker (bin/jobs) + tailwind + JS watch
+bin/rspec        # Ruby test suite
+bin/test-react   # React/Vitest suite + TypeScript typecheck
+bin/test         # Ruby and React suites together
+```
 
 ## Production Configuration
 
