@@ -225,6 +225,8 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Syrus turns GitHub issues into reviewed pull requests." })).toBeInTheDocument()
     expect(screen.getAllByRole("link", { name: "Set up this Syrus instance" })[0]).toHaveAttribute("href", "/users/new")
     expect(screen.getAllByText("No users exist yet. The first account becomes the administrator for this instance.").length).toBeGreaterThan(0)
+    // No "Sign in" when there are no users yet — there's nobody to sign in as.
+    expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Workflow" })).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "Why self-host Syrus" })).toBeInTheDocument()
     expect(screen.getByText("The agent writes code; Syrus owns the run.")).toBeInTheDocument()

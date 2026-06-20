@@ -170,6 +170,10 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
   const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
   const invitationToken = new URLSearchParams(location.search).get("token")?.trim()
   const cta = publicCta(payload.public, prefix, invitationToken)
+  // No "Sign in" when sign-ups are locked, or when no users exist yet (the
+  // first account is created via "Set up this Syrus instance" — there is
+  // nobody to sign in as).
+  const showSignIn = cta.kind !== "locked" && cta.kind !== "first"
   const signInPath = withRoutePrefix(payload.public.sign_in_path, prefix)
   const signupPath = invitationToken
     ? `${withRoutePrefix(payload.public.signup_path, prefix)}?token=${encodeURIComponent(invitationToken)}`
@@ -200,7 +204,7 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link className={landingPrimaryButtonClass()} to={cta.href}>{cta.label}</Link>
-            {cta.kind === "locked" ? null : <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link>}
+            {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link> : null}
           </div>
           <p className="mt-3 max-w-xl text-sm text-gray-600">{cta.description}</p>
         </div>
@@ -291,7 +295,7 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
             ) : null}
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link aria-label={`${cta.label} from instance access`} className={landingPrimaryButtonClass()} to={cta.href}>{cta.label}</Link>
-              {cta.kind === "locked" ? null : <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link>}
+              {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link> : null}
             </div>
           </div>
           <dl className="grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-1">
