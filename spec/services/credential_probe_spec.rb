@@ -124,6 +124,34 @@ RSpec.describe CredentialProbe do
     expect(captured[:timeout]).to eq(30)
   end
 
+  describe ".claude_cli_ready" do
+    it "probes ambient claude --print without injecting a token" do
+      captured = nil
+      allow(ProcessRunner).to receive(:new) do |**kwargs|
+        captured = kwargs
+        instance_double(ProcessRunner, run: runner_result)
+      end
+
+      result = described_class.claude_cli_ready(user: user)
+
+      expect(result.ok).to be true
+      expect(result.message).to include("Claude already works on this machine")
+      expect(captured[:env]).not_to have_key("CLAUDE_CODE_OAUTH_TOKEN")
+      expect(captured[:command]).to include("claude", "--print")
+    end
+
+    it "reports not-authenticated when the ambient probe fails" do
+      allow(ProcessRunner).to receive(:new) do
+        instance_double(ProcessRunner, run: runner_result(exit_status: 1))
+      end
+
+      result = described_class.claude_cli_ready(user: user)
+
+      expect(result.ok).to be false
+      expect(result.message).to include("not authenticated on this machine")
+    end
+  end
+
   it "redacts failed CLI output" do
     allow(ProcessRunner).to receive(:new) do |**kwargs|
       kwargs[:on_output_chunk].call("authentication failed for oat-secret\n")

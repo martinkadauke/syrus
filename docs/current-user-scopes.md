@@ -40,6 +40,7 @@ per-user/private:
   - app/controllers/api/v1/app/tags_controller.rb
   - app/controllers/api/v1/app/theme_controller.rb
   - app/controllers/application_controller.rb
+  - app/controllers/oauth/claude_controller.rb
   - app/controllers/spa_controller.rb
   - app/views/spa/show.html.erb
 team-visible:
@@ -159,3 +160,4 @@ behind `require_admin` unless a replacement admin authorization layer is added.
 | `app/controllers/api/v1/app/credentials_controller.rb` | per-user/private and admin-only | Normal credential reads/writes mutate only the current user's credentials. API token rotation and revocation are admin-only because API bearer access exposes admin endpoints. |
 | `app/controllers/api/v1/app/profiles_controller.rb` | team-visible with self-aware badges | Team profiles are deliberately visible across users, while ownership labels compare profile rows to the signed-in user. |
 | `app/controllers/api/v1/app/setup_controller.rb` | per-user/private | Setup status is computed for the current operator's credentials, repositories, and first job progress. |
+| `app/controllers/oauth/claude_controller.rb` | per-user/private | The Claude OAuth callback exchanges the code and saves the long-lived token onto the signed-in user only. |

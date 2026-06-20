@@ -95,7 +95,16 @@ has closed successfully.
 In **My credentials**, choose your default agent provider and add the
 matching credential:
 
-- **Claude** uses a Claude OAuth token.
+- **Claude** uses a Claude OAuth token. On the **First-run setup**
+  checklist, the **Configure agent** step opens a guided modal: it first
+  checks whether `claude --print` already works on this machine (common on
+  bare-metal installs where you have already run `claude login`), and if not,
+  an **Authorize with Claude** button runs the subscription OAuth flow in a
+  popup and captures the long-lived token automatically — no terminal, no
+  copy-paste. The redirect returns to wherever Syrus is running, so the
+  automatic capture works for local/same-host installs; a remotely-hosted
+  Syrus may still fall back to pasting a `claude setup-token` value in **My
+  credentials**.
 - **Codex** uses either a Codex API key or ChatGPT `auth.json`,
   depending on the selected Codex authentication mode.
 

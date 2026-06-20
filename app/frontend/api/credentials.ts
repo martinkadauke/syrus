@@ -160,6 +160,20 @@ export function testGithubToken(githubToken: string) {
   })
 }
 
+// Preflight: does `claude --print` already work on this machine using the
+// operator's local Claude login? Lets the wizard skip token setup entirely.
+export function testClaudeCli() {
+  return postJson<CredentialTestPayload>("/api/v1/app/credentials/test_claude_cli")
+}
+
+export type ClaudeOauthStart = { authorize_url: string }
+
+// Begin the Claude subscription OAuth flow; returns the authorize URL the
+// modal opens. The redirect comes back to wherever Syrus is running.
+export function startClaudeOauth() {
+  return postJson<ClaudeOauthStart>("/api/v1/app/credentials/claude_oauth_start")
+}
+
 export function rotateApiToken() {
   return postJson<CredentialsPayload>("/api/v1/app/credentials/rotate_api_token")
 }

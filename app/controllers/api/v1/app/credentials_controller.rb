@@ -61,6 +61,27 @@ module Api
           }
         end
 
+        # Preflight: does `claude --print` already work on this machine using
+        # the operator's local Claude login? Lets the wizard skip token setup
+        # for bare-metal subscribers.
+        def test_claude_cli
+          result = CredentialProbe.claude_cli_ready(user: Current.user)
+          render json: { credential_test: result.as_json, message: result.message }
+        end
+
+        # Start the Claude subscription OAuth flow. Generates PKCE material,
+        # stashes it in the session, and returns the authorize URL the modal
+        # opens. The redirect comes back to wherever Syrus runs.
+        def claude_oauth_start
+          flow = ClaudeOauth.begin(redirect_uri: "#{request.base_url}#{ClaudeOauth::CALLBACK_PATH}")
+          session[:claude_oauth] = {
+            "verifier" => flow.verifier,
+            "state" => flow.state,
+            "redirect_uri" => flow.redirect_uri
+          }
+          render json: { authorize_url: flow.authorize_url }
+        end
+
         def rotate_api_token
           unless Current.user.admin?
             render_error("forbidden", "API token is admin-only.", status: :forbidden)

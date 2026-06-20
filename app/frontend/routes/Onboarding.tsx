@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Link, useLocation } from "react-router-dom"
 import type { BootstrapPayload } from "../api/bootstrap"
 import { GithubTokenModal } from "../components/GithubTokenModal"
+import { ConfigureAgentModal } from "../components/ConfigureAgentModal"
 
 type SetupStatus = NonNullable<BootstrapPayload["setup_status"]>
 
@@ -13,7 +14,7 @@ type ChecklistStep = {
   ctaLabel: string
   ctaPath: string
   // When set, the CTA opens an in-page flow instead of navigating away.
-  ctaModal?: "github_token"
+  ctaModal?: "github_token" | "configure_agent"
 }
 
 export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | null | undefined }) {
@@ -95,6 +96,7 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
       ) : null}
 
       {openModal === "github_token" ? <GithubTokenModal onClose={() => setOpenModal(null)} /> : null}
+      {openModal === "configure_agent" ? <ConfigureAgentModal onClose={() => setOpenModal(null)} /> : null}
     </main>
   )
 }
@@ -124,7 +126,8 @@ function checklistSteps(setup: SetupStatus, user: NonNullable<BootstrapPayload["
       detail: setup.credential_status.agent ? `${providerLabel(setup.credential_status.active_agent_provider)} is ready for runs.` : "Choose a provider and add its credentials.",
       complete: setup.credential_status.agent,
       ctaLabel: "Configure agent",
-      ctaPath: "/credentials/edit"
+      ctaPath: "/credentials/edit",
+      ctaModal: "configure_agent"
     },
     {
       key: "repository",

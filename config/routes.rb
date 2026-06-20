@@ -35,6 +35,8 @@ Rails.application.routes.draw do
           post :clear_credential
           post :test_credential
           post :test_github_token
+          post :test_claude_cli
+          post :claude_oauth_start
           post :rotate_api_token
           delete :revoke_api_token
           resources :documents, only: %i[ index create destroy ], controller: "credentials/documents"
@@ -361,6 +363,10 @@ Rails.application.routes.draw do
 
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
   end
+
+  # Claude subscription OAuth redirect (loopback / same-host auto-capture).
+  # Path is ClaudeOauth::CALLBACK_PATH.
+  get "oauth/claude/callback", to: "oauth/claude#callback", as: :oauth_claude_callback
 
   root "spa#show"
 

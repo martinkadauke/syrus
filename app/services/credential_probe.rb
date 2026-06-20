@@ -119,15 +119,23 @@ class CredentialProbe
     failure("GitHub probe failed: #{safe_error(e)}")
   end
 
-  def probe_claude
-    return missing("Claude OAuth token is not configured.") if user.claude_oauth_token.blank?
+  # Probe whether `claude --print` already works on this machine using the
+  # CLI's own stored login (no Syrus token injected). Lets the setup wizard
+  # detect a working bare-metal subscription before asking for a token.
+  def self.claude_cli_ready(user: nil)
+    new(user: user, credential: "claude_oauth_token").send(:probe_claude, ambient: true)
+  end
 
+  def probe_claude(ambient: false)
+    return missing("Claude OAuth token is not configured.") if !ambient && user&.claude_oauth_token.blank?
+
+    token = ambient ? nil : user.claude_oauth_token
     Dir.mktmpdir("syrus-claude-probe-") do |workspace|
       output = +""
       result = ProcessRunner.new(
         env: ProcessRunner.forwarded_env(
           AgentInvocation::ENV_FORWARD,
-          extra: { "CLAUDE_CODE_OAUTH_TOKEN" => user.claude_oauth_token }
+          extra: token ? { "CLAUDE_CODE_OAUTH_TOKEN" => token } : {}
         ),
         command: [
           "claude", "--print",
@@ -143,9 +151,12 @@ class CredentialProbe
         on_output_chunk: ->(chunk) { append_output(output, chunk) }
       ).run
 
-      return success(credential, "Claude OAuth token is valid.") if result.success?
+      if result.success?
+        return success(credential, ambient ? "Claude already works on this machine — no token needed." : "Claude OAuth token is valid.")
+      end
 
-      failure("Claude probe failed: #{probe_failure_reason(result, output)}")
+      message = ambient ? "Claude is not authenticated on this machine yet." : "Claude probe failed: #{probe_failure_reason(result, output)}"
+      failure(message)
     end
   rescue Errno::ENOENT
     failure("Claude CLI is not installed or not on PATH.")

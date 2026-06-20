@@ -229,6 +229,35 @@ RSpec.describe "API: /api/v1/app/credentials", type: :request do
     expect(user.reload.github_token).to eq("ghp_existing")
   end
 
+  it "preflights whether claude already works on this machine" do
+    sign_in_as(user)
+    result = CredentialProbe::Result.new(
+      credential: "claude_oauth_token",
+      ok: true,
+      message: "Claude already works on this machine — no token needed.",
+      details: {}
+    )
+    expect(CredentialProbe).to receive(:claude_cli_ready).with(user: user).and_return(result)
+
+    post "/api/v1/app/credentials/test_claude_cli"
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("credential_test", "ok")).to be true
+  end
+
+  it "starts the Claude OAuth flow with a redirect back to this host" do
+    sign_in_as(user)
+
+    post "/api/v1/app/credentials/claude_oauth_start"
+
+    expect(response).to have_http_status(:ok)
+    authorize_url = parse_body["authorize_url"]
+    expect(authorize_url).to start_with(ClaudeOauth::AUTHORIZE_URL)
+    params = Rack::Utils.parse_query(URI(authorize_url).query)
+    expect(params["redirect_uri"]).to end_with(ClaudeOauth::CALLBACK_PATH)
+    expect(params["code_challenge_method"]).to eq("S256")
+  end
+
   it "uploads and deletes personal documents" do
     sign_in_as(user)
 
