@@ -37,7 +37,6 @@ import { RepositoryDocumentsRoute } from "./RepositoryDocuments"
 import { RepositoryFormRoute } from "./RepositoryForm"
 import { RepositoryScheduledTasksRoute } from "./RepositoryScheduledTasks"
 import { ScheduledTaskDetailRoute, ScheduledTaskFormRoute, ScheduledTasksIndex } from "./ScheduledTasks"
-import { SetupRoute } from "./Setup"
 import { SmartFolders } from "./SmartFolders"
 import { SpendingInsightsRoute } from "./SpendingInsights"
 import { Tags } from "./Tags"
@@ -69,7 +68,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/dashboard/jobs", element: <DashboardRoute /> },
   { path: "/dashboard/workflows", element: <DashboardRoute /> },
   { path: "/insights/spending", element: <SpendingInsightsRoute /> },
-  { path: "/setup", element: <SetupRoute /> },
+  { path: "/setup", element: <SetupRedirect /> },
   { path: "/admin", element: <AdminOverview /> },
   { path: "/admin/queue", element: <AdminQueueRoute /> },
   { path: "/admin/queue/:tab", element: <AdminQueueRoute /> },
@@ -153,7 +152,10 @@ function RootRoute({ initialBootstrap }: { initialBootstrap: BootstrapPayload | 
   }
 
   if (bootstrap.data.current_user) {
-    if (bootstrap.data.setup_status && !bootstrap.data.setup_status.first_successful_job_completed) {
+    // Lock the root to onboarding only until the onboarding chat begins; after
+    // that the operator can roam even before the first Epic lands.
+    const setup = bootstrap.data.setup_status
+    if (setup && !setup.first_epic_landed && !setup.onboarding_chat_started) {
       return <Navigate replace to="/onboarding" />
     }
 
@@ -370,6 +372,13 @@ function renderAppRoutes(initialBootstrap: BootstrapPayload | null) {
   ])
 }
 
+// /setup is retired — it now just lands the operator on the onboarding page.
+function SetupRedirect() {
+  const location = useLocation()
+  const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
+  return <Navigate replace to={`${prefix}/onboarding`} />
+}
+
 function OnboardingShell({ initialBootstrap }: { initialBootstrap: BootstrapPayload | null }) {
   const bootstrap = useQuery({
     queryKey: ["bootstrap"],
@@ -398,13 +407,28 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
   const app = data?.app
   const defaultChatPath = withRoutePrefix(data?.navigation?.default_chat_path || "/chats/new", prefix)
   const quote = useMemo(randomPubliliusSyrusQuote, [])
+
+  // Onboarding gates the chrome: before the operator starts the onboarding
+  // chat, every tab except Setup is hidden and the brand returns to
+  // onboarding. Starting the chat reveals the tabs and points the brand at
+  // the chat. The Setup tab stays until the first Epic lands.
+  const inOnboarding = !!data?.setup && !data.setup.complete
+  const onboardingChatStarted = !!data?.setup?.chat_started
+  const tabsHidden = inOnboarding && !onboardingChatStarted
+  const onboardingChatPath = data?.setup?.onboarding_chat_path ? withRoutePrefix(data.setup.onboarding_chat_path, prefix) : null
+  const brandTo = inOnboarding
+    ? (onboardingChatStarted && onboardingChatPath ? onboardingChatPath : `${prefix}/onboarding`)
+    : defaultChatPath
+
   const navItems: Array<{ label: string; to: string; active: boolean; desktopOnly?: boolean }> = user ? [
-    ...(data?.setup && !data.setup.complete ? [{ label: "Setup", to: `${prefix}/setup`, active: normalizedPath === "/setup" }] : []),
-    { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: normalizedPath === "/" || normalizedPath.startsWith("/dashboard") },
-    { label: "Spending", to: `${prefix}/insights/spending`, active: normalizedPath.startsWith("/insights/spending"), desktopOnly: true },
-    { label: "Repos", to: `${prefix}/repositories`, active: normalizedPath.startsWith("/repositories") },
-    ...(data && data.team_user_count > 1 ? [ { label: "Team", to: `${prefix}/profiles`, active: normalizedPath.startsWith("/profiles"), desktopOnly: true } ] : []),
-    { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: normalizedPath === "/scheduled_tasks" || normalizedPath.startsWith("/scheduled_tasks/"), desktopOnly: true }
+    ...(inOnboarding ? [{ label: "Setup", to: `${prefix}/onboarding`, active: normalizedPath === "/onboarding" }] : []),
+    ...(tabsHidden ? [] : [
+      { label: "Dashboard", to: `${prefix}/dashboard/jobs?view=list`, active: normalizedPath === "/" || normalizedPath.startsWith("/dashboard") },
+      { label: "Spending", to: `${prefix}/insights/spending`, active: normalizedPath.startsWith("/insights/spending"), desktopOnly: true },
+      { label: "Repos", to: `${prefix}/repositories`, active: normalizedPath.startsWith("/repositories") },
+      ...(data && data.team_user_count > 1 ? [ { label: "Team", to: `${prefix}/profiles`, active: normalizedPath.startsWith("/profiles"), desktopOnly: true } ] : []),
+      { label: "Schedules", to: `${prefix}/scheduled_tasks`, active: normalizedPath === "/scheduled_tasks" || normalizedPath.startsWith("/scheduled_tasks/"), desktopOnly: true }
+    ])
   ] : []
 
   return (
@@ -412,7 +436,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
       <header className="border-b border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
         <div className="mx-auto flex max-w-[96rem] items-center justify-between gap-3 px-6 py-3">
           <div className="flex min-w-0 items-center gap-5">
-            <Link className="text-lg font-semibold text-gray-900 dark:text-white" to={defaultChatPath}>Syrus</Link>
+            <Link className="text-lg font-semibold text-gray-900 dark:text-white" to={brandTo}>Syrus</Link>
             <nav aria-label="Primary" className="flex flex-nowrap gap-1 text-sm">
               {navItems.map((item) => (
                 <Link className={`${item.desktopOnly ? "hidden sm:inline-flex" : ""} ${navLinkClass(item.active)}`} key={item.label} to={item.to}>{item.label}</Link>
@@ -433,7 +457,7 @@ function AppChrome({ children, initialBootstrap }: { children: ReactNode; initia
       {showsSettingsNavigation(normalizedPath) ? <SettingsNavigation normalizedPath={normalizedPath} prefix={prefix} /> : null}
       <SystemAlertsBanner alerts={data?.system_alerts} prefix={prefix} />
       <FlashBanner flash={data?.flash} />
-      {redirectsToSetup(data, normalizedPath) ? <Navigate replace to={`${prefix}/setup`} /> : children}
+      {redirectsToSetup(data, normalizedPath) ? <Navigate replace to={`${prefix}/onboarding`} /> : children}
       {showsPubliliusSyrusFooter(normalizedPath) ? <PubliliusSyrusFooter quote={quote} /> : null}
       {user ? <BugReportButton context={bugReportContext(location.pathname)} /> : null}
     </div>
@@ -686,6 +710,9 @@ function showsSettingsNavigation(pathname: string) {
 
 function redirectsToSetup(data: BootstrapPayload | null | undefined, normalizedPath: string) {
   if (!data?.setup || data.setup.complete) return false
+  // Once the onboarding chat starts, tabs are revealed and free navigation is
+  // allowed. Before that, keep stray dashboard/root visits on onboarding.
+  if (data.setup.chat_started) return false
   return normalizedPath === "/" || normalizedPath.startsWith("/dashboard")
 }
 

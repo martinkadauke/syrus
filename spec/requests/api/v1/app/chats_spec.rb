@@ -123,6 +123,20 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(ChatSession.last.onboarding?).to be true
   end
 
+  it "is idempotent — a second onboarding request returns the existing chat" do
+    sign_in_as(user)
+    repository
+    post "/api/v1/app/chats/onboarding"
+    existing = ChatSession.last
+
+    expect {
+      post "/api/v1/app/chats/onboarding"
+    }.not_to change(ChatSession, :count)
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body).to include("redirect_to" => chat_path(existing))
+  end
+
   it "does not create a chat with an archived repository attachment" do
     sign_in_as(user)
     repository.archive!

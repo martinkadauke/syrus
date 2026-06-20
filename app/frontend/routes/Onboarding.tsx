@@ -168,21 +168,32 @@ function checklistSteps(setup: SetupStatus, user: NonNullable<BootstrapPayload["
     },
     {
       key: "chat",
-      title: "Meet Syrus and land your first Epic",
-      detail: chatStepDetail(setup),
+      title: "Meet Syrus",
+      detail: setup.onboarding_chat_started
+        ? "You've started the Syrus chat. The other tabs are now unlocked."
+        : "Start a chat with Syrus. It will explain Epics and Jobs and help you plan your first Epic.",
+      complete: setup.onboarding_chat_started,
+      ctaLabel: setup.onboarding_chat_started ? "Open Syrus chat" : "Start Syrus chat",
+      ctaPath: "/onboarding",
+      ctaAction: "start_chat"
+    },
+    {
+      key: "epic",
+      title: "Land your first Epic",
+      detail: epicStepDetail(setup),
       complete: setup.first_epic_landed,
-      ctaLabel: setup.first_epic_started ? "Open Syrus chat" : "Start Syrus chat",
+      ctaLabel: "Open Syrus chat",
       ctaPath: "/onboarding",
       ctaAction: "start_chat"
     }
   ]
 }
 
-function chatStepDetail(setup: SetupStatus) {
+function epicStepDetail(setup: SetupStatus) {
   if (setup.first_epic_landed) return "Your first Epic landed — Syrus is fully set up."
   if (setup.first_epic_started) return "Your first Epic is in progress. Approve its Jobs so they can land."
   if (setup.first_epic_created) return "Your first Epic is drafted. Move it to In Progress in chat to start it."
-  return "Chat with Syrus. It will explain Epics and Jobs and help you create and land your first Epic."
+  return "In the chat, create your first Epic, move it to In Progress, and approve its Jobs so they land."
 }
 
 function providerLabel(provider: SetupStatus["credential_status"]["active_agent_provider"]) {

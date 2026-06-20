@@ -471,43 +471,35 @@ describe("App", () => {
     expect(await screen.findByText("Password reset instructions sent (if user with that email address exists).")).toBeInTheDocument()
   })
 
-  it("renders the first-run setup checklist and links to the next action", async () => {
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(setupStatusPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
-    )
-
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/setup"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
-
-    expect(screen.getByRole("main", { name: "First-run setup" })).toBeInTheDocument()
-    expect(await screen.findByRole("heading", { name: "Get to the first successful Job" })).toBeInTheDocument()
-    expect(screen.getByText("0 of 4 complete")).toBeInTheDocument()
-    expect(screen.getByText("GitHub PAT missing; Claude credentials missing.")).toBeInTheDocument()
-    expect(screen.getAllByRole("link", { name: "Open credentials" })[0]).toHaveAttribute("href", "/app-shell/credentials/edit")
-    expect(screen.getByText(/falls back to your GitHub PAT/)).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/setup",
-      expect.objectContaining({
-        credentials: "same-origin",
-        headers: { Accept: "application/json" }
-      })
-    )
-  })
-
-  it("redirects incomplete root visits to setup when bootstrap has setup state", async () => {
+  it("redirects the retired /setup route to onboarding", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
-    script.textContent = JSON.stringify({ ...bootstrapPayload(), setup: setupStatusPayload() })
+    script.textContent = JSON.stringify(incompleteOnboardingBootstrap())
     document.body.appendChild(script)
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(setupStatusPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
-    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/setup"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
+      expect(screen.getByRole("heading", { name: "Set up Syrus" })).toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
+  })
+
+  it("redirects incomplete root visits to onboarding and points the Setup tab there", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(incompleteOnboardingBootstrap())
+    document.body.appendChild(script)
 
     try {
       render(
@@ -518,12 +510,11 @@ describe("App", () => {
         </QueryClientProvider>
       )
 
-      expect(await screen.findByRole("main", { name: "First-run setup" })).toBeInTheDocument()
-      expect(screen.getByRole("link", { name: "Setup" })).toHaveAttribute("href", "/app-shell/setup")
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/setup",
-        expect.objectContaining({ credentials: "same-origin" })
-      )
+      expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Setup" })).toHaveAttribute("href", "/app-shell/onboarding")
+      // Before the onboarding chat starts, the other top-level tabs are hidden.
+      expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("link", { name: "Repos" })).not.toBeInTheDocument()
     } finally {
       script.remove()
     }
@@ -689,6 +680,8 @@ describe("App", () => {
         repository_configured: false,
         first_job_started: false,
         first_successful_job_completed: false,
+        first_epic_landed: false,
+        onboarding_chat_started: false,
         credential_status: {
           github: false,
           agent: false,
@@ -723,7 +716,7 @@ describe("App", () => {
     }
   })
 
-  it("renders the chat step as the next onboarding action when the Epic is in progress", async () => {
+  it("shows the land-Epic step as the next action once the chat has started", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
@@ -736,6 +729,7 @@ describe("App", () => {
         first_epic_created: true,
         first_epic_started: true,
         first_epic_landed: false,
+        onboarding_chat_started: true,
         counts: {
           repositories: 1,
           jobs: 0,
@@ -755,10 +749,11 @@ describe("App", () => {
       )
 
       expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
-      expect(screen.getByText("5")).toBeInTheDocument()
-      // The chat step is a button (it launches a seeded chat), not a link.
-      expect(screen.getByRole("button", { name: "Open Syrus chat" })).toBeInTheDocument()
-      expect(screen.queryByRole("link", { name: "Watch jobs" })).not.toBeInTheDocument()
+      // Six steps now: account, github, agent, repository, meet Syrus, land Epic.
+      expect(screen.getByText("6")).toBeInTheDocument()
+      expect(screen.getByText("Land your first Epic")).toBeInTheDocument()
+      // The chat steps are buttons (they launch/open the seeded chat), not links.
+      expect(screen.getAllByRole("button", { name: "Open Syrus chat" }).length).toBeGreaterThan(0)
     } finally {
       script.remove()
     }
@@ -8267,6 +8262,24 @@ describe("App", () => {
   })
 })
 
+// A signed-in operator partway through onboarding: credentials + repo done,
+// but the onboarding chat has not started and no Epic has landed.
+function incompleteOnboardingBootstrap() {
+  return bootstrapPayload({
+    setup: setupStatusPayload({ complete: false, chat_started: false, next_step: "chat" }),
+    setup_status: setupStatus({
+      state: "ready_for_first_chat",
+      next_step: "start_first_chat",
+      next_step_path: "/onboarding",
+      first_successful_job_completed: false,
+      first_epic_created: false,
+      first_epic_started: false,
+      first_epic_landed: false,
+      onboarding_chat_started: false
+    })
+  })
+}
+
 function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: ReturnType<typeof bootstrapSetupStatusPayload> | null } = {}) {
   const {
     setupStatus: setupStatusOverride,
@@ -8345,6 +8358,7 @@ function setupStatus(overrides: Record<string, unknown> = {}) {
     first_epic_created: true,
     first_epic_started: true,
     first_epic_landed: true,
+    onboarding_chat_started: true,
     credential_status: {
       github: true,
       agent: true,
@@ -8366,6 +8380,8 @@ function setupStatus(overrides: Record<string, unknown> = {}) {
 function setupStatusPayload(overrides: Record<string, unknown> = {}) {
   return {
     complete: false,
+    chat_started: false,
+    onboarding_chat_path: null,
     next_step: "credentials",
     progress: {
       completed: 0,
@@ -8373,8 +8389,8 @@ function setupStatusPayload(overrides: Record<string, unknown> = {}) {
       steps: [
         { key: "credentials", label: "Add credentials", complete: false },
         { key: "repository", label: "Add a repository", complete: false },
-        { key: "first_job", label: "Start the first Job", complete: false },
-        { key: "watch_job", label: "Watch the first successful Job or PR", complete: false }
+        { key: "chat", label: "Meet Syrus in chat", complete: false },
+        { key: "epic", label: "Land your first Epic", complete: false }
       ]
     },
     credentials: {

@@ -37,6 +37,23 @@ RSpec.describe App::SetupStatus do
     expect(complete_payload.dig(:progress, :completed)).to eq(3)
   end
 
+  it "reports chat_started and the onboarding chat path once the chat begins" do
+    user = Factories.user(github_token: "ghp_test", claude_oauth_token: "oat-test")
+    repository = Factories.repository(user: user)
+
+    before = described_class.call(user: user)
+    expect(before[:chat_started]).to eq(false)
+    expect(before[:onboarding_chat_path]).to be_nil
+    expect(before[:next_step]).to eq("chat")
+
+    chat = ChatSession.create!(user: user, repository: repository, onboarding: true)
+    after = described_class.call(user: user)
+    expect(after[:chat_started]).to eq(true)
+    expect(after[:onboarding_chat_path]).to eq("/chats/#{chat.id}")
+    expect(after[:next_step]).to eq("epic")
+    expect(after[:complete]).to eq(false)
+  end
+
   it "treats a registered GitHub App as ready GitHub credentials" do
     AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
     user = Factories.user(github_token: nil, claude_oauth_token: "oat-test")

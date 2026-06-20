@@ -1,10 +1,12 @@
 import { getJson } from "./client"
 
-export type SetupStepKey = "credentials" | "repository" | "chat"
+export type SetupStepKey = "credentials" | "repository" | "chat" | "epic"
 export type SetupNextStep = SetupStepKey | "complete"
 
 export type SetupStatusPayload = {
   complete: boolean
+  chat_started: boolean
+  onboarding_chat_path: string | null
   next_step: SetupNextStep
   progress: {
     completed: number

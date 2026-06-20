@@ -38,6 +38,14 @@ module Api
         # onboarding script), and seeded with a kickoff message so the agent
         # welcomes the operator immediately.
         def onboarding
+          # Idempotent: the onboarding step (and its "open chat" follow-ups)
+          # should always land on the one onboarding chat, not spawn new ones.
+          existing = Current.user.onboarding_chat
+          if existing
+            render json: { message: "Chat opened.", redirect_to: chat_path(existing), chat: chat_json(existing) }, status: :ok
+            return
+          end
+
           repository = Current.user.repositories.active.order(:owner, :name).first
           chat_session = nil
           user_message = nil

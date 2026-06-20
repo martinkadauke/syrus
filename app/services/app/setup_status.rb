@@ -18,6 +18,8 @@ module App
     def as_json(*)
       {
         complete: complete?,
+        chat_started: chat_started?,
+        onboarding_chat_path: onboarding_chat_path,
         next_step: next_step,
         progress: progress,
         credentials: credentials,
@@ -42,15 +44,17 @@ module App
       return "complete" if complete?
       return "credentials" unless credentials_ready?
       return "repository" unless active_repository?
+      return "chat" unless chat_started?
 
-      "chat"
+      "epic"
     end
 
     def progress
       steps = [
         { key: "credentials", label: "Add credentials", complete: credentials_ready? },
         { key: "repository", label: "Add a repository", complete: active_repository? },
-        { key: "chat", label: "Meet Syrus in chat and land your first Epic", complete: complete? }
+        { key: "chat", label: "Meet Syrus in chat", complete: chat_started? },
+        { key: "epic", label: "Land your first Epic", complete: complete? }
       ]
 
       {
@@ -58,6 +62,15 @@ module App
         total: steps.length,
         steps: steps
       }
+    end
+
+    def chat_started?
+      user.onboarding_chat_started?
+    end
+
+    def onboarding_chat_path
+      chat = user.onboarding_chat
+      chat ? routes.chat_path(chat) : nil
     end
 
     def credentials

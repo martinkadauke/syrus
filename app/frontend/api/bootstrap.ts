@@ -33,6 +33,7 @@ export type BootstrapPayload = {
     first_epic_created: boolean
     first_epic_started: boolean
     first_epic_landed: boolean
+    onboarding_chat_started: boolean
     credential_status: {
       github: boolean
       agent: boolean

@@ -23,6 +23,7 @@ module AppApi
         first_epic_created: first_epic_created?,
         first_epic_started: first_epic_started?,
         first_epic_landed: first_epic_landed?,
+        onboarding_chat_started: onboarding_chat_started?,
         credential_status: credential_status,
         readiness: readiness,
         counts: counts
@@ -87,6 +88,10 @@ module AppApi
 
     def first_epic_created?
       user.first_epic_created?
+    end
+
+    def onboarding_chat_started?
+      user.onboarding_chat_started?
     end
 
     def first_job_started?

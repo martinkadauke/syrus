@@ -319,6 +319,16 @@ class User < ApplicationRecord
     epics.exists?
   end
 
+  # The onboarding chat (last step of first-run setup). Used to gate when the
+  # other nav tabs are revealed and where the "Syrus" brand link points.
+  def onboarding_chat_started?
+    onboarding_chat.present?
+  end
+
+  def onboarding_chat
+    chat_sessions.where(onboarding: true).order(:created_at, :id).first
+  end
+
   def chat_available?
     claude_oauth_token.present?
   end

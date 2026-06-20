@@ -72,9 +72,14 @@ A real Syrus instance needs:
 
 The first-run checklist in the authenticated UI follows this sequence:
 account and admin access, GitHub credentials, agent credentials and
-provider, repository, then meeting Syrus in chat to create and land your
-first Epic. Onboarding completes when that Epic lands (all of its child
-Jobs merge), at which point the **Setup** tab drops off the navigation.
+provider, repository, meeting Syrus in chat, then landing your first Epic.
+While you are still working through the early steps, the other top-level
+tabs are hidden and the **Syrus** brand link returns you to onboarding —
+the only tab is **Setup** (which opens the onboarding checklist). The
+moment you start the onboarding chat, the rest of the tabs appear and the
+**Syrus** brand link opens that chat. Onboarding completes when your first
+Epic lands (all of its child Jobs merge), at which point the **Setup** tab
+drops off the navigation entirely.
 
 ## First Successful Run
 
