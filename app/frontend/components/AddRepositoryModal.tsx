@@ -23,8 +23,10 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
   const [values, setValues] = useState<RepositoryInput | null>(null)
   const [ownerMode, setOwnerMode] = useState<Mode>("manual")
   const [nameMode, setNameMode] = useState<Mode>("manual")
+  const [branchMode, setBranchMode] = useState<Mode>("manual")
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([])
   const [repoOptions, setRepoOptions] = useState<GitHubRepositoryOption[]>([])
+  const [branchOptions, setBranchOptions] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -105,13 +107,25 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
     }
   }, [ownerMode, selectedOwnerType, values?.owner])
 
-  // Suggest the default branch (main/master) once owner + name are known.
+  // Load branches once owner + name are known: turn Default branch into a
+  // dropdown (like repo#add) and suggest main/master.
   useEffect(() => {
     if (!values?.owner || !values?.name) return
     let cancelled = false
     fetchRepositoryBranches(values.owner, values.name).then((data) => {
-      if (cancelled || data.error) return
+      if (cancelled) return
+      if (data.error || !(data.branches && data.branches.length > 0)) {
+        setBranchMode("manual")
+        setBranchOptions([])
+        return
+      }
+      setBranchOptions(data.branches)
+      setBranchMode("select")
       setValues((current) => (current ? { ...current, default_branch: suggestBranch(data.branches, data.default_branch) } : current))
+    }).catch(() => {
+      if (cancelled) return
+      setBranchMode("manual")
+      setBranchOptions([])
     })
     return () => {
       cancelled = true
@@ -170,7 +184,7 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
                 Add repository
               </h2>
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                Pick the first repository Syrus should watch. You can add more later from Repositories.
+                Pick the first repository Syrus should work with. You can add more later from Repositories.
               </p>
             </div>
             <button
@@ -191,40 +205,43 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
             </p>
           ) : (
             <>
-              <Field label="Working owner">
+              <Field label="User/Org">
                 {ownerMode === "select" && ownerOptions.length > 0 ? (
-                  <SelectWithManual label="Working owner" onManual={() => setOwnerMode("manual")} onChange={(owner) => update({ owner, name: "", github_owner_id: "", github_repository_id: "" })} value={values.owner}>
-                    <option value="">Select owner…</option>
+                  <SelectWithManual label="User/Org" onManual={() => setOwnerMode("manual")} onChange={(owner) => update({ owner, name: "", github_owner_id: "", github_repository_id: "" })} value={values.owner}>
+                    <option value="">Select user or org…</option>
                     {ownerOptions.map((o) => <option key={o.login} value={o.login}>{o.login}</option>)}
                   </SelectWithManual>
                 ) : (
-                  <input aria-label="Working owner" className={inputClass()} onChange={(event) => update({ owner: event.target.value, github_owner_id: "", github_repository_id: "" })} placeholder="owner" value={values.owner} />
+                  <input aria-label="User/Org" className={inputClass()} onChange={(event) => update({ owner: event.target.value, github_owner_id: "", github_repository_id: "" })} placeholder="user or org" value={values.owner} />
                 )}
               </Field>
 
-              <Field label="Working name">
+              <Field label="Repository">
                 {nameMode === "select" && repoOptions.length > 0 ? (
-                  <SelectWithManual label="Working name" onManual={() => setNameMode("manual")} onChange={chooseRepo} value={values.name}>
+                  <SelectWithManual label="Repository" onManual={() => setNameMode("manual")} onChange={chooseRepo} value={values.name}>
                     <option value="">Select repository…</option>
                     {repoOptions.map((r) => <option key={r.name} value={r.name}>{r.name}</option>)}
                   </SelectWithManual>
                 ) : (
-                  <input aria-label="Working name" className={inputClass()} onChange={(event) => update({ name: event.target.value, github_repository_id: "" })} placeholder="repository" value={values.name} />
+                  <input aria-label="Repository" className={inputClass()} onChange={(event) => update({ name: event.target.value, github_repository_id: "" })} placeholder="repository" value={values.name} />
                 )}
               </Field>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Default branch">
+              <Field label="Default branch">
+                {branchMode === "select" && branchOptions.length > 0 ? (
+                  <SelectWithManual label="Default branch" onManual={() => setBranchMode("manual")} onChange={(branch) => update({ default_branch: branch })} value={values.default_branch}>
+                    {branchOptions.map((branch) => <option key={branch} value={branch}>{branch}</option>)}
+                  </SelectWithManual>
+                ) : (
                   <input aria-label="Default branch" className={inputClass()} onChange={(event) => update({ default_branch: event.target.value })} placeholder="main" value={values.default_branch} />
-                </Field>
-                <Field label="Trigger label">
-                  <input aria-label="Trigger label" className={inputClass()} onChange={(event) => update({ trigger_label: event.target.value })} placeholder="syrus" value={values.trigger_label} />
-                </Field>
-              </div>
+                )}
+              </Field>
 
               <Box tone="muted">
-                Runs will use your default agent ({form.data?.user_agent_provider_label || "your default"}). Auto-merge is on
-                and the standard repository defaults apply — you can fine-tune everything later in the repository settings.
+                Runs will use your default agent ({form.data?.user_agent_provider_label || "your default"}). The{" "}
+                <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-xs dark:bg-gray-800">{values.trigger_label}</code>{" "}
+                trigger label, auto-merge, and the standard repository defaults apply — you can change the label and
+                fine-tune everything later in the repository settings.
               </Box>
 
               {error ? <Box tone="error">{error}</Box> : null}

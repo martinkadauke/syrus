@@ -63,15 +63,29 @@ describe("AddRepositoryModal", () => {
     vi.restoreAllMocks()
   })
 
-  it("offers Working owner/name dropdowns and suggests main + syrus defaults", async () => {
+  it("offers User/Org and Repository dropdowns, suggests main, and defaults the syrus label silently", async () => {
     mockRoutes()
     renderModal()
 
-    const owner = (await screen.findByRole("combobox", { name: "Working owner" })) as HTMLSelectElement
+    const owner = (await screen.findByRole("combobox", { name: "User/Org" })) as HTMLSelectElement
     expect(Array.from(owner.options).map((o) => o.value)).toEqual(["", "octocat", "acme"])
     expect((screen.getByLabelText("Default branch") as HTMLInputElement).value).toBe("main")
-    expect((screen.getByLabelText("Trigger label") as HTMLInputElement).value).toBe("syrus")
+    // Trigger label is not a field — it defaults to syrus and is set later.
+    expect(screen.queryByLabelText("Trigger label")).not.toBeInTheDocument()
+    expect(screen.getByText("syrus")).toBeInTheDocument()
     expect(screen.getByText(/add more later/i)).toBeInTheDocument()
+  })
+
+  it("turns Default branch into a dropdown once the repository is selected", async () => {
+    mockRoutes()
+    renderModal()
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "User/Org" }), { target: { value: "octocat" } })
+    fireEvent.change(await screen.findByRole("combobox", { name: "Repository" }), { target: { value: "hello-world" } })
+
+    const branch = (await screen.findByRole("combobox", { name: "Default branch" })) as HTMLSelectElement
+    expect(Array.from(branch.options).map((o) => o.value)).toEqual(["main", "dev"])
+    expect(branch.value).toBe("main")
   })
 
   it("creates one repository with auto-merge on, inherited agent, and no upstream", async () => {
@@ -80,10 +94,10 @@ describe("AddRepositoryModal", () => {
     const onClose = vi.fn()
     renderModal({ onSaved, onClose })
 
-    const owner = await screen.findByRole("combobox", { name: "Working owner" })
+    const owner = await screen.findByRole("combobox", { name: "User/Org" })
     fireEvent.change(owner, { target: { value: "octocat" } })
 
-    const name = await screen.findByRole("combobox", { name: "Working name" })
+    const name = await screen.findByRole("combobox", { name: "Repository" })
     fireEvent.change(name, { target: { value: "hello-world" } })
 
     fireEvent.click(screen.getByRole("button", { name: "Add repository" }))
@@ -111,7 +125,7 @@ describe("AddRepositoryModal", () => {
     renderModal()
 
     await waitFor(() => expect(screen.getByText(/No GitHub token configured/)).toBeInTheDocument())
-    expect(screen.getByRole("textbox", { name: "Working owner" })).toBeInTheDocument()
-    expect(screen.getByRole("textbox", { name: "Working name" })).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "User/Org" })).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "Repository" })).toBeInTheDocument()
   })
 })
