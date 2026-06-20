@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { saveGithubToken, testGithubToken, type CredentialTestResult } from "../api/credentials"
+import { fetchBootstrap } from "../api/bootstrap"
 import { CloseIcon } from "./CloseIcon"
+import { GithubAppPanel } from "./GithubAppPanel"
 
 const TOKEN_SETTINGS_URL = "https://github.com/settings/tokens"
 const TEST_DEBOUNCE_MS = 500
@@ -12,8 +14,19 @@ type TestState =
   | { status: "done"; result: CredentialTestResult }
   | { status: "error"; message: string }
 
+type GithubTab = "app" | "pat"
+
 export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   const queryClient = useQueryClient()
+  // Registering the singleton GitHub App is admin-only; only admins see that tab.
+  const bootstrap = useQuery({ queryKey: ["bootstrap"], queryFn: fetchBootstrap })
+  const isAdmin = !!bootstrap.data?.current_user?.admin
+  const [tab, setTab] = useState<GithubTab>("pat")
+  useEffect(() => {
+    // Default admins to the recommended GitHub App tab once we know their role.
+    if (isAdmin) setTab((current) => (current === "pat" ? "app" : current))
+  }, [isAdmin])
+
   const [token, setToken] = useState("")
   const [test, setTest] = useState<TestState>({ status: "idle" })
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -81,6 +94,8 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
     save.mutate()
   }
 
+  const showAppTab = isAdmin && tab === "app"
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
       <section
@@ -90,7 +105,7 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
         role="dialog"
         onClick={(event) => event.stopPropagation()}
       >
-        <form className="space-y-5 p-5 sm:p-6" onSubmit={submit}>
+        <div className="space-y-5 p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id="github-token-title">
               Connect GitHub
@@ -105,6 +120,22 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
             </button>
           </div>
 
+          {isAdmin ? (
+            <div className="flex border-b border-gray-200 dark:border-gray-700" role="tablist">
+              <button aria-selected={tab === "app"} className={tabClass(tab === "app")} onClick={() => setTab("app")} role="tab" type="button">
+                GitHub App
+                <span className="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">Recommended</span>
+              </button>
+              <button aria-selected={tab === "pat"} className={tabClass(tab === "pat")} onClick={() => setTab("pat")} role="tab" type="button">
+                Personal access token
+              </button>
+            </div>
+          ) : null}
+
+          {showAppTab ? (
+            <GithubAppPanel onClose={onClose} onSaved={onSaved} />
+          ) : (
+          <form className="space-y-5" onSubmit={submit}>
           <ol className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
             <li>
               <p className="font-medium text-gray-900 dark:text-gray-100">1. Open GitHub token settings</p>
@@ -181,10 +212,19 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
               {save.isPending ? "Saving…" : "Save and continue"}
             </button>
           </div>
-        </form>
+          </form>
+          )}
+        </div>
       </section>
     </div>
   )
+}
+
+function tabClass(active: boolean) {
+  const base = "px-4 py-2 text-sm font-medium -mb-px border-b-2"
+  return active
+    ? `${base} border-blue-600 text-blue-700 dark:text-blue-300`
+    : `${base} border-transparent text-gray-500 dark:text-gray-400`
 }
 
 function TokenStatus({ test }: { test: TestState }) {

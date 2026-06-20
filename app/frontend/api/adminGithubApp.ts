@@ -5,6 +5,7 @@ export type AdminGithubAppStatus = {
   id: number | null
   slug: string | null
   registered_at: string | null
+  install_url?: string | null
 }
 
 export type AdminGithubAppRegisterPayload = {

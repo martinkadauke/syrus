@@ -103,4 +103,39 @@ describe("GithubTokenModal", () => {
     expect(saveCall?.[1]?.method).toBe("PATCH")
     expect(JSON.parse(saveCall?.[1]?.body as string)).toEqual({ user: { github_token: "ghp_good" } })
   })
+
+  it("shows GitHub App + PAT tabs for admins, defaulting to the App tab", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    client.setQueryData(["bootstrap"], { current_user: { admin: true } })
+    vi.spyOn(window, "fetch").mockImplementation(async (input) => {
+      const url = String(input)
+      if (url.endsWith("/admin/github_app/register")) {
+        return jsonResponse({
+          github_app: { registered: false, id: null, slug: null, registered_at: null, install_url: null },
+          github_manifest_url: "https://github.com/settings/apps/new?state=abc",
+          manifest: "{}",
+          submit_label: "Register GitHub App"
+        })
+      }
+      if (url.endsWith("/admin/github_app/confirm")) return jsonResponse({ github_app: { registered: false, id: null, slug: null, registered_at: null, install_url: null } })
+      if (url.endsWith("/api/v1/app/bootstrap")) return jsonResponse({ current_user: { admin: true } })
+      return jsonResponse({})
+    })
+
+    render(
+      <QueryClientProvider client={client}>
+        <GithubTokenModal onClose={() => {}} />
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("tab", { name: /GitHub App/ })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("tab", { name: "Personal access token" })).toBeInTheDocument()
+    // App tab is active: the manifest register button shows, not the PAT field.
+    expect(await screen.findByRole("button", { name: /Register GitHub App/ })).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("ghp_…")).not.toBeInTheDocument()
+
+    // Switching to the PAT tab reveals the token field.
+    fireEvent.click(screen.getByRole("tab", { name: "Personal access token" }))
+    expect(screen.getByPlaceholderText("ghp_…")).toBeInTheDocument()
+  })
 })

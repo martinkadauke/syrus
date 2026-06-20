@@ -38,6 +38,20 @@ RSpec.describe App::Presentation do
     end
   end
 
+  describe ".github_app_generic_install_url" do
+    it "builds a repo-agnostic install URL when the App is registered" do
+      AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
+
+      expect(described_class.github_app_generic_install_url).to eq(
+        "https://github.com/apps/operator-syrus/installations/new"
+      )
+    end
+
+    it "returns nil when the App is not registered" do
+      expect(described_class.github_app_generic_install_url).to be_nil
+    end
+  end
+
   describe ".job_summary_state" do
     it "keeps external takeover closures in the preempted bucket" do
       job = Factories.job_record(state: "closed", closure_reason: "external_pr_merged")

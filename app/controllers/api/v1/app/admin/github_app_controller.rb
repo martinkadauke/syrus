@@ -33,7 +33,8 @@ module Api
                 registered: setting.github_app_registered?,
                 id: setting.github_app_id,
                 slug: setting.github_app_slug,
-                registered_at: setting.github_app_registered_at&.iso8601
+                registered_at: setting.github_app_registered_at&.iso8601,
+                install_url: ::App::Presentation.github_app_generic_install_url
               }
             }
           end

@@ -18,6 +18,17 @@ module App
       "JOB-#{id}"
     end
 
+    # Generic install URL (operator picks repos in GitHub's UI). Used by
+    # onboarding before any specific repository is selected.
+    def github_app_generic_install_url
+      return nil unless AppSetting.github_app_registered?
+
+      slug = AppSetting.current.github_app_slug
+      return nil if slug.blank?
+
+      "#{GITHUB_APP_INSTALL_BASE_URL}/#{CGI.escape(slug)}/installations/new"
+    end
+
     def github_app_install_url_for(repositories)
       repos = Array(repositories).compact
       return nil unless AppSetting.github_app_registered?

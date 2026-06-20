@@ -59,7 +59,8 @@ RSpec.describe "API: /api/v1/app/admin/github_app", type: :request do
       "registered" => true,
       "id" => 12345,
       "slug" => "operator-syrus",
-      "registered_at" => "2026-05-30T12:00:00Z"
+      "registered_at" => "2026-05-30T12:00:00Z",
+      "install_url" => "https://github.com/apps/operator-syrus/installations/new"
     )
   end
 end
