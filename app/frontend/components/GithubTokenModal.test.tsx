@@ -119,7 +119,7 @@ describe("GithubTokenModal", () => {
     client.setQueryData(["bootstrap"], { current_user: { admin: true }, setup_status: { credential_status: { github_pat: true, github_app: false } } })
     vi.spyOn(window, "fetch").mockImplementation(async (input) => {
       const url = String(input)
-      if (url.endsWith("/admin/github_app/register")) {
+      if (url.includes("/admin/github_app/register")) {
         return jsonResponse({
           github_app: { registered: false, id: null, slug: null, registered_at: null, install_url: null },
           github_manifest_url: "https://github.com/settings/apps/new?state=abc",

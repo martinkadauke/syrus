@@ -19,8 +19,9 @@ export type AdminGithubAppConfirmPayload = {
   github_app: AdminGithubAppStatus
 }
 
-export function fetchAdminGithubAppRegister() {
-  return getJson<AdminGithubAppRegisterPayload>("/api/v1/app/admin/github_app/register")
+export function fetchAdminGithubAppRegister(origin?: string) {
+  const query = origin ? `?origin=${encodeURIComponent(origin)}` : ""
+  return getJson<AdminGithubAppRegisterPayload>(`/api/v1/app/admin/github_app/register${query}`)
 }
 
 export function fetchAdminGithubAppConfirm() {

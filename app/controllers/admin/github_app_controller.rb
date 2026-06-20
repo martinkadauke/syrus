@@ -9,14 +9,26 @@ module Admin
       payload = GithubAppClient.manifest_conversion(code)
       persist_app_credentials!(payload)
       SyncInstallationsJob.perform_later(Current.user.id)
-      redirect_to admin_github_app_confirm_path, notice: "GitHub App registered."
+
+      if onboarding_origin?
+        # Started from the setup modal (a popup tab). Show a minimal success
+        # page that tries to close itself; the modal polls and continues.
+        render "admin/github_app/registered", layout: false
+      else
+        redirect_to admin_github_app_confirm_path, notice: "GitHub App registered."
+      end
     rescue Octokit::Error, Faraday::Error, JSON::ParserError => e
       redirect_to admin_github_app_register_path, alert: "GitHub App registration failed: #{e.message}"
     ensure
       session.delete(:github_app_manifest_state)
+      session.delete(:github_app_manifest_origin)
     end
 
     private
+
+    def onboarding_origin?
+      session[:github_app_manifest_origin] == "onboarding"
+    end
 
     def valid_state?
       session[:github_app_manifest_state].present? && ActiveSupport::SecurityUtils.secure_compare(

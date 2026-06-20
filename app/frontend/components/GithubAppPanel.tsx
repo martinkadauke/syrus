@@ -12,8 +12,8 @@ export function GithubAppPanel({ onClose, onSaved }: { onClose: () => void; onSa
   // Fetched once: generates the manifest + the session state GitHub echoes
   // back to the callback. Refetching would rotate that state, so keep it stable.
   const register = useQuery({
-    queryKey: ["admin", "github_app", "register"],
-    queryFn: fetchAdminGithubAppRegister,
+    queryKey: ["admin", "github_app", "register", "onboarding"],
+    queryFn: () => fetchAdminGithubAppRegister("onboarding"),
     staleTime: Number.POSITIVE_INFINITY,
     refetchOnWindowFocus: false
   })

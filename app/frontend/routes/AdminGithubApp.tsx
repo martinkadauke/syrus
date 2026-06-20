@@ -11,7 +11,7 @@ import { ApiError } from "../api/client"
 export function AdminGithubAppRegister() {
   const registration = useQuery({
     queryKey: ["admin", "github_app", "register"],
-    queryFn: fetchAdminGithubAppRegister
+    queryFn: () => fetchAdminGithubAppRegister()
   })
 
   return (

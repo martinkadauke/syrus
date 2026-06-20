@@ -49,6 +49,22 @@ RSpec.describe "Admin GitHub App registration", type: :request do
     expect(response).to redirect_to(admin_github_app_confirm_path)
   end
 
+  it "renders a minimal close-me page (not the admin redirect) for the onboarding origin" do
+    get "/api/v1/app/admin/github_app/register", params: { origin: "onboarding" }
+    state = JSON.parse(response.body).fetch("github_manifest_url").match(%r{settings/apps/new\?state=([^"]+)})[1]
+    stub_request(:post, "https://api.github.com/app-manifests/temp-code/conversions")
+      .to_return(status: 201, headers: { "Content-Type" => "application/json" }, body: { id: 99, slug: "operator-syrus", pem: pem }.to_json)
+
+    get "/admin/github_app/callback", params: { code: "temp-code", state: state }
+
+    expect(response).to have_http_status(:ok)
+    expect(response).not_to redirect_to(admin_github_app_confirm_path)
+    expect(response.body).to include("GitHub App registered")
+    expect(response.body).to include("close this window")
+    expect(response.body).not_to include('id="syrus-spa-root"')
+    expect(AppSetting.current.reload.github_app_id).to eq(99)
+  end
+
   it "rejects callbacks with a mismatched state" do
     register_manifest
 

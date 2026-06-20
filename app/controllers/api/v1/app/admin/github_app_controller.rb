@@ -8,6 +8,10 @@ module Api
           def register
             state = SecureRandom.urlsafe_base64(24)
             session[:github_app_manifest_state] = state
+            # Remember where registration was started so the GitHub callback can
+            # land on a minimal "you can close this" page during onboarding
+            # instead of the full admin confirmation page.
+            session[:github_app_manifest_origin] = params[:origin].to_s.presence
 
             render json: status_payload.merge(
               github_manifest_url: "#{GITHUB_MANIFEST_URL}?state=#{CGI.escape(state)}",

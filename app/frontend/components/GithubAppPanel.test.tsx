@@ -22,7 +22,7 @@ const registered = { registered: true, id: 42, slug: "operator-syrus", registere
 function mockRoutes(over: { register?: () => Response; confirm?: () => Response } = {}) {
   return vi.spyOn(window, "fetch").mockImplementation(async (input) => {
     const url = String(input)
-    if (url.endsWith("/admin/github_app/register")) {
+    if (url.includes("/admin/github_app/register")) {
       return over.register?.() ?? jsonResponse({
         github_app: notRegistered,
         github_manifest_url: "https://github.com/settings/apps/new?state=abc",
