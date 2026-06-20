@@ -362,11 +362,31 @@ describe("App", () => {
 
     expect(screen.getByRole("main", { name: "Create account" })).toBeInTheDocument()
     expect(await screen.findByText("No users exist yet. This account will become the administrator.")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Already have an account? Sign in" })).toHaveAttribute("href", "/app-shell/session/new")
+    // First signup: no "Already have an account? Sign in" — nobody to sign in as.
+    expect(screen.queryByRole("link", { name: "Already have an account? Sign in" })).not.toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/auth/signup",
       expect.objectContaining({ credentials: "same-origin" })
     )
+  })
+
+  it("shows the sign-in link on the sign-up route once users exist", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ allowed: true, first_signup: false, signups_open: true, invitation: null }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/users/new"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("link", { name: "Already have an account? Sign in" })).toHaveAttribute("href", "/app-shell/session/new")
   })
 
   it("renders the logged-out landing CTA from public bootstrap state", async () => {

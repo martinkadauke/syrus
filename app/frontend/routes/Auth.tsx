@@ -161,7 +161,8 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
         <button className={primaryButtonClass()} disabled={submit.isPending} type="submit">
           {submit.isPending ? "Creating..." : "Create account"}
         </button>
-        <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>Already have an account? Sign in</Link>
+        {/* No accounts exist yet on the first signup — nobody to sign in as. */}
+        {payload.first_signup ? null : <Link className="text-sm text-gray-700 dark:text-gray-300 underline hover:no-underline" to={`${prefix}/session/new`}>Already have an account? Sign in</Link>}
       </div>
     </form>
   )
