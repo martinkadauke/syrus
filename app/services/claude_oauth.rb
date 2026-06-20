@@ -15,21 +15,19 @@ require "uri"
 # reverse-engineered and subject to change. PKCE (S256) is mandatory; there is
 # no client secret.
 #
-# Two transports share the same exchange:
-#   - loopback / same-host: Syrus serves the redirect itself
-#     (`<base_url>#{CALLBACK_PATH}`) and reads the code from the query string.
-#   - paste fallback: the provider shows a `code#state` string the operator
-#     pastes back; `exchange` accepts either form.
+# The client only whitelists the provider-hosted callback below (the one
+# `claude setup-token` uses), so Syrus uses the copy-and-paste flow: open the
+# authorize URL, the provider shows a `code#state` string, the operator pastes
+# it back, and `exchange` completes it. (A loopback/same-host redirect to
+# Syrus is rejected by this client with "Redirect URI is not supported".)
 class ClaudeOauth
   Error = Class.new(StandardError)
 
   CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e".freeze
   AUTHORIZE_URL = "https://claude.ai/oauth/authorize".freeze
   TOKEN_URL = "https://console.anthropic.com/v1/oauth/token".freeze
-  # Provider-hosted callback that simply displays the code for the paste flow.
+  # Provider-hosted callback that displays the code for the paste flow.
   PASTE_REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback".freeze
-  # Path Syrus serves for the loopback/same-host auto-capture flow.
-  CALLBACK_PATH = "/oauth/claude/callback".freeze
   SCOPE = "org:create_api_key user:profile user:inference".freeze
 
   Begin = Data.define(:authorize_url, :verifier, :state, :redirect_uri)

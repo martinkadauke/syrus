@@ -71,15 +71,41 @@ module Api
 
         # Start the Claude subscription OAuth flow. Generates PKCE material,
         # stashes it in the session, and returns the authorize URL the modal
-        # opens. The redirect comes back to wherever Syrus runs.
+        # opens. Uses the provider-hosted paste callback (the only redirect the
+        # client whitelists), so the authorize page shows a code to copy back.
         def claude_oauth_start
-          flow = ClaudeOauth.begin(redirect_uri: "#{request.base_url}#{ClaudeOauth::CALLBACK_PATH}")
+          flow = ClaudeOauth.begin(redirect_uri: ClaudeOauth::PASTE_REDIRECT_URI)
           session[:claude_oauth] = {
             "verifier" => flow.verifier,
             "state" => flow.state,
             "redirect_uri" => flow.redirect_uri
           }
           render json: { authorize_url: flow.authorize_url }
+        end
+
+        # Finish the Claude OAuth flow: exchange the pasted code (raw or the
+        # `code#state` form the provider shows) for a long-lived token, save it,
+        # and test it. Requires a prior claude_oauth_start in this session.
+        def claude_oauth_exchange
+          stash = session[:claude_oauth].to_h
+          if stash["verifier"].blank?
+            render_error("oauth_not_started", "Start the Claude authorization first.", status: :unprocessable_content)
+            return
+          end
+
+          token = ClaudeOauth.exchange(
+            code: params[:code].to_s,
+            verifier: stash["verifier"],
+            state: stash["state"],
+            redirect_uri: stash["redirect_uri"]
+          )
+          Current.user.update!(claude_oauth_token: token)
+          session.delete(:claude_oauth)
+
+          probe = CredentialProbe.call(user: Current.user, credential: "claude_oauth_token")
+          render json: { credential_test: probe.as_json, message: probe.message }
+        rescue ClaudeOauth::Error => e
+          render_error("oauth_exchange_failed", e.message, status: :unprocessable_content)
         end
 
         def rotate_api_token

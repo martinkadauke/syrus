@@ -169,9 +169,17 @@ export function testClaudeCli() {
 export type ClaudeOauthStart = { authorize_url: string }
 
 // Begin the Claude subscription OAuth flow; returns the authorize URL the
-// modal opens. The redirect comes back to wherever Syrus is running.
+// modal opens. The provider shows a code to paste back.
 export function startClaudeOauth() {
   return postJson<ClaudeOauthStart>("/api/v1/app/credentials/claude_oauth_start")
+}
+
+// Finish the Claude OAuth flow by exchanging the pasted code (raw or the
+// `code#state` form). Saves + tests the token; returns the test result.
+export function exchangeClaudeOauth(code: string) {
+  return postJson<CredentialTestPayload>("/api/v1/app/credentials/claude_oauth_exchange", {
+    code
+  })
 }
 
 export function rotateApiToken() {

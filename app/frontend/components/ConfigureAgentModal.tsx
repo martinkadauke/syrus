@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { fetchCredentials, startClaudeOauth, testClaudeCli, type CredentialTestResult } from "../api/credentials"
+import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTestResult } from "../api/credentials"
 import { CloseIcon } from "./CloseIcon"
 
 type AgentTab = "claude" | "codex"
@@ -10,21 +10,16 @@ type Preflight =
   | { status: "done"; result: CredentialTestResult }
   | { status: "error" }
 
-type OauthPhase =
-  | { status: "idle" }
-  | { status: "authorizing" }
-  | { status: "connected"; message: string }
-  | { status: "error"; message: string }
-
-const OAUTH_MESSAGE_TYPE = "syrus:claude-oauth"
-const POLL_INTERVAL_MS = 2500
-
 export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   const queryClient = useQueryClient()
   const [tab, setTab] = useState<AgentTab>("claude")
   const [preflight, setPreflight] = useState<Preflight>({ status: "checking" })
-  const [oauth, setOauth] = useState<OauthPhase>({ status: "idle" })
+  const [authStarted, setAuthStarted] = useState(false)
   const [popupBlocked, setPopupBlocked] = useState<string | null>(null)
+  const [code, setCode] = useState("")
+  const [exchanging, setExchanging] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [connected, setConnected] = useState<string | null>(null)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -49,56 +44,40 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
     }
   }, [])
 
-  async function onConnected(message: string) {
-    await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
-    await queryClient.invalidateQueries({ queryKey: ["credentials"] })
-    setOauth({ status: "connected", message })
-    onSaved?.()
-  }
-
-  // While authorizing, listen for the callback window's postMessage and also
-  // poll credential status as a fallback (in case the message is blocked).
-  useEffect(() => {
-    if (oauth.status !== "authorizing") return
-
-    function onMessage(event: MessageEvent) {
-      if (event.origin !== window.location.origin) return
-      if (event.data?.type !== OAUTH_MESSAGE_TYPE) return
-      if (event.data.ok) {
-        void onConnected(event.data.message || "Claude connected.")
-      } else {
-        setOauth({ status: "error", message: event.data.message || "Authorization failed. Try again." })
-      }
-    }
-
-    window.addEventListener("message", onMessage)
-    const poll = window.setInterval(async () => {
-      try {
-        const creds = await fetchCredentials()
-        if (creds.credential_status.claude_oauth_token) {
-          void onConnected("Claude connected.")
-        }
-      } catch {
-        // keep polling
-      }
-    }, POLL_INTERVAL_MS)
-
-    return () => {
-      window.removeEventListener("message", onMessage)
-      window.clearInterval(poll)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [oauth.status])
-
   async function authorize() {
+    setError(null)
     setPopupBlocked(null)
-    setOauth({ status: "authorizing" })
     try {
       const { authorize_url } = await startClaudeOauth()
-      const popup = window.open(authorize_url, "syrus-claude-oauth", "width=560,height=820")
-      if (!popup) setPopupBlocked(authorize_url)
+      const tab = window.open(authorize_url, "_blank", "noopener,noreferrer")
+      if (!tab) setPopupBlocked(authorize_url)
+      setAuthStarted(true)
     } catch (err) {
-      setOauth({ status: "error", message: err instanceof Error ? err.message : "Could not start authorization." })
+      setError(err instanceof Error ? err.message : "Could not start authorization.")
+    }
+  }
+
+  async function connect() {
+    if (code.trim().length === 0) {
+      setError("Paste the code from Claude first.")
+      return
+    }
+    setError(null)
+    setExchanging(true)
+    try {
+      const payload = await exchangeClaudeOauth(code.trim())
+      if (payload.credential_test.ok) {
+        await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
+        await queryClient.invalidateQueries({ queryKey: ["credentials"] })
+        setConnected(payload.credential_test.message || "Claude connected.")
+        onSaved?.()
+      } else {
+        setError(payload.credential_test.message || "The token Claude returned did not work. Try again.")
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not exchange the code. Try authorizing again.")
+    } finally {
+      setExchanging(false)
     }
   }
 
@@ -158,8 +137,19 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
             </button>
           </div>
 
-          {oauth.status === "connected" ? (
-            <StatusBox tone="ok">{oauth.message}</StatusBox>
+          {connected ? (
+            <>
+              <StatusBox tone="ok">{connected}</StatusBox>
+              <div className="flex justify-end">
+                <button
+                  className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                  onClick={onClose}
+                  type="button"
+                >
+                  Done
+                </button>
+              </div>
+            </>
           ) : (
             <div className="space-y-4">
               {preflight.status === "checking" ? (
@@ -174,23 +164,51 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
                 </StatusBox>
               ) : null}
 
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                Authorizing opens <span className="font-medium">claude.ai</span> in a new window. Approve access and
-                Syrus captures the token automatically — no terminal, no copy-paste. Requires a Claude Pro, Max, Team,
-                or Enterprise plan.
-              </p>
+              <ol className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
+                <li>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">1. Authorize with Claude</p>
+                  <p className="mt-1 text-gray-600 dark:text-gray-400">
+                    Opens <span className="font-medium">claude.ai</span> in a new tab. Approve access (requires a Claude
+                    Pro, Max, Team, or Enterprise plan); Claude then shows you a short code.
+                  </p>
+                  <button
+                    className="mt-2 inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    onClick={authorize}
+                    type="button"
+                  >
+                    {authStarted ? "Reopen authorization" : "Authorize with Claude"}
+                    <span aria-hidden="true">↗</span>
+                  </button>
+                  {popupBlocked ? (
+                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+                      Popup blocked.{" "}
+                      <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
+                        Open the authorization page
+                      </a>{" "}
+                      manually.
+                    </p>
+                  ) : null}
+                </li>
+                <li className={authStarted ? "" : "opacity-50"}>
+                  <p className="font-medium text-gray-900 dark:text-gray-100">2. Paste the code</p>
+                  <p className="mt-1 text-gray-600 dark:text-gray-400">Copy the code Claude shows and paste it here.</p>
+                  <label className="mt-2 block">
+                    <span className="sr-only">Authorization code from Claude</span>
+                    <input
+                      autoComplete="off"
+                      className="block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-3 py-2 font-mono text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      disabled={!authStarted}
+                      onChange={(event) => setCode(event.target.value)}
+                      placeholder="paste code here"
+                      spellCheck={false}
+                      type="text"
+                      value={code}
+                    />
+                  </label>
+                </li>
+              </ol>
 
-              {oauth.status === "error" ? <StatusBox tone="error">{oauth.message}</StatusBox> : null}
-
-              {popupBlocked ? (
-                <StatusBox tone="warning">
-                  Your browser blocked the popup.{" "}
-                  <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
-                    Open the authorization page
-                  </a>{" "}
-                  manually.
-                </StatusBox>
-              ) : null}
+              {error ? <StatusBox tone="error">{error}</StatusBox> : null}
 
               <div className="flex items-center justify-end gap-2">
                 <button
@@ -202,33 +220,21 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
                 </button>
                 <button
                   className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                  disabled={oauth.status === "authorizing"}
-                  onClick={authorize}
+                  disabled={!authStarted || exchanging || code.trim().length === 0}
+                  onClick={connect}
                   type="button"
                 >
-                  {oauth.status === "authorizing" ? (
+                  {exchanging ? (
                     <>
-                      <Spinner light /> Waiting for approval…
+                      <Spinner light /> Connecting…
                     </>
                   ) : (
-                    "Authorize with Claude"
+                    "Connect"
                   )}
                 </button>
               </div>
             </div>
           )}
-
-          {oauth.status === "connected" ? (
-            <div className="flex justify-end">
-              <button
-                className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                onClick={onClose}
-                type="button"
-              >
-                Done
-              </button>
-            </div>
-          ) : null}
         </div>
       </section>
     </div>

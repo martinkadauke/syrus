@@ -99,12 +99,12 @@ matching credential:
   checklist, the **Configure agent** step opens a guided modal: it first
   checks whether `claude --print` already works on this machine (common on
   bare-metal installs where you have already run `claude login`), and if not,
-  an **Authorize with Claude** button runs the subscription OAuth flow in a
-  popup and captures the long-lived token automatically — no terminal, no
-  copy-paste. The redirect returns to wherever Syrus is running, so the
-  automatic capture works for local/same-host installs; a remotely-hosted
-  Syrus may still fall back to pasting a `claude setup-token` value in **My
-  credentials**.
+  an **Authorize with Claude** button opens the subscription OAuth flow in a
+  new tab. Approve access, copy the short code Claude shows you, and paste it
+  back into the modal — Syrus exchanges it for a long-lived token and tests it
+  on the spot. No terminal needed; requires a Claude Pro, Max, Team, or
+  Enterprise plan. (You can also paste a `claude setup-token` value directly in
+  **My credentials**.)
 - **Codex** uses either a Codex API key or ChatGPT `auth.json`,
   depending on the selected Codex authentication mode.
 

@@ -245,7 +245,7 @@ RSpec.describe "API: /api/v1/app/credentials", type: :request do
     expect(parse_body.dig("credential_test", "ok")).to be true
   end
 
-  it "starts the Claude OAuth flow with a redirect back to this host" do
+  it "starts the Claude OAuth flow using the provider paste callback" do
     sign_in_as(user)
 
     post "/api/v1/app/credentials/claude_oauth_start"
@@ -254,8 +254,33 @@ RSpec.describe "API: /api/v1/app/credentials", type: :request do
     authorize_url = parse_body["authorize_url"]
     expect(authorize_url).to start_with(ClaudeOauth::AUTHORIZE_URL)
     params = Rack::Utils.parse_query(URI(authorize_url).query)
-    expect(params["redirect_uri"]).to end_with(ClaudeOauth::CALLBACK_PATH)
+    expect(params["redirect_uri"]).to eq(ClaudeOauth::PASTE_REDIRECT_URI)
     expect(params["code_challenge_method"]).to eq("S256")
+  end
+
+  it "exchanges a pasted code, saves the token, and tests it" do
+    sign_in_as(user)
+    post "/api/v1/app/credentials/claude_oauth_start"
+
+    stub_request(:post, ClaudeOauth::TOKEN_URL)
+      .to_return(status: 200, body: { access_token: "sk-ant-oat01-new" }.to_json, headers: { "Content-Type" => "application/json" })
+    probe = CredentialProbe::Result.new(credential: "claude_oauth_token", ok: true, message: "Claude OAuth token is valid.", details: {})
+    expect(CredentialProbe).to receive(:call).with(user: user, credential: "claude_oauth_token").and_return(probe)
+
+    post "/api/v1/app/credentials/claude_oauth_exchange", params: { code: "auth-code#state" }
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("credential_test", "ok")).to be true
+    expect(user.reload.claude_oauth_token).to eq("sk-ant-oat01-new")
+  end
+
+  it "rejects an exchange that was never started" do
+    sign_in_as(user)
+
+    post "/api/v1/app/credentials/claude_oauth_exchange", params: { code: "x" }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("oauth_not_started")
   end
 
   it "uploads and deletes personal documents" do

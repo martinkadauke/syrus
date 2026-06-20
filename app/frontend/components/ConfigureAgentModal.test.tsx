@@ -18,13 +18,15 @@ function jsonResponse(body: unknown, status = 200) {
 
 const notReady = { credential: "claude_oauth_token", ok: false, message: "Claude is not authenticated on this machine yet.", details: {} }
 const ready = { credential: "claude_oauth_token", ok: true, message: "Claude already works on this machine — no token needed.", details: {} }
+const tokenValid = { credential: "claude_oauth_token", ok: true, message: "Claude OAuth token is valid.", details: {} }
 
-function mockRoutes(routes: { preflight?: () => Response; start?: () => Response; creds?: () => Response }) {
+function mockRoutes(routes: { preflight?: () => Response; start?: () => Response; exchange?: () => Response }) {
   return vi.spyOn(window, "fetch").mockImplementation(async (input) => {
     const url = String(input)
     if (url.endsWith("/test_claude_cli")) return routes.preflight?.() ?? jsonResponse({ credential_test: notReady })
-    if (url.endsWith("/claude_oauth_start")) return routes.start?.() ?? jsonResponse({ authorize_url: "https://claude.ai/oauth/authorize?x=1" })
-    if (url.endsWith("/api/v1/app/credentials")) return routes.creds?.() ?? jsonResponse({ credential_status: { claude_oauth_token: false } })
+    if (url.endsWith("/claude_oauth_start")) return routes.start?.() ?? jsonResponse({ authorize_url: "https://claude.ai/oauth/authorize?state=abc" })
+    if (url.endsWith("/claude_oauth_exchange")) return routes.exchange?.() ?? jsonResponse({ credential_test: tokenValid })
+    if (url.endsWith("/api/v1/app/credentials")) return jsonResponse({ credential_status: {} })
     throw new Error(`unexpected fetch: ${url}`)
   })
 }
@@ -39,8 +41,7 @@ describe("ConfigureAgentModal", () => {
     renderModal()
 
     expect(screen.getByRole("tab", { name: "Claude" })).toHaveAttribute("aria-selected", "true")
-    const codex = screen.getByRole("tab", { name: /Codex/ })
-    expect(codex).toBeDisabled()
+    expect(screen.getByRole("tab", { name: /Codex/ })).toBeDisabled()
     await waitFor(() => expect(window.fetch).toHaveBeenCalled())
   })
 
@@ -49,56 +50,57 @@ describe("ConfigureAgentModal", () => {
     renderModal()
 
     await waitFor(() => expect(screen.getByText(/already works on this machine/)).toBeInTheDocument())
-    // Cancel reads as "Skip for now" once ambient Claude is confirmed.
     expect(screen.getByRole("button", { name: "Skip for now" })).toBeInTheDocument()
   })
 
-  it("opens the authorize URL in a popup when authorizing", async () => {
+  it("opens the authorize URL in a new tab and enables the code field", async () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window)
     mockRoutes({ start: () => jsonResponse({ authorize_url: "https://claude.ai/oauth/authorize?state=abc" }) })
     renderModal()
 
     await waitFor(() => expect(screen.queryByText(/Checking for an existing Claude login/)).not.toBeInTheDocument())
-    fireEvent.click(screen.getByRole("button", { name: "Authorize with Claude" }))
+    expect(screen.getByPlaceholderText("paste code here")).toBeDisabled()
 
-    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://claude.ai/oauth/authorize?state=abc", "syrus-claude-oauth", expect.any(String)))
-    expect(screen.getByText(/Waiting for approval/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /Authorize with Claude/ }))
+
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://claude.ai/oauth/authorize?state=abc", "_blank", expect.any(String)))
+    await waitFor(() => expect(screen.getByPlaceholderText("paste code here")).toBeEnabled())
   })
 
-  it("completes when the callback window posts a success message", async () => {
+  it("exchanges a pasted code and shows a green check", async () => {
     vi.spyOn(window, "open").mockReturnValue({} as Window)
-    mockRoutes({})
+    const fetchSpy = mockRoutes({ exchange: () => jsonResponse({ credential_test: tokenValid }) })
     const onSaved = vi.fn()
     renderModal({ onSaved })
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Authorize with Claude" })).toBeInTheDocument())
-    fireEvent.click(screen.getByRole("button", { name: "Authorize with Claude" }))
-    await waitFor(() => expect(screen.getByText(/Waiting for approval/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText(/Checking for an existing Claude login/)).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: /Authorize with Claude/ }))
+    await waitFor(() => expect(screen.getByPlaceholderText("paste code here")).toBeEnabled())
 
-    window.dispatchEvent(new MessageEvent("message", {
-      origin: window.location.origin,
-      data: { type: "syrus:claude-oauth", ok: true, message: "Claude OAuth token is valid." }
-    }))
+    fireEvent.change(screen.getByPlaceholderText("paste code here"), { target: { value: "the-code#state" } })
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }))
 
     await waitFor(() => expect(screen.getByText("Claude OAuth token is valid.")).toBeInTheDocument())
     expect(onSaved).toHaveBeenCalledTimes(1)
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument()
+
+    const exchangeCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/claude_oauth_exchange"))
+    expect(JSON.parse(exchangeCall?.[1]?.body as string)).toEqual({ code: "the-code#state" })
   })
 
-  it("surfaces a failure message from the callback window", async () => {
+  it("surfaces an exchange error and stays open", async () => {
     vi.spyOn(window, "open").mockReturnValue({} as Window)
-    mockRoutes({})
+    mockRoutes({ exchange: () => jsonResponse({ error: { message: "Code expired." } }, 422) })
     renderModal()
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Authorize with Claude" })).toBeInTheDocument())
-    fireEvent.click(screen.getByRole("button", { name: "Authorize with Claude" }))
-    await waitFor(() => expect(screen.getByText(/Waiting for approval/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText(/Checking for an existing Claude login/)).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: /Authorize with Claude/ }))
+    await waitFor(() => expect(screen.getByPlaceholderText("paste code here")).toBeEnabled())
 
-    window.dispatchEvent(new MessageEvent("message", {
-      origin: window.location.origin,
-      data: { type: "syrus:claude-oauth", ok: false, message: "GitHub rejected this token." }
-    }))
+    fireEvent.change(screen.getByPlaceholderText("paste code here"), { target: { value: "bad" } })
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }))
 
-    await waitFor(() => expect(screen.getByText("GitHub rejected this token.")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Code expired.")).toBeInTheDocument())
+    expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument()
   })
 })
