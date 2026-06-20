@@ -37,6 +37,16 @@ module SyrusChatMcp
         SyrusChatMcp.invalid(e.record.errors.full_messages.to_sentence)
       rescue GitRunner::GitError => e
         SyrusChatMcp.invalid(e.message)
+      rescue ArgumentError => e
+        # GithubClient.for raises ArgumentError when neither an active GitHub
+        # App installation nor a usable PAT is available for the repository.
+        # Surface that as a usable message instead of an opaque -32603.
+        SyrusChatMcp.invalid("could not authenticate to #{slug} for cloning: #{e.message}. Check the repository's GitHub App installation or your GitHub token in credentials.")
+      rescue StandardError => e
+        # Backstop: any other failure (token exchange, filesystem, etc.) should
+        # reach the agent as a tool error, not crash the MCP call (-32603).
+        Rails.logger.warn("[SyrusChatMcp] attach_repository failed for #{slug}: #{e.class}: #{e.message}")
+        SyrusChatMcp.invalid("failed to attach #{slug}: #{e.message}")
       end
 
       private

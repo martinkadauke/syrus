@@ -65,6 +65,20 @@ RSpec.describe SyrusChatMcp::AttachRepositoryTool do
     expect(chat_session.reload.attached_repositories).to be_empty
   end
 
+  it "returns a tool error (not a -32603 crash) when no GitHub credential is available" do
+    # No active App installation + a blank PAT makes GithubClient.for raise
+    # ArgumentError; the tool must surface it rather than let it escape.
+    repository
+    user.update!(github_token: nil)
+
+    expect {
+      response = described_class.call(slug: "tkadauke/syrus", server_context: { chat_session: chat_session })
+
+      expect(response.instance_variable_get(:@error)).to eq(true)
+      expect(response.content.first[:text]).to match(/could not authenticate|GitHub token/i)
+    }.not_to raise_error
+  end
+
   def seed_remote(bare_path)
     Dir.mktmpdir("syrus-attach-tool-seed") do |seed|
       sh("git init -q -b main #{seed}")
