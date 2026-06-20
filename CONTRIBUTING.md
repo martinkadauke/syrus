@@ -14,9 +14,8 @@ SQLite for dev and test, so MySQL is not required.
 bin/setup
 ```
 
-`bin/setup` installs dependencies, prepares the database, clears logs, and
-starts the development server. Use `bin/setup --skip-server` when you only want
-to bootstrap the checkout.
+`bin/setup` installs dependencies, builds the Go CLI, prepares the database, and
+clears logs. It does **not** start the server — run `bin/dev` when you're ready.
 
 After setup, the common local commands are:
 

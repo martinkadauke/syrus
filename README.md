@@ -127,20 +127,16 @@ cd syrus
 (If you prefer SSH and already have keys on GitHub:
 `git clone git@github.com:tkadauke/syrus.git`.)
 
-### 5. Set up and run
+### 5. Set up, then start the app
 
 ```bash
-bin/setup
+bin/setup    # install gems + JS deps, build the Go CLI, prepare the SQLite DBs
+bin/dev      # start the app: web + worker + tailwind + JS watch, on port 3000
 ```
 
 `bin/setup` installs Ruby gems (`bundle install`), JS deps (`npm ci`), builds
-the Go CLI under `cli/`, registers the git merge driver, prepares the SQLite
-databases, and then boots the dev server. To set up without auto-starting:
-
-```bash
-bin/setup --skip-server   # everything except booting the server
-bin/dev                   # web + worker + tailwind + JS watch, on port 3000
-```
+the Go CLI under `cli/`, registers the git merge driver, and prepares the SQLite
+databases. It does **not** start the server — run `bin/dev` when you're ready.
 
 Open **http://localhost:3000**. The **first account you create becomes the
 admin**, and the first-run wizard walks you through GitHub credentials (a
