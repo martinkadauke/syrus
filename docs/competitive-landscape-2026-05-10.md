@@ -128,6 +128,48 @@ brainstorm → plan → build → review → ship). Notable because **bash
 scripts (not LLMs) enforce pipeline integrity** — same poka-yoke
 philosophy Syrus follows. SaaS, not self-hostable.
 
+**[Linear](https://linear.app)** _(added 2026-06-20)_ — not a coding
+agent at all, and that's exactly why it matters. Linear has repositioned
+from issue tracker to "the product development system for teams **and
+agents**" (33k+ teams; OpenAI, Ramp, Opendoor as named customers). Its
+five surfaces — Intake, Plan, **Build**, **Diffs**, Monitor — now treat
+AI agents as first-class workspace members: you assign an issue to an
+agent the same way you assign it to a human, the human stays primary
+assignee for accountability while the agent becomes a contributor, and
+agents "work across multiple issues simultaneously." **Crucially, Linear
+does not write code itself** — it delegates to external coding agents and
+orchestrates them: Devin "scopes issues and drafts PRs," Copilot "picks
+up assigned issues and opens pull requests in your repo," Cursor "drafts
+a branch from each issue," Codex "works several issues in parallel,
+opening a pull request for each." So Linear owns the human-facing PM
+surface and the *assign-to-agent* orchestration layer; the actual
+issue→PR work is someone else's harness.
+
+This gives Linear a **dual relationship** to Syrus:
+
+- _Complement / trigger source._ Linear is already on our roadmap under
+  "Non-GitHub triggers (Jira, Linear, Asana…)." A Linear issue
+  delegated to an agent is exactly a Syrus Job. If Syrus implements
+  Linear's agent-assignment protocol, Syrus becomes one of the coding
+  agents Linear orchestrates — Linear feeds the work, Syrus owns the
+  harness/graders/landing queue. That's additive, not competitive.
+- _Encroachment._ The "Build" + "Diffs" expansion (end-to-end issue
+  delegation, structural code review purpose-built for AI-generated
+  output) moves Linear *up the stack toward Syrus's orchestration
+  territory*. Today the boundary is clean — Linear orchestrates *across*
+  agents at the PM altitude; Syrus orchestrates *within* a single coding
+  loop (Workflow→Step→Run, graders, rebase, merge-train). But "Diffs"
+  is a quality-gate concept adjacent to Syrus's graders, and "assign to
+  an agent, watch work move forward" is adjacent to Syrus's Job
+  dashboard. If Linear pushed deeper into owning the harness rather than
+  brokering to one, the surfaces would start to overlap.
+
+Different shape from Syrus on the fundamentals: Linear is closed SaaS,
+not self-hostable, not BYOK at the harness level, and is provider-/
+agent-agnostic by brokering rather than running the loop. The realistic
+posture is **integrate, don't compete** — be a Linear-assignable agent —
+while watching whether Build/Diffs grows into a harness of its own.
+
 **[Etienne](https://github.com/BulloRosso/etienne)** — small project,
 "coding agent harness for custom AI agents" with CRON + FSMs.
 Conceptually adjacent to Syrus's `ScheduledTask` + AASM state machines.
@@ -193,6 +235,13 @@ became table stakes around Q1 2026).
   orchestration as a first-class concept.
 - **Devin / Copilot Coding Agent** are the SaaS-incumbent threats — if
   Anthropic doesn't keep up on the agent itself, the BYOK angle weakens.
+- **Linear is an orchestration-layer threat of a different kind** — it
+  isn't trying to be a better harness, it's trying to own the *issue and
+  assign-to-agent surface above all harnesses*. The near-term risk isn't
+  that Linear out-builds Syrus's pipeline; it's that teams standardize on
+  Linear's "assign to agent" UX and never reach for a standalone harness.
+  The hedge is to be one of the agents Linear can assign to (implement
+  its agent protocol) rather than competing for the PM surface.
 
 ### Strategic moat worth leaning into
 
@@ -223,6 +272,8 @@ table stakes; ship them, but don't expect them to differentiate.
 - [Cognition — Introducing Devin](https://cognition.ai/blog/introducing-devin)
 - [Devin Review 2026 — features & pricing](https://aitoolsdevpro.com/ai-tools/devin-guide/)
 - [Gru.ai](https://gru.ai/)
+- [Linear — product development system for teams and agents](https://linear.app)
+- [Linear — AI agents / assign-to-agent](https://linear.app/agents)
 - [Etienne harness](https://github.com/BulloRosso/etienne)
 - [OpenHarness — HKUDS](https://github.com/HKUDS/OpenHarness)
 - [Best Git Worktree Tools for AI Coding 2026](https://nimbalyst.com/blog/best-git-worktree-tools-ai-coding-2026/)
