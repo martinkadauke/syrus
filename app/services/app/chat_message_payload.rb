@@ -37,6 +37,7 @@ module App
       return nil unless proposal
 
       materialized = proposal.materialized_record
+      materialized_epic = materialized.is_a?(Epic) ? materialized : nil
       scoped_repository = proposal.effective_repository || @repository
       dependencies = proposal.dependencies.order(:slug).map { |dependency| dependency.slug }
       base = {
@@ -57,7 +58,11 @@ module App
         app_confirm_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/confirm",
         app_reject_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/reject",
         materialized_label: proposal.materialized_label,
-        materialized_path: materialized_path(materialized)
+        materialized_path: materialized_path(materialized),
+        # When the proposal became an Epic, expose its state + state-change path
+        # so the chat can offer a "Start" (move to In Progress) action.
+        materialized_epic_state: materialized_epic&.state,
+        materialized_epic_state_path: materialized_epic ? "/api/v1/app/epics/#{materialized_epic.id}/state" : nil
       }
 
       if proposal.epic_bundle?

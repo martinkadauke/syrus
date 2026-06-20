@@ -202,10 +202,10 @@ agent guide) and a `.syrus.yml` with `prepare` commands and `graders`
 different first Epic.
 
 Syrus proposes the Epic and its child Jobs as a proposal card you accept.
-Once accepted, Syrus offers to move the Epic to **In Progress**, which is
-what actually triggers it to implement the Jobs. Within an Epic, **every**
-child Job must be approved before **any** of them land — the Epic lands
-atomically as a unit.
+Once accepted, a **Start** button appears next to the confirmed Epic in the
+chat — clicking it moves the Epic to **In Progress**, which is what actually
+triggers Syrus to implement the Jobs. Within an Epic, **every** child Job must
+be approved before **any** of them land — the Epic lands atomically as a unit.
 
 Once the Jobs run, the GitHub loop is the same as for any Job. You can also
 file work directly: create or edit a GitHub issue in the registered

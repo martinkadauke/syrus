@@ -56,6 +56,8 @@ export type ChatProposal = {
   app_reject_path: string
   materialized_label: string | null
   materialized_path: string | null
+  materialized_epic_state?: string | null
+  materialized_epic_state_path?: string | null
   active_children_count?: number
   children?: ChatProposalChild[]
 }

@@ -572,6 +572,9 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     proposal_payload = parse_body["messages"].first.fetch("proposal")
     expect(proposal_payload["materialized_label"]).to eq(epic.display_number)
     expect(proposal_payload["materialized_path"]).to eq("/epics/#{epic.id}")
+    # Epic state + state-change path so the chat can offer a "Start" action.
+    expect(proposal_payload["materialized_epic_state"]).to eq(epic.state)
+    expect(proposal_payload["materialized_epic_state_path"]).to eq("/api/v1/app/epics/#{epic.id}/state")
   end
 
   it "creates a manual bookmark through the app API" do

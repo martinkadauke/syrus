@@ -43,6 +43,7 @@ import {
   type ChatToolGroupItem
 } from "../api/chats"
 import { CloseIcon } from "../components/CloseIcon"
+import { StartEpicButton } from "../components/StartEpicButton"
 import { Markdown, PlainText } from "../lib/Markdown"
 
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
@@ -655,6 +656,7 @@ function ProposalCard({ proposal, prefix, queryKey, onNotice }: { proposal: Chat
       <div className="flex items-center gap-2">
         <span className="text-sm text-gray-500 dark:text-gray-400">Confirmed proposal</span>
         <Link className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200 dark:hover:bg-blue-900" to={withRoutePrefix(proposal.materialized_path, prefix)}>{proposal.materialized_label}</Link>
+        <StartEpicButton proposal={proposal} onNotice={onNotice} />
       </div>
     )
   }

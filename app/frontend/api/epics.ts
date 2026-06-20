@@ -149,6 +149,12 @@ export function updateEpicState(path: string, targetState: string) {
   return patchJson<EpicDetailPayload>(path, { target_state: targetState })
 }
 
+// Move an Epic straight to In Progress (override so a freshly-confirmed Epic
+// in backlog/ready starts in one click). Used by the chat "Start" action.
+export function startEpic(path: string) {
+  return patchJson<EpicDetailPayload>(path, { target_state: "in_progress", override: true })
+}
+
 export function archiveEpic(path: string) {
   return patchJson<EpicDetailPayload>(path)
 }

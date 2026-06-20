@@ -376,6 +376,18 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
     expect(job.reload).to be_queued
   end
 
+  it "force-starts a backlog Epic with override (the chat Start action)" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, state: "backlog")
+    job = Factories.job_record(user: user, repository: repository, epic: epic, state: "blocked_by_epic")
+
+    patch "/api/v1/app/epics/#{epic.id}/state", params: { target_state: "in_progress", override: true }
+
+    expect(response).to have_http_status(:ok)
+    expect(epic.reload).to be_in_progress
+    expect(job.reload).not_to be_blocked_by_epic
+  end
+
   it "does not take over an already-owned Epic when moving to in-progress" do
     sign_in_as(user)
     owner = Factories.user(email_address: "owner@example.com")
