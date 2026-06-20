@@ -28,6 +28,7 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
   const [ownersNotice, setOwnersNotice] = useState<string | null>(null)
   const [reposNotice, setReposNotice] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [installUrl, setInstallUrl] = useState<string | null>(null)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -136,11 +137,17 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
 
   const save = useMutation({
     mutationFn: () => createRepository(values as RepositoryInput),
-    onSuccess: async () => {
+    onSuccess: async (payload) => {
       await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
       await queryClient.invalidateQueries({ queryKey: ["repositories"] })
       onSaved?.()
-      onClose()
+      // If the GitHub App is registered but not yet installed on this repo,
+      // prompt to install it instead of closing right away.
+      if (payload.app_install_url) {
+        setInstallUrl(payload.app_install_url)
+      } else {
+        onClose()
+      }
     },
     onError: (err) => {
       setError(err instanceof ApiError ? err.message : "Could not add the repository. Try again.")
@@ -186,6 +193,28 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
         role="dialog"
         onClick={(event) => event.stopPropagation()}
       >
+        {installUrl ? (
+          <div className="space-y-5 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Install the Syrus GitHub App</h2>
+              <button aria-label="Close" className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={onClose} type="button">
+                <CloseIcon className="h-7 w-7" />
+              </button>
+            </div>
+            <Box tone="muted">
+              {(values?.owner ? `${values.owner}/${values.name}` : "This repository")} was added. Install the Syrus
+              GitHub App on it so Syrus can act as a bot (independent rate limit, auto-refreshing tokens). Until then,
+              Syrus falls back to your personal access token.
+            </Box>
+            <a className="inline-flex items-center gap-1 rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white" href={installUrl} rel="noreferrer" target="_blank">
+              Install on GitHub <span aria-hidden="true">↗</span>
+            </a>
+            <div className="flex items-center justify-end gap-2">
+              <button className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800" onClick={onClose} type="button">Skip for now</button>
+              <button className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" onClick={onClose} type="button">Done</button>
+            </div>
+          </div>
+        ) : (
         <form className="space-y-5 p-5 sm:p-6" onSubmit={submit}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -272,6 +301,7 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
             </>
           )}
         </form>
+        )}
       </section>
     </div>
   )

@@ -236,8 +236,19 @@ module Api
           {
             message: message,
             redirect_to: repositories_path,
-            repository: repository_json(repository)
+            repository: repository_json(repository),
+            # Repo-targeted install URL so onboarding can prompt installing the
+            # GitHub App on the repo just added. Nil when the App isn't
+            # registered or this repo already has an active installation.
+            app_install_url: github_app_install_prompt_url(repository)
           }
+        end
+
+        def github_app_install_prompt_url(repository)
+          return nil unless AppSetting.github_app_registered?
+          return nil if repository.app_credential_active?
+
+          ::App::Presentation.github_app_install_url_for(repository)
         end
 
         def repository_detail_payload(repository, page:, message: nil)

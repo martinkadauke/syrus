@@ -154,6 +154,14 @@ standard repository defaults. It skips the upstream/fork fields. Additional
 repositories — and any fine-tuning, including the trigger label — happen later
 from the full **Repositories** page.
 
+If you registered the GitHub App but have not installed it on this repository
+yet, the modal then prompts you to **install the Syrus App on it** (a
+repo-targeted GitHub install link) so Syrus can act as a bot there. Installing
+is recommended but optional — until the App is installed, Syrus falls back to
+your personal access token, and the dashboard shows a "GitHub App credentials
+exist, but no active installations are linked" readiness warning. You can also
+install later from the repository's page.
+
 To add more repositories after the first, open **Repositories**. You
 can pick from GitHub when credentials can list accessible
 repositories, or enter the owner and repository name manually.

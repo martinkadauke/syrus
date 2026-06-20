@@ -125,6 +125,28 @@ describe("AddRepositoryModal", () => {
     })
   })
 
+  it("prompts to install the GitHub App when the create response returns an install URL", async () => {
+    mockRoutes({
+      create: () => jsonResponse({
+        message: "Saved",
+        redirect_to: "/repositories/1",
+        repository: {},
+        app_install_url: "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=3&repository_ids[]=7"
+      })
+    })
+    const onClose = vi.fn()
+    renderModal({ onClose })
+
+    fireEvent.change(await screen.findByRole("combobox", { name: "User/Org" }), { target: { value: "octocat" } })
+    fireEvent.change(await screen.findByRole("combobox", { name: "Repository" }), { target: { value: "hello-world" } })
+    fireEvent.click(screen.getByRole("button", { name: "Add repository" }))
+
+    // The modal stays open on the install step instead of closing.
+    const install = await screen.findByRole("link", { name: /Install on GitHub/ })
+    expect(install).toHaveAttribute("href", "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=3&repository_ids[]=7")
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
   it("shows a notice (no manual entry) when GitHub owners can't be loaded", async () => {
     mockRoutes({ owners: () => jsonResponse({ error: "no_token" }) })
     renderModal()

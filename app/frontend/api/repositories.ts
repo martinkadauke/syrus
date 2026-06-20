@@ -98,6 +98,7 @@ export type RepositorySavedPayload = {
   message: string
   redirect_to: string
   repository: RepositoryRow
+  app_install_url?: string | null
 }
 
 export type GitHubOwnersPayload = {
