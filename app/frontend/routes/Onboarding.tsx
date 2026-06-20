@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom"
 import type { BootstrapPayload } from "../api/bootstrap"
 import { GithubTokenModal } from "../components/GithubTokenModal"
 import { ConfigureAgentModal } from "../components/ConfigureAgentModal"
+import { AddRepositoryModal } from "../components/AddRepositoryModal"
 
 type SetupStatus = NonNullable<BootstrapPayload["setup_status"]>
 
@@ -14,7 +15,7 @@ type ChecklistStep = {
   ctaLabel: string
   ctaPath: string
   // When set, the CTA opens an in-page flow instead of navigating away.
-  ctaModal?: "github_token" | "configure_agent"
+  ctaModal?: "github_token" | "configure_agent" | "add_repository"
 }
 
 export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | null | undefined }) {
@@ -97,6 +98,7 @@ export function OnboardingRoute({ bootstrap }: { bootstrap: BootstrapPayload | n
 
       {openModal === "github_token" ? <GithubTokenModal onClose={() => setOpenModal(null)} /> : null}
       {openModal === "configure_agent" ? <ConfigureAgentModal onClose={() => setOpenModal(null)} /> : null}
+      {openModal === "add_repository" ? <AddRepositoryModal onClose={() => setOpenModal(null)} /> : null}
     </main>
   )
 }
@@ -135,7 +137,8 @@ function checklistSteps(setup: SetupStatus, user: NonNullable<BootstrapPayload["
       detail: setup.repository_configured ? `${setup.counts.repositories} active repository${setup.counts.repositories === 1 ? "" : "ies"} configured.` : "Add the first repository Syrus should poll or run against.",
       complete: setup.repository_configured,
       ctaLabel: "Add repository",
-      ctaPath: "/repositories/new"
+      ctaPath: "/repositories/new",
+      ctaModal: "add_repository"
     },
     {
       key: "first_job",
