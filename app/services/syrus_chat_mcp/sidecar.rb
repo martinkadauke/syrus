@@ -28,12 +28,23 @@ module SyrusChatMcp
       ProposeEpicWithJobsTool,
       ListProposalsTool,
       DeleteProposalTool,
+      ListEpicsTool,
       ReadEpicTool,
+      StartEpicTool,
+      MoveEpicToBacklogTool,
+      ArchiveEpicTool,
+      UpdateEpicTool,
       ReadJobTool,
       ListJobWorkflowsTool,
       ReadWorkflowTool,
       ReadRunTranscriptTool,
       ListJobsTool,
+      SearchJobsTool,
+      ApproveJobTool,
+      UnapproveJobTool,
+      SetJobPriorityTool,
+      AssignJobToEpicTool,
+      RemoveJobFromEpicTool,
       CancelJobTool,
       RetryJobTool,
       RebaseJobTool,
@@ -55,7 +66,12 @@ module SyrusChatMcp
       DeleteElementTool,
       ClearCanvasTool,
       UpdateSceneTool,
-      ScheduleRecurringTool
+      ScheduleRecurringTool,
+      ListScheduledTasksTool,
+      PauseScheduledTaskTool,
+      ResumeScheduledTaskTool,
+      DeleteScheduledTaskTool,
+      ReadQueueTool
     ].freeze
 
     def self.tool_names

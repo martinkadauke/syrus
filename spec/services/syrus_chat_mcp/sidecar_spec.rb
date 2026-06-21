@@ -17,12 +17,23 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::ProposeEpicWithJobsTool,
         SyrusChatMcp::ListProposalsTool,
         SyrusChatMcp::DeleteProposalTool,
+        SyrusChatMcp::ListEpicsTool,
         SyrusChatMcp::ReadEpicTool,
+        SyrusChatMcp::StartEpicTool,
+        SyrusChatMcp::MoveEpicToBacklogTool,
+        SyrusChatMcp::ArchiveEpicTool,
+        SyrusChatMcp::UpdateEpicTool,
         SyrusChatMcp::ReadJobTool,
         SyrusChatMcp::ListJobWorkflowsTool,
         SyrusChatMcp::ReadWorkflowTool,
         SyrusChatMcp::ReadRunTranscriptTool,
         SyrusChatMcp::ListJobsTool,
+        SyrusChatMcp::SearchJobsTool,
+        SyrusChatMcp::ApproveJobTool,
+        SyrusChatMcp::UnapproveJobTool,
+        SyrusChatMcp::SetJobPriorityTool,
+        SyrusChatMcp::AssignJobToEpicTool,
+        SyrusChatMcp::RemoveJobFromEpicTool,
         SyrusChatMcp::CancelJobTool,
         SyrusChatMcp::RetryJobTool,
         SyrusChatMcp::RebaseJobTool,
@@ -44,7 +55,12 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::DeleteElementTool,
         SyrusChatMcp::ClearCanvasTool,
         SyrusChatMcp::UpdateSceneTool,
-        SyrusChatMcp::ScheduleRecurringTool
+        SyrusChatMcp::ScheduleRecurringTool,
+        SyrusChatMcp::ListScheduledTasksTool,
+        SyrusChatMcp::PauseScheduledTaskTool,
+        SyrusChatMcp::ResumeScheduledTaskTool,
+        SyrusChatMcp::DeleteScheduledTaskTool,
+        SyrusChatMcp::ReadQueueTool
       ],
       server_context: { chat_session: chat_session }
     )
@@ -87,12 +103,23 @@ RSpec.describe SyrusChatMcp::Sidecar do
         propose_epic_with_jobs
         list_proposals
         delete_proposal
+        list_epics
         read_epic
+        start_epic
+        move_epic_to_backlog
+        archive_epic
+        update_epic
         read_job
         list_job_workflows
         read_workflow
         read_run_transcript
         list_jobs
+        search_jobs
+        approve_job
+        unapprove_job
+        set_job_priority
+        assign_job_to_epic
+        remove_job_from_epic
         cancel_job
         retry_job
         rebase_job
@@ -115,6 +142,11 @@ RSpec.describe SyrusChatMcp::Sidecar do
         clear_canvas
         update_scene
         schedule_recurring
+        list_scheduled_tasks
+        pause_scheduled_task
+        resume_scheduled_task
+        delete_scheduled_task
+        read_queue
       ])
     end
   end
