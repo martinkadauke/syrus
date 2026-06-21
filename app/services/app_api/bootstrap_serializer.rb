@@ -110,12 +110,17 @@ module AppApi
 
     def app_revision_url
       return nil if app_revision == "dev"
+      return nil if github_repo.blank?
 
       "https://github.com/#{github_repo}/commit/#{app_revision}"
     end
 
+    # The build-revision link is cosmetic, so a missing SYRUS_GITHUB_REPO must
+    # degrade to "no link" rather than raise — a bare ENV.fetch here 500s every
+    # SPA page (this serializer renders on all of them) the moment GIT_SHA is a
+    # real commit instead of "dev".
     def github_repo
-      ENV.fetch("SYRUS_GITHUB_REPO")
+      ENV["SYRUS_GITHUB_REPO"].presence
     end
   end
 end

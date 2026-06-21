@@ -292,6 +292,20 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
     expect(parse_body.dig("app", "revision_url")).to eq("https://github.com/operator/syrus/commit/9c0f8d15")
   end
 
+  it "omits the revision link instead of 500ing when SYRUS_GITHUB_REPO is unset" do
+    user = Factories.user
+    sign_in_as(user)
+
+    # Real revision (not "dev") + no repo configured used to raise KeyError from
+    # a bare ENV.fetch and take down every SPA page. It must degrade to no link.
+    with_env("GIT_SHA" => "9c0f8d15", "SYRUS_GITHUB_REPO" => nil) do
+      get api_v1_app_bootstrap_path
+    end
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("app", "revision_url")).to be_nil
+  end
+
   it "points the default chat navigation at the user's latest chat" do
     user = Factories.user
     old_chat = ChatSession.create!(user: user, last_message_at: 2.days.ago)
