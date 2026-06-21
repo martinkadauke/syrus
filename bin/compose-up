@@ -11,6 +11,15 @@ if ! command -v docker >/dev/null; then
   exit 1
 fi
 
+# Daemon reachable? A stopped OrbStack/Docker Desktop or a docker context aimed
+# at a missing socket fails here — catch it before the slow build.
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker is installed but its daemon isn't reachable. Start your runtime:" >&2
+  echo "  - OrbStack/Docker Desktop: open the app   - Colima: colima start" >&2
+  echo "If it is running, check 'docker context ls' points at the active runtime." >&2
+  exit 1
+fi
+
 # Resolve the Compose command. OrbStack ships the `docker compose` v2 plugin;
 # a plain `brew install docker` (e.g. with Colima) does not — there you also
 # need `brew install docker-compose`, which provides either the plugin or the
