@@ -145,7 +145,19 @@ run_docker() {
     die "Docker Compose not found. Install it (OrbStack bundles it): brew install docker-compose"
   fi
 
-  # 3. Generate .env with fresh secrets on first run.
+  # 3. Generate .env with fresh secrets on first run — but NEVER mint fresh
+  #    encryption keys when a data volume already exists. The existing DB was
+  #    encrypted with the old keys; new keys can't decrypt it and every page
+  #    500s with ActiveRecord::Encryption::Errors::Decryption.
+  if [ ! -f .env ] && docker volume inspect syrus_syrus-data >/dev/null 2>&1; then
+    echo "Error: a data volume (syrus_syrus-data) exists but .env is missing." >&2
+    echo "Its database is encrypted with keys that lived in that .env. Generating" >&2
+    echo "fresh keys now would make the existing data undecryptable. Do ONE of:" >&2
+    echo "  - Restore the original .env (the keys that match this volume), or" >&2
+    echo "  - Wipe the old data and start clean:" >&2
+    echo "      docker compose down -v && ./install.sh --docker   (or docker-compose ...)" >&2
+    exit 1
+  fi
   if [ ! -f .env ]; then
     step "Generating .env with fresh secrets"
     gen() { openssl rand -hex "$1"; }

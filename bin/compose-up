@@ -41,7 +41,15 @@ fi
 # `image "...": already exists` (the no-op local layer matches the base).
 export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
-# 1. Generate .env with fresh secrets on first run.
+# 1. Generate .env with fresh secrets on first run — but refuse to mint fresh
+#    encryption keys when a data volume already exists, or the existing DB (which
+#    was encrypted with the old keys) becomes undecryptable.
+if [ ! -f .env ] && docker volume inspect syrus_syrus-data >/dev/null 2>&1; then
+  echo "Error: a data volume (syrus_syrus-data) exists but .env is missing." >&2
+  echo "Restore the original .env (matching encryption keys), or wipe and restart:" >&2
+  echo "  docker compose down -v && bin/compose-up   (or docker-compose ...)" >&2
+  exit 1
+fi
 if [ ! -f .env ]; then
   echo "== Generating .env with fresh secrets =="
   gen() { openssl rand -hex "$1"; }
