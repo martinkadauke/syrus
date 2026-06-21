@@ -44,7 +44,16 @@ module Steps
 
       plan.commands.each_with_index do |cmd, i|
         log("[prepare] (#{i + 1}/#{plan.commands.size}) $ #{cmd}")
-        run_shell(cmd)
+        next if run_shell(cmd, guessed: plan.guessed?)
+
+        # Reached only on a soft-failed *guessed* command (an explicit
+        # .syrus.yml command raises instead). Stop running further
+        # auto-detected commands and hand the workspace to the agent
+        # as-is — the agent can add a `.syrus.yml prepare:` list or fix
+        # the lockfile from inside the run.
+        log("[prepare] guessed setup command failed — handing off to the agent without it. " \
+            "Add a .syrus.yml `prepare:` list (or fix the lockfile) to take control of setup.")
+        return
       end
 
       log("[prepare] all commands completed successfully")
@@ -58,7 +67,11 @@ module Steps
     # into JobLog one line at a time so the operator can watch the
     # install live. Hard timeout via a watcher thread that SIGTERMs
     # the process tree if it exceeds the budget.
-    def run_shell(cmd)
+    # Returns true on success. On failure: a guessed (auto-detected)
+    # command records a soft failure and returns false so the chain
+    # continues to the agent; an explicit `.syrus.yml` command raises
+    # StepFailed so the operator sees their config break loudly.
+    def run_shell(cmd, guessed:)
       buffer = new_log_buffer
       tail = +""
       result = ProcessRunner.new(
@@ -76,12 +89,13 @@ module Steps
       ).run
       flush_log_buffer(buffer)
 
-      if result.timed_out
-        failure = prepare_failure_payload(cmd, result, tail)
-        record_prepare_failure!(failure)
-        raise StepFailed, prepare_failure_message(failure)
-      elsif !result.success?
-        failure = prepare_failure_payload(cmd, result, tail)
+      return true if result.success? && !result.timed_out
+
+      failure = prepare_failure_payload(cmd, result, tail)
+      if guessed
+        record_prepare_soft_failure!(failure)
+        false
+      else
         record_prepare_failure!(failure)
         raise StepFailed, prepare_failure_message(failure)
       end
@@ -111,6 +125,16 @@ module Steps
       step.update!(details: (step.details || {}).merge("prepare_failure" => failure))
       workflow.set_artifact!("prepare_failure", failure)
       log("[prepare] failure: #{prepare_failure_message(failure)}")
+    end
+
+    # Same record shape as a hard failure, tagged `soft` so the UI can
+    # frame it as "Syrus skipped a guessed step" rather than "setup
+    # failed before the agent started" — the agent does still run.
+    def record_prepare_soft_failure!(failure)
+      soft = failure.merge("soft" => true)
+      step.update!(details: (step.details || {}).merge("prepare_failure" => soft))
+      workflow.set_artifact!("prepare_failure", soft)
+      log("[prepare] WARNING (guessed command, non-fatal): #{prepare_failure_message(failure)}")
     end
 
     def prepare_failure_message(failure)

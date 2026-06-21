@@ -100,10 +100,17 @@ Key steps:
   or auto-detects from lockfiles. Env is scrubbed to a safe forward list
   so the worker's Bundler config doesn't pollute the target repo's install.
   Per-command timeout: 10 minutes. Succeeds with "nothing to do" if the
-  repo has no setup commands — chain shape stays uniform. `Repository#prepare_enabled`
-  can disable the step for all workflows on that repo; the
-  `syrus-skip-prepare` issue label disables it for that Job. Skips are
-  recorded in Workflow artifacts and logged on the first Run.
+  repo has no setup commands — chain shape stays uniform. **Failure mode
+  depends on the command's source** (`RepoPrepPlan::Result#guessed?`):
+  explicit `.syrus.yml` commands hard-fail (raise `StepFailed`, abort the
+  chain before the agent), but auto-detected (guessed) commands soft-fail —
+  Syrus logs a non-fatal warning, records `prepare_failure` with
+  `"soft" => true`, and hands off to the agent anyway. This stops a wrong
+  lockfile guess (stale lock, build-script gate, unused tool) from wedging
+  onboarding: the first Job on a repo can still run and add a `.syrus.yml`.
+  `Repository#prepare_enabled` can disable the step for all workflows on
+  that repo; the `syrus-skip-prepare` issue label disables it for that Job.
+  Skips are recorded in Workflow artifacts and logged on the first Run.
 - **`implement`** / **`respond`** / **`analyze_and_fix`** — Agentic steps:
   invoke the Workflow's configured `AgentProviders::*` adapter. Claude uses
   `AgentInvocation`/`claude --print`; Codex uses `CodexInvocation`/`codex exec`.

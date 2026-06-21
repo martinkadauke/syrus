@@ -36,7 +36,17 @@ class RepoPrepPlan
     [ "package.json",       "npm install" ]
   ].freeze
 
-  Result = Data.define(:commands, :source, :note)
+  Result = Data.define(:commands, :source, :note) do
+    # Auto-detected plans are a *guess* — Syrus inferred the command
+    # from a lockfile, the repo never asked for it. Steps::Prepare
+    # soft-fails these (warn + hand off to the agent anyway) so a wrong
+    # guess can't wedge onboarding. Explicit `.syrus.yml` plans, by
+    # contrast, are operator intent and hard-fail. The source string is
+    # the discriminator: `from_auto_detect` always prefixes "auto-detect".
+    def guessed?
+      source.to_s.start_with?("auto-detect")
+    end
+  end
 
   def self.for(workspace_path)
     new(workspace_path).resolve

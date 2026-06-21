@@ -22,6 +22,7 @@ RSpec.describe RepoPrepPlan do
       result = described_class.for(@dir)
       expect(result.commands).to eq([ "bundle install --jobs 4", "npm ci" ])
       expect(result.source).to eq(".syrus.yml")
+      expect(result.guessed?).to be(false)
     end
 
     it "treats prepare: [] as explicit no-op" do
@@ -64,7 +65,10 @@ RSpec.describe RepoPrepPlan do
   describe "auto-detect" do
     it "Gemfile → bundle install" do
       write("Gemfile", "")
-      expect(described_class.for(@dir).commands).to eq([ "bundle install" ])
+      result = described_class.for(@dir)
+      expect(result.commands).to eq([ "bundle install" ])
+      # Auto-detected plans are guesses — Steps::Prepare soft-fails them.
+      expect(result.guessed?).to be(true)
     end
 
     it "yarn.lock wins over package.json + package-lock.json" do

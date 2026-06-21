@@ -50,6 +50,9 @@ type PrepareFailure = {
   aliveness_failed?: boolean
   duration_s?: number | null
   output_tail?: string | null
+  // Set when the failed command was auto-detected (guessed) rather than
+  // from .syrus.yml. Syrus skips it and runs the agent anyway.
+  soft?: boolean
 }
 
 const RUN_TRANSCRIPT_BOTTOM_THRESHOLD_PX = 24
@@ -1035,7 +1038,15 @@ function PrepareFailurePanel({ failure }: { failure: PrepareFailure }) {
 
   return (
     <section className="mt-2 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/40 dark:text-amber-200">
-      <div className="font-semibold">Setup failed before the agent started</div>
+      <div className="font-semibold">
+        {failure.soft ? "Setup skipped — guessed command failed" : "Setup failed before the agent started"}
+      </div>
+      {failure.soft ? (
+        <p className="mt-1">
+          Syrus auto-detected this command from a lockfile. Because it was a guess, the agent ran anyway without it.
+          Add a <code className="font-mono">.syrus.yml</code> <code className="font-mono">prepare:</code> list (or fix the lockfile) to take control of setup.
+        </p>
+      ) : null}
       <dl className="mt-2 grid gap-x-4 gap-y-1 md:grid-cols-[max-content_1fr]">
         <dt className="font-medium">Command</dt>
         <dd className="min-w-0 break-words font-mono">{failure.command || "-"}</dd>

@@ -59,9 +59,10 @@ RSpec.describe Steps::Prepare do
   it "auto-detects bundle install on a Gemfile-bearing repo" do
     File.write(@ws_path.join("Gemfile"), "")
     # Stub bash so we don't actually run bundle in the test sandbox
-    allow(handler).to receive(:run_shell) do |cmd|
+    allow(handler).to receive(:run_shell) do |cmd, **|
       run.job_logs.create!(sequence: (run.job_logs.maximum(:sequence) || -1) + 1,
                            chunk: "[stub-ran] #{cmd}")
+      true
     end
 
     handler.call
@@ -135,6 +136,46 @@ RSpec.describe Steps::Prepare do
     expect(chunks).to include("[prepare] failure: prepare command failed (exit 7)")
     expect(chunks).to include("alpha")
     expect(chunks).to include("beta")
+    # Explicit commands are hard failures, never tagged soft.
+    expect(workflow.reload.artifact("prepare_failure")).not_to include("soft")
+  end
+
+  it "soft-fails a guessed (auto-detected) command instead of aborting the chain" do
+    # No .syrus.yml: the Gemfile drives auto-detect → `bundle install`,
+    # which Syrus only guessed. A non-zero exit must NOT raise, so the
+    # agent still gets to run (and can add a .syrus.yml or fix the repo).
+    File.write(@ws_path.join("Gemfile"), "")
+    fake_runner = instance_double(ProcessRunner)
+    allow(fake_runner).to receive(:run).and_return(
+      ProcessRunner::Result.new(
+        exit_status: 7,
+        timed_out: false,
+        stopped: false,
+        silent_timed_out: false,
+        operator_killed: false,
+        aliveness_failed: false,
+        duration_s: 0.1,
+        spawned_process_id: nil
+      )
+    )
+    allow(ProcessRunner).to receive(:new).and_return(fake_runner)
+
+    expect { handler.call }.not_to raise_error
+
+    failure = workflow.reload.artifact("prepare_failure")
+    expect(failure).to include(
+      "command" => "bundle install",
+      "exit_status" => 7,
+      "soft" => true
+    )
+    expect(step.reload.details["prepare_failure"]).to eq(failure)
+
+    chunks = run.reload.job_logs.pluck(:chunk).join("\n")
+    expect(chunks).to include("source: auto-detect (Gemfile)")
+    expect(chunks).to include("WARNING (guessed command, non-fatal)")
+    expect(chunks).to include("handing off to the agent without it")
+    # The success line must NOT print — setup did not complete.
+    expect(chunks).not_to include("all commands completed successfully")
   end
 
   describe "#stream_buffered" do

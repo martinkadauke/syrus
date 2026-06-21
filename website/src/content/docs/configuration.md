@@ -41,9 +41,11 @@ scrubbed to a small safe allowlist so the Syrus worker's own Bundler,
 Rails, or production environment settings do not leak into the target
 repo's install.
 
-When a prepare command fails, Syrus fails the workflow before starting
-the agent and records the command, workspace directory, exit status or
-timeout state, and a compact tail of command output on the workflow page.
+When an **explicit** `.syrus.yml` prepare command fails, Syrus fails the
+workflow before starting the agent and records the command, workspace
+directory, exit status or timeout state, and a compact tail of command
+output on the workflow page. You asked for the command, so a failure is
+loud.
 
 If `.syrus.yml` is missing, Syrus auto-detects one setup command from the
 first matching file:
@@ -59,6 +61,15 @@ first matching file:
 Only the first match is used. A Rails app with both `Gemfile` and
 `package-lock.json`, for example, gets `bundle install` unless it provides
 an explicit `.syrus.yml`.
+
+Auto-detected commands are a **guess**, so they fail *soft*: if the
+inferred command exits non-zero (a stale lockfile, a package manager that
+needs build-script approval, a tool the repo doesn't actually use), Syrus
+logs a non-fatal warning, records the failure on the workflow page, and
+hands the workspace to the agent anyway. This keeps a wrong guess from
+wedging onboarding — the very first Job on a repo can still run and add a
+`.syrus.yml` or fix the lockfile. Add an explicit `prepare:` list whenever
+you want setup to be authoritative (and to fail loudly when it breaks).
 
 ## Worked Examples
 
