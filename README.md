@@ -196,7 +196,14 @@ bin/dev          # foreman: web (rails s) + worker (bin/jobs) + tailwind + JS wa
 bin/rspec        # Ruby test suite
 bin/test-react   # React/Vitest suite + TypeScript typecheck
 bin/test         # Ruby and React suites together
+bin/test-docker  # integration tests against the Docker image (isolated stack)
 ```
+
+`bin/test-docker` brings up a throwaway Compose stack (its own project, volume,
+and host port — it won't touch a running instance), then asserts the database,
+file uploads, the worker draining jobs, the dev toolchain (ruby/node/python/go),
+and the MCP sidecar boot. It uses the already-built/pulled image; pass
+`SYRUS_IMAGE=…` to test a specific tag. Requires a running container runtime.
 
 ## Run a prebuilt build (Docker, no compile)
 

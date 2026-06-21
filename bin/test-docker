@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+# Integration tests against the Syrus Docker image.
+#
+# Brings up an ISOLATED Compose stack — its own project name, volume, and host
+# port — so it never touches a Syrus instance you're already running. Asserts
+# the core container capabilities, prints a summary, and tears everything down
+# (including the throwaway volume) on exit.
+#
+# Covers:
+#   a) database          — primary schema + Solid Cache/Queue across the 4 DBs
+#   b) uploads           — Active Storage writes to the local data volume
+#   c) worker            — the worker registers and drains jobs
+#   d) dev toolchain     — ruby / node / python / go are usable in the image
+#   e) MCP sidecar       — boots full Rails without errors
+#
+# Usage: bin/test-docker
+#   SYRUS_IMAGE=ghcr.io/tkadauke/syrus-local:TAG  test a specific image
+#   SYRUS_ITEST_PORT=NNNN                          override the host port
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+PROJECT="syrus-itest"
+PORT="${SYRUS_ITEST_PORT:-39173}"
+PASS=0
+FAIL=0
+
+note() { printf '\n\033[1;34m== %s\033[0m\n' "$1"; }
+ok()   { printf '   \033[1;32mPASS\033[0m  %s\n' "$1"; PASS=$((PASS + 1)); }
+bad()  { printf '   \033[1;31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL + 1)); }
+dump() { printf '%s\n' "$1" | sed 's/^/         | /'; }
+
+# Resolve the Compose command (v2 plugin or standalone v1).
+if docker compose version >/dev/null 2>&1; then
+  compose() { docker compose "$@"; }
+elif command -v docker-compose >/dev/null 2>&1; then
+  compose() { docker-compose "$@"; }
+else
+  echo "Docker Compose not found." >&2; exit 1
+fi
+
+docker info >/dev/null 2>&1 || { echo "Docker daemon not reachable — start your runtime." >&2; exit 1; }
+
+# The stack reads $SYRUS_PORT for the host port mapping; isolate it.
+export SYRUS_PORT="$PORT"
+
+cleanup() {
+  note "Tearing down ($PROJECT)"
+  compose -p "$PROJECT" down -v --remove-orphans >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Run a Ruby snippet inside a service; echoes combined output.
+in_service() { # in_service <service> <ruby>
+  compose -p "$PROJECT" exec -T "$1" bin/rails runner "$2" 2>&1
+}
+
+# ---------------------------------------------------------------------------
+note "Bringing up an isolated stack (project=$PROJECT, port=$PORT)"
+echo "   image: ${SYRUS_IMAGE:-<compose default ghcr.io/tkadauke/syrus-local:latest>}"
+if ! compose -p "$PROJECT" up -d; then
+  echo "Stack failed to come up — the setup service (db:prepare) likely errored." >&2
+  compose -p "$PROJECT" logs setup 2>&1 | tail -30
+  exit 1
+fi
+# `up -d` only returns once the setup service (depends_on: completed) has run, so
+# the databases are already prepared here. Give the web container a beat to be
+# exec-able.
+sleep 3
+
+# ---------------------------------------------------------------------------
+note "a) Database (primary schema + Solid Cache + Solid Queue)"
+out="$(in_service web '
+  raise "no users table" unless ActiveRecord::Base.connection.table_exists?("users")
+  Rails.cache.write("itest_key", "itest_val")
+  raise "cache read/write failed" unless Rails.cache.read("itest_key") == "itest_val"
+  SolidQueue::Job.count # touches the queue DB connection
+  puts "ITEST_DB_OK"
+')"
+if printf '%s' "$out" | grep -q ITEST_DB_OK; then
+  ok "primary schema loaded; Solid Cache write/read; Solid Queue reachable"
+else
+  bad "database checks failed"; dump "$out"
+fi
+
+# ---------------------------------------------------------------------------
+note "b) Uploads (Active Storage -> local data volume)"
+out="$(in_service web '
+  blob = ActiveStorage::Blob.create_and_upload!(
+    io: StringIO.new("hello-itest"), filename: "itest.txt", content_type: "text/plain"
+  )
+  raise "wrong service: #{blob.service_name}" unless blob.service_name.to_s == "local_volume"
+  raise "download mismatch" unless blob.download == "hello-itest"
+  path = ActiveStorage::Blob.service.send(:path_for, blob.key)
+  raise "blob not on disk" unless File.exist?(path)
+  root = ENV.fetch("SYRUS_DATA_ROOT")
+  raise "blob not under data root (#{path})" unless path.start_with?(root)
+  puts "ITEST_UPLOAD_OK"
+')"
+if printf '%s' "$out" | grep -q ITEST_UPLOAD_OK; then
+  ok "blob written to local_volume, downloaded, and present under SYRUS_DATA_ROOT"
+else
+  bad "upload checks failed"; dump "$out"
+fi
+
+# ---------------------------------------------------------------------------
+note "c) Worker (registers + drains jobs)"
+if compose -p "$PROJECT" ps worker 2>/dev/null | grep -qiE 'up|running'; then
+  ok "worker container is running"
+else
+  bad "worker container is not running"
+  dump "$(compose -p "$PROJECT" ps worker 2>&1)"
+fi
+# The worker registers a heartbeating SolidQueue::Process and drains the recurring
+# pollers (which are no-ops on an empty DB, so they finish quickly).
+drained=""
+deadline=$((SECONDS + 150))
+out=""
+while [ "$SECONDS" -lt "$deadline" ]; do
+  out="$(in_service web '
+    proc_ok  = SolidQueue::Process.where("last_heartbeat_at > ?", 2.minutes.ago).exists?
+    drained  = SolidQueue::Job.where.not(finished_at: nil).exists?
+    puts "PROC=#{proc_ok} DRAINED=#{drained}"
+  ')"
+  if printf '%s' "$out" | grep -q "PROC=true DRAINED=true"; then drained=1; break; fi
+  sleep 5
+done
+if [ -n "$drained" ]; then
+  ok "worker registered a process and finished at least one job"
+else
+  bad "worker did not register + drain a job within 150s"; dump "$out"
+fi
+
+# ---------------------------------------------------------------------------
+note "d) Dev toolchain (ruby / node / python / go)"
+# Use `bash -c`, not `-lc`: the worker runs commands with the image's env PATH
+# (which includes mise's go bin). A login shell re-derives PATH from profile and
+# drops those entries, so `-lc` would falsely report go missing.
+out="$(compose -p "$PROJECT" exec -T worker bash -c \
+  'ruby -v && node -v && python3 --version && go version' 2>&1)"
+if [ $? -eq 0 ]; then
+  ok "ruby / node / python / go are all usable:"; dump "$out"
+else
+  bad "one or more runtimes are missing"; dump "$out"
+fi
+
+# ---------------------------------------------------------------------------
+note "e) MCP sidecar (claude-style initialize handshake)"
+# Reproduce what `claude` actually does: spawn the sidecar with a real --run-id
+# and perform the stdio handshake (initialize -> tools/list). This is stronger
+# than a standalone boot check — it exercises the exact path that fails when the
+# sidecar can't register with claude. First create a minimal, INERT Run: the
+# enqueue is neutralized in this runner process so no real RunJob ever fires.
+mk="$(in_service web '
+  RunJob.class_eval { def enqueue(*) = self }   # never enqueue a real RunJob
+  u = User.create!(email_address: "itest-mcp@example.com", password: "itest-password-123")
+  r = u.repositories.create!(owner: "itest", name: "repo")
+  j = u.jobs.create!(repository: r, kind: "direct", agent_provider: "claude")
+  w = j.workflows.create!(user: u, trigger_kind: "initial")
+  s = w.steps.create!(kind: "implement", details: {})
+  run = s.runs.create!(job: j, user: u, trigger_kind: "initial")
+  puts "RUN_ID=#{run.id}"
+')"
+run_id="$(printf '%s' "$mk" | grep -oE 'RUN_ID=[0-9]+' | head -1 | cut -d= -f2)"
+if [ -z "$run_id" ]; then
+  bad "could not create a Run to drive the sidecar"; dump "$mk"
+else
+  init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"itest","version":"0"}}}'
+  inited='{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  list='{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+  # The sidecar routes its Rails logs to stderr, so stdout is pure JSON-RPC.
+  start="$SECONDS"
+  hs="$(printf '%s\n%s\n%s\n' "$init" "$inited" "$list" \
+        | compose -p "$PROJECT" exec -T worker bin/syrus-mcp-sidecar --run-id "$run_id" 2>/dev/null)"
+  elapsed=$((SECONDS - start))
+  if printf '%s' "$hs" | grep -q '"serverInfo":{"name":"syrus-mcp-sidecar"' \
+     && printf '%s' "$hs" | grep -q '"name":"submit_summary"'; then
+    ok "sidecar completed initialize + tools/list (responded in ~${elapsed}s)"
+    if [ "$elapsed" -ge 20 ]; then
+      printf '   \033[33mNOTE\033[0m  ~%ss is slow — on a busier/slower host this can exceed the\n' "$elapsed"
+      printf '         window claude allows for an MCP server to come up, which presents\n'
+      printf '         as the sidecar failing to initialize.\n'
+    fi
+  else
+    bad "sidecar did not complete the MCP handshake"; dump "$hs"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+note "Summary"
+echo "   $PASS passed, $FAIL failed"
+[ "$FAIL" -eq 0 ]
