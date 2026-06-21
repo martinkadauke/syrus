@@ -1,148 +1,144 @@
 ---
 title: Docker Compose
-description: Run the full Syrus stack (web, worker, MySQL) with one command.
+description: Run Syrus on a single machine (web + worker, SQLite) with one command.
 ---
 
 # Docker Compose
 
-Docker Compose is the recommended path for running the real Syrus app
-without committing to a cluster. It gives you the web UI, the background
-worker, persistent MySQL data, and the full GitHub issue-to-PR loop.
+Docker Compose is the lowest-friction way to run the real Syrus app on a
+single machine — your Mac, a laptop, a small box — without a Kubernetes
+cluster or a MySQL server. You get the web UI, the background worker, the
+full agent toolchain, and the GitHub issue-to-PR loop, backed by SQLite.
 
-> **Status.** The Compose packaging is tracked separately. Until the
-> repository includes the Compose file, treat the command below as the
-> target flow rather than a copy-pasteable command from this checkout.
+This is a **single-host** setup. The repository's `Dockerfile` and
+`bin/deploy` target a clustered MySQL deployment; this Compose path is a
+separate, self-contained artifact (`docker-compose.yml`, `Dockerfile.local`,
+`compose.env.example`, `bin/compose-up`) and leaves the cluster path
+untouched.
 
-## Start the stack
+## 1. Install a container runtime
 
-From the directory that contains the published Compose file:
-
-```bash
-docker compose up -d
-```
-
-The stack is expected to run these services:
-
-- **web**: Rails app served by Puma/Thrust. This is the browser UI where
-  users add credentials, register repositories, inspect Jobs, retry
-  failed Workflows, and review transcripts.
-- **worker**: Solid Queue worker running pollers, setup steps, agent
-  invocations, pushes, PR creation, stale-run cleanup, and workspace
-  pruning.
-- **mysql**: Primary application database. In production-mode deploys,
-  Syrus also uses Rails-backed Solid Cache, Solid Queue, and Solid Cable
-  tables.
-- **storage volume**: `$SYRUS_DATA_ROOT`, where bare clones and workflow
-  workspaces live. Losing this volume does not erase the database, but it
-  does erase cached clones and in-progress workspaces.
-
-## First-time setup
-
-Create a `.env` file next to the Compose file. The exact published
-template is authoritative; these are the important categories:
-
-```dotenv
-RAILS_MASTER_KEY=...
-SECRET_KEY_BASE=...
-ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=...
-ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=...
-ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=...
-SYRUS_DATABASE_PASSWORD=...
-SYRUS_DATA_ROOT=/home/rails/.syrus
-```
-
-Syrus stores user credentials with Active Record Encryption. For
-12-factor/Docker deploys, provide the three
-`ACTIVE_RECORD_ENCRYPTION_*` values directly as environment variables and
-keep them stable across restarts. Generate each one with:
+macOS doesn't run Linux containers natively, so install a runtime. Either
+works — pick one:
 
 ```bash
-openssl rand -hex 32
+brew install orbstack            # fast, lightweight, recommended — bundles Compose
+# or:
+brew install colima docker docker-compose && colima start
 ```
 
-If those environment variables are absent, Rails falls back to
-`RAILS_MASTER_KEY` plus encrypted Rails credentials. If the encryption
-keys change, stored GitHub and agent credentials cannot be decrypted.
+> Colima needs the Compose plugin installed separately (`docker-compose`); a
+> plain `brew install docker` gives you the `docker` CLI but not the
+> `docker compose` subcommand. `bin/compose-up` detects whichever is present
+> (`docker compose` or `docker-compose`).
 
-After the containers boot, open the web UI and create the first user.
-The first signup becomes an admin. In **Credentials**, add:
+## 2. Bring it up
 
-- A GitHub personal access token that can read issues, push branches, and
-  open pull requests on the repositories Syrus will manage.
-- An Anthropic/Claude credential, or a Codex API key / login
-  configuration, depending on the agent provider you want to use.
-- Your preferred default agent provider.
-
-## Add a repository
-
-1. In the web UI, add a repository by owner, name, default branch, and
-   trigger label. The default trigger label is usually `syrus`.
-2. Make sure polling is enabled for that repository.
-3. In GitHub, create or edit an issue and add the trigger label.
-4. Wait for the poller to ingest the issue. A Job should appear in the
-   dashboard.
-5. Open the Job to watch the Workflow move through `prepare`,
-   `implement`, `summarize`, and `pr_open`.
-6. Follow the PR link when the run succeeds.
-
-Syrus polls GitHub instead of receiving inbound callbacks, so the Job may not
-appear instantly. If nothing appears after a couple of polling intervals,
-check the repository's trigger label, token permissions, and whether
-polling is enabled.
-
-## Persist data
-
-Keep both MySQL and `$SYRUS_DATA_ROOT` on named volumes or host-mounted
-directories. MySQL holds users, encrypted credentials, repositories,
-Jobs, Workflows, Runs, logs, artifacts, and the Solid Queue / Solid Cable
-state used by the app. `$SYRUS_DATA_ROOT` holds clone caches and workflow
-workspaces used by running and recently finished Workflows. The data-root
-mount must be writable by the container's `rails` user (`1000:1000`). The
-published image creates `/home/rails/.syrus` with that ownership so fresh
-Docker named volumes inherit the correct permissions on first mount; host
-directories should be created or chowned the same way.
-
-Back up MySQL with `mysqldump`:
+From a checkout of the repo:
 
 ```bash
-docker compose exec mysql \
-  mysqldump -u syrus -p \
-    --databases \
-    syrus_production \
-    syrus_production_cache \
-    syrus_production_queue \
-    syrus_production_cable \
-    > syrus.sql
+bin/compose-up
 ```
 
-Back up `$SYRUS_DATA_ROOT` with your normal volume backup tool. For a
-small install, a filesystem snapshot or `tar` of the mounted data
-directory is usually enough. For a team install, back up the database and
-data-root volume together so running workspaces and DB state stay in
-rough agreement.
+That script:
 
-## Upgrade
+1. Generates `.env` from `compose.env.example` with fresh secrets
+   (`SECRET_KEY_BASE` and the three Active Record encryption keys) on first
+   run. `.env` is gitignored — keep it.
+2. Builds the worker image — the fat agent toolchain (Ruby/Node/Go via
+   `mise`, Python + poetry/uv, build tools, db clients, and the `claude-code`
+   CLI). **The first build is slow** (it compiles language runtimes); later
+   builds are cached.
+3. Starts the stack: a one-shot **setup** task (prepares the SQLite
+   databases and fixes volume ownership), then **web** and **worker**.
 
-Pull the newer images and restart:
+When it finishes, open **http://localhost:3000**. The first signup becomes
+the admin, and the first-run wizard walks you through GitHub credentials,
+the agent, a repository, and a guided chat to land your first Epic.
 
 ```bash
-docker compose pull
-docker compose up -d
+docker compose logs -f web worker   # follow logs
+docker compose down                 # stop
+bin/compose-up                       # restart / pick up changes
 ```
 
-Run database migrations according to the published Compose file's
-release notes. If the Compose packaging includes a one-shot migration
-service, use that instead of shelling into a long-running container.
+## What runs
+
+- **web** — Rails app served by Thruster on `localhost:3000`.
+- **worker** — Solid Queue worker: pollers, prepare steps, agent runs,
+  pushes, PR creation, reapers, and workspace pruning.
+- **setup** — a one-shot container that runs `db:prepare` and makes the data
+  volume writable by the `rails` user, then exits. `web` and `worker` wait
+  for it.
+- **syrus-data volume** — `/home/rails/.syrus`, holding both the **SQLite
+  databases** (`db/production*.sqlite3`) and the **clone cache / workflow
+  workspaces**. Persisted across restarts; losing it wipes everything.
+
+There is no MySQL container and no master key — local mode runs the
+production environment against SQLite (`SYRUS_SQLITE=1`) and provides the
+encryption keys via environment variables.
+
+## Extending the worker environment
+
+The worker runs your repositories' `prepare` / grader commands, so it needs
+their toolchains. Two layers cover this:
+
+- **Language runtimes** — already handled, per-repo, with no image changes.
+  `mise` is in the image; put a `.mise.toml` / `.tool-versions` in your repo
+  and add `mise install` to its `.syrus.yml` `prepare:`. Out of the box you
+  get Ruby, Node, Go, and Python; `mise` can install more (Rust, Java, other
+  versions) on demand.
+- **System packages (apt)** — set `EXTRA_APT_PACKAGES` in `.env`
+  (space-separated) and rerun `bin/compose-up`. They're baked into the worker
+  image — reproducible and cached.
+
+  ```dotenv
+  EXTRA_APT_PACKAGES="imagemagick ffmpeg libmagic-dev"
+  ```
+
+  For anything beyond apt, edit `Dockerfile.local` (it just extends the base
+  worker image).
+
+The worker runs unprivileged (`uid 1000`, no sudo), so a repo's `prepare:`
+**cannot** `apt-get install` — that's why system packages live at the image
+layer via `EXTRA_APT_PACKAGES`.
+
+## Configuration
+
+`compose.env.example` is the template; `bin/compose-up` copies it to `.env`
+and fills the secrets. Notable values:
+
+- `SYRUS_SQLITE=1`, `SYRUS_DATA_ROOT=/home/rails/.syrus` — SQLite local mode.
+- `SYRUS_APP_HOST=localhost:3000`, `SYRUS_ASSUME_SSL=false`,
+  `SYRUS_FORCE_SSL=false` — plain HTTP locally.
+- `SYRUS_PORT=3000` — host port mapped to the container.
+- `SECRET_KEY_BASE`, `ACTIVE_RECORD_ENCRYPTION_*` — generated; keep them
+  stable across restarts or stored GitHub/agent credentials can't be
+  decrypted. Regenerate a key by hand with `openssl rand -hex 32`.
+
+## Persist and back up
+
+Everything lives in the `syrus-data` named volume. Back it up by copying the
+SQLite files out:
+
+```bash
+docker compose cp web:/home/rails/.syrus/db ./syrus-db-backup
+```
+
+A filesystem snapshot or `tar` of the volume works too. Because the DB and
+the clone cache share one volume, backing it up keeps DB state and running
+workspaces in agreement.
 
 ## TLS
 
-Compose does not need to own TLS. Put Caddy, Traefik, nginx, or your
-existing reverse proxy in front of the web service and terminate HTTPS
-there. Caddy is the shortest path for a single host with automatic
-certificates; Traefik fits better if you already run a Docker-label-based
-edge proxy.
+Compose doesn't own TLS. For a local install you don't need it (plain HTTP on
+`localhost`). To expose it, put Caddy, Traefik, or nginx in front of the web
+service and terminate HTTPS there, and set `SYRUS_APP_HOST` /
+`SYRUS_ASSUME_SSL=true` accordingly.
 
-If you're a Ruby developer with the toolchain already, you can also run
-from source: `git clone`, `bundle install`, and `bin/dev`. Docker Compose
-is recommended because it owns the answers to "what else should I
-install?"
+## Develop from source instead
+
+If you're working *on* Syrus rather than just running it, the bare-metal
+path (`bin/setup` then `bin/dev`) gives faster reloads — see the project
+README. Compose is the recommended way to **run** it because it owns the
+answer to "what else do I need installed?"

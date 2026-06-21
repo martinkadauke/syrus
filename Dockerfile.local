@@ -1,0 +1,21 @@
+# Single-host (Docker Compose) worker image. Extends the Syrus worker image
+# with any extra system packages your repos' prepare/grader commands need.
+#
+# The base image (the fat agent toolchain — Ruby/Node/Go via mise, Python,
+# build tools, db clients, claude-code) is built separately by `bin/compose-up`:
+#   docker build -f Dockerfile --target worker-dev -t syrus-local-base:latest .
+ARG BASE_IMAGE=syrus-local-base:latest
+FROM ${BASE_IMAGE}
+
+# Trivially extensible: set EXTRA_APT_PACKAGES (space-separated) in .env, then
+# rerun `bin/compose-up` (or `docker compose build`). Empty by default, so this
+# layer is a near-instant no-op out of the box.
+ARG EXTRA_APT_PACKAGES=""
+USER root
+RUN if [ -n "$EXTRA_APT_PACKAGES" ]; then \
+      apt-get update -qq && \
+      apt-get install --no-install-recommends -y $EXTRA_APT_PACKAGES && \
+      rm -rf /var/lib/apt/lists/*; \
+    fi
+# Back to the unprivileged user the agent runs as.
+USER 1000:1000

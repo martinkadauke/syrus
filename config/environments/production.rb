@@ -30,7 +30,9 @@ Rails.application.configure do
   # See config/storage.yml#minio. Env vars (S3_ENDPOINT, S3_BUCKET,
   # S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY) must be configured for
   # both web and worker processes.
-  config.active_storage.service = :minio
+  # Single-host SQLite "local mode" stores attachments on the persisted data
+  # volume instead of S3/MinIO.
+  config.active_storage.service = ENV["SYRUS_SQLITE"].present? ? :local_volume : :minio
 
   # Production traffic is terminated by the cluster ingress before reaching Rails.
   # Keep generated URLs, redirects, HSTS, and secure cookies aligned with that
@@ -97,7 +99,11 @@ Rails.application.configure do
   # Production uses MySQL. The checked-in db/schema.rb is produced by the
   # SQLite dev/test adapter, so fresh MySQL installs must migrate from zero
   # instead of loading that adapter-specific Ruby dump.
-  config.active_record.schema_format = :sql
+  #
+  # Single-host "local mode" (SYRUS_SQLITE) runs production against SQLite —
+  # there the SQLite-generated schema.rb is exactly right, so load it directly
+  # (faster and more reliable than migrating from zero).
+  config.active_record.schema_format = ENV["SYRUS_SQLITE"].present? ? :ruby : :sql
 
   # Allow 12-factor/Docker deploys to provide Active Record Encryption keys
   # through environment variables. If absent, Rails falls back to credentials.

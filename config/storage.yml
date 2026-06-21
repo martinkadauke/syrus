@@ -6,6 +6,12 @@ local:
   service: Disk
   root: <%= Rails.root.join("storage") %>
 
+# Single-host "local mode" (Docker Compose): on-disk attachments under the
+# persisted SYRUS_DATA_ROOT volume, so uploads survive restarts without S3.
+local_volume:
+  service: Disk
+  root: <%= File.join(ENV.fetch("SYRUS_DATA_ROOT", Rails.root.join("storage").to_s), "storage") %>
+
 # S3-compatible object storage for production. Configure credentials,
 # bucket, and endpoint through environment variables for your deployment.
 # For example, S3_BUCKET=syrus-production-attachments and

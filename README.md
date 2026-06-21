@@ -176,6 +176,60 @@ bin/test-react   # React/Vitest suite + TypeScript typecheck
 bin/test         # Ruby and React suites together
 ```
 
+## Run a prebuilt build (Docker, no compile)
+
+If you just want to *run* Syrus — not develop it — you can skip the bare-metal
+toolchain above and pull a prebuilt image. No Ruby/Node/Go, no `bundle install`,
+no waiting on a build. This is the easiest path for collaborators.
+
+> **Apple Silicon only for now.** The published image is `arm64`. On an Intel
+> Mac or Linux it won't run (a multi-arch build will come later).
+
+**1. Install a container runtime.** OrbStack is the lowest-friction option on a
+Mac — one install, and it bundles Docker Compose:
+
+```bash
+brew install orbstack
+```
+
+**2. Get access to the image.** It lives in a **private** GHCR package
+(`ghcr.io/tkadauke/syrus-local`), so you need to be a collaborator on it and log
+in once. Ask the maintainer to add your GitHub username to the package, then:
+
+```bash
+# Create a classic PAT with ONLY the read:packages scope at
+# https://github.com/settings/tokens, then:
+echo <YOUR_PAT> | docker login ghcr.io -u <your-github-username> --password-stdin
+```
+
+**3. Get the run files and start it.** Clone the repo (collaborators already
+have access) and run the installer — it pulls the image, generates an `.env`
+with fresh secrets, and starts web + worker:
+
+```bash
+git clone git@github.com:tkadauke/syrus.git
+cd syrus
+./install.sh
+```
+
+Open **http://localhost:3000** — the **first account becomes the admin**, and
+the first-run wizard takes over from there (GitHub credentials, the agent, a
+repository, and a guided first Epic). Your data — the SQLite databases and the
+clone cache — lives in a named Docker volume (`syrus-data`) and survives
+restarts.
+
+```bash
+docker compose logs -f web worker   # follow logs   (or: docker-compose ...)
+docker compose down                 # stop          (the volume is kept)
+./install.sh                        # re-run any time to pull updates + restart
+```
+
+To pin a specific version instead of tracking `:latest`, set `SYRUS_IMAGE` in
+`.env` (see `compose.env.example`). To add OS packages your repos' build/grader
+commands need, set `EXTRA_APT_PACKAGES` and build locally with `bin/compose-up`
+instead (that path compiles from source — see
+`website/src/content/docs/deployment/docker-compose.md`).
+
 ## Production Configuration
 
 Production configuration is driven by environment variables so each deployment

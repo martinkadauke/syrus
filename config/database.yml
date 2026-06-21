@@ -36,6 +36,29 @@ test:
 
 # Connection URLs / env-driven config can override these — see
 # https://guides.rubyonrails.org/configuring.html#configuring-a-database
+<% if ENV["SYRUS_SQLITE"].present? %>
+# Single-host "local mode" (Docker Compose on a laptop): production boot, but
+# the four databases are SQLite files under SYRUS_DATA_ROOT/db — no MySQL.
+<% data_root = ENV.fetch("SYRUS_DATA_ROOT", "/home/rails/.syrus") %>
+production:
+  primary: &primary_production_sqlite
+    adapter: sqlite3
+    pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 10 } %>
+    timeout: 5000
+    database: <%= data_root %>/db/production.sqlite3
+  cache:
+    <<: *primary_production_sqlite
+    database: <%= data_root %>/db/production_cache.sqlite3
+    migrations_paths: db/cache_migrate
+  queue:
+    <<: *primary_production_sqlite
+    database: <%= data_root %>/db/production_queue.sqlite3
+    migrations_paths: db/queue_migrate
+  cable:
+    <<: *primary_production_sqlite
+    database: <%= data_root %>/db/production_cable.sqlite3
+    migrations_paths: db/cable_migrate
+<% else %>
 production:
   primary: &primary_production
     adapter: mysql2
@@ -68,3 +91,4 @@ production:
     <<: *primary_production
     database: syrus_production_cable
     migrations_paths: db/cable_migrate
+<% end %>

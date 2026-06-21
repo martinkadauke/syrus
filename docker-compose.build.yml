@@ -1,0 +1,23 @@
+# Developer override: build the image from THIS checkout instead of pulling the
+# published one. `bin/compose-up` merges it on top of docker-compose.yml:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+#
+# Recipients who just want to run Syrus ignore this file entirely — `install.sh`
+# pulls the prebuilt image and never builds. Use this only when changing source
+# or adding EXTRA_APT_PACKAGES to the worker toolchain.
+services:
+  setup:
+    build: &build
+      context: .
+      dockerfile: Dockerfile.local
+      args:
+        BASE_IMAGE: ${BASE_IMAGE:-syrus-local-base:latest}
+        EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
+    image: syrus-local:latest
+  web:
+    build: *build
+    image: syrus-local:latest
+  worker:
+    build: *build
+    image: syrus-local:latest

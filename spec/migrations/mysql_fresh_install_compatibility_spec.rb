@@ -18,7 +18,11 @@ RSpec.describe "MySQL fresh install compatibility" do
   it "does not load the SQLite schema dump for production MySQL setup" do
     production_config = Rails.root.join("config/environments/production.rb").read
 
-    expect(production_config).to include("config.active_record.schema_format = :sql")
+    # MySQL (the default — SYRUS_SQLITE unset) keeps :sql so fresh installs
+    # migrate from zero instead of loading the SQLite schema.rb. Only the
+    # single-host SQLite "local mode" opts into :ruby (where schema.rb is
+    # exactly right).
+    expect(production_config).to include('ENV["SYRUS_SQLITE"].present? ? :ruby : :sql')
   end
 
   it "adds approved_at before creating the landing queue index" do

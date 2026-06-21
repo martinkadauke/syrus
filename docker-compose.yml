@@ -1,0 +1,53 @@
+# Single-host Syrus on a laptop: web + worker, SQLite, one named volume.
+#
+# By default this PULLS the prebuilt image from GHCR
+# (ghcr.io/tkadauke/syrus-local) — nothing to compile. Run it with `./install.sh`.
+#
+# Developers building from this checkout instead use `bin/compose-up`, which
+# layers `docker-compose.build.yml` on top to build the image locally.
+name: syrus
+
+# Web, worker, and the one-shot setup task all share one image + config.
+x-app: &app
+  image: ${SYRUS_IMAGE:-ghcr.io/tkadauke/syrus-local:latest}
+  env_file: .env
+  volumes:
+    # Clone cache + the SQLite databases live here, persisted across restarts.
+    - syrus-data:/home/rails/.syrus
+  restart: unless-stopped
+
+services:
+  # Runs once as root: make the data volume writable by the rails user (named
+  # volumes mount root-owned), prepare the databases, then exit. web + worker
+  # wait for this to finish.
+  setup:
+    <<: *app
+    user: "0:0"
+    # A single list element so Compose passes the whole script as one arg to
+    # `bash -euc` (a string command would be word-split, leaving bash only the
+    # first word). `$$` escapes Compose interpolation so bash expands the var.
+    entrypoint: ["/bin/bash", "-euc"]
+    command:
+      - |
+        mkdir -p "$$SYRUS_DATA_ROOT/db"
+        bin/rails db:prepare
+        chown -R 1000:1000 "$$SYRUS_DATA_ROOT"
+    restart: "no"
+
+  web:
+    <<: *app
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    ports:
+      - "${SYRUS_PORT:-3000}:80"
+
+  worker:
+    <<: *app
+    depends_on:
+      setup:
+        condition: service_completed_successfully
+    command: ["./bin/jobs"]
+
+volumes:
+  syrus-data:
