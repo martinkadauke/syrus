@@ -48,6 +48,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
     <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-white">
       <aside className="hidden w-[240px] shrink-0 lg:flex">
         <SidebarContent
+          bootstrapData={data}
           creatingChat={creatingChat}
           csrfToken={data?.csrf_token}
           navItems={navItems}
@@ -96,6 +97,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
       {drawerOpen ? (
         <div className="fixed inset-0 z-40 bg-white dark:bg-gray-950 lg:hidden">
           <SidebarContent
+            bootstrapData={data}
             creatingChat={creatingChat}
             csrfToken={data?.csrf_token}
             navItems={navItems}
@@ -116,6 +118,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
 }
 
 function SidebarContent({
+  bootstrapData,
   creatingChat,
   csrfToken,
   navItems,
@@ -125,6 +128,7 @@ function SidebarContent({
   showTeamProfile,
   user
 }: {
+  bootstrapData: BootstrapPayload | null | undefined
   creatingChat: boolean
   csrfToken?: string
   navItems: Array<{ label: string; to: string; active: boolean; icon: ReactNode }>
@@ -172,7 +176,7 @@ function SidebarContent({
       <div className="border-t border-gray-200 p-3 dark:border-gray-800">
         {user ? (
           <SettingsPopup
-            bootstrapData={data}
+            bootstrapData={bootstrapData}
             csrfToken={csrfToken}
             onCloseDrawer={onCloseDrawer}
             prefix={prefix}
