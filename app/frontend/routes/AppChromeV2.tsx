@@ -172,6 +172,7 @@ function SidebarContent({
       <div className="border-t border-gray-200 p-3 dark:border-gray-800">
         {user ? (
           <SettingsPopup
+            bootstrapData={data}
             csrfToken={csrfToken}
             onCloseDrawer={onCloseDrawer}
             prefix={prefix}
@@ -184,7 +185,8 @@ function SidebarContent({
   )
 }
 
-function SettingsPopup({ csrfToken, onCloseDrawer, prefix, showTeamProfile, user }: {
+function SettingsPopup({ bootstrapData, csrfToken, onCloseDrawer, prefix, showTeamProfile, user }: {
+  bootstrapData: BootstrapPayload | null | undefined
   csrfToken?: string
   onCloseDrawer: () => void
   prefix: string
@@ -205,7 +207,7 @@ function SettingsPopup({ csrfToken, onCloseDrawer, prefix, showTeamProfile, user
   function switchToClassicUi() {
     setSwitching(true)
     void patchJson<{ layout_version: "v1" | "v2" }>("/api/v1/app/layout_version", { layout_version: "v1" }).then((payload) => {
-      queryClient.setQueryData<BootstrapPayload>(["bootstrap"], (current) => updateBootstrapLayoutVersion(current, payload.layout_version))
+      queryClient.setQueryData<BootstrapPayload>(["bootstrap"], (current) => updateBootstrapLayoutVersion(current ?? bootstrapData, payload.layout_version))
       setOpen(false)
       onCloseDrawer()
     }).finally(() => {
