@@ -20,17 +20,15 @@
 # config grows past the pool.
 
 require "erb"
-require "active_support/core_ext/object/blank"
 require "yaml"
 
 ROOT = File.expand_path("..", __dir__)
 
-# config/database.yml is rendered outside Rails here, but it uses Rails'
-# `present?` helper in its ERB. Keep this script standalone instead of
-# depending on the app bundle just to evaluate that predicate.
+# config/database.yml is shared with Rails and may use Rails-y predicates in
+# ERB. Keep this standalone grader self-contained instead of requiring Rails.
 class Object
   def present?
-    true
+    respond_to?(:empty?) ? !empty? : true
   end
 end
 
