@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# Build and publish the single-host distribution image to GHCR.
+#
+# This is the image `install.sh --docker` pulls (ghcr.io/tkadauke/syrus-local).
+# It bakes whatever is in your working tree right now. The heavy runtime layers
+# (mise: ruby/node/python/go) are cached, so a re-publish only re-copies app code
+# and rebuilds assets — a few minutes.
+#
+# Builds the image, runs the integration suite (bin/test-docker) against it, and
+# pushes ONLY if those pass — nothing reaches GHCR from a broken image.
+#
+# Usage:
+#   bin/publish-image [VERSION] [--multi-arch] [--skip-tests]
+#     VERSION       extra tag to push alongside :latest (e.g. 0.2.0)
+#     --multi-arch  build + push linux/amd64 AND linux/arm64 (slower, under QEMU;
+#                   needed only for Intel/Linux recipients). Default: this host's
+#                   architecture only (arm64 on Apple Silicon).
+#     --skip-tests  push without running the integration gate (not recommended)
+#
+# Reads the GHCR token from $GHCR_TOKEN or ~/.config/syrus/ghcr-token (chmod 600),
+# the same place bin/deploy looks. Needs write:packages.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+IMAGE="ghcr.io/tkadauke/syrus-local"
+GHCR_USER="tkadauke"
+VERSION=""
+MULTI=0
+SKIP_TESTS=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --multi-arch) MULTI=1 ;;
+    --skip-tests) SKIP_TESTS=1 ;;
+    --help|-h) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;;
+    -*) echo "Unknown flag: $arg (try --help)" >&2; exit 2 ;;
+    *)  VERSION="$arg" ;;
+  esac
+done
+
+# Resolve the token.
+TOKEN="${GHCR_TOKEN:-}"
+if [ -z "$TOKEN" ] && [ -r "$HOME/.config/syrus/ghcr-token" ]; then
+  TOKEN="$(cat "$HOME/.config/syrus/ghcr-token")"
+fi
+[ -n "$TOKEN" ] || {
+  echo "No GHCR token found. Set \$GHCR_TOKEN or write ~/.config/syrus/ghcr-token (chmod 600)." >&2
+  exit 1
+}
+
+docker info >/dev/null 2>&1 || { echo "Docker daemon not reachable — start your runtime." >&2; exit 1; }
+
+# Plain single-arch image (no attestation manifest list, which the containerd
+# image store rejects on export with 'image ... already exists').
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+
+tags=(-t "$IMAGE:latest")
+if [ -n "$VERSION" ]; then tags+=(-t "$IMAGE:$VERSION"); fi
+
+echo "== Tags =="
+echo "   $IMAGE:latest"
+if [ -n "$VERSION" ]; then echo "   $IMAGE:$VERSION"; fi
+echo "   (GIT_SHA=$GIT_SHA)"
+
+echo "== Logging in to ghcr.io as $GHCR_USER =="
+printf '%s' "$TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+
+# Always build a local single-arch image first — this is what the integration
+# suite runs against, and what the default path pushes. Nothing leaves this host
+# until the tests below pass.
+echo "== Building (single-arch, this host) =="
+docker build -f Dockerfile --target worker-dev --build-arg GIT_SHA="$GIT_SHA" \
+  --provenance=false "${tags[@]}" .
+
+# Gate: integration tests against the freshly built image. set -e aborts the
+# whole script (before any push) if bin/test-docker exits non-zero.
+if [ "$SKIP_TESTS" = 1 ]; then
+  echo "== Skipping integration tests (--skip-tests) =="
+else
+  echo "== Running integration tests against the built image =="
+  SYRUS_IMAGE="$IMAGE:latest" ./bin/test-docker
+fi
+
+# Tests passed — push.
+if [ "$MULTI" = 1 ]; then
+  echo "== Building + pushing multi-arch (amd64 + arm64) — the amd64 half is slow under QEMU =="
+  # arm64 reuses the build cache from above; amd64 is built fresh. The tested
+  # image is the arm64 variant (amd64 is the same source, not run here).
+  docker buildx build -f Dockerfile --target worker-dev --build-arg GIT_SHA="$GIT_SHA" \
+    --platform linux/amd64,linux/arm64 "${tags[@]}" --push .
+else
+  echo "== Pushing the tested image =="
+  docker push "$IMAGE:latest"
+  if [ -n "$VERSION" ]; then docker push "$IMAGE:$VERSION"; fi
+fi
+
+echo
+echo "Published:"
+echo "   $IMAGE:latest"
+if [ -n "$VERSION" ]; then echo "   $IMAGE:$VERSION"; fi
+echo "Verify:  docker manifest inspect $IMAGE:latest >/dev/null && echo OK"
