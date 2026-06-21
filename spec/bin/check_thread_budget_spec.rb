@@ -1,8 +1,11 @@
-require "rails_helper"
+# frozen_string_literal: true
+
 require "open3"
+require "spec_helper"
 
 RSpec.describe "bin/check-thread-budget" do
-  let(:script) { Rails.root.join("bin/check-thread-budget").to_s }
+  let(:root) { File.expand_path("../..", __dir__) }
+  let(:script) { File.join(root, "bin/check-thread-budget") }
 
   def spawn_clean(env_overrides = {})
     bundler_install_env = ENV.to_h.select do |key, _|
@@ -18,7 +21,7 @@ RSpec.describe "bin/check-thread-budget" do
 
     Bundler.with_unbundled_env do
       env = ENV.to_h.merge(bundler_install_env).merge(env_overrides)
-      Open3.capture3(env, "ruby", script, unsetenv_others: true)
+      Open3.capture3(env, "ruby", script, unsetenv_others: true, chdir: root)
     end
   end
 
