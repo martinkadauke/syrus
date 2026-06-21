@@ -22,7 +22,7 @@ RSpec.describe "bin/check-thread-budget" do
     end
   end
 
-  it "renders Rails-style config ERB helpers in a fresh process before checking queue thread budget" do
+  it "renders Rails-style database.yml ERB outside Rails in a fresh process" do
     stdout, stderr, status = spawn_clean(
       "HOME" => ENV.fetch("HOME"),
       "PATH" => ENV.fetch("PATH"),

@@ -25,6 +25,7 @@ require_relative "../config/syrus_bundle_env"
 require "bundler/setup"
 require "erb"
 require "yaml"
+require "active_support/core_ext/object/blank"
 
 # config/database.yml is shared with Rails and may use Rails-y predicates in
 # ERB. Keep this standalone grader self-contained instead of requiring Rails.
