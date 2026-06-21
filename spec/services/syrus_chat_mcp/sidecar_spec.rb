@@ -28,6 +28,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::ReadWorkflowTool,
         SyrusChatMcp::ReadRunTranscriptTool,
         SyrusChatMcp::ListJobsTool,
+        SyrusChatMcp::SearchJobsTool,
         SyrusChatMcp::ApproveJobTool,
         SyrusChatMcp::UnapproveJobTool,
         SyrusChatMcp::SetJobPriorityTool,
@@ -58,7 +59,8 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::ListScheduledTasksTool,
         SyrusChatMcp::PauseScheduledTaskTool,
         SyrusChatMcp::ResumeScheduledTaskTool,
-        SyrusChatMcp::DeleteScheduledTaskTool
+        SyrusChatMcp::DeleteScheduledTaskTool,
+        SyrusChatMcp::ReadQueueTool
       ],
       server_context: { chat_session: chat_session }
     )
@@ -112,6 +114,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
         read_workflow
         read_run_transcript
         list_jobs
+        search_jobs
         approve_job
         unapprove_job
         set_job_priority
@@ -143,6 +146,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
         pause_scheduled_task
         resume_scheduled_task
         delete_scheduled_task
+        read_queue
       ])
     end
   end

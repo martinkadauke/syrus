@@ -39,6 +39,7 @@ module SyrusChatMcp
       ReadWorkflowTool,
       ReadRunTranscriptTool,
       ListJobsTool,
+      SearchJobsTool,
       ApproveJobTool,
       UnapproveJobTool,
       SetJobPriorityTool,
@@ -69,7 +70,8 @@ module SyrusChatMcp
       ListScheduledTasksTool,
       PauseScheduledTaskTool,
       ResumeScheduledTaskTool,
-      DeleteScheduledTaskTool
+      DeleteScheduledTaskTool,
+      ReadQueueTool
     ].freeze
 
     def self.tool_names
