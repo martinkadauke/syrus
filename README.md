@@ -72,6 +72,28 @@ self-provides Active Record encryption keys in development. MySQL only appears
 because the production `mysql2` gem is compiled during `bundle install`; the
 client libraries let it build, but nothing connects to MySQL locally.
 
+### Fast path: one command
+
+If you'd rather not run the steps below by hand, the repo ships an installer
+that does all of them — Xcode CLT, Homebrew, the deps, the Claude CLI, rbenv +
+Ruby 3.2.3, `bin/setup`, and the `syrus` CLI on your PATH. Clone the repo (you
+need `git`, which the Xcode Command Line Tools provide), then run it:
+
+```bash
+git clone git@github.com:tkadauke/syrus.git   # no SSH key? see step 4 for the gh alternative
+cd syrus
+./install.sh --bare-metal   # add --start to launch the app + open the browser
+```
+
+It's idempotent, so re-running is safe. Expect one password prompt (Homebrew)
+and, on a fresh Mac, the Command Line Tools GUI installer to accept once.
+Compiling Ruby takes a few minutes. When it finishes, run `bin/dev` and open
+**http://localhost:3000** — the first account becomes the admin and the
+first-run wizard takes over.
+
+Prefer to understand each step, or hit a snag? The manual walkthrough follows —
+the installer does exactly these steps.
+
 ### 1. Xcode Command Line Tools + Homebrew
 
 The Command Line Tools give you a compiler, `make`, and `git`. Homebrew is the
@@ -185,32 +207,22 @@ no waiting on a build. This is the easiest path for collaborators.
 > **Apple Silicon only for now.** The published image is `arm64`. On an Intel
 > Mac or Linux it won't run (a multi-arch build will come later).
 
-**1. Install a container runtime.** OrbStack is the lowest-friction option on a
-Mac — one install, and it bundles Docker Compose:
-
-```bash
-brew install orbstack
-```
-
-**2. Get access to the image.** It lives in a **private** GHCR package
-(`ghcr.io/tkadauke/syrus-local`), so you need to be a collaborator on it and log
-in once. Ask the maintainer to add your GitHub username to the package, then:
-
-```bash
-# Create a classic PAT with ONLY the read:packages scope at
-# https://github.com/settings/tokens, then:
-echo <YOUR_PAT> | docker login ghcr.io -u <your-github-username> --password-stdin
-```
-
-**3. Get the run files and start it.** Clone the repo (collaborators already
-have access) and run the installer — it pulls the image, generates an `.env`
-with fresh secrets, and starts web + worker:
+**Just clone and run it.** The installer handles everything else: it installs
+and launches **OrbStack** if you don't already have a container runtime (it
+prefers an existing Docker Desktop/Colima), generates an `.env` with fresh
+secrets, pulls the image, and starts web + worker.
 
 ```bash
 git clone git@github.com:tkadauke/syrus.git
 cd syrus
-./install.sh
+./install.sh --docker
 ```
+
+The image (`ghcr.io/tkadauke/syrus-local`) is a public GHCR package, so no login
+is required. (If it's ever private for you, run `docker login ghcr.io` once with
+a classic PAT scoped `read:packages` before re-running.) On first launch OrbStack
+itself may show a one-time permission prompt — accept it and the installer
+continues automatically.
 
 Open **http://localhost:3000** — the **first account becomes the admin**, and
 the first-run wizard takes over from there (GitHub credentials, the agent, a
@@ -221,7 +233,7 @@ restarts.
 ```bash
 docker compose logs -f web worker   # follow logs   (or: docker-compose ...)
 docker compose down                 # stop          (the volume is kept)
-./install.sh                        # re-run any time to pull updates + restart
+./install.sh --docker               # re-run any time to pull updates + restart
 ```
 
 To pin a specific version instead of tracking `:latest`, set `SYRUS_IMAGE` in
