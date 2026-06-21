@@ -19,10 +19,12 @@
 # at boot. Run as a grader so the agent gets feedback when a queue
 # config grows past the pool.
 
+ROOT = File.expand_path("..", __dir__)
+ENV["BUNDLE_GEMFILE"] ||= File.join(ROOT, "Gemfile")
+require_relative "../config/syrus_bundle_env"
+require "bundler/setup"
 require "erb"
 require "yaml"
-
-ROOT = File.expand_path("..", __dir__)
 
 # config/database.yml is shared with Rails and may use Rails-y predicates in
 # ERB. Keep this standalone grader self-contained instead of requiring Rails.
