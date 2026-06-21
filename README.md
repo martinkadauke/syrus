@@ -65,9 +65,12 @@ steps by hand, or point a coding agent at this section and let it work through
 them. `bin/setup` is idempotent, so it's safe to re‑run.
 
 What you'll end up with: Ruby 3.2.3 (pinned in `.ruby-version`), Node + npm,
-Go 1.22+, libvips (for image processing), and the GitHub CLI. **No MySQL and no
-secrets/master key are needed for local dev** — development and test use SQLite,
-and the app self-provides Active Record encryption keys in development.
+Go 1.22+, libvips (for image processing), the MySQL client libraries, and the
+Claude Code CLI. You do **not** run a MySQL server and you do **not** need any
+secrets/master key for local dev — development and test use SQLite, and the app
+self-provides Active Record encryption keys in development. MySQL only appears
+because the production `mysql2` gem is compiled during `bundle install`; the
+client libraries let it build, but nothing connects to MySQL locally.
 
 ### 1. Xcode Command Line Tools + Homebrew
 
@@ -96,10 +99,19 @@ eval "$(/opt/homebrew/bin/brew shellenv)"
 
 ```bash
 brew update
-brew install rbenv ruby-build node go vips gh
+# rbenv/ruby-build: Ruby. node: JS + the Claude CLI. go: builds the Syrus CLI.
+# vips: image processing. mysql: client libs so the mysql2 gem compiles.
+brew install rbenv ruby-build node go vips mysql
 # Libraries the Ruby build links against:
 brew install openssl@3 readline libyaml
+
+# Claude Code CLI — Syrus's worker shells out to `claude` to run Jobs and chats,
+# so install it now, before you start the app.
+npm install -g @anthropic-ai/claude-code
 ```
+
+> If `bundle install` later fails to build `mysql2`, point it at Homebrew's
+> mysql: `bundle config set --local build.mysql2 "--with-mysql-config=$(brew --prefix mysql)/bin/mysql_config"` and re-run `bin/setup`.
 
 ### 3. Install Ruby 3.2.3 with rbenv
 
@@ -115,17 +127,22 @@ ruby -v   # should print: ruby 3.2.3
 
 ### 4. Clone the repository
 
-The repo is private, so authenticate with GitHub once (the CLI handles SSH/HTTPS
-for you):
+If you already have an SSH key on your GitHub account (most developers do), just
+clone:
 
 ```bash
+git clone git@github.com:tkadauke/syrus.git
+cd syrus
+```
+
+No SSH key yet? The GitHub CLI handles auth for you:
+
+```bash
+brew install gh
 gh auth login        # choose GitHub.com → follow the browser prompt
 gh repo clone tkadauke/syrus
 cd syrus
 ```
-
-(If you prefer SSH and already have keys on GitHub:
-`git clone git@github.com:tkadauke/syrus.git`.)
 
 ### 5. Set up, then start the app
 
@@ -143,19 +160,12 @@ admin**, and the first-run wizard walks you through GitHub credentials (a
 classic PAT + the GitHub App), the agent, a repository, and a guided chat to
 create and land your first Epic.
 
-### 6. Install the Claude Code CLI (needed to actually run agents)
-
-Syrus's worker shells out to the `claude` CLI to run Jobs and chats. Install it
-and sign in once:
-
-```bash
-npm install -g @anthropic-ai/claude-code
-claude            # sign in interactively (needs a Claude Pro/Max/Team/Enterprise plan)
-```
-
-In the wizard's **Configure agent** step, Syrus detects an existing `claude`
-login on this machine; otherwise it walks you through authorizing one. (Codex is
-not yet wired up — use Claude for now.)
+The wizard's **Configure agent** step handles Claude authentication: it detects
+an existing `claude` login on this machine, or walks you through authorizing one
+(you'll need a Claude Pro/Max/Team/Enterprise plan). The `claude` CLI you
+installed in step 2 is what the worker invokes to run Jobs — without it the
+wizard still loads, but agent runs can't execute. (Codex isn't wired up yet —
+use Claude for now.)
 
 ### Handy commands
 
