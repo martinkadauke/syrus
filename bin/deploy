@@ -56,6 +56,8 @@ done
 
 cd "$(git rev-parse --show-toplevel)"
 
+. ./bin/docker-image-lib
+
 # --- preflight: clean tree, sane HEAD --------------------------------
 if ! git diff-index --quiet HEAD --; then
   echo "✗ uncommitted changes — commit or stash first" >&2
@@ -77,25 +79,7 @@ if [ "$SKIP_BUILD" = false ] && [ -x bin/check-eager-load ]; then
 fi
 
 # --- auth ------------------------------------------------------------
-if [ -z "${GHCR_TOKEN:-}" ] && [ -r "$TOKEN_FILE" ]; then
-  GHCR_TOKEN="$(cat "$TOKEN_FILE")"
-fi
-if [ -z "${GHCR_TOKEN:-}" ]; then
-  cat >&2 <<MSG
-✗ no GHCR token found.
-
-  set the env var:
-    export GHCR_TOKEN=ghp_xxx
-
-  or save it to a file (and chmod 600):
-    mkdir -p $(dirname "$TOKEN_FILE")
-    echo ghp_xxx > $TOKEN_FILE
-    chmod 600 $TOKEN_FILE
-
-  the token needs write:packages scope.
-MSG
-  exit 1
-fi
+GHCR_TOKEN="$(syrus_read_ghcr_token "$TOKEN_FILE")"
 
 # --- build + push ----------------------------------------------------
 # Two images, one Dockerfile: `app` (web pod) and `worker-dev` (worker
@@ -116,33 +100,18 @@ fi
 # either reuses the old :latest digest (silent regression — what
 # bit us today) or kubelet ImagePullBackOffs on the SHA tag.
 verify_pushed() {
-  local repo="$1" tag="$2"
-  local b64; b64=$(printf '%s' "$GHCR_TOKEN" | base64)
-  local code
-  code=$(curl -sS -o /dev/null -w '%{http_code}' \
-           -H "Authorization: Bearer ${b64}" \
-           -H "Accept: application/vnd.oci.image.index.v1+json" \
-           -H "Accept: application/vnd.oci.image.manifest.v1+json" \
-           -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
-           -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
-           "https://ghcr.io/v2/${repo#ghcr.io/}/manifests/${tag}")
-  if [ "$code" != "200" ]; then
-    echo "✗ ${repo}:${tag} not in registry (HTTP ${code}) — buildx --push didn't actually push" >&2
-    return 1
-  fi
+  syrus_verify_pushed "$1" "$2" "$GHCR_TOKEN"
 }
 
 if [ "$SKIP_BUILD" = false ]; then
   echo "→ ${REGISTRY} login"
-  printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+  syrus_ghcr_login "$GHCR_USER" "$GHCR_TOKEN"
 
   docker buildx use colima >/dev/null 2>&1 || true
 
   echo "→ ${REGISTRY}:${SHA} build+push (linux/amd64, target=app)"
-  docker buildx build \
+  syrus_docker_buildx_image app "$SHA" \
     --platform linux/amd64 \
-    --target app \
-    --build-arg "GIT_SHA=${SHA}" \
     --cache-from "type=registry,ref=${CACHE_REF}" \
     --cache-to "type=registry,ref=${CACHE_REF},mode=max" \
     -t "${REGISTRY}:${SHA}" \
@@ -153,10 +122,8 @@ if [ "$SKIP_BUILD" = false ]; then
   verify_pushed "${REGISTRY}" "latest"
 
   echo "→ ${WORKER_DEV_REGISTRY}:${SHA} build+push (linux/amd64, target=worker-dev)"
-  docker buildx build \
+  syrus_docker_buildx_image worker-dev "$SHA" \
     --platform linux/amd64 \
-    --target worker-dev \
-    --build-arg "GIT_SHA=${SHA}" \
     --cache-from "type=registry,ref=${CACHE_REF}" \
     --cache-to "type=registry,ref=${CACHE_REF},mode=max" \
     -t "${WORKER_DEV_REGISTRY}:${SHA}" \

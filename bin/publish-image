@@ -22,6 +22,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+. ./bin/docker-image-lib
+
 IMAGE="ghcr.io/tkadauke/syrus-local"
 GHCR_USER="tkadauke"
 VERSION=""
@@ -38,21 +40,9 @@ for arg in "$@"; do
   esac
 done
 
-# Resolve the token.
-TOKEN="${GHCR_TOKEN:-}"
-if [ -z "$TOKEN" ] && [ -r "$HOME/.config/syrus/ghcr-token" ]; then
-  TOKEN="$(cat "$HOME/.config/syrus/ghcr-token")"
-fi
-[ -n "$TOKEN" ] || {
-  echo "No GHCR token found. Set \$GHCR_TOKEN or write ~/.config/syrus/ghcr-token (chmod 600)." >&2
-  exit 1
-}
-
-docker info >/dev/null 2>&1 || { echo "Docker daemon not reachable — start your runtime." >&2; exit 1; }
-
-# Plain single-arch image (no attestation manifest list, which the containerd
-# image store rejects on export with 'image ... already exists').
-export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+syrus_require_docker_daemon
+syrus_disable_buildx_attestations
+TOKEN="$(syrus_read_ghcr_token "$HOME/.config/syrus/ghcr-token")"
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
 
 tags=(-t "$IMAGE:latest")
@@ -64,14 +54,13 @@ if [ -n "$VERSION" ]; then echo "   $IMAGE:$VERSION"; fi
 echo "   (GIT_SHA=$GIT_SHA)"
 
 echo "== Logging in to ghcr.io as $GHCR_USER =="
-printf '%s' "$TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+syrus_ghcr_login "$GHCR_USER" "$TOKEN"
 
 # Always build a local single-arch image first — this is what the integration
 # suite runs against, and what the default path pushes. Nothing leaves this host
 # until the tests below pass.
 echo "== Building (single-arch, this host) =="
-docker build -f Dockerfile --target worker-dev --build-arg GIT_SHA="$GIT_SHA" \
-  --provenance=false "${tags[@]}" .
+syrus_docker_build_image worker-dev "$GIT_SHA" --provenance=false "${tags[@]}" .
 
 # Gate: integration tests against the freshly built image. set -e aborts the
 # whole script (before any push) if bin/test-docker exits non-zero.
@@ -87,13 +76,16 @@ if [ "$MULTI" = 1 ]; then
   echo "== Building + pushing multi-arch (amd64 + arm64) — the amd64 half is slow under QEMU =="
   # arm64 reuses the build cache from above; amd64 is built fresh. The tested
   # image is the arm64 variant (amd64 is the same source, not run here).
-  docker buildx build -f Dockerfile --target worker-dev --build-arg GIT_SHA="$GIT_SHA" \
+  syrus_docker_buildx_image worker-dev "$GIT_SHA" \
     --platform linux/amd64,linux/arm64 "${tags[@]}" --push .
 else
   echo "== Pushing the tested image =="
   docker push "$IMAGE:latest"
   if [ -n "$VERSION" ]; then docker push "$IMAGE:$VERSION"; fi
 fi
+
+syrus_verify_pushed "$IMAGE" "latest" "$TOKEN"
+if [ -n "$VERSION" ]; then syrus_verify_pushed "$IMAGE" "$VERSION" "$TOKEN"; fi
 
 echo
 echo "Published:"

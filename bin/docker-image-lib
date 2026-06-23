@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Shared Docker image helpers for Syrus build/publish/deploy scripts.
+# Source this file from repo-root scripts; do not execute it directly.
+
+syrus_disable_buildx_attestations() {
+  # Plain single-arch local images are easier for Docker Desktop/OrbStack to
+  # export and reuse as FROM bases. Callers that need attestations can opt out
+  # by overriding this after sourcing.
+  export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+}
+
+syrus_require_docker_daemon() {
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "docker not found. Install a container runtime first." >&2
+    return 1
+  fi
+
+  if ! docker info >/dev/null 2>&1; then
+    echo "Docker daemon not reachable — start your runtime." >&2
+    return 1
+  fi
+}
+
+syrus_read_ghcr_token() {
+  local token_file="${1:-$HOME/.config/syrus/ghcr-token}"
+  local token="${GHCR_TOKEN:-}"
+
+  if [ -z "$token" ] && [ -r "$token_file" ]; then
+    token="$(cat "$token_file")"
+  fi
+
+  if [ -z "$token" ]; then
+    cat >&2 <<MSG
+No GHCR token found.
+
+  set the env var:
+    export GHCR_TOKEN=ghp_xxx
+
+  or save it to a file (and chmod 600):
+    mkdir -p $(dirname "$token_file")
+    echo ghp_xxx > $token_file
+    chmod 600 $token_file
+
+  the token needs write:packages scope.
+MSG
+    return 1
+  fi
+
+  printf '%s' "$token"
+}
+
+syrus_ghcr_login() {
+  local user="${1:?usage: syrus_ghcr_login USER TOKEN}"
+  local token="${2:?usage: syrus_ghcr_login USER TOKEN}"
+
+  printf '%s' "$token" | docker login ghcr.io -u "$user" --password-stdin >/dev/null
+}
+
+syrus_verify_pushed() {
+  local repo="${1:?usage: syrus_verify_pushed REPO TAG TOKEN}"
+  local tag="${2:?usage: syrus_verify_pushed REPO TAG TOKEN}"
+  local token="${3:?usage: syrus_verify_pushed REPO TAG TOKEN}"
+  local b64 code
+
+  b64=$(printf '%s' "$token" | base64)
+  code=$(curl -sS -o /dev/null -w '%{http_code}' \
+           -H "Authorization: Bearer ${b64}" \
+           -H "Accept: application/vnd.oci.image.index.v1+json" \
+           -H "Accept: application/vnd.oci.image.manifest.v1+json" \
+           -H "Accept: application/vnd.docker.distribution.manifest.v2+json" \
+           -H "Accept: application/vnd.docker.distribution.manifest.list.v2+json" \
+           "https://ghcr.io/v2/${repo#ghcr.io/}/manifests/${tag}")
+
+  if [ "$code" != "200" ]; then
+    echo "✗ ${repo}:${tag} not in registry (HTTP ${code}) — buildx --push didn't actually push" >&2
+    return 1
+  fi
+}
+
+syrus_docker_build_image() {
+  local target="${1:?usage: syrus_docker_build_image TARGET GIT_SHA [docker build args...]}"
+  local git_sha="${2:?usage: syrus_docker_build_image TARGET GIT_SHA [docker build args...]}"
+  shift 2
+
+  docker build -f Dockerfile --target "$target" --build-arg "GIT_SHA=$git_sha" "$@"
+}
+
+syrus_docker_buildx_image() {
+  local target="${1:?usage: syrus_docker_buildx_image TARGET GIT_SHA [docker buildx build args...]}"
+  local git_sha="${2:?usage: syrus_docker_buildx_image TARGET GIT_SHA [docker buildx build args...]}"
+  shift 2
+
+  docker buildx build -f Dockerfile --target "$target" --build-arg "GIT_SHA=$git_sha" "$@"
+}

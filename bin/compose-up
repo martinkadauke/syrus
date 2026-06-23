@@ -5,7 +5,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-if ! command -v docker >/dev/null; then
+. ./bin/docker-image-lib
+
+if ! command -v docker >/dev/null 2>&1; then
   echo "docker not found. Install a container runtime first (OrbStack or Colima):" >&2
   echo "  brew install orbstack   # or: brew install colima docker docker-compose && colima start" >&2
   exit 1
@@ -13,7 +15,7 @@ fi
 
 # Daemon reachable? A stopped OrbStack/Docker Desktop or a docker context aimed
 # at a missing socket fails here — catch it before the slow build.
-if ! docker info >/dev/null 2>&1; then
+if ! syrus_require_docker_daemon >/dev/null 2>&1; then
   echo "Docker is installed but its daemon isn't reachable. Start your runtime:" >&2
   echo "  - OrbStack/Docker Desktop: open the app   - Colima: colima start" >&2
   echo "If it is running, check 'docker context ls' points at the active runtime." >&2
@@ -35,11 +37,7 @@ else
   exit 1
 fi
 
-# Build plain single-platform images. BuildKit otherwise attaches provenance/
-# SBOM attestations (a manifest list), which the containerd image store used by
-# Docker Desktop/OrbStack rejects on export here with
-# `image "...": already exists` (the no-op local layer matches the base).
-export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+syrus_disable_buildx_attestations
 
 # 1. Generate .env with fresh secrets on first run — but refuse to mint fresh
 #    encryption keys when a data volume already exists, or the existing DB (which
@@ -68,8 +66,7 @@ fi
 echo "== Building the worker image (first build can take 20-40 min) =="
 # --provenance=false keeps it a plain single-arch image (no attestation
 # manifest list), which is simpler to use as a local FROM base.
-docker build -f Dockerfile --target worker-dev --build-arg GIT_SHA=dev \
-  --provenance=false -t syrus-local-base:latest .
+syrus_docker_build_image worker-dev dev --provenance=false -t syrus-local-base:latest .
 
 # 3. Build the local extension (EXTRA_APT_PACKAGES) and start the stack. The
 #    build override turns the pull-based docker-compose.yml into a build-from-

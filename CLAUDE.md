@@ -323,7 +323,10 @@ across web/worker processes.
   regenerate `.env` over an existing `syrus_syrus-data` volume — those
   Active Record encryption keys must match the persisted DB. Test image-level
   changes with `bin/test-docker`; publish only through `bin/publish-image`,
-  which builds, runs that integration gate, then pushes.
+  which builds, runs that integration gate, then pushes. Docker image scripts
+  share common build/login/verification helpers in `bin/docker-image-lib`;
+  extend that helper instead of copying Docker/GHCR plumbing between
+  `bin/deploy`, `bin/publish-image`, and `bin/compose-up`.
 - **AASM events on Run** — call `start!`, `succeed!`, `fail!`, `cancel!`,
   always followed by `save!` (callbacks set timestamps but don't persist).
   See `Run` model.
