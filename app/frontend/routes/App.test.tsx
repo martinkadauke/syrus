@@ -731,8 +731,14 @@ describe("App", () => {
 
       expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
       expect(screen.getByRole("heading", { name: "Set up Syrus" })).toBeInTheDocument()
+      expect(screen.queryByText("Work through the shortest path to a successful first run.")).not.toBeInTheDocument()
+      expect(screen.queryByText(/of 6 complete/)).not.toBeInTheDocument()
+      expect(screen.getAllByRole("listitem")).toHaveLength(6)
       // "Configure GitHub" opens an in-page token modal rather than navigating away.
       expect(screen.getByRole("button", { name: "Configure GitHub" })).toBeInTheDocument()
+      expect(screen.getByText("Connect a personal access token and the GitHub App — both are required.")).toBeInTheDocument()
+      expect(screen.queryByText("Operator can manage this Syrus instance.")).not.toBeInTheDocument()
+      expect(screen.queryByText("Choose a provider and add its credentials.")).not.toBeInTheDocument()
       expect(fetchSpy).not.toHaveBeenCalled()
     } finally {
       script.remove()
@@ -772,9 +778,12 @@ describe("App", () => {
       )
 
       expect(await screen.findByRole("main", { name: "Onboarding" })).toBeInTheDocument()
-      // Six steps now: account, github, agent, repository, meet Syrus, land Epic.
-      expect(screen.getByText("6")).toBeInTheDocument()
+      // Six steps remain for orientation, without the old header progress counter.
+      expect(screen.getAllByRole("listitem")).toHaveLength(6)
+      expect(screen.queryByText(/of 6 complete/)).not.toBeInTheDocument()
       expect(screen.getByText("Land your first Epic")).toBeInTheDocument()
+      expect(screen.getByText("Your first Epic is in progress. Approve its Jobs so they can land.")).toBeInTheDocument()
+      expect(screen.queryByText("You've started the Syrus chat. The other tabs are now unlocked.")).not.toBeInTheDocument()
       // The chat steps are buttons (they launch/open the seeded chat), not links.
       expect(screen.getAllByRole("button", { name: "Open Syrus chat" }).length).toBeGreaterThan(0)
     } finally {
@@ -7278,6 +7287,26 @@ describe("App", () => {
     }
   })
 
+  it("renders low chat token totals without rounding them down to 0k", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({
+        cumulativeInputTokens: 12,
+        cumulativeOutputTokens: 5,
+        cumulativeCostUsd: 0.004321
+      })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Tokens: 12 in / 5 out · $0.0043")).toBeInTheDocument()
+  })
+
   it("resizes the chat shell from the visual viewport when the mobile keyboard opens", async () => {
     const viewport = stubVisualViewport(720)
     vi.spyOn(window, "fetch").mockResolvedValue(
@@ -9961,6 +9990,9 @@ function chatPayload(overrides: {
   message?: string
   messages?: Array<Record<string, unknown>>
   queuedMessages?: Array<Record<string, unknown>>
+  cumulativeInputTokens?: number
+  cumulativeOutputTokens?: number
+  cumulativeCostUsd?: number
   turnInFlight?: boolean
   agentBusy?: boolean
   hasMoreOlder?: boolean
@@ -9974,9 +10006,9 @@ function chatPayload(overrides: {
       chat_path: "/chats/8",
       repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
       stop_requested_at: null,
-      cumulative_input_tokens: 12400,
-      cumulative_output_tokens: 3200,
-      cumulative_cost_usd: 0.0123
+      cumulative_input_tokens: overrides.cumulativeInputTokens ?? 12400,
+      cumulative_output_tokens: overrides.cumulativeOutputTokens ?? 3200,
+      cumulative_cost_usd: overrides.cumulativeCostUsd ?? 0.0123
     },
     chat_available: true,
     turn_in_flight: overrides.turnInFlight ?? false,
