@@ -90,7 +90,11 @@ blocked on existing Epics and Epics blocked on existing Jobs.
 Actions that need explicit approval, such as
 canceling or retrying work, also render as inline confirmation cards in the
 message stream so operators can review the target before confirming or
-rejecting them. Confirmed and discarded cards are written back into the chat
+rejecting them.
+Proposal cards show dependency status before the title: either dependency
+proposal links with confirmed or pending badges, or an explicit no-dependencies
+note.
+Confirmed and discarded proposal and action cards are also written back into the chat
 transcript so the next assistant turn can see the created Job, Epic, or
 GitHub issue identifiers without asking the operator to repeat them.
 
