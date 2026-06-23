@@ -11,6 +11,7 @@ export type SlashCommand = {
   args: SlashCommandArg[]
   description: string
   toPrompt?: (args: string) => string
+  requiresConfirmation?: boolean
 }
 
 export type SlashCommandMatch = {
@@ -86,11 +87,11 @@ export const slashCommands = [
     description: "Ask the agent to bookmark context.",
     toPrompt: (args) => `Call the \`set_bookmark\` MCP tool with label ${quotedArg(args)} and kind "topic". Return a brief confirmation.`
   },
-  { name: "/discard", kind: "skill", args: [{ name: "target", required: false }], description: "Ask the agent to discard proposed work." },
-  { name: "/cancel", kind: "skill", args: [{ name: "target", required: false }], description: "Ask the agent to cancel work." },
-  { name: "/retry", kind: "skill", args: [{ name: "target", required: false }], description: "Ask the agent to retry failed work." },
-  { name: "/feedback", kind: "skill", args: [{ name: "message", required: true }], description: "Send feedback for the agent to address." },
-  { name: "/clear-canvas", kind: "skill", args: [], description: "Ask the agent to clear the whiteboard." },
+  { name: "/discard", kind: "skill", args: [{ name: "slug", required: true }], description: "Ask the agent to discard proposed work.", requiresConfirmation: true },
+  { name: "/cancel", kind: "skill", args: [{ name: "id", required: true }], description: "Ask the agent to cancel work.", requiresConfirmation: true },
+  { name: "/retry", kind: "skill", args: [{ name: "id", required: true }], description: "Ask the agent to retry failed work.", requiresConfirmation: true },
+  { name: "/feedback", kind: "skill", args: [{ name: "id", required: true }], description: "Send feedback for the agent to address.", requiresConfirmation: true },
+  { name: "/clear-canvas", kind: "skill", args: [], description: "Ask the agent to clear the whiteboard.", requiresConfirmation: true },
   { name: "/propose", kind: "skill", args: [{ name: "request", required: true }], description: "Ask the agent to draft a proposal." }
 ] as const satisfies readonly SlashCommand[]
 
