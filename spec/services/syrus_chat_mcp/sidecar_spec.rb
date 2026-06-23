@@ -16,6 +16,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::RenameChatTool,
         SyrusChatMcp::UpdatePinnedContextTool,
         SyrusChatMcp::RemovePinnedContextTool,
+        SyrusChatMcp::AskUserQuestionTool,
         SyrusChatMcp::SetBookmarkTool,
         SyrusChatMcp::ProposeEpicWithJobsTool,
         SyrusChatMcp::ListChatsTool,
@@ -109,6 +110,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
         rename_chat
         update_pinned_context
         remove_pinned_context
+        ask_user_question
         set_bookmark
         propose_epic_with_jobs
         list_chats

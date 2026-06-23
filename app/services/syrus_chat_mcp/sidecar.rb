@@ -27,6 +27,7 @@ module SyrusChatMcp
       RenameChatTool,
       UpdatePinnedContextTool,
       RemovePinnedContextTool,
+      AskUserQuestionTool,
       SetBookmarkTool,
       ProposeEpicWithJobsTool,
       ListChatsTool,
