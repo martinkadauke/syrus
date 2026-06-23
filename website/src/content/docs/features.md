@@ -149,10 +149,13 @@ visible to other operators attached to that repository. The **Memories**
 settings panel lists, filters, edits, publishes, unpublishes, and deletes
 memories, with admins able to manage memories across users.
 
-Admin users also get read-only chat tools for operational diagnostics:
-overview, stuck Jobs, queue tabs, spawned processes, Runs, users, and
-running instance versions. Non-admin chats do not advertise those tools,
-and each admin tool repeats the admin check when it runs.
+Admin users also get chat tools for operational diagnostics: overview,
+stuck Jobs, queue tabs, spawned processes, Runs, users, and running
+instance versions. State-changing admin tools, such as pausing runs,
+killing a process, clearing the GitHub cache, or refreshing installations,
+create pending actions and wait for operator confirmation before applying.
+Non-admin chats do not advertise those tools, and each admin tool repeats
+the admin check when it runs.
 
 ## Direct Jobs
 
