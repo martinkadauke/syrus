@@ -43,7 +43,8 @@ module SyrusChatMcp
         return SyrusChatMcp.invalid(preview.errors.full_messages.to_sentence) unless preview.valid?
 
         next_fire_at = preview.next_fire_at(from: Time.current)
-        action = create_pending_action_message!(
+        action = create_pending_action_for_current_message!(
+          server_context,
           chat_session,
           user: chat_session.user,
           repository: chat_session.repository,
