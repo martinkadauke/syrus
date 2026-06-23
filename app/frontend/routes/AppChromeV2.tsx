@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { createChat, fetchChats, type ChatNavRecord } from "../api/chats"
 import { patchJson } from "../api/client"
+import { BugReportButton } from "../components/BugReportButton"
 import { CloseIcon } from "../components/CloseIcon"
 import { SyrusBrand } from "../components/SyrusBrand"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
@@ -124,6 +125,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
           children ?? <Outlet />
         )}
       </main>
+      {user ? <BugReportButton context={bugReportContext(location.pathname)} position="bottom-right" /> : null}
     </div>
   )
 }
@@ -443,6 +445,24 @@ function withRoutePrefix(path: string, prefix: string) {
 function activeChatIdFromPath(pathname: string) {
   const match = normalizedAppPath(pathname).match(/^\/chats\/(\d+)(?:\/|$)/)
   return match ? Number(match[1]) : null
+}
+
+function bugReportContext(pathname: string) {
+  const normalized = normalizedAppPath(pathname)
+  if (normalized === "/" || normalized === "/dashboard") return "Dashboard"
+
+  const label = normalized
+    .split("/")
+    .filter(Boolean)
+    .filter((segment) => !/^\d+$/.test(segment))
+    .map((segment) => segment.replace(/_/g, " "))
+    .join(" ")
+
+  return label ? titleize(label) : "Syrus"
+}
+
+function titleize(value: string) {
+  return value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 function groupedRecentChats(chats: ChatNavRecord[]) {
