@@ -8,7 +8,7 @@ RSpec.describe App::Presentation do
     end
 
     it "humanizes unknown providers" do
-      expect(described_class.agent_provider_label("local_dev")).to eq("Local Dev")
+      expect(described_class.agent_provider_label("custom_provider")).to eq("Custom Provider")
     end
   end
 

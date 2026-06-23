@@ -19,7 +19,7 @@ creating branches, preparing workspaces, running the agent, recording
 transcripts and diffs, pushing commits, and keeping the PR current. The
 agent writes code; Syrus handles the job control around it.
 
-[What is Syrus?](/what-is-syrus) · [Why use Syrus?](/why-use-syrus) · [Get Started](/docs/getting-started) · [Try it locally](/docs/deployment/try-it-locally) · [Read the docs](/docs/getting-started) · [Star on GitHub](https://github.com/tkadauke/syrus)
+[What is Syrus?](/what-is-syrus) · [Why use Syrus?](/why-use-syrus) · [Get Started](/docs/getting-started) · [Run locally](/docs/deployment/docker-compose) · [Read the docs](/docs/getting-started) · [Star on GitHub](https://github.com/tkadauke/syrus)
 
 ## The Loop
 
@@ -27,7 +27,7 @@ The shortest proof is a GitHub issue with label-based delegation:
 connect a repository, choose the trigger label, and let Syrus turn that
 issue into a branch, run, and pull request.
 
-Get Started with the local evaluation path if you want the shortest route
+Get Started with the Docker Compose path if you want the shortest route
 from a GitHub issue with label `syrus` to a reviewed pull request.
 
 ## What Syrus Does
@@ -69,8 +69,8 @@ The shortest path is label-based routing: connect the repository, choose
 the trigger label, and let Syrus turn the labeled issue into a tracked run
 and pull request.
 
-Get Started with the local guide when you want the smallest proof before
-connecting a team repository.
+Get Started with the Docker Compose guide when you want the smallest
+proof before connecting a team repository.
 
 Need the longer version? Read [What is Syrus?](/what-is-syrus).
 
@@ -132,8 +132,8 @@ Choose the path that matches how much of the system you want to exercise.
 
 | Path | Best for | Start here |
 | --- | --- | --- |
-| Local evaluation | Seeing Syrus produce a diff against your own checkout without GitHub setup | [Try it locally](/docs/deployment/try-it-locally) |
-| Docker Compose | Running the web app, worker, database, GitHub polling, and PR flow for a small team | [Docker Compose guide](/docs/deployment/docker-compose) |
+| Docker prebuilt | Running the web app, worker, database, GitHub polling, and PR flow on one machine without compiling | [Docker Compose guide](/docs/deployment/docker-compose) |
+| Source/custom Docker | Building from the checkout or adding system packages for repository graders | [Docker Compose guide](/docs/deployment/docker-compose#build-or-customize-the-image) |
 | Kubernetes | Operating Syrus on shared infrastructure with persistent clone storage and separate web/worker pods | [Kubernetes guide](/docs/deployment/kubernetes) |
 
 If you are still choosing a path, start with [Getting Started](/docs/getting-started)
@@ -141,9 +141,9 @@ or the [deployment overview](/docs/deployment).
 
 ## Get Started
 
-Use [Try it locally](/docs/deployment/try-it-locally) for the shortest
-proof, then move to Docker Compose or Kubernetes when you want the full
-polling, worker, and PR loop.
+Use [Docker Compose](/docs/deployment/docker-compose) for the shortest
+proof of the full polling, worker, and PR loop, then move to Kubernetes
+only when you need cluster operations.
 
 ## Honest Status
 
@@ -158,7 +158,7 @@ automation that turns GitHub work into controlled agent runs and PRs.
 
 ## Get Started
 
-[Try Syrus locally](/docs/deployment/try-it-locally) if you want the
+[Run Syrus locally](/docs/deployment/docker-compose) if you want the
 shortest proof. [Read the concepts](/docs/concepts) if you want the
 mental model. [Read the naming story](/about) if you want to know why a
 Roman maxim writer is haunting your pull-request automation.

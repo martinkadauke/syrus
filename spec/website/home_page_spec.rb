@@ -23,7 +23,7 @@ RSpec.describe "website home page" do
   end
 
   it "uses real current pages for primary calls to action" do
-    expect(content).to include("[Try it locally](/docs/deployment/try-it-locally)")
+    expect(content).to include("[Run locally](/docs/deployment/docker-compose)")
     expect(content).to include("[Read the docs](/docs/getting-started)")
     expect(content).to include("[Docker Compose guide](/docs/deployment/docker-compose)")
     expect(content).to include("[Kubernetes guide](/docs/deployment/kubernetes)")

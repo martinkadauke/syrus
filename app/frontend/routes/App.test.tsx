@@ -9327,7 +9327,7 @@ function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: R
       signup_path: "/users/new",
       sign_in_path: "/session/new",
       docs_url: "https://syrus.dev/docs/getting-started",
-      evaluation_url: "https://syrus.dev/evaluate"
+      evaluation_url: "https://syrus.dev/docs/deployment/docker-compose"
     },
     navigation: {
       default_chat_path: "/chats/9"
@@ -9463,7 +9463,7 @@ function publicBootstrapPayload(overrides: Partial<BootstrapPayload["public"]> =
       signup_path: "/users/new",
       sign_in_path: "/session/new",
       docs_url: "https://syrus.dev/docs/getting-started",
-      evaluation_url: "https://syrus.dev/evaluate",
+      evaluation_url: "https://syrus.dev/docs/deployment/docker-compose",
       ...overrides
     }
   }

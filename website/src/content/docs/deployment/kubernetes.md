@@ -1,6 +1,6 @@
 ---
 title: Kubernetes (k3s / k8s)
-description: Production-grade Syrus deployment via Helm. The hard-mode path.
+description: Production-grade Syrus deployment status and requirements. The hard-mode path.
 ---
 
 # Kubernetes deployment

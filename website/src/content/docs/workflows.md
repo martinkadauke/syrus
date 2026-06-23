@@ -145,13 +145,6 @@ prompt is passed directly to the configured agent provider. Manual
 workflows capture transcript and diff information, but they do not push or
 open a PR by themselves.
 
-### LocalDev
-
-Trigger: `bin/syrus dev` against a local checkout. Steps:
-`prepare -> implement`. It uses the same preparation and implementation
-handlers as GitHub-driven work, then stops before summary and PR creation.
-The CLI returns the produced diff to the local caller.
-
 ### CiFailure
 
 Trigger: polling sees failed CI checks on an existing Syrus PR. Steps:
@@ -206,7 +199,6 @@ Syrus chooses the template from the trigger kind:
 | `merge_train` | `Workflows::MergeTrain` |
 | `retry` | `Workflows::Retry` |
 | `manual` | `Workflows::Manual` |
-| `local_dev` | `Workflows::LocalDev` |
 
 The template creates a Workflow row, creates each Step row in order, and
 wires `next_step_id` from each Step to its successor. The dispatcher starts

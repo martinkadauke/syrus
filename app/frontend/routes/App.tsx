@@ -344,7 +344,7 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
       <section className="mt-10 flex flex-col gap-3 border-t border-gray-200 pt-6 text-sm text-gray-700 sm:flex-row sm:items-center">
         <a className="font-medium text-blue-700 underline hover:no-underline" href={payload.public.docs_url}>Read the setup docs</a>
         <span className="hidden text-gray-300 sm:inline">/</span>
-        <a className="font-medium text-blue-700 underline hover:no-underline" href={payload.public.evaluation_url}>Evaluate Syrus for a repository</a>
+        <a className="font-medium text-blue-700 underline hover:no-underline" href={payload.public.evaluation_url}>Run Syrus locally</a>
         {payload.public.signups_open || invitationToken ? (
           <>
             <span className="hidden text-gray-300 sm:inline">/</span>

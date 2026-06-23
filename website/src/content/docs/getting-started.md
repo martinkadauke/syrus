@@ -21,15 +21,9 @@ Use the path that answers the question you have right now.
 
 | If you want to... | Start here | What you will see |
 | --- | --- | --- |
-| Evaluate agent behavior against code on your machine | [Try it locally](/docs/deployment/try-it-locally) | One container runs once, prints a local diff, and exits. No GitHub access, database, users, or PR. |
 | Try the full product loop for yourself or a small team | [Docker Compose](/docs/deployment/docker-compose) or your operator-provided setup | Web UI, worker, database, repository polling, Job history, and a real GitHub PR. |
+| Develop Syrus itself | The project README | Source checkout, Ruby/Node/Go toolchain, `bin/dev`, and fast reloads. |
 | Self-host on shared infrastructure | [Deployment](/docs/deployment) and [Kubernetes](/docs/deployment/kubernetes) | The same app on your own infrastructure, once you have chosen ingress, storage, secrets, backups, and operations. |
-
-:::note
-The local evaluation path is useful, but it is not the full product
-sequence. It does not create users, poll GitHub, add repositories, or open
-pull requests.
-:::
 
 :::caution
 Some packaging pieces are still landing. The Docker Compose and
@@ -40,21 +34,6 @@ provides rather than filling in missing production decisions from this
 guide.
 :::
 
-## Local Evaluation
-
-The shortest evaluation is:
-
-1. Open a Git checkout on your machine.
-2. Export an agent credential for the local runner.
-3. Run the single-container command from
-   [Try it locally](/docs/deployment/try-it-locally).
-4. Inspect the printed diff or write it to `syrus.diff`.
-
-That path runs a temporary local-dev Job through the standard
-`prepare -> implement` work, then stops. Use it to answer "can Syrus make
-a plausible change in this codebase?" Continue with the hosted setup when
-you want the real `issue -> Job -> Workflow -> PR` loop.
-
 ## Hosted Setup
 
 A real Syrus instance needs:
@@ -63,8 +42,9 @@ A real Syrus instance needs:
   transcripts, and PR links.
 - A worker process for pollers, preparation commands, agent runs, pushes,
   PR creation, reapers, and workspace cleanup.
-- MySQL for users, encrypted credentials, repositories, Jobs, Workflows,
-  Runs, logs, artifacts, and queue state.
+- A database for users, encrypted credentials, repositories, Jobs,
+  Workflows, Runs, logs, artifacts, and queue state. Docker Compose uses
+  SQLite; clustered production uses MySQL.
 - A durable `$SYRUS_DATA_ROOT` volume on workers for clone caches and
   workflow workspaces.
 - Stable Rails secrets, especially `RAILS_MASTER_KEY`, so encrypted user
@@ -283,8 +263,6 @@ read [Concepts](/docs/concepts).
 
 ## Where To Go Next
 
-- [Evaluate Syrus locally](/docs/deployment/try-it-locally) if you want
-  a quick diff before deploying anything.
 - [What is Syrus?](/docs/what-is-syrus) for the product model.
 - [Why use Syrus?](/docs/why-use-syrus) for fit and trade-offs.
 - [Deployment](/docs/deployment) if you are choosing between local,

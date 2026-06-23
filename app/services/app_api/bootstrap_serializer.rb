@@ -69,7 +69,7 @@ module AppApi
         signup_path: "/users/new",
         sign_in_path: "/session/new",
         docs_url: ENV.fetch("SYRUS_DOCS_URL", "https://syrus.dev/docs/getting-started"),
-        evaluation_url: ENV.fetch("SYRUS_EVALUATION_URL", "https://syrus.dev/evaluate")
+        evaluation_url: ENV.fetch("SYRUS_EVALUATION_URL", "https://syrus.dev/docs/deployment/docker-compose")
       }
     end
 

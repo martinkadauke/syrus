@@ -130,5 +130,5 @@ Then test the team loops: leave review feedback, retry a failed run, or
 schedule a maintenance task. Syrus earns its keep when those follow-up
 paths use the same visible machinery as the first draft.
 
-Next: [Try Syrus locally](/evaluate), or read [What is Syrus?](/what-is-syrus)
+Next: [Run Syrus locally](/docs/deployment/docker-compose), or read [What is Syrus?](/what-is-syrus)
 for the product model.

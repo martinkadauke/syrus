@@ -7,14 +7,16 @@ description: Run Syrus on a single machine (web + worker, SQLite) with one comma
 
 Docker Compose is the lowest-friction way to run the real Syrus app on a
 single machine — your Mac, a laptop, a small box — without a Kubernetes
-cluster or a MySQL server. You get the web UI, the background worker, the
-full agent toolchain, and the GitHub issue-to-PR loop, backed by SQLite.
+cluster or a MySQL server. The default path pulls a prebuilt image; the
+source-build path is there when you are changing Syrus or need custom
+system packages. Either way, you get the web UI, the background worker,
+the full agent toolchain, and the GitHub issue-to-PR loop, backed by
+SQLite.
 
-This is a **single-host** setup. The repository's `Dockerfile` and
-`bin/deploy` target a clustered MySQL deployment; this Compose path is a
-separate, self-contained artifact (`docker-compose.yml`, `Dockerfile.local`,
-`compose.env.example`, `bin/compose-up`) and leaves the cluster path
-untouched.
+This is a **single-host** setup. The repository's `Dockerfile` also backs
+the clustered MySQL deployment; the Compose path layers
+`docker-compose.yml`, `Dockerfile.local`, `compose.env.example`, and
+`bin/compose-up` around it for local SQLite operation.
 
 ## 1. Install a container runtime
 
@@ -32,7 +34,35 @@ brew install colima docker docker-compose && colima start
 > `docker compose` subcommand. `bin/compose-up` detects whichever is present
 > (`docker compose` or `docker-compose`).
 
-## 2. Bring it up
+## 2. Bring it up with the prebuilt image
+
+From a checkout of the repo:
+
+```bash
+./install.sh --docker
+```
+
+The installer:
+
+1. Starts or installs a container runtime when needed.
+2. Generates `.env` from `compose.env.example` with fresh secrets
+   (`SECRET_KEY_BASE` and the three Active Record encryption keys) on first
+   run. `.env` is gitignored — keep it.
+3. Pulls `ghcr.io/tkadauke/syrus-local`.
+4. Starts the stack: a one-shot **setup** task (prepares the SQLite
+   databases and fixes volume ownership), then **web** and **worker**.
+
+When it finishes, open **http://localhost:3000**. The first signup becomes
+the admin, and the first-run wizard walks you through GitHub credentials,
+the agent, a repository, and a guided chat to land your first Epic.
+
+```bash
+docker compose logs -f web worker   # follow logs
+docker compose down                 # stop
+./install.sh --docker               # pull updates and restart
+```
+
+## Build or customize the image
 
 From a checkout of the repo:
 
@@ -42,19 +72,19 @@ bin/compose-up
 
 That script:
 
-1. Generates `.env` from `compose.env.example` with fresh secrets
-   (`SECRET_KEY_BASE` and the three Active Record encryption keys) on first
-   run. `.env` is gitignored — keep it.
-2. Builds the worker image — the fat agent toolchain (Ruby/Node/Go via
+1. Generates `.env` if it does not exist, using the same local secrets
+   rules as the prebuilt installer.
+2. Builds the base worker image — the fat agent toolchain (Ruby/Node/Go via
    `mise`, Python + poetry/uv, build tools, db clients, and the `claude-code`
    CLI). **The first build is slow** (it compiles language runtimes); later
    builds are cached.
-3. Starts the stack: a one-shot **setup** task (prepares the SQLite
-   databases and fixes volume ownership), then **web** and **worker**.
+3. Builds `Dockerfile.local` on top of that base image, applying
+   `EXTRA_APT_PACKAGES` when present.
+4. Starts the same Compose stack.
 
-When it finishes, open **http://localhost:3000**. The first signup becomes
-the admin, and the first-run wizard walks you through GitHub credentials,
-the agent, a repository, and a guided chat to land your first Epic.
+Use this path when you are changing Syrus source or need apt packages in
+the worker image. If you only want to run the app, use
+`./install.sh --docker`.
 
 ```bash
 docker compose logs -f web worker   # follow logs

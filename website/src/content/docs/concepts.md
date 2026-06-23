@@ -52,7 +52,6 @@ Common trigger kinds are:
 | `rebase` | Maintenance attempt that rebases a controlled branch onto the base branch. |
 | `retry` | Operator asks Syrus to run the normal attempt again. |
 | `manual` | Operator supplies an explicit manual prompt. |
-| `local_dev` | Synchronous local-development path, used for local evaluation flows. |
 
 Each trigger kind maps to a Workflow template: a sequence of Steps.
 For the template-and-DAG view, continue to [Workflows](/docs/workflows).

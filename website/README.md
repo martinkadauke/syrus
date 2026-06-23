@@ -20,9 +20,9 @@ Use this directory as the source of truth for public-facing product docs.
 When product behavior changes, update the matching page here in the same
 PR as the code change.
 
-The local evaluation path is canonical at
-`/docs/deployment/try-it-locally`; do not recreate a separate
-`/evaluate` page.
+The default local run path is `/docs/deployment/docker-compose`, backed
+by `install.sh --docker`. Do not add a separate one-shot local evaluation
+flow unless the product adds a maintained runner for it again.
 
 ## Structure
 
@@ -37,7 +37,7 @@ website/
 │   │       ├── why-use-syrus.md
 │   │       ├── concepts.md
 │   │       ├── features.md
-│   │       ├── deployment/       # the 3 paths (+ Ruby-dev footnote)
+│   │       ├── deployment/       # Docker Compose, source/custom image, Kubernetes
 │   │       ├── configuration.md
 │   │       ├── workflows.md
 │   │       ├── architecture.md
@@ -80,7 +80,7 @@ source:
 | --- | --- |
 | What is Syrus? | `src/pages/index.md`, `src/content/docs/what-is-syrus.md`, `src/content/docs/concepts.md` |
 | Why would I use it? | `src/content/docs/why-use-syrus.md`, `src/content/docs/faq.md` |
-| How do I try it? | `src/content/docs/getting-started.md`, `src/content/docs/deployment/try-it-locally.md` |
+| How do I try it? | `src/content/docs/getting-started.md`, `src/content/docs/deployment/docker-compose.md` |
 | What does operating it involve? | `src/content/docs/deployment/`, `src/content/docs/configuration.md`, `src/content/docs/recipes.md`, `src/content/docs/troubleshooting.md` |
 
 Recommended sidebar order once Starlight lands:

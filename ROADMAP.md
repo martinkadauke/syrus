@@ -561,15 +561,6 @@ and what to consciously not do.
   useful: parse the failed step's log, extract the actual error block
   (not the whole 50k-line log), pass that as structured context. Saves
   tokens, raises fix quality. Pure prep-side work; no agent change.
-- **Local-dev / no-GitHub mode.** A `bin/syrus dev <local-path>` that
-  runs the harness against a local checkout without GitHub. Useful for
-  dogfooding Syrus changes; useful for users who want to try Syrus
-  before deploying. No new infra — workspace cloning already supports
-  any source. Distinct from the bigger
-  [`syrus-as-dev-environment`](docs/plans/syrus-as-dev-environment.md)
-  plan, which is about Syrus *being* the dev environment; this is just
-  a way to drive the existing harness without GitHub round-trips.
-
 ### Steal and adapt — good ideas, need Syrus-specific design
 
 - **Supervisor / ambient-awareness agent.** Distinct from the existing

@@ -186,8 +186,9 @@ The wizard's **Configure agent** step handles Claude authentication: it detects
 an existing `claude` login on this machine, or walks you through authorizing one
 (you'll need a Claude Pro/Max/Team/Enterprise plan). The `claude` CLI you
 installed in step 2 is what the worker invokes to run Jobs — without it the
-wizard still loads, but agent runs can't execute. (Codex isn't wired up yet —
-use Claude for now.)
+wizard still loads, but Claude agent runs can't execute. Codex is also
+supported through the credentials UI when you choose Codex as the agent
+provider.
 
 ### Handy commands
 
@@ -211,8 +212,9 @@ If you just want to *run* Syrus — not develop it — you can skip the bare-met
 toolchain above and pull a prebuilt image. No Ruby/Node/Go, no `bundle install`,
 no waiting on a build. This is the easiest path for collaborators.
 
-> **Apple Silicon only for now.** The published image is `arm64`. On an Intel
-> Mac or Linux it won't run (a multi-arch build will come later).
+> **Architecture note.** The normal published image follows the architecture
+> used by the maintainer's publish command. Multi-arch publishing is supported
+> by `bin/publish-image --multi-arch` when Intel/Linux recipients need it.
 
 **Just clone and run it.** The installer handles everything else: it installs
 and launches **OrbStack** if you don't already have a container runtime (it

@@ -22,7 +22,6 @@ recipes needed to run Syrus without reading the Rails source.
 | Understand the product in a few minutes | [What is Syrus?](/docs/what-is-syrus) |
 | Decide whether Syrus is the right fit | [Why use Syrus?](/docs/why-use-syrus) |
 | Get to a first successful PR | [Getting Started](/docs/getting-started) |
-| Evaluate without a long-running install | [Try it locally](/docs/deployment/try-it-locally) |
 | Choose a deployment path | [Deployment](/docs/deployment) |
 
 ## Product Manual
@@ -32,7 +31,7 @@ recipes needed to run Syrus without reading the Rails source.
 - [Features](/docs/features): Jobs, Epics, schedules, chats, direct Jobs,
   credentials, GitHub App/PAT behavior, and multi-user operation.
 - [Workflows](/docs/workflows): the built-in pipelines for issues, PR
-  feedback, CI failures, retries, rebases, direct Jobs, and local dev.
+  feedback, CI failures, retries, rebases, direct Jobs, and landing.
 - [Configuration](/docs/configuration): `.syrus.yml`, user settings,
   repository settings, credentials, and worker environment.
 - [Syrus CLI](/docs/cli): terminal chat, inbox review, checkout,
@@ -44,9 +43,9 @@ recipes needed to run Syrus without reading the Rails source.
 
 ## Operating Syrus
 
-For local exploration, start with [Try it locally](/docs/deployment/try-it-locally).
-For a real issue-to-PR loop, use [Docker Compose](/docs/deployment/docker-compose)
-once the published packaging is available. For team infrastructure, read
+For local exploration and the first real issue-to-PR loop, use
+[Docker Compose](/docs/deployment/docker-compose). For team
+infrastructure, read
 [Kubernetes](/docs/deployment/kubernetes) before deciding whether cluster
 operations are worth the extra moving parts.
 

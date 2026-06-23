@@ -1,39 +1,42 @@
 ---
 title: Deployment
-description: Three ways to run Syrus — pick the one that fits your situation.
+description: Ways to run Syrus — pick the smallest path that gives you the full loop you need.
 ---
 
 # Deployment
 
-Syrus has three deployment paths. Start with the smallest one that
-answers your question; you can move up when you need real GitHub polling,
-shared users, durable data, or cluster operations.
+Syrus has one recommended local app path and a few more specialized
+paths. Start with the prebuilt Docker Compose install; move down the
+list only when you need source changes, custom packages, or cluster
+operations.
 
 | Path | Audience | Setup time | Use case |
 | --- | --- | --- | --- |
-| **1. Try it locally** | Anyone curious | ~60s | Single Docker container running `bin/syrus dev` against your local repo. Pre-onboarding evaluation. |
-| **2. Run it locally for real** | Developers / small teams | ~5min | Docker Compose with web + worker + MySQL. Full polling + PR flow against real GitHub repos. |
-| **3. Deploy to a cluster** | Teams running real infra | ~30min | Helm chart for k3s/k8s. Production-grade, once the chart lands. |
+| **1. Run the app locally** | Developers / small teams | ~5min | `install.sh --docker` pulls the prebuilt Docker Compose image. Full web + worker + SQLite + GitHub PR loop. |
+| **2. Build or customize the local image** | Operators changing Syrus or adding OS packages | 20-40min first build | `bin/compose-up` builds from the checkout and applies `EXTRA_APT_PACKAGES` / `Dockerfile.local`. |
+| **3. Develop Syrus from source** | Syrus contributors | Toolchain-dependent | `install.sh --bare-metal`, `bin/setup`, and `bin/dev` for fast reloads. |
+| **4. Deploy to a cluster** | Teams running real infra | Infrastructure-dependent | Kubernetes/k3s hard mode. The public Helm/chart path is still not a complete artifact. |
 
 ## Decision tree
 
-- **Just curious?** Use [Try it locally](/docs/deployment/try-it-locally).
-- **Running Syrus for a team?** Use [Docker Compose](/docs/deployment/docker-compose).
-- **Production at scale?** Use [Kubernetes](/docs/deployment/kubernetes).
+- **Running Syrus for yourself or a small team?** Use [Docker Compose](/docs/deployment/docker-compose).
+- **Need system packages or source changes in the image?** Use the source/custom build path in [Docker Compose](/docs/deployment/docker-compose#build-or-customize-the-image).
+- **Working on Syrus itself?** Use the bare-metal source path in the project README.
+- **Production at scale?** Read [Kubernetes](/docs/deployment/kubernetes), including the current packaging status.
 
-## Try it locally
+## Run Locally
 
-[Try it locally](/docs/deployment/try-it-locally) runs Syrus in a single
-container against a repo already on your machine. It uses the same
-agent-facing implementation step as the full app, but stops at a local
-diff printed to stdout. This is the right path when you want to know
-whether Syrus can make a useful change before you give it GitHub access.
+[Docker Compose](/docs/deployment/docker-compose) runs the real Syrus app
+on one machine. The default command pulls the prebuilt
+`ghcr.io/tkadauke/syrus-local` image, generates local secrets, starts web
+and worker containers, and stores the SQLite databases plus workflow
+workspaces in one named Docker volume.
 
 ## Docker Compose
 
 [Docker Compose](/docs/deployment/docker-compose) is the recommended
 self-host path for developers and small teams. It runs the Rails web app,
-the Solid Queue worker, and MySQL together, then lets you add a GitHub
+the Solid Queue worker, and SQLite together, then lets you add a GitHub
 repository, label an issue, and watch Syrus open a pull request.
 
 If you are a Ruby developer with the toolchain already installed, you
