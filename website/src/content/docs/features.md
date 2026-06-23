@@ -119,10 +119,12 @@ open chat settings without sending a message to the agent. Read-only skill
 commands include `/jobs [filter]`, `/job <id>`,
 `/epic <id>`, `/prs`, `/issues`, `/proposals`, `/canvas`, and
 `/bookmark <label>`; Syrus expands each one into a prompt that asks the agent
-to call the matching chat MCP tool and format the result. Mutating skill
-commands such as `/cancel`, `/retry`, `/feedback`, `/discard`, and
-`/clear-canvas` show an inline confirmation in the composer before Syrus sends
-the command to the agent.
+to call the matching chat MCP tool and format the result. The `/propose` skill
+command starts a guided wizard: the agent asks for a Job title, description,
+and optional Epic, then creates a proposal card for operator confirmation.
+Mutating skill commands such as `/cancel`, `/retry`, `/feedback`, `/discard`,
+and `/clear-canvas` show an inline confirmation in the composer before Syrus
+sends the command to the agent.
 
 Chat transcripts also surface MCP sidecar health. Syrus distinguishes
 available, pending, and unavailable chat tools so operators can tell when

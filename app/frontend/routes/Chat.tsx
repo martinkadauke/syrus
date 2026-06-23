@@ -60,6 +60,7 @@ import { useLayoutVersion } from "../lib/layoutVersion"
 import {
   filterSlashCommands,
   findSlashCommand,
+  slashCommandPrompt,
   slashCommandQuery,
   slashCommandSignature,
   type SlashCommand,
@@ -1006,7 +1007,7 @@ function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { com
 
     onNotice(null)
     setPendingConfirmation(null)
-    send.mutate(commandMatch?.command.toPrompt ? commandMatch.command.toPrompt(commandMatch.argsText) : text)
+    send.mutate(slashCommandPrompt(text))
   }
 
   function handleSystemSlashCommand(commandMatch: SlashCommandMatch) {
