@@ -19,6 +19,7 @@ Rails.application.routes.draw do
         get "bootstrap", to: "bootstrap#show"
         get "setup", to: "setup#show"
         patch "theme", to: "theme#update"
+        patch "layout_version", to: "layout_version#update"
         get "auth/status", to: "auth#status"
         get "auth/signup", to: "auth#signup"
         post "auth/session", to: "auth#create_session"
@@ -110,6 +111,7 @@ Rails.application.routes.draw do
         get "chats/:id/messages", to: "chats#messages", constraints: { id: /\d+/ }
         get "chats/:id/whiteboard", to: "chat_whiteboards#show", constraints: { id: /\d+/ }
         patch "chats/:id/whiteboard", to: "chat_whiteboards#update", constraints: { id: /\d+/ }
+        patch "chats/:id/mark_read", to: "chats#mark_read", constraints: { id: /\d+/ }
         post "chats/:id/message", to: "chats#message", constraints: { id: /\d+/ }
         post "chats/:id/queued_messages", to: "chats#enqueue_message", constraints: { id: /\d+/ }
         patch "chats/:id/queued_messages/:queued_message_id", to: "chats#update_queued_message", constraints: { id: /\d+/, queued_message_id: /\d+/ }

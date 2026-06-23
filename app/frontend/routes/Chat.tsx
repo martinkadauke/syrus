@@ -20,6 +20,7 @@ import {
   fetchChat,
   fetchChatMessages,
   fetchChatWhiteboard,
+  markChatRead,
   patchChatWhiteboard,
   rejectChatProposal,
   sendChatMessage,
@@ -45,6 +46,7 @@ import {
 import { CloseIcon } from "../components/CloseIcon"
 import { StartEpicButton } from "../components/StartEpicButton"
 import { Markdown, PlainText } from "../lib/Markdown"
+import { useLayoutVersion } from "../lib/layoutVersion"
 
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
@@ -65,19 +67,29 @@ export function ChatRoute() {
   const params = useParams()
   const location = useLocation()
   const id = params.id || ""
+  const queryClient = useQueryClient()
   const queryKey = chatQueryKey(id, location.search)
   const prefix = routePrefix(location.pathname)
   const viewportStyle = useChatVisualViewportStyle()
+  const layoutVersion = useLayoutVersion()
   const chat = useQuery({
     queryKey,
     queryFn: () => fetchChat(id, location.search),
     enabled: id.length > 0
   })
 
+  useEffect(() => {
+    if (!id) return
+
+    void markChatRead(id).then(() => {
+      void queryClient.invalidateQueries({ queryKey: ["recent-chats"] })
+    }).catch(() => undefined)
+  }, [id, queryClient])
+
   return (
     <main
       aria-label="Chat"
-      className="mx-auto flex h-[calc(var(--chat-visual-viewport-height,100dvh)-4rem)] max-w-[96rem] flex-col gap-6 overflow-hidden p-3 sm:p-6"
+      className={`mx-auto flex ${layoutVersion === "v2" ? "h-full" : "h-[calc(var(--chat-visual-viewport-height,100dvh)-4rem)]"} max-w-[96rem] flex-col gap-6 overflow-hidden p-3 sm:p-6`}
       style={viewportStyle}
     >
       {chat.isPending ? <PanelMessage>Loading chat...</PanelMessage> : null}

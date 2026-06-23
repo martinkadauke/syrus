@@ -19,8 +19,11 @@ export type ChatRecord = {
 }
 
 export type ChatNavRecord = ChatRecord & {
-  current: boolean
+  current?: boolean
   last_message_at: string | null
+  unread: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 export type ChatSystemMessage = {
@@ -185,6 +188,11 @@ export type ChatCreatedPayload = {
   chat: ChatRecord
 }
 
+export type ChatsIndexPayload = {
+  chats: ChatNavRecord[]
+  repositories: ChatRepository[]
+}
+
 export type ChatPayload = {
   message?: string | null
   chat: ChatRecord
@@ -232,6 +240,14 @@ export type ChatMessagesPayload = {
 
 export function fetchChat(id: string, search = "") {
   return getJson<ChatPayload>(`/api/v1/app/chats/${id}${search}`)
+}
+
+export function markChatRead(id: string | number) {
+  return patchJson<void>(`/api/v1/app/chats/${id}/mark_read`)
+}
+
+export function fetchChats() {
+  return getJson<ChatsIndexPayload>("/api/v1/app/chats")
 }
 
 export function fetchChatMessages(path: string, before: number) {
