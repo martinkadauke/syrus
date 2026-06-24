@@ -115,6 +115,9 @@ RSpec.describe SyrusChatMcp::Sidecar do
         clear_canvas
         update_scene
         schedule_recurring
+        schedule_wakeup
+        list_wakeups
+        cancel_wakeup
         list_scheduled_tasks
         pause_scheduled_task
         resume_scheduled_task
