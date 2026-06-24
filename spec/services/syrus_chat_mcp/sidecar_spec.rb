@@ -28,6 +28,8 @@ RSpec.describe SyrusChatMcp::Sidecar do
         SyrusChatMcp::ListJobWorkflowsTool,
         SyrusChatMcp::ReadWorkflowTool,
         SyrusChatMcp::ReadRunTranscriptTool,
+        SyrusChatMcp::SearchChatsTool,
+        SyrusChatMcp::ReadChatMessagesTool,
         SyrusChatMcp::ListJobsTool,
         SyrusChatMcp::SearchJobsTool,
         SyrusChatMcp::ApproveJobTool,
@@ -115,6 +117,8 @@ RSpec.describe SyrusChatMcp::Sidecar do
         list_job_workflows
         read_workflow
         read_run_transcript
+        search_chats
+        read_chat_messages
         list_jobs
         search_jobs
         approve_job
