@@ -9787,6 +9787,60 @@ describe("App", () => {
     expect(await screen.findByText("No dependencies")).toHaveClass("text-gray-500")
   })
 
+  it("renders queued pending actions as waiting without action buttons", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        ...chatPayload({
+          pendingActions: [
+            pendingAction({ id: 7, label: "Send feedback to JOB-44", state: "queued" })
+          ]
+        })
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Send feedback to JOB-44")).toBeInTheDocument()
+    expect(screen.getByText("Waiting...")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
+  })
+
+  it("renders terminal pending actions as read-only badges", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        ...chatPayload({
+          pendingActions: [
+            pendingAction({ id: 7, label: "Cancel JOB-44", state: "confirmed" }),
+            pendingAction({ id: 8, label: "Retry JOB-45", state: "rejected" }),
+            pendingAction({ id: 9, label: "Rebase JOB-46", state: "cancelled" })
+          ]
+        })
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Cancel JOB-44")).toBeInTheDocument()
+    expect(screen.getByText("Confirmed")).toBeInTheDocument()
+    expect(screen.getByText("Rejected")).toBeInTheDocument()
+    expect(screen.getByText("Cancelled")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Confirm" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
+  })
+
   it("links confirmed Epic proposals to the Epic detail route", async () => {
     const proposalMessage = {
       type: "message",
@@ -11658,6 +11712,7 @@ function chatPayload(overrides: {
   messages?: Array<Record<string, unknown>>
   queuedMessages?: Array<Record<string, unknown>>
   agentQuestions?: Array<Record<string, unknown>>
+  pendingActions?: Array<Record<string, unknown>>
   cumulativeInputTokens?: number
   cumulativeOutputTokens?: number
   cumulativeCostUsd?: number
@@ -11730,7 +11785,7 @@ function chatPayload(overrides: {
         unread: true
       }
     ],
-    pending_actions: [],
+    pending_actions: overrides.pendingActions || [],
     agent_questions: overrides.agentQuestions || [],
     attachment_groups: {
       repositories: [
@@ -11764,6 +11819,27 @@ function chatPayload(overrides: {
       app_attachments_path: "/api/v1/app/chats/8/attachments",
       app_whiteboard_path: "/api/v1/app/chats/8/whiteboard"
     }
+  }
+}
+
+function pendingAction(overrides: {
+  id?: number
+  label?: string
+  state?: string
+  action?: string | null
+  actionType?: string | null
+  confirmPath?: string
+  cancelPath?: string
+} = {}) {
+  const id = overrides.id ?? 7
+  return {
+    id,
+    label: overrides.label ?? "Cancel JOB-44",
+    state: overrides.state ?? "pending",
+    action: overrides.action ?? "cancel_job",
+    action_type: overrides.actionType ?? null,
+    app_confirm_path: overrides.confirmPath ?? `/api/v1/app/chats/8/pending_actions/${id}/confirm`,
+    app_cancel_path: overrides.cancelPath ?? `/api/v1/app/chats/8/pending_actions/${id}`
   }
 }
 

@@ -155,6 +155,7 @@ export type ChatBookmark = {
 export type ChatPendingAction = {
   id: number
   label: string
+  state: "queued" | "pending" | "confirmed" | "rejected" | "cancelled"
   action: string | null
   action_type: string | null
   app_confirm_path: string
