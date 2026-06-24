@@ -166,6 +166,7 @@ describe("applyAppEvent", () => {
         chat: {
           title: "Updated chat",
           title_pending: false,
+          pinned_context: "Keep the rollout plan in scope.",
           cumulative_input_tokens: 1500,
           cumulative_output_tokens: 250,
           cumulative_cost_usd: 0.125
@@ -177,6 +178,7 @@ describe("applyAppEvent", () => {
     const updated = queryClient.getQueryData<ReturnType<typeof chatPayload>>(["chats", "9", ""])
     expect(updated?.chat.title).toBe("Updated chat")
     expect(updated?.chat.title_pending).toBe(false)
+    expect(updated?.chat.pinned_context).toBe("Keep the rollout plan in scope.")
     expect(updated?.chat.cumulative_input_tokens).toBe(1500)
     expect(updated?.chat.cumulative_output_tokens).toBe(250)
     expect(updated?.chat.cumulative_cost_usd).toBe(0.125)
@@ -229,6 +231,40 @@ describe("applyAppEvent", () => {
       { id: 4, label: "Opening revised", chat_message_id: 1, anchor_message_id: 1 }
     ])
   })
+
+  it("applies chat agent question payloads directly to cached chat data", () => {
+    const queryClient = new QueryClient()
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries")
+    queryClient.setQueryData(["chats", "9", ""], chatPayload([message(1, "user", "old")]))
+
+    applyAppEvent(queryClient, {
+      ...event("chat", 9),
+      payload: {
+        action: "update_agent_questions",
+        agent_questions: [
+          {
+            id: 7,
+            question: "Which path?",
+            options: ["Fast", "Careful"],
+            asked_at: "2026-05-30T12:00:00Z",
+            app_answer_path: "/api/v1/app/chats/9/agent_questions/7/answer"
+          }
+        ]
+      }
+    })
+
+    expect(invalidate).not.toHaveBeenCalled()
+    const updated = queryClient.getQueryData<ReturnType<typeof chatPayload>>(["chats", "9", ""])
+    expect(updated?.agent_questions).toEqual([
+      {
+        id: 7,
+        question: "Which path?",
+        options: ["Fast", "Careful"],
+        asked_at: "2026-05-30T12:00:00Z",
+        app_answer_path: "/api/v1/app/chats/9/agent_questions/7/answer"
+      }
+    ])
+  })
 })
 
 function event(resource: string, id: number | null) {
@@ -273,6 +309,7 @@ function chatPayload(messages: Array<ReturnType<typeof message>>) {
       id: 9,
       title: "Chat",
       title_pending: true,
+      pinned_context: null,
       chat_path: "/chats/9",
       repository: null,
       stop_requested_at: null,
@@ -288,6 +325,7 @@ function chatPayload(messages: Array<ReturnType<typeof message>>) {
     bookmarks: [],
     recent_chats: [],
     pending_actions: [],
+    agent_questions: [],
     attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
     documents_in_scope: [],
     attachment_results: [],

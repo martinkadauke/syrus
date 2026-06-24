@@ -138,6 +138,24 @@ module Api
           head :no_content
         end
 
+        def rename
+          chat_session = find_chat_session
+          name = chat_name
+          if name.blank?
+            render_error("validation_failed", "Name cannot be blank.", status: :unprocessable_content)
+            return
+          end
+
+          if name.length > ChatSession::TITLE_MAX_LENGTH
+            render_error("validation_failed", "Name must be #{ChatSession::TITLE_MAX_LENGTH} characters or fewer.", status: :unprocessable_content)
+            return
+          end
+
+          chat_session.update!(title: name)
+
+          render json: chat_payload(chat_session.reload, message: "Chat renamed.")
+        end
+
         def enqueue_message
           chat_session = find_chat_session
           text = message_text
@@ -186,6 +204,22 @@ module Api
           queued_message.destroy!
 
           render json: chat_payload(chat_session.reload, message: "Queued message deleted.")
+        end
+
+        def answer_agent_question
+          chat_session = find_chat_session
+          question = chat_session.agent_questions.find(params[:agent_question_id])
+          answer = params[:answer].to_s.strip
+          if answer.blank?
+            render_error("validation_failed", "Answer cannot be blank.", status: :unprocessable_content)
+            return
+          end
+
+          if question.answer_and_record!(answer)
+            render json: chat_payload(chat_session.reload, message: "Answer submitted.")
+          else
+            render_error("validation_failed", "Question is no longer active.", status: :unprocessable_content)
+          end
         end
 
         def add_attachment
@@ -324,6 +358,7 @@ module Api
             bookmarks: chat_session.bookmarks.includes(:chat_message).map { |bookmark| bookmark_json(bookmark) },
             recent_chats: recent_chats_json(chat_session),
             pending_actions: pending_actions_json(chat_session),
+            agent_questions: chat_session.agent_questions_payload,
             queued_messages: chat_session.queued_messages_payload,
             attachment_groups: attachment_groups_json(attachment_groups),
             documents_in_scope: chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) },
@@ -341,6 +376,7 @@ module Api
               app_messages_path: "/api/v1/app/chats/#{chat_session.id}/messages",
               app_message_path: "/api/v1/app/chats/#{chat_session.id}/message",
               app_enqueue_message_path: "/api/v1/app/chats/#{chat_session.id}/queued_messages",
+              app_rename_path: "/api/v1/app/chats/#{chat_session.id}/rename",
               app_stop_path: "/api/v1/app/chats/#{chat_session.id}/stop",
               app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
               app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
@@ -622,6 +658,10 @@ module Api
           (params[:content].presence || params.dig(:chat_message, :text)).to_s.strip
         end
 
+        def chat_name
+          (params[:name].presence || params.dig(:chat, :name).presence || params.dig(:chat, :title)).to_s.strip
+        end
+
         def stream_request?
           request.format == Mime[:event_stream] || request.headers["Accept"].to_s.include?("text/event-stream")
         end
@@ -744,6 +784,7 @@ module Api
             id: chat_session.id,
             title: chat_session.title,
             title_pending: chat_session.title_pending?,
+            pinned_context: chat_session.pinned_context,
             chat_path: chat_path(chat_session),
             repository: repository ? repository_json(repository).merge(repository_path: repository_path(repository)) : nil,
             stop_requested_at: chat_session.stop_requested_at&.iso8601,

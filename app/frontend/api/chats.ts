@@ -10,6 +10,7 @@ export type ChatRecord = {
   id: number
   title: string | null
   title_pending: boolean
+  pinned_context: string | null
   chat_path: string
   repository: ChatRepository | null
   stop_requested_at: string | null
@@ -137,6 +138,14 @@ export type ChatPendingAction = {
   app_cancel_path: string
 }
 
+export type ChatAgentQuestion = {
+  id: number
+  question: string
+  options: string[] | null
+  asked_at: string | null
+  app_answer_path: string
+}
+
 export type ChatQueuedMessage = {
   id: number
   text: string
@@ -210,6 +219,7 @@ export type ChatPayload = {
   bookmarks: ChatBookmark[]
   recent_chats: ChatNavRecord[]
   pending_actions: ChatPendingAction[]
+  agent_questions: ChatAgentQuestion[]
   queued_messages: ChatQueuedMessage[]
   attachment_groups: {
     repositories: ChatAttachmentRow[]
@@ -232,6 +242,7 @@ export type ChatPayload = {
     app_messages_path: string
     app_message_path: string
     app_enqueue_message_path: string
+    app_rename_path: string
     app_stop_path: string
     app_bookmarks_path: string
     app_attachments_path: string
@@ -345,4 +356,8 @@ export function confirmPendingAction(path: string) {
 
 export function cancelPendingAction(path: string) {
   return deleteJson<ChatPayload>(path)
+}
+
+export function answerAgentQuestion(path: string, answer: string) {
+  return postJson<ChatPayload>(path, { answer })
 }

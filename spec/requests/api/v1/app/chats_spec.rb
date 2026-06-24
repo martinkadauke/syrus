@@ -93,6 +93,35 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(foreign_chat.reload.last_read_at).to be_nil
   end
 
+  it "renames a chat for the signed-in user" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Old title", last_message_at: Time.current)
+
+    post "/api/v1/app/chats/#{chat.id}/rename", params: { name: "  Release planning  " }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.title).to eq("Release planning")
+    expect(parse_body["message"]).to eq("Chat renamed.")
+    expect(parse_body.dig("chat", "title")).to eq("Release planning")
+  end
+
+  it "rejects invalid chat rename names" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Old title", last_message_at: Time.current)
+
+    post "/api/v1/app/chats/#{chat.id}/rename", params: { name: " " }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to eq("Name cannot be blank.")
+    expect(chat.reload.title).to eq("Old title")
+
+    post "/api/v1/app/chats/#{chat.id}/rename", params: { name: "a" * (ChatSession::TITLE_MAX_LENGTH + 1) }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to eq("Name must be #{ChatSession::TITLE_MAX_LENGTH} characters or fewer.")
+    expect(chat.reload.title).to eq("Old title")
+  end
+
   it "creates a fresh chat with an optional repository attachment" do
     sign_in_as(user)
 
@@ -266,6 +295,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     ChatSession.create!(user: Factories.user, title: "Foreign chat", last_message_at: Time.current)
     message = chat.messages.create!(role: "assistant", content: { "text" => "Discuss **aqueducts**." })
     message.bookmarks.create!(label: "Aqueducts", kind: "topic")
+    question = chat.agent_questions.create!(question: "Which path?", options: [ "Fast", "Careful" ], asked_at: Time.current)
     chat.create_whiteboard!(
       scene_json: {
         "elements" => [ { "id" => "box-1", "type" => "rectangle" } ],
@@ -285,6 +315,12 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body["turn_in_flight"]).to eq(false)
     expect(body["agent_busy"]).to eq(false)
     expect(body["bookmarks"]).to contain_exactly(include("label" => "Aqueducts", "chat_message_id" => message.id, "anchor_message_id" => message.id))
+    expect(body["agent_questions"]).to contain_exactly(include(
+      "id" => question.id,
+      "question" => "Which path?",
+      "options" => [ "Fast", "Careful" ],
+      "app_answer_path" => "/api/v1/app/chats/#{chat.id}/agent_questions/#{question.id}/answer"
+    ))
     expect(body["recent_chats"]).to include(
       include("id" => chat.id, "current" => true, "chat_path" => chat_path(chat), "repository" => include("slug" => "acme/widgets")),
       include("id" => older_chat.id, "current" => false, "title" => "Older chat")
@@ -308,10 +344,49 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("paths", "app_messages_path")).to eq("/api/v1/app/chats/#{chat.id}/messages")
     expect(body.dig("paths", "app_message_path")).to eq("/api/v1/app/chats/#{chat.id}/message")
     expect(body.dig("paths", "app_enqueue_message_path")).to eq("/api/v1/app/chats/#{chat.id}/queued_messages")
+    expect(body.dig("paths", "app_rename_path")).to eq("/api/v1/app/chats/#{chat.id}/rename")
     expect(body.dig("paths", "app_attachments_path")).to eq("/api/v1/app/chats/#{chat.id}/attachments")
     expect(body.dig("paths", "app_whiteboard_path")).to eq("/api/v1/app/chats/#{chat.id}/whiteboard")
     expect(body["queued_messages"]).to eq([])
     expect(body["paths"].keys).not_to include("chat_messages_path", "chat_attachments_path", "chat_whiteboard_path")
+  end
+
+  it "answers an active agent question" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    question = chat.agent_questions.create!(question: "Which branch?", options: [ "main", "release" ], asked_at: Time.current)
+
+    post "/api/v1/app/chats/#{chat.id}/agent_questions/#{question.id}/answer", params: { answer: "release" }
+
+    expect(response).to have_http_status(:ok)
+    expect(question.reload.answer).to eq("release")
+    expect(question.answered_at).to be_present
+    expect(chat.messages.order(:created_at, :id).last).to have_attributes(
+      role: "user",
+      content: { "text" => "release" }
+    )
+    expect(parse_body["agent_questions"]).to eq([])
+    expect(parse_body["messages"]).to include(include(
+      "role" => "user",
+      "text" => "release"
+    ))
+  end
+
+  it "rejects blank or inactive agent question answers" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
+    question = chat.agent_questions.create!(question: "Continue?", asked_at: Time.current)
+
+    post "/api/v1/app/chats/#{chat.id}/agent_questions/#{question.id}/answer", params: { answer: " " }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(question.reload.answer).to be_nil
+
+    question.expire!
+    post "/api/v1/app/chats/#{chat.id}/agent_questions/#{question.id}/answer", params: { answer: "yes" }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(question.reload.answer).to be_nil
   end
 
   it "queues, edits, and deletes a message while a chat turn is active" do

@@ -36,6 +36,7 @@ class ChatSession < ApplicationRecord
   has_many :messages, class_name: "ChatMessage", dependent: :destroy
   has_many :chat_queued_messages, class_name: "ChatQueuedMessage", dependent: :destroy
   has_many :queued_messages, -> { pending.order(:created_at, :id) }, class_name: "ChatQueuedMessage"
+  has_many :agent_questions, class_name: "ChatAgentQuestion", dependent: :destroy
   has_many :bookmarks,
            -> { order("chat_messages.created_at ASC", "chat_messages.id ASC", "chat_bookmarks.id ASC") },
            through: :messages,
@@ -157,6 +158,18 @@ class ChatSession < ApplicationRecord
     end
   end
 
+  def agent_questions_payload
+    agent_questions.active.map do |question|
+      {
+        id: question.id,
+        question: question.question,
+        options: question.options,
+        asked_at: question.asked_at&.iso8601,
+        app_answer_path: "/api/v1/app/chats/#{id}/agent_questions/#{question.id}/answer"
+      }
+    end
+  end
+
   private
 
   def broadcast_app_header_update
@@ -171,6 +184,7 @@ class ChatSession < ApplicationRecord
         chat: {
           title: title,
           title_pending: title_pending?,
+          pinned_context: pinned_context,
           stop_requested_at: stop_requested_at&.iso8601,
           cumulative_input_tokens: cumulative_input_tokens.to_i,
           cumulative_output_tokens: cumulative_output_tokens.to_i,
@@ -199,6 +213,7 @@ class ChatSession < ApplicationRecord
 
   def header_previously_changed?
     saved_change_to_title? ||
+      saved_change_to_pinned_context? ||
       saved_change_to_cumulative_input_tokens? ||
       saved_change_to_cumulative_output_tokens? ||
       saved_change_to_cumulative_cost_usd?

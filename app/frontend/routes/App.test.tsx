@@ -8094,6 +8094,74 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "2 new messages" })).not.toBeInTheDocument()
   })
 
+  it("renders agent questions inline with stacked options and records the answer in the thread", async () => {
+    const initialPayload = chatPayload({
+      agentQuestions: [
+        {
+          id: 7,
+          question: "Which route should I take?",
+          options: ["Fast path", "Careful path"],
+          asked_at: "2026-06-23T10:00:00Z",
+          app_answer_path: "/api/v1/app/chats/8/agent_questions/7/answer"
+        }
+      ]
+    })
+    const answeredPayload = chatPayload({
+      messages: [
+        ...initialPayload.messages,
+        {
+          type: "message",
+          id: 10,
+          role: "user",
+          tool_name: null,
+          content: { text: "Careful path" },
+          text: "Careful path",
+          bookmarkable: true
+        }
+      ],
+      agentQuestions: [],
+      message: "Answer submitted."
+    })
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/agent_questions/7/answer" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(answeredPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(initialPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const stream = await screen.findByTestId("chat-message-stream")
+      const questions = within(stream).getByRole("region", { name: "Agent questions" })
+      expect(within(questions).getByText("Which route should I take?")).toBeInTheDocument()
+
+      const fastButton = within(questions).getByRole("button", { name: "Fast path" })
+      const carefulButton = within(questions).getByRole("button", { name: "Careful path" })
+      expect(fastButton.parentElement).toHaveClass("flex-col")
+      expect(fastButton).toHaveClass("flex", "w-full", "justify-start", "text-left")
+      expect(carefulButton).toHaveClass("flex", "w-full", "justify-start", "text-left")
+      expect(within(questions).getByLabelText("Custom answer")).toBeInTheDocument()
+      expect(within(questions).getByRole("button", { name: "Decline to answer" })).toBeInTheDocument()
+
+      fireEvent.click(carefulButton)
+
+      expect(await screen.findByText("Answer submitted.")).toBeInTheDocument()
+      expect(within(stream).getByText("Careful path")).toBeInTheDocument()
+      expect(screen.queryByRole("region", { name: "Agent questions" })).not.toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+    }
+  })
+
   it("sends chat messages with Enter on desktop", async () => {
     const restoreViewport = setViewportWidth(1280)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
@@ -10764,6 +10832,7 @@ function sidebarChat(overrides: {
     id: overrides.id,
     title: overrides.title,
     title_pending: overrides.title_pending ?? false,
+    pinned_context: null,
     chat_path: `/chats/${overrides.id}`,
     repository: overrides.repository,
     stop_requested_at: null,
@@ -10784,6 +10853,7 @@ function chatPayload(overrides: {
   message?: string
   messages?: Array<Record<string, unknown>>
   queuedMessages?: Array<Record<string, unknown>>
+  agentQuestions?: Array<Record<string, unknown>>
   cumulativeInputTokens?: number
   cumulativeOutputTokens?: number
   cumulativeCostUsd?: number
@@ -10797,6 +10867,7 @@ function chatPayload(overrides: {
       id: overrides.id ?? 8,
       title: "Aqueduct planning",
       title_pending: false,
+      pinned_context: null,
       chat_path: overrides.chatPath ?? "/chats/8",
       repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
       stop_requested_at: null,
@@ -10828,6 +10899,7 @@ function chatPayload(overrides: {
         id: 8,
         title: "Aqueduct planning",
         title_pending: false,
+        pinned_context: null,
         chat_path: "/chats/8",
         repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
         stop_requested_at: null,
@@ -10842,6 +10914,7 @@ function chatPayload(overrides: {
         id: 4,
         title: "Road survey",
         title_pending: false,
+        pinned_context: null,
         chat_path: "/chats/4",
         repository: { id: 4, slug: "acme/roads", repository_path: "/repositories/4" },
         stop_requested_at: null,
@@ -10854,6 +10927,7 @@ function chatPayload(overrides: {
       }
     ],
     pending_actions: [],
+    agent_questions: overrides.agentQuestions || [],
     attachment_groups: {
       repositories: [
         { id: 2, label: "acme/widgets", app_detach_path: "/api/v1/app/chats/8/attachments/2" }
@@ -10879,6 +10953,7 @@ function chatPayload(overrides: {
       app_messages_path: "/api/v1/app/chats/8/messages",
       app_message_path: "/api/v1/app/chats/8/message",
       app_enqueue_message_path: "/api/v1/app/chats/8/queued_messages",
+      app_rename_path: "/api/v1/app/chats/8/rename",
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
       app_attachments_path: "/api/v1/app/chats/8/attachments",

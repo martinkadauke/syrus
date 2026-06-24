@@ -68,11 +68,12 @@ recurring work, inspect existing Jobs or PRs, approve or unapprove
 implemented Jobs, change Job priority, move Jobs into or out of Epics, drill
 through Job workflow and Run history progressively, search Jobs in the
 attached repository, search prior chat messages for the same user, read
-paginated chat transcripts, inspect Solid Queue health, and create proposal
-cards for the operator to confirm. New chats use a short interpreted title
-from the first prompt, with the repository name as the fallback. The app
-sidebar groups recent chats by repository, and each repository group can be
-collapsed when the operator wants to hide those chats.
+paginated chat transcripts, inspect Solid Queue health, update the chat's
+pinned context for future turns, and create proposal cards for the operator
+to confirm. New chats use a short interpreted title from the first prompt,
+with the repository name as the fallback. The app sidebar groups recent chats
+by repository, and each repository group can be collapsed when the operator
+wants to hide those chats.
 
 Chats do not silently materialize work just because the assistant suggested
 it. Proposal tools create cards; confirmation creates the real Job, Epic,
@@ -99,6 +100,11 @@ When the chat agent is already running, operators can queue follow-up
 messages instead of waiting for the turn to finish. Queued messages remain
 editable and deletable until Syrus promotes the next one into the transcript
 and starts the following turn.
+
+The chat agent can also ask a blocking inline question when it needs an
+operator decision before continuing. Syrus shows the question above the
+compose area, renders multiple-choice options as buttons when provided, and
+otherwise accepts a short free-form answer.
 
 Chat transcripts also surface MCP sidecar health. Syrus distinguishes
 available, pending, and unavailable chat tools so operators can tell when
