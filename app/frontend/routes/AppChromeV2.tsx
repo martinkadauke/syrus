@@ -4,8 +4,10 @@ import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { createChat, fetchChats, type ChatNavRecord, type ChatPayload } from "../api/chats"
 import { patchJson } from "../api/client"
+import { dashboardApiSearch, fetchDashboard } from "../api/dashboard"
 import { BugReportButton } from "../components/BugReportButton"
 import { CloseIcon } from "../components/CloseIcon"
+import { DashboardSmartFolderNav } from "../components/DashboardSmartFolderNav"
 import { SyrusBrand } from "../components/SyrusBrand"
 import { upsertRecentChatCache } from "../lib/chatRecentCache"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
@@ -278,12 +280,23 @@ function SidebarContent({
           <span>{creatingChat ? "Creating..." : "New Chat"}</span>
         </button>
         <nav aria-label="Primary" className="flex flex-col gap-1 text-sm">
-          {navItems.map((item) => (
-            <Link className={sidebarLinkClass(item.active)} key={item.label} onClick={onCloseDrawer} to={item.to}>
-              {item.icon}
-              <span>{item.label}</span>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const link = (
+              <Link className={sidebarLinkClass(item.active)} key={item.label} onClick={onCloseDrawer} to={item.to}>
+                {item.icon}
+                <span>{item.label}</span>
+              </Link>
+            )
+
+            if (item.label !== "Dashboard") return link
+
+            return (
+              <div className="space-y-1" key={item.label}>
+                {link}
+                <SidebarDashboardFolders prefix={prefix} />
+              </div>
+            )
+          })}
         </nav>
       </div>
       <RecentChatsSidebar onCloseDrawer={onCloseDrawer} prefix={prefix} userPresent={Boolean(user)} />
@@ -299,6 +312,26 @@ function SidebarContent({
           />
         ) : null}
       </div>
+    </div>
+  )
+}
+
+function SidebarDashboardFolders({ prefix }: { prefix: string }) {
+  const location = useLocation()
+  const isDashboard = location.pathname.includes("/dashboard")
+  const search = dashboardApiSearch(location.pathname, location.search)
+  const dashboard = useQuery({
+    queryKey: ["dashboard", search],
+    queryFn: ({ signal }) => fetchDashboard(search, { signal }),
+    enabled: isDashboard,
+    placeholderData: (previousData) => previousData
+  })
+
+  if (!isDashboard || !dashboard.data) return null
+
+  return (
+    <div className="pl-7">
+      <DashboardSmartFolderNav payload={dashboard.data} prefix={prefix} search={location.search} />
     </div>
   )
 }
@@ -690,7 +723,7 @@ function clampSidebarWidth(width: number) {
 }
 
 function sidebarLinkClass(active: boolean) {
-  return `inline-flex items-center gap-2 rounded px-2.5 py-2 font-medium ${active ? "text-blue-700 dark:text-blue-300 sm:bg-blue-50 dark:sm:bg-blue-900/30" : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"}`
+  return `inline-flex w-full items-center gap-2 rounded px-2.5 py-2 font-medium ${active ? "text-blue-700 dark:text-blue-300 sm:bg-blue-50 dark:sm:bg-blue-900/30" : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"}`
 }
 
 function recentChatLinkClass(active: boolean) {
