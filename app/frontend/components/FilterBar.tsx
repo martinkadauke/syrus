@@ -495,10 +495,10 @@ function FilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: F
   if (meta.bucket === "date") return <DateFilterValueEditor chip={chip} onChange={onChange} />
   if (meta.bucket === "number") return <NumberFilterValueEditor chip={chip} onChange={onChange} />
 
-  return <TextFilterValueEditor chip={chip} onChange={onChange} />
+  return <TextFilterValueEditor chip={chip} meta={meta} onChange={onChange} />
 }
 
-function TextFilterValueEditor({ chip, onChange }: { chip: FilterChip; onChange: (chip: FilterChip) => void }) {
+function TextFilterValueEditor({ chip, meta, onChange }: { chip: FilterChip; meta: FilterSchemaField; onChange: (chip: FilterChip) => void }) {
   const [localValue, setLocalValue] = useState(String(chip.value ?? ""))
 
   useEffect(() => {
@@ -520,6 +520,7 @@ function TextFilterValueEditor({ chip, onChange }: { chip: FilterChip; onChange:
         onKeyDown={(event) => {
           if (event.key === "Enter") commit()
         }}
+        placeholder={filterPlaceholder(meta)}
         type="text"
         value={localValue}
       />
@@ -996,6 +997,10 @@ function filterLabelClass() {
 
 function filterInputClass(extraClasses: string) {
   return `${extraClasses} border border-gray-300 bg-white text-sm normal-case text-gray-700 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100`
+}
+
+function filterPlaceholder(meta: FilterSchemaField) {
+  return typeof meta.expansions?.placeholder === "string" ? meta.expansions.placeholder : undefined
 }
 
 function clearFiltersLink(path: string, search: string, legacyFilterKeys: string[], buildLink: FilterLinkBuilder) {
