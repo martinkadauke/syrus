@@ -1104,7 +1104,7 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
   )
 }
 
-type WorkspaceTab = "whiteboard" | "context" | "chats"
+type WorkspaceTab = "whiteboard" | "context"
 type MobileChatTab = "chat" | WorkspaceTab
 
 function ChatWorkspace({
@@ -1182,7 +1182,7 @@ function ChatWorkspace({
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-gray-950">
         <nav aria-label="Chat mobile tabs" className="flex shrink-0 overflow-x-auto border-b border-gray-200 px-2 pt-2 text-sm font-medium dark:border-gray-700">
-          {(["chat", "whiteboard", "context", "chats"] as MobileChatTab[]).map((tab) => (
+          {(["chat", "whiteboard", "context"] as MobileChatTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeMobileTab === tab)}
               key={tab}
@@ -1350,7 +1350,7 @@ function ChatWorkspacePanel({
     <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 ${fullscreen ? "" : "h-full w-full"}`}>
       {fullscreen || !showTabs ? null : (
         <nav aria-label="Chat workspace tabs" className="flex border-b border-gray-200 px-3 pt-3 text-sm font-medium dark:border-gray-700">
-          {(["whiteboard", "context", "chats"] as WorkspaceTab[]).map((tab) => (
+          {(["whiteboard", "context"] as WorkspaceTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeTab === tab)}
               key={tab}
@@ -1369,7 +1369,6 @@ function ChatWorkspacePanel({
           </WhiteboardBoundary>
         ) : null}
         {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
-        {activeTab === "chats" ? <ChatNavigator payload={payload} prefix={prefix} onBookmarkSelect={onBookmarkSelect} /> : null}
       </div>
     </aside>
   )
@@ -1916,9 +1915,7 @@ function workspaceTabClass(active: boolean) {
 
 function workspaceTabLabel(tab: WorkspaceTab) {
   if (tab === "whiteboard") return "Whiteboard"
-  if (tab === "context") return "Context"
-
-  return "Chats"
+  return "Context"
 }
 
 function mobileChatTabLabel(tab: MobileChatTab) {
@@ -1932,7 +1929,7 @@ function defaultWorkspaceTab(payload: ChatPayload): WorkspaceTab {
 function storedWorkspaceTab(): WorkspaceTab | null {
   try {
     const value = window.localStorage.getItem(CHAT_WORKSPACE_TAB_KEY)
-    return value === "whiteboard" || value === "context" || value === "chats" ? value : null
+    return value === "whiteboard" || value === "context" ? value : null
   } catch (_error) {
     return null
   }
