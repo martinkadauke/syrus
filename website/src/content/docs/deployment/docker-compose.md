@@ -134,6 +134,18 @@ their toolchains. Two layers cover this:
   For anything beyond apt, edit `Dockerfile.local` (it just extends the base
   worker image).
 
+Local source builds use the Docker cache on your machine by default. To also
+reuse the registry-backed BuildKit cache written by production deploys, provide
+a GHCR token (`$GHCR_TOKEN` or `~/.config/syrus/ghcr-token`) and run:
+
+```bash
+SYRUS_DOCKER_REGISTRY_CACHE=1 bin/compose-up
+```
+
+That pulls and updates `ghcr.io/tkadauke/syrus:cache`. Override the cache tag
+with `SYRUS_DOCKER_CACHE_REF=owner/image:cache` when building from a fork or a
+private registry.
+
 The worker runs unprivileged (`uid 1000`, no sudo), so a repo's `prepare:`
 **cannot** `apt-get install` — that's why system packages live at the image
 layer via `EXTRA_APT_PACKAGES`.

@@ -15,14 +15,16 @@
 #   bin/deploy --skip-build           # assume both :<sha> already pushed
 #                                       (just rollout restart)
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${SCRIPT_DIR}/docker-image-lib"
 
 REGISTRY="ghcr.io/tkadauke/syrus"
 WORKER_DEV_REGISTRY="ghcr.io/tkadauke/syrus-worker-dev"
 # Shared cache ref. `mode=max` writes ALL stage layers to this tag, so
 # subsequent builds (even on fresh runners) pull pre-compiled Ruby/
 # Python from the runtime-cache stage instead of recompiling.
-CACHE_REF="${REGISTRY}:cache"
-GHCR_USER="tkadauke"
+CACHE_REF="$(syrus_docker_cache_ref "${REGISTRY}:cache")"
+GHCR_USER="${GHCR_USER:-tkadauke}"
 TOKEN_FILE="${HOME}/.config/syrus/ghcr-token"
 
 # Where each cluster's kubeconfig lives. Staging uses the default
@@ -55,8 +57,6 @@ while [ $# -gt 0 ]; do
 done
 
 cd "$(git rev-parse --show-toplevel)"
-
-. ./bin/docker-image-lib
 
 # --- preflight: clean tree, sane HEAD --------------------------------
 if ! git diff-index --quiet HEAD --; then

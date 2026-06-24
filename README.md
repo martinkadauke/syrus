@@ -182,13 +182,13 @@ admin**, and the first-run wizard walks you through GitHub credentials (a
 classic PAT + the GitHub App), the agent, a repository, and a guided chat to
 create and land your first Epic.
 
-The wizard's **Configure agent** step handles Claude authentication: it detects
-an existing `claude` login on this machine, or walks you through authorizing one
-(you'll need a Claude Pro/Max/Team/Enterprise plan). The `claude` CLI you
-installed in step 2 is what the worker invokes to run Jobs — without it the
-wizard still loads, but Claude agent runs can't execute. Codex is also
-supported through the credentials UI when you choose Codex as the agent
-provider.
+The wizard's **Configure agent** step handles Claude or Codex authentication.
+Claude can reuse an existing `claude` login on this machine or walk you through
+authorizing one (you'll need a Claude Pro/Max/Team/Enterprise plan). Codex
+credentials can be configured in the same first-run flow or later through the
+credentials UI when you choose Codex as the agent provider. The agent CLI
+installed in step 2 is what the worker invokes to run Jobs — without a
+configured provider the wizard still loads, but agent runs can't execute.
 
 ### Handy commands
 
@@ -250,6 +250,14 @@ To pin a specific version instead of tracking `:latest`, set `SYRUS_IMAGE` in
 commands need, set `EXTRA_APT_PACKAGES` and build locally with `bin/compose-up`
 instead (that path compiles from source — see
 `website/src/content/docs/deployment/docker-compose.md`).
+
+Source builds can reuse the same registry-backed BuildKit cache that deployment
+builds write. Set `SYRUS_DOCKER_REGISTRY_CACHE=1` before `bin/compose-up` or
+`bin/publish-image`; override the cache tag with `SYRUS_DOCKER_CACHE_REF` if
+needed. The cache path requires a GHCR token in `$GHCR_TOKEN` or
+`~/.config/syrus/ghcr-token` because the build pushes updated cache metadata.
+`bin/publish-image` publishes the host architecture by default; pass
+`--multi-arch` when you need both `linux/amd64` and `linux/arm64`.
 
 ## Production Configuration
 

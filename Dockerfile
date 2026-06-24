@@ -128,32 +128,21 @@ CMD ["./bin/thrust", "./bin/rails", "server"]
 
 
 # ============================================================================
-# Runtime cache stage — pre-compiled language runtimes for the worker.
+# Runtime cache stages — pre-compiled language runtimes for the worker.
 #
 # Ruby and Python install via mise compile from source (~5 min/Ruby, ~3 min
-# for Python, on amd64 native; longer under qemu). Putting them in their
-# own stage with ONLY the version-pin ARGs as inputs means BuildKit caches
-# this layer based purely on those pins — adding a CLI tool to worker-dev
-# below doesn't bust this cache. Compile once per version bump; never on
-# incidental Dockerfile churn.
+# for Python, on amd64 native; longer under qemu). Keep each language family
+# in its own stage so changing Go/Node/Python pins cannot invalidate the Ruby
+# compile cache.
 #
 # Cross-builder cache sharing (e.g. CI on fresh runners) needs `--cache-from
 # type=registry,ref=ghcr.io/tkadauke/syrus:cache` plus a matching `--cache-to`.
 # The Dockerfile structure is what makes that effective.
 # ============================================================================
-FROM docker.io/library/debian:bookworm-slim AS runtime-cache
+FROM docker.io/library/debian:bookworm-slim AS runtime-base
 
-ARG MISE_RUBIES="3.2 3.3"
-# Use explicit majors instead of "lts lts-1" — mise's Node plugin only
-# resolves `lts` (current) and named codenames (lts-iron, lts-jod, …),
-# not `lts-1`. Pinning by major (24, 22) gives us current LTS + Syrus's
-# own NODE_MAJOR=22 pin, both stable across upstream LTS rotations.
-ARG MISE_NODES="24 22"
-ARG MISE_PYTHONS="3.11"
-ARG MISE_GO_VERSION="1.26.4"
-
-ENV MISE_DATA_DIR=/opt/mise \
-    DEBIAN_FRONTEND=noninteractive
+ENV DEBIAN_FRONTEND=noninteractive \
+    MISE_DATA_DIR=/opt/mise
 
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
@@ -167,12 +156,43 @@ RUN apt-get update -qq && \
 RUN curl -fsSL https://mise.jdx.dev/install.sh | \
       MISE_INSTALL_PATH=/usr/local/bin/mise sh
 
-# One mise install per language family. Compile order doesn't matter for
-# caching; the layer hashes once per ARG-value combination.
-RUN /usr/local/bin/mise install $(for v in $MISE_RUBIES;  do echo ruby@$v;   done) && \
-    /usr/local/bin/mise install $(for v in $MISE_NODES;   do echo node@$v;   done) && \
-    /usr/local/bin/mise install $(for v in $MISE_PYTHONS; do echo python@$v; done) && \
-    /usr/local/bin/mise install go@$MISE_GO_VERSION && \
+FROM runtime-base AS runtime-ruby-cache
+
+# Exact patch pins keep cache keys stable and make cold rebuilds reproducible.
+# 3.2.3 matches Syrus's own .ruby-version; 3.3.11 is the current Ruby 3.3 line.
+ARG MISE_RUBIES="3.2.3 3.3.11"
+RUN /usr/local/bin/mise install $(for v in $MISE_RUBIES; do echo ruby@$v; done) && \
+    rm -rf /opt/mise/cache /opt/mise/tmp
+
+FROM runtime-base AS runtime-node-cache
+
+# Use explicit majors instead of "lts lts-1" — mise's Node plugin only
+# resolves `lts` (current) and named codenames (lts-iron, lts-jod, ...),
+# not `lts-1`. Pinning by major (24, 22) gives us current LTS + Syrus's
+# own NODE_MAJOR=22 pin, both stable across upstream LTS rotations.
+ARG MISE_NODES="24 22"
+RUN /usr/local/bin/mise install $(for v in $MISE_NODES; do echo node@$v; done) && \
+    rm -rf /opt/mise/cache /opt/mise/tmp
+
+FROM runtime-base AS runtime-python-cache
+
+ARG MISE_PYTHONS="3.11"
+RUN /usr/local/bin/mise install $(for v in $MISE_PYTHONS; do echo python@$v; done) && \
+    rm -rf /opt/mise/cache /opt/mise/tmp
+
+FROM runtime-base AS runtime-go-cache
+
+ARG MISE_GO_VERSION="1.26.4"
+RUN /usr/local/bin/mise install go@$MISE_GO_VERSION && \
+    rm -rf /opt/mise/cache /opt/mise/tmp
+
+FROM runtime-base AS runtime-cache
+
+COPY --from=runtime-ruby-cache /opt/mise/ /opt/mise/
+COPY --from=runtime-node-cache /opt/mise/ /opt/mise/
+COPY --from=runtime-python-cache /opt/mise/ /opt/mise/
+COPY --from=runtime-go-cache /opt/mise/ /opt/mise/
+RUN /usr/local/bin/mise reshim && \
     rm -rf /opt/mise/cache /opt/mise/tmp
 
 

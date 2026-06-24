@@ -9,6 +9,19 @@ syrus_disable_buildx_attestations() {
   export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 }
 
+syrus_docker_cache_ref() {
+  local default_ref="${1:-ghcr.io/tkadauke/syrus:cache}"
+  printf '%s' "${SYRUS_DOCKER_CACHE_REF:-$default_ref}"
+}
+
+syrus_registry_cache_enabled() {
+  case "${SYRUS_DOCKER_REGISTRY_CACHE:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+  esac
+
+  [ -n "${SYRUS_DOCKER_CACHE_REF:-}" ]
+}
+
 syrus_require_docker_daemon() {
   if ! command -v docker >/dev/null 2>&1; then
     echo "docker not found. Install a container runtime first." >&2

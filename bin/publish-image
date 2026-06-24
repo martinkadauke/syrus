@@ -21,11 +21,10 @@
 # the same place bin/deploy looks. Needs write:packages.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
 . ./bin/docker-image-lib
 
 IMAGE="ghcr.io/tkadauke/syrus-local"
-GHCR_USER="tkadauke"
+GHCR_USER="${GHCR_USER:-tkadauke}"
 VERSION=""
 MULTI=0
 SKIP_TESTS=0
@@ -47,11 +46,19 @@ GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
 
 tags=(-t "$IMAGE:latest")
 if [ -n "$VERSION" ]; then tags+=(-t "$IMAGE:$VERSION"); fi
+cache_args=()
+if syrus_registry_cache_enabled; then
+  CACHE_REF="$(syrus_docker_cache_ref)"
+  cache_args=(--cache-from "type=registry,ref=${CACHE_REF}" --cache-to "type=registry,ref=${CACHE_REF},mode=max")
+fi
 
 echo "== Tags =="
 echo "   $IMAGE:latest"
 if [ -n "$VERSION" ]; then echo "   $IMAGE:$VERSION"; fi
 echo "   (GIT_SHA=$GIT_SHA)"
+if [ "${#cache_args[@]}" -gt 0 ]; then
+  echo "   build cache: $CACHE_REF"
+fi
 
 echo "== Logging in to ghcr.io as $GHCR_USER =="
 syrus_ghcr_login "$GHCR_USER" "$TOKEN"
@@ -60,7 +67,17 @@ syrus_ghcr_login "$GHCR_USER" "$TOKEN"
 # suite runs against, and what the default path pushes. Nothing leaves this host
 # until the tests below pass.
 echo "== Building (single-arch, this host) =="
-syrus_docker_build_image worker-dev "$GIT_SHA" --provenance=false "${tags[@]}" .
+if [ "${#cache_args[@]}" -gt 0 ]; then
+  syrus_docker_buildx_image worker-dev "$GIT_SHA" \
+    --load \
+    "${cache_args[@]}" \
+    --provenance=false \
+    "${tags[@]}" \
+    .
+else
+  syrus_docker_build_image worker-dev "$GIT_SHA" \
+    --provenance=false "${tags[@]}" .
+fi
 
 # Gate: integration tests against the freshly built image. set -e aborts the
 # whole script (before any push) if bin/test-docker exits non-zero.
@@ -77,7 +94,12 @@ if [ "$MULTI" = 1 ]; then
   # arm64 reuses the build cache from above; amd64 is built fresh. The tested
   # image is the arm64 variant (amd64 is the same source, not run here).
   syrus_docker_buildx_image worker-dev "$GIT_SHA" \
-    --platform linux/amd64,linux/arm64 "${tags[@]}" --push .
+    --platform linux/amd64,linux/arm64 \
+    "${cache_args[@]}" \
+    --provenance=false \
+    "${tags[@]}" \
+    --push \
+    .
 else
   echo "== Pushing the tested image =="
   docker push "$IMAGE:latest"

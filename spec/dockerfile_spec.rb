@@ -9,13 +9,19 @@ RSpec.describe "Dockerfile" do
     dockerfile.match(/FROM base AS worker-deps(?<stage>.*?)FROM worker-deps AS worker-dev/m)[:stage]
   end
 
-  def runtime_cache_stage
-    dockerfile.match(/FROM docker\.io\/library\/debian:bookworm-slim AS runtime-cache(?<stage>.*?)FROM base AS worker-deps/m)[:stage]
+  def stage(name, until_stage = nil)
+    pattern =
+      if until_stage
+        /FROM .* AS #{Regexp.escape(name)}(?<stage>.*?)(?=FROM #{Regexp.escape(until_stage)})/m
+      else
+        /FROM .* AS #{Regexp.escape(name)}(?<stage>.*?)(?=FROM )/m
+      end
+    dockerfile.match(pattern)[:stage]
   end
 
   it "creates the data root with rails ownership before runtime stages drop privileges" do
     user_setup = dockerfile.match(/RUN groupadd --system --gid 1000 rails(?<setup>.*?)FROM base AS build/m)[:setup]
-    app_stage = dockerfile.match(/FROM base AS app(?<stage>.*?)FROM docker\.io\/library\/debian:bookworm-slim AS runtime-cache/m)[:stage]
+    app_stage = dockerfile.match(/FROM base AS app(?<stage>.*?)FROM docker\.io\/library\/debian:bookworm-slim AS runtime-base/m)[:stage]
     worker_stage = dockerfile.match(/FROM worker-deps AS worker-dev(?<stage>.*)\z/m)[:stage]
 
     expect(user_setup).to include("mkdir -p /home/rails/.syrus")
@@ -37,8 +43,29 @@ RSpec.describe "Dockerfile" do
     expect(stage).to include("PATH=\"/opt/mise/installs/go/${MISE_GO_VERSION}/bin:/opt/python-tools/bin:/opt/mise/shims:${PATH}\"")
   end
 
+  it "keeps compiled Ruby runtimes in their own exact-pinned cache stage" do
+    ruby_stage = stage("runtime-ruby-cache")
+    node_stage = stage("runtime-node-cache")
+    python_stage = stage("runtime-python-cache")
+    go_stage = stage("runtime-go-cache")
+    assembly_stage = stage("runtime-cache", "base AS worker-deps")
+
+    expect(ruby_stage).to include('ARG MISE_RUBIES="3.2.3 3.3.11"')
+    expect(ruby_stage).to include("mise install $(for v in $MISE_RUBIES")
+    expect(ruby_stage).not_to include("MISE_NODES")
+    expect(ruby_stage).not_to include("MISE_PYTHONS")
+    expect(ruby_stage).not_to include("MISE_GO_VERSION")
+
+    expect(node_stage).to include("ARG MISE_NODES=")
+    expect(python_stage).to include("ARG MISE_PYTHONS=")
+    expect(go_stage).to include("ARG MISE_GO_VERSION=")
+    expect(assembly_stage).to include("COPY --from=runtime-ruby-cache /opt/mise/ /opt/mise/")
+    expect(assembly_stage).to include("COPY --from=runtime-go-cache /opt/mise/ /opt/mise/")
+    expect(assembly_stage).to include("/usr/local/bin/mise reshim")
+  end
+
   it "preinstalls Go for the worker image" do
-    runtime_stage = runtime_cache_stage
+    runtime_stage = stage("runtime-go-cache")
     worker_deps = worker_deps_stage
     worker_dev = dockerfile.match(/FROM worker-deps AS worker-dev(?<stage>.*)\z/m)[:stage]
 

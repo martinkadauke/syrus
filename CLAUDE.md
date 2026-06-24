@@ -324,9 +324,12 @@ across web/worker processes.
   Active Record encryption keys must match the persisted DB. Test image-level
   changes with `bin/test-docker`; publish only through `bin/publish-image`,
   which builds, runs that integration gate, then pushes. Docker image scripts
-  share common build/login/verification helpers in `bin/docker-image-lib`;
-  extend that helper instead of copying Docker/GHCR plumbing between
+  share common build/login/cache helpers in `bin/docker-image-lib`; extend that
+  helper instead of copying Dockerfile target, GHCR login, pushed-manifest
+  validation, Docker/GHCR plumbing, or registry cache logic between
   `bin/deploy`, `bin/publish-image`, and `bin/compose-up`.
+  `SYRUS_DOCKER_REGISTRY_CACHE=1` opts local compose/publish builds into the
+  registry BuildKit cache, and `SYRUS_DOCKER_CACHE_REF` overrides the cache tag.
 - **AASM events on Run** — call `start!`, `succeed!`, `fail!`, `cancel!`,
   always followed by `save!` (callbacks set timestamps but don't persist).
   See `Run` model.
