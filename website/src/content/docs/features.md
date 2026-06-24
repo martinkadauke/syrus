@@ -33,9 +33,10 @@ goal is larger than one PR but still needs visible sequencing.
 
 An Epic has a board state: `backlog`, `ready`, `in_progress`, `done`, or
 `archived`. Child Jobs can be blocked until the Epic starts, and Epics can
-depend on other Epics. Syrus can mark an Epic ready when its dependencies
-are done and all child Jobs are confirmed, then mark it done when all child
-Jobs close through merged PR outcomes.
+depend on other Epics or Jobs. Jobs can also wait on an Epic to complete.
+Syrus can mark an Epic ready when its dependencies are done and all child
+Jobs are confirmed, then mark it done when all child Jobs close through
+merged PR outcomes.
 
 Chats can propose Epics or propose an Epic with child Jobs. The operator
 confirms the proposal before Syrus creates the real records.
@@ -75,6 +76,8 @@ operator wants to hide those chats.
 Chats do not silently materialize work just because the assistant suggested
 it. Proposal tools create cards; confirmation creates the real Job, Epic,
 GitHub issue, or scheduled task.
+Proposal cards can also declare dependency edges up front, including Jobs
+blocked on existing Epics and Epics blocked on existing Jobs.
 Confirmed and discarded proposal cards are also written back into the chat
 transcript so the next assistant turn can see the created Job, Epic, or
 GitHub issue identifiers without asking the operator to repeat them.
