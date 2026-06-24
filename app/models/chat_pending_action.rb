@@ -30,7 +30,7 @@ class ChatPendingAction < ApplicationRecord
     admin_clear_github_cache
     admin_refresh_installations
   ].freeze
-  STATES = %w[ pending confirmed rejected cancelled ].freeze
+  STATES = %w[ queued pending confirmed rejected cancelled ].freeze
   REQUESTED_BY = %w[ agent operator ].freeze
 
   attribute :payload, :json, default: -> { {} }
@@ -53,6 +53,7 @@ class ChatPendingAction < ApplicationRecord
   validates :payload, presence: true, unless: :empty_payload_action?
   validate :known_action
   validate :payload_matches_action
+  validate :queued_actions_are_job_scoped
   validate :repository_matches_chat_session
   validate :user_matches_chat_session
 
@@ -85,11 +86,37 @@ class ChatPendingAction < ApplicationRecord
     end
   end
 
-  def cancel!(user:)
-    raise ActiveRecord::RecordNotFound, "pending action belongs to another user" unless self.user == user
-    return unless pending?
+  def cancel!(user: nil)
+    raise ActiveRecord::RecordNotFound, "pending action belongs to another user" if user && self.user != user
+    return false unless pending? || queued?
 
     update!(state: "cancelled", cancelled_at: Time.current)
+  end
+
+  def promote!
+    with_lock do
+      return false unless queued?
+
+      update!(state: "pending")
+      broadcast_pending_action_updated
+      true
+    end
+  end
+
+  def self.promote_queued_for_job!(job)
+    queued.where(repository_id: job.repository_id).find_each do |action|
+      action.promote! if action.job_scoped_to?(job)
+    end
+  end
+
+  def self.cancel_queued_for_job!(job)
+    queued.where(repository_id: job.repository_id).find_each do |action|
+      action.cancel! if action.job_scoped_to?(job)
+    end
+  end
+
+  def job_scoped_to?(job)
+    payload.to_h["job_id"].to_s == job.id.to_s
   end
 
   private
@@ -267,6 +294,10 @@ class ChatPendingAction < ApplicationRecord
       errors.add(:payload, "label is required") if payload["label"].to_s.strip.blank?
       errors.add(:payload, "prompt is required") if payload["prompt"].to_s.strip.blank?
     end
+  end
+
+  def queued_actions_are_job_scoped
+    errors.add(:payload, "job_id is required") if queued? && !payload.to_h["job_id"].present?
   end
 
   def repository_matches_chat_session
