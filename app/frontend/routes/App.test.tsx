@@ -11531,7 +11531,6 @@ function chatPayload(overrides: {
       app_rename_path: "/api/v1/app/chats/8/rename",
       app_clear_path: "/api/v1/app/chats/8/messages",
       app_enqueue_message_path: "/api/v1/app/chats/8/queued_messages",
-      app_rename_path: "/api/v1/app/chats/8/rename",
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
       app_attachments_path: "/api/v1/app/chats/8/attachments",
