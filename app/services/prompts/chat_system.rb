@@ -375,16 +375,25 @@ module Prompts
       memories = ChatMemory.visible_to(@chat_session.user, attached_repositories)
                            .order(:scope, :kind, :created_at)
       remaining = 2.kilobytes
-      memories.map do |memory|
-        label = "[#{memory.kind}#{memory.scope == "repository" ? "/#{memory.scope_id}" : ""}#{memory.published? ? "/shared" : ""}]"
-        line = "#{label} #{memory.content.squish}"
+      rendered = 0
+      total = memories.size
+
+      lines = memories.map do |memory|
         next if remaining <= 0
 
+        label = "[#{memory.kind}#{memory.scope == "repository" ? "/#{memory.scope_id}" : ""}#{memory.published? ? "/shared" : ""}]"
+        line = "#{label} #{memory.content.squish}"
         clipped = line.safe_byteslice(0, remaining)
         remaining -= clipped.bytesize
+        rendered += 1
         suffix = clipped.bytesize < line.bytesize ? "..." : ""
         "  - #{clipped}#{suffix}"
       end.compact
+
+      omitted = total - rendered
+      lines << "  - (#{omitted} more not shown — call list_memories to retrieve them)" if omitted > 0
+
+      lines
     end
 
     def environment_snapshot
