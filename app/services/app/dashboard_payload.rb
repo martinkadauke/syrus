@@ -941,6 +941,7 @@ module App
           id: folder.id,
           name: folder.name,
           kind: folder.kind,
+          position: folder.position,
           subject_type: folder.subject_type,
           visibility: folder.visibility.to_s,
           position: folder.position,
