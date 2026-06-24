@@ -38,8 +38,14 @@ Syrus can mark an Epic ready when its dependencies are done and all child
 Jobs are confirmed, then mark it done when all child Jobs close through
 merged PR outcomes.
 
-Chats can propose Epics or propose an Epic with child Jobs. The operator
-confirms the proposal before Syrus creates the real records.
+The Epic detail page shows both sides of the dependency graph: Epics this
+Epic depends on, and Epics that depend on it. Operators can add an Epic
+dependency by ID or remove an existing dependency from that page; Syrus
+rejects changes that would create a cycle.
+
+Chats can propose Epics or propose an Epic with child Jobs, including
+Epic-level dependencies on existing Epics or other chat Epic proposals. The
+operator confirms the proposal before Syrus creates the real records.
 
 ## Schedules
 
@@ -63,8 +69,9 @@ auto-pause a task until an operator fixes and resumes it.
 Chats are operator conversations with repository context. A chat can
 attach repositories, Jobs, documents, memories, and whiteboard state. The chat
 agent can read selected repository context, propose Jobs, propose Epics,
-list and update Epics, move Epics through their kanban states, schedule
-recurring work, inspect existing Jobs or PRs, approve or unapprove
+list and update Epics, add or remove Epic dependencies, move Epics through
+their kanban states, schedule recurring work, inspect existing Jobs or PRs,
+approve or unapprove
 implemented Jobs, change Job priority, move Jobs into or out of Epics, drill
 through Job workflow and Run history progressively, search Jobs in the
 attached repository, search prior chat messages for the same user, read
@@ -83,7 +90,11 @@ blocked on existing Epics and Epics blocked on existing Jobs.
 Actions that need explicit approval, such as
 canceling or retrying work, also render as inline confirmation cards in the
 message stream so operators can review the target before confirming or
-rejecting them. Confirmed and discarded cards are written back into the chat
+rejecting them.
+Proposal cards show dependency status before the title: either dependency
+proposal links with confirmed or pending badges, or an explicit no-dependencies
+note.
+Confirmed and discarded proposal and action cards are also written back into the chat
 transcript so the next assistant turn can see the created Job, Epic, or
 GitHub issue identifiers without asking the operator to repeat them.
 

@@ -202,6 +202,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_24_015924) do
     t.json "depends_on_job_ids"
     t.datetime "discarded_at"
     t.datetime "edited_at"
+    t.text "epic_depends_on_tokens"
     t.integer "epic_id"
     t.datetime "filed_at"
     t.integer "github_issue_number"

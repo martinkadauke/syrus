@@ -1,8 +1,13 @@
-import { getJson, patchJson, postJson } from "./client"
+import { deleteJson, getJson, patchJson, postJson } from "./client"
 
 export type EpicRepositoryOption = {
   id: number
   slug: string
+}
+
+export type EpicSearchOption = {
+  value: string | number
+  label: string
 }
 
 export type EpicFormRecord = {
@@ -97,6 +102,13 @@ export type EpicGraph = {
   initially_open: boolean
 }
 
+export type EpicDependencyRecord = {
+  epic_id: number
+  title: string
+  state: string
+  url: string
+}
+
 export type EpicDetailJob = {
   id: number
   label: string
@@ -114,6 +126,8 @@ export type EpicDetailPayload = {
   summary: EpicDetailSummary
   state_transitions: EpicStateTransition[]
   graph: EpicGraph
+  dependencies: EpicDependencyRecord[]
+  dependents: EpicDependencyRecord[]
   jobs: EpicDetailJob[]
   paths: {
     dashboard_epics_path: string
@@ -123,6 +137,7 @@ export type EpicDetailPayload = {
     app_claim_path: string
     app_unclaim_path: string
     app_reassign_path: string
+    app_dependencies_path: string
   }
 }
 
@@ -136,6 +151,12 @@ export function fetchEditEpicForm(id: string) {
 
 export function fetchEpicDetail(id: string) {
   return getJson<EpicDetailPayload>(`/api/v1/app/epics/${id}`)
+}
+
+export function searchEpicOptions(query: string, options: { signal?: AbortSignal } = {}) {
+  const params = new URLSearchParams({ field: "epic_id", q: query })
+  return getJson<{ options?: EpicSearchOption[] }>(`/api/v1/app/filters/fk_options?${params}`, options)
+    .then((payload) => payload.options || [])
 }
 
 export function createEpic(values: EpicInput) {
@@ -166,4 +187,12 @@ export function claimEpic(path: string) {
 
 export function unclaimEpic(path: string) {
   return patchJson<EpicDetailPayload>(path)
+}
+
+export function addEpicDependency(path: string, dependsOnEpicId: number) {
+  return postJson<EpicDetailPayload>(path, { depends_on_epic_id: dependsOnEpicId })
+}
+
+export function removeEpicDependency(path: string, dependsOnEpicId: number) {
+  return deleteJson<EpicDetailPayload>(`${path}/${dependsOnEpicId}`)
 }

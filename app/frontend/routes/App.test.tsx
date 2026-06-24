@@ -6472,6 +6472,118 @@ describe("App", () => {
     ])
   })
 
+  it("renders and removes Epic dependencies from the detail page", async () => {
+    let currentPayload = epicDetailPayload({
+      dependencies: [{ epic_id: 6, title: "Deliver marble", state: "done", url: "/epics/6" }],
+      dependents: [{ epic_id: 8, title: "Polish search UI", state: "in_progress", url: "/epics/8" }]
+    })
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/epics/7/dependencies/6" && init?.method === "DELETE") {
+        currentPayload = epicDetailPayload({
+          message: "Dependency removed.",
+          dependencies: [],
+          dependents: [{ epic_id: 8, title: "Polish search UI", state: "in_progress", url: "/epics/8" }]
+        })
+        return Promise.resolve(new Response(JSON.stringify(currentPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(currentPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/epics/7"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("heading", { name: "Dependencies" })).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Deliver marble" })).toHaveAttribute("href", "/app-shell/epics/6")
+    expect(screen.getByText("Done")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Polish search UI" })).toHaveAttribute("href", "/app-shell/epics/8")
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove dependency on Deliver marble" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/epics/7/dependencies/6",
+        expect.objectContaining({ method: "DELETE", credentials: "same-origin" })
+      )
+    })
+    expect(await screen.findByText("Dependency removed.")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Deliver marble" })).not.toBeInTheDocument())
+  })
+
+  it("adds Epic dependencies and reports cycle errors inline", async () => {
+    let currentPayload = epicDetailPayload({ dependencies: [], dependents: [] })
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path.startsWith("/api/v1/app/filters/fk_options")) {
+        const url = new URL(path, "http://syrus.test")
+        const query = url.searchParams.get("q")
+        const options = query === "Cycle"
+          ? [{ value: 10, label: "Cycle dependency" }]
+          : query === "Index"
+            ? [{ value: 9, label: "Index chat transcripts" }]
+            : []
+        return Promise.resolve(new Response(JSON.stringify({ options }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/epics/7/dependencies" && init?.method === "POST") {
+        if (init.body === JSON.stringify({ depends_on_epic_id: 10 })) {
+          return Promise.resolve(new Response(JSON.stringify({ error: { code: "validation_failed", message: "Depends on epic would create a cycle" } }), { status: 422, headers: { "Content-Type": "application/json" } }))
+        }
+        currentPayload = epicDetailPayload({
+          message: "Dependency added.",
+          dependencies: [{ epic_id: 9, title: "Index chat transcripts", state: "ready", url: "/epics/9" }],
+          dependents: []
+        })
+        return Promise.resolve(new Response(JSON.stringify(currentPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(currentPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/epics/7"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    await waitFor(() => expect(screen.getAllByText("None")).toHaveLength(2))
+
+    fireEvent.change(screen.getByLabelText("Add dependency"), { target: { value: "Cycle" } })
+    fireEvent.click(await screen.findByRole("button", { name: "Cycle dependency" }))
+    fireEvent.click(screen.getByRole("button", { name: "Add" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Depends on epic would create a cycle")
+
+    fireEvent.change(screen.getByLabelText("Add dependency"), { target: { value: "Index" } })
+    fireEvent.click(await screen.findByRole("button", { name: "Index chat transcripts" }))
+    fireEvent.click(screen.getByRole("button", { name: "Add" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/filters/fk_options?field=epic_id&q=Index",
+        expect.objectContaining({ credentials: "same-origin" })
+      )
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/epics/7/dependencies",
+        expect.objectContaining({
+          method: "POST",
+          credentials: "same-origin",
+          body: JSON.stringify({ depends_on_epic_id: 9 })
+        })
+      )
+    })
+    expect(await screen.findByText("Dependency added.")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Index chat transcripts" })).toHaveAttribute("href", "/app-shell/epics/9")
+    expect(screen.getByLabelText("Add dependency")).toHaveDisplayValue("")
+  })
+
   it("initializes the Epic dependency graph with Mermaid dark theme when dark mode is active", async () => {
     document.documentElement.classList.add("dark")
     vi.spyOn(window, "fetch").mockResolvedValue(
@@ -9566,6 +9678,115 @@ describe("App", () => {
     })
   })
 
+  it("renders proposal dependency pills with confirmed and pending badges", async () => {
+    const proposalMessage = {
+      type: "message",
+      id: 10,
+      role: "assistant",
+      text: "Proposal proposed.",
+      bookmarkable: true,
+      proposal: {
+        id: 5,
+        kind: "syrus_issue",
+        kind_label: "Syrus issue",
+        state: "proposed",
+        state_label: "Proposed",
+        title: "Search cards",
+        slug: "search-cards",
+        body: "Show dependency status.",
+        proposed: true,
+        resolved: false,
+        epic_bundle: false,
+        scoped_repository_slug: "acme/widgets",
+        dependency_slugs: ["chat-search-fts5", "agent-memory"],
+        dependencies: [
+          {
+            slug: "chat-search-fts5",
+            title: "Chat FTS5 infrastructure",
+            state: "confirmed",
+            confirmed: true,
+            anchor_message_id: 9,
+            materialized_path: "/jobs/41"
+          },
+          {
+            slug: "agent-memory",
+            title: "Agent Memory System",
+            state: "proposed",
+            confirmed: false,
+            anchor_message_id: null,
+            materialized_path: null
+          }
+        ],
+        has_dependencies: true,
+        target_epic_label: null,
+        app_confirm_path: "/api/v1/app/chats/8/proposals/5/confirm",
+        app_reject_path: "/api/v1/app/chats/8/proposals/5/reject",
+        materialized_label: null,
+        materialized_path: null
+      }
+    }
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({ messages: [...chatPayload().messages, proposalMessage] })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("Depends on:")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "Chat FTS5 infrastructure ✓" })).toHaveAttribute("href", "#message-9")
+    expect(screen.getByText("Agent Memory System ⏳")).toBeInTheDocument()
+  })
+
+  it("renders a muted no-dependencies strip on proposal cards", async () => {
+    const proposalMessage = {
+      type: "message",
+      id: 10,
+      role: "assistant",
+      text: "Proposal proposed.",
+      bookmarkable: true,
+      proposal: {
+        id: 5,
+        kind: "job",
+        kind_label: "Job",
+        state: "proposed",
+        state_label: "Proposed",
+        title: "Map auth",
+        slug: "map-auth",
+        body: "Map it.",
+        proposed: true,
+        resolved: false,
+        epic_bundle: false,
+        scoped_repository_slug: "acme/widgets",
+        dependency_slugs: [],
+        dependencies: [],
+        has_dependencies: false,
+        target_epic_label: null,
+        app_confirm_path: "/api/v1/app/chats/8/proposals/5/confirm",
+        app_reject_path: "/api/v1/app/chats/8/proposals/5/reject",
+        materialized_label: null,
+        materialized_path: null
+      }
+    }
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({ messages: [...chatPayload().messages, proposalMessage] })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("No dependencies")).toHaveClass("text-gray-500")
+  })
+
   it("links confirmed Epic proposals to the Epic detail route", async () => {
     const proposalMessage = {
       type: "message",
@@ -11035,6 +11256,8 @@ function epicDetailPayload(overrides: {
   state?: string
   stateTransitions?: Array<Record<string, unknown>>
   epic?: Record<string, unknown>
+  dependencies?: Array<Record<string, unknown>>
+  dependents?: Array<Record<string, unknown>>
   jobs?: Array<Record<string, unknown>>
 } = {}) {
   return {
@@ -11085,6 +11308,10 @@ function epicDetailPayload(overrides: {
       job_blocker_count: 0,
       initially_open: true
     },
+    dependencies: overrides.dependencies || [
+      { epic_id: 6, title: "Deliver marble", state: "done", url: "/epics/6" }
+    ],
+    dependents: overrides.dependents || [],
     jobs: overrides.jobs || [
       {
         id: 42,
@@ -11104,7 +11331,8 @@ function epicDetailPayload(overrides: {
       app_archive_path: "/api/v1/app/epics/7/archive",
       app_claim_path: "/api/v1/app/epics/7/claim",
       app_unclaim_path: "/api/v1/app/epics/7/unclaim",
-      app_reassign_path: "/api/v1/app/epics/7/reassign"
+      app_reassign_path: "/api/v1/app/epics/7/reassign",
+      app_dependencies_path: "/api/v1/app/epics/7/dependencies"
     }
   }
 }
