@@ -23,11 +23,32 @@ PROJECT="syrus-itest"
 PORT="${SYRUS_ITEST_PORT:-39173}"
 PASS=0
 FAIL=0
+ITEST_ENV_FILE=""
+ITEST_ENV_LINK_CREATED=0
 
 note() { printf '\n\033[1;34m== %s\033[0m\n' "$1"; }
 ok()   { printf '   \033[1;32mPASS\033[0m  %s\n' "$1"; PASS=$((PASS + 1)); }
 bad()  { printf '   \033[1;31mFAIL\033[0m  %s\n' "$1"; FAIL=$((FAIL + 1)); }
 dump() { printf '%s\n' "$1" | sed 's/^/         | /'; }
+
+ensure_compose_env() {
+  if [ -e .env ] || [ -L .env ]; then
+    return
+  fi
+
+  ITEST_ENV_FILE="$(mktemp "${TMPDIR:-/tmp}/syrus-itest-env.XXXXXX")"
+  gen() { openssl rand -hex "$1"; }
+  sed \
+    -e "s|^SECRET_KEY_BASE=.*|SECRET_KEY_BASE=$(gen 64)|" \
+    -e "s|^ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=.*|ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY=$(gen 32)|" \
+    -e "s|^ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=.*|ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY=$(gen 32)|" \
+    -e "s|^ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=.*|ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT=$(gen 32)|" \
+    -e "s|^SYRUS_APP_HOST=.*|SYRUS_APP_HOST=localhost:${PORT}|" \
+    -e "s|^SYRUS_PORT=.*|SYRUS_PORT=${PORT}|" \
+    compose.env.example > "$ITEST_ENV_FILE"
+  ln -s "$ITEST_ENV_FILE" .env
+  ITEST_ENV_LINK_CREATED=1
+}
 
 # Resolve the Compose command (v2 plugin or standalone v1).
 if docker compose version >/dev/null 2>&1; then
@@ -46,6 +67,12 @@ export SYRUS_PORT="$PORT"
 cleanup() {
   note "Tearing down ($PROJECT)"
   compose -p "$PROJECT" down -v --remove-orphans >/dev/null 2>&1 || true
+  if [ "$ITEST_ENV_LINK_CREATED" = "1" ] && [ -L .env ]; then
+    rm -f .env
+  fi
+  if [ -n "$ITEST_ENV_FILE" ]; then
+    rm -f "$ITEST_ENV_FILE"
+  fi
 }
 trap cleanup EXIT
 
@@ -57,6 +84,7 @@ in_service() { # in_service <service> <ruby>
 # ---------------------------------------------------------------------------
 note "Bringing up an isolated stack (project=$PROJECT, port=$PORT)"
 echo "   image: ${SYRUS_IMAGE:-<compose default ghcr.io/tkadauke/syrus-local:latest>}"
+ensure_compose_env
 if ! compose -p "$PROJECT" up -d; then
   echo "Stack failed to come up — the setup service (db:prepare) likely errored." >&2
   compose -p "$PROJECT" logs setup 2>&1 | tail -30

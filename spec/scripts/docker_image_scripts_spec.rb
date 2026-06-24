@@ -6,6 +6,7 @@ RSpec.describe "Docker image scripts" do
   let(:compose_up) { File.read(File.join(root, "bin/compose-up")) }
   let(:publish_image) { File.read(File.join(root, "bin/publish-image")) }
   let(:deploy) { File.read(File.join(root, "bin/deploy")) }
+  let(:test_docker) { File.read(File.join(root, "bin/test-docker")) }
 
   it "centralizes Docker build, login, and registry cache helpers" do
     expect(helper).to include("syrus_docker_cache_ref()")
@@ -39,5 +40,14 @@ RSpec.describe "Docker image scripts" do
     expect(deploy).to include("syrus_docker_buildx_image app \"$SHA\"")
     expect(deploy).to include("syrus_docker_buildx_image worker-dev \"$SHA\"")
     expect(deploy).to include("syrus_verify_pushed \"$1\" \"$2\" \"$GHCR_TOKEN\"")
+  end
+
+  it "lets Docker integration tests run without a checked-in local env file" do
+    expect(test_docker).to include("ensure_compose_env()")
+    expect(test_docker).to include("if [ -e .env ] || [ -L .env ]; then")
+    expect(test_docker).to include('ln -s "$ITEST_ENV_FILE" .env')
+    expect(test_docker).to include('rm -f .env')
+    expect(test_docker).to include('rm -f "$ITEST_ENV_FILE"')
+    expect(test_docker).to include("compose.env.example")
   end
 end
