@@ -196,6 +196,12 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
     return patched
   }
 
+  const pendingAction = chatPendingActionUpdatedPayload(event.payload)
+  if (pendingAction) {
+    void queryClient.invalidateQueries({ queryKey: ["chats", String(event.id)] })
+    return true
+  }
+
   return false
 }
 
@@ -230,6 +236,12 @@ type ChatBookmarkPayload = {
 type ChatAgentQuestionsPayload = {
   action: "update_agent_questions"
   agent_questions: ChatAgentQuestion[]
+}
+
+type ChatPendingActionUpdatedPayload = {
+  action: "pending_action_updated"
+  pending_action_id: number
+  chat_message_id: number | null
 }
 
 function chatReplaceTailPayload(payload: unknown): ChatReplaceTailPayload | null {
@@ -315,6 +327,21 @@ function chatAgentQuestionsPayload(payload: unknown): ChatAgentQuestionsPayload 
   return {
     action: "update_agent_questions",
     agent_questions: candidate.agent_questions
+  }
+}
+
+function chatPendingActionUpdatedPayload(payload: unknown): ChatPendingActionUpdatedPayload | null {
+  if (!payload || typeof payload !== "object") return null
+
+  const candidate = payload as Partial<ChatPendingActionUpdatedPayload>
+  if (candidate.action !== "pending_action_updated") return null
+  if (typeof candidate.pending_action_id !== "number") return null
+  if (typeof candidate.chat_message_id !== "number" && candidate.chat_message_id !== null) return null
+
+  return {
+    action: "pending_action_updated",
+    pending_action_id: candidate.pending_action_id,
+    chat_message_id: candidate.chat_message_id
   }
 }
 
