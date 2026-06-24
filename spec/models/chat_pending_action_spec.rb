@@ -59,10 +59,11 @@ RSpec.describe ChatPendingAction do
       expect(type).to eq("updated")
       expect(resource).to eq("chat")
       expect(id).to eq(chat_session.id)
-      expect(changed).to eq([ "pending_action" ])
+      expect(changed).to eq([ "pending_action_updated" ])
       expect(payload).to include(
         action: "pending_action_updated",
-        chat_message_id: nil
+        chat_message_id: nil,
+        state: "pending"
       )
       expect(payload[:pending_action_id]).to be_a(Integer)
     end
@@ -86,11 +87,12 @@ RSpec.describe ChatPendingAction do
       type: "updated",
       resource: "chat",
       id: chat_session.id,
-      changed: [ "pending_action" ],
+      changed: [ "pending_action_updated" ],
       payload: {
         action: "pending_action_updated",
         pending_action_id: action.id,
-        chat_message_id: message.id
+        chat_message_id: message.id,
+        state: "rejected"
       }
     )
 
@@ -111,11 +113,12 @@ RSpec.describe ChatPendingAction do
       type: "updated",
       resource: "chat",
       id: chat_session.id,
-      changed: [ "pending_action" ],
+      changed: [ "pending_action_updated" ],
       payload: {
         action: "pending_action_updated",
         pending_action_id: action.id,
-        chat_message_id: nil
+        chat_message_id: nil,
+        state: "pending"
       }
     )
 
@@ -253,11 +256,12 @@ RSpec.describe ChatPendingAction do
       type: "updated",
       resource: "chat",
       id: chat_session.id,
-      changed: [ "pending_action" ],
+      changed: [ "pending_action_updated" ],
       payload: {
         action: "pending_action_updated",
         pending_action_id: action.id,
-        chat_message_id: nil
+        chat_message_id: nil,
+        state: "confirmed"
       }
     )
 

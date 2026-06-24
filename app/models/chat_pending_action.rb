@@ -332,11 +332,12 @@ class ChatPendingAction < ApplicationRecord
       type: "updated",
       resource: "chat",
       id: chat_session_id,
-      changed: [ "pending_action" ],
+      changed: [ "pending_action_updated" ],
       payload: {
         action: "pending_action_updated",
         pending_action_id: id,
-        chat_message_id: message&.id
+        chat_message_id: message&.id,
+        state: state
       }
     )
   end
