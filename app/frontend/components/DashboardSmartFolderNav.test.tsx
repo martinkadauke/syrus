@@ -94,6 +94,18 @@ function showFolderActions(name = "Saved work", count = 3) {
   fireEvent.mouseEnter(screen.getByRole("link", { name: `${name} ${count}` }).parentElement!)
 }
 
+function dragSavedFolder(sourceName: string, targetName: string) {
+  const savedNav = screen.getByRole("navigation", { name: "Saved smart folders" })
+  const source = within(savedNav).getByRole("link", { name: `${sourceName} 0` }).parentElement!
+  const target = within(savedNav).getByRole("link", { name: `${targetName} 0` }).parentElement!
+  const dataTransfer = { dropEffect: "", effectAllowed: "", setData: vi.fn(), getData: vi.fn() }
+
+  fireEvent.dragStart(source, { dataTransfer })
+  fireEvent.dragOver(target, { dataTransfer })
+
+  return { dataTransfer, target }
+}
+
 describe("DashboardSmartFolderNav", () => {
   beforeEach(() => {
     vi.mocked(smartFoldersApi.updateSmartFolder).mockResolvedValue({} as never)
@@ -151,14 +163,8 @@ describe("DashboardSmartFolderNav", () => {
       folder({ id: 3, name: "Landing", position: 2, count: 0 })
     ])
 
-    const savedNav = screen.getByRole("navigation", { name: "Saved smart folders" })
-    const review = within(savedNav).getByRole("link", { name: "Review 0" })
-    const landing = within(savedNav).getByRole("link", { name: "Landing 0" })
-    const dataTransfer = { dropEffect: "", effectAllowed: "", setData: vi.fn(), getData: vi.fn() }
-
-    fireEvent.dragStart(review.parentElement!, { dataTransfer })
-    fireEvent.dragOver(landing.parentElement!, { dataTransfer })
-    fireEvent.drop(landing.parentElement!, { dataTransfer })
+    const { target } = dragSavedFolder("Review", "Landing")
+    fireEvent.drop(target)
 
     await waitFor(() => {
       expect(smartFoldersApi.updateSmartFolder).toHaveBeenCalledTimes(3)
@@ -166,6 +172,19 @@ describe("DashboardSmartFolderNav", () => {
       expect(smartFoldersApi.updateSmartFolder).toHaveBeenNthCalledWith(2, 3, { name: "Landing", position: 1 })
       expect(smartFoldersApi.updateSmartFolder).toHaveBeenNthCalledWith(3, 1, { name: "Review", position: 2 })
     })
+  })
+
+  it("keeps the reordered saved folder as a valid drop target", () => {
+    renderNav([
+      folder({ id: 1, name: "Review", position: 0, count: 0 }),
+      folder({ id: 2, name: "Blocked", position: 1, count: 0 }),
+      folder({ id: 3, name: "Landing", position: 2, count: 0 })
+    ])
+
+    const { dataTransfer, target } = dragSavedFolder("Review", "Landing")
+
+    expect(fireEvent.dragOver(target, { dataTransfer })).toBe(false)
+    expect(dataTransfer.dropEffect).toBe("move")
   })
 
   it("does not render menu controls for builtin folders", () => {
