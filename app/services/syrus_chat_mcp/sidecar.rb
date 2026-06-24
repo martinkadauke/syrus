@@ -80,7 +80,11 @@ module SyrusChatMcp
       CancelJobTool,
       RetryJobTool,
       RebaseJobTool,
+      ReopenJobTool,
+      PollJobFeedbackTool,
+      CheckJobMergeabilityTool,
       SubmitChatFeedbackTool,
+      DelegateIssueTool,
       ReadPrTool,
       WriteMemoryTool,
       ReadMemoryTool,
@@ -92,6 +96,8 @@ module SyrusChatMcp
       RepoInfoTool,
       ListRepoDocumentsTool,
       ReadRepoDocumentTool,
+      CreateRepoDocumentTool,
+      DeleteRepoDocumentTool,
       ReadSceneTool,
       DrawShapeTool,
       DrawTextTool,
@@ -113,6 +119,9 @@ module SyrusChatMcp
       PauseScheduledTaskTool,
       ResumeScheduledTaskTool,
       DeleteScheduledTaskTool,
+      FireScheduledTaskNowTool,
+      PauseLandingQueueTool,
+      ResumeLandingQueueTool,
       ReadQueueTool
     ].freeze
 
