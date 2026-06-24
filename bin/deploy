@@ -182,7 +182,7 @@ spec:
       storage: ${SEARCH_PVC_SIZE}
 EOF
 
-  patch_search_mount "$kubeconfig" "$namespace" "syrus-web" "true"
+  patch_search_mount "$kubeconfig" "$namespace" "syrus-web" "false"
   patch_search_mount "$kubeconfig" "$namespace" "syrus-worker" "false"
 }
 
@@ -193,6 +193,10 @@ patch_search_mount() {
   "spec": {
     "template": {
       "spec": {
+        "securityContext": {
+          "fsGroup": 1000,
+          "fsGroupChangePolicy": "OnRootMismatch"
+        },
         "containers": [
           {
             "name": "${deployment}",

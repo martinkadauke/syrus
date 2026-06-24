@@ -47,7 +47,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - syrus-data:/home/rails/.syrus
-      - syrus-search:/home/rails/.syrus-search:ro
+      - syrus-search:/home/rails/.syrus-search
     ports:
       - "${SYRUS_PORT:-3000}:80"
 

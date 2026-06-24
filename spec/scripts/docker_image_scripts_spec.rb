@@ -7,6 +7,7 @@ RSpec.describe "Docker image scripts" do
   let(:publish_image) { File.read(File.join(root, "bin/publish-image")) }
   let(:deploy) { File.read(File.join(root, "bin/deploy")) }
   let(:test_docker) { File.read(File.join(root, "bin/test-docker")) }
+  let(:compose_yml) { File.read(File.join(root, "docker-compose.yml")) }
 
   it "centralizes Docker build, login, and registry cache helpers" do
     expect(helper).to include("syrus_docker_cache_ref()")
@@ -49,5 +50,14 @@ RSpec.describe "Docker image scripts" do
     expect(test_docker).to include('rm -f .env')
     expect(test_docker).to include('rm -f "$ITEST_ENV_FILE"')
     expect(test_docker).to include("compose.env.example")
+  end
+
+  it "keeps the search database writable for web boot paths" do
+    expect(deploy).to include('patch_search_mount "$kubeconfig" "$namespace" "syrus-web" "false"')
+    expect(deploy).to include('"fsGroup": 1000')
+    expect(deploy).to include('"fsGroupChangePolicy": "OnRootMismatch"')
+
+    expect(compose_yml).to include("      - syrus-search:/home/rails/.syrus-search\n")
+    expect(compose_yml).not_to include("syrus-search:/home/rails/.syrus-search:ro")
   end
 end

@@ -117,14 +117,14 @@ PVC, use your cluster storage snapshot mechanism or a volume backup tool
 such as Velero with CSI snapshots.
 
 The data-root and search PVC mounts must be writable by the container's
-`rails` user (`1000:1000`) where writes happen. The worker mounts
-`syrus-search` read-write at `/home/rails/.syrus-search`; web pods mount the
-same PVC read-only and read the FTS index from
+`rails` user (`1000:1000`) where writes happen. Both web and worker pods mount
+`syrus-search` read-write at `/home/rails/.syrus-search` because Rails touches
+the search SQLite database during boot and migration preparation, not only from
+background indexing work. Set
 `SEARCH_DATABASE_PATH=/home/rails/.syrus-search/search.sqlite3`. The published
 images create `/home/rails/.syrus` and `/home/rails/.syrus-search` with that
 ownership for first-mount volume initialization; custom mount paths or
-pre-provisioned volumes should set matching ownership before worker pods
-start.
+pre-provisioned volumes should set matching ownership before pods start.
 
 The database matters most for long-term recovery. The data-root PVC
 matters most for active runs and operational smoothness. Restoring the
