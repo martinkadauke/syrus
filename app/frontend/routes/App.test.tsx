@@ -4996,10 +4996,12 @@ describe("App", () => {
       )
     })
     expect(await screen.findByRole("main", { name: "Scheduled task detail" })).toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/scheduled_tasks/12",
-      expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
-    )
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/scheduled_tasks/12",
+        expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
+      )
+    })
   })
 
   it("renders the repository scheduled tasks route and disables a task", async () => {
@@ -8363,6 +8365,362 @@ describe("App", () => {
     }
   })
 
+  it("shows and completes slash command suggestions from the chat composer", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...") as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: "/ren" } })
+
+    const palette = await screen.findByRole("listbox", { name: "Slash commands" })
+    expect(palette).toHaveClass("max-h-[calc(var(--chat-visual-viewport-height,100dvh)-9rem)]", "overflow-y-auto")
+    expect(within(palette).getByRole("option", { name: /\/rename/ })).toHaveTextContent("Rename the current chat.")
+    expect(within(palette).queryByRole("option", { name: /\/jobs/ })).toBeNull()
+
+    fireEvent.keyDown(input, { key: "Tab" })
+    expect(input.value).toBe("/rename ")
+  })
+
+  it("completes slash commands with Enter before submitting on desktop", async () => {
+    const restoreViewport = setViewportWidth(1280)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const input = await screen.findByPlaceholderText("Ask about this repository...") as HTMLTextAreaElement
+      fireEvent.change(input, { target: { value: "/jo" } })
+      expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(false)
+      expect(input.value).toBe("/jobs ")
+      expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+    } finally {
+      restoreViewport()
+    }
+  })
+
+  it("intercepts registered system slash commands before posting chat messages", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/rename" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({ message: "Chat renamed." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/rename Canal review" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText("Chat renamed.")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8/rename", expect.objectContaining({ method: "PATCH" }))
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+  })
+
+  it("updates the v2 sidebar immediately after chat slash commands change chats", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      current_user: {
+        ...bootstrapPayload().current_user,
+        layout_version: "v2"
+      }
+    }))
+    document.body.appendChild(script)
+    const initialChat = sidebarChat({
+      id: 8,
+      title: "Aqueduct planning",
+      repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+      last_message_at: "2026-06-01T10:00:00Z"
+    })
+    const newSidebarChat = sidebarChat({
+      id: 9,
+      title: null,
+      title_pending: true,
+      repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+      last_message_at: null
+    })
+    let sidebarChats = [initialChat]
+    const renamedPayload = chatPayload({ message: "Chat renamed." })
+    renamedPayload.chat.title = "Canal review"
+    const newPayload = chatPayload({ id: 9, chatPath: "/chats/9" })
+    newPayload.chat.title_pending = true
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        if (init?.method === "POST") {
+          sidebarChats = [newSidebarChat, { ...initialChat, title: "Canal review" }]
+          return Promise.resolve(new Response(JSON.stringify({ message: "Chat created.", redirect_to: "/chats/9", chat: newPayload.chat }), { status: 201, headers: { "Content-Type": "application/json" } }))
+        }
+
+        return Promise.resolve(new Response(JSON.stringify({ chats: sidebarChats, repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/8/rename" && init?.method === "PATCH") {
+        sidebarChats = [{ ...initialChat, title: "Canal review" }]
+        return Promise.resolve(new Response(JSON.stringify(renamedPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/9") {
+        return Promise.resolve(new Response(JSON.stringify(newPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const recentNav = await screen.findByRole("navigation", { name: "Recent chats" })
+      expect(await within(recentNav).findByRole("link", { name: "Aqueduct planning" })).toBeInTheDocument()
+
+      const input = await screen.findByPlaceholderText("Ask about this repository...")
+      fireEvent.change(input, { target: { value: "/rename Canal review" } })
+      fireEvent.click(screen.getByRole("button", { name: "Send" }))
+      expect(await within(recentNav).findByRole("link", { name: "Canal review" })).toBeInTheDocument()
+
+      fireEvent.change(input, { target: { value: "/new" } })
+      fireEvent.click(screen.getByRole("button", { name: "Send" }))
+      expect(await within(recentNav).findByRole("link", { name: "New chat" })).toHaveAttribute("href", "/app-shell/chats/9")
+    } finally {
+      fetchSpy.mockRestore()
+      script.remove()
+    }
+  })
+
+  it("confirms clear before deleting chat history", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/messages" && init?.method === "DELETE") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({ message: "Chat history cleared.", messages: [] })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/clear" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText("Clear this chat's message history?")).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/messages", expect.objectContaining({ method: "DELETE" }))
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }))
+    expect(await screen.findByText("Chat history cleared.")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8/messages", expect.objectContaining({ method: "DELETE" }))
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+  })
+
+  it("handles panel and attachment system slash commands in the app", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/attachments" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({ message: "acme/tools attached." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/settings" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(await screen.findByRole("dialog", { name: "Chat settings" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Close chat settings" }))
+
+    fireEvent.change(input, { target: { value: "/attach acme/tools" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(await screen.findByText("acme/tools attached.")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8/attachments", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ attachable_type: "Repository", repository_slug: "acme/tools" })
+    }))
+    expect(screen.getByRole("heading", { name: "Attachments" })).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+  })
+
+  it("sends registered skill slash commands as generated prompts through the normal chat message path", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/message" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/job 1092" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/message",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ chat_message: { text: 'Call the `read_job` MCP tool for Job id "1092". Summarize the Job state, PR or issue identifiers, priority, latest workflow state, and any latest workflow summary.' } })
+        })
+      )
+    })
+  })
+
+  it("requires inline confirmation before sending mutating skill slash commands", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/message" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/cancel 1095" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    const confirmation = await screen.findByText("Confirm /cancel")
+    expect(confirmation).toBeInTheDocument()
+    expect(screen.getAllByText("/cancel 1095").length).toBeGreaterThan(0)
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/message",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ chat_message: { text: "/cancel 1095" } })
+        })
+      )
+    })
+  })
+
+  it("cancels mutating skill slash command confirmation without sending", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...") as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: "/discard proposal-17" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText("Confirm /discard")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+
+    expect(screen.queryByText("Confirm /discard")).not.toBeInTheDocument()
+    expect(input.value).toBe("/discard proposal-17")
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+  })
+
+  it("sends /propose as a guided proposal wizard prompt", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/message" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/propose" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/chats/8/message",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining("Start the guided Job proposal wizard.")
+        })
+      )
+    })
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/v1/app/chats/8/message",
+      expect.objectContaining({
+        body: expect.stringContaining("call the propose_job tool")
+      })
+    )
+  })
+
   it("shows an animated chat agent activity indicator", async () => {
     vi.spyOn(Math, "random").mockReturnValue(0)
     vi.spyOn(window, "fetch").mockResolvedValue(
@@ -11170,8 +11528,9 @@ function chatPayload(overrides: {
       repositories_path: "/repositories",
       app_messages_path: "/api/v1/app/chats/8/messages",
       app_message_path: "/api/v1/app/chats/8/message",
-      app_enqueue_message_path: "/api/v1/app/chats/8/queued_messages",
       app_rename_path: "/api/v1/app/chats/8/rename",
+      app_clear_path: "/api/v1/app/chats/8/messages",
+      app_enqueue_message_path: "/api/v1/app/chats/8/queued_messages",
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",
       app_attachments_path: "/api/v1/app/chats/8/attachments",

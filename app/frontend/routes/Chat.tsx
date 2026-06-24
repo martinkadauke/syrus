@@ -7,12 +7,17 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
+import { refreshRecentChats, updateRecentChatCache } from "../lib/chatCache"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import {
   addChatAttachment,
   answerAgentQuestion,
+  attachChatRepository,
+  cancelPendingAction,
+  clearChatHistory,
   confirmChatProposal,
   confirmPendingAction,
+  createChat,
   createChatBookmark,
   deleteQueuedChatMessage,
   deleteChatAttachment,
@@ -24,16 +29,18 @@ import {
   patchChatWhiteboard,
   rejectChatProposal,
   rejectPendingAction,
+  renameChat,
   sendChatMessage,
   stopChat,
   updateQueuedChatMessage,
   type ChatAttachmentResult,
   type ChatAttachmentRow,
   type ChatAgentQuestion,
-  type ChatsIndexPayload,
+  type ChatCreatedPayload,
   type ChatMcpHealth,
   type ChatNavRecord,
   type ChatMessageItem,
+  type ChatPendingAction,
   type ChatPendingActionInline,
   type ChatPayload,
   type ChatProposal,
@@ -50,6 +57,15 @@ import { CloseIcon } from "../components/CloseIcon"
 import { StartEpicButton } from "../components/StartEpicButton"
 import { Markdown, PlainText } from "../lib/Markdown"
 import { useLayoutVersion } from "../lib/layoutVersion"
+import {
+  filterSlashCommands,
+  findSlashCommand,
+  slashCommandPrompt,
+  slashCommandQuery,
+  slashCommandSignature,
+  type SlashCommand,
+  type SlashCommandMatch
+} from "../lib/slashCommands"
 
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
@@ -85,8 +101,7 @@ export function ChatRoute() {
     if (!id) return
 
     void markChatRead(id).then(() => {
-      markChatReadInCache(queryClient, id)
-      void queryClient.invalidateQueries({ queryKey: ["chats", "recent"] })
+      refreshRecentChats(queryClient)
     }).catch(() => undefined)
   }, [id, queryClient])
 
@@ -132,38 +147,32 @@ function visualViewportHeight() {
 }
 
 type ChatQueryKey = readonly ["chats", string, string]
-type BookmarkTarget = {
-  messageId: number
-  requestId: number
-}
 
 export function chatQueryKey(id: string | number, search: string): ChatQueryKey {
   return ["chats", String(id), search] as const
 }
 
-function markChatReadInCache(queryClient: ReturnType<typeof useQueryClient>, chatId: string | number) {
-  const id = Number(chatId)
-  if (!Number.isFinite(id)) return
-
-  queryClient.setQueriesData<ChatPayload>(
-    { queryKey: ["chats", String(chatId)] },
-    (current) => current ? {
-      ...current,
-      recent_chats: markChatNavRecordRead(current.recent_chats, id)
-    } : current
-  )
-  queryClient.setQueryData<ChatsIndexPayload>(
-    ["chats", "recent"],
-    (current) => current ? {
-      ...current,
-      chats: markChatNavRecordRead(current.chats, id)
-    } : current
-  )
+type PendingSlashCommandConfirmation = {
+  commandName: SlashCommand["name"]
+  text: string
 }
 
-function markChatNavRecordRead<T extends ChatNavRecord>(chats: T[], chatId: number) {
-  return chats.map((chat) => chat.id === chatId ? { ...chat, unread: false } : chat)
+type BookmarkTarget = {
+  messageId: number
+  requestId: number
 }
+
+type ChatSystemCommandHandlers = {
+  openBookmarks: () => void
+  openAttachments: () => void
+  openSettings: () => void
+}
+
+type ChatSystemAction =
+  | { kind: "rename"; title: string }
+  | { kind: "clear" }
+  | { kind: "new" }
+  | { kind: "attach"; slug: string }
 
 function appendSearch(path: string, search: string) {
   return search ? `${path}${search}` : path
@@ -202,6 +211,7 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
       )}
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
+      {whiteboardFullscreen ? null : <PendingActions payload={payload} queryKey={queryKey} onNotice={setNotice} />}
 
       {!payload.chat_available ? (
         <section className="rounded border border-amber-200 bg-white p-6 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
@@ -218,6 +228,45 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
           onWhiteboardFullscreenChange={setWhiteboardFullscreen}
         />
       )}
+    </div>
+  )
+}
+
+function PendingActions({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const queryClient = useQueryClient()
+  const search = queryKey[2]
+  const action = useMutation({
+    mutationFn: (input: { kind: "confirm" | "cancel"; path: string }) => {
+      const path = appendSearch(input.path, search)
+      return input.kind === "confirm" ? confirmPendingAction(path) : cancelPendingAction(path)
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(updated.message || null)
+    }
+  })
+
+  if (payload.pending_actions.length === 0) return null
+
+  return (
+    <section className="space-y-3 rounded border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/60">
+      <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-100">Pending actions</h2>
+      {payload.pending_actions.map((pendingAction) => (
+        <PendingActionRow action={pendingAction} disabled={action.isPending} key={pendingAction.id} onCancel={() => action.mutate({ kind: "cancel", path: pendingAction.app_cancel_path })} onConfirm={() => action.mutate({ kind: "confirm", path: pendingAction.app_confirm_path })} />
+      ))}
+      {action.isError ? <div className="text-xs text-red-700 dark:text-red-300">{errorMessage(action.error, "Pending action failed.")}</div> : null}
+    </section>
+  )
+}
+
+function PendingActionRow({ action, disabled, onCancel, onConfirm }: { action: ChatPendingAction; disabled: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded border border-amber-200 bg-white px-3 py-2 text-sm dark:border-amber-800 dark:bg-gray-950">
+      <div className="font-medium text-gray-900 dark:text-gray-100">{action.label}</div>
+      <div className="flex gap-2">
+        <button className={primaryButton()} disabled={disabled} onClick={onConfirm} type="button">Confirm</button>
+        <button className={secondaryButton()} disabled={disabled} onClick={onCancel} type="button">Cancel</button>
+      </div>
     </div>
   )
 }
@@ -883,29 +932,147 @@ function ProposalChildren({ children, mutation }: { children: ChatProposalChild[
   )
 }
 
-function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [text, setText] = useState("")
+  const [pendingConfirmation, setPendingConfirmation] = useState<PendingSlashCommandConfirmation | null>(null)
+  const [activeCommandIndex, setActiveCommandIndex] = useState(0)
+  const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const submitWithEnter = useSubmitChatWithEnter()
   const search = queryKey[2]
   const agentActive = isAgentActive(payload)
   const queuedMessages = payload.queued_messages || []
+  const commandQuery = slashCommandQuery(text)
+  const matchingCommands = useMemo(() => commandQuery == null ? [] : filterSlashCommands(commandQuery), [commandQuery])
   const send = useMutation({
-    mutationFn: () => agentActive
-      ? enqueueChatMessage(appendSearch(payload.paths.app_enqueue_message_path, search), text)
-      : sendChatMessage(appendSearch(payload.paths.app_message_path, search), text),
+    mutationFn: (messageText: string) => agentActive
+      ? enqueueChatMessage(appendSearch(payload.paths.app_enqueue_message_path, search), messageText)
+      : sendChatMessage(appendSearch(payload.paths.app_message_path, search), messageText),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
       setText("")
+      setPendingConfirmation(null)
       onNotice(null)
     }
   })
+  const systemAction = useMutation<ChatPayload | ChatCreatedPayload, Error, ChatSystemAction>({
+    mutationFn: (action) => {
+      if (action.kind === "rename") return renameChat(appendSearch(payload.paths.app_rename_path, search), action.title)
+      if (action.kind === "clear") return clearChatHistory(appendSearch(payload.paths.app_clear_path, search))
+      if (action.kind === "new") return createChat({ repositoryId: payload.chat.repository ? String(payload.chat.repository.id) : "", text: "" })
+      return attachChatRepository(appendSearch(payload.paths.app_attachments_path, search), action.slug)
+    },
+    onSuccess: (updated, action) => {
+      if (action.kind === "new") {
+        const created = updated as ChatCreatedPayload
+        updateRecentChatCache(queryClient, created.chat, { prepend: true })
+        refreshRecentChats(queryClient)
+        navigate(withRoutePrefix(created.redirect_to, prefix))
+        return
+      }
+
+      const chatPayload = updated as ChatPayload
+      queryClient.setQueryData(queryKey, chatPayload)
+      updateRecentChatCache(queryClient, chatPayload.chat)
+      refreshRecentChats(queryClient)
+      setText("")
+      setClearConfirmationOpen(false)
+      onNotice(updated.message || null)
+      if (action.kind === "attach") commandHandlers.openAttachments()
+    }
+  })
+  const commandPaletteOpen = commandQuery != null
+    && matchingCommands.length > 0
+    && !send.isPending
+    && !systemAction.isPending
+    && pendingConfirmation == null
 
   function submitMessage() {
-    if (send.isPending || text.trim().length === 0) return
+    if (send.isPending || systemAction.isPending || text.trim().length === 0) return
+    const commandMatch = findSlashCommand(text)
+    if (commandMatch?.command.kind === "system") {
+      onNotice(null)
+      setPendingConfirmation(null)
+      handleSystemSlashCommand(commandMatch)
+      return
+    }
+
+    if (commandMatch?.command.requiresConfirmation) {
+      onNotice(null)
+      setPendingConfirmation({ commandName: commandMatch.command.name, text: text.trim() })
+      return
+    }
+
     onNotice(null)
-    send.mutate()
+    setPendingConfirmation(null)
+    send.mutate(slashCommandPrompt(text))
+  }
+
+  function handleSystemSlashCommand(commandMatch: SlashCommandMatch) {
+    const command = commandMatch.command
+    const argsText = commandMatch.argsText
+    if (command.name === "/rename") {
+      if (!argsText) {
+        onNotice("Usage: /rename <name>")
+        return
+      }
+
+      systemAction.mutate({ kind: "rename", title: argsText })
+      return
+    }
+
+    if (command.name === "/clear") {
+      setText("")
+      setClearConfirmationOpen(true)
+      onNotice(null)
+      return
+    }
+
+    if (command.name === "/new") {
+      systemAction.mutate({ kind: "new" })
+      return
+    }
+
+    if (command.name === "/bookmarks") {
+      commandHandlers.openBookmarks()
+      setText("")
+      onNotice(null)
+      return
+    }
+
+    if (command.name === "/attach") {
+      if (argsText) {
+        systemAction.mutate({ kind: "attach", slug: argsText })
+      } else {
+        commandHandlers.openAttachments()
+        setText("")
+        onNotice(null)
+      }
+      return
+    }
+
+    if (command.name === "/settings") {
+      commandHandlers.openSettings()
+      setText("")
+      onNotice(null)
+      return
+    }
+
+    setText("")
+  }
+
+  function confirmPendingSlashCommand() {
+    if (!pendingConfirmation || send.isPending) return
+
+    onNotice(null)
+    send.mutate(pendingConfirmation.text)
+  }
+
+  function cancelPendingSlashCommand() {
+    setPendingConfirmation(null)
+    textareaRef.current?.focus()
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -914,11 +1081,56 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (commandPaletteOpen && (event.key === "Tab" || event.key === "Enter")) {
+      event.preventDefault()
+      completeSlashCommand(matchingCommands[activeCommandIndex] || matchingCommands[0])
+      return
+    }
+
+    if (commandPaletteOpen && event.key === "ArrowDown") {
+      event.preventDefault()
+      setActiveCommandIndex((current) => (current + 1) % matchingCommands.length)
+      return
+    }
+
+    if (commandPaletteOpen && event.key === "ArrowUp") {
+      event.preventDefault()
+      setActiveCommandIndex((current) => (current - 1 + matchingCommands.length) % matchingCommands.length)
+      return
+    }
+
+    if (commandPaletteOpen && event.key === "Escape") {
+      event.preventDefault()
+      setText("")
+      return
+    }
+
     if (!submitWithEnter || event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return
 
     event.preventDefault()
     submitMessage()
   }
+
+  function completeSlashCommand(command: SlashCommand) {
+    const leadingWhitespace = text.match(/^\s*/)?.[0] || ""
+    setText(`${leadingWhitespace}${command.name} `)
+    setPendingConfirmation(null)
+  }
+
+  function updateText(nextText: string) {
+    setText(nextText)
+    if (pendingConfirmation && nextText.trim() !== pendingConfirmation.text) {
+      setPendingConfirmation(null)
+    }
+  }
+
+  useEffect(() => {
+    setActiveCommandIndex(0)
+  }, [commandQuery])
+
+  useEffect(() => {
+    if (activeCommandIndex >= matchingCommands.length) setActiveCommandIndex(0)
+  }, [activeCommandIndex, matchingCommands.length])
 
   useEffect(() => {
     const textarea = textareaRef.current
@@ -938,14 +1150,47 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
   }, [])
 
   return (
-    <form className="rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900" onSubmit={submit}>
+    <form className="relative rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900" onSubmit={submit}>
       {send.isError ? <div className="mb-2 text-sm text-red-700 dark:text-red-300">{errorMessage(send.error, "Message failed.")}</div> : null}
+      {systemAction.isError ? <div className="mb-2 text-sm text-red-700 dark:text-red-300">{errorMessage(systemAction.error, "Command failed.")}</div> : null}
+      {clearConfirmationOpen ? (
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+          <span>Clear this chat's message history?</span>
+          <span className="flex gap-2">
+            <button className={secondaryButton()} disabled={systemAction.isPending} onClick={() => systemAction.mutate({ kind: "clear" })} type="button">Clear</button>
+            <button className={secondaryButton()} disabled={systemAction.isPending} onClick={() => setClearConfirmationOpen(false)} type="button">Cancel</button>
+          </span>
+        </div>
+      ) : null}
       {queuedMessages.length > 0 ? <QueuedMessages messages={queuedMessages} queryKey={queryKey} /> : null}
+      {pendingConfirmation ? (
+        <SlashCommandConfirmation
+          commandName={pendingConfirmation.commandName}
+          disabled={send.isPending}
+          text={pendingConfirmation.text}
+          onCancel={cancelPendingSlashCommand}
+          onConfirm={confirmPendingSlashCommand}
+        />
+      ) : null}
+      {commandPaletteOpen ? (
+        <SlashCommandPalette
+          activeIndex={activeCommandIndex}
+          commands={matchingCommands}
+          query={commandQuery}
+          onSelect={(command) => completeSlashCommand(command)}
+        />
+      ) : null}
       <div className="flex items-end gap-3">
         <textarea
+          aria-controls={commandPaletteOpen ? "chat-slash-command-palette" : undefined}
+          aria-expanded={commandPaletteOpen}
+          aria-haspopup="listbox"
           className="min-h-9 flex-1 resize-none overflow-y-hidden rounded border border-gray-300 px-3 py-2 text-base leading-6 focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50 sm:text-sm sm:leading-5 dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500 dark:disabled:bg-gray-800"
-          disabled={send.isPending}
-          onChange={(event) => setText(event.target.value)}
+          disabled={send.isPending || systemAction.isPending}
+          onChange={(event) => {
+            updateText(event.target.value)
+            if (clearConfirmationOpen) setClearConfirmationOpen(false)
+          }}
           onKeyDown={handleKeyDown}
           placeholder={agentActive ? "Queue a follow-up message..." : payload.chat.repository ? "Ask about this repository..." : "Attach a repository to start chatting..."}
           ref={textareaRef}
@@ -953,10 +1198,81 @@ function Compose({ payload, queryKey, onNotice }: { payload: ChatPayload; queryK
           rows={1}
           value={text}
         />
-        <button className={primaryButton()} disabled={send.isPending || text.trim().length === 0} type="submit">{agentActive ? "Enqueue" : "Send"}</button>
+        <button className={primaryButton()} disabled={send.isPending || systemAction.isPending || text.trim().length === 0 || pendingConfirmation != null} type="submit">{agentActive ? "Enqueue" : "Send"}</button>
         {agentActive ? <StopButton payload={payload} queryKey={queryKey} /> : null}
       </div>
     </form>
+  )
+}
+
+function SlashCommandConfirmation({ commandName, disabled, text, onCancel, onConfirm }: { commandName: SlashCommand["name"]; disabled: boolean; text: string; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <div className="mb-3 rounded border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Confirm {commandName}</div>
+          <div className="mt-1 break-words font-mono text-sm text-gray-900 dark:text-gray-100">{text}</div>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          <button className={secondaryButton()} disabled={disabled} onClick={onCancel} type="button">Cancel</button>
+          <button className={primaryButton()} disabled={disabled} onClick={onConfirm} type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SlashCommandPalette({ activeIndex, commands, query, onSelect }: { activeIndex: number; commands: SlashCommand[]; query: string; onSelect: (command: SlashCommand) => void }) {
+  return (
+    <div
+      aria-label="Slash commands"
+      className="absolute bottom-full left-3 right-3 z-10 mb-2 max-h-[calc(var(--chat-visual-viewport-height,100dvh)-9rem)] overflow-y-auto rounded border border-gray-200 bg-white shadow-lg overscroll-contain dark:border-gray-700 dark:bg-gray-950"
+      id="chat-slash-command-palette"
+      role="listbox"
+    >
+      {commands.map((command, index) => {
+        const signature = slashCommandSignature(command)
+        const active = index === activeIndex
+
+        return (
+          <button
+            aria-selected={active}
+            className={`flex w-full items-start gap-3 px-3 py-2 text-left text-sm ${active ? "bg-blue-50 dark:bg-blue-950" : "hover:bg-gray-50 dark:hover:bg-gray-900"}`}
+            key={command.name}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onSelect(command)}
+            role="option"
+            type="button"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{highlightSlashCommand(command.name, query)}</span>
+                {signature.length > 0 ? <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{signature}</span> : null}
+              </span>
+              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{command.description}</span>
+            </span>
+            <span className={`shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase ${command.kind === "system" ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-200" : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-200"}`}>{command.kind}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+function highlightSlashCommand(name: string, query: string) {
+  if (query.length === 0) return name
+
+  const start = name.slice(1).toLowerCase().indexOf(query)
+  if (start < 0) return name
+
+  const from = start + 1
+  const to = from + query.length
+  return (
+    <>
+      {name.slice(0, from)}
+      <mark className="bg-yellow-200 px-0 dark:bg-yellow-700 dark:text-gray-950">{name.slice(from, to)}</mark>
+      {name.slice(to)}
+    </>
   )
 }
 
@@ -1126,6 +1442,7 @@ function ChatWorkspace({
   const [activeMobileTab, setActiveMobileTab] = useState<MobileChatTab>("chat")
   const [workspaceWidth, setWorkspaceWidth] = useState(storedWorkspaceWidth)
   const [bookmarkTarget, setBookmarkTarget] = useState<BookmarkTarget | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const bookmarkRequestIdRef = useRef(0)
   const isDesktop = useMediaQuery("(min-width: 1024px)", true)
   const expanded = activeTab === "whiteboard" && whiteboardFullscreen
@@ -1178,6 +1495,20 @@ function ChatWorkspace({
     setBookmarkTarget({ messageId, requestId: bookmarkRequestIdRef.current })
   }
 
+  const commandHandlers: ChatSystemCommandHandlers = {
+    openBookmarks: () => {
+      onWhiteboardFullscreenChange(false)
+      setActiveTab("context")
+      setActiveMobileTab("context")
+    },
+    openAttachments: () => {
+      onWhiteboardFullscreenChange(false)
+      setActiveTab("context")
+      setActiveMobileTab("context")
+    },
+    openSettings: () => setSettingsOpen(true)
+  }
+
   if (!isDesktop && !expanded) {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-gray-950">
@@ -1195,7 +1526,7 @@ function ChatWorkspace({
         </nav>
         <div className="flex min-h-0 w-full flex-1">
           {activeMobileTab === "chat" ? (
-            <ChatColumn bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+            <ChatColumn bookmarkTarget={bookmarkTarget} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
           ) : (
             <ChatWorkspacePanel
               activeTab={activeTab}
@@ -1211,6 +1542,7 @@ function ChatWorkspace({
             />
           )}
         </div>
+        {settingsOpen ? <ChatSettingsDialog payload={payload} prefix={prefix} onClose={() => setSettingsOpen(false)} /> : null}
       </div>
     )
   }
@@ -1220,7 +1552,7 @@ function ChatWorkspace({
       className={expanded ? "flex min-h-0 flex-1 flex-col" : "flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:gap-0"}
       style={expanded ? undefined : { gridTemplateColumns: `minmax(0,1fr) 0.5rem minmax(${CHAT_WORKSPACE_MIN_WIDTH}px,${workspaceWidth}px)` }}
     >
-      {expanded ? null : <ChatColumn bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />}
+      {expanded ? null : <ChatColumn bookmarkTarget={bookmarkTarget} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />}
       {expanded ? null : (
         <button
           aria-label="Resize chat workspace"
@@ -1240,18 +1572,19 @@ function ChatWorkspace({
         onNotice={onNotice}
         onBookmarkSelect={selectBookmark}
       />
+      {settingsOpen ? <ChatSettingsDialog payload={payload} prefix={prefix} onClose={() => setSettingsOpen(false)} /> : null}
     </div>
   )
 }
 
-function ChatColumn({ bookmarkTarget, payload, prefix, queryKey, onNotice }: { bookmarkTarget: BookmarkTarget | null; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function ChatColumn({ bookmarkTarget, commandHandlers, payload, prefix, queryKey, onNotice }: { bookmarkTarget: BookmarkTarget | null; commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
         <MessageStream bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         <UsageOverlay payload={payload} />
       </div>
-      <Compose payload={payload} queryKey={queryKey} onNotice={onNotice} />
+      <Compose commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
     </section>
   )
 }
@@ -1371,6 +1704,34 @@ function ChatWorkspacePanel({
         {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
       </div>
     </aside>
+  )
+}
+
+function ChatSettingsDialog({ payload, prefix, onClose }: { payload: ChatPayload; prefix: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-gray-950/35 p-4" role="presentation">
+      <section aria-modal="true" aria-labelledby="chat-settings-title" className="w-full max-w-md rounded border border-gray-200 bg-white p-4 shadow-lg dark:border-gray-700 dark:bg-gray-900" role="dialog">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100" id="chat-settings-title">Chat settings</h2>
+            <p className="mt-1 break-words text-sm text-gray-600 dark:text-gray-300">{chatDisplayTitle(payload.chat)}</p>
+          </div>
+          <button aria-label="Close chat settings" className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" onClick={onClose} type="button">
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="space-y-2 text-sm">
+          {payload.chat.repository?.repository_path ? (
+            <Link className="block rounded border border-gray-200 px-3 py-2 text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-blue-800 dark:hover:bg-blue-950 dark:hover:text-blue-200" onClick={onClose} to={withRoutePrefix(`${payload.chat.repository.repository_path}/edit`, prefix)}>
+              Repository settings
+            </Link>
+          ) : null}
+          <Link className="block rounded border border-gray-200 px-3 py-2 text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-blue-800 dark:hover:bg-blue-950 dark:hover:text-blue-200" onClick={onClose} to={withRoutePrefix(payload.paths.credentials_path, prefix)}>
+            Chat credentials
+          </Link>
+        </div>
+      </section>
+    </div>
   )
 }
 
@@ -1657,97 +2018,6 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
-function ChatNavigator({ payload, prefix, onBookmarkSelect }: { payload: ChatPayload; prefix: string; onBookmarkSelect: (messageId: number) => void }) {
-  const [query, setQuery] = useState("")
-  const normalizedQuery = query.trim().toLowerCase()
-  const recentChats = useMemo(() => {
-    return (payload.recent_chats || []).filter((chat) => {
-      if (!normalizedQuery) return true
-
-      return [
-        chatDisplayTitle(chat),
-        chat.repository?.slug || "",
-        String(chat.id)
-      ].some((value) => value.toLowerCase().includes(normalizedQuery))
-    })
-  }, [normalizedQuery, payload.recent_chats])
-
-  return (
-    <div className="space-y-5">
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Chats</h2>
-          <Link className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-950 dark:hover:bg-gray-200" to={withRoutePrefix(payload.paths.new_chat_path, prefix)}>New chat</Link>
-        </div>
-        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300">
-          Search chats
-          <input
-            className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100 dark:placeholder:text-gray-500"
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Title, repo, or id"
-            type="search"
-            value={query}
-          />
-        </label>
-        {recentChats.length > 0 ? (
-          <nav aria-label="Recent chats" className="space-y-1">
-            {recentChats.map((chat) => {
-              const unread = chat.unread && !chat.current
-              return (
-                <Link
-                  className={`block rounded border px-2 py-1.5 text-xs ${chat.current ? "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200" : "border-gray-200 bg-gray-50 text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-800 dark:hover:bg-blue-950 dark:hover:text-blue-200"}`}
-                  key={chat.id}
-                  to={withRoutePrefix(chat.chat_path, prefix)}
-                >
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${unread ? "bg-blue-600 dark:bg-blue-400" : "bg-transparent"}`} />
-                    <span className={`block min-w-0 flex-1 truncate ${unread ? "font-semibold" : "font-medium"} ${chat.title_pending ? "animate-pulse text-gray-400 dark:text-gray-500" : ""}`}>{chatDisplayTitle(chat)}</span>
-                  </span>
-                  <span className="mt-0.5 block truncate font-mono text-[0.7rem] text-gray-500 dark:text-gray-400">{chat.repository?.slug || `Chat #${chat.id}`}</span>
-                </Link>
-              )
-            })}
-          </nav>
-        ) : (
-          <div className="text-xs text-gray-400 dark:text-gray-500">No matching chats.</div>
-        )}
-      </section>
-      <ChatBookmarks payload={payload} onBookmarkSelect={onBookmarkSelect} />
-    </div>
-  )
-}
-
-function ChatBookmarks({ payload, onBookmarkSelect }: { payload: ChatPayload; onBookmarkSelect: (messageId: number) => void }) {
-  return (
-    <section>
-      <div className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Bookmarks in this chat</div>
-      {payload.bookmarks.length > 0 ? (
-        <nav aria-label="Chat bookmarks" className="space-y-1">
-          {payload.bookmarks.map((bookmark) => {
-            const anchorMessageId = bookmark.anchor_message_id ?? bookmark.chat_message_id
-
-            return (
-              <a
-                className="block rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-800 dark:hover:bg-blue-950 dark:hover:text-blue-200"
-                href={`#message-${anchorMessageId}`}
-                key={bookmark.id}
-                onClick={(event) => {
-                  if (!isPlainAnchorClick(event)) return
-
-                  event.preventDefault()
-                  onBookmarkSelect(anchorMessageId)
-                }}
-              >
-                <span className="block truncate">{bookmark.label}</span>
-              </a>
-            )
-          })}
-        </nav>
-      ) : <div className="text-xs text-gray-400 dark:text-gray-500">No bookmarks yet.</div>}
-    </section>
-  )
-}
-
 function Attachments({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <>
@@ -1915,7 +2185,9 @@ function workspaceTabClass(active: boolean) {
 
 function workspaceTabLabel(tab: WorkspaceTab) {
   if (tab === "whiteboard") return "Whiteboard"
-  return "Context"
+  if (tab === "context") return "Context"
+
+  return "Chats"
 }
 
 function mobileChatTabLabel(tab: MobileChatTab) {

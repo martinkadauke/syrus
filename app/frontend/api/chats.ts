@@ -253,8 +253,9 @@ export type ChatPayload = {
     repositories_path: string
     app_messages_path: string
     app_message_path: string
-    app_enqueue_message_path: string
     app_rename_path: string
+    app_clear_path: string
+    app_enqueue_message_path: string
     app_stop_path: string
     app_bookmarks_path: string
     app_attachments_path: string
@@ -320,6 +321,14 @@ export function sendChatMessage(path: string, text: string) {
   return postJson<ChatPayload>(path, { chat_message: { text } })
 }
 
+export function renameChat(path: string, title: string) {
+  return patchJson<ChatPayload>(path, { chat: { title } })
+}
+
+export function clearChatHistory(path: string) {
+  return deleteJson<ChatPayload>(path)
+}
+
 export function enqueueChatMessage(path: string, text: string) {
   return postJson<ChatPayload>(path, { chat_message: { text } })
 }
@@ -347,6 +356,13 @@ export function addChatAttachment(path: string, record: ChatAttachmentResult) {
   return postJson<ChatPayload>(path, {
     attachable_type: record.type,
     attachable_id: record.id
+  })
+}
+
+export function attachChatRepository(path: string, slug: string) {
+  return postJson<ChatPayload>(path, {
+    attachable_type: "Repository",
+    repository_slug: slug
   })
 }
 

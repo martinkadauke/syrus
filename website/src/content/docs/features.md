@@ -109,6 +109,23 @@ operator decision before continuing. Syrus shows the question above the
 compose area, renders multiple-choice options as buttons when provided, and
 otherwise accepts a short free-form answer.
 
+The chat composer recognizes leading slash commands. Typing `/` opens an
+autocomplete palette with system commands handled in the browser and skill
+commands that are sent through the normal chat message path for the agent to
+interpret. System commands can rename the current chat, clear chat history
+after an inline confirmation, start a fresh chat attached to the same
+repository, open bookmarks, attach another repository by `owner/repo`, and
+open chat settings without sending a message to the agent. Read-only skill
+commands include `/jobs [filter]`, `/job <id>`,
+`/epic <id>`, `/prs`, `/issues`, `/proposals`, `/canvas`, and
+`/bookmark <label>`; Syrus expands each one into a prompt that asks the agent
+to call the matching chat MCP tool and format the result. The `/propose` skill
+command starts a guided wizard: the agent asks for a Job title, description,
+and optional Epic, then creates a proposal card for operator confirmation.
+Mutating skill commands such as `/cancel`, `/retry`, `/feedback`, `/discard`,
+and `/clear-canvas` show an inline confirmation in the composer before Syrus
+sends the command to the agent.
+
 Chat transcripts also surface MCP sidecar health. Syrus distinguishes
 available, pending, and unavailable chat tools so operators can tell when
 proposal, schedule, bookmark, or whiteboard persistence is not ready and
