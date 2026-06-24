@@ -161,7 +161,10 @@ running transcripts until the Job finishes or the command is interrupted.
 credential; if no GitHub token is available, it prints the PR URL.
 
 `job checkout` verifies that the current checkout matches the Job's
-repository, fetches the Syrus branch from `origin`, and checks it out.
+repository, fetches the Syrus branch from `origin`, and checks it out. If the
+remote Syrus branch was force-pushed, checkout refreshes the local branch to the
+new remote head; when that branch is already checked out, local changes must be
+committed or stashed first.
 
 ## Test Plans
 

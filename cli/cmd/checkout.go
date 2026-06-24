@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -13,6 +14,9 @@ import (
 type gitRunner func(ctx context.Context, dir string, args ...string) (string, error)
 
 var checkoutRunGit gitRunner = runGit
+var checkoutBackupTimestamp = func() string {
+	return time.Now().UTC().Format("20060102T150405Z")
+}
 
 func NewCheckoutCommand() *cobra.Command {
 	return &cobra.Command{
@@ -82,19 +86,101 @@ func checkoutJobBranch(ctx context.Context, runner gitRunner, repoSlug string, b
 		return fmt.Errorf("Current git remote origin (%s) does not match job repository %s.", remoteURL, repoSlug)
 	}
 
-	fetchArgs := []string{"fetch", "origin", branchName + ":" + branchName}
-	currentBranch, err := runner(ctx, "", "branch", "--show-current")
-	if err == nil && strings.TrimSpace(currentBranch) == branchName {
-		fetchArgs = []string{"fetch", "origin", branchName}
+	remoteRef := "refs/remotes/origin/" + branchName
+	localRef := "refs/heads/" + branchName
+
+	if _, err := runner(ctx, "", "fetch", "origin", "+refs/heads/"+branchName+":"+remoteRef); err != nil {
+		return fmt.Errorf("git fetch failed: %w", err)
 	}
 
-	if _, err := runner(ctx, "", fetchArgs...); err != nil {
-		return fmt.Errorf("git fetch failed: %w", err)
+	currentBranch, err := runner(ctx, "", "branch", "--show-current")
+	currentBranchName := ""
+	if err == nil {
+		currentBranchName = strings.TrimSpace(currentBranch)
+	}
+
+	branchExists := true
+	if _, err := runner(ctx, "", "show-ref", "--verify", "--quiet", localRef); err != nil {
+		branchExists = false
+	}
+
+	if !branchExists {
+		if _, err := runner(ctx, "", "checkout", "--track", "-b", branchName, remoteRef); err != nil {
+			return fmt.Errorf("git checkout failed: %w", err)
+		}
+		return nil
+	}
+
+	if currentBranchName == branchName {
+		status, err := runner(ctx, "", "status", "--porcelain")
+		if err != nil {
+			return fmt.Errorf("git status failed: %w", err)
+		}
+		if strings.TrimSpace(status) != "" {
+			return fmt.Errorf("cannot update %s because it is currently checked out with local changes; commit or stash them first", branchName)
+		}
+		if err := backupLocalBranchIfNeeded(ctx, runner, branchName, localRef, remoteRef); err != nil {
+			return err
+		}
+		if _, err := runner(ctx, "", "reset", "--hard", remoteRef); err != nil {
+			return fmt.Errorf("git reset failed: %w", err)
+		}
+		return nil
+	}
+
+	if err := backupLocalBranchIfNeeded(ctx, runner, branchName, localRef, remoteRef); err != nil {
+		return err
+	}
+	if _, err := runner(ctx, "", "branch", "-f", branchName, remoteRef); err != nil {
+		return fmt.Errorf("git branch update failed: %w", err)
 	}
 	if _, err := runner(ctx, "", "checkout", branchName); err != nil {
 		return fmt.Errorf("git checkout failed: %w", err)
 	}
 	return nil
+}
+
+func backupLocalBranchIfNeeded(ctx context.Context, runner gitRunner, branchName string, localRef string, remoteRef string) error {
+	localHead, err := runner(ctx, "", "rev-parse", "--verify", localRef)
+	if err != nil {
+		return fmt.Errorf("git rev-parse failed for %s: %w", branchName, err)
+	}
+	remoteHead, err := runner(ctx, "", "rev-parse", "--verify", remoteRef)
+	if err != nil {
+		return fmt.Errorf("git rev-parse failed for origin/%s: %w", branchName, err)
+	}
+	if strings.TrimSpace(localHead) == strings.TrimSpace(remoteHead) {
+		return nil
+	}
+	if _, err := runner(ctx, "", "merge-base", "--is-ancestor", localRef, remoteRef); err == nil {
+		return nil
+	}
+
+	backupName := "syrus/backup/" + sanitizeBranchForBackup(branchName) + "-" + checkoutBackupTimestamp()
+	if _, err := runner(ctx, "", "branch", backupName, localRef); err != nil {
+		return fmt.Errorf("git backup branch failed: %w", err)
+	}
+	return nil
+}
+
+func sanitizeBranchForBackup(branchName string) string {
+	value := strings.NewReplacer(
+		"/", "-",
+		"\\", "-",
+		" ", "-",
+		"~", "-",
+		"^", "-",
+		":", "-",
+		"?", "-",
+		"*", "-",
+		"[", "-",
+		"]", "-",
+	).Replace(strings.TrimSpace(branchName))
+	value = strings.Trim(value, "-")
+	if value == "" {
+		return "branch"
+	}
+	return value
 }
 
 func runGit(ctx context.Context, dir string, args ...string) (string, error) {

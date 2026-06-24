@@ -34,9 +34,13 @@ func TestCheckoutCommandFetchesAndChecksOutJobBranch(t *testing.T) {
 			return "true\n", nil
 		case "remote get-url origin":
 			return "git@github.com:acme/widgets.git\n", nil
+		case "fetch origin +refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456":
+			return "", nil
 		case "branch --show-current":
 			return "main\n", nil
-		case "fetch origin syrus/issue-42-456:syrus/issue-42-456", "checkout syrus/issue-42-456":
+		case "show-ref --verify --quiet refs/heads/syrus/issue-42-456":
+			return "", fmt.Errorf("exit status 1")
+		case "checkout --track -b syrus/issue-42-456 refs/remotes/origin/syrus/issue-42-456":
 			return "", nil
 		default:
 			return "", fmt.Errorf("unexpected git command: %v", args)
@@ -57,9 +61,10 @@ func TestCheckoutCommandFetchesAndChecksOutJobBranch(t *testing.T) {
 	wantCalls := [][]string{
 		{"rev-parse", "--is-inside-work-tree"},
 		{"remote", "get-url", "origin"},
+		{"fetch", "origin", "+refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456"},
 		{"branch", "--show-current"},
-		{"fetch", "origin", "syrus/issue-42-456:syrus/issue-42-456"},
-		{"checkout", "syrus/issue-42-456"},
+		{"show-ref", "--verify", "--quiet", "refs/heads/syrus/issue-42-456"},
+		{"checkout", "--track", "-b", "syrus/issue-42-456", "refs/remotes/origin/syrus/issue-42-456"},
 	}
 	if !reflect.DeepEqual(calls, wantCalls) {
 		t.Fatalf("git calls = %#v", calls)
@@ -85,9 +90,17 @@ func TestCheckoutCommandHandlesAlreadyCheckedOutBranch(t *testing.T) {
 			return "true\n", nil
 		case "remote get-url origin":
 			return "https://github.com/acme/widgets.git\n", nil
+		case "fetch origin +refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456":
+			return "", nil
 		case "branch --show-current":
 			return "syrus/issue-42-456\n", nil
-		case "fetch origin syrus/issue-42-456", "checkout syrus/issue-42-456":
+		case "show-ref --verify --quiet refs/heads/syrus/issue-42-456":
+			return "", nil
+		case "status --porcelain":
+			return "", nil
+		case "rev-parse --verify refs/heads/syrus/issue-42-456", "rev-parse --verify refs/remotes/origin/syrus/issue-42-456":
+			return "abc123\n", nil
+		case "reset --hard refs/remotes/origin/syrus/issue-42-456":
 			return "", nil
 		default:
 			return "", fmt.Errorf("unexpected git command: %v", args)
@@ -107,9 +120,139 @@ func TestCheckoutCommandHandlesAlreadyCheckedOutBranch(t *testing.T) {
 	wantCalls := [][]string{
 		{"rev-parse", "--is-inside-work-tree"},
 		{"remote", "get-url", "origin"},
+		{"fetch", "origin", "+refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456"},
 		{"branch", "--show-current"},
-		{"fetch", "origin", "syrus/issue-42-456"},
+		{"show-ref", "--verify", "--quiet", "refs/heads/syrus/issue-42-456"},
+		{"status", "--porcelain"},
+		{"rev-parse", "--verify", "refs/heads/syrus/issue-42-456"},
+		{"rev-parse", "--verify", "refs/remotes/origin/syrus/issue-42-456"},
+		{"reset", "--hard", "refs/remotes/origin/syrus/issue-42-456"},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("git calls = %#v", calls)
+	}
+}
+
+func TestCheckoutCommandUpdatesExistingBranchAfterForcePush(t *testing.T) {
+	server := checkoutServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"job":{"id":456,"state":"running","branch_name":"syrus/issue-42-456"},"repository":{"slug":"acme/widgets"}}`)
+	})
+	writeTestCredentials(t, server.URL)
+
+	originalTimestamp := checkoutBackupTimestamp
+	checkoutBackupTimestamp = func() string { return "20260624T120000Z" }
+	t.Cleanup(func() { checkoutBackupTimestamp = originalTimestamp })
+
+	var calls [][]string
+	checkoutRunGit = func(ctx context.Context, dir string, args ...string) (string, error) {
+		calls = append(calls, append([]string{}, args...))
+		switch strings.Join(args, " ") {
+		case "rev-parse --is-inside-work-tree":
+			return "true\n", nil
+		case "remote get-url origin":
+			return "https://github.com/acme/widgets.git\n", nil
+		case "fetch origin +refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456":
+			return "", nil
+		case "branch --show-current":
+			return "main\n", nil
+		case "show-ref --verify --quiet refs/heads/syrus/issue-42-456":
+			return "", nil
+		case "rev-parse --verify refs/heads/syrus/issue-42-456":
+			return "old-sha\n", nil
+		case "rev-parse --verify refs/remotes/origin/syrus/issue-42-456":
+			return "new-sha\n", nil
+		case "merge-base --is-ancestor refs/heads/syrus/issue-42-456 refs/remotes/origin/syrus/issue-42-456":
+			return "", fmt.Errorf("exit status 1")
+		case "branch syrus/backup/syrus-issue-42-456-20260624T120000Z refs/heads/syrus/issue-42-456":
+			return "", nil
+		case "branch -f syrus/issue-42-456 refs/remotes/origin/syrus/issue-42-456":
+			return "", nil
+		case "checkout syrus/issue-42-456":
+			return "", nil
+		default:
+			return "", fmt.Errorf("unexpected git command: %v", args)
+		}
+	}
+	t.Cleanup(func() { checkoutRunGit = runGit })
+
+	command := NewRootCommand()
+	command.SetOut(&bytes.Buffer{})
+	command.SetErr(&bytes.Buffer{})
+	command.SetArgs([]string{"checkout", "JOB-456"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("Execute returned error: %v", err)
+	}
+
+	wantCalls := [][]string{
+		{"rev-parse", "--is-inside-work-tree"},
+		{"remote", "get-url", "origin"},
+		{"fetch", "origin", "+refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456"},
+		{"branch", "--show-current"},
+		{"show-ref", "--verify", "--quiet", "refs/heads/syrus/issue-42-456"},
+		{"rev-parse", "--verify", "refs/heads/syrus/issue-42-456"},
+		{"rev-parse", "--verify", "refs/remotes/origin/syrus/issue-42-456"},
+		{"merge-base", "--is-ancestor", "refs/heads/syrus/issue-42-456", "refs/remotes/origin/syrus/issue-42-456"},
+		{"branch", "syrus/backup/syrus-issue-42-456-20260624T120000Z", "refs/heads/syrus/issue-42-456"},
+		{"branch", "-f", "syrus/issue-42-456", "refs/remotes/origin/syrus/issue-42-456"},
 		{"checkout", "syrus/issue-42-456"},
+	}
+	if !reflect.DeepEqual(calls, wantCalls) {
+		t.Fatalf("git calls = %#v", calls)
+	}
+}
+
+func TestCheckoutCommandRejectsDirtyCheckedOutBranch(t *testing.T) {
+	server := checkoutServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"job":{"id":456,"state":"running","branch_name":"syrus/issue-42-456"},"repository":{"slug":"acme/widgets"}}`)
+	})
+	writeTestCredentials(t, server.URL)
+
+	var calls [][]string
+	checkoutRunGit = func(ctx context.Context, dir string, args ...string) (string, error) {
+		calls = append(calls, append([]string{}, args...))
+		switch strings.Join(args, " ") {
+		case "rev-parse --is-inside-work-tree":
+			return "true\n", nil
+		case "remote get-url origin":
+			return "https://github.com/acme/widgets.git\n", nil
+		case "fetch origin +refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456":
+			return "", nil
+		case "branch --show-current":
+			return "syrus/issue-42-456\n", nil
+		case "show-ref --verify --quiet refs/heads/syrus/issue-42-456":
+			return "", nil
+		case "status --porcelain":
+			return " M app/models/job.rb\n", nil
+		default:
+			return "", fmt.Errorf("unexpected git command: %v", args)
+		}
+	}
+	t.Cleanup(func() { checkoutRunGit = runGit })
+
+	command := NewRootCommand()
+	command.SetOut(&bytes.Buffer{})
+	command.SetErr(&bytes.Buffer{})
+	command.SetArgs([]string{"checkout", "JOB-456"})
+
+	err := command.Execute()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	want := "cannot update syrus/issue-42-456 because it is currently checked out with local changes; commit or stash them first"
+	if err.Error() != want {
+		t.Fatalf("error = %q", err.Error())
+	}
+
+	wantCalls := [][]string{
+		{"rev-parse", "--is-inside-work-tree"},
+		{"remote", "get-url", "origin"},
+		{"fetch", "origin", "+refs/heads/syrus/issue-42-456:refs/remotes/origin/syrus/issue-42-456"},
+		{"branch", "--show-current"},
+		{"show-ref", "--verify", "--quiet", "refs/heads/syrus/issue-42-456"},
+		{"status", "--porcelain"},
 	}
 	if !reflect.DeepEqual(calls, wantCalls) {
 		t.Fatalf("git calls = %#v", calls)

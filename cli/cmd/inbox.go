@@ -615,10 +615,7 @@ func checkoutJobCmd(client inboxAPI, jobID int64) tea.Cmd {
 		if repo == "" || repo != detail.Repository.Slug {
 			return inboxActionMsg{jobID: jobID, kind: "checkout", err: fmt.Errorf("checkout requires $PWD to be %s", detail.Repository.Slug)}
 		}
-		cmd := exec.Command("git", "checkout", branch)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
+		err = checkoutJobBranch(context.Background(), checkoutRunGit, detail.Repository.Slug, branch)
 		return inboxActionMsg{jobID: jobID, kind: "checkout", read: err == nil, err: err}
 	}
 }
