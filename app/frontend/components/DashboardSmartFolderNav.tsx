@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import type { FocusEvent, FormEvent, KeyboardEvent } from "react"
-import { useRef, useState } from "react"
+import type { DragEvent, FocusEvent, FormEvent, KeyboardEvent } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { createDashboardSmartFolder, toggleDashboardLandingPause, updateDashboardPreferences, type DashboardPayload, type DashboardSmartFolder, type DashboardSubject } from "../api/dashboard"
@@ -13,10 +13,15 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [folderName, setFolderName] = useState("")
-  const builtinFolders = payload.smart_folders.filter((folder) => folder.kind !== "user_defined")
-  const primaryFolders = builtinFolders.filter((folder) => folder.visibility !== "on_demand")
-  const moreFolders = builtinFolders.filter((folder) => folder.visibility === "on_demand")
-  const savedFolders = payload.smart_folders.filter((folder) => folder.kind === "user_defined")
+  const builtinFolders = useMemo(() => payload.smart_folders.filter((folder) => folder.kind !== "user_defined"), [payload.smart_folders])
+  const primaryFolders = useMemo(() => builtinFolders.filter((folder) => folder.visibility !== "on_demand"), [builtinFolders])
+  const moreFolders = useMemo(() => builtinFolders.filter((folder) => folder.visibility === "on_demand"), [builtinFolders])
+  const savedFolders = useMemo(() => payload.smart_folders.filter((folder) => folder.kind === "user_defined"), [payload.smart_folders])
+  const [orderedSavedFolders, setOrderedSavedFolders] = useState(savedFolders)
+  const [isReordering, setIsReordering] = useState(false)
+  const orderedSavedFoldersRef = useRef(savedFolders)
+  const dragIndex = useRef<number | null>(null)
+  const savedFolderPositions = useMemo(() => new Map(savedFolders.map((folder, index) => [folder.id, folder.position ?? index])), [savedFolders])
   const updatePreferences = useMutation({
     mutationFn: updateDashboardPreferences,
     onSuccess: () => {
@@ -51,9 +56,56 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
     }
   })
 
+  useEffect(() => {
+    setOrderedSavedFolders(savedFolders)
+    orderedSavedFoldersRef.current = savedFolders
+  }, [savedFolders])
+
   function saveFolder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     createFolder.mutate()
+  }
+
+  function startSavedFolderDrag(index: number, event: DragEvent<HTMLElement>) {
+    dragIndex.current = index
+    event.dataTransfer.effectAllowed = "move"
+  }
+
+  function dragOverSavedFolder(index: number, event: DragEvent<HTMLElement>) {
+    const sourceIndex = dragIndex.current
+    if (sourceIndex == null || sourceIndex === index) return
+
+    event.preventDefault()
+    event.dataTransfer.dropEffect = "move"
+    const nextFolders = reorderFolders(orderedSavedFoldersRef.current, sourceIndex, index)
+    orderedSavedFoldersRef.current = nextFolders
+    dragIndex.current = index
+    setOrderedSavedFolders(nextFolders)
+  }
+
+  async function dropSavedFolder(event: DragEvent<HTMLElement>) {
+    if (dragIndex.current == null) return
+
+    event.preventDefault()
+    const reorderedFolders = orderedSavedFoldersRef.current
+    clearSavedFolderDrag()
+    const changedFolders = reorderedFolders.filter((folder, index) => savedFolderPositions.get(folder.id) !== index)
+    if (changedFolders.length === 0) return
+
+    setIsReordering(true)
+    try {
+      await Promise.all(changedFolders.map((folder) => {
+        const position = reorderedFolders.findIndex((candidate) => candidate.id === folder.id)
+        return updateSmartFolder(folder.id, { name: folder.name, position })
+      }))
+      await queryClient.invalidateQueries({ queryKey: ["dashboard"] })
+    } finally {
+      setIsReordering(false)
+    }
+  }
+
+  function clearSavedFolderDrag() {
+    dragIndex.current = null
   }
 
   return (
@@ -78,7 +130,20 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
         </div>
         {savedFolders.length > 0 ? (
           <nav aria-label="Saved smart folders" className="space-y-1">
-            {savedFolders.map((folder) => <SmartFolderLink folder={folder} key={folder.id} onSelect={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: folder.id })} prefix={prefix} />)}
+            {orderedSavedFolders.map((folder, index) => (
+              <SmartFolderLink
+                draggable={!isReordering}
+                folder={folder}
+                key={folder.id}
+                onDragEnd={clearSavedFolderDrag}
+                onDragOver={(event) => dragOverSavedFolder(index, event)}
+                onDragStart={(event) => startSavedFolderDrag(index, event)}
+                onDrop={dropSavedFolder}
+                onSelect={() => updatePreferences.mutate({ subject: payload.subject, smart_folder_id: folder.id })}
+                prefix={prefix}
+                showDragHandle
+              />
+            ))}
           </nav>
         ) : (
           <p className="px-2 py-1.5 text-sm text-gray-400 dark:text-gray-500">No saved folders</p>
@@ -123,7 +188,27 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
   )
 }
 
-function SmartFolderLink({ folder, onSelect, prefix }: { folder: DashboardSmartFolder; onSelect: () => void; prefix: string }) {
+function SmartFolderLink({
+  draggable = false,
+  folder,
+  onDragEnd,
+  onDragOver,
+  onDragStart,
+  onDrop,
+  onSelect,
+  prefix,
+  showDragHandle = false
+}: {
+  draggable?: boolean
+  folder: DashboardSmartFolder
+  onDragEnd?: () => void
+  onDragOver?: (event: DragEvent<HTMLElement>) => void
+  onDragStart?: (event: DragEvent<HTMLElement>) => void
+  onDrop?: (event: DragEvent<HTMLElement>) => void
+  onSelect?: () => void
+  prefix: string
+  showDragHandle?: boolean
+}) {
   const queryClient = useQueryClient()
   const [menuOpen, setMenuOpen] = useState(false)
   const [renaming, setRenaming] = useState(false)
@@ -197,8 +282,13 @@ function SmartFolderLink({ folder, onSelect, prefix }: { folder: DashboardSmartF
       <div className="space-y-1">
         <div
           ref={popupRef}
-          className={`relative flex min-w-0 items-center gap-1 rounded ${folder.active ? "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-200" : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"}`}
+          className={`relative flex min-w-0 items-center gap-1 rounded ${showDragHandle ? "group cursor-grab active:cursor-grabbing" : ""} ${folder.active ? "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-200" : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"}`}
+          draggable={draggable}
           onBlur={handleBlur}
+          onDragEnd={onDragEnd}
+          onDragOver={onDragOver}
+          onDragStart={onDragStart}
+          onDrop={onDrop}
           onFocus={() => setActionsVisible(true)}
           onMouseEnter={() => setActionsVisible(true)}
           onMouseLeave={() => {
@@ -226,7 +316,8 @@ function SmartFolderLink({ folder, onSelect, prefix }: { folder: DashboardSmartF
               />
             </div>
           ) : (
-            <Link aria-label={`${folder.name} ${folder.count}`} className="flex min-w-0 flex-1 items-center rounded-l px-2 py-1.5 text-sm" onClick={onSelect} to={withRoutePrefix(folder.path, prefix)}>
+            <Link aria-label={`${folder.name} ${folder.count}`} className="flex min-w-0 flex-1 items-center gap-2 rounded-l px-2 py-1.5 text-sm" onClick={onSelect} to={withRoutePrefix(folder.path, prefix)}>
+              {showDragHandle ? <GripIcon /> : null}
               <span className="truncate">{folder.name}</span>
             </Link>
           )}
@@ -279,7 +370,18 @@ function SmartFolderLink({ folder, onSelect, prefix }: { folder: DashboardSmartF
     )
   }
   return (
-    <Link aria-label={`${folder.name} ${folder.count}`} className={folderClass(folder.active)} onClick={onSelect} to={withRoutePrefix(folder.path, prefix)}>
+    <Link
+      aria-label={`${folder.name} ${folder.count}`}
+      className={folderClass(folder.active, showDragHandle)}
+      draggable={draggable}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDragStart={onDragStart}
+      onDrop={onDrop}
+      onClick={onSelect}
+      to={withRoutePrefix(folder.path, prefix)}
+    >
+      {showDragHandle ? <GripIcon /> : null}
       <span className="truncate">{folder.name}</span>
       <FolderCount folder={folder} />
     </Link>
@@ -288,6 +390,26 @@ function SmartFolderLink({ folder, onSelect, prefix }: { folder: DashboardSmartF
 
 function FolderCount({ folder }: { folder: DashboardSmartFolder }) {
   return <span className={`ml-auto inline-flex min-w-6 justify-center rounded-full px-1.5 py-0.5 text-xs ${folder.active ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{folder.count}</span>
+}
+
+function reorderFolders(folders: DashboardSmartFolder[], sourceIndex: number, targetIndex: number) {
+  const reordered = [...folders]
+  const [moved] = reordered.splice(sourceIndex, 1)
+  reordered.splice(targetIndex, 0, moved)
+  return reordered
+}
+
+function GripIcon() {
+  return (
+    <svg aria-hidden="true" className="-ml-1 size-4 shrink-0 text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 dark:text-gray-500" fill="none" viewBox="0 0 16 16">
+      <circle cx="6" cy="4" fill="currentColor" r="1" />
+      <circle cx="10" cy="4" fill="currentColor" r="1" />
+      <circle cx="6" cy="8" fill="currentColor" r="1" />
+      <circle cx="10" cy="8" fill="currentColor" r="1" />
+      <circle cx="6" cy="12" fill="currentColor" r="1" />
+      <circle cx="10" cy="12" fill="currentColor" r="1" />
+    </svg>
+  )
 }
 
 function subjectPath(subject: DashboardSubject) {
@@ -319,8 +441,8 @@ function withRoutePrefix(path: string, prefix: string) {
   return `${prefix}${path}`
 }
 
-function folderClass(active: boolean) {
-  return `flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1.5 text-sm ${active ? "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-200" : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"}`
+function folderClass(active: boolean, withDragHandle = false) {
+  return `flex min-w-0 items-center justify-between gap-2 rounded px-2 py-1.5 text-sm ${withDragHandle ? "group cursor-grab active:cursor-grabbing" : ""} ${active ? "bg-blue-50 font-medium text-blue-700 dark:bg-blue-950 dark:text-blue-200" : "text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"}`
 }
 
 function errorMessage(error: Error, fallback: string) {

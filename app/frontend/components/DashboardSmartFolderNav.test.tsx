@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { DashboardPayload, DashboardSmartFolder } from "../api/dashboard"
@@ -17,20 +17,51 @@ function renderNav(folders: DashboardSmartFolder[]) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={["/dashboard/jobs"]}>
-        <DashboardSmartFolderNav payload={payload(folders)} prefix="" search="" />
+        <DashboardSmartFolderNav payload={payload({ smart_folders: folders })} prefix="" search="" />
       </MemoryRouter>
     </QueryClientProvider>
   )
 }
 
-function payload(folders: DashboardSmartFolder[]): DashboardPayload {
+function payload(overrides: Partial<DashboardPayload> = {}): DashboardPayload {
   return {
     subject: "job",
     view: "list",
-    filter: null,
+    page: 1,
+    per_page: 25,
+    total: 0,
+    total_pages: 1,
+    counts: { jobs: 0, epics: 0, workflows: 0 },
+    preferences: {
+      sort: { column: "created_at", direction: "desc" },
+      visible_columns: [],
+      kanban_lanes: [],
+      ownership_scope: "team",
+      owner_user_id: null,
+      owner_id: null,
+      raw: {}
+    },
+    controls: {
+      views: ["list"],
+      ownership_scopes: [],
+      owners: [],
+      sort_columns: [],
+      sort_directions: [],
+      columns: { required: [], optional: [] },
+      kanban_lanes: [],
+      filter_suggestions: [],
+      filter_schema: []
+    },
+    filter: { and: [] },
     landing_queue: { visible: false, paused: false, toggle_path: "/api/v1/app/landing_queue/pause" },
-    smart_folders: folders,
+    ownership_scope: { scope: "team", owner_user_id: null, owner_user: null },
+    ownership: { scope: "team", owner_id: null, team_user_count: 1, badges_visible: false },
+    smart_folders: [],
     active_smart_folder_id: null,
+    items: [],
+    lanes: [],
+    kanban_limit: null,
+    setup: null,
     paths: {
       dashboard_path: "/dashboard",
       dashboard_jobs_path: "/dashboard/jobs",
@@ -39,7 +70,8 @@ function payload(folders: DashboardSmartFolder[]): DashboardPayload {
       new_epic_path: "/epics/new",
       new_job_path: "/jobs/new",
       app_dashboard_path: "/api/v1/app/dashboard"
-    }
+    },
+    ...overrides
   } as DashboardPayload
 }
 
@@ -58,8 +90,8 @@ function folder(values: Partial<DashboardSmartFolder>): DashboardSmartFolder {
   }
 }
 
-function showFolderActions(name = "Saved work") {
-  fireEvent.mouseEnter(screen.getByRole("link", { name: `${name} 3` }).parentElement!)
+function showFolderActions(name = "Saved work", count = 3) {
+  fireEvent.mouseEnter(screen.getByRole("link", { name: `${name} ${count}` }).parentElement!)
 }
 
 describe("DashboardSmartFolderNav", () => {
@@ -112,10 +144,45 @@ describe("DashboardSmartFolderNav", () => {
     })
   })
 
+  it("patches saved folder positions after drag reordering", async () => {
+    renderNav([
+      folder({ id: 1, name: "Review", position: 0, count: 0 }),
+      folder({ id: 2, name: "Blocked", position: 1, count: 0 }),
+      folder({ id: 3, name: "Landing", position: 2, count: 0 })
+    ])
+
+    const savedNav = screen.getByRole("navigation", { name: "Saved smart folders" })
+    const review = within(savedNav).getByRole("link", { name: "Review 0" })
+    const landing = within(savedNav).getByRole("link", { name: "Landing 0" })
+    const dataTransfer = { dropEffect: "", effectAllowed: "", setData: vi.fn(), getData: vi.fn() }
+
+    fireEvent.dragStart(review.parentElement!, { dataTransfer })
+    fireEvent.dragOver(landing.parentElement!, { dataTransfer })
+    fireEvent.drop(landing.parentElement!, { dataTransfer })
+
+    await waitFor(() => {
+      expect(smartFoldersApi.updateSmartFolder).toHaveBeenCalledTimes(3)
+      expect(smartFoldersApi.updateSmartFolder).toHaveBeenNthCalledWith(1, 2, { name: "Blocked", position: 0 })
+      expect(smartFoldersApi.updateSmartFolder).toHaveBeenNthCalledWith(2, 3, { name: "Landing", position: 1 })
+      expect(smartFoldersApi.updateSmartFolder).toHaveBeenNthCalledWith(3, 1, { name: "Review", position: 2 })
+    })
+  })
+
   it("does not render menu controls for builtin folders", () => {
     renderNav([folder({ id: 7, name: "Inbox", kind: "builtin", position: 0, path: "/dashboard/jobs?smart_folder_id=7" })])
 
     expect(screen.getByRole("link", { name: "Inbox 3" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Actions for Inbox" })).not.toBeInTheDocument()
+  })
+
+  it("does not make builtin folders draggable", () => {
+    renderNav([
+      folder({ id: 1, name: "Inbox", kind: "builtin", visibility: "always", count: 0 }),
+      folder({ id: 2, name: "Saved review", kind: "user_defined", visibility: "user_defined", position: 0, count: 0 })
+    ])
+
+    const foldersNav = screen.getByRole("navigation", { name: "Dashboard smart folders" })
+    expect(within(foldersNav).getByRole("link", { name: "Inbox 0" })).toHaveAttribute("draggable", "false")
+    expect(screen.getByRole("link", { name: "Saved review 0" }).parentElement).toHaveAttribute("draggable", "true")
   })
 })
