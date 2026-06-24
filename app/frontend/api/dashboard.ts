@@ -196,6 +196,7 @@ export type DashboardSmartFolder = {
   kind: string
   subject_type: string
   visibility: string
+  position: number
   count: number
   active: boolean
   filter?: Record<string, unknown>
