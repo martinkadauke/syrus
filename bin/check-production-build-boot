@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Syrus production-build boot grader.
+#
+# Docker asset precompile loads the production Rails environment with
+# SECRET_KEY_BASE_DUMMY=1 and build-only placeholder config. It should not
+# touch the database. This check mirrors that boot shape with an unreachable
+# DATABASE_URL so DB work in initializers fails before a deploy build does.
+
+set -euo pipefail
+
+if [ ! -x "bin/rails" ]; then
+  echo "[check-production-build-boot] no bin/rails - skipping"
+  exit 0
+fi
+
+if output=$(
+  env \
+    -u SYRUS_ROLE \
+    -u SYRUS_MCP_SIDECAR \
+    -u SYRUS_CHAT_MCP_SIDECAR \
+    RAILS_ENV=production \
+    SYRUS_APP_HOST=syrus.invalid \
+    S3_ACCESS_KEY_ID=dummy \
+    S3_SECRET_ACCESS_KEY=dummy \
+    S3_BUCKET=syrus-build-assets \
+    S3_ENDPOINT=http://127.0.0.1:9000 \
+    DATABASE_URL=mysql2://root@127.0.0.1:1/syrus_build_check \
+    SECRET_KEY_BASE_DUMMY=1 \
+    bin/rails runner 'puts "[check-production-build-boot] rails booted"' 2>&1
+); then
+  echo "$output"
+  echo "[check-production-build-boot] ok"
+  exit 0
+fi
+
+cat >&2 <<MSG
+[check-production-build-boot] FAILED - production build boot touched a missing dependency:
+
+$output
+
+This mirrors the Docker asset-precompile environment with an intentionally
+unreachable database. Initializers and production config used during asset
+precompile must not read or write application tables.
+
+Reproduce locally:
+  bin/check-production-build-boot
+MSG
+exit 1

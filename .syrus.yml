@@ -84,6 +84,16 @@ grade:
     run: BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bundle check || BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bundle install --jobs 4 && BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bin/check-eager-load
     timeout_minutes: 1
 
+  - name: production-build-boot
+    description: |
+      Boots the production Rails environment in Docker asset-precompile
+      mode with build-only placeholder config and an intentionally dead
+      DATABASE_URL. Asset precompile should load Rails without touching
+      application tables; if an initializer performs DB work at build time,
+      this grader fails before the production image build does.
+    run: BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bundle check || BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bundle install --jobs 4 && BUNDLE_PATH="$PWD/vendor/bundle" BUNDLE_APP_CONFIG="$PWD/.bundle" bin/check-production-build-boot
+    timeout_minutes: 1
+
   - name: rspec
     description: |
       Full RSpec suite. CLAUDE.md "Tests are not optional" is the
