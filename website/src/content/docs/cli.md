@@ -65,18 +65,20 @@ opens the matching Job page or pull request in the browser.
 
 On macOS, Syrus Desktop runs as a menubar app without a Dock icon. The
 tray icon shows an unread notification badge when notifications are
-waiting. Click the tray icon, or press `CommandOrControl+Shift+S`, to
-open or hide the compact inbox popover. The popover shows implemented and
-failed Jobs, refreshes every 30 seconds, syncs the unread notification
-count, and lets you open the Job in Syrus or open its pull request in
-your browser when one exists. Implemented rows can also be approved for
-landing from the popover after a native confirmation prompt, and failed
-rows can be queued for retry directly from the row. Local checkout
-actions require the `syrus` CLI binary on `PATH`; when the app cannot
-find it, the popover shows an install banner and disables checkout
-buttons. Configure a local projects root in Preferences to derive
-`<root>/<repo-name>` paths, or add per-repository absolute path overrides
-for repositories that live elsewhere. Desktop delegates checkout to
+waiting. Click the tray icon, or press the configured global keyboard
+shortcut (`CommandOrControl+Shift+S` by default), to open or hide the
+compact inbox popover. The shortcut can be changed or cleared from
+Preferences. The popover shows implemented and failed Jobs, refreshes
+every 30 seconds, syncs the unread notification count, and lets you open
+the Job in Syrus or open its pull request in your browser when one
+exists. Implemented rows can also be approved for landing from the
+popover after a native confirmation prompt, and failed rows can be queued
+for retry directly from the row. Local checkout actions require the
+`syrus` CLI binary on `PATH`; when the app cannot find it, the popover
+shows an install banner and disables checkout buttons. Configure a local
+projects root in Preferences to derive `<root>/<repo-name>` paths, or add
+per-repository absolute path overrides for repositories that live
+elsewhere. Desktop delegates checkout to
 `syrus checkout JOB-<id>` from the resolved local path, so the CLI handles
 branch fetching, dirty working trees, backup branches, and
 repository-origin validation. Admin users also see subtle footer toggles

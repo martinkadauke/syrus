@@ -128,6 +128,7 @@ const APP_USER_CHANNEL_IDENTIFIER = JSON.stringify({ channel: "AppUserChannel" }
 const APP_USER_CABLE_INITIAL_RECONNECT_MS = 1_000
 const APP_USER_CABLE_MAX_RECONNECT_MS = 30_000
 let appUserCableReconnectMs = APP_USER_CABLE_INITIAL_RECONNECT_MS
+let registeredGlobalHotkey = ""
 
 const store = new Store<DesktopStore>({
   defaults: {
@@ -644,6 +645,8 @@ const getDesktopSettings = (): DesktopSettings => ({
   lastUsedRepo: store.get("lastUsedRepo", "")
 })
 
+const getGlobalHotkey = () => store.get("globalHotkey", DEFAULT_GLOBAL_HOTKEY).trim()
+
 const saveDesktopSettings = async (settings: DesktopSettingsInput) => {
   const localProjectsRoot = settings.localProjectsRoot.trim()
   const localRepoPaths: Record<string, string> = Object.fromEntries(
@@ -1034,9 +1037,9 @@ const createTray = () => {
   updateTrayBadge()
 }
 
-const registerGlobalHotkey = () => {
-  const globalHotkey = store.get("globalHotkey", DEFAULT_GLOBAL_HOTKEY).trim()
+const registerGlobalHotkey = (globalHotkey = getGlobalHotkey()) => {
   if (globalHotkey === "") {
+    registeredGlobalHotkey = ""
     return
   }
 
@@ -1047,9 +1050,51 @@ const registerGlobalHotkey = () => {
 
     if (!registered) {
       console.warn(`Could not register global hotkey "${globalHotkey}"; it may already be in use.`)
+      registeredGlobalHotkey = ""
+      return
     }
+
+    registeredGlobalHotkey = globalHotkey
   } catch (error) {
     console.warn(`Could not register global hotkey "${globalHotkey}"; it may already be in use.`, error)
+    registeredGlobalHotkey = ""
+  }
+}
+
+const saveGlobalHotkey = (globalHotkey: string) => {
+  const normalizedHotkey = globalHotkey.trim()
+  const previousHotkey = registeredGlobalHotkey
+
+  if (previousHotkey) {
+    globalShortcut.unregister(previousHotkey)
+    registeredGlobalHotkey = ""
+  }
+
+  if (normalizedHotkey === "") {
+    store.set("globalHotkey", "")
+    return { globalHotkey: "" }
+  }
+
+  try {
+    const registered = globalShortcut.register(normalizedHotkey, () => {
+      void togglePopoverWindow()
+    })
+
+    if (!registered) {
+      throw new Error("That keyboard shortcut could not be registered. It may already be in use.")
+    }
+
+    registeredGlobalHotkey = normalizedHotkey
+    store.set("globalHotkey", normalizedHotkey)
+    return { globalHotkey: normalizedHotkey }
+  } catch (error) {
+    if (previousHotkey) {
+      registerGlobalHotkey(previousHotkey)
+    }
+
+    throw error instanceof Error
+      ? error
+      : new Error("That keyboard shortcut could not be registered. It may already be in use.")
   }
 }
 
@@ -1090,6 +1135,8 @@ ipcMain.handle("get-credentials", async () => cachedCredentials ?? (await loadCr
 ipcMain.handle("save-credentials", async (_event, credentials: Credentials) => saveCredentials(credentials))
 ipcMain.handle("get-desktop-settings", async () => getDesktopSettings())
 ipcMain.handle("save-desktop-settings", async (_event, settings: DesktopSettings) => saveDesktopSettings(settings))
+ipcMain.handle("get-global-hotkey", async () => getGlobalHotkey())
+ipcMain.handle("save-global-hotkey", async (_event, globalHotkey: string) => saveGlobalHotkey(globalHotkey))
 ipcMain.handle("choose-local-projects-root", async () => {
   const browserWindow = preferencesWindow ?? mainWindow
   const options: OpenDialogOptions = {
