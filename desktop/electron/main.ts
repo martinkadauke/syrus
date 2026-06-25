@@ -63,6 +63,12 @@ type RepositoryList = {
   archived_repositories?: RepositoryItem[]
 }
 
+type ApiErrorPayload = {
+  error?: {
+    message?: string
+  }
+}
+
 type DesktopSettings = {
   localProjectsRoot: string
   localRepoPaths: Record<string, string>
@@ -266,7 +272,7 @@ const fetchInboxJobs = async () => {
 
 const responseErrorMessage = async (response: Response, fallback: string) => {
   try {
-    const payload = (await response.json()) as { error?: { message?: string } }
+    const payload = (await response.json()) as ApiErrorPayload
     return payload.error?.message || fallback
   } catch {
     return fallback
@@ -316,6 +322,58 @@ const fetchRepositories = async () => {
 
   const payload = (await response.json()) as RepositoryList
   return payload.active_repositories ?? payload.repositories ?? []
+}
+
+const confirmApproveJob = async (sender: Electron.WebContents, jobID: number) => {
+  const parentWindow = BrowserWindow.fromWebContents(sender)
+  const confirmationOptions: MessageBoxOptions = {
+    type: "question",
+    buttons: ["Approve", "Cancel"],
+    defaultId: 0,
+    cancelId: 1,
+    message: `Approve JOB-${jobID} for landing?`
+  }
+  const confirmation = parentWindow
+    ? await dialog.showMessageBox(parentWindow, confirmationOptions)
+    : await dialog.showMessageBox(confirmationOptions)
+
+  return confirmation.response === 0
+}
+
+const approveJob = async (jobID: number) => {
+  const credentials = cachedCredentials ?? (await loadCredentials())
+  if (!credentials) {
+    throw new Error("Connect Syrus before approving jobs.")
+  }
+
+  const response = await fetch(appApiUrl(credentials.url, `/api/v1/app/jobs/${jobID}/approve`), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${credentials.token.trim()}`
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response, `Could not approve JOB-${jobID}.`))
+  }
+}
+
+const retryJob = async (jobID: number) => {
+  const credentials = cachedCredentials ?? (await loadCredentials())
+  if (!credentials) {
+    throw new Error("Connect Syrus before retrying jobs.")
+  }
+
+  const response = await fetch(appApiUrl(credentials.url, `/api/v1/app/jobs/${jobID}/run_again`), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${credentials.token.trim()}`
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response, `Could not retry JOB-${jobID}.`))
+  }
 }
 
 const getDesktopSettings = (): DesktopSettings => ({
@@ -772,6 +830,9 @@ ipcMain.handle("open-token-docs", async () => {
   await shell.openExternal(TOKEN_DOCS_URL)
 })
 ipcMain.handle("fetch-inbox-jobs", async () => fetchInboxJobs())
+ipcMain.handle("confirm-approve-job", async (event, jobID: number) => confirmApproveJob(event.sender, jobID))
+ipcMain.handle("approve-job", async (_event, jobID: number) => approveJob(jobID))
+ipcMain.handle("retry-job", async (_event, jobID: number) => retryJob(jobID))
 ipcMain.handle("open-external", async (_event, url: string) => {
   if (!URL.canParse(url)) {
     throw new Error("Invalid URL.")
