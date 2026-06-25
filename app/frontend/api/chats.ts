@@ -31,6 +31,10 @@ export type ChatSystemMessage = {
   tone: "success" | "warning" | "error" | "neutral"
   label: string
   body: string
+  cta?: {
+    label: string
+    path: string
+  }
 }
 
 export type ChatMcpHealth = {

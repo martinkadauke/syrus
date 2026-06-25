@@ -95,6 +95,32 @@ RSpec.describe ClaudeInvocation do
       expect(result).to be_nil
     end
 
+    it "reports Claude API authentication failures as system errors instead of assistant text" do
+      events = []
+      event = {
+        type: "assistant",
+        error: "authentication_failed",
+        isApiErrorMessage: true,
+        apiErrorStatus: 401,
+        message: {
+          model: "<synthetic>",
+          content: [
+            { type: "text", text: "Failed to authenticate. API Error: 401 Invalid authentication credentials" }
+          ]
+        }
+      }.to_json
+
+      update = invocation.send(:process_event, event, ->(line, **kwargs) { events << [ line, kwargs ] })
+
+      expect(update).to eq(is_error: true, outcome: "authentication_failed", final_text: nil)
+      expect(events).to contain_exactly(
+        [
+          "Claude authentication failed. Refresh the Claude OAuth token in Credentials, then send the message again. (401 Failed to authenticate. API Error: 401 Invalid authentication credentials)",
+          { kind: "system" }
+        ]
+      )
+    end
+
     it "captures num_turns + is_error + outcome from the result event" do
       event = { type: "result", num_turns: 5, duration_ms: 12345, is_error: false, subtype: "success" }.to_json
       update = invocation.send(:process_event, event, ->(l, **_) { lines << l })

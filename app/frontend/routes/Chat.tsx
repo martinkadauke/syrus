@@ -574,7 +574,7 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
   }
 
   if (item.role === "system") {
-    return <SystemMessage item={item.system || { tone: "neutral", label: "System", body: item.text }} />
+    return <SystemMessage item={item.system || { tone: "neutral", label: "System", body: item.text }} prefix={prefix} />
   }
 
   return <StructuredTool tool={item.tool} fallback={item.text} />
@@ -713,7 +713,7 @@ function StructuredTool({ tool, fallback }: { tool?: ChatStructuredTool; fallbac
   )
 }
 
-function SystemMessage({ item }: { item: ChatSystemMessage }) {
+function SystemMessage({ item, prefix }: { item: ChatSystemMessage; prefix: string }) {
   const colors = {
     success: "border-emerald-200 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100",
     warning: "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100",
@@ -725,6 +725,11 @@ function SystemMessage({ item }: { item: ChatSystemMessage }) {
       <div className={`inline-flex max-w-full items-center gap-2 rounded-full border px-3 py-1 text-xs ${colors[item.tone]}`}>
         <span className="shrink-0 rounded bg-white/70 px-1.5 py-0.5 font-medium uppercase tracking-wide dark:bg-black/25">{item.label}</span>
         <span className="min-w-0 break-words">{item.body}</span>
+        {item.cta ? (
+          <Link className="shrink-0 font-medium underline hover:no-underline" to={withRoutePrefix(item.cta.path, prefix)}>
+            {item.cta.label}
+          </Link>
+        ) : null}
       </div>
     </div>
   )
@@ -2503,7 +2508,7 @@ function structuredTool(message: ChatMessageItem): ChatStructuredTool {
 }
 
 function systemMessage(message: ChatMessageItem): ChatSystemMessage {
-  const text = message.text
+  const text = message.text || stringValue(contentRecord(message.content)?.text) || ""
   const mcpHealth = mcpHealthFromContent(message.content)
   if (mcpHealth.length > 0) return structuredMcpMessage(mcpHealth)
 
@@ -2515,6 +2520,15 @@ function systemMessage(message: ChatMessageItem): ChatSystemMessage {
 
   const codexError = text.match(/^\[codex error\]\s+(.+)$/)
   if (codexError) return { tone: "error", label: "Error", body: codexError[1] }
+
+  if (text.startsWith("Claude authentication failed.")) {
+    return {
+      tone: "error",
+      label: "Claude auth",
+      body: text,
+      cta: { label: "Open Credentials", path: "/credentials/edit" }
+    }
+  }
 
   return { tone: "neutral", label: "System", body: text }
 }

@@ -164,6 +164,16 @@ class ClaudeInvocation
     event = JSON.parse(line.strip)
     case event["type"]
     when "assistant"
+      if api_error_event?(event)
+        message = assistant_text_for(event).presence || "Claude returned an API error."
+        log_sink.call(api_error_message(event, message), kind: "system")
+        return {
+          is_error: true,
+          outcome: event["error"].presence || "api_error",
+          final_text: nil
+        }
+      end
+
       content = event.dig("message", "content") || []
       content.each do |block|
         case block["type"]
@@ -247,5 +257,26 @@ class ClaudeInvocation
   rescue JSON::ParserError
     log_sink.call(line.chomp)
     nil
+  end
+
+  def api_error_event?(event)
+    event["isApiErrorMessage"] == true || event["apiErrorStatus"].present? || event["error"].present?
+  end
+
+  def assistant_text_for(event)
+    Array(event.dig("message", "content")).filter_map do |block|
+      block["text"] if block["type"] == "text"
+    end.join("\n")
+  end
+
+  def api_error_message(event, message)
+    status = event["apiErrorStatus"].presence
+    if status.to_i == 401 || event["error"].to_s == "authentication_failed"
+      detail = status ? "#{status} #{message}" : message
+      return "Claude authentication failed. Refresh the Claude OAuth token in Credentials, then send the message again. (#{detail})"
+    end
+
+    detail = status ? "HTTP #{status}: #{message}" : message
+    "Claude API error: #{detail}"
   end
 end
