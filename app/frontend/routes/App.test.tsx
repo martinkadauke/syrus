@@ -3875,6 +3875,7 @@ describe("App", () => {
       const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
       expect(within(smartFoldersPanel).queryByRole("heading", { name: "Smart folders" })).not.toBeInTheDocument()
       const folderNameInput = within(smartFoldersPanel).getByLabelText("Folder name")
+      expect(within(smartFoldersPanel).queryByRole("button", { name: /^Update / })).not.toBeInTheDocument()
       expect(within(smartFoldersPanel).getByRole("heading", { name: "Saved" }).compareDocumentPosition(folderNameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       fireEvent.change(folderNameInput, { target: { value: "Open work" } })
       fireEvent.click(within(smartFoldersPanel).getByRole("button", { name: "Save folder" }))
@@ -3908,7 +3909,7 @@ describe("App", () => {
     }
   })
 
-  it("shows an update action when the active saved dashboard folder filter differs", async () => {
+  it("shows update and save actions when the active saved dashboard folder filter differs", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
@@ -3975,7 +3976,7 @@ describe("App", () => {
     }
   })
 
-  it("hides the update action when the active saved dashboard folder filter matches", async () => {
+  it("hides update and save actions when the active saved dashboard folder filter matches", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
@@ -4036,6 +4037,7 @@ describe("App", () => {
 
       const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
       expect(within(smartFoldersPanel).queryByRole("button", { name: "Update My work" })).not.toBeInTheDocument()
+      expect(within(smartFoldersPanel).queryByRole("button", { name: "Save folder" })).not.toBeInTheDocument()
     } finally {
       script.remove()
     }
