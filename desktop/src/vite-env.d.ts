@@ -83,6 +83,8 @@ interface Window {
     saveCredentials: (credentials: SyrusCredentials) => Promise<SyrusCredentials>
     getDesktopSettings: () => Promise<SyrusDesktopSettings>
     saveDesktopSettings: (settings: SyrusDesktopSettingsInput) => Promise<SyrusDesktopSettings>
+    getGlobalHotkey: () => Promise<string>
+    saveGlobalHotkey: (globalHotkey: string) => Promise<{ globalHotkey: string }>
     chooseLocalProjectsRoot: () => Promise<string | null>
     syrusCliStatus: () => Promise<{ available: boolean }>
     checkoutAvailability: (repoSlug: string) => Promise<SyrusCheckoutAvailability>

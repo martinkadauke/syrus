@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog, clipboard } from "electron"
+import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog, clipboard, globalShortcut } from "electron"
 import type { MessageBoxOptions, NativeImage, OpenDialogOptions } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs/promises"
@@ -13,6 +13,7 @@ import { dispatchNativeNotification } from "./nativeNotifications.js"
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const TOKEN_DOCS_URL = "https://syrus.dev/docs/cli/"
+const DEFAULT_GLOBAL_HOTKEY = "CommandOrControl+Shift+S"
 const execFileAsync = promisify(execFile)
 
 type Credentials = {
@@ -79,6 +80,10 @@ type DesktopSettings = {
 
 type DesktopSettingsInput = Pick<DesktopSettings, "localProjectsRoot" | "localRepoPaths">
 
+type DesktopStore = DesktopSettings & {
+  globalHotkey: string
+}
+
 type CheckoutAvailability = {
   cliAvailable: boolean
   localPath: string | null
@@ -123,12 +128,14 @@ const APP_USER_CHANNEL_IDENTIFIER = JSON.stringify({ channel: "AppUserChannel" }
 const APP_USER_CABLE_INITIAL_RECONNECT_MS = 1_000
 const APP_USER_CABLE_MAX_RECONNECT_MS = 30_000
 let appUserCableReconnectMs = APP_USER_CABLE_INITIAL_RECONNECT_MS
+let registeredGlobalHotkey = ""
 
-const store = new Store<DesktopSettings>({
+const store = new Store<DesktopStore>({
   defaults: {
     localProjectsRoot: "",
     localRepoPaths: {},
-    lastUsedRepo: ""
+    lastUsedRepo: "",
+    globalHotkey: DEFAULT_GLOBAL_HOTKEY
   }
 })
 
@@ -638,6 +645,8 @@ const getDesktopSettings = (): DesktopSettings => ({
   lastUsedRepo: store.get("lastUsedRepo", "")
 })
 
+const getGlobalHotkey = () => store.get("globalHotkey", DEFAULT_GLOBAL_HOTKEY).trim()
+
 const saveDesktopSettings = async (settings: DesktopSettingsInput) => {
   const localProjectsRoot = settings.localProjectsRoot.trim()
   const localRepoPaths: Record<string, string> = Object.fromEntries(
@@ -1028,6 +1037,67 @@ const createTray = () => {
   updateTrayBadge()
 }
 
+const registerGlobalHotkey = (globalHotkey = getGlobalHotkey()) => {
+  if (globalHotkey === "") {
+    registeredGlobalHotkey = ""
+    return
+  }
+
+  try {
+    const registered = globalShortcut.register(globalHotkey, () => {
+      void togglePopoverWindow()
+    })
+
+    if (!registered) {
+      console.warn(`Could not register global hotkey "${globalHotkey}"; it may already be in use.`)
+      registeredGlobalHotkey = ""
+      return
+    }
+
+    registeredGlobalHotkey = globalHotkey
+  } catch (error) {
+    console.warn(`Could not register global hotkey "${globalHotkey}"; it may already be in use.`, error)
+    registeredGlobalHotkey = ""
+  }
+}
+
+const saveGlobalHotkey = (globalHotkey: string) => {
+  const normalizedHotkey = globalHotkey.trim()
+  const previousHotkey = registeredGlobalHotkey
+
+  if (previousHotkey) {
+    globalShortcut.unregister(previousHotkey)
+    registeredGlobalHotkey = ""
+  }
+
+  if (normalizedHotkey === "") {
+    store.set("globalHotkey", "")
+    return { globalHotkey: "" }
+  }
+
+  try {
+    const registered = globalShortcut.register(normalizedHotkey, () => {
+      void togglePopoverWindow()
+    })
+
+    if (!registered) {
+      throw new Error("That keyboard shortcut could not be registered. It may already be in use.")
+    }
+
+    registeredGlobalHotkey = normalizedHotkey
+    store.set("globalHotkey", normalizedHotkey)
+    return { globalHotkey: normalizedHotkey }
+  } catch (error) {
+    if (previousHotkey) {
+      registerGlobalHotkey(previousHotkey)
+    }
+
+    throw error instanceof Error
+      ? error
+      : new Error("That keyboard shortcut could not be registered. It may already be in use.")
+  }
+}
+
 const createMenu = () => {
   const applicationMenu = Menu.buildFromTemplate([
     {
@@ -1065,6 +1135,8 @@ ipcMain.handle("get-credentials", async () => cachedCredentials ?? (await loadCr
 ipcMain.handle("save-credentials", async (_event, credentials: Credentials) => saveCredentials(credentials))
 ipcMain.handle("get-desktop-settings", async () => getDesktopSettings())
 ipcMain.handle("save-desktop-settings", async (_event, settings: DesktopSettings) => saveDesktopSettings(settings))
+ipcMain.handle("get-global-hotkey", async () => getGlobalHotkey())
+ipcMain.handle("save-global-hotkey", async (_event, globalHotkey: string) => saveGlobalHotkey(globalHotkey))
 ipcMain.handle("choose-local-projects-root", async () => {
   const browserWindow = preferencesWindow ?? mainWindow
   const options: OpenDialogOptions = {
@@ -1131,6 +1203,7 @@ app.whenReady().then(async () => {
       // Credentials may be stale or the instance may be offline; setup still handles it.
     }
   }
+  registerGlobalHotkey()
 
   if (!app.isPackaged) {
     await showPopoverWindow()
@@ -1148,4 +1221,8 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   isQuitting = true
   stopAppUserCable()
+})
+
+app.on("will-quit", () => {
+  globalShortcut.unregisterAll()
 })

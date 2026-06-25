@@ -1,5 +1,5 @@
 import "./styles.css"
-import { FormEvent, type RefObject, useEffect, useRef, useState } from "react"
+import { FormEvent, KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { RepoPicker } from "./RepoPicker"
 
@@ -25,6 +25,111 @@ const EMPTY_JOBS: SyrusJobItem[] = []
 const normalizeInstanceUrl = (url: string) => url.trim().replace(/\/+$/, "")
 
 const jobTitle = (job: SyrusJobItem) => job.title || job.issue_title || `JOB-${job.id}`
+
+const isMacPlatform = () => /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+
+const modifierLabels: Record<string, string> = {
+  Command: "⌘",
+  Cmd: "⌘",
+  CommandOrControl: isMacPlatform() ? "⌘" : "Ctrl+",
+  Control: isMacPlatform() ? "⌃" : "Ctrl+",
+  Ctrl: isMacPlatform() ? "⌃" : "Ctrl+",
+  Shift: isMacPlatform() ? "⇧" : "Shift+",
+  Alt: isMacPlatform() ? "⌥" : "Alt+",
+  Option: isMacPlatform() ? "⌥" : "Alt+"
+}
+
+const keyLabels: Record<string, string> = {
+  Backspace: "⌫",
+  Delete: "⌦",
+  Enter: "↵",
+  Esc: "Esc",
+  Escape: "Esc",
+  Space: "Space",
+  Up: "↑",
+  Down: "↓",
+  Left: "←",
+  Right: "→",
+  Plus: "+"
+}
+
+const displayHotkey = (hotkey: string) => {
+  const trimmedHotkey = hotkey.trim()
+  if (trimmedHotkey === "") {
+    return "Not set"
+  }
+
+  return trimmedHotkey
+    .split("+")
+    .filter(Boolean)
+    .map((part) => modifierLabels[part] ?? keyLabels[part] ?? part)
+    .join(isMacPlatform() ? "" : "")
+}
+
+const acceleratorKeyFromEvent = (event: KeyboardEvent<HTMLElement>) => {
+  if (["Control", "Shift", "Alt", "Meta"].includes(event.key)) {
+    return ""
+  }
+
+  if (event.code === "Space") {
+    return "Space"
+  }
+
+  if (/^Key[A-Z]$/.test(event.code)) {
+    return event.code.slice(3)
+  }
+
+  if (/^Digit[0-9]$/.test(event.code)) {
+    return event.code.slice(5)
+  }
+
+  if (/^F([1-9]|1[0-9]|2[0-4])$/.test(event.code)) {
+    return event.code
+  }
+
+  const keyMap: Record<string, string> = {
+    ArrowUp: "Up",
+    ArrowDown: "Down",
+    ArrowLeft: "Left",
+    ArrowRight: "Right",
+    Escape: "Esc",
+    " ": "Space",
+    "+": "Plus"
+  }
+
+  if (keyMap[event.key]) {
+    return keyMap[event.key]
+  }
+
+  if (event.key.length === 1) {
+    return event.key.toUpperCase()
+  }
+
+  return event.key
+}
+
+const acceleratorFromEvent = (event: KeyboardEvent<HTMLElement>) => {
+  const key = acceleratorKeyFromEvent(event)
+  if (!key) {
+    return ""
+  }
+
+  const modifiers: string[] = []
+  if (event.metaKey) {
+    modifiers.push("Command")
+  }
+  if (event.ctrlKey) {
+    modifiers.push("Control")
+  }
+  if (event.altKey) {
+    modifiers.push("Alt")
+  }
+  if (event.shiftKey) {
+    modifiers.push("Shift")
+  }
+
+  return [...modifiers, key].join("+")
+}
 
 const relativeTime = (timestamp: string) => {
   const value = Date.parse(timestamp)
@@ -839,17 +944,26 @@ export function App() {
   const [settingsError, setSettingsError] = useState("")
   const [settingsSaved, setSettingsSaved] = useState(false)
   const [isSavingSettings, setIsSavingSettings] = useState(false)
+  const [globalHotkey, setGlobalHotkey] = useState("")
+  const [hotkeyDraft, setHotkeyDraft] = useState("")
+  const [hotkeyStatus, setHotkeyStatus] = useState("")
+  const [hotkeyError, setHotkeyError] = useState("")
+  const [isRecordingHotkey, setIsRecordingHotkey] = useState(false)
+  const [isSavingHotkey, setIsSavingHotkey] = useState(false)
+  const hotkeyRecorderRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let isMounted = true
 
-    Promise.all([window.syrusDesktop.getCredentials(), window.syrusDesktop.getDesktopSettings()])
-      .then(([credentials, desktopSettings]) => {
+    Promise.all([window.syrusDesktop.getCredentials(), window.syrusDesktop.getDesktopSettings(), window.syrusDesktop.getGlobalHotkey()])
+      .then(([credentials, desktopSettings, savedGlobalHotkey]) => {
         if (!isMounted) {
           return
         }
 
         setLocalProjectsRoot(desktopSettings.localProjectsRoot)
+        setGlobalHotkey(savedGlobalHotkey)
+        setHotkeyDraft(savedGlobalHotkey)
         setRepoPathDrafts(
           Object.entries(desktopSettings.localRepoPaths).map(([repoSlug, localPath]) => ({
             id: `${repoSlug}-${localPath}`,
@@ -883,6 +997,12 @@ export function App() {
       unsubscribe()
     }
   }, [isPreferencesView])
+
+  useEffect(() => {
+    if (isRecordingHotkey) {
+      hotkeyRecorderRef.current?.focus()
+    }
+  }, [isRecordingHotkey])
 
   const saveCredentials = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -951,6 +1071,47 @@ export function App() {
       setSettingsError(settingsSaveError instanceof Error ? settingsSaveError.message : "Could not save local checkout settings.")
     } finally {
       setIsSavingSettings(false)
+    }
+  }
+
+  const beginHotkeyRecording = () => {
+    setHotkeyDraft(globalHotkey)
+    setHotkeyStatus("")
+    setHotkeyError("")
+    setIsRecordingHotkey(true)
+  }
+
+  const recordHotkey = (event: KeyboardEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const accelerator = acceleratorFromEvent(event)
+    if (accelerator) {
+      setHotkeyDraft(accelerator)
+    }
+  }
+
+  const cancelHotkeyRecording = () => {
+    setHotkeyDraft(globalHotkey)
+    setHotkeyError("")
+    setIsRecordingHotkey(false)
+  }
+
+  const saveHotkey = async (nextHotkey = hotkeyDraft) => {
+    setHotkeyError("")
+    setHotkeyStatus("")
+    setIsSavingHotkey(true)
+
+    try {
+      const result = await window.syrusDesktop.saveGlobalHotkey(nextHotkey)
+      setGlobalHotkey(result.globalHotkey)
+      setHotkeyDraft(result.globalHotkey)
+      setIsRecordingHotkey(false)
+      setHotkeyStatus(result.globalHotkey === "" ? "Keyboard shortcut cleared." : "Keyboard shortcut saved.")
+    } catch (saveError) {
+      setHotkeyError(saveError instanceof Error ? saveError.message : "Could not save keyboard shortcut.")
+    } finally {
+      setIsSavingHotkey(false)
     }
   }
 
@@ -1045,6 +1206,55 @@ export function App() {
                   {isSaving ? "Saving..." : "Save"}
                 </button>
               </div>
+
+              <section className="settings-section" aria-label="Keyboard shortcut settings">
+                <div>
+                  <h2>Keyboard shortcut</h2>
+                </div>
+
+                <div className="shortcut-row">
+                  <div className="shortcut-details">
+                    <span className={globalHotkey ? "shortcut-pill" : "shortcut-pill shortcut-pill--empty"}>
+                      {displayHotkey(globalHotkey)}
+                    </span>
+                    {isRecordingHotkey ? (
+                      <div
+                        ref={hotkeyRecorderRef}
+                        className="shortcut-recorder"
+                        aria-label="Keyboard shortcut recorder"
+                        tabIndex={0}
+                        onKeyDown={recordHotkey}
+                      >
+                        <span>Press a shortcut</span>
+                        <strong>{hotkeyDraft ? displayHotkey(hotkeyDraft) : "Waiting for keys"}</strong>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {isRecordingHotkey ? (
+                    <div className="shortcut-actions">
+                      <button type="button" disabled={isSavingHotkey || hotkeyDraft.trim() === ""} onClick={() => saveHotkey()}>
+                        {isSavingHotkey ? "Saving..." : "Save"}
+                      </button>
+                      <button type="button" className="secondary-button" disabled={isSavingHotkey} onClick={cancelHotkeyRecording}>
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="shortcut-actions">
+                      <button type="button" className="secondary-button" onClick={beginHotkeyRecording}>
+                        Edit
+                      </button>
+                      <button type="button" className="secondary-button" disabled={isSavingHotkey || globalHotkey === ""} onClick={() => saveHotkey("")}>
+                        Clear
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {hotkeyError ? <p className="form-error">{hotkeyError}</p> : null}
+                {hotkeyStatus ? <p className="form-success">{hotkeyStatus}</p> : null}
+              </section>
             </form>
           ) : (
             <div className="settings-form">
