@@ -34,6 +34,7 @@ import { DirectJobNewRoute } from "./DirectJobNew"
 import { AdminFeatures } from "./AdminFeatures"
 import { EpicDetailRoute } from "./EpicDetail"
 import { EpicFormRoute } from "./EpicForm"
+import { HiddenChatsRoute } from "./HiddenChats"
 import { JobDetailRoute } from "./JobDetail"
 import { MemoriesRoute } from "./Memories"
 import { NotificationsSettingsRoute } from "./NotificationsSettings"
@@ -99,6 +100,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/settings", element: <SettingsSectionRoute><AccountProfileRoute /></SettingsSectionRoute> },
   { path: "/profile", element: <SettingsSectionRoute><AccountProfileRoute /></SettingsSectionRoute> },
   { path: "/credentials", element: <SettingsSectionRoute><CredentialsRoute /></SettingsSectionRoute> },
+  { path: "/settings/hidden_chats", element: <SettingsSectionRoute><HiddenChatsRoute /></SettingsSectionRoute> },
   { path: "/credentials/edit", element: <SettingsSectionRoute><CredentialsRoute /></SettingsSectionRoute> },
   { path: "/settings/agent", element: <SettingsSectionRoute><AgentSettingsRoute /></SettingsSectionRoute> },
   { path: "/settings/preferences", element: <SettingsSectionRoute><PreferencesRoute /></SettingsSectionRoute> },
@@ -788,6 +790,7 @@ function settingsNavigationItems(): Array<{ label: string; path: string; active:
     { label: "Agent Settings", path: "/settings/agent", active: (path) => path === "/settings/agent" },
     { label: "Preferences", path: "/settings/preferences", active: (path) => path === "/settings/preferences" },
     { label: "Notifications", path: "/notifications/settings", active: (path) => path === "/notifications/settings" },
+    { label: "Hidden chats", path: "/settings/hidden_chats", active: (path) => path === "/settings/hidden_chats" },
     { label: "Documents", path: "/documents", active: (path) => path === "/documents" },
     { label: "Memories", path: "/memories", active: (path) => path === "/memories" },
     { label: "Templates", path: "/cron_templates", active: (path) => path.startsWith("/cron_templates") },
@@ -810,6 +813,7 @@ function showsSettingsNavigation(pathname: string) {
   return pathname === "/settings" ||
     pathname === "/profile" ||
     pathname === "/credentials" ||
+    pathname === "/settings/hidden_chats" ||
     pathname === "/credentials/edit" ||
     pathname === "/settings/agent" ||
     pathname === "/settings/preferences" ||

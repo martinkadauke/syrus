@@ -1198,9 +1198,6 @@ describe("App", () => {
       if (path === "/api/v1/app/credentials") {
         return Promise.resolve(new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
-      if (path === "/api/v1/app/settings/hidden_chats?page=1") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], total: 0, page: 1, per_page: 20, total_pages: 0 }), { status: 200, headers: { "Content-Type": "application/json" } }))
-      }
 
       return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
@@ -1224,11 +1221,12 @@ describe("App", () => {
       expect(within(settingsNav).getByRole("link", { name: "Credentials" })).toHaveAttribute("href", "/app-shell/credentials")
       expect(within(settingsNav).getByRole("link", { name: "Agent Settings" })).toHaveAttribute("href", "/app-shell/settings/agent")
       expect(within(settingsNav).getByRole("link", { name: "Preferences" })).toHaveAttribute("href", "/app-shell/settings/preferences")
+      expect(within(settingsNav).getByRole("link", { name: "Hidden chats" })).toHaveAttribute("href", "/app-shell/settings/hidden_chats")
       expect(within(settingsNav).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/documents")
       expect(within(settingsNav).getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
       expect(within(settingsNav).getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
       expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/credentials", expect.objectContaining({ credentials: "same-origin" }))
-      expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/settings/hidden_chats?page=1", expect.objectContaining({ credentials: "same-origin" }))
+      expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/settings/hidden_chats?page=1", expect.anything())
     } finally {
       fetchSpy.mockRestore()
       script.remove()
@@ -1260,9 +1258,6 @@ describe("App", () => {
     ]
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
-      if (path === "/api/v1/app/credentials") {
-        return Promise.resolve(new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
-      }
       if (path === "/api/v1/app/settings/hidden_chats?page=1") {
         return Promise.resolve(new Response(JSON.stringify({ chats: hiddenChats, total: hiddenChats.length, page: 1, per_page: 20, total_pages: hiddenChats.length > 0 ? 1 : 0 }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
@@ -1277,13 +1272,15 @@ describe("App", () => {
     try {
       render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/settings"]}>
+          <MemoryRouter initialEntries={["/app-shell/settings/hidden_chats"]}>
             <App />
           </MemoryRouter>
         </QueryClientProvider>
       )
 
-      expect(await screen.findByRole("heading", { name: "Hidden chats" })).toBeInTheDocument()
+      expect(await screen.findByRole("main", { name: "Hidden chats" })).toBeInTheDocument()
+      const settingsNav = screen.getByRole("navigation", { name: "Settings navigation" })
+      expect(within(settingsNav).getByRole("link", { name: "Hidden chats" })).toHaveClass("bg-blue-50", "text-blue-700")
       expect(await screen.findByText("Archived planning")).toBeInTheDocument()
       expect(screen.getByText("acme/widgets")).toBeInTheDocument()
 
@@ -6403,6 +6400,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Display name")).toBeInTheDocument()
     expect(screen.queryByLabelText("GitHub personal access token")).not.toBeInTheDocument()
     expect(within(settingsNav).getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/app-shell/notifications/settings")
+    expect(within(settingsNav).getByRole("link", { name: "Hidden chats" })).toHaveAttribute("href", "/app-shell/settings/hidden_chats")
     expect(within(settingsNav).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/documents")
     expect(within(settingsNav).getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
     expect(within(settingsNav).getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
