@@ -3844,7 +3844,7 @@ describe("App", () => {
           )
         )
       }
-      if (path === "/api/v1/app/dashboard?view=list&subject=job" || path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job") {
+      if (path === "/api/v1/app/dashboard?view=list&subject=job" || path.startsWith("/api/v1/app/dashboard?view=list&q=") || path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job") {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -3866,7 +3866,7 @@ describe("App", () => {
     try {
       render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list"]}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&q=stale"]}>
             <App />
           </MemoryRouter>
         </QueryClientProvider>
