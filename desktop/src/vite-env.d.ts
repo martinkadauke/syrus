@@ -39,6 +39,24 @@ type SyrusCheckoutRequest = {
   branchName: string
 }
 
+type SyrusBootstrapPayload = {
+  current_user: {
+    admin: boolean
+  } | null
+}
+
+type SyrusAdminControls = {
+  polling_paused: boolean
+  runs_paused: boolean
+}
+
+type SyrusAdminControl = "polling" | "runs"
+
+type SyrusToggleAdminControlResult = {
+  cancelled: boolean
+  controls: SyrusAdminControls
+}
+
 interface Window {
   syrusDesktop: {
     getCredentials: () => Promise<SyrusCredentials | null>
@@ -51,7 +69,10 @@ interface Window {
     checkoutJob: (request: SyrusCheckoutRequest) => Promise<{ branchName: string }>
     showPreferences: () => Promise<void>
     copyText: (text: string) => Promise<void>
+    fetchBootstrap: () => Promise<SyrusBootstrapPayload>
     fetchInboxJobs: () => Promise<SyrusJobItem[]>
+    fetchAdminControls: () => Promise<SyrusAdminControls>
+    toggleAdminControl: (control: SyrusAdminControl, pause: boolean) => Promise<SyrusToggleAdminControlResult>
     openExternal: (url: string) => Promise<void>
     openTokenDocs: () => Promise<void>
     onDesktopSettingsUpdated: (callback: () => void) => () => void

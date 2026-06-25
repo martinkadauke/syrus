@@ -69,9 +69,11 @@ Preferences to derive `<root>/<repo-name>` paths, or add per-repository
 absolute path overrides for repositories that live elsewhere. Desktop
 delegates checkout to `syrus checkout JOB-<id>` from the resolved local
 path, so the CLI handles branch fetching, dirty working trees, backup
-branches, and repository-origin validation. Right-click the tray icon to
-open the connected Syrus instance in your browser, open Preferences, or
-quit the app.
+branches, and repository-origin validation. Admin users also see subtle
+footer toggles for pausing or resuming repository polling and new Run
+starts, with confirmation before either switch changes. Right-click the
+tray icon to open the connected Syrus instance in your browser, open
+Preferences, or quit the app.
 
 Most commands accept a normal user API token and scope themselves to
 what that user can see. Commands that read admin-only payloads, such as
