@@ -36,6 +36,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
   const data = bootstrap.data ?? initialBootstrap
   const user = data?.current_user
   const showAdminSubnav = Boolean(user?.admin && isAdminPath(normalizedPath))
+  const showDashboardSidebarSubjects = Boolean(data?.feature_flags.v2_sidebar_subject_selector)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [creatingChat, setCreatingChat] = useState(false)
   const [mobileBrandFloating, setMobileBrandFloating] = useState(false)
@@ -135,6 +136,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
           onStartChat={startChat}
           prefix={prefix}
           showTeamProfile={(data?.team_user_count || 0) > 1}
+          showDashboardSidebarSubjects={showDashboardSidebarSubjects}
           user={user}
         />
         <div
@@ -173,6 +175,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
             onStartChat={startChat}
             prefix={prefix}
             showTeamProfile={(data?.team_user_count || 0) > 1}
+            showDashboardSidebarSubjects={showDashboardSidebarSubjects}
             user={user}
           />
         </div>
@@ -252,6 +255,7 @@ function SidebarContent({
   onCloseDrawer,
   onStartChat,
   prefix,
+  showDashboardSidebarSubjects,
   showTeamProfile,
   user
 }: {
@@ -262,6 +266,7 @@ function SidebarContent({
   onCloseDrawer: () => void
   onStartChat: () => void
   prefix: string
+  showDashboardSidebarSubjects: boolean
   showTeamProfile: boolean
   user: BootstrapPayload["current_user"] | undefined
 }) {
@@ -335,7 +340,7 @@ function SidebarContent({
               return (
                 <div className="space-y-1" key={item.label}>
                   {link}
-                  <SidebarDashboardNav expanded={dashboardNavOpen} onCloseDrawer={onCloseDrawer} prefix={prefix} />
+                  <SidebarDashboardNav expanded={dashboardNavOpen} onCloseDrawer={onCloseDrawer} prefix={prefix} showSubjects={showDashboardSidebarSubjects} />
                 </div>
               )
             })}
@@ -386,7 +391,7 @@ function SidebarSearchForm({ onCloseDrawer, prefix }: { onCloseDrawer: () => voi
   )
 }
 
-function SidebarDashboardNav({ expanded, onCloseDrawer, prefix }: { expanded: boolean; onCloseDrawer: () => void; prefix: string }) {
+function SidebarDashboardNav({ expanded, onCloseDrawer, prefix, showSubjects }: { expanded: boolean; onCloseDrawer: () => void; prefix: string; showSubjects: boolean }) {
   const location = useLocation()
   const isDashboard = location.pathname.includes("/dashboard")
   const search = dashboardApiSearch(location.pathname, location.search)
@@ -415,7 +420,7 @@ function SidebarDashboardNav({ expanded, onCloseDrawer, prefix }: { expanded: bo
     >
       <div className={`min-h-0 overflow-hidden transition-opacity duration-150 ease-out ${expanded ? "opacity-100 delay-75" : "opacity-0"}`}>
         <div className="space-y-3 pl-7 pt-1">
-          <SidebarDashboardSubjects onCloseDrawer={onCloseDrawer} payload={payload} prefix={prefix} />
+          {showSubjects ? <SidebarDashboardSubjects onCloseDrawer={onCloseDrawer} payload={payload} prefix={prefix} /> : null}
           <DashboardSmartFolderNav payload={payload} prefix={prefix} search={location.search} />
         </div>
       </div>
@@ -437,7 +442,7 @@ function SidebarDashboardSubjects({ onCloseDrawer, payload, prefix }: { onCloseD
           className={`whitespace-nowrap px-1.5 py-1.5 text-center font-medium ${payload.subject === subject.key ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600 dark:bg-blue-950 dark:text-blue-200 dark:ring-blue-500" : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}`}
           key={subject.key}
           onClick={onCloseDrawer}
-          to={withRoutePrefix(subject.path, prefix)}
+          to={dashboardLink(withRoutePrefix(subject.path, prefix), { view: payload.view })}
         >
           {subject.label}
         </Link>
@@ -724,6 +729,16 @@ function withRoutePrefix(path: string, prefix: string) {
   if (!path.startsWith("/")) return path
 
   return `${prefix}${path}`
+}
+
+function dashboardLink(path: string, params: Record<string, string | number | null | undefined>) {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null && String(value).length > 0) search.set(key, String(value))
+  }
+
+  const query = search.toString()
+  return query ? `${path}?${query}` : path
 }
 
 function activeChatIdFromPath(pathname: string) {
