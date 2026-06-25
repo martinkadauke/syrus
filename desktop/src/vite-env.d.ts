@@ -62,6 +62,7 @@ type SyrusBootstrapPayload = {
   current_user: {
     admin: boolean
   } | null
+  unread_notifications_count?: number
 }
 
 type SyrusAdminControls = {
