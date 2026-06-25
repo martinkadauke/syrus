@@ -36,6 +36,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
   const data = bootstrap.data ?? initialBootstrap
   const user = data?.current_user
   const showAdminSubnav = Boolean(user?.admin && isAdminPath(normalizedPath))
+  const showDashboardSidebarSubjects = Boolean(data?.feature_flags.v2_sidebar_subject_selector)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [creatingChat, setCreatingChat] = useState(false)
   const [mobileBrandFloating, setMobileBrandFloating] = useState(false)
@@ -135,6 +136,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
           onStartChat={startChat}
           prefix={prefix}
           showTeamProfile={(data?.team_user_count || 0) > 1}
+          showDashboardSidebarSubjects={showDashboardSidebarSubjects}
           user={user}
         />
         <div
@@ -173,6 +175,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
             onStartChat={startChat}
             prefix={prefix}
             showTeamProfile={(data?.team_user_count || 0) > 1}
+            showDashboardSidebarSubjects={showDashboardSidebarSubjects}
             user={user}
           />
         </div>
@@ -189,7 +192,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
         </button>
         {showAdminSubnav ? (
           <div className="flex min-h-full min-w-0">
-            <AdminSubnav normalizedPath={normalizedPath} prefix={prefix} />
+            <AdminSubnav featureFlags={data?.feature_flags || {}} normalizedPath={normalizedPath} prefix={prefix} />
             <div className="min-w-0 flex-1">
               {children ?? <Outlet />}
             </div>
@@ -216,11 +219,17 @@ const adminNavItems = [
   { label: "Settings", to: "/settings/edit", paths: ["/settings/edit"] }
 ]
 
-function AdminSubnav({ normalizedPath, prefix }: { normalizedPath: string; prefix: string }) {
+function AdminSubnav({ featureFlags, normalizedPath, prefix }: { featureFlags: Record<string, boolean>; normalizedPath: string; prefix: string }) {
+  const items = [
+    ...adminNavItems.slice(0, -1),
+    ...(hasFeatureFlags(featureFlags) ? [{ label: "Features", to: "/admin/features", paths: ["/admin/features"] }] : []),
+    adminNavItems[adminNavItems.length - 1]
+  ]
+
   return (
     <aside className="w-40 shrink-0 border-r border-gray-200 bg-white px-3 py-4 dark:border-gray-800 dark:bg-gray-950 sm:w-52">
       <nav aria-label="Admin" className="space-y-1">
-        {adminNavItems.map((item) => {
+        {items.map((item) => {
           const active = item.paths.some((path) => adminNavItemActive(normalizedPath, path))
 
           return (
@@ -234,6 +243,10 @@ function AdminSubnav({ normalizedPath, prefix }: { normalizedPath: string; prefi
   )
 }
 
+function hasFeatureFlags(featureFlags: Record<string, boolean>) {
+  return Object.keys(featureFlags).length > 0
+}
+
 function SidebarContent({
   bootstrapData,
   creatingChat,
@@ -242,6 +255,7 @@ function SidebarContent({
   onCloseDrawer,
   onStartChat,
   prefix,
+  showDashboardSidebarSubjects,
   showTeamProfile,
   user
 }: {
@@ -252,6 +266,7 @@ function SidebarContent({
   onCloseDrawer: () => void
   onStartChat: () => void
   prefix: string
+  showDashboardSidebarSubjects: boolean
   showTeamProfile: boolean
   user: BootstrapPayload["current_user"] | undefined
 }) {
@@ -325,7 +340,7 @@ function SidebarContent({
               return (
                 <div className="space-y-1" key={item.label}>
                   {link}
-                  <SidebarDashboardNav expanded={dashboardNavOpen} onCloseDrawer={onCloseDrawer} prefix={prefix} />
+                  <SidebarDashboardNav expanded={dashboardNavOpen} onCloseDrawer={onCloseDrawer} prefix={prefix} showSubjects={showDashboardSidebarSubjects} />
                 </div>
               )
             })}
@@ -376,7 +391,7 @@ function SidebarSearchForm({ onCloseDrawer, prefix }: { onCloseDrawer: () => voi
   )
 }
 
-function SidebarDashboardNav({ expanded, onCloseDrawer, prefix }: { expanded: boolean; onCloseDrawer: () => void; prefix: string }) {
+function SidebarDashboardNav({ expanded, onCloseDrawer, prefix, showSubjects }: { expanded: boolean; onCloseDrawer: () => void; prefix: string; showSubjects: boolean }) {
   const location = useLocation()
   const isDashboard = location.pathname.includes("/dashboard")
   const search = dashboardApiSearch(location.pathname, location.search)
@@ -405,7 +420,7 @@ function SidebarDashboardNav({ expanded, onCloseDrawer, prefix }: { expanded: bo
     >
       <div className={`min-h-0 overflow-hidden transition-opacity duration-150 ease-out ${expanded ? "opacity-100 delay-75" : "opacity-0"}`}>
         <div className="space-y-3 pl-7 pt-1">
-          <SidebarDashboardSubjects onCloseDrawer={onCloseDrawer} payload={payload} prefix={prefix} />
+          {showSubjects ? <SidebarDashboardSubjects onCloseDrawer={onCloseDrawer} payload={payload} prefix={prefix} /> : null}
           <DashboardSmartFolderNav payload={payload} prefix={prefix} search={location.search} />
         </div>
       </div>
@@ -714,6 +729,16 @@ function withRoutePrefix(path: string, prefix: string) {
   if (!path.startsWith("/")) return path
 
   return `${prefix}${path}`
+}
+
+function dashboardLink(path: string, params: Record<string, string | number | null | undefined>) {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null && String(value).length > 0) search.set(key, String(value))
+  }
+
+  const query = search.toString()
+  return query ? `${path}?${query}` : path
 }
 
 function activeChatIdFromPath(pathname: string) {
