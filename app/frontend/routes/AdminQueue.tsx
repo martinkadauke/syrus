@@ -126,11 +126,12 @@ function QueueContent({ basePath, onNavigate, onSmartFolderMutationSuccess, path
       filterBar={filterBar}
       smartFolders={smartFolders.length > 0 ? (
         <AdminSmartFolderNav
-          activeSmartFolderId={"active_smart_folder_id" in payload ? payload.active_smart_folder_id : null}
+          activeFolderId={"active_smart_folder_id" in payload ? payload.active_smart_folder_id : null}
           allLabel="All queue"
           allPath={`${basePath}/${tab}`}
           appliedFilter={isFilteredQueuePayload(payload) ? payload.filter : null}
           ariaLabel="Admin queue smart folders"
+          currentFilter={isFilteredQueuePayload(payload) ? payload.filter : undefined}
           folders={smartFolders}
           heading="Queues"
           onNavigate={onNavigate}

@@ -4,10 +4,10 @@ import { postJson } from "./client"
 export type AdminSmartFolder = {
   id: number
   name: string
+  position: number
   kind: string
   subject_type: string
   visibility: string
-  position: number
   count: number
   active: boolean
   filter?: Record<string, unknown>
