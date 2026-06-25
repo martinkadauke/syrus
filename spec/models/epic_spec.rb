@@ -131,6 +131,30 @@ RSpec.describe Epic do
     job
   end
 
+  describe "#stuck?" do
+    it "is true when in progress with all child Jobs closed but incomplete" do
+      epic = described_class.create!(user: user, repository: repository, title: "Stalled train", state: "in_progress")
+      child_job(epic: epic, number: 10, closure_reason: "cancelled")
+
+      expect(epic.reload).to be_stuck
+    end
+
+    it "is false while open child Jobs remain" do
+      epic = described_class.create!(user: user, repository: repository, title: "Active train", state: "in_progress")
+      child_job(epic: epic, number: 10, closure_reason: "cancelled")
+      child_job(epic: epic, number: 11)
+
+      expect(epic.reload).not_to be_stuck
+    end
+
+    it "is false once the Epic is done" do
+      epic = described_class.create!(user: user, repository: repository, title: "Completed train", state: "done")
+      child_job(epic: epic, number: 10, closure_reason: "cancelled")
+
+      expect(epic.reload).not_to be_stuck
+    end
+  end
+
   it "assigns an immutable display number separate from the editable title" do
     epic = described_class.create!(user: user, repository: repository, title: "First pass")
 
@@ -459,6 +483,30 @@ RSpec.describe Epic do
       expect {
         last_job.update!(closure_reason: "external_pr_merged")
         last_job.close!
+      }.to change { epic.reload.state }.from("in_progress").to("done")
+      expect(epic.done_at).to eq(Time.current)
+    end
+  end
+
+  it "treats no_changes child Jobs as complete" do
+    epic = described_class.create!(user: user, repository: repository, title: "Already shipped", state: "in_progress")
+    child_job(epic: epic, number: 32, closure_reason: "no_changes")
+
+    expect(epic).to be_complete
+  end
+
+  it "auto-completes in-progress Epics with mixed merged and no_changes child Jobs" do
+    epic = described_class.create!(user: user, repository: repository, title: "Mixed landing", state: "in_progress")
+    merged_job = child_job(epic: epic, number: 33)
+    no_changes_job = child_job(epic: epic, number: 34)
+
+    freeze_time do
+      merged_job.update!(closure_reason: "pr_merged")
+      merged_job.close!
+
+      expect {
+        no_changes_job.update!(closure_reason: "no_changes")
+        no_changes_job.close!
       }.to change { epic.reload.state }.from("in_progress").to("done")
       expect(epic.done_at).to eq(Time.current)
     end
