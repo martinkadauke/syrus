@@ -6,6 +6,7 @@ RSpec.describe "production configuration" do
   let(:deploy_config) { Rails.root.join("config/deploy.yml").read }
   let(:storage_config) { Rails.root.join("config/storage.yml").read }
   let(:dockerfile) { Rails.root.join("Dockerfile").read }
+  let(:features_initializer) { Rails.root.join("config/initializers/features.rb").read }
 
   it "does not leave scaffold production host or mailer values in place" do
     expect(production_config).not_to include("example.com")
@@ -42,5 +43,6 @@ RSpec.describe "production configuration" do
     expect(dockerfile).to include("S3_BUCKET=syrus-build-assets")
     expect(dockerfile).to include("S3_ENDPOINT=http://127.0.0.1:9000")
     expect(dockerfile).to include("SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile")
+    expect(features_initializer).to include("Features::SyncFromYaml.build_time_asset_precompile?")
   end
 end

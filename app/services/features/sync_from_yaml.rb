@@ -12,6 +12,10 @@ module Features
       new(config_path: config_path).declarations
     end
 
+    def self.build_time_asset_precompile?
+      ENV["SECRET_KEY_BASE_DUMMY"].present?
+    end
+
     def initialize(config_path:)
       @config_path = Pathname.new(config_path)
     end

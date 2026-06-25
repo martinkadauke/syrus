@@ -1,10 +1,23 @@
 require "rails_helper"
 
 RSpec.describe Features::SyncFromYaml do
+  around do |example|
+    original = ENV["SECRET_KEY_BASE_DUMMY"]
+    example.run
+  ensure
+    ENV["SECRET_KEY_BASE_DUMMY"] = original
+  end
+
   def write_features_yaml(contents)
     path = Rails.root.join("tmp/features-#{SecureRandom.hex(4)}.yml")
     path.write(contents)
     path
+  end
+
+  it "detects build-time asset precompile mode without touching the database" do
+    ENV["SECRET_KEY_BASE_DUMMY"] = "1"
+
+    expect(described_class.build_time_asset_precompile?).to be true
   end
 
   it "creates declared features and initializes enabled from default" do
