@@ -442,7 +442,7 @@ function SidebarDashboardSubjects({ onCloseDrawer, payload, prefix }: { onCloseD
           className={`whitespace-nowrap px-1.5 py-1.5 text-center font-medium ${payload.subject === subject.key ? "bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600 dark:bg-blue-950 dark:text-blue-200 dark:ring-blue-500" : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"}`}
           key={subject.key}
           onClick={onCloseDrawer}
-          to={dashboardLink(withRoutePrefix(subject.path, prefix), { view: payload.view })}
+          to={withRoutePrefix(subject.path, prefix)}
         >
           {subject.label}
         </Link>

@@ -209,6 +209,7 @@ function bootstrapPayload(overrides: Partial<BootstrapPayload> = {}): BootstrapP
     },
     setup: null,
     csrf_token: "csrf-token",
+    unread_notifications_count: 0,
     feature_flags: { new_dashboard: false },
     ...overrides
   }

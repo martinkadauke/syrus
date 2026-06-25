@@ -2058,7 +2058,8 @@ describe("App", () => {
       current_user: {
         ...bootstrapPayload().current_user,
         layout_version: "v2"
-      }
+      },
+      feature_flags: { v2_sidebar_subject_selector: true }
     }))
     document.body.appendChild(script)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
