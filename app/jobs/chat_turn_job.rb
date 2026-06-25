@@ -110,7 +110,7 @@ class ChatTurnJob < ApplicationJob
     user_text = @user_message.content["text"].to_s
     image_paths = []
     file_paths = []
-    pdf_notes = []
+    attachment_notes = []
     attachments = Array(@user_message.content["attachments"])
     return { user_text: user_text, image_paths: image_paths, file_paths: file_paths } if attachments.empty?
 
@@ -125,21 +125,28 @@ class ChatTurnJob < ApplicationJob
 
       if mime_type.start_with?("image/")
         image_paths << path.to_s
+        attachment_notes << image_attachment_note(attachment, path, workspace_path)
       elsif mime_type == "application/pdf"
         file_flag_supported = self.class.claude_file_flag_supported? if file_flag_supported.nil?
         if file_flag_supported
           file_paths << path.to_s
         else
-          pdf_notes << "[Attached PDF: #{attachment['name']}]\n"
+          attachment_notes << "[Attached PDF: #{attachment['name']}]\n"
         end
       end
     end
 
     {
-      user_text: "#{pdf_notes.join}#{user_text}",
+      user_text: "#{attachment_notes.join}#{user_text}",
       image_paths: image_paths,
       file_paths: file_paths
     }
+  end
+
+  def image_attachment_note(attachment, path, workspace_path)
+    name = attachment["name"].to_s.presence || path.basename.to_s
+    relative_path = path.relative_path_from(Pathname(workspace_path)).to_s
+    "[Attached image: #{name} saved at #{relative_path}. Use the Read tool to inspect it.]\n"
   end
 
   def ext_for(mime_type)

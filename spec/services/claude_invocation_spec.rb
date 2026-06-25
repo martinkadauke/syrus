@@ -284,7 +284,7 @@ RSpec.describe ClaudeInvocation do
       expect(cmd[idx + 4]).to start_with("--"), "arg after disallowed tool list must be another flag — got #{cmd[idx + 4].inspect}"
     end
 
-    it "passes image and file flags before --output-format" do
+    it "passes file flags before --output-format and omits unsupported image flags" do
       invocation = described_class.new("/tmp", prompt: "P", oauth_token: "x",
                                        image_paths: [ "/tmp/foo.png" ],
                                        file_paths: [ "/tmp/bar.pdf" ])
@@ -302,11 +302,9 @@ RSpec.describe ClaudeInvocation do
       image_idx = cmd.index("--image")
       file_idx = cmd.index("--file")
       output_idx = cmd.index("--output-format")
-      expect(image_idx).not_to be_nil, "expected --image in cmd: #{cmd.inspect}"
+      expect(image_idx).to be_nil, "expected no --image in cmd: #{cmd.inspect}"
       expect(file_idx).not_to be_nil, "expected --file in cmd: #{cmd.inspect}"
-      expect(cmd[image_idx + 1]).to eq("/tmp/foo.png")
       expect(cmd[file_idx + 1]).to eq("/tmp/bar.pdf")
-      expect(image_idx).to be < output_idx
       expect(file_idx).to be < output_idx
     end
 

@@ -136,7 +136,7 @@ RSpec.describe ChatTurnJob do
     expect(received[:prompt]).to include("Use `read_epic` with id #{epic.id}")
   end
 
-  it "writes image attachments into the chat workspace and passes their paths to Claude" do
+  it "writes image attachments into the chat workspace and describes them in the prompt" do
     payload = "png-bytes"
     image_message = chat.messages.create!(
       role: "user",
@@ -164,6 +164,9 @@ RSpec.describe ChatTurnJob do
     expect(image_path.dirname).to eq(workspace_path.join("attachments"))
     expect(image_path.extname).to eq(".png")
     expect(File.binread(image_path)).to eq(payload)
+    expect(received[:prompt]).to include("Attached image: capture.png")
+    expect(received[:prompt]).to include("attachments/#{image_path.basename}")
+    expect(received[:prompt]).to include("Use the Read tool to inspect it")
     expect(received[:file_paths]).to eq([])
   end
 

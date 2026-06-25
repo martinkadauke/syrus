@@ -75,7 +75,9 @@ class ClaudeInvocation
     cmd += [ "--mcp-config", mcp_config ] if mcp_config
     cmd += [ "--resume", resume_session_id ] if resume_session_id
     cmd += [ "--disallowedTools", *Array(disallowed_tools) ] if disallowed_tools.present?
-    Array(image_paths).each { |path| cmd += [ "--image", path ] }
+    # Claude Code does not expose a stable `--image` flag. Chat image
+    # attachments are saved in the workspace and surfaced in the prompt as
+    # paths the agent can inspect with its normal read tools.
     Array(file_paths).each { |path| cmd += [ "--file", path ] }
     cmd += [ "--output-format", "stream-json",
              "--verbose",
