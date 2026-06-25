@@ -88,6 +88,14 @@ module Filters
 
       attr_reader :scope, :op, :value, :user
 
+      def like_escape_sql
+        scope.connection.quote("\\")
+      end
+
+      def escape_like(input)
+        ActiveRecord::Base.sanitize_sql_like(input.to_s, "\\")
+      end
+
       def unsupported_op!
         raise ArgumentError, "#{self.class.filter_name}: unsupported operator #{op.inspect}"
       end

@@ -10,7 +10,7 @@ module Filters
         def apply
           case op
           when :contains
-            scope.where("#{job_table}.#{quote(:class_name)} LIKE ? ESCAPE '\\'", "%#{escape_like(value)}%")
+            scope.where("#{job_table}.#{quote(:class_name)} LIKE ? ESCAPE #{like_escape_sql}", "%#{escape_like(value)}%")
           when :is
             scope.where("#{job_table}.#{quote(:class_name)} = ?", value)
           else
@@ -26,10 +26,6 @@ module Filters
 
         def quote(column)
           scope.connection.quote_column_name(column)
-        end
-
-        def escape_like(input)
-          input.to_s.gsub(/[\\%_]/) { |c| "\\#{c}" }
         end
       end
     end

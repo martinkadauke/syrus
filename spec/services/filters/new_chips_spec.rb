@@ -23,6 +23,22 @@ RSpec.describe "Filters::Chips (new primitives)" do
       expect(run(field: "title", op: "contains", value: "aqueduct")).to contain_exactly(match)
     end
 
+    it "quotes the LIKE escape literal through the active adapter" do
+      allow(Job.connection).to receive(:quote).and_call_original
+      allow(Job.connection).to receive(:quote).with("\\").and_return("'\\\\'")
+
+      sql = run(field: "title", op: "contains", value: "aqueduct").to_sql
+
+      expect(sql).to include("ESCAPE '\\\\'")
+    end
+
+    it "treats LIKE wildcard characters as literal input" do
+      literal = Factories.job_record(repository: repo, issue_number: 1, issue_title: "Fix 100% CLI")
+      Factories.job_record(repository: repo, issue_number: 2, issue_title: "Fix 100x CLI")
+
+      expect(run(field: "title", op: "contains", value: "100%")).to contain_exactly(literal)
+    end
+
     it "title does_not_contain excludes matches" do
       excluded = Factories.job_record(repository: repo, issue_number: 1, issue_title: "Restore the aqueduct")
       kept = Factories.job_record(repository: repo, issue_number: 2, issue_title: "Build the forum")

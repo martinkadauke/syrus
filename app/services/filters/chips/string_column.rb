@@ -41,17 +41,11 @@ module Filters
       private
 
       def like(col, pattern)
-        scope.where("#{quoted_column(col)} LIKE ? ESCAPE '\\'", pattern)
+        scope.where("#{quoted_column(col)} LIKE ? ESCAPE #{like_escape_sql}", pattern)
       end
 
       def not_like(col, pattern)
-        scope.where("#{quoted_column(col)} NOT LIKE ? ESCAPE '\\'", pattern)
-      end
-
-      # LIKE wildcards are %, _, and \. Escape them so chip value
-      # `"100%"` only matches the literal substring.
-      def escape_like(input)
-        input.to_s.gsub(/[\\%_]/) { |c| "\\#{c}" }
+        scope.where("#{quoted_column(col)} NOT LIKE ? ESCAPE #{like_escape_sql}", pattern)
       end
 
       def quoted_column(col)

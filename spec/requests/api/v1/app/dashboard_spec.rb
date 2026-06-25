@@ -157,6 +157,48 @@ RSpec.describe "App API dashboard commands", type: :request do
       )
     end
 
+    it "combines merged-this-week attention with a title contains filter" do
+      matching = Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 31,
+        issue_title: "Polish CLI checkout",
+        state: "closed",
+        closure_reason: "pr_merged",
+        finished_at: 1.day.ago
+      )
+      Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 32,
+        issue_title: "Polish dashboard",
+        state: "closed",
+        closure_reason: "pr_merged",
+        finished_at: 1.day.ago
+      )
+      Factories.job_record(
+        repository: repo,
+        owner_user: user,
+        issue_number: 33,
+        issue_title: "Old CLI cleanup",
+        state: "closed",
+        closure_reason: "pr_merged",
+        finished_at: 8.days.ago
+      )
+      tree = {
+        "and" => [
+          { "field" => "attention", "op" => "is", "value" => "merged_this_week" },
+          { "field" => "title", "op" => "contains", "value" => "cli" }
+        ]
+      }
+
+      get "/api/v1/app/dashboard",
+          params: { subject: "job", view: "list", scope: "team", q: Filters::QueryParam.encode(tree) }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body.fetch("items").map { |item| item.fetch("id") }).to eq([ matching.id ])
+    end
+
     it "does not persist dashboard navigation during a read" do
       original_preferences = user.dashboard_preferences
 
