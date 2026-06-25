@@ -20,9 +20,7 @@ module AppApi
         system_alerts: system_alerts_payload,
         unread_notifications_count: unread_notifications_count,
         csrf_token: @csrf_token,
-        feature_flags: {
-          migrated_routes: []
-        }
+        feature_flags: feature_flags_payload
       }
     end
 
@@ -116,6 +114,13 @@ module AppApi
         ::Notification.where(user: user, read_at: nil).count
       else
         0
+      end
+    end
+
+    def feature_flags_payload
+      Features::SyncFromYaml.declarations.to_h do |feature|
+        slug = feature.fetch(:slug)
+        [ slug, Feature.enabled?(slug) ]
       end
     end
 
