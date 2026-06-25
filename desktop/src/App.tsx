@@ -108,12 +108,22 @@ function CheckIcon() {
   )
 }
 
+function RetryIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 12a9 9 0 1 0 3-6.7" />
+      <path d="M3 3v6h6" />
+    </svg>
+  )
+}
+
 function InboxView({ instanceUrl }: { instanceUrl: string }) {
   const queryClient = useQueryClient()
   const [checkoutStatusByRepo, setCheckoutStatusByRepo] = useState<CheckoutStatusByRepo>({})
   const [pendingApprovals, setPendingApprovals] = useState<Set<number>>(() => new Set())
   const [toast, setToast] = useState<ToastState | null>(null)
   const [isComposeOpen, setIsComposeOpen] = useState(false)
+  const [retryingJobID, setRetryingJobID] = useState<number | null>(null)
   const composeRef = useRef<HTMLElement>(null)
   const composeButtonRef = useRef<HTMLButtonElement>(null)
   const inboxQuery = useQuery({
@@ -242,6 +252,26 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
         next.delete(job.id)
         return next
       })
+    }
+  }
+
+  const retryJob = async (job: SyrusJobItem) => {
+    setToast(null)
+    setRetryingJobID(job.id)
+
+    try {
+      await window.syrusDesktop.retryJob(job.id)
+      setToast({ kind: "success", message: `JOB-${job.id} queued for retry` })
+      window.setTimeout(() => {
+        void inboxQuery.refetch()
+      }, 900)
+    } catch (retryError) {
+      setToast({
+        kind: "error",
+        message: retryError instanceof Error ? retryError.message : `Could not retry JOB-${job.id}.`
+      })
+    } finally {
+      setRetryingJobID(null)
     }
   }
 
@@ -399,10 +429,12 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
                 job={job}
                 checkoutStatus={checkoutStatusByRepo[job.repository_slug]}
                 cliAvailable={cliStatusQuery.data?.available ?? false}
+                retrying={retryingJobID === job.id}
                 onOpenJob={() => openJob(job)}
                 onOpenPullRequest={() => openPullRequest(job)}
                 onCheckout={() => void checkoutJob(job)}
                 onApprove={() => void approveJob(job)}
+                onRetry={() => void retryJob(job)}
                 approving={pendingApprovals.has(job.id)}
                 optimisticState={pendingApprovals.has(job.id) ? "approved" : undefined}
               />
@@ -540,20 +572,24 @@ function JobRow({
   job,
   checkoutStatus,
   cliAvailable,
+  retrying,
   onOpenJob,
   onOpenPullRequest,
   onCheckout,
   onApprove,
+  onRetry,
   approving,
   optimisticState
 }: {
   job: SyrusJobItem
   checkoutStatus?: SyrusCheckoutAvailability
   cliAvailable: boolean
+  retrying: boolean
   onOpenJob: () => void
   onOpenPullRequest: () => void
   onCheckout: () => void
   onApprove: () => void
+  onRetry: () => void
   approving: boolean
   optimisticState?: string
 }) {
@@ -599,6 +635,18 @@ function JobRow({
             onClick={onApprove}
           >
             <CheckIcon />
+          </button>
+        ) : null}
+        {isFailed ? (
+          <button
+            type="button"
+            className="icon-button"
+            title="Retry job"
+            aria-label={`Retry JOB-${job.id}`}
+            disabled={retrying}
+            onClick={onRetry}
+          >
+            <RetryIcon />
           </button>
         ) : null}
         <button type="button" className="icon-button" title="Open in Syrus" aria-label={`Open JOB-${job.id} in Syrus`} onClick={onOpenJob}>

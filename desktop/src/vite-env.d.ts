@@ -96,6 +96,7 @@ interface Window {
     createDirectJob: (request: SyrusCreateJobRequest) => Promise<SyrusCreateJobResponse>
     confirmApproveJob: (jobID: number) => Promise<boolean>
     approveJob: (jobID: number) => Promise<void>
+    retryJob: (jobID: number) => Promise<void>
     fetchAdminControls: () => Promise<SyrusAdminControls>
     toggleAdminControl: (control: SyrusAdminControl, pause: boolean) => Promise<SyrusToggleAdminControlResult>
     openExternal: (url: string) => Promise<void>

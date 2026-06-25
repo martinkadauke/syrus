@@ -63,6 +63,12 @@ type RepositoryList = {
   archived_repositories?: RepositoryItem[]
 }
 
+type ApiErrorPayload = {
+  error?: {
+    message?: string
+  }
+}
+
 type DesktopSettings = {
   localProjectsRoot: string
   localRepoPaths: Record<string, string>
@@ -266,7 +272,7 @@ const fetchInboxJobs = async () => {
 
 const responseErrorMessage = async (response: Response, fallback: string) => {
   try {
-    const payload = (await response.json()) as { error?: { message?: string } }
+    const payload = (await response.json()) as ApiErrorPayload
     return payload.error?.message || fallback
   } catch {
     return fallback
@@ -348,7 +354,25 @@ const approveJob = async (jobID: number) => {
   })
 
   if (!response.ok) {
-    throw new Error(`Could not approve JOB-${jobID}.`)
+    throw new Error(await responseErrorMessage(response, `Could not approve JOB-${jobID}.`))
+  }
+}
+
+const retryJob = async (jobID: number) => {
+  const credentials = cachedCredentials ?? (await loadCredentials())
+  if (!credentials) {
+    throw new Error("Connect Syrus before retrying jobs.")
+  }
+
+  const response = await fetch(appApiUrl(credentials.url, `/api/v1/app/jobs/${jobID}/run_again`), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${credentials.token.trim()}`
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response, `Could not retry JOB-${jobID}.`))
   }
 }
 
@@ -808,6 +832,7 @@ ipcMain.handle("open-token-docs", async () => {
 ipcMain.handle("fetch-inbox-jobs", async () => fetchInboxJobs())
 ipcMain.handle("confirm-approve-job", async (event, jobID: number) => confirmApproveJob(event.sender, jobID))
 ipcMain.handle("approve-job", async (_event, jobID: number) => approveJob(jobID))
+ipcMain.handle("retry-job", async (_event, jobID: number) => retryJob(jobID))
 ipcMain.handle("open-external", async (_event, url: string) => {
   if (!URL.canParse(url)) {
     throw new Error("Invalid URL.")
