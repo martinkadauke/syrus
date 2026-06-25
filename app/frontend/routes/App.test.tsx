@@ -3969,7 +3969,7 @@ describe("App", () => {
 
       const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
       expect(within(smartFoldersPanel).getByRole("button", { name: "Update My work" })).toBeInTheDocument()
-      expect(within(smartFoldersPanel).queryByRole("button", { name: "Save folder" })).not.toBeInTheDocument()
+      expect(within(smartFoldersPanel).getByRole("button", { name: "Save folder" })).toBeInTheDocument()
     } finally {
       script.remove()
     }
@@ -3999,7 +3999,7 @@ describe("App", () => {
                 subject: "job",
                 view: "list",
                 active_smart_folder_id: 7,
-                filter: { and: [] },
+                filter: { and: [{ field: "state", op: "is", value: "open" }] },
                 smart_folders: [
                   {
                     id: 7,
@@ -4309,7 +4309,7 @@ describe("App", () => {
       )
 
       const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
-      expect(within(smartFoldersPanel).queryByRole("button", { name: "Save folder" })).not.toBeInTheDocument()
+      expect(within(smartFoldersPanel).getByRole("button", { name: "Save folder" })).toBeInTheDocument()
       fireEvent.click(within(smartFoldersPanel).getByRole("button", { name: "Update My work" }))
 
       await waitFor(() => {
