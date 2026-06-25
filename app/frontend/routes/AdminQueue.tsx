@@ -5,6 +5,7 @@ import { ApiError } from "../api/client"
 import { AdminFiltersLayout } from "../components/AdminFiltersLayout"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import { FilterBar } from "../components/FilterBar"
+import { adminSmartFolderFilterLinkBuilder } from "../lib/adminSmartFolderLinks"
 import {
   fetchAdminQueue,
   isQueueTab,
@@ -112,10 +113,13 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
 
 function QueueContent({ basePath, onNavigate, onSmartFolderMutationSuccess, pathname, payload, prefix, queryKey, search, tab }: { basePath: string; onNavigate: (path: string) => void; onSmartFolderMutationSuccess: () => void; pathname: string; payload: AdminQueuePayload; prefix: string; queryKey: unknown[]; search: string; tab: QueueTab }) {
   const smartFolders = "smart_folders" in payload ? payload.smart_folders : []
+  const activeFolderId = "active_smart_folder_id" in payload ? payload.active_smart_folder_id : null
+  const activeUserFolderId = smartFolders.find((folder) => folder.id === activeFolderId && folder.kind === "user_defined")?.id
   const filterBar = isFilteredQueuePayload(payload) ? (
     <FilterBar
       filter={payload.filter}
       filterSchema={payload.controls.filter_schema}
+      buildLink={adminSmartFolderFilterLinkBuilder(activeUserFolderId)}
       pathname={pathname}
       search={search}
     />
@@ -126,7 +130,7 @@ function QueueContent({ basePath, onNavigate, onSmartFolderMutationSuccess, path
       filterBar={filterBar}
       smartFolders={smartFolders.length > 0 ? (
         <AdminSmartFolderNav
-          activeFolderId={"active_smart_folder_id" in payload ? payload.active_smart_folder_id : null}
+          activeFolderId={activeFolderId}
           allLabel="All queue"
           allPath={`${basePath}/${tab}`}
           appliedFilter={isFilteredQueuePayload(payload) ? payload.filter : null}
