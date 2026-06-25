@@ -73,6 +73,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
         add_epic_dependency
         remove_epic_dependency
         read_job
+        get_job_diff
         update_job
         list_job_workflows
         read_workflow
@@ -81,6 +82,11 @@ RSpec.describe SyrusChatMcp::Sidecar do
         read_chat_messages
         list_jobs
         search_jobs
+        get_spending
+        list_tags
+        create_tag
+        add_job_tag
+        remove_job_tag
         approve_job
         unapprove_job
         set_job_priority
@@ -89,7 +95,11 @@ RSpec.describe SyrusChatMcp::Sidecar do
         cancel_job
         retry_job
         rebase_job
+        reopen_job
+        poll_job_feedback
+        check_job_mergeability
         submit_chat_feedback
+        delegate_issue
         read_pr
         write_memory
         read_memory
@@ -101,6 +111,8 @@ RSpec.describe SyrusChatMcp::Sidecar do
         repo_info
         list_repo_documents
         read_repo_document
+        create_repo_document
+        delete_repo_document
         read_scene
         draw_shape
         draw_text
@@ -122,6 +134,9 @@ RSpec.describe SyrusChatMcp::Sidecar do
         pause_scheduled_task
         resume_scheduled_task
         delete_scheduled_task
+        fire_scheduled_task_now
+        pause_landing_queue
+        resume_landing_queue
         read_queue
       ])
     end
