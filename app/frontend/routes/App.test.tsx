@@ -2289,7 +2289,7 @@ describe("App", () => {
         "/api/v1/app/dashboard/preferences",
         expect.objectContaining({
           method: "PATCH",
-          body: JSON.stringify({ subject: "job", view: "kanban" })
+          body: JSON.stringify({ subject: "job", active_smart_folder_id: null, view: "kanban" })
         })
       )
     })
@@ -2699,6 +2699,7 @@ describe("App", () => {
           }),
           body: JSON.stringify({
             subject: "job",
+            active_smart_folder_id: null,
             sort_column: "title",
             sort_direction: "asc"
           })
@@ -3760,6 +3761,7 @@ describe("App", () => {
             method: "PATCH",
             body: JSON.stringify({
               subject: "job",
+              active_smart_folder_id: 3,
               sort_column: "created_at",
               sort_direction: "desc"
             })
