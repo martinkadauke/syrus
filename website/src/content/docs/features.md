@@ -83,7 +83,9 @@ pinned context for future turns, and create proposal cards for the operator
 to confirm. New chats use a short interpreted title from the first prompt,
 with the repository name as the fallback. The app sidebar groups recent chats
 by repository, and each repository group can be collapsed when the operator
-wants to hide those chats.
+wants to hide those chats. In the V2 layout, the sidebar search field opens a
+dedicated chat search page where operators can search chat text or filter
+sessions by repository, Epic, or Job.
 The chat composer accepts image and PDF attachments through the plus button
 and sends them with the next message.
 
