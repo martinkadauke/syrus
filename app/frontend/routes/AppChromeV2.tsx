@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
-import { createChat, fetchChats, type ChatNavRecord, type ChatPayload } from "../api/chats"
+import { createChat, fetchChats, fetchMoreChatsForGroup, hideChat, type ChatGroupRecord, type ChatNavRecord, type ChatPayload, type ChatsIndexPayload } from "../api/chats"
 import { patchJson } from "../api/client"
 import { dashboardApiSearch, fetchDashboard, type DashboardPayload, type DashboardSubject } from "../api/dashboard"
 import { BugReportButton } from "../components/BugReportButton"
@@ -454,13 +454,19 @@ function SidebarDashboardSubjects({ onCloseDrawer, payload, prefix }: { onCloseD
 type ChatSection = {
   key: string
   label: string
+  repository_id: number | null
   chats: ChatNavRecord[]
+  has_more: boolean
 }
 
 function RecentChatsSidebar({ onCloseDrawer, prefix, userPresent }: { onCloseDrawer: () => void; prefix: string; userPresent: boolean }) {
   const location = useLocation()
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(() => new Set())
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(() => new Set())
+  const [loadedSections, setLoadedSections] = useState<Record<string, { chats: ChatNavRecord[]; has_more: boolean }>>({})
+  const [loadingSections, setLoadingSections] = useState<Set<string>>(() => new Set())
+  const [hidingChatIds, setHidingChatIds] = useState<Set<number>>(() => new Set())
   const activeChatId = activeChatIdFromPath(location.pathname)
   const chats = useQuery({
     queryKey: ["chats", "recent"],
@@ -468,16 +474,12 @@ function RecentChatsSidebar({ onCloseDrawer, prefix, userPresent }: { onCloseDra
     enabled: userPresent,
     staleTime: 30_000
   })
-  const sections = useMemo(() => groupedRecentChats(chats.data?.chats || []), [chats.data?.chats])
+  const sections = useMemo(() => chatSectionsFromPayload(chats.data?.groups || [], loadedSections), [chats.data?.groups, loadedSections])
 
-  function toggleSection(key: string) {
-    setExpandedSections((current) => {
-      const next = new Set(current)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
+  function showLess(key: string) {
+    setLoadedSections((current) => {
+      const next = { ...current }
+      delete next[key]
       return next
     })
   }
@@ -494,16 +496,86 @@ function RecentChatsSidebar({ onCloseDrawer, prefix, userPresent }: { onCloseDra
     })
   }
 
+  function showMore(section: ChatSection) {
+    const beforeChat = section.chats[section.chats.length - 1]
+    if (!beforeChat || loadingSections.has(section.key)) return
+
+    setLoadingSections((current) => new Set(current).add(section.key))
+    void fetchMoreChatsForGroup(section.repository_id, beforeChat.id).then((payload) => {
+      setLoadedSections((current) => {
+        const existing = current[section.key]
+        const existingIds = new Set(existing?.chats.map((chat) => chat.id) || [])
+        const nextChats = payload.chats.filter((chat) => !existingIds.has(chat.id))
+
+        return {
+          ...current,
+          [section.key]: {
+            chats: [...(existing?.chats || []), ...nextChats],
+            has_more: payload.has_more
+          }
+        }
+      })
+    }).finally(() => {
+      setLoadingSections((current) => {
+        const next = new Set(current)
+        next.delete(section.key)
+        return next
+      })
+    })
+  }
+
+  function hideRecentChat(chat: ChatNavRecord) {
+    if (hidingChatIds.has(chat.id)) return
+
+    setHidingChatIds((current) => new Set(current).add(chat.id))
+    removeChatFromRecentLists(chat.id)
+    void hideChat(chat.id).then(() => {
+      void queryClient.invalidateQueries({ queryKey: ["chats", "recent"] })
+      void queryClient.invalidateQueries({ queryKey: ["hidden-chats"] })
+      if (chat.id === activeChatId) navigate(`${prefix}/chats/new`)
+    }).catch(() => {
+      void queryClient.invalidateQueries({ queryKey: ["chats", "recent"] })
+    }).finally(() => {
+      setHidingChatIds((current) => {
+        const next = new Set(current)
+        next.delete(chat.id)
+        return next
+      })
+    })
+  }
+
+  function removeChatFromRecentLists(chatId: number) {
+    queryClient.setQueryData<ChatsIndexPayload>(["chats", "recent"], (current) => {
+      if (!current) return current
+
+      return {
+        ...current,
+        groups: current.groups
+          .map((group) => ({ ...group, chats: group.chats.filter((chat) => chat.id !== chatId) }))
+          .filter((group) => group.chats.length > 0)
+      }
+    })
+    setLoadedSections((current) => {
+      const next: Record<string, { chats: ChatNavRecord[]; has_more: boolean }> = {}
+      Object.entries(current).forEach(([key, value]) => {
+        next[key] = { ...value, chats: value.chats.filter((chat) => chat.id !== chatId) }
+      })
+      return next
+    })
+  }
+
   if (!userPresent) return null
 
   return (
     <div className="px-3 pb-4">
       <nav aria-label="Recent chats" className="space-y-4">
         {sections.map((section) => {
-          const expanded = expandedSections.has(section.key)
           const collapsed = collapsedSections.has(section.key)
-          const visibleChats = collapsed ? [] : expanded ? section.chats : section.chats.slice(0, 5)
-          const hiddenCount = collapsed ? 0 : section.chats.length - visibleChats.length
+          const loaded = loadedSections[section.key]
+          const loading = loadingSections.has(section.key)
+          const visibleChats = collapsed ? [] : section.chats
+          const canShowMore = !collapsed && section.has_more
+          const canShowLess = !collapsed && Boolean(loaded)
 
           return (
             <section className="space-y-1" key={section.key}>
@@ -523,28 +595,48 @@ function RecentChatsSidebar({ onCloseDrawer, prefix, userPresent }: { onCloseDra
                   const active = chat.current || chat.id === activeChatId
                   const unread = chat.unread && !active
                   return (
-                    <div className="relative flex min-w-0 items-center" key={chat.id}>
+                    <div className="group relative flex min-w-0 items-center" key={chat.id}>
                       <Link
-                        className={`${recentChatLinkClass(active)} ${active ? "pr-9" : ""}`}
+                        className={`${recentChatLinkClass(active)} pr-9`}
                         onClick={onCloseDrawer}
                         to={withRoutePrefix(chat.chat_path, prefix)}
                       >
                         <span className={`mt-1 h-2 w-2 shrink-0 rounded-full ${unread ? "bg-blue-600 dark:bg-blue-400" : "bg-transparent"}`} />
                         <span className={`min-w-0 flex-1 truncate ${unread ? "font-semibold" : "font-medium"}`}>{sidebarChatTitle(chat)}</span>
                       </Link>
-                      {active ? <ActiveChatBookmarksMenu chatId={activeChatId} search={location.search} /> : null}
+                      <RecentChatActionsMenu
+                        chat={chat}
+                        disabled={hidingChatIds.has(chat.id)}
+                        onHide={() => hideRecentChat(chat)}
+                        search={location.search}
+                        showBookmarks={active}
+                      />
                     </div>
                   )
                 })}
               </div>
-              {hiddenCount > 0 ? (
-                <button
-                  className="ml-6 rounded px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-blue-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-blue-300"
-                  onClick={() => toggleSection(section.key)}
-                  type="button"
-                >
-                  Show more
-                </button>
+              {canShowMore || canShowLess ? (
+                <div className="ml-6 flex flex-wrap gap-1">
+                  {canShowMore ? (
+                    <button
+                      className="rounded px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-gray-300 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-blue-300"
+                      disabled={loading}
+                      onClick={() => showMore(section)}
+                      type="button"
+                    >
+                      {loading ? "Loading..." : "Show more"}
+                    </button>
+                  ) : null}
+                  {canShowLess ? (
+                    <button
+                      className="rounded px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-blue-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-blue-300"
+                      onClick={() => showLess(section.key)}
+                      type="button"
+                    >
+                      Show less
+                    </button>
+                  ) : null}
+                </div>
               ) : null}
             </section>
           )
@@ -554,12 +646,18 @@ function RecentChatsSidebar({ onCloseDrawer, prefix, userPresent }: { onCloseDra
   )
 }
 
-function ActiveChatBookmarksMenu({ chatId, search }: { chatId: number | null; search: string }) {
+function RecentChatActionsMenu({ chat, disabled, onHide, search, showBookmarks }: {
+  chat: ChatNavRecord
+  disabled: boolean
+  onHide: () => void
+  search: string
+  showBookmarks: boolean
+}) {
   const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const menuRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
-  const chatData = open && chatId
-    ? queryClient.getQueryData<ChatPayload>(chatQueryKey(String(chatId), search))
+  const chatData = open && showBookmarks
+    ? queryClient.getQueryData<ChatPayload>(chatQueryKey(String(chat.id), search))
     : undefined
   const bookmarks = chatData?.bookmarks ?? []
 
@@ -567,8 +665,8 @@ function ActiveChatBookmarksMenu({ chatId, search }: { chatId: number | null; se
     <div className="absolute right-1 top-1/2 -translate-y-1/2" ref={menuRef}>
       <button
         aria-expanded={open}
-        aria-label="Chat bookmarks"
-        className="inline-flex h-7 w-7 items-center justify-center rounded text-gray-500 hover:bg-blue-100 hover:text-blue-700 dark:text-gray-400 dark:hover:bg-blue-900 dark:hover:text-blue-200"
+        aria-label={`Chat actions for ${sidebarChatTitle(chat)}`}
+        className="inline-flex h-7 w-7 items-center justify-center rounded text-gray-500 opacity-0 hover:bg-blue-100 hover:text-blue-700 focus:opacity-100 dark:text-gray-400 dark:hover:bg-blue-900 dark:hover:text-blue-200 group-hover:opacity-100"
         onClick={() => setOpen((value) => !value)}
         type="button"
       >
@@ -576,22 +674,40 @@ function ActiveChatBookmarksMenu({ chatId, search }: { chatId: number | null; se
       </button>
       {open ? (
         <div className="absolute bottom-full right-0 z-20 mb-1 w-48 rounded border border-gray-200 bg-white py-1 text-xs shadow-lg dark:border-gray-700 dark:bg-gray-950">
-          {bookmarks.length > 0 ? bookmarks.map((bookmark) => {
-            const anchorMessageId = bookmark.anchor_message_id ?? bookmark.chat_message_id
+          {bookmarks.length > 0 ? (
+            <>
+              <div className="px-3 py-2 font-semibold text-gray-700 dark:text-gray-200">Bookmarks</div>
+              {bookmarks.map((bookmark) => {
+                const anchorMessageId = bookmark.anchor_message_id ?? bookmark.chat_message_id
 
-            return (
-              <a
-                className="block truncate px-3 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-700 dark:text-gray-300 dark:hover:bg-blue-950 dark:hover:text-blue-200"
-                href={`#message-${anchorMessageId}`}
-                key={bookmark.id}
-                onClick={() => setOpen(false)}
-              >
-                {bookmark.label}
-              </a>
-            )
-          }) : (
+                return (
+                  <a
+                    className="block truncate px-3 py-2 text-gray-700 hover:bg-blue-50 hover:text-blue-700 dark:text-gray-300 dark:hover:bg-blue-950 dark:hover:text-blue-200"
+                    href={`#message-${anchorMessageId}`}
+                    key={bookmark.id}
+                    onClick={() => setOpen(false)}
+                  >
+                    {bookmark.label}
+                  </a>
+                )
+              })}
+            </>
+          ) : (
             <div className="px-3 py-2 text-gray-400 dark:text-gray-500">No bookmarks yet</div>
           )}
+          <div className="my-1 border-t border-gray-200 dark:border-gray-700" />
+          <button
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:text-red-300 dark:hover:bg-red-950/40"
+            disabled={disabled}
+            onClick={() => {
+              setOpen(false)
+              onHide()
+            }}
+            type="button"
+          >
+            <HideIcon />
+            <span>Hide Chat</span>
+          </button>
         </div>
       ) : null}
     </div>
@@ -764,42 +880,21 @@ function titleize(value: string) {
   return value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
-function groupedRecentChats(chats: ChatNavRecord[]) {
-  const topChats = [...chats]
-    .sort(compareChatsByRecentActivity)
-    .slice(0, 20)
-
-  const generalChats = topChats.filter((chat) => !chat.repository)
-  const repositoryGroups = new Map<number, { label: string; chats: ChatNavRecord[] }>()
-
-  topChats.forEach((chat) => {
-    if (!chat.repository) return
-
-    const group = repositoryGroups.get(chat.repository.id) || { label: chat.repository.slug, chats: [] }
-    group.chats.push(chat)
-    repositoryGroups.set(chat.repository.id, group)
-  })
-
-  const sections: ChatSection[] = []
-  if (generalChats.length > 0) {
-    sections.push({ key: "general", label: "General", chats: generalChats.sort(compareChatsByLastMessage) })
-  }
-
-  Array.from(repositoryGroups.entries())
-    .map(([id, group]) => ({
-      key: `repository-${id}`,
+function chatSectionsFromPayload(groups: ChatGroupRecord[], loadedSections: Record<string, { chats: ChatNavRecord[]; has_more: boolean }>) {
+  return groups.map((group) => {
+    const loaded = loadedSections[group.key]
+    const chats = [...group.chats, ...(loaded?.chats || [])].sort(compareChatsByLastMessage)
+    return {
+      key: group.key,
       label: group.label,
-      chats: group.chats.sort(compareChatsByLastMessage),
-      activeAt: Math.max(...group.chats.map(chatActivityTime))
-    }))
+      repository_id: group.repository_id,
+      chats,
+      has_more: loaded?.has_more ?? group.has_more,
+      activeAt: Math.max(...chats.map(chatActivityTime))
+    }
+  })
     .sort((left, right) => right.activeAt - left.activeAt)
-    .forEach((group) => sections.push({ key: group.key, label: group.label, chats: group.chats }))
-
-  return sections
-}
-
-function compareChatsByRecentActivity(left: ChatNavRecord, right: ChatNavRecord) {
-  return chatActivityTime(right) - chatActivityTime(left)
+    .map(({ activeAt: _activeAt, ...group }) => group)
 }
 
 function compareChatsByLastMessage(left: ChatNavRecord, right: ChatNavRecord) {
@@ -955,6 +1050,14 @@ function SunIcon() {
   return (
     <svg aria-hidden="true" className="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24">
       <path d="M12 4.75V3m0 18v-1.75M4.75 12H3m18 0h-1.75M6.87 6.87 5.64 5.64m12.72 12.72-1.23-1.23m0-10.26 1.23-1.23M5.64 18.36l1.23-1.23M15.25 12a3.25 3.25 0 1 1-6.5 0 3.25 3.25 0 0 1 6.5 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.9" />
+    </svg>
+  )
+}
+
+function HideIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" fill="none" viewBox="0 0 24 24">
+      <path d="M4.75 7.75h14.5M9.75 7.75V5.5h4.5v2.25m-7.5 0 .75 11h9l.75-11M10.5 11v4.5m3-4.5v4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
     </svg>
   )
 }

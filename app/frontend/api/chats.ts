@@ -27,6 +27,11 @@ export type ChatNavRecord = ChatRecord & {
   updated_at?: string
 }
 
+export type HiddenChatRecord = ChatNavRecord & {
+  hidden_at: string | null
+  app_unhide_path: string
+}
+
 export type ChatSystemMessage = {
   tone: "success" | "warning" | "error" | "neutral"
   label: string
@@ -240,9 +245,30 @@ export type ChatCreatedPayload = {
   chat: ChatRecord
 }
 
-export type ChatsIndexPayload = {
+export type ChatGroupRecord = {
+  key: string
+  label: string
+  repository_id: number | null
   chats: ChatNavRecord[]
+  has_more: boolean
+}
+
+export type ChatsIndexPayload = {
+  groups: ChatGroupRecord[]
   repositories: ChatRepository[]
+}
+
+export type MoreChatsPayload = {
+  chats: ChatNavRecord[]
+  has_more: boolean
+}
+
+export type HiddenChatsPayload = {
+  chats: HiddenChatRecord[]
+  total: number
+  page: number
+  per_page: number
+  total_pages: number
 }
 
 export type ChatPayload = {
@@ -329,8 +355,25 @@ export function markChatRead(id: string | number) {
   return patchJson<void>(`/api/v1/app/chats/${id}/mark_read`)
 }
 
+export function hideChat(id: string | number) {
+  return patchJson<{ message: string; chat: ChatNavRecord }>(`/api/v1/app/chats/${id}/hide`)
+}
+
+export function unhideChat(path: string) {
+  return patchJson<{ message: string; chat: ChatNavRecord }>(path)
+}
+
 export function fetchChats() {
   return getJson<ChatsIndexPayload>("/api/v1/app/chats")
+}
+
+export function fetchHiddenChats(page = 1) {
+  return getJson<HiddenChatsPayload>(`/api/v1/app/settings/hidden_chats?page=${encodeURIComponent(String(page))}`)
+}
+
+export function fetchMoreChatsForGroup(repositoryId: number | null, beforeChatId: number) {
+  const repositoryParam = repositoryId == null ? "general" : String(repositoryId)
+  return getJson<MoreChatsPayload>(`/api/v1/app/chats/more?repository_id=${encodeURIComponent(repositoryParam)}&before_id=${encodeURIComponent(String(beforeChatId))}`)
 }
 
 export function fetchChatSearch(search = "", options: { signal?: AbortSignal } = {}) {

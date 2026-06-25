@@ -119,8 +119,10 @@ Rails.application.routes.draw do
         patch "dashboard/epics/:id/auto_approval", to: "dashboard#epic_auto_approval", constraints: { id: /\d+/ }
         get "chats/new", to: "chats#new"
         get "chats", to: "chats#index"
+        get "chats/more", to: "chats#more"
         get "chats/search", to: "chats#search"
         get "chats/search/messages", to: "chats#search_messages"
+        get "settings/hidden_chats", to: "chats#hidden"
         post "chats", to: "chats#create"
         post "chats/onboarding", to: "chats#onboarding"
         get "chats/:id", to: "chats#show", constraints: { id: /\d+/ }
@@ -128,6 +130,8 @@ Rails.application.routes.draw do
         get "chats/:id/whiteboard", to: "chat_whiteboards#show", constraints: { id: /\d+/ }
         patch "chats/:id/whiteboard", to: "chat_whiteboards#update", constraints: { id: /\d+/ }
         patch "chats/:id/mark_read", to: "chats#mark_read", constraints: { id: /\d+/ }
+        patch "chats/:id/hide", to: "chats#hide", constraints: { id: /\d+/ }
+        patch "chats/:id/unhide", to: "chats#unhide", constraints: { id: /\d+/ }
         post "chats/:id/rename", to: "chats#rename", constraints: { id: /\d+/ }
         patch "chats/:id/rename", to: "chats#rename", constraints: { id: /\d+/ }
         delete "chats/:id/messages", to: "chats#clear_messages", constraints: { id: /\d+/ }
@@ -368,6 +372,7 @@ Rails.application.routes.draw do
   # per-user credentials page. App-wide settings live at `/settings/edit`
   # and remain admin-only.
   get "settings", to: "spa#show"
+  get "settings/hidden_chats", to: "spa#show"
   get "settings/edit", to: "spa#show", as: :edit_settings
   get "profile", to: "spa#show", as: :account_profile
   get "settings/agent", to: "spa#show", as: :agent_settings

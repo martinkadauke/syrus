@@ -3,6 +3,8 @@ module Api
     module App
       class ChatsController < BaseController
         PAGE_SIZE = ChatSession::MESSAGE_PAGE_SIZE
+        CHAT_INDEX_GROUP_SIZE = 5
+        HIDDEN_CHATS_PAGE_SIZE = 20
         SEARCH_PAGE_SIZE = 20
         SEARCH_TOP_MATCHES = 3
         CHAT_TURN_ENQUEUE_RETRY_DELAYS = [ 0.05, 0.2 ].freeze
@@ -19,8 +21,32 @@ module Api
 
         def index
           render json: {
-            chats: recent_chats_index_json,
+            groups: recent_chats_index_json,
             repositories: Current.user.repositories.active.order(:owner, :name).map { |repository| repository_json(repository) }
+          }
+        end
+
+        def more
+          before_id = Integer(params[:before_id], exception: false)
+          if before_id.blank? || before_id <= 0
+            render_error("validation_failed", "before_id is required.", status: :unprocessable_content)
+            return
+          end
+
+          repository_id = chat_index_repository_id
+          return if performed?
+
+          scope = chat_index_group_scope(repository_id)
+          cursor = scope.find_by(id: before_id)
+          unless cursor
+            render_error("not_found", "Chat cursor was not found.", status: :not_found)
+            return
+          end
+
+          chats, has_more = paginated_chat_index_group(scope, before_chat: cursor)
+          render json: {
+            chats: chats.map { |chat_session| chat_index_json(chat_session) },
+            has_more: has_more
           }
         end
 
@@ -53,9 +79,28 @@ module Api
             return
           end
 
-          chat_session = Current.user.chat_sessions.find(params[:chat_session_id])
+          chat_session = Current.user.chat_sessions.visible.find(params[:chat_session_id])
           render json: {
             matches: chat_search_rows(query, chat_session_id: chat_session.id).map { |row| chat_search_match_json(row) }
+          }
+        end
+
+        def hidden
+          page = [ Integer(params[:page], exception: false).to_i, 1 ].max
+          scope = Current.user.chat_sessions.hidden
+          total = scope.count
+          chats = scope
+            .preload(repository_attachments: :attachable)
+            .order(hidden_at: :desc, id: :desc)
+            .offset((page - 1) * HIDDEN_CHATS_PAGE_SIZE)
+            .limit(HIDDEN_CHATS_PAGE_SIZE)
+
+          render json: {
+            chats: chats.map { |chat_session| hidden_chat_json(chat_session) },
+            total: total,
+            page: page,
+            per_page: HIDDEN_CHATS_PAGE_SIZE,
+            total_pages: (total.to_f / HIDDEN_CHATS_PAGE_SIZE).ceil
           }
         end
 
@@ -204,6 +249,20 @@ module Api
           find_chat_session.update!(last_read_at: Time.current)
 
           head :no_content
+        end
+
+        def hide
+          chat_session = find_chat_session
+          chat_session.update!(hidden_at: Time.current)
+
+          render json: { message: "Chat hidden.", chat: chat_index_json(chat_session.reload) }
+        end
+
+        def unhide
+          chat_session = find_chat_session
+          chat_session.update!(hidden_at: nil)
+
+          render json: { message: "Chat restored.", chat: chat_index_json(chat_session.reload) }
         end
 
         def enqueue_message
@@ -442,7 +501,7 @@ module Api
         end
 
         def filtered_chat_search_scope
-          scope = ChatSession.where(user_id: Current.user.id)
+          scope = ChatSession.where(user_id: Current.user.id).visible
           scope = apply_chat_attachment_filter(scope, "Repository", :repository_id)
           return scope if performed?
 
@@ -624,13 +683,15 @@ module Api
 
         def recent_chats_json(current_chat_session)
           chat_ids = Current.user.chat_sessions
+            .visible
             .order(Arel.sql("#{chat_activity_order_sql} DESC"), id: :desc)
             .limit(20)
             .pluck(:id)
 
-          chat_ids = chat_ids.first(19) + [ current_chat_session.id ] unless chat_ids.include?(current_chat_session.id)
+          chat_ids = chat_ids.first(19) + [ current_chat_session.id ] if current_chat_session.hidden_at.blank? && !chat_ids.include?(current_chat_session.id)
 
           Current.user.chat_sessions
+            .visible
             .where(id: chat_ids)
             .preload(repository_attachments: :attachable)
             .to_a
@@ -648,18 +709,107 @@ module Api
         end
 
         def recent_chats_index_json
-          Current.user.chat_sessions
-            .preload(repository_attachments: :attachable)
-            .order(Arel.sql("#{chat_activity_order_sql} DESC"), id: :desc)
-            .limit(20)
-            .map do |chat_session|
-            chat_json(chat_session).merge(
-              last_message_at: chat_session.last_message_at&.iso8601,
-              unread: chat_unread?(chat_session),
-              created_at: chat_session.created_at.iso8601,
-              updated_at: chat_session.updated_at.iso8601
+          groups = []
+          general_chats, general_has_more = paginated_chat_index_group(chat_index_group_scope(nil))
+          if general_chats.any?
+            groups << chat_index_group_json(
+              key: "general",
+              label: "General",
+              repository_id: nil,
+              chats: general_chats,
+              has_more: general_has_more
             )
           end
+
+          chat_index_repositories.each do |repository|
+            chats, has_more = paginated_chat_index_group(chat_index_group_scope(repository.id))
+            next if chats.blank?
+
+            groups << chat_index_group_json(
+              key: "repository-#{repository.id}",
+              label: repository.slug,
+              repository_id: repository.id,
+              chats: chats,
+              has_more: has_more
+            )
+          end
+
+          groups.sort_by { |group| group.delete(:active_at) || Time.at(0) }.reverse
+        end
+
+        def chat_index_group_json(key:, label:, repository_id:, chats:, has_more:)
+          {
+            key: key,
+            label: label,
+            repository_id: repository_id,
+            chats: chats.map { |chat_session| chat_index_json(chat_session) },
+            has_more: has_more,
+            active_at: chats.map { |chat_session| chat_activity_timestamp(chat_session) }.max
+          }
+        end
+
+        def chat_index_json(chat_session)
+          chat_json(chat_session).merge(
+            last_message_at: chat_session.last_message_at&.iso8601,
+            unread: chat_unread?(chat_session),
+            created_at: chat_session.created_at.iso8601,
+            updated_at: chat_session.updated_at.iso8601
+          )
+        end
+
+        def paginated_chat_index_group(scope, before_chat: nil)
+          scope = chat_index_before(scope, before_chat) if before_chat
+          fetched = scope.preload(repository_attachments: :attachable).limit(CHAT_INDEX_GROUP_SIZE + 1).to_a
+          [ fetched.first(CHAT_INDEX_GROUP_SIZE), fetched.size > CHAT_INDEX_GROUP_SIZE ]
+        end
+
+        def chat_index_before(scope, before_chat)
+          timestamp = chat_activity_timestamp(before_chat)
+          scope.where(
+            "(#{chat_activity_order_sql}) < ? OR ((#{chat_activity_order_sql}) = ? AND chat_sessions.id < ?)",
+            timestamp,
+            timestamp,
+            before_chat.id
+          )
+        end
+
+        def chat_index_group_scope(repository_id)
+          scope = Current.user.chat_sessions
+            .visible
+            .left_outer_joins(:repository_attachments)
+            .order(Arel.sql("#{chat_activity_order_sql} DESC, chat_sessions.id DESC"))
+
+          if repository_id.present?
+            scope.where(chat_attachments: { attachable_type: "Repository", attachable_id: repository_id })
+          else
+            scope.where(chat_attachments: { id: nil })
+          end
+        end
+
+        def chat_index_repositories
+          repository_ids = Current.user.chat_sessions
+            .visible
+            .joins(:repository_attachments)
+            .where(chat_attachments: { attachable_type: "Repository" })
+            .distinct
+            .pluck("chat_attachments.attachable_id")
+
+          Current.user.repositories.where(id: repository_ids).order(:owner, :name)
+        end
+
+        def chat_index_repository_id
+          repository_id = params[:repository_id].to_s
+          return nil if repository_id == "general"
+
+          parsed = Integer(repository_id, exception: false)
+          return parsed if parsed
+
+          render_error("validation_failed", "repository_id is required.", status: :unprocessable_content)
+          nil
+        end
+
+        def chat_activity_timestamp(chat_session)
+          chat_activity_at(chat_session)
         end
 
         def chat_activity_order_sql
@@ -681,6 +831,13 @@ module Api
             chat_session.updated_at,
             chat_session.created_at
           ].compact.max
+        end
+
+        def hidden_chat_json(chat_session)
+          chat_index_json(chat_session).merge(
+            hidden_at: chat_session.hidden_at&.iso8601,
+            app_unhide_path: "/api/v1/app/chats/#{chat_session.id}/unhide"
+          )
         end
 
         def chat_unread?(chat_session)

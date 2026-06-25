@@ -707,7 +707,7 @@ describe("App", () => {
         return Promise.resolve(new Response(JSON.stringify({ layout_version: "v1" }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
-      return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
     try {
@@ -831,7 +831,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path.startsWith("/api/v1/app/filters/fk_options")) {
         return Promise.resolve(new Response(JSON.stringify({ options: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -882,7 +882,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path.includes("field=repository_id")) {
         return Promise.resolve(new Response(JSON.stringify({ options: [{ value: "3", label: "acme/widgets" }] }), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -932,7 +932,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path.startsWith("/api/v1/app/filters/fk_options")) {
         return Promise.resolve(new Response(JSON.stringify({ options: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -1001,7 +1001,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
       return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -1064,7 +1064,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
       return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -1124,7 +1124,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/admin/console") {
         return Promise.resolve(new Response(
@@ -1195,8 +1195,11 @@ describe("App", () => {
       if (path === "/api/v1/app/notification_preferences") {
         return Promise.resolve(new Response(JSON.stringify(notificationPreferencesPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
+      if (path === "/api/v1/app/credentials") {
+        return Promise.resolve(new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
 
-      return Promise.resolve(new Response(JSON.stringify(credentialsPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
     try {
@@ -1218,10 +1221,74 @@ describe("App", () => {
       expect(within(settingsNav).getByRole("link", { name: "Credentials" })).toHaveAttribute("href", "/app-shell/credentials")
       expect(within(settingsNav).getByRole("link", { name: "Agent Settings" })).toHaveAttribute("href", "/app-shell/settings/agent")
       expect(within(settingsNav).getByRole("link", { name: "Preferences" })).toHaveAttribute("href", "/app-shell/settings/preferences")
+      expect(within(settingsNav).getByRole("link", { name: "Hidden chats" })).toHaveAttribute("href", "/app-shell/settings/hidden_chats")
       expect(within(settingsNav).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/documents")
       expect(within(settingsNav).getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
       expect(within(settingsNav).getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
       expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/credentials", expect.objectContaining({ credentials: "same-origin" }))
+      expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/settings/hidden_chats?page=1", expect.anything())
+    } finally {
+      fetchSpy.mockRestore()
+      script.remove()
+    }
+  })
+
+  it("restores hidden chats from v2 settings", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      current_user: {
+        ...bootstrapPayload().current_user,
+        layout_version: "v2"
+      }
+    }))
+    document.body.appendChild(script)
+    let hiddenChats = [
+      {
+        ...sidebarChat({
+          id: 42,
+          title: "Archived planning",
+          repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
+          last_message_at: "2026-06-18T12:00:00Z"
+        }),
+        hidden_at: "2026-06-20T12:00:00Z",
+        app_unhide_path: "/api/v1/app/chats/42/unhide"
+      }
+    ]
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/settings/hidden_chats?page=1") {
+        return Promise.resolve(new Response(JSON.stringify({ chats: hiddenChats, total: hiddenChats.length, page: 1, per_page: 20, total_pages: hiddenChats.length > 0 ? 1 : 0 }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/42/unhide" && init?.method === "PATCH") {
+        hiddenChats = []
+        return Promise.resolve(new Response(JSON.stringify({ message: "Chat restored.", chat: sidebarChat({ id: 42, title: "Archived planning", repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" }, last_message_at: "2026-06-18T12:00:00Z" }) }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/settings/hidden_chats"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Hidden chats" })).toBeInTheDocument()
+      const settingsNav = screen.getByRole("navigation", { name: "Settings navigation" })
+      expect(within(settingsNav).getByRole("link", { name: "Hidden chats" })).toHaveClass("bg-blue-50", "text-blue-700")
+      expect(await screen.findByText("Archived planning")).toBeInTheDocument()
+      expect(screen.getByText("acme/widgets")).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "Unhide" }))
+
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/42/unhide", expect.objectContaining({ method: "PATCH" })))
+      expect(await screen.findByText("Chat restored.")).toBeInTheDocument()
+      expect(await screen.findByText("No hidden chats.")).toBeInTheDocument()
     } finally {
       fetchSpy.mockRestore()
       script.remove()
@@ -1250,10 +1317,18 @@ describe("App", () => {
       sidebarChat({ id: 15, title: "Widgets hidden", repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" }, last_message_at: "2026-06-13T12:00:00Z" }),
       sidebarChat({ id: 20, title: "Roads latest", repository: { id: 4, slug: "acme/roads", repository_path: "/repositories/4" }, last_message_at: "2026-06-21T12:00:00Z" })
     ]
+    const recentGroups = [
+      { key: "general", label: "General", repository_id: null, chats: recentChats.slice(0, 2), has_more: false },
+      { key: "repository-4", label: "acme/roads", repository_id: 4, chats: [recentChats[8]], has_more: false },
+      { key: "repository-3", label: "acme/widgets", repository_id: 3, chats: recentChats.slice(2, 7), has_more: true }
+    ]
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: recentChats, repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: recentGroups, repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/more?repository_id=3&before_id=14") {
+        return Promise.resolve(new Response(JSON.stringify({ chats: [recentChats[7]], has_more: false }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/chats/10") {
         return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -1284,12 +1359,13 @@ describe("App", () => {
       expect(recentNav.parentElement).not.toHaveClass("overflow-y-auto")
       expect(screen.getByRole("button", { name: "New Chat" }).parentElement).toHaveClass("sticky", "top-0")
       const headers = within(recentNav).getAllByRole("heading").map((heading) => heading.textContent)
-      expect(headers).toEqual(["General", "acme/roads", "acme/widgets"])
+      expect(headers).toEqual(["acme/roads", "General", "acme/widgets"])
       expect(within(recentNav).getByRole("link", { name: "New chat" })).toHaveAttribute("href", "/app-shell/chats/2")
       expect(within(recentNav).getByRole("link", { name: "New chat" })).toHaveClass("text-gray-700")
       expect(within(recentNav).getByText("New chat")).toHaveClass("font-semibold")
       expect(within(recentNav).getByRole("link", { name: "Widgets active" })).toHaveClass("bg-blue-50", "text-blue-700")
-      fireEvent.click(within(recentNav).getByRole("button", { name: "Chat bookmarks" }))
+      fireEvent.click(within(recentNav).getByRole("button", { name: "Chat actions for Widgets active" }))
+      expect(within(recentNav).getByText("Bookmarks")).toHaveClass("font-semibold")
       expect(within(recentNav).getByRole("link", { name: "Aqueducts" })).toHaveAttribute("href", "#message-9")
       fireEvent.click(within(recentNav).getByRole("link", { name: "Aqueducts" }))
       expect(within(recentNav).queryByRole("link", { name: "Aqueducts" })).not.toBeInTheDocument()
@@ -1298,7 +1374,7 @@ describe("App", () => {
 
       fireEvent.click(within(recentNav).getByRole("button", { name: "Show more" }))
 
-      expect(within(recentNav).getByRole("link", { name: "Widgets hidden" })).toBeInTheDocument()
+      expect(await within(recentNav).findByRole("link", { name: "Widgets hidden" })).toBeInTheDocument()
 
       fireEvent.click(within(recentNav).getByRole("button", { name: "acme/widgets" }))
 
@@ -1312,6 +1388,61 @@ describe("App", () => {
       expect(within(recentNav).getByRole("button", { name: "acme/widgets" })).toHaveAttribute("aria-expanded", "true")
       expect(within(recentNav).getByRole("link", { name: "Widgets active" })).toBeInTheDocument()
       expect(within(recentNav).getByRole("link", { name: "Widgets hidden" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      script.remove()
+    }
+  })
+
+  it("hides a chat from the v2 recent chats sidebar", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      current_user: {
+        ...bootstrapPayload().current_user,
+        layout_version: "v2"
+      }
+    }))
+    document.body.appendChild(script)
+    let recentChats = [
+      sidebarChat({ id: 10, title: "Widgets active", repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" }, last_message_at: "2026-06-18T12:00:00Z" }),
+      sidebarChat({ id: 11, title: "Widgets two", repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" }, last_message_at: "2026-06-17T12:00:00Z" })
+    ]
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ groups: sidebarGroups(recentChats), repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/10") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({ id: 10 })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/11/hide" && init?.method === "PATCH") {
+        recentChats = recentChats.filter((chat) => chat.id !== 11)
+        return Promise.resolve(new Response(JSON.stringify({ message: "Chat hidden.", chat: sidebarChat({ id: 11, title: "Widgets two", repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" }, last_message_at: "2026-06-17T12:00:00Z" }) }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/chats/10"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const recentNav = await screen.findByRole("navigation", { name: "Recent chats" })
+      expect(await within(recentNav).findByRole("link", { name: "Widgets two" })).toBeInTheDocument()
+
+      fireEvent.click(within(recentNav).getByRole("button", { name: "Chat actions for Widgets two" }))
+      expect(within(recentNav).getByText("No bookmarks yet")).toBeInTheDocument()
+      fireEvent.click(within(recentNav).getByRole("button", { name: "Hide Chat" }))
+
+      expect(within(recentNav).queryByRole("link", { name: "Widgets two" })).not.toBeInTheDocument()
+      await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/11/hide", expect.objectContaining({ method: "PATCH" })))
     } finally {
       fetchSpy.mockRestore()
       script.remove()
@@ -1341,7 +1472,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: recentChats, repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: sidebarGroups(recentChats), repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/chats/10") {
         return Promise.resolve(new Response(JSON.stringify(chatPayload({ id: 10 })), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -3168,7 +3299,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/dashboard/landing_pause" && init?.method === "POST") {
         return Promise.resolve(
@@ -3570,7 +3701,7 @@ describe("App", () => {
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=3&subject=job") {
         return Promise.resolve(
@@ -3695,7 +3826,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/smart_folders" && init?.method === "POST") {
         return Promise.resolve(
@@ -6269,6 +6400,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Display name")).toBeInTheDocument()
     expect(screen.queryByLabelText("GitHub personal access token")).not.toBeInTheDocument()
     expect(within(settingsNav).getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/app-shell/notifications/settings")
+    expect(within(settingsNav).getByRole("link", { name: "Hidden chats" })).toHaveAttribute("href", "/app-shell/settings/hidden_chats")
     expect(within(settingsNav).getByRole("link", { name: "Documents" })).toHaveAttribute("href", "/app-shell/documents")
     expect(within(settingsNav).getByRole("link", { name: "Templates" })).toHaveAttribute("href", "/app-shell/cron_templates")
     expect(within(settingsNav).getByRole("link", { name: "Tags" })).toHaveAttribute("href", "/app-shell/tags")
@@ -9748,7 +9880,7 @@ describe("App", () => {
           return Promise.resolve(new Response(JSON.stringify({ message: "Chat created.", redirect_to: "/chats/9", chat: newPayload.chat }), { status: 201, headers: { "Content-Type": "application/json" } }))
         }
 
-        return Promise.resolve(new Response(JSON.stringify({ chats: sidebarChats, repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: sidebarGroups(sidebarChats), repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/chats/8/rename" && init?.method === "PATCH") {
         sidebarChats = [{ ...initialChat, title: "Canal review" }]
@@ -11251,7 +11383,7 @@ describe("App", () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
-        return Promise.resolve(new Response(JSON.stringify({ chats: recentChats, repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify({ groups: sidebarGroups(recentChats), repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/chats/8/mark_read" && init?.method === "PATCH") {
         return Promise.resolve(new Response(null, { status: 204 }))
@@ -11284,7 +11416,8 @@ describe("App", () => {
       )
 
       expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
-      fireEvent.click(await screen.findByRole("button", { name: "Chat bookmarks" }))
+      fireEvent.click(await screen.findByRole("button", { name: "Chat actions for Aqueduct planning" }))
+      expect(screen.getByText("Bookmarks")).toHaveClass("font-semibold")
       const bookmark = await screen.findByRole("link", { name: "Earlier aqueduct note" })
       expect(bookmark).toHaveAttribute("href", "#message-5")
       fireEvent.click(bookmark)
@@ -12941,6 +13074,24 @@ function sidebarChat(overrides: {
     updated_at: overrides.last_message_at || "2026-06-01T00:00:00Z",
     unread: overrides.unread ?? false
   }
+}
+
+function sidebarGroups(chats: ReturnType<typeof sidebarChat>[], options: { hasMore?: Record<string, boolean> } = {}) {
+  const groups = new Map<string, { key: string; label: string; repository_id: number | null; chats: ReturnType<typeof sidebarChat>[]; has_more: boolean }>()
+  chats.forEach((chat) => {
+    const key = chat.repository ? `repository-${chat.repository.id}` : "general"
+    const group = groups.get(key) || {
+      key,
+      label: chat.repository?.slug || "General",
+      repository_id: chat.repository?.id ?? null,
+      chats: [],
+      has_more: Boolean(options.hasMore?.[key])
+    }
+    group.chats.push(chat)
+    groups.set(key, group)
+  })
+
+  return Array.from(groups.values())
 }
 
 function chatPayload(overrides: {
