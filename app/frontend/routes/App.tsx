@@ -5,6 +5,7 @@ import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../
 import { patchJson } from "../api/client"
 import { BugReportButton } from "../components/BugReportButton"
 import { NoticeToast } from "../components/NoticeToast"
+import { NotificationsBell, NotificationsRoute } from "../components/Notifications"
 import { SyrusBrand } from "../components/SyrusBrand"
 import { LayoutVersionProvider, useLayoutVersion } from "../lib/layoutVersion"
 import { useAppEvents } from "../lib/useAppEvents"
@@ -33,6 +34,7 @@ import { EpicDetailRoute } from "./EpicDetail"
 import { EpicFormRoute } from "./EpicForm"
 import { JobDetailRoute } from "./JobDetail"
 import { MemoriesRoute } from "./Memories"
+import { NotificationsSettingsRoute } from "./NotificationsSettings"
 import { OnboardingRoute } from "./Onboarding"
 import { PersonalDocumentsRoute } from "./PersonalDocuments"
 import { ProfileRoute } from "./Profile"
@@ -73,6 +75,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/dashboard/jobs", element: <DashboardRoute /> },
   { path: "/dashboard/workflows", element: <DashboardRoute /> },
   { path: "/insights/spending", element: <SpendingInsightsRoute /> },
+  { path: "/notifications", element: <NotificationsRoute /> },
   { path: "/setup", element: <SetupRedirect /> },
   { path: "/admin", element: <AdminOverview /> },
   { path: "/admin/queue", element: <AdminQueueRoute /> },
@@ -91,6 +94,7 @@ const appRouteDefinitions: AppRouteDefinition[] = [
   { path: "/settings/edit", element: <AdminSettings /> },
   { path: "/settings", element: <SettingsSectionRoute><CredentialsRoute /></SettingsSectionRoute> },
   { path: "/credentials/edit", element: <SettingsSectionRoute><CredentialsRoute /></SettingsSectionRoute> },
+  { path: "/notifications/settings", element: <SettingsSectionRoute><NotificationsSettingsRoute /></SettingsSectionRoute> },
   { path: "/profiles", element: <TeamDirectoryRoute /> },
   { path: "/profiles/:id", element: <TeamProfileRoute /> },
   { path: "/documents", element: <SettingsSectionRoute><PersonalDocumentsRoute /></SettingsSectionRoute> },
@@ -553,6 +557,7 @@ function AccountNavigation({ csrfToken, prefix, showTeamProfile, user }: { csrfT
   return (
     <nav aria-label="Account" className="flex items-center gap-2">
       {user.admin ? <Link className={accountLinkClass()} to={`${prefix}/admin`}>admin</Link> : null}
+      <NotificationsBell initialUnreadCount={user.notification_unread_count ?? 0} prefix={prefix} />
       <button
         aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-700 hover:bg-gray-100 hover:text-blue-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-blue-300"
@@ -770,6 +775,7 @@ function SettingsSectionRoute({ children }: { children: ReactNode }) {
 function settingsNavigationItems(): Array<{ label: string; path: string; active: (path: string) => boolean }> {
   return [
     { label: "My credentials", path: "/credentials/edit", active: (path) => path === "/settings" || path === "/credentials/edit" },
+    { label: "Notifications", path: "/notifications/settings", active: (path) => path === "/notifications/settings" },
     { label: "Documents", path: "/documents", active: (path) => path === "/documents" },
     { label: "Memories", path: "/memories", active: (path) => path === "/memories" },
     { label: "Templates", path: "/cron_templates", active: (path) => path.startsWith("/cron_templates") },
@@ -787,6 +793,7 @@ function showsAdminNavigation(pathname: string) {
 function showsSettingsNavigation(pathname: string) {
   return pathname === "/settings" ||
     pathname === "/credentials/edit" ||
+    pathname === "/notifications/settings" ||
     pathname === "/documents" ||
     pathname === "/memories" ||
     pathname === "/tags" ||

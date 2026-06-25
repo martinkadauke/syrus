@@ -149,6 +149,35 @@ curl -X PATCH https://syrus.example.com/api/v1/app/theme \
   -d '{ "theme": "dark" }'
 ```
 
+## Manage Notifications
+
+User-scoped clients can read and update the authenticated user's
+notifications through the app API. `GET /api/v1/app/notifications` returns
+newest-first paginated notifications and an `unread_count` envelope value.
+Pass `unread=true` to list only unread notifications.
+
+```bash
+curl https://syrus.example.com/api/v1/app/notifications?unread=true \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN"
+```
+
+`PATCH /api/v1/app/notifications/:id/mark_read` marks one notification read
+and returns the updated notification plus `unread_count`.
+`POST /api/v1/app/notifications/mark_all_read` marks every unread
+notification for the authenticated user read and returns the refreshed list.
+
+`GET /api/v1/app/notification_preferences` returns the authenticated user's
+merged notification category preferences. `PATCH
+/api/v1/app/notification_preferences` accepts a partial
+`notification_preferences` object and merges it into the saved preferences.
+
+```bash
+curl -X PATCH https://syrus.example.com/api/v1/app/notification_preferences \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "notification_preferences": { "epic_completed": true } }'
+```
+
 ## Manage Memories
 
 User-scoped clients can manage agent memories through the app API with any

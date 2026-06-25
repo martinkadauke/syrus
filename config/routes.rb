@@ -38,6 +38,11 @@ Rails.application.routes.draw do
         resources :profiles, only: %i[ index show ]
         resources :smart_folders, only: %i[ index create update destroy ]
         resources :cron_templates, only: %i[ index show create update destroy ]
+        get "notifications", to: "notifications#index"
+        post "notifications/mark_all_read", to: "notifications#mark_all_read"
+        patch "notifications/:id/mark_read", to: "notifications#mark_read", constraints: { id: /\d+/ }
+        get "notification_preferences", to: "notification_preferences#show"
+        patch "notification_preferences", to: "notification_preferences#update"
         resource :credentials, only: %i[ show update ] do
           post :clear_credential
           post :test_credential
@@ -321,6 +326,7 @@ Rails.application.routes.draw do
 
   get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks
   get "documents", to: "spa#show", as: :documents
+  get "notifications/settings", to: "spa#show", as: :notification_settings
   get "profiles", to: "spa#show", as: :profiles
   get "profiles/:id", to: "spa#show", as: :profile, constraints: { id: /\d+/ }
   get "scheduled_tasks/:id", to: "spa#show", as: :scheduled_task, constraints: { id: /\d+/ }

@@ -25,10 +25,7 @@ import {
 const queryKey = ["credentials"] as const
 
 export function CredentialsRoute() {
-  const credentials = useQuery({
-    queryKey,
-    queryFn: fetchCredentials
-  })
+  const [notice, setNotice] = useState<string | null>(null)
 
   return (
     <main aria-label="My credentials" className="mx-auto max-w-4xl space-y-6 p-6">
@@ -37,22 +34,38 @@ export function CredentialsRoute() {
         <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">Encrypted credentials and account settings for Syrus runs.</p>
       </header>
 
-      {credentials.isPending ? <PanelMessage>Loading credentials...</PanelMessage> : null}
-      {credentials.isError ? <CredentialsError error={credentials.error} /> : null}
-      {credentials.isSuccess ? <CredentialsView payload={credentials.data} /> : null}
+      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
+      <CredentialsAccountPanel onNotice={setNotice} />
     </main>
   )
 }
 
-function CredentialsView({ payload }: { payload: CredentialsPayload }) {
-  const location = useLocation()
-  const setupStatus = useSetupStatus()
-  const prefix = routePrefix(location.pathname)
-  const [notice, setNotice] = useState<string | null>(payload.message || null)
+function CredentialsAccountPanel({ onNotice }: { onNotice: (message: string | null) => void }) {
+  const credentials = useQuery({
+    queryKey,
+    queryFn: fetchCredentials
+  })
+
+  useEffect(() => {
+    if (credentials.data?.message) onNotice(credentials.data.message)
+  }, [credentials.data?.message, onNotice])
 
   return (
     <>
-      <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
+      {credentials.isPending ? <PanelMessage>Loading credentials...</PanelMessage> : null}
+      {credentials.isError ? <CredentialsError error={credentials.error} /> : null}
+      {credentials.isSuccess ? <CredentialsView onNotice={onNotice} payload={credentials.data} /> : null}
+    </>
+  )
+}
+
+function CredentialsView({ payload, onNotice }: { payload: CredentialsPayload; onNotice: (message: string | null) => void }) {
+  const location = useLocation()
+  const setupStatus = useSetupStatus()
+  const prefix = routePrefix(location.pathname)
+
+  return (
+    <>
       <GithubCredentialGuide />
       {setupStatus && !setupStatus.first_successful_job_completed ? (
         <OnboardingEmptyState
@@ -62,8 +75,8 @@ function CredentialsView({ payload }: { payload: CredentialsPayload }) {
           setupStatus={setupStatus}
         />
       ) : null}
-      <CredentialsForm onNotice={setNotice} payload={payload} />
-      {payload.user.admin ? <ApiTokenPanel onNotice={setNotice} payload={payload} /> : null}
+      <CredentialsForm onNotice={onNotice} payload={payload} />
+      {payload.user.admin ? <ApiTokenPanel onNotice={onNotice} payload={payload} /> : null}
     </>
   )
 }
