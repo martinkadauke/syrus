@@ -56,18 +56,25 @@ Syrus Desktop reads and writes the same credentials file. If you have
 already run `syrus login`, the desktop app starts authenticated. If the
 file is missing or incomplete, the desktop app prompts for the same URL
 and API token, validates them against `/api/v1/app/bootstrap`, and saves
-the file for both desktop and CLI use.
+the file for both desktop and CLI use. While signed in, the desktop main
+process keeps a live connection to the user's app events so native
+notifications, tray badge state, and renderer views can react without
+opening separate WebSocket connections. `notification_created` events show
+OS-level banners using the notification body from Syrus; clicking a banner
+opens the matching Job page or pull request in the browser.
 
-On macOS, Syrus Desktop runs as a menubar app without a Dock icon. Click
-the tray icon to open or hide the compact inbox popover. The popover
-shows implemented and failed Jobs, refreshes every 30 seconds, and lets
-you open the Job in Syrus or open its pull request in your browser when
-one exists. Implemented rows can also be approved for landing from the
-popover after a native confirmation prompt, and failed rows can be queued
-for retry directly from the row. Local checkout actions require the
-`syrus` CLI binary on `PATH`; when the app cannot find it, the
-popover shows an install banner and disables checkout buttons. Configure
-a local projects root in
+On macOS, Syrus Desktop runs as a menubar app without a Dock icon. The
+tray icon shows an unread notification badge when notifications are
+waiting. Click the tray icon to open or hide the compact inbox popover.
+The popover shows implemented and failed Jobs, refreshes every 30
+seconds, syncs the unread notification count, and lets you open the Job
+in Syrus or open its pull request in your browser when one exists.
+Implemented rows can also be approved for landing from the popover after
+a native confirmation prompt, and failed rows can be queued for retry
+directly from the row. Local checkout actions require the `syrus` CLI
+binary on `PATH`; when the app cannot find it, the popover shows an
+install banner and disables checkout buttons. Configure a local projects
+root in
 Preferences to derive `<root>/<repo-name>` paths, or add per-repository
 absolute path overrides for repositories that live elsewhere. Desktop
 delegates checkout to `syrus checkout JOB-<id>` from the resolved local

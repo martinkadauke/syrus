@@ -62,6 +62,7 @@ type SyrusBootstrapPayload = {
   current_user: {
     admin: boolean
   } | null
+  unread_notifications_count?: number
 }
 
 type SyrusAdminControls = {
@@ -103,5 +104,7 @@ interface Window {
     openTokenDocs: () => Promise<void>
     onDesktopSettingsUpdated: (callback: () => void) => () => void
     onCredentialsCleared: (callback: () => void) => () => void
+    onCredentialsSaved: (callback: (credentials: SyrusCredentials) => void) => () => void
+    onNotificationEvent: (callback: (event: unknown) => void) => () => void
   }
 }

@@ -62,6 +62,7 @@ type BootstrapPayload = {
   current_user: {
     admin: boolean
   } | null
+  unread_notifications_count?: number
 }
 
 type AdminControls = {
@@ -115,5 +116,15 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     const listener = () => callback()
     ipcRenderer.on("credentials-cleared", listener)
     return () => ipcRenderer.removeListener("credentials-cleared", listener)
+  },
+  onCredentialsSaved: (callback: (credentials: Credentials) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, credentials: Credentials) => callback(credentials)
+    ipcRenderer.on("credentials-saved", listener)
+    return () => ipcRenderer.removeListener("credentials-saved", listener)
+  },
+  onNotificationEvent: (callback: (event: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, notificationEvent: unknown) => callback(notificationEvent)
+    ipcRenderer.on("notification-event", listener)
+    return () => ipcRenderer.removeListener("notification-event", listener)
   }
 })
