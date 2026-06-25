@@ -87,6 +87,7 @@ const CHAT_ATTACHMENT_TOTAL_MAX_BYTES = 20 * 1024 * 1024
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
 type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "addFiles" | "updateScene">
 type ChatComposeAttachment = ChatMessageAttachmentInput & { size: number }
+type ChatMessageImageAttachment = { name: string; mime_type: string; data: string }
 
 export function ChatRoute() {
   const params = useParams()
@@ -553,7 +554,10 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
       <article className="group/message relative flex justify-end pt-6" id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
         <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />
-        <PlainText className="max-w-[min(42rem,85%)] whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
+        <div className="max-w-[min(42rem,85%)] space-y-2">
+          <PlainText className="whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
+          <MessageImageAttachments attachments={item.attachments} align="end" />
+        </div>
       </article>
     )
   }
@@ -567,6 +571,7 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
           <div className="max-w-3xl rounded border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
             <Markdown className="chat-prose text-gray-800 dark:text-gray-100" text={item.text} />
           </div>
+          <MessageImageAttachments attachments={item.attachments} />
           {item.proposal ? <ProposalCard proposal={item.proposal} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
           {!item.proposal && item.pending_action ? <PendingActionCard pendingAction={item.pending_action} queryKey={queryKey} onNotice={onNotice} /> : null}
         </div>
@@ -579,6 +584,76 @@ function ChatMessage({ item, payload, prefix, queryKey, onNotice }: { item: Extr
   }
 
   return <StructuredTool tool={item.tool} fallback={item.text} />
+}
+
+function MessageImageAttachments({ attachments, align = "start" }: { attachments?: ChatMessageItem["attachments"]; align?: "start" | "end" }) {
+  const images = (attachments || []).filter((attachment): attachment is ChatMessageImageAttachment => attachment.mime_type.startsWith("image/"))
+  const [lightboxImage, setLightboxImage] = useState<ChatMessageImageAttachment | null>(null)
+
+  if (images.length === 0) return null
+
+  return (
+    <>
+      <div className={`flex flex-wrap gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
+        {images.map((attachment, index) => {
+          const src = attachmentDataUrl(attachment)
+          return (
+            <button
+              aria-label={`Open ${attachment.name || "image attachment"}`}
+              className="min-h-12 min-w-12 max-h-[10rem] max-w-[16rem] overflow-hidden rounded border border-gray-200 bg-white p-0 shadow-sm transition hover:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900"
+              key={`${attachment.name}-${index}`}
+              onClick={() => setLightboxImage(attachment)}
+              type="button"
+            >
+              <img alt={attachment.name || "Image attachment"} className="max-h-[10rem] min-h-12 min-w-12 max-w-[16rem] object-contain" src={src} />
+            </button>
+          )
+        })}
+      </div>
+      {lightboxImage ? <ImageLightbox attachment={lightboxImage} onClose={() => setLightboxImage(null)} /> : null}
+    </>
+  )
+}
+
+function ImageLightbox({ attachment, onClose }: { attachment: ChatMessageImageAttachment; onClose: () => void }) {
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") onClose()
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [onClose])
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-gray-950/35 p-4" onClick={onClose} role="presentation">
+      <section aria-label={attachment.name || "Image attachment"} aria-modal="true" className="relative max-h-full max-w-full" onClick={(event) => event.stopPropagation()} role="dialog">
+        <button
+          aria-label="Close image preview"
+          className="absolute right-2 top-2 rounded bg-white/90 p-1.5 text-gray-600 shadow hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/90 dark:text-gray-200 dark:hover:bg-gray-900"
+          onClick={onClose}
+          type="button"
+        >
+          <CloseIcon className="h-4 w-4" />
+        </button>
+        <img alt={attachment.name || "Image attachment"} className="max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] rounded bg-white object-contain shadow-lg dark:bg-gray-900" src={attachmentDataUrl(attachment)} />
+      </section>
+    </div>
+  )
+}
+
+function attachmentDataUrl(attachment: ChatMessageImageAttachment) {
+  return `data:${attachment.mime_type};base64,${attachment.data}`
+}
+
+function imageAttachments(messages: ChatRenderItem[]) {
+  return messages.flatMap((message) => {
+    if (message.type !== "message") return []
+
+    return (message.attachments || [])
+      .filter((attachment): attachment is ChatMessageImageAttachment => attachment.mime_type.startsWith("image/"))
+      .map((attachment, index) => ({ attachment, key: `${message.id}-${attachment.name}-${index}` }))
+  })
 }
 
 function isLowPrioritySystemMessage(item: ChatRenderItem) {
@@ -1647,7 +1722,7 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
   )
 }
 
-type WorkspaceTab = "whiteboard" | "context"
+type WorkspaceTab = "whiteboard" | "context" | "media"
 type MobileChatTab = "chat" | WorkspaceTab
 
 function ChatWorkspace({
@@ -1762,7 +1837,7 @@ function ChatWorkspace({
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-gray-950">
         <nav aria-label="Chat mobile tabs" className="flex shrink-0 overflow-x-auto border-b border-gray-200 px-2 pt-2 text-sm font-medium dark:border-gray-700">
-          {(["chat", "whiteboard", "context"] as MobileChatTab[]).map((tab) => (
+          {(["chat", "whiteboard", "context", "media"] as MobileChatTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeMobileTab === tab)}
               key={tab}
@@ -1963,7 +2038,7 @@ function ChatWorkspacePanel({
     <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 ${fullscreen ? "" : "h-full w-full"}`}>
       {fullscreen || !showTabs ? null : (
         <nav aria-label="Chat workspace tabs" className="flex items-center border-b border-gray-200 px-3 pt-3 text-sm font-medium dark:border-gray-700">
-          {(["whiteboard", "context"] as WorkspaceTab[]).map((tab) => (
+          {(["whiteboard", "context", "media"] as WorkspaceTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeTab === tab)}
               key={tab}
@@ -1997,8 +2072,55 @@ function ChatWorkspacePanel({
           </WhiteboardBoundary>
         ) : null}
         {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
+        {activeTab === "media" ? <MediaGallery messages={payload.messages} /> : null}
       </div>
     </aside>
+  )
+}
+
+function MediaGallery({ messages }: { messages: ChatRenderItem[] }) {
+  const images = imageAttachments(messages)
+  const [lightboxImage, setLightboxImage] = useState<ChatMessageImageAttachment | null>(null)
+
+  if (images.length === 0) {
+    return <PanelMessage>No images shared yet.</PanelMessage>
+  }
+
+  return (
+    <>
+      <div className="grid grid-cols-3 gap-2">
+        {images.map(({ attachment, key }) => {
+          const src = attachmentDataUrl(attachment)
+          const name = attachment.name || "image attachment"
+
+          return (
+            <figure className="group/media min-w-0 space-y-1" key={key}>
+              <div className="relative aspect-square overflow-hidden rounded border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
+                <button
+                  aria-label={`Open ${name}`}
+                  className="h-full w-full p-0 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+                  onClick={() => setLightboxImage(attachment)}
+                  title={name}
+                  type="button"
+                >
+                  <img alt={name} className="h-full w-full object-contain transition group-hover/media:scale-105" src={src} />
+                </button>
+                <a
+                  aria-label={`Download ${name}`}
+                  className="absolute right-1 top-1 rounded bg-white/90 px-2 py-1 text-xs font-medium text-gray-700 opacity-0 shadow transition hover:bg-white hover:text-gray-900 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500 group-hover/media:opacity-100 dark:bg-gray-900/90 dark:text-gray-200 dark:hover:bg-gray-900"
+                  download={attachment.name || "image"}
+                  href={src}
+                >
+                  Download
+                </a>
+              </div>
+              <figcaption className="truncate text-xs text-gray-600 dark:text-gray-300" title={name}>{name}</figcaption>
+            </figure>
+          )
+        })}
+      </div>
+      {lightboxImage ? <ImageLightbox attachment={lightboxImage} onClose={() => setLightboxImage(null)} /> : null}
+    </>
   )
 }
 
@@ -2481,6 +2603,7 @@ function workspaceTabClass(active: boolean) {
 function workspaceTabLabel(tab: WorkspaceTab) {
   if (tab === "whiteboard") return "Whiteboard"
   if (tab === "context") return "Context"
+  if (tab === "media") return "Media"
 
   return "Chats"
 }
@@ -2496,7 +2619,7 @@ function defaultWorkspaceTab(payload: ChatPayload): WorkspaceTab {
 function storedWorkspaceTab(): WorkspaceTab | null {
   try {
     const value = window.localStorage.getItem(CHAT_WORKSPACE_TAB_KEY)
-    return value === "whiteboard" || value === "context" ? value : null
+    return value === "whiteboard" || value === "context" || value === "media" ? value : null
   } catch (_error) {
     return null
   }
