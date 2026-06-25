@@ -41,10 +41,35 @@ type JobList = {
   jobs: JobItem[]
 }
 
+type CreateJobRequest = {
+  repositoryId: number
+  prompt: string
+}
+
+type CreateJobResponse = {
+  message: string
+  redirect_to: string
+  job: JobItem
+}
+
+type RepositoryItem = {
+  id: number
+  slug: string
+}
+
+type RepositoryList = {
+  repositories?: RepositoryItem[]
+  active_repositories?: RepositoryItem[]
+  archived_repositories?: RepositoryItem[]
+}
+
 type DesktopSettings = {
   localProjectsRoot: string
   localRepoPaths: Record<string, string>
+  lastUsedRepo: string
 }
+
+type DesktopSettingsInput = Pick<DesktopSettings, "localProjectsRoot" | "localRepoPaths">
 
 type CheckoutAvailability = {
   cliAvailable: boolean
@@ -82,7 +107,8 @@ let cachedCliAvailable: boolean | null = null
 const store = new Store<DesktopSettings>({
   defaults: {
     localProjectsRoot: "",
-    localRepoPaths: {}
+    localRepoPaths: {},
+    lastUsedRepo: ""
   }
 })
 
@@ -227,6 +253,8 @@ const fetchInboxJobs = async () => {
   }
 
   const lists = await Promise.all([
+    fetchJobList(credentials, "queued"),
+    fetchJobList(credentials, "running"),
     fetchJobList(credentials, "implemented"),
     fetchJobList(credentials, "failed")
   ])
@@ -236,12 +264,67 @@ const fetchInboxJobs = async () => {
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 }
 
+const responseErrorMessage = async (response: Response, fallback: string) => {
+  try {
+    const payload = (await response.json()) as { error?: { message?: string } }
+    return payload.error?.message || fallback
+  } catch {
+    return fallback
+  }
+}
+
+const createDirectJob = async ({ repositoryId, prompt }: CreateJobRequest) => {
+  const credentials = cachedCredentials ?? (await loadCredentials())
+  if (!credentials) {
+    throw new Error("Connect Syrus before creating jobs.")
+  }
+
+  const response = await fetch(appApiUrl(credentials.url, "/api/v1/app/jobs"), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${credentials.token.trim()}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      repository_id: repositoryId,
+      prompt
+    })
+  })
+
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response, "Could not create job."))
+  }
+
+  return (await response.json()) as CreateJobResponse
+}
+
+const fetchRepositories = async () => {
+  const credentials = cachedCredentials ?? (await loadCredentials())
+  if (!credentials) {
+    throw new Error("Connect Syrus before loading repositories.")
+  }
+
+  const response = await fetch(appApiUrl(credentials.url, "/api/v1/app/repositories"), {
+    headers: {
+      Authorization: `Bearer ${credentials.token.trim()}`
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error("Could not load repositories.")
+  }
+
+  const payload = (await response.json()) as RepositoryList
+  return payload.active_repositories ?? payload.repositories ?? []
+}
+
 const getDesktopSettings = (): DesktopSettings => ({
   localProjectsRoot: store.get("localProjectsRoot", ""),
-  localRepoPaths: store.get("localRepoPaths", {})
+  localRepoPaths: store.get("localRepoPaths", {}),
+  lastUsedRepo: store.get("lastUsedRepo", "")
 })
 
-const saveDesktopSettings = async (settings: DesktopSettings) => {
+const saveDesktopSettings = async (settings: DesktopSettingsInput) => {
   const localProjectsRoot = settings.localProjectsRoot.trim()
   const localRepoPaths: Record<string, string> = Object.fromEntries(
     Object.entries(settings.localRepoPaths)
@@ -267,6 +350,14 @@ const saveDesktopSettings = async (settings: DesktopSettings) => {
   store.set("localRepoPaths", localRepoPaths)
   mainWindow?.webContents.send("desktop-settings-updated")
   return getDesktopSettings()
+}
+
+const getLastUsedRepo = () => store.get("lastUsedRepo", "")
+
+const setLastUsedRepo = (repoSlug: string) => {
+  const normalizedSlug = repoSlug.trim()
+  store.set("lastUsedRepo", normalizedSlug)
+  return normalizedSlug
 }
 
 const commandExists = async (command: string) => {
@@ -669,10 +760,14 @@ ipcMain.handle("copy-text", async (_event, text: string) => {
   clipboard.writeText(text)
 })
 ipcMain.handle("fetch-bootstrap", async () => fetchBootstrap())
+ipcMain.handle("fetch-repositories", async () => fetchRepositories())
+ipcMain.handle("get-last-used-repo", async () => getLastUsedRepo())
+ipcMain.handle("set-last-used-repo", async (_event, repoSlug: string) => setLastUsedRepo(repoSlug))
 ipcMain.handle("fetch-admin-controls", async () => fetchAdminControls())
 ipcMain.handle("toggle-admin-control", async (event, control: AdminControl, pause: boolean) =>
   toggleAdminControl(event.sender, control, pause)
 )
+ipcMain.handle("create-direct-job", async (_event, request: CreateJobRequest) => createDirectJob(request))
 ipcMain.handle("open-token-docs", async () => {
   await shell.openExternal(TOKEN_DOCS_URL)
 })

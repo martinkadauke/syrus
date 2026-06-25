@@ -26,6 +26,14 @@ type SyrusJobItem = {
 type SyrusDesktopSettings = {
   localProjectsRoot: string
   localRepoPaths: Record<string, string>
+  lastUsedRepo: string
+}
+
+type SyrusDesktopSettingsInput = Pick<SyrusDesktopSettings, "localProjectsRoot" | "localRepoPaths">
+
+type SyrusRepositoryItem = {
+  id: number
+  slug: string
 }
 
 type SyrusCheckoutAvailability = {
@@ -37,6 +45,17 @@ type SyrusCheckoutRequest = {
   jobRef: string
   repoSlug: string
   branchName: string
+}
+
+type SyrusCreateJobRequest = {
+  repositoryId: number
+  prompt: string
+}
+
+type SyrusCreateJobResponse = {
+  message: string
+  redirect_to: string
+  job: SyrusJobItem
 }
 
 type SyrusBootstrapPayload = {
@@ -62,7 +81,7 @@ interface Window {
     getCredentials: () => Promise<SyrusCredentials | null>
     saveCredentials: (credentials: SyrusCredentials) => Promise<SyrusCredentials>
     getDesktopSettings: () => Promise<SyrusDesktopSettings>
-    saveDesktopSettings: (settings: SyrusDesktopSettings) => Promise<SyrusDesktopSettings>
+    saveDesktopSettings: (settings: SyrusDesktopSettingsInput) => Promise<SyrusDesktopSettings>
     chooseLocalProjectsRoot: () => Promise<string | null>
     syrusCliStatus: () => Promise<{ available: boolean }>
     checkoutAvailability: (repoSlug: string) => Promise<SyrusCheckoutAvailability>
@@ -70,7 +89,11 @@ interface Window {
     showPreferences: () => Promise<void>
     copyText: (text: string) => Promise<void>
     fetchBootstrap: () => Promise<SyrusBootstrapPayload>
+    fetchRepositories: () => Promise<SyrusRepositoryItem[]>
+    getLastUsedRepo: () => Promise<string>
+    setLastUsedRepo: (repoSlug: string) => Promise<string>
     fetchInboxJobs: () => Promise<SyrusJobItem[]>
+    createDirectJob: (request: SyrusCreateJobRequest) => Promise<SyrusCreateJobResponse>
     fetchAdminControls: () => Promise<SyrusAdminControls>
     toggleAdminControl: (control: SyrusAdminControl, pause: boolean) => Promise<SyrusToggleAdminControlResult>
     openExternal: (url: string) => Promise<void>

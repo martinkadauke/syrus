@@ -1,6 +1,7 @@
 import "./styles.css"
-import { FormEvent, useEffect, useState } from "react"
+import { FormEvent, type RefObject, useEffect, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
+import { RepoPicker } from "./RepoPicker"
 
 type AuthState = "loading" | "authenticated" | "setup"
 type PreferencesTab = "account" | "projects"
@@ -9,6 +10,8 @@ type ToastState = {
   kind: "success" | "error"
   message: string
   copyCommand?: string
+  actionLabel?: string
+  actionUrl?: string
 }
 type RepoPathDraft = {
   id: string
@@ -88,9 +91,21 @@ function TerminalIcon() {
   )
 }
 
+function ComposeIcon() {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
+
 function InboxView({ instanceUrl }: { instanceUrl: string }) {
   const [checkoutStatusByRepo, setCheckoutStatusByRepo] = useState<CheckoutStatusByRepo>({})
   const [toast, setToast] = useState<ToastState | null>(null)
+  const [isComposeOpen, setIsComposeOpen] = useState(false)
+  const composeRef = useRef<HTMLElement>(null)
+  const composeButtonRef = useRef<HTMLButtonElement>(null)
   const inboxQuery = useQuery({
     queryKey: ["inbox-jobs", instanceUrl],
     queryFn: () => window.syrusDesktop.fetchInboxJobs(),
@@ -195,6 +210,54 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
     }
   }
 
+  const openToastAction = () => {
+    if (toast?.actionUrl) {
+      void window.syrusDesktop.openExternal(toast.actionUrl)
+    }
+  }
+
+  useEffect(() => {
+    if (!isComposeOpen) {
+      return
+    }
+
+    const collapseOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsComposeOpen(false)
+      }
+    }
+
+    const collapseOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (!composeRef.current?.contains(target) && !composeButtonRef.current?.contains(target)) {
+        setIsComposeOpen(false)
+      }
+    }
+
+    const collapseOnBlur = () => setIsComposeOpen(false)
+
+    document.addEventListener("keydown", collapseOnEscape)
+    document.addEventListener("mousedown", collapseOnOutsideClick)
+    window.addEventListener("blur", collapseOnBlur)
+
+    return () => {
+      document.removeEventListener("keydown", collapseOnEscape)
+      document.removeEventListener("mousedown", collapseOnOutsideClick)
+      window.removeEventListener("blur", collapseOnBlur)
+    }
+  }, [isComposeOpen])
+
+  const handleComposeSuccess = (result: SyrusCreateJobResponse, repoSlug: string) => {
+    setIsComposeOpen(false)
+    setToast({
+      kind: "success",
+      message: `Job queued in ${repoSlug}`,
+      actionLabel: "Open in Syrus",
+      actionUrl: `${normalizeInstanceUrl(instanceUrl)}${result.redirect_to}`
+    })
+    void inboxQuery.refetch()
+  }
+
   const cliMissing = cliStatusQuery.data?.available === false
 
   return (
@@ -209,16 +272,29 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
             <p className="truncate text-xs text-slate-500">{normalizeInstanceUrl(instanceUrl)}</p>
           </div>
         </div>
-        <button
-          type="button"
-          className="icon-button"
-          title="Refresh inbox"
-          aria-label="Refresh inbox"
-          disabled={inboxQuery.isFetching}
-          onClick={() => void inboxQuery.refetch()}
-        >
-          <RefreshIcon />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            className="icon-button"
+            title={isComposeOpen ? "Close compose" : "Compose job"}
+            aria-label={isComposeOpen ? "Close job compose" : "Compose job"}
+            aria-pressed={isComposeOpen}
+            ref={composeButtonRef}
+            onClick={() => setIsComposeOpen((open) => !open)}
+          >
+            <ComposeIcon />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            title="Refresh inbox"
+            aria-label="Refresh inbox"
+            disabled={inboxQuery.isFetching}
+            onClick={() => void inboxQuery.refetch()}
+          >
+            <RefreshIcon />
+          </button>
+        </div>
       </header>
 
       {cliMissing ? (
@@ -247,12 +323,23 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
                 Copy command
               </button>
             ) : null}
+            {toast.actionLabel && toast.actionUrl ? (
+              <button type="button" className="toast-action" onClick={openToastAction}>
+                {toast.actionLabel}
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}
 
       <section className="min-h-0 flex-1 overflow-y-auto">
-        {inboxQuery.isLoading ? (
+        {isComposeOpen ? (
+          <ComposePanel
+            panelRef={composeRef}
+            onCancel={() => setIsComposeOpen(false)}
+            onSuccess={handleComposeSuccess}
+          />
+        ) : inboxQuery.isLoading ? (
           <StatusPanel title="Loading inbox" />
         ) : inboxQuery.isError ? (
           <StatusPanel
@@ -478,8 +565,157 @@ function JobRow({
   )
 }
 
+function ComposePanel({
+  panelRef,
+  onCancel,
+  onSuccess
+}: {
+  panelRef?: RefObject<HTMLElement>
+  onCancel: () => void
+  onSuccess: (result: SyrusCreateJobResponse, repoSlug: string) => void
+}) {
+  const [repoSlug, setRepoSlug] = useState("")
+  const [prompt, setPrompt] = useState("")
+  const [error, setError] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const promptRef = useRef<HTMLTextAreaElement>(null)
+  const repositoriesQuery = useQuery({
+    queryKey: ["repositories"],
+    queryFn: () => window.syrusDesktop.fetchRepositories()
+  })
+  const repositories = repositoriesQuery.data ?? []
+  const selectedRepository = repositories.find((repository) => repository.slug === repoSlug) ?? null
+
+  useEffect(() => {
+    window.requestAnimationFrame(() => promptRef.current?.focus())
+  }, [])
+
+  const resetAndCancel = () => {
+    setPrompt("")
+    setRepoSlug("")
+    setError("")
+    onCancel()
+  }
+
+  const submitJob = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError("")
+
+    const trimmedPrompt = prompt.trim()
+    if (!selectedRepository) {
+      setError("Choose a repository.")
+      return
+    }
+
+    if (trimmedPrompt === "") {
+      setError("Prompt can't be blank.")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const result = await window.syrusDesktop.createDirectJob({
+        repositoryId: selectedRepository.id,
+        prompt: trimmedPrompt
+      })
+      setPrompt("")
+      setRepoSlug("")
+      onSuccess(result, selectedRepository.slug)
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "Could not create job.")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  return (
+    <section className="compose-panel" aria-label="Compose direct job" ref={panelRef}>
+      <form className="compose-form" onSubmit={submitJob}>
+        <label className="compose-field">
+          <span>Prompt</span>
+          <textarea
+            className="compose-prompt"
+            disabled={isSubmitting}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Describe the job..."
+            ref={promptRef}
+            required
+            rows={7}
+            value={prompt}
+          />
+        </label>
+
+        <label className="compose-field">
+          <span>Repository</span>
+          <RepoPicker value={repoSlug} onChange={setRepoSlug} disabled={isSubmitting} />
+        </label>
+
+        {repositoriesQuery.isError ? <p className="form-error">Could not load repositories.</p> : null}
+        {error ? <p className="form-error">{error}</p> : null}
+
+        <div className="form-actions form-actions--end">
+          <button type="button" className="secondary-button" disabled={isSubmitting} onClick={resetAndCancel}>
+            Cancel
+          </button>
+          <button type="submit" disabled={isSubmitting || repositoriesQuery.isLoading}>
+            {isSubmitting ? "Submitting..." : "Submit"}
+          </button>
+        </div>
+      </form>
+    </section>
+  )
+}
+
+function ComposeView({ instanceUrl }: { instanceUrl: string }) {
+  const [toast, setToast] = useState<ToastState | null>(null)
+
+  const handleSuccess = (result: SyrusCreateJobResponse, repoSlug: string) => {
+    setToast({
+      kind: "success",
+      message: `Job queued in ${repoSlug}`,
+      actionLabel: "Open in Syrus",
+      actionUrl: `${normalizeInstanceUrl(instanceUrl)}${result.redirect_to}`
+    })
+  }
+
+  return (
+    <main className="flex h-screen min-h-screen flex-col bg-slate-50 text-slate-950">
+      <header className="border-b border-slate-200 bg-white px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-slate-950 text-sm font-bold text-white">
+            S
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold leading-5">New job</p>
+            <p className="truncate text-xs text-slate-500">{normalizeInstanceUrl(instanceUrl)}</p>
+          </div>
+        </div>
+      </header>
+
+      {toast ? (
+        <div className="mx-3 mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm leading-5 text-emerald-800" role="status">
+          <div className="flex items-start justify-between gap-3">
+            <span className="min-w-0 overflow-wrap-anywhere">{toast.message}</span>
+            {toast.actionLabel && toast.actionUrl ? (
+              <button type="button" className="toast-action" onClick={() => window.syrusDesktop.openExternal(toast.actionUrl!)}>
+                {toast.actionLabel}
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      <section className="min-h-0 flex-1 overflow-y-auto">
+        <ComposePanel onCancel={() => setToast(null)} onSuccess={handleSuccess} />
+      </section>
+    </main>
+  )
+}
+
 export function App() {
-  const isPreferencesView = new URLSearchParams(window.location.search).get("view") === "preferences"
+  const view = new URLSearchParams(window.location.search).get("view")
+  const isPreferencesView = view === "preferences"
+  const isComposeView = view === "compose"
   const [authState, setAuthState] = useState<AuthState>("loading")
   const [url, setUrl] = useState("")
   const [token, setToken] = useState("")
@@ -783,7 +1019,5 @@ export function App() {
     )
   }
 
-  return (
-    <InboxView instanceUrl={url} />
-  )
+  return isComposeView ? <ComposeView instanceUrl={url} /> : <InboxView instanceUrl={url} />
 }
