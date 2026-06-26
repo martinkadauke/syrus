@@ -477,7 +477,7 @@ module App
     def jobs_result
       scope = filtered_jobs_scope
       total = scope.count
-      scope = scope.with_latest_workflow_snapshot.preload(:repository, :user, :owner_user, :claimed_by_user, :epic, :tags, :workflows, :runs)
+      scope = scope.with_latest_workflow_snapshot.preload(:repository, :user, :owner_user, :claimed_by_user, :tags, :workflows, :runs, chat_proposals: [ :chat_session, :messages ], epic: { chat_proposals: [ :chat_session, :messages ] })
       items = sorted_jobs(scope).map { |job| job_json(job) }
 
       { total: total, items: items }
@@ -632,7 +632,7 @@ module App
       records = filtered_jobs_scope
                 .where(state: job_kanban_candidate_states(visible_lanes))
                 .with_latest_workflow_snapshot
-                .preload(:repository, :user, :owner_user, :claimed_by_user, :tags, :workflows, dependencies: :depends_on_job)
+                .preload(:repository, :user, :owner_user, :claimed_by_user, :tags, :workflows, { dependencies: :depends_on_job }, { chat_proposals: [ :chat_session, :messages ] }, epic: { chat_proposals: [ :chat_session, :messages ] })
                 .order(created_at: :desc, id: :desc)
                 .limit(kanban_limit)
                 .to_a
@@ -789,6 +789,7 @@ module App
         epic: job_epic_json(job.epic),
         owner_badge: owner_badge_for(owner_user),
         tags: job.tags.map { |tag| tag_json(tag) },
+        source_chat: App::JobSourceChat.for(job),
         paths: {
           job_path: job_path(job),
           source_path: source_job_path(job)
