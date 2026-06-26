@@ -3176,7 +3176,7 @@ describe("App", () => {
       fireEvent.click(screen.getByText("Folders and filters"))
       expect(disclosure).toHaveAttribute("open")
       expect(screen.getByRole("button", { name: "+ Add filter" })).toBeInTheDocument()
-      expect(screen.getByRole("link", { name: "My work 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=7")
+      expect(screen.getByRole("link", { name: "My work 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=7")
     } finally {
       restoreMedia()
     }
@@ -3479,7 +3479,7 @@ describe("App", () => {
                   visibility: "when_present",
                   count: 0,
                   active: true,
-                  path: "/dashboard/jobs?view=list&smart_folder_id=7"
+                  path: "/dashboard/jobs?smart_folder_id=7"
                 }
               ],
               landing_queue: {
@@ -3724,7 +3724,7 @@ describe("App", () => {
                 visibility: "when_present",
                 count: 2,
                 active: true,
-                path: "/dashboard/jobs?view=list&smart_folder_id=3"
+                path: "/dashboard/jobs?smart_folder_id=3"
               }
             ],
             landing_queue: {
@@ -3870,7 +3870,7 @@ describe("App", () => {
                     visibility: "always",
                     count: 3,
                     active: false,
-                    path: "/dashboard/jobs?view=list&smart_folder_id=1"
+                    path: "/dashboard/jobs?smart_folder_id=1"
                   },
                   {
                     id: 2,
@@ -3880,7 +3880,7 @@ describe("App", () => {
                     visibility: "on_demand",
                     count: 1,
                     active: false,
-                    path: "/dashboard/jobs?view=list&smart_folder_id=2"
+                    path: "/dashboard/jobs?smart_folder_id=2"
                   },
                   {
                     id: 3,
@@ -3890,7 +3890,7 @@ describe("App", () => {
                     visibility: "on_demand",
                     count: 0,
                     active: true,
-                    path: "/dashboard/jobs?view=list&smart_folder_id=3"
+                    path: "/dashboard/jobs?smart_folder_id=3"
                   },
                   {
                     id: 4,
@@ -3900,7 +3900,7 @@ describe("App", () => {
                     visibility: "user_defined",
                     count: 2,
                     active: false,
-                    path: "/dashboard/jobs?view=list&smart_folder_id=4"
+                    path: "/dashboard/jobs?smart_folder_id=4"
                   }
                 ],
                 filter: { and: [ { field: "attention", op: "is", value: "merged_this_week" } ] },
@@ -3939,15 +3939,15 @@ describe("App", () => {
       expect(primaryNav).toContainElement(foldersPanel)
       expect(dashboardLink.parentElement).toContainElement(dashboardSections)
       expect(dashboardLink.parentElement).toContainElement(foldersPanel)
-      expect(within(foldersPanel).getByRole("link", { name: "Inbox 3" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=1")
+      expect(within(foldersPanel).getByRole("link", { name: "Inbox 3" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=1")
       const moreGroup = within(foldersPanel).getByText("More").closest("details")
       expect(moreGroup).not.toBeNull()
-      expect(within(moreGroup!).getByRole("link", { name: "All jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=all")
-      expect(within(moreGroup!).getByRole("link", { name: "Stale 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=2")
-      expect(within(moreGroup!).getByRole("link", { name: "Merged this week 0" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=3")
+      expect(within(moreGroup!).getByRole("link", { name: "All jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=all")
+      expect(within(moreGroup!).getByRole("link", { name: "Stale 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=2")
+      expect(within(moreGroup!).getByRole("link", { name: "Merged this week 0" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=3")
       expect(within(foldersPanel).getAllByRole("link", { name: "All jobs" })).toHaveLength(1)
       expect(screen.getByRole("button", { name: /Attention preset.*Merged this week/ })).toBeInTheDocument()
-      expect(within(foldersPanel).getByRole("link", { name: "Saved review 2" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=4")
+      expect(within(foldersPanel).getByRole("link", { name: "Saved review 2" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=4")
       expect(within(foldersPanel).getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/app-shell/smart_folders?subject_type=job")
       expect(within(foldersPanel).queryByLabelText("Folder name")).not.toBeInTheDocument()
       expect(within(foldersPanel).queryByRole("button", { name: "Save folder" })).not.toBeInTheDocument()
@@ -12690,7 +12690,7 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
         visibility: "user_defined",
         count: 1,
         active: false,
-        path: "/dashboard/jobs?view=list&smart_folder_id=7"
+        path: "/dashboard/jobs?smart_folder_id=7"
       }
     ],
     active_smart_folder_id: null,
