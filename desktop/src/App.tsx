@@ -1,5 +1,5 @@
 import "./styles.css"
-import { FormEvent, KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react"
+import { FormEvent, type KeyboardEvent as ReactKeyboardEvent, type RefObject, useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { RepoPicker } from "./RepoPicker"
 
@@ -66,7 +66,7 @@ const displayHotkey = (hotkey: string) => {
     .join(isMacPlatform() ? "" : "")
 }
 
-const acceleratorKeyFromEvent = (event: KeyboardEvent<HTMLElement>) => {
+const acceleratorKeyFromEvent = (event: ReactKeyboardEvent<HTMLElement>) => {
   if (["Control", "Shift", "Alt", "Meta"].includes(event.key)) {
     return ""
   }
@@ -108,7 +108,7 @@ const acceleratorKeyFromEvent = (event: KeyboardEvent<HTMLElement>) => {
   return event.key
 }
 
-const acceleratorFromEvent = (event: KeyboardEvent<HTMLElement>) => {
+const acceleratorFromEvent = (event: ReactKeyboardEvent<HTMLElement>) => {
   const key = acceleratorKeyFromEvent(event)
   if (!key) {
     return ""
@@ -1081,7 +1081,7 @@ export function App() {
     setIsRecordingHotkey(true)
   }
 
-  const recordHotkey = (event: KeyboardEvent<HTMLDivElement>) => {
+  const recordHotkey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     event.preventDefault()
     event.stopPropagation()
 

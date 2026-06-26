@@ -246,7 +246,9 @@ const closeAppUserCable = () => {
     socket.onmessage = null
     socket.onerror = null
     socket.onclose = null
-    socket.close()
+    if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
+      socket.close()
+    }
   }
 }
 
@@ -383,15 +385,25 @@ const connectAppUserCable = (credentials: Credentials, generation = appUserCable
     }
   }
 
-  socket.onerror = () => {
-    socket.close()
-  }
+  let socketFinished = false
+  const finishSocket = () => {
+    if (socketFinished) {
+      return
+    }
 
-  socket.onclose = () => {
+    socketFinished = true
     if (appUserCable === socket) {
       appUserCable = null
     }
     scheduleAppUserCableReconnect(credentials, generation)
+  }
+
+  socket.onerror = () => {
+    finishSocket()
+  }
+
+  socket.onclose = () => {
+    finishSocket()
   }
 }
 
@@ -900,7 +912,7 @@ const createPopoverWindow = async () => {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, "preload.js")
+      preload: path.join(__dirname, "preload.cjs")
     }
   })
 
@@ -979,7 +991,7 @@ const showPreferencesWindow = async () => {
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      preload: path.join(__dirname, "preload.js")
+      preload: path.join(__dirname, "preload.cjs")
     }
   })
 
