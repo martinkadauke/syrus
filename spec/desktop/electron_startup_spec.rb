@@ -26,4 +26,26 @@ RSpec.describe "desktop Electron startup" do
     expect(File).to exist(File.join(desktop_root, "electron/preload.cts"))
     expect(main_process).to include('preload: path.join(__dirname, "preload.cjs")')
   end
+
+  it "keeps the tray popover and native context menu on separate gestures" do
+    expect(main_process).to include("tray.on(\"click\", (event) => {")
+    expect(main_process).to include("tray.on(\"right-click\", showTrayContextMenu)")
+    expect(main_process).to include("mainWindow?.hide()\n  tray?.popUpContextMenu(trayContextMenu())")
+    expect(main_process).not_to include("tray.setContextMenu")
+  end
+
+  it "uses a macOS template image for the plain tray icon" do
+    expect(File).to exist(File.join(desktop_root, "assets/syrusMenubarTemplate.png"))
+    expect(main_process).to include("const createPlainTrayIcon = () => {")
+    expect(main_process).to include('nativeImage.createFromPath(trayIconPath())')
+    expect(main_process).to include("image.setTemplateImage(true)")
+    expect(main_process).to include("tray.setTitle(unreadCount > 0 ? trayBadgeLabel(unreadCount) : \"\")")
+  end
+
+  it "matches the CLI inbox by fetching only actionable states" do
+    expect(main_process).to include('fetchJobList(credentials, "implemented")')
+    expect(main_process).to include('fetchJobList(credentials, "failed")')
+    expect(main_process).not_to include('fetchJobList(credentials, "queued")')
+    expect(main_process).not_to include('fetchJobList(credentials, "running")')
+  end
 end

@@ -297,6 +297,19 @@ across web/worker processes.
   approval, and identity workflows; repo-aware commands should detect `origin`,
   scope to that repo by default, and refuse checkout changes when the local repo
   mismatches.
+- **Desktop app** lives under `desktop/` as a separate Electron + React + Vite
+  app. It uses Tailwind too, but it does not share the Rails web app's compiled
+  CSS or components at runtime. Keep the desktop UI visually aligned with the
+  web app's primitives: compact rows, restrained icon buttons, bordered white
+  panels, blue primary actions, emerald success pills, red failure/error pills,
+  and slate/gray neutral text. Avoid broad element styling in
+  `desktop/src/styles.css` (especially global `button` rules) because the tray
+  surface relies on small, explicit controls. Prefer explicit local primitives
+  such as `primary-button`, `secondary-button`, `icon-button`, and status pills.
+  Test desktop changes with `npm --prefix desktop run typecheck`,
+  `npm --prefix desktop run build:renderer`, and
+  `npm --prefix desktop run build:main`; run the desktop RSpec startup spec when
+  Electron main/preload code changes.
 - **Spending insights** live at `/insights/spending` and roll up `Run#cost_usd`
   plus `ChatSession#cumulative_cost_usd` by date window, Epic, user,
   repository, trigger kind, agent provider, trend, and top Runs. Non-admins

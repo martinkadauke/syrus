@@ -2,6 +2,7 @@ import "./styles.css"
 import { FormEvent, type KeyboardEvent as ReactKeyboardEvent, type RefObject, useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { RepoPicker } from "./RepoPicker"
+import syrusIconUrl from "../assets/syrusIcon.png"
 
 type AuthState = "loading" | "authenticated" | "setup"
 type PreferencesTab = "account" | "projects"
@@ -213,12 +214,61 @@ function CheckIcon() {
   )
 }
 
-function RetryIcon() {
+function MoreIcon() {
   return (
     <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M3 12a9 9 0 1 0 3-6.7" />
-      <path d="M3 3v6h6" />
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="19" cy="12" r="1" />
+      <circle cx="5" cy="12" r="1" />
     </svg>
+  )
+}
+
+function HeaderBrand({ title, instanceUrl }: { title: string; instanceUrl: string }) {
+  const normalizedUrl = normalizeInstanceUrl(instanceUrl)
+
+  return (
+    <button
+      type="button"
+      className="header-brand"
+      title={`Open ${normalizedUrl}`}
+      aria-label={`Open ${title} in Syrus`}
+      onClick={() => void window.syrusDesktop.openExternal(normalizedUrl)}
+    >
+      <img alt="" className="header-brand__logo" src={syrusIconUrl} />
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-bold leading-5 text-slate-950">{title}</span>
+        <span className="block truncate text-xs text-slate-500">{normalizedUrl}</span>
+      </span>
+    </button>
+  )
+}
+
+const statusTone = (state: string) => {
+  switch (state) {
+    case "approved":
+    case "closed":
+    case "implemented":
+    case "succeeded":
+      return "bg-emerald-50 text-emerald-700 ring-emerald-200"
+    case "failed":
+      return "bg-red-50 text-red-700 ring-red-200"
+    case "landing":
+    case "queued":
+    case "running":
+      return "bg-blue-50 text-blue-700 ring-blue-200"
+    default:
+      return "bg-slate-100 text-slate-700 ring-slate-200"
+  }
+}
+
+const statusLabel = (state: string) => state.replace(/_/g, " ")
+
+function StatusPill({ state }: { state: string }) {
+  return (
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-1.5 py-0.5 text-[11px] font-medium capitalize leading-4 ring-1 ${statusTone(state)}`}>
+      {statusLabel(state)}
+    </span>
   )
 }
 
@@ -439,15 +489,7 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   return (
     <main className="relative flex h-screen min-h-screen flex-col bg-slate-50 text-slate-950">
       <header className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-slate-950 text-sm font-bold text-white">
-            S
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold leading-5">Syrus</p>
-            <p className="truncate text-xs text-slate-500">{normalizeInstanceUrl(instanceUrl)}</p>
-          </div>
-        </div>
+        <HeaderBrand title="Syrus" instanceUrl={instanceUrl} />
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
@@ -638,10 +680,11 @@ function AdminControlToggle({
       ].join(" ")}
       disabled={disabled || isUnknown}
       onClick={onToggle}
+      title={isUnknown ? `${label} status loading` : isPaused ? `Resume ${label.toLowerCase()}` : `Pause ${label.toLowerCase()}`}
     >
       <span>{label}</span>
       <span className="admin-toggle__state">
-        {isPending ? "Saving" : isUnknown ? "Loading" : isPaused ? "Paused / Resume" : "Running / Pause"}
+        {isPending ? "Saving" : isUnknown ? "Loading" : isPaused ? "Paused" : "Running"}
       </span>
     </button>
   )
@@ -698,6 +741,8 @@ function JobRow({
   approving: boolean
   optimisticState?: string
 }) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
   const displayState = optimisticState ?? job.state
   const isFailed = displayState === "failed"
   const isImplemented = job.state === "implemented"
@@ -708,77 +753,136 @@ function JobRow({
       ? `Checkout in ${checkoutStatus.localPath}`
       : "Configure local projects root in Preferences"
 
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return
+    }
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false)
+      }
+    }
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false)
+      }
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick)
+    document.addEventListener("keydown", closeOnEscape)
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick)
+      document.removeEventListener("keydown", closeOnEscape)
+    }
+  }, [isMenuOpen])
+
+  const runAction = (action: () => void) => {
+    setIsMenuOpen(false)
+    action()
+  }
+
   return (
-    <li className="group flex gap-3 px-4 py-3 hover:bg-white">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start gap-2">
-          <p className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-950">{jobTitle(job)}</p>
-          <span
-            className={[
-              "shrink-0 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase leading-4",
-              isFailed ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
-            ].join(" ")}
-          >
-            {displayState}
-          </span>
-        </div>
-        <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-500">
-          <span className="truncate">{job.repository_slug}</span>
-          <span aria-hidden="true">/</span>
+    <li className="job-row">
+      <div className="job-row__content">
+        <button type="button" className="job-row__title" onClick={onOpenJob}>
+          {jobTitle(job)}
+        </button>
+        <span className="job-row__meta">
+          <span className="shrink-0 font-medium text-slate-600">JOB-{job.id}</span>
+          {job.pr_number ? (
+            <button
+              type="button"
+              className="job-row__meta-link"
+              disabled={!job.pr_url}
+              onClick={onOpenPullRequest}
+              title={job.pr_url ? `Open PR #${job.pr_number} on GitHub` : "No PR URL available"}
+            >
+              PR #{job.pr_number}
+            </button>
+          ) : null}
+          <span aria-hidden="true">·</span>
+          <span className="min-w-0 truncate">{job.repository_slug}</span>
+          <span aria-hidden="true">·</span>
           <span className="shrink-0">{relativeTime(job.updated_at)}</span>
-        </div>
+        </span>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:transition-opacity sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-        {isImplemented ? (
-          <button
-            type="button"
-            className="icon-button icon-button--success"
-            title="Approve for landing"
-            aria-label={`Approve JOB-${job.id} for landing`}
-            disabled={approving}
-            onClick={onApprove}
-          >
-            <CheckIcon />
-          </button>
-        ) : null}
+      <div className="job-row__actions" ref={menuRef}>
+        <StatusPill state={displayState} />
         {isFailed ? (
           <button
             type="button"
-            className="icon-button"
+            className="row-primary-action"
             title="Retry job"
             aria-label={`Retry JOB-${job.id}`}
             disabled={retrying}
             onClick={onRetry}
           >
-            <RetryIcon />
+            {retrying ? "Retrying" : "Retry"}
           </button>
         ) : null}
-        <button type="button" className="icon-button" title="Open in Syrus" aria-label={`Open JOB-${job.id} in Syrus`} onClick={onOpenJob}>
-          <ExternalIcon />
-        </button>
         <button
           type="button"
           className="icon-button"
-          title={job.pr_url ? "Open PR" : "No PR yet"}
-          aria-label={job.pr_url ? `Open PR for JOB-${job.id}` : `No PR yet for JOB-${job.id}`}
-          disabled={!job.pr_url}
-          onClick={onOpenPullRequest}
+          title="Job actions"
+          aria-label={`Open actions for JOB-${job.id}`}
+          aria-expanded={isMenuOpen}
+          aria-haspopup="menu"
+          onClick={() => setIsMenuOpen((open) => !open)}
         >
-          <GitPullRequestIcon />
+          <MoreIcon />
         </button>
-        <button
-          type="button"
-          className="icon-button"
-          title={checkoutTitle}
-          aria-label={`Checkout JOB-${job.id} locally`}
-          disabled={!checkoutEnabled}
-          onClick={onCheckout}
-        >
-          <TerminalIcon />
-        </button>
+        {isMenuOpen ? (
+          <div className="desktop-menu" role="menu">
+            {isImplemented ? (
+              <MenuAction
+                disabled={approving}
+                label={approving ? "Approving" : "Approve for landing"}
+                icon={<CheckIcon />}
+                onSelect={() => runAction(onApprove)}
+              />
+            ) : null}
+            <MenuAction label="Open in Syrus" icon={<ExternalIcon />} onSelect={() => runAction(onOpenJob)} />
+            <MenuAction
+              disabled={!job.pr_url}
+              label={job.pr_url ? "Open pull request" : "No pull request yet"}
+              icon={<GitPullRequestIcon />}
+              onSelect={() => runAction(onOpenPullRequest)}
+            />
+            <MenuAction
+              disabled={!checkoutEnabled}
+              label="Checkout locally"
+              icon={<TerminalIcon />}
+              title={checkoutTitle}
+              onSelect={() => runAction(onCheckout)}
+            />
+          </div>
+        ) : null}
       </div>
     </li>
+  )
+}
+
+function MenuAction({
+  label,
+  icon,
+  disabled = false,
+  title,
+  onSelect
+}: {
+  label: string
+  icon: JSX.Element
+  disabled?: boolean
+  title?: string
+  onSelect: () => void
+}) {
+  return (
+    <button className="desktop-menu__item" disabled={disabled} onClick={onSelect} role="menuitem" title={title} type="button">
+      {icon}
+      <span>{label}</span>
+    </button>
   )
 }
 
@@ -874,7 +978,7 @@ function ComposePanel({
           <button type="button" className="secondary-button" disabled={isSubmitting} onClick={resetAndCancel}>
             Cancel
           </button>
-          <button type="submit" disabled={isSubmitting || repositoriesQuery.isLoading}>
+          <button type="submit" className="primary-button" disabled={isSubmitting || repositoriesQuery.isLoading}>
             {isSubmitting ? "Submitting..." : "Submit"}
           </button>
         </div>
@@ -898,15 +1002,7 @@ function ComposeView({ instanceUrl }: { instanceUrl: string }) {
   return (
     <main className="flex h-screen min-h-screen flex-col bg-slate-50 text-slate-950">
       <header className="border-b border-slate-200 bg-white px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-slate-950 text-sm font-bold text-white">
-            S
-          </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-bold leading-5">New job</p>
-            <p className="truncate text-xs text-slate-500">{normalizeInstanceUrl(instanceUrl)}</p>
-          </div>
-        </div>
+        <HeaderBrand title="New job" instanceUrl={instanceUrl} />
       </header>
 
       {toast ? (
@@ -1202,7 +1298,7 @@ export function App() {
                 <button type="button" className="link-button" onClick={() => window.syrusDesktop.openTokenDocs()}>
                   Generate a token
                 </button>
-                <button type="submit" disabled={isSaving}>
+                <button type="submit" className="primary-button" disabled={isSaving}>
                   {isSaving ? "Saving..." : "Save"}
                 </button>
               </div>
@@ -1233,7 +1329,7 @@ export function App() {
 
                   {isRecordingHotkey ? (
                     <div className="shortcut-actions">
-                      <button type="button" disabled={isSavingHotkey || hotkeyDraft.trim() === ""} onClick={() => saveHotkey()}>
+                      <button type="button" className="primary-button" disabled={isSavingHotkey || hotkeyDraft.trim() === ""} onClick={() => saveHotkey()}>
                         {isSavingHotkey ? "Saving..." : "Save"}
                       </button>
                       <button type="button" className="secondary-button" disabled={isSavingHotkey} onClick={cancelHotkeyRecording}>
@@ -1329,7 +1425,7 @@ export function App() {
                 {settingsSaved ? <p className="form-success">Local checkout settings saved.</p> : null}
 
                 <div className="form-actions form-actions--end">
-                  <button type="button" disabled={isSavingSettings} onClick={saveDesktopSettings}>
+                  <button type="button" className="primary-button" disabled={isSavingSettings} onClick={saveDesktopSettings}>
                     {isSavingSettings ? "Saving..." : "Save local checkout settings"}
                   </button>
                 </div>

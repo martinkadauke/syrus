@@ -269,8 +269,20 @@ const escapeSvgText = (value: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
 
+const trayIconPath = () => path.join(app.getAppPath(), "assets", "syrusMenubarTemplate.png")
+
+const createPlainTrayIcon = () => {
+  const image = nativeImage.createFromPath(trayIconPath()).resize({ width: 18, height: 18 })
+
+  if (process.platform === "darwin") {
+    image.setTemplateImage(true)
+  }
+
+  return image
+}
+
 const badgedTrayIcon = (count: number) => {
-  const baseIcon = plainTrayIcon ?? nativeImage.createFromPath(trayIconPath()).resize({ width: 18, height: 18 })
+  const baseIcon = plainTrayIcon ?? createPlainTrayIcon()
   const label = escapeSvgText(trayBadgeLabel(count))
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
@@ -285,6 +297,12 @@ const badgedTrayIcon = (count: number) => {
 
 const updateTrayBadge = () => {
   if (!tray || !plainTrayIcon) {
+    return
+  }
+
+  if (process.platform === "darwin") {
+    tray.setImage(plainTrayIcon)
+    tray.setTitle(unreadCount > 0 ? trayBadgeLabel(unreadCount) : "")
     return
   }
 
@@ -534,8 +552,6 @@ const fetchInboxJobs = async () => {
   }
 
   const lists = await Promise.all([
-    fetchJobList(credentials, "queued"),
-    fetchJobList(credentials, "running"),
     fetchJobList(credentials, "implemented"),
     fetchJobList(credentials, "failed")
   ])
@@ -1017,35 +1033,43 @@ const openSyrusInBrowser = async () => {
   await showPreferencesWindow()
 }
 
-const trayIconPath = () => path.join(app.getAppPath(), "assets", "syrusIcon.png")
+const trayContextMenu = () =>
+  Menu.buildFromTemplate([
+    {
+      label: "Open Syrus",
+      click: () => {
+        void openSyrusInBrowser()
+      }
+    },
+    {
+      label: "Preferences",
+      click: () => {
+        void showPreferencesWindow()
+      }
+    },
+    { type: "separator" },
+    { role: "quit", label: "Quit" }
+  ])
+
+const showTrayContextMenu = () => {
+  mainWindow?.hide()
+  tray?.popUpContextMenu(trayContextMenu())
+}
 
 const createTray = () => {
-  plainTrayIcon = nativeImage.createFromPath(trayIconPath()).resize({ width: 18, height: 18 })
+  plainTrayIcon = createPlainTrayIcon()
 
   tray = new Tray(plainTrayIcon)
   tray.setToolTip("Syrus")
-  tray.on("click", () => {
+  tray.on("click", (event) => {
+    if (event.ctrlKey) {
+      showTrayContextMenu()
+      return
+    }
+
     void togglePopoverWindow()
   })
-
-  tray.setContextMenu(
-    Menu.buildFromTemplate([
-      {
-        label: "Open Syrus",
-        click: () => {
-          void openSyrusInBrowser()
-        }
-      },
-      {
-        label: "Preferences",
-        click: () => {
-          void showPreferencesWindow()
-        }
-      },
-      { type: "separator" },
-      { role: "quit", label: "Quit" }
-    ])
-  )
+  tray.on("right-click", showTrayContextMenu)
   updateTrayBadge()
 }
 
