@@ -51,6 +51,7 @@ RSpec.describe "App API job detail", type: :request do
       "id" => job.id,
       "title" => "Repair aqueduct",
       "issue_title" => "Repair aqueduct",
+      "repository_id" => repo.id,
       "repository_slug" => "acme/widgets",
       "branch_name" => "syrus/issue-42",
       "pr_number" => 7

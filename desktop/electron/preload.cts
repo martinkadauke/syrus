@@ -11,6 +11,7 @@ type JobItem = {
   summary_state: string
   title: string
   issue_title: string
+  repository_id: number
   repository_slug: string
   branch_name: string
   pr_number: number

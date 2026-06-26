@@ -27,6 +27,22 @@ const normalizeInstanceUrl = (url: string) => url.trim().replace(/\/+$/, "")
 
 const jobTitle = (job: SyrusJobItem) => job.title || job.issue_title || `JOB-${job.id}`
 
+const groupJobsByRepository = (jobs: SyrusJobItem[]) => {
+  const groups = new Map<string, { repositorySlug: string; repositoryId?: number; jobs: SyrusJobItem[] }>()
+
+  for (const job of jobs) {
+    const repositorySlug = job.repository_slug || "Unknown repository"
+    const group = groups.get(repositorySlug)
+    if (group) {
+      group.jobs.push(job)
+    } else {
+      groups.set(repositorySlug, { repositorySlug, repositoryId: job.repository_id, jobs: [job] })
+    }
+  }
+
+  return Array.from(groups.values())
+}
+
 const isMacPlatform = () => /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 
 const modifierLabels: Record<string, string> = {
@@ -132,29 +148,6 @@ const acceleratorFromEvent = (event: ReactKeyboardEvent<HTMLElement>) => {
   return [...modifiers, key].join("+")
 }
 
-const relativeTime = (timestamp: string) => {
-  const value = Date.parse(timestamp)
-  if (Number.isNaN(value)) {
-    return ""
-  }
-
-  const seconds = Math.round((value - Date.now()) / 1000)
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-    ["second", 1]
-  ]
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" })
-  const [unit, unitSeconds] =
-    units.find(([, unitSeconds]) => Math.abs(seconds) >= unitSeconds) ?? units[units.length - 1]
-
-  return formatter.format(Math.round(seconds / unitSeconds), unit)
-}
-
 function RefreshIcon() {
   return (
     <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -224,6 +217,30 @@ function MoreIcon() {
   )
 }
 
+function CopyIcon({ className = "" }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 20 20">
+      <rect height="11" rx="2" stroke="currentColor" strokeWidth="1.8" width="11" x="6" y="3" />
+      <path d="M3 7v8a2 2 0 0 0 2 2h8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
+function DisclosureIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={["job-group__chevron", collapsed ? "job-group__chevron--collapsed" : ""].filter(Boolean).join(" ")}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
 function HeaderBrand({ title, instanceUrl }: { title: string; instanceUrl: string }) {
   const normalizedUrl = normalizeInstanceUrl(instanceUrl)
 
@@ -264,9 +281,15 @@ const statusTone = (state: string) => {
 
 const statusLabel = (state: string) => state.replace(/_/g, " ")
 
-function StatusPill({ state }: { state: string }) {
+function StatusPill({ state, className = "" }: { state: string; className?: string }) {
+  const classes = [
+    "inline-flex items-center whitespace-nowrap rounded-full px-1.5 py-0.5 text-[11px] font-medium capitalize leading-4 ring-1",
+    statusTone(state),
+    className
+  ].filter(Boolean).join(" ")
+
   return (
-    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-1.5 py-0.5 text-[11px] font-medium capitalize leading-4 ring-1 ${statusTone(state)}`}>
+    <span className={classes}>
       {statusLabel(state)}
     </span>
   )
@@ -278,6 +301,7 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   const [pendingApprovals, setPendingApprovals] = useState<Set<number>>(() => new Set())
   const [toast, setToast] = useState<ToastState | null>(null)
   const [isComposeOpen, setIsComposeOpen] = useState(false)
+  const [collapsedRepositorySlugs, setCollapsedRepositorySlugs] = useState<Set<string>>(() => new Set())
   const [retryingJobID, setRetryingJobID] = useState<number | null>(null)
   const composeRef = useRef<HTMLElement>(null)
   const composeButtonRef = useRef<HTMLButtonElement>(null)
@@ -357,6 +381,24 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
     if (job.pr_url) {
       void window.syrusDesktop.openExternal(job.pr_url)
     }
+  }
+
+  const openRepository = (repositoryId?: number) => {
+    if (repositoryId) {
+      void window.syrusDesktop.openExternal(`${normalizeInstanceUrl(instanceUrl)}/repositories/${repositoryId}`)
+    }
+  }
+
+  const toggleRepositoryGroup = (repositorySlug: string) => {
+    setCollapsedRepositorySlugs((current) => {
+      const next = new Set(current)
+      if (next.has(repositorySlug)) {
+        next.delete(repositorySlug)
+      } else {
+        next.add(repositorySlug)
+      }
+      return next
+    })
   }
 
   const checkoutJob = async (job: SyrusJobItem) => {
@@ -569,23 +611,58 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
         ) : jobs.length === 0 ? (
           <StatusPanel title="Nothing in your inbox" detail="Implemented and failed jobs will appear here." />
         ) : (
-          <ul className="divide-y divide-slate-200">
-            {jobs.map((job) => (
-              <JobRow
-                key={`${job.state}-${job.id}`}
-                job={job}
-                checkoutStatus={checkoutStatusByRepo[job.repository_slug]}
-                cliAvailable={cliStatusQuery.data?.available ?? false}
-                retrying={retryingJobID === job.id}
-                onOpenJob={() => openJob(job)}
-                onOpenPullRequest={() => openPullRequest(job)}
-                onCheckout={() => void checkoutJob(job)}
-                onApprove={() => void approveJob(job)}
-                onRetry={() => void retryJob(job)}
-                approving={pendingApprovals.has(job.id)}
-                optimisticState={pendingApprovals.has(job.id) ? "approved" : undefined}
-              />
-            ))}
+          <ul className="job-list">
+            {groupJobsByRepository(jobs).map((group) => {
+              const isCollapsed = collapsedRepositorySlugs.has(group.repositorySlug)
+              const jobsId = `repo-group-${group.repositorySlug.replace(/[^a-zA-Z0-9_-]/g, "-")}`
+
+              return (
+                <li className="job-group" key={group.repositorySlug}>
+                  <div className="job-group__header">
+                    <button
+                      type="button"
+                      className="job-group__toggle"
+                      aria-label={`${isCollapsed ? "Expand" : "Collapse"} ${group.repositorySlug}`}
+                      aria-expanded={!isCollapsed}
+                      aria-controls={jobsId}
+                      onClick={() => toggleRepositoryGroup(group.repositorySlug)}
+                    >
+                      <DisclosureIcon collapsed={isCollapsed} />
+                    </button>
+                    <button
+                      type="button"
+                      className="job-group__repository"
+                      disabled={!group.repositoryId}
+                      title={group.repositoryId ? `Open ${group.repositorySlug} in Syrus` : "Repository page unavailable"}
+                      onClick={() => openRepository(group.repositoryId)}
+                    >
+                      {group.repositorySlug}
+                    </button>
+                    <span className="job-group__count">{group.jobs.length}</span>
+                  </div>
+                  {isCollapsed ? null : (
+                    <ul className="job-group__jobs" id={jobsId}>
+                      {group.jobs.map((job) => (
+                        <JobRow
+                          key={`${job.state}-${job.id}`}
+                          job={job}
+                          checkoutStatus={checkoutStatusByRepo[job.repository_slug]}
+                          cliAvailable={cliStatusQuery.data?.available ?? false}
+                          retrying={retryingJobID === job.id}
+                          onOpenJob={() => openJob(job)}
+                          onOpenPullRequest={() => openPullRequest(job)}
+                          onCheckout={() => void checkoutJob(job)}
+                          onApprove={() => void approveJob(job)}
+                          onRetry={() => void retryJob(job)}
+                          approving={pendingApprovals.has(job.id)}
+                          optimisticState={pendingApprovals.has(job.id) ? "approved" : undefined}
+                        />
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
@@ -742,6 +819,7 @@ function JobRow({
   optimisticState?: string
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [copyState, setCopyState] = useState<"idle" | "success" | "error">("idle")
   const menuRef = useRef<HTMLDivElement>(null)
   const displayState = optimisticState ?? job.state
   const isFailed = displayState === "failed"
@@ -778,10 +856,39 @@ function JobRow({
     }
   }, [isMenuOpen])
 
+  useEffect(() => {
+    if (copyState === "idle") {
+      return
+    }
+
+    const timeout = window.setTimeout(() => setCopyState("idle"), 900)
+    return () => window.clearTimeout(timeout)
+  }, [copyState])
+
   const runAction = (action: () => void) => {
     setIsMenuOpen(false)
     action()
   }
+
+  const showCopyFeedback = (nextCopyState: "success" | "error") => {
+    setCopyState("idle")
+    window.requestAnimationFrame(() => setCopyState(nextCopyState))
+  }
+
+  const copySlug = async () => {
+    try {
+      await window.syrusDesktop.copyText(`JOB-${job.id}`)
+      showCopyFeedback("success")
+    } catch {
+      showCopyFeedback("error")
+    }
+  }
+
+  const copyIconClassName = [
+    "job-row__copy-icon",
+    copyState === "success" ? "job-row__copy-icon--success" : "",
+    copyState === "error" ? "job-row__copy-icon--error" : ""
+  ].filter(Boolean).join(" ")
 
   return (
     <li className="job-row">
@@ -790,7 +897,16 @@ function JobRow({
           {jobTitle(job)}
         </button>
         <span className="job-row__meta">
-          <span className="shrink-0 font-medium text-slate-600">JOB-{job.id}</span>
+          <button
+            type="button"
+            className="job-row__slug"
+            aria-label={`Copy JOB-${job.id} to clipboard`}
+            title={copyState === "success" ? "Copied" : copyState === "error" ? `Could not copy JOB-${job.id}` : `Copy JOB-${job.id}`}
+            onClick={() => void copySlug()}
+          >
+            <span>JOB-{job.id}</span>
+            <CopyIcon className={copyIconClassName} />
+          </button>
           {job.pr_number ? (
             <button
               type="button"
@@ -802,15 +918,11 @@ function JobRow({
               PR #{job.pr_number}
             </button>
           ) : null}
-          <span aria-hidden="true">·</span>
-          <span className="min-w-0 truncate">{job.repository_slug}</span>
-          <span aria-hidden="true">·</span>
-          <span className="shrink-0">{relativeTime(job.updated_at)}</span>
+          <StatusPill state={displayState} className="job-row__state" />
         </span>
       </div>
 
       <div className="job-row__actions" ref={menuRef}>
-        <StatusPill state={displayState} />
         {isFailed ? (
           <button
             type="button"
@@ -961,7 +1073,7 @@ function ComposePanel({
             placeholder="Describe the job..."
             ref={promptRef}
             required
-            rows={7}
+            rows={5}
             value={prompt}
           />
         </label>
