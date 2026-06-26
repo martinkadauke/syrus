@@ -3793,13 +3793,13 @@ describe("App", () => {
       expect(within(foldersPanel).getByRole("link", { name: "Inbox 3" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=1")
       const moreGroup = within(foldersPanel).getByText("More").closest("details")
       expect(moreGroup).not.toBeNull()
-      expect(within(moreGroup!).getByRole("link", { name: "All jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=all")
+      expect(within(moreGroup!).getByRole("link", { name: "All jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=all")
       expect(within(moreGroup!).getByRole("link", { name: "Stale 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=2")
       expect(within(moreGroup!).getByRole("link", { name: "Merged this week 0" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=3")
       expect(within(foldersPanel).getAllByRole("link", { name: "All jobs" })).toHaveLength(1)
       expect(screen.getByRole("button", { name: /Attention preset.*Merged this week/ })).toBeInTheDocument()
       expect(within(foldersPanel).getByRole("link", { name: "Saved review 2" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=4")
-      expect(within(foldersPanel).getByRole("link", { name: "Manage" })).toHaveAttribute("href", "/app-shell/smart_folders?subject_type=job")
+      expect(within(foldersPanel).queryByRole("link", { name: "Manage" })).not.toBeInTheDocument()
       expect(within(foldersPanel).queryByLabelText("Folder name")).not.toBeInTheDocument()
       expect(within(foldersPanel).queryByRole("button", { name: "Save folder" })).not.toBeInTheDocument()
 
@@ -3844,7 +3844,7 @@ describe("App", () => {
           )
         )
       }
-      if (path === "/api/v1/app/dashboard?view=list&subject=job" || path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job") {
+      if (path === "/api/v1/app/dashboard?view=list&subject=job" || path.startsWith("/api/v1/app/dashboard?view=list&q=") || path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job") {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -3866,7 +3866,7 @@ describe("App", () => {
     try {
       render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list"]}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&q=stale"]}>
             <App />
           </MemoryRouter>
         </QueryClientProvider>
@@ -3875,6 +3875,7 @@ describe("App", () => {
       const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
       expect(within(smartFoldersPanel).queryByRole("heading", { name: "Smart folders" })).not.toBeInTheDocument()
       const folderNameInput = within(smartFoldersPanel).getByLabelText("Folder name")
+      expect(within(smartFoldersPanel).queryByRole("button", { name: /^Update / })).not.toBeInTheDocument()
       expect(within(smartFoldersPanel).getByRole("heading", { name: "Saved" }).compareDocumentPosition(folderNameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       fireEvent.change(folderNameInput, { target: { value: "Open work" } })
       fireEvent.click(within(smartFoldersPanel).getByRole("button", { name: "Save folder" }))
@@ -3900,6 +3901,427 @@ describe("App", () => {
       await waitFor(() => {
         expect(fetchSpy).toHaveBeenCalledWith(
           "/api/v1/app/dashboard?smart_folder_id=11&subject=job",
+          expect.objectContaining({ credentials: "same-origin" })
+        )
+      })
+    } finally {
+      script.remove()
+    }
+  })
+
+  it("shows update and save actions when the active saved dashboard folder filter differs", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      feature_flags: { v2_ui: true }
+    }))
+    document.body.appendChild(script)
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                view: "list",
+                active_smart_folder_id: 7,
+                filter: { and: [{ field: "kind", op: "is", value: "issue" }] },
+                smart_folders: [
+                  {
+                    id: 7,
+                    name: "My work",
+                    kind: "user_defined",
+                    position: 2,
+                    subject_type: "job",
+                    visibility: "user_defined",
+                    count: 1,
+                    active: true,
+                    filter: { and: [{ field: "state", op: "is", value: "open" }] },
+                    path: "/dashboard/jobs?view=list&smart_folder_id=7"
+                  }
+                ],
+                items: [dashboardJobItem()]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=7"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
+      expect(within(smartFoldersPanel).getByRole("button", { name: "Update My work" })).toBeInTheDocument()
+      expect(within(smartFoldersPanel).getByRole("button", { name: "Save folder" })).toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
+  })
+
+  it("hides update and save actions when the active saved dashboard folder filter matches", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      feature_flags: { v2_ui: true }
+    }))
+    document.body.appendChild(script)
+    vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                view: "list",
+                active_smart_folder_id: 7,
+                filter: { and: [{ field: "state", op: "is", value: "open" }] },
+                smart_folders: [
+                  {
+                    id: 7,
+                    name: "My work",
+                    kind: "user_defined",
+                    position: 2,
+                    subject_type: "job",
+                    visibility: "user_defined",
+                    count: 1,
+                    active: true,
+                    filter: { and: [{ field: "state", op: "is", value: "open" }] },
+                    path: "/dashboard/jobs?view=list&smart_folder_id=7"
+                  }
+                ],
+                items: [dashboardJobItem()]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=7"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
+      expect(within(smartFoldersPanel).queryByRole("button", { name: "Update My work" })).not.toBeInTheDocument()
+      expect(within(smartFoldersPanel).queryByRole("button", { name: "Save folder" })).not.toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
+  })
+
+  it("preserves the active smart folder while dashboard filters change", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      feature_flags: { v2_ui: true }
+    }))
+    document.body.appendChild(script)
+    const storedFilter = { and: [{ field: "state", op: "is", value: "open" }] }
+    const dashboardRequests: string[] = []
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/filters/usage" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Recorded." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      const url = new URL(path, "http://example.test")
+      if (url.pathname === "/api/v1/app/dashboard" && url.searchParams.get("smart_folder_id") === "7") {
+        dashboardRequests.push(path)
+        const q = url.searchParams.get("q")
+        const filter = q ? decodeFilterQueryParam(q) : { and: [] }
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                view: "list",
+                active_smart_folder_id: 7,
+                filter,
+                smart_folders: [
+                  {
+                    id: 7,
+                    name: "My work",
+                    kind: "user_defined",
+                    position: 2,
+                    subject_type: "job",
+                    visibility: "user_defined",
+                    count: 1,
+                    active: true,
+                    filter: storedFilter,
+                    path: "/dashboard/jobs?view=list&smart_folder_id=7"
+                  }
+                ],
+                items: [dashboardJobItem()]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=7"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
+      expect(within(smartFoldersPanel).queryByRole("button", { name: "Update My work" })).not.toBeInTheDocument()
+
+      fireEvent.click(await screen.findByRole("button", { name: "+ Add filter" }))
+      fireEvent.click(screen.getByRole("button", { name: "Kind enum" }))
+
+      await waitFor(() => {
+        expect(dashboardRequests.some((request) => {
+          const url = new URL(request, "http://example.test")
+          return url.searchParams.get("smart_folder_id") === "7" && url.searchParams.has("q")
+        })).toBe(true)
+      })
+      expect(await within(smartFoldersPanel).findByRole("button", { name: "Update My work" })).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
+      fireEvent.click(screen.getByRole("button", { name: "State enum" }))
+
+      await waitFor(() => {
+        const latestRequest = dashboardRequests.at(-1)
+        expect(latestRequest).toBeTruthy()
+        const url = new URL(latestRequest!, "http://example.test")
+        const qTree = decodeFilterQueryParam(url.searchParams.get("q")!)
+        expect(qTree.and.filter((chip) => chip.field === "state")).toHaveLength(1)
+        expect(qTree.and.filter((chip) => chip.field === "kind")).toHaveLength(1)
+      })
+    } finally {
+      script.remove()
+    }
+  })
+
+  it("clears built-in dashboard folder scope when applying filters", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      feature_flags: { v2_ui: true }
+    }))
+    document.body.appendChild(script)
+    const dashboardRequests: string[] = []
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/filters/usage" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ message: "Recorded." }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      const url = new URL(path, "http://example.test")
+      if (url.pathname === "/api/v1/app/dashboard") {
+        dashboardRequests.push(path)
+        const hasSmartFolder = url.searchParams.get("smart_folder_id") === "1"
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                view: "list",
+                active_smart_folder_id: hasSmartFolder ? 1 : null,
+                filter: url.searchParams.get("q") ? decodeFilterQueryParam(url.searchParams.get("q")!) : { and: [] },
+                smart_folders: [
+                  {
+                    id: 1,
+                    name: "Inbox",
+                    kind: "attention_preset",
+                    position: 0,
+                    subject_type: "job",
+                    visibility: "primary",
+                    count: 1,
+                    active: hasSmartFolder,
+                    filter: { and: [{ field: "attention", op: "is", value: "inbox" }] },
+                    path: "/dashboard/jobs?view=list&smart_folder_id=1"
+                  }
+                ],
+                items: [dashboardJobItem()]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=1"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
+      expect(within(smartFoldersPanel).queryByLabelText("Folder name")).not.toBeInTheDocument()
+
+      fireEvent.click(await screen.findByRole("button", { name: "+ Add filter" }))
+      fireEvent.click(screen.getByRole("button", { name: "Kind enum" }))
+
+      await waitFor(() => {
+        const latestRequest = dashboardRequests.at(-1)
+        expect(latestRequest).toBeTruthy()
+        const url = new URL(latestRequest!, "http://example.test")
+        expect(url.searchParams.has("q")).toBe(true)
+        expect(url.searchParams.has("smart_folder_id")).toBe(false)
+      })
+      expect(await within(smartFoldersPanel).findByLabelText("Folder name")).toBeInTheDocument()
+    } finally {
+      script.remove()
+    }
+  })
+
+  it("updates the active saved dashboard folder with the applied filter", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload({
+      feature_flags: { v2_ui: true }
+    }))
+    document.body.appendChild(script)
+    const storedFilter = { and: [{ field: "state", op: "is", value: "open" }] }
+    const appliedFilter = { and: [{ field: "kind", op: "is", value: "issue" }] }
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats") {
+        return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/smart_folders/7" && init?.method === "PATCH") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              subject_type: "job",
+              subject_label: "Job",
+              dashboard_path: "/dashboard/jobs",
+              smart_folders: [
+                {
+                  id: 7,
+                  name: "My work",
+                  position: 2,
+                  filter: appliedFilter
+                }
+              ],
+              message: "Smart folder updated."
+            }),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+      const url = new URL(path, "http://example.test")
+      if (url.pathname === "/api/v1/app/dashboard" && url.searchParams.get("smart_folder_id") === "7") {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify(
+              dashboardPayload({
+                subject: "job",
+                view: "list",
+                active_smart_folder_id: 7,
+                filter: appliedFilter,
+                smart_folders: [
+                  {
+                    id: 7,
+                    name: "My work",
+                    kind: "user_defined",
+                    position: 2,
+                    subject_type: "job",
+                    visibility: "user_defined",
+                    count: 1,
+                    active: true,
+                    filter: storedFilter,
+                    path: "/dashboard/jobs?view=list&smart_folder_id=7"
+                  }
+                ],
+                items: [dashboardJobItem()]
+              })
+            ),
+            { status: 200, headers: { "Content-Type": "application/json" } }
+          )
+        )
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${path}`))
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=7&q=stale"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
+      expect(within(smartFoldersPanel).getByRole("button", { name: "Save folder" })).toBeInTheDocument()
+      fireEvent.click(within(smartFoldersPanel).getByRole("button", { name: "Update My work" }))
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/smart_folders/7",
+          expect.objectContaining({
+            method: "PATCH",
+            credentials: "same-origin",
+            headers: expect.objectContaining({
+              Accept: "application/json",
+              "Content-Type": "application/json"
+            }),
+            body: JSON.stringify({
+              filter: JSON.stringify(appliedFilter),
+              smart_folder: {
+                name: "My work",
+                position: 2
+              }
+            })
+          })
+        )
+      })
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job",
           expect.objectContaining({ credentials: "same-origin" })
         )
       })
@@ -4569,6 +4991,91 @@ describe("App", () => {
         expect(screen.getByRole("button", { name: "Job class contains RunJ" })).toBeInTheDocument()
       })
     } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("shows an update button for admin queue saved folder filter drift", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const driftPayload = adminQueuePayloadWithSavedFolder({
+      and: [ { field: "queue_name", op: "is", value: "chat" } ]
+    })
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const url = new URL(String(input), "http://example.test")
+      const method = init?.method || "GET"
+      if (url.pathname === "/api/v1/app/admin/queue/active") {
+        return Promise.resolve(jsonResponse(driftPayload))
+      }
+      if (url.pathname === "/api/v1/app/smart_folders/10" && method === "PATCH") {
+        return Promise.resolve(jsonResponse({ ...driftPayload, message: "Smart folder updated." }))
+      }
+      if (url.pathname === "/api/v1/app/smart_folders" && method === "POST") {
+        return Promise.resolve(jsonResponse({
+          ...driftPayload,
+          message: "Smart folder saved.",
+          redirect_to: "/admin/queue/active?smart_folder_id=10"
+        }))
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${method} ${url.pathname}`))
+    })
+
+    try {
+      const updateView = renderAppAt("/app-shell/admin/queue/active?smart_folder_id=10&q=dGVzdA")
+
+      expect(await screen.findByText("No active claimed executions.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+      fireEvent.click(screen.getByRole("button", { name: "Update Run repairs" }))
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/smart_folders/10",
+          expect.objectContaining({ method: "PATCH" })
+        )
+      })
+      const patchCall = fetchSpy.mock.calls.find(([path, init]) => path === "/api/v1/app/smart_folders/10" && (init as RequestInit | undefined)?.method === "PATCH")
+      expect(JSON.parse(String((patchCall?.[1] as RequestInit).body))).toMatchObject({
+        filter: JSON.stringify(currentAdminQueueFilter()),
+        smart_folder: {
+          name: "Run repairs",
+          position: 2
+        }
+      })
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "Update Run repairs" })).not.toBeInTheDocument()
+      })
+      expect(screen.queryByRole("button", { name: "Save as new folder" })).not.toBeInTheDocument()
+
+      updateView.unmount()
+      fetchSpy.mockClear()
+
+      renderAppAt("/app-shell/admin/queue/active?smart_folder_id=10&q=dGVzdA")
+
+      expect(await screen.findByText("No active claimed executions.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      fireEvent.change(screen.getByLabelText("Folder name"), { target: { value: "Chat repairs" } })
+      fireEvent.click(screen.getByRole("button", { name: "Save as new folder" }))
+
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledWith(
+          "/api/v1/app/smart_folders",
+          expect.objectContaining({ method: "POST" })
+        )
+      })
+      const postCall = fetchSpy.mock.calls.find(([path, init]) => path === "/api/v1/app/smart_folders" && (init as RequestInit | undefined)?.method === "POST")
+      expect(JSON.parse(String((postCall?.[1] as RequestInit).body))).toMatchObject({
+        filter: JSON.stringify(currentAdminQueueFilter()),
+        subject_type: "admin_queue",
+        smart_folder: { name: "Chat repairs" }
+      })
+      await waitFor(() => {
+        expect(screen.queryByRole("button", { name: "Save as new folder" })).not.toBeInTheDocument()
+      })
+      expect(screen.queryByRole("button", { name: "Update Run repairs" })).not.toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
       restoreMedia()
     }
   })
@@ -4656,7 +5163,7 @@ describe("App", () => {
       expect(disclosure).toHaveAttribute("open")
       const folderNameInput = screen.getByLabelText("Folder name")
       fireEvent.change(folderNameInput, { target: { value: "Runs queue" } })
-      fireEvent.click(screen.getByRole("button", { name: "Save folder" }))
+      fireEvent.click(screen.getByRole("button", { name: "Save as new folder" }))
 
       await waitFor(() => {
         expect(fetchSpy).toHaveBeenCalledWith(
@@ -4669,20 +5176,87 @@ describe("App", () => {
               "Content-Type": "application/json"
             }),
             body: JSON.stringify({
-              smart_folder: { name: "Runs queue", position: 0 },
+              filter: JSON.stringify(appliedFilter),
               subject_type: "admin_queue",
-              filter: JSON.stringify(appliedFilter)
+              smart_folder: { name: "Runs queue" }
             })
           })
         )
       })
-      await waitFor(() => {
-        expect(fetchSpy).toHaveBeenCalledWith(
-          "/api/v1/app/admin/queue/active?smart_folder_id=21",
-          expect.objectContaining({ credentials: "same-origin" })
-        )
-      })
     } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("shows the save form for admin queue filters with no active folder", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const payload = adminQueuePayloadWithSavedFolder(currentAdminQueueFilter())
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
+      ...payload,
+      active_smart_folder_id: null,
+      smart_folders: payload.smart_folders.map((folder) => ({ ...folder, active: false }))
+    }))
+
+    try {
+      renderAppAt("/app-shell/admin/queue/active")
+
+      expect(await screen.findByText("No active claimed executions.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Run repairs" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("keeps an admin queue saved folder active when applying filters", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = new URL(String(input), "http://example.test")
+      if (url.pathname === "/api/v1/app/admin/queue/active") {
+        return Promise.resolve(jsonResponse(adminQueuePayloadFromSearch(url.searchParams)))
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${url.pathname}`))
+    })
+
+    try {
+      renderAppAt("/app-shell/admin/queue/active?smart_folder_id=10")
+
+      expect(await screen.findByText("No active claimed executions.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Run repairs" })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "Queue is Runs" }))
+      fireEvent.change(screen.getByLabelText("Value"), { target: { value: "chat" } })
+
+      await waitFor(() => {
+        expect(fetchSpy.mock.calls.some(([path]) => {
+          const url = new URL(String(path), "http://example.test")
+          return url.pathname === "/api/v1/app/admin/queue/active" && url.searchParams.get("smart_folder_id") === "10" && url.searchParams.has("q")
+        })).toBe(true)
+      })
+      expect(await screen.findByRole("button", { name: "Update Run repairs" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("hides the update button for admin queue saved folder matching filters", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(adminQueuePayloadWithSavedFolder(currentAdminQueueFilter())))
+
+    try {
+      renderAppAt("/app-shell/admin/queue/active?smart_folder_id=10")
+
+      expect(await screen.findByText("No active claimed executions.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Run repairs" })).not.toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
       restoreMedia()
     }
   })
@@ -4885,6 +5459,97 @@ describe("App", () => {
     }
   })
 
+  it("shows an update button for admin process saved folder filter drift", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(adminProcessesPayloadWithSavedFolder({
+      and: [ { field: "state", op: "is", value: "finished" } ]
+    })))
+
+    try {
+      renderAppAt("/app-shell/admin/processes?smart_folder_id=11&q=dGVzdA")
+
+      expect(await screen.findByText("No processes match this filter.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.getByRole("button", { name: "Update Live agents" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("shows the save form for admin process filters with no active folder", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const payload = adminProcessesPayloadWithSavedFolder(currentAdminProcessFilter())
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
+      ...payload,
+      active_smart_folder_id: null,
+      smart_folders: payload.smart_folders.map((folder) => ({ ...folder, active: false }))
+    }))
+
+    try {
+      renderAppAt("/app-shell/admin/processes")
+
+      expect(await screen.findByText("No processes match this filter.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Live agents" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("keeps an admin process saved folder active when applying filters", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = new URL(String(input), "http://example.test")
+      if (url.pathname === "/api/v1/app/admin/processes") {
+        return Promise.resolve(jsonResponse(adminProcessesPayloadFromSearch(url.searchParams)))
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${url.pathname}`))
+    })
+
+    try {
+      renderAppAt("/app-shell/admin/processes?smart_folder_id=11")
+
+      expect(await screen.findByText("No processes match this filter.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Live agents" })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: "State is Running" }))
+      fireEvent.change(screen.getByLabelText("Value"), { target: { value: "finished" } })
+
+      await waitFor(() => {
+        expect(fetchSpy.mock.calls.some(([path]) => {
+          const url = new URL(String(path), "http://example.test")
+          return url.pathname === "/api/v1/app/admin/processes" && url.searchParams.get("smart_folder_id") === "11" && url.searchParams.has("q")
+        })).toBe(true)
+      })
+      expect(await screen.findByRole("button", { name: "Update Live agents" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("hides the update button for admin process saved folder matching filters", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(adminProcessesPayloadWithSavedFolder(currentAdminProcessFilter())))
+
+    try {
+      renderAppAt("/app-shell/admin/processes?smart_folder_id=11")
+
+      expect(await screen.findByText("No processes match this filter.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Live agents" })).not.toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
   it("renders the admin process detail route with React transcript links", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
@@ -5060,6 +5725,97 @@ describe("App", () => {
         })
       )
     } finally {
+      restoreMedia()
+    }
+  })
+
+  it("shows an update button for admin user saved folder filter drift", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(adminUsersPayloadWithSavedFolder({
+      and: [ { field: "admin", op: "is", value: true } ]
+    })))
+
+    try {
+      renderAppAt("/app-shell/admin/users?smart_folder_id=12&q=dGVzdA")
+
+      expect(await screen.findByText("No users match these filters.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.getByRole("button", { name: "Update Low rate users" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("shows the save form for admin user filters with no active folder", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const payload = adminUsersPayloadWithSavedFolder(currentAdminUserFilter())
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
+      ...payload,
+      active_smart_folder_id: null,
+      smart_folders: payload.smart_folders.map((folder) => ({ ...folder, active: false }))
+    }))
+
+    try {
+      renderAppAt("/app-shell/admin/users")
+
+      expect(await screen.findByText("No users match these filters.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Low rate users" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("keeps an admin user saved folder active when applying filters", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
+      const url = new URL(String(input), "http://example.test")
+      if (url.pathname === "/api/v1/app/admin/users") {
+        return Promise.resolve(jsonResponse(adminUsersPayloadFromSearch(url.searchParams)))
+      }
+
+      return Promise.reject(new Error(`Unexpected fetch: ${url.pathname}`))
+    })
+
+    try {
+      renderAppAt("/app-shell/admin/users?smart_folder_id=12")
+
+      expect(await screen.findByText("No users match these filters.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Low rate users" })).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole("button", { name: /GH rate is Low/ }))
+      fireEvent.change(screen.getByLabelText("Value"), { target: { value: "exhausted" } })
+
+      await waitFor(() => {
+        expect(fetchSpy.mock.calls.some(([path]) => {
+          const url = new URL(String(path), "http://example.test")
+          return url.pathname === "/api/v1/app/admin/users" && url.searchParams.get("smart_folder_id") === "12" && url.searchParams.has("q")
+        })).toBe(true)
+      })
+      expect(await screen.findByRole("button", { name: "Update Low rate users" })).toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
+      restoreMedia()
+    }
+  })
+
+  it("hides the update button for admin user saved folder matching filters", async () => {
+    const restoreMedia = mockMediaQuery(false)
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse(adminUsersPayloadWithSavedFolder(currentAdminUserFilter())))
+
+    try {
+      renderAppAt("/app-shell/admin/users?smart_folder_id=12")
+
+      expect(await screen.findByText("No users match these filters.")).toBeInTheDocument()
+      fireEvent.click(screen.getByText("Folders and filters"))
+      expect(screen.queryByRole("button", { name: "Update Low rate users" })).not.toBeInTheDocument()
+    } finally {
+      fetchSpy.mockRestore()
       restoreMedia()
     }
   })
@@ -5637,88 +6393,6 @@ describe("App", () => {
     })
     expect(await screen.findByText("Tag created.")).toBeInTheDocument()
     expect(screen.getByText("epic:attachments")).toBeInTheDocument()
-  })
-
-  it("renders the smart folders route from the app API and updates folders", async () => {
-    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
-      const path = String(input)
-      if (path === "/api/v1/app/smart_folders/7" && init?.method === "PATCH") {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              subject_type: "epic",
-              subject_label: "Epic",
-              dashboard_path: "/dashboard/epics",
-              smart_folders: [
-                {
-                  id: 7,
-                  name: "Ready Epics",
-                  position: 3,
-                  filter: { and: [{ field: "state", op: "is", value: "ready" }] }
-                }
-              ],
-              message: "Smart folder updated."
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          )
-        )
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            subject_type: "epic",
-            subject_label: "Epic",
-            dashboard_path: "/dashboard/epics",
-            smart_folders: [
-              {
-                id: 7,
-                name: "Ready Epics",
-                position: 2,
-                filter: { and: [{ field: "state", op: "is", value: "ready" }] }
-              }
-            ]
-          }),
-          { status: 200, headers: { "Content-Type": "application/json" } }
-        )
-      )
-    })
-
-    render(
-      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell/smart_folders?subject_type=epic"]}>
-          <App />
-        </MemoryRouter>
-      </QueryClientProvider>
-    )
-
-    expect(screen.getByRole("main", { name: "Smart folders" })).toBeInTheDocument()
-    expect(await screen.findByDisplayValue("Ready Epics")).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Back to dashboard" })).toHaveAttribute("href", "/app-shell/dashboard/epics")
-
-    fireEvent.change(screen.getByLabelText("Position for Ready Epics"), { target: { value: "3" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save" }))
-
-    await waitFor(() => {
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/smart_folders/7",
-        expect.objectContaining({
-          method: "PATCH",
-          credentials: "same-origin",
-          headers: expect.objectContaining({
-            Accept: "application/json",
-            "Content-Type": "application/json"
-          }),
-          body: JSON.stringify({
-            smart_folder: {
-              name: "Ready Epics",
-              position: 3
-            }
-          })
-        })
-      )
-    })
-    expect(await screen.findByText("Smart folder updated.")).toBeInTheDocument()
   })
 
   it("renders the cron templates route from the app API and links to detail", async () => {
@@ -12575,6 +13249,13 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function decodeFilterQueryParam(q: string) {
+  const normalized = q.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")
+
+  return JSON.parse(decodeURIComponent(escape(atob(padded)))) as { and: Array<{ field: string; op: string; value?: unknown }> }
+}
+
 function mockMediaQuery(matches: boolean) {
   const original = Object.getOwnPropertyDescriptor(window, "matchMedia")
 
@@ -12716,6 +13397,167 @@ function dashboardWorkflowItem(overrides: Record<string, unknown> = {}) {
     },
     ...overrides
   }
+}
+
+function renderAppAt(path: string) {
+  return render(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>
+  )
+}
+
+function jsonResponse(payload: unknown) {
+  return new Response(JSON.stringify(payload), { status: 200, headers: { "Content-Type": "application/json" } })
+}
+
+function currentAdminQueueFilter() {
+  return { and: [ { field: "queue_name", op: "is", value: "runs" } ] }
+}
+
+function adminQueuePayloadWithSavedFolder(folderFilter: Record<string, unknown>) {
+  return {
+    filter: currentAdminQueueFilter(),
+    controls: {
+      filter_schema: [
+        {
+          field: "queue_name",
+          label: "Queue",
+          bucket: "enum",
+          operators: ["is"],
+          values: [ { value: "runs", label: "Runs" }, { value: "chat", label: "Chat" } ]
+        }
+      ]
+    },
+    active_smart_folder_id: 10,
+    smart_folders: [
+      {
+        id: 10,
+        name: "Run repairs",
+        position: 2,
+        kind: "user_defined",
+        subject_type: "admin_queue",
+        visibility: "user_defined",
+        count: 0,
+        active: true,
+        filter: folderFilter,
+        path: "/admin/queue/active?smart_folder_id=10"
+      }
+    ],
+    jobs: []
+  }
+}
+
+function adminQueuePayloadFromSearch(params: URLSearchParams) {
+  return {
+    ...adminQueuePayloadWithSavedFolder(currentAdminQueueFilter()),
+    active_smart_folder_id: params.get("smart_folder_id") === "10" ? 10 : null,
+    filter: filterFromSearch(params, currentAdminQueueFilter())
+  }
+}
+
+function currentAdminProcessFilter() {
+  return { and: [ { field: "state", op: "is", value: "running" } ] }
+}
+
+function adminProcessesPayloadWithSavedFolder(folderFilter: Record<string, unknown>) {
+  return {
+    filter: currentAdminProcessFilter(),
+    controls: {
+      filter_schema: [
+        {
+          field: "state",
+          label: "State",
+          bucket: "enum",
+          operators: ["is"],
+          values: [ { value: "running", label: "Running" }, { value: "finished", label: "Finished" } ]
+        }
+      ]
+    },
+    active_smart_folder_id: 11,
+    smart_folders: [
+      {
+        id: 11,
+        name: "Live agents",
+        position: 3,
+        kind: "user_defined",
+        subject_type: "spawned_process",
+        visibility: "user_defined",
+        count: 0,
+        active: true,
+        filter: folderFilter,
+        path: "/admin/processes?smart_folder_id=11"
+      }
+    ],
+    running_total: 0,
+    processes: []
+  }
+}
+
+function adminProcessesPayloadFromSearch(params: URLSearchParams) {
+  return {
+    ...adminProcessesPayloadWithSavedFolder(currentAdminProcessFilter()),
+    active_smart_folder_id: params.get("smart_folder_id") === "11" ? 11 : null,
+    filter: filterFromSearch(params, currentAdminProcessFilter())
+  }
+}
+
+function currentAdminUserFilter() {
+  return { and: [ { field: "gh_rate", op: "is", value: "low" } ] }
+}
+
+function adminUsersPayloadWithSavedFolder(folderFilter: Record<string, unknown>) {
+  return {
+    filters: { gh_rate: "low" },
+    filter: currentAdminUserFilter(),
+    controls: {
+      filter_schema: [
+        {
+          field: "gh_rate",
+          label: "GH rate",
+          bucket: "enum",
+          operators: ["is"],
+          values: [ { value: "low", label: "Low (<10%)" }, { value: "exhausted", label: "Exhausted" } ]
+        }
+      ]
+    },
+    count: 0,
+    active_smart_folder_id: 12,
+    smart_folders: [
+      {
+        id: 12,
+        name: "Low rate users",
+        position: 4,
+        kind: "user_defined",
+        subject_type: "admin_user",
+        visibility: "user_defined",
+        count: 0,
+        active: true,
+        filter: folderFilter,
+        path: "/admin/users?smart_folder_id=12"
+      }
+    ],
+    users: []
+  }
+}
+
+function adminUsersPayloadFromSearch(params: URLSearchParams) {
+  return {
+    ...adminUsersPayloadWithSavedFolder(currentAdminUserFilter()),
+    active_smart_folder_id: params.get("smart_folder_id") === "12" ? 12 : null,
+    filter: filterFromSearch(params, currentAdminUserFilter())
+  }
+}
+
+function filterFromSearch(params: URLSearchParams, fallback: Record<string, unknown>) {
+  const encoded = params.get("q")
+  if (!encoded) return fallback
+
+  const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/")
+  const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=")
+  return JSON.parse(decodeURIComponent(escape(window.atob(padded)))) as Record<string, unknown>
 }
 
 function epicDetailPayload(overrides: {

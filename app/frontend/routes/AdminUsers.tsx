@@ -5,6 +5,7 @@ import { ApiError } from "../api/client"
 import { AdminFiltersLayout } from "../components/AdminFiltersLayout"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import { FilterBar } from "../components/FilterBar"
+import { adminSmartFolderFilterLinkBuilder } from "../lib/adminSmartFolderLinks"
 import {
   fetchAdminUser,
   fetchAdminUsers,
@@ -16,12 +17,14 @@ import {
 
 export function AdminUsersIndex() {
   const location = useLocation()
+  const queryClient = useQueryClient()
   const prefix = routePrefix(location.pathname)
   const basePath = location.pathname.startsWith("/app-shell") ? "/app-shell/admin/users" : "/admin/users"
   const users = useQuery({
     queryKey: ["admin", "users", location.search],
     queryFn: () => fetchAdminUsers(location.search)
   })
+  const activeUserFolderId = users.data?.smart_folders.find((folder) => folder.id === users.data.active_smart_folder_id && folder.kind === "user_defined")?.id
 
   return (
     <main aria-label="Admin users" className="mx-auto max-w-[96rem] space-y-6 p-6">
@@ -40,6 +43,7 @@ export function AdminUsersIndex() {
             <FilterBar
               filter={users.data.filter}
               filterSchema={users.data.controls.filter_schema}
+              buildLink={adminSmartFolderFilterLinkBuilder(activeUserFolderId)}
               legacyFilterKeys={adminUserLegacyFilterKeys}
               pathname={location.pathname}
               search={location.search}
@@ -47,13 +51,18 @@ export function AdminUsersIndex() {
           }
           smartFolders={
             <AdminSmartFolderNav
-              activeSmartFolderId={users.data.active_smart_folder_id}
+              activeFolderId={users.data.active_smart_folder_id}
               allLabel="All users"
               allPath={basePath}
               ariaLabel="Admin user smart folders"
+              currentFilter={users.data.filter}
               folders={users.data.smart_folders}
               heading="Smart folders"
+              onMutationSuccess={() => {
+                void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
+              }}
               prefix={prefix}
+              search={location.search}
               subjectType="admin_user"
             />
           }

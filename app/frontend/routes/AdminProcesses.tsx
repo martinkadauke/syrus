@@ -5,6 +5,7 @@ import { ApiError } from "../api/client"
 import { AdminFiltersLayout } from "../components/AdminFiltersLayout"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import { FilterBar } from "../components/FilterBar"
+import { adminSmartFolderFilterLinkBuilder } from "../lib/adminSmartFolderLinks"
 import {
   fetchAdminProcess,
   fetchAdminProcesses,
@@ -15,12 +16,14 @@ import { workflowSlug } from "../lib/slugs"
 
 export function AdminProcessesIndex() {
   const location = useLocation()
+  const queryClient = useQueryClient()
   const prefix = routePrefix(location.pathname)
   const basePath = location.pathname.startsWith("/app-shell") ? "/app-shell/admin/processes" : "/admin/processes"
   const processes = useQuery({
     queryKey: ["admin", "processes", location.search],
     queryFn: () => fetchAdminProcesses(location.search)
   })
+  const activeUserFolderId = processes.data?.smart_folders.find((folder) => folder.id === processes.data.active_smart_folder_id && folder.kind === "user_defined")?.id
 
   return (
     <main aria-label="Admin processes" className="mx-auto max-w-[96rem] space-y-6 p-6">
@@ -37,6 +40,7 @@ export function AdminProcessesIndex() {
             <FilterBar
               filter={processes.data.filter}
               filterSchema={processes.data.controls.filter_schema}
+              buildLink={adminSmartFolderFilterLinkBuilder(activeUserFolderId)}
               legacyFilterKeys={adminProcessLegacyFilterKeys}
               pathname={location.pathname}
               search={location.search}
@@ -44,13 +48,18 @@ export function AdminProcessesIndex() {
           }
           smartFolders={
             <AdminSmartFolderNav
-              activeSmartFolderId={processes.data.active_smart_folder_id}
+              activeFolderId={processes.data.active_smart_folder_id}
               allLabel="Active + recent"
               allPath={basePath}
               ariaLabel="Admin process smart folders"
+              currentFilter={processes.data.filter}
               folders={processes.data.smart_folders}
               heading="Processes"
+              onMutationSuccess={() => {
+                void queryClient.invalidateQueries({ queryKey: ["admin", "processes"] })
+              }}
               prefix={prefix}
+              search={location.search}
               subjectType="spawned_process"
             />
           }

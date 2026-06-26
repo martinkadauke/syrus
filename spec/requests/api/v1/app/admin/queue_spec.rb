@@ -52,6 +52,7 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
     expect(body.dig("controls", "filter_schema").map { |field| field["field"] }).to include("queue_name", "job_class")
     expect(body["smart_folders"].find { |folder| folder["name"] == "Runs" }).to include(
       "count" => 1,
+      "position" => SmartFolder.for_subject(:admin_queue).find_by!(name: "Runs").position,
       "path" => a_string_matching(%r{\A/admin/queue/active\?smart_folder_id=})
     )
   end
@@ -78,6 +79,67 @@ RSpec.describe "API: /api/v1/app/admin/queue/*", type: :request do
       ]
     )
     expect(body["smart_folders"].find { |row| row["id"] == folder.id }).to include("active" => true, "count" => 1)
+  end
+
+  it "returns the active user-defined queue folder filter when no q is present" do
+    sign_in_as(admin)
+    process = solid_queue_process(hostname: "worker-a", pid: 101)
+    run_job = solid_queue_job(class_name: "RunJob", queue_name: "runs")
+    chat_job = solid_queue_job(class_name: "ChatTurnJob", queue_name: "chat")
+    SolidQueue::ClaimedExecution.create!(job: run_job, process: process, created_at: 2.minutes.ago)
+    SolidQueue::ClaimedExecution.create!(job: chat_job, process: process, created_at: 1.minute.ago)
+    folder_tree = {
+      "and" => [
+        { "field" => "queue_name", "op" => "is", "value" => "runs" }
+      ]
+    }
+    folder = admin.smart_folders.create!(
+      name: "Run queue",
+      kind: "user_defined",
+      subject_type: "admin_queue",
+      filter: folder_tree,
+      position: 0
+    )
+
+    get "/api/v1/app/admin/queue/active", params: { smart_folder_id: folder.id }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["filter"]).to eq(folder_tree)
+    expect(body["jobs"].map { |job| job["queue_name"] }).to eq([ "runs" ])
+  end
+
+  it "returns only the URL queue filter when a user-defined folder also has q" do
+    sign_in_as(admin)
+    process = solid_queue_process(hostname: "worker-a", pid: 101)
+    run_job = solid_queue_job(class_name: "RunJob", queue_name: "runs")
+    chat_job = solid_queue_job(class_name: "ChatTurnJob", queue_name: "chat")
+    SolidQueue::ClaimedExecution.create!(job: run_job, process: process, created_at: 2.minutes.ago)
+    SolidQueue::ClaimedExecution.create!(job: chat_job, process: process, created_at: 1.minute.ago)
+    folder_tree = {
+      "and" => [
+        { "field" => "queue_name", "op" => "is", "value" => "runs" }
+      ]
+    }
+    url_tree = {
+      "and" => [
+        { "field" => "queue_name", "op" => "is", "value" => "chat" }
+      ]
+    }
+    folder = admin.smart_folders.create!(
+      name: "Run queue",
+      kind: "user_defined",
+      subject_type: "admin_queue",
+      filter: folder_tree,
+      position: 0
+    )
+
+    get "/api/v1/app/admin/queue/active", params: { smart_folder_id: folder.id, q: Filters::QueryParam.encode(url_tree) }
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body["filter"]).to eq(url_tree)
+    expect(body["jobs"].map { |job| job["queue_name"] }).to eq([ "chat" ])
   end
 
   it "returns pending ready executions with a total" do

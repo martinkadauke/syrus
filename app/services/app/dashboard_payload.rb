@@ -500,7 +500,7 @@ module App
     end
 
     def jobs_filter
-      @jobs_filter ||= Jobs::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
+      @jobs_filter ||= Jobs::Filter.from_params(params, smart_folder: active_smart_folder_for_filter, user: user)
     end
 
     def filtered_jobs_scope
@@ -508,7 +508,7 @@ module App
     end
 
     def epics_filter
-      @epics_filter ||= Epics::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
+      @epics_filter ||= Epics::Filter.from_params(params, smart_folder: active_smart_folder_for_filter, user: user)
     end
 
     def filtered_epics_scope
@@ -520,7 +520,22 @@ module App
     end
 
     def workflows_filter
-      @workflows_filter ||= Workflows::Filter.from_params(params, smart_folder: active_smart_folder, user: user)
+      @workflows_filter ||= Workflows::Filter.from_params(params, smart_folder: active_smart_folder_for_filter, user: user)
+    end
+
+    def active_smart_folder_for_filter
+      url_filter.active? ? nil : active_smart_folder
+    end
+
+    def url_filter
+      @url_filter ||= case subject
+      when "job"
+        Jobs::Filter.from_params(params, user: user)
+      when "workflow"
+        Workflows::Filter.from_params(params, user: user)
+      else
+        Epics::Filter.from_params(params, user: user)
+      end
     end
 
     def filtered_workflows_scope
@@ -941,10 +956,13 @@ module App
           id: folder.id,
           name: folder.name,
           kind: folder.kind,
+          position: folder.position,
           subject_type: folder.subject_type,
           visibility: folder.visibility.to_s,
+          position: folder.position,
           count: count,
           active: active_smart_folder&.id == folder.id,
+          filter: folder.filter,
           path: dashboard_path_for(subject, smart_folder_id: folder.id)
         }
       end

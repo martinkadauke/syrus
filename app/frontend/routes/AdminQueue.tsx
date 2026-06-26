@@ -5,6 +5,7 @@ import { ApiError } from "../api/client"
 import { AdminFiltersLayout } from "../components/AdminFiltersLayout"
 import { AdminSmartFolderNav } from "../components/AdminSmartFolderNav"
 import { FilterBar } from "../components/FilterBar"
+import { adminSmartFolderFilterLinkBuilder } from "../lib/adminSmartFolderLinks"
 import {
   fetchAdminQueue,
   isQueueTab,
@@ -102,18 +103,23 @@ function AdminQueue({ tab }: { tab: QueueTab }) {
       {queue.isPending ? <PanelMessage>Loading queue...</PanelMessage> : null}
       {queue.isError ? <QueueError error={queue.error} /> : null}
       {queue.isSuccess ? (
-        <QueueContent basePath={basePath} onNavigate={(path) => navigate(withRoutePrefix(path, prefix))} pathname={location.pathname} payload={queue.data} prefix={prefix} queryKey={queueQueryKey} search={location.search} tab={tab} />
+        <QueueContent basePath={basePath} onNavigate={(path) => navigate(withRoutePrefix(path, prefix))} onSmartFolderMutationSuccess={() => {
+          void queryClient.invalidateQueries({ queryKey: ["admin", "queue"] })
+        }} pathname={location.pathname} payload={queue.data} prefix={prefix} queryKey={queueQueryKey} search={location.search} tab={tab} />
       ) : null}
     </main>
   )
 }
 
-function QueueContent({ basePath, onNavigate, pathname, payload, prefix, queryKey, search, tab }: { basePath: string; onNavigate: (path: string) => void; pathname: string; payload: AdminQueuePayload; prefix: string; queryKey: unknown[]; search: string; tab: QueueTab }) {
+function QueueContent({ basePath, onNavigate, onSmartFolderMutationSuccess, pathname, payload, prefix, queryKey, search, tab }: { basePath: string; onNavigate: (path: string) => void; onSmartFolderMutationSuccess: () => void; pathname: string; payload: AdminQueuePayload; prefix: string; queryKey: unknown[]; search: string; tab: QueueTab }) {
   const smartFolders = "smart_folders" in payload ? payload.smart_folders : []
+  const activeFolderId = "active_smart_folder_id" in payload ? payload.active_smart_folder_id : null
+  const activeUserFolderId = smartFolders.find((folder) => folder.id === activeFolderId && folder.kind === "user_defined")?.id
   const filterBar = isFilteredQueuePayload(payload) ? (
     <FilterBar
       filter={payload.filter}
       filterSchema={payload.controls.filter_schema}
+      buildLink={adminSmartFolderFilterLinkBuilder(activeUserFolderId)}
       pathname={pathname}
       search={search}
     />
@@ -124,16 +130,19 @@ function QueueContent({ basePath, onNavigate, pathname, payload, prefix, queryKe
       filterBar={filterBar}
       smartFolders={smartFolders.length > 0 ? (
         <AdminSmartFolderNav
-          activeSmartFolderId={"active_smart_folder_id" in payload ? payload.active_smart_folder_id : null}
+          activeFolderId={activeFolderId}
           allLabel="All queue"
           allPath={`${basePath}/${tab}`}
           appliedFilter={isFilteredQueuePayload(payload) ? payload.filter : null}
           ariaLabel="Admin queue smart folders"
+          currentFilter={isFilteredQueuePayload(payload) ? payload.filter : undefined}
           folders={smartFolders}
           heading="Queues"
           onNavigate={onNavigate}
+          onMutationSuccess={onSmartFolderMutationSuccess}
           prefix={prefix}
           queryKey={queryKey}
+          search={search}
           subjectType="admin_queue"
         />
       ) : null}

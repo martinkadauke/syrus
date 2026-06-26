@@ -1,4 +1,4 @@
-import { deleteJson, getJson, patchJson } from "./client"
+import { deleteJson, patchJson, postJson } from "./client"
 
 export type SmartFolderRow = {
   id: number
@@ -7,29 +7,44 @@ export type SmartFolderRow = {
   filter: Record<string, unknown>
 }
 
-export type SmartFoldersPayload = {
+type SmartFolderMutationPayload = {
   subject_type: string
   subject_label: string
   dashboard_path: string
   smart_folders: SmartFolderRow[]
   message?: string
+  redirect_to?: string
 }
 
 export type SmartFolderInput = {
   name: string
   position: number
+  filter?: Record<string, unknown>
 }
 
-export function fetchSmartFolders(search: string) {
-  return getJson<SmartFoldersPayload>(`/api/v1/app/smart_folders${search}`)
+export type SmartFolderCreateInput = {
+  name: string
+  subjectType: string
+  filter: Record<string, unknown>
 }
 
 export function updateSmartFolder(id: number, values: SmartFolderInput) {
-  return patchJson<SmartFoldersPayload>(`/api/v1/app/smart_folders/${id}`, {
-    smart_folder: values
+  const { filter, ...smartFolder } = values
+
+  return patchJson<SmartFolderMutationPayload>(`/api/v1/app/smart_folders/${id}`, {
+    ...(filter === undefined ? {} : { filter: JSON.stringify(filter) }),
+    smart_folder: smartFolder
+  })
+}
+
+export function createSmartFolder(values: SmartFolderCreateInput) {
+  return postJson<SmartFolderMutationPayload>("/api/v1/app/smart_folders", {
+    filter: JSON.stringify(values.filter),
+    subject_type: values.subjectType,
+    smart_folder: { name: values.name }
   })
 }
 
 export function deleteSmartFolder(id: number) {
-  return deleteJson<SmartFoldersPayload>(`/api/v1/app/smart_folders/${id}`)
+  return deleteJson<SmartFolderMutationPayload>(`/api/v1/app/smart_folders/${id}`)
 }
