@@ -194,8 +194,8 @@ create pending actions and wait for operator confirmation before applying.
 Non-admin chats do not advertise those tools, and each admin tool repeats
 the admin check when it runs.
 Admin queue filters can be saved as smart folders from the queue sidebar,
-so repeated operational views are available beside the built-in queue
-folders.
+then renamed or deleted inline from the saved-folder list so repeated
+operational views stay available beside the built-in queue folders.
 
 Admins can also toggle boolean feature flags from `/admin/features` when
 the instance declares features in `config/features.yml`. The page groups

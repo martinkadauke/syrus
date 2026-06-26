@@ -147,9 +147,7 @@ export function AdminSmartFolderNav({
         ) : null}
       </nav>
       <div className="space-y-1 pt-3">
-        <div className="flex items-center justify-between gap-2 px-2">
-          <h3 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Saved</h3>
-        </div>
+        <h3 className="px-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Saved</h3>
         {savedFolders.length > 0 ? (
           <nav aria-label={`${ariaLabel} saved`} className="space-y-1">
             {savedFolders.map((folder) => (
