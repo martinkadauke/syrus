@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { DragEvent, FormEvent, KeyboardEvent } from "react"
 import { useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import type { AdminSmartFolder } from "../api/adminSmartFolders"
 import { createSmartFolder, deleteSmartFolder, updateSmartFolder } from "../api/smartFolders"
 import { filterTreeFromPayload, topFilterChildren } from "./FilterBar"
@@ -37,6 +37,8 @@ export function AdminSmartFolderNav({
 }) {
   const queryClient = useQueryClient()
   const [draggedFolderId, setDraggedFolderId] = useState<number | null>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
   const [folderName, setFolderName] = useState("")
   const builtinFolders = folders.filter((folder) => folder.kind !== "user_defined")
   const primaryFolders = builtinFolders.filter((folder) => folder.visibility !== "on_demand")
@@ -57,8 +59,13 @@ export function AdminSmartFolderNav({
         filter: currentFilter
       })
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setFolderName("")
+      if (data.redirect_to) {
+        navigate(withRoutePrefix(data.redirect_to, prefix), { replace: true })
+      } else {
+        navigate(cleanFilterOverrideUrl(location), { replace: true })
+      }
       if (queryKey) void queryClient.invalidateQueries({ queryKey })
       onMutationSuccess?.()
     }
@@ -74,6 +81,7 @@ export function AdminSmartFolderNav({
       })
     },
     onSuccess: () => {
+      navigate(cleanFilterOverrideUrl(location), { replace: true })
       if (queryKey) void queryClient.invalidateQueries({ queryKey })
       onMutationSuccess?.()
     }
@@ -349,4 +357,12 @@ function withRoutePrefix(path: string, prefix: string) {
   if (!path.startsWith("/")) return path
 
   return `${prefix}${path}`
+}
+
+function cleanFilterOverrideUrl(location: { pathname: string; search: string }) {
+  const params = new URLSearchParams(location.search)
+  params.delete("q")
+  const qs = params.toString()
+
+  return qs ? `${location.pathname}?${qs}` : location.pathname
 }
