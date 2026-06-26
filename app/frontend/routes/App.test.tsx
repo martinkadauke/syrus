@@ -653,106 +653,11 @@ describe("App", () => {
     }
   })
 
-  it("switches from the classic shell to the new UI without reloading", async () => {
+  it("uses the classic shell when v2 UI is disabled", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
-      feature_flags: {
-        v2_ui: true
-      }
-    }))
-    document.body.appendChild(script)
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ layout_version: "v2" }), { status: 200, headers: { "Content-Type": "application/json" } })
-    )
-
-    try {
-      render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/session/new"]}>
-            <App />
-          </MemoryRouter>
-        </QueryClientProvider>
-      )
-
-      const accountNav = await screen.findByRole("navigation", { name: "Account" })
-      fireEvent.click(within(accountNav).getByRole("button", { name: "operator@example.com" }))
-      fireEvent.click(within(accountNav).getByRole("button", { name: "Switch to new UI" }))
-
-      await screen.findByRole("button", { name: "operator@example.com" })
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/layout_version",
-        expect.objectContaining({
-          method: "PATCH",
-          credentials: "same-origin",
-          body: JSON.stringify({ layout_version: "v2" })
-        })
-      )
-    } finally {
-      fetchSpy.mockRestore()
-      script.remove()
-    }
-  })
-
-  it("switches from the new shell to the classic UI without reloading", async () => {
-    const script = document.createElement("script")
-    script.id = "syrus-bootstrap-data"
-    script.type = "application/json"
-    script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      },
-      feature_flags: {
-        v2_ui: true
-      }
-    }))
-    document.body.appendChild(script)
-    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
-      if (String(input) === "/api/v1/app/layout_version" && (init as RequestInit)?.method === "PATCH") {
-        return Promise.resolve(new Response(JSON.stringify({ layout_version: "v1" }), { status: 200, headers: { "Content-Type": "application/json" } }))
-      }
-
-      return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
-    })
-
-    try {
-      render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/session/new"]}>
-            <App />
-          </MemoryRouter>
-        </QueryClientProvider>
-      )
-
-      fireEvent.click(await screen.findByRole("button", { name: "operator@example.com" }))
-      fireEvent.click(screen.getByRole("button", { name: "Switch to classic UI" }))
-
-      await screen.findByRole("navigation", { name: "Account" })
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/layout_version",
-        expect.objectContaining({
-          method: "PATCH",
-          credentials: "same-origin",
-          body: JSON.stringify({ layout_version: "v1" })
-        })
-      )
-    } finally {
-      fetchSpy.mockRestore()
-      script.remove()
-    }
-  })
-
-  it("uses the classic shell when v2 UI is disabled despite a v2 layout preference", async () => {
-    const script = document.createElement("script")
-    script.id = "syrus-bootstrap-data"
-    script.type = "application/json"
-    script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      },
       feature_flags: {
         v2_ui: false
       }
@@ -778,15 +683,11 @@ describe("App", () => {
     }
   })
 
-  it("uses the v2 shell when v2 UI is enabled and the user prefers v2", async () => {
+  it("uses the v2 shell when v2 UI is enabled", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      },
       feature_flags: {
         v2_ui: true
       }
@@ -813,40 +714,6 @@ describe("App", () => {
     }
   })
 
-  it("keeps the classic shell when v2 UI is enabled and the user prefers v1", async () => {
-    const script = document.createElement("script")
-    script.id = "syrus-bootstrap-data"
-    script.type = "application/json"
-    script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v1"
-      },
-      feature_flags: {
-        v2_ui: true
-      }
-    }))
-    document.body.appendChild(script)
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } })
-    )
-
-    try {
-      render(
-        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/session/new"]}>
-            <App />
-          </MemoryRouter>
-        </QueryClientProvider>
-      )
-
-      expect(await screen.findByRole("navigation", { name: "Account" })).toBeInTheDocument()
-    } finally {
-      fetchSpy.mockRestore()
-      script.remove()
-    }
-  })
-
   it("renders the v2 sidebar navigation and account popup actions", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
@@ -854,7 +721,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -937,7 +803,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -991,7 +856,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1044,7 +908,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1116,7 +979,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1182,7 +1044,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1245,7 +1106,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1317,7 +1177,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1374,7 +1233,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1439,7 +1297,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1542,7 +1399,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -1600,7 +1456,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -2335,7 +2190,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: { v2_ui: true, v2_sidebar_subject_selector: true }
     }))
@@ -2773,7 +2627,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: { v2_ui: true, v2_sidebar_subject_selector: false }
     }))
@@ -2811,7 +2664,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: { v2_ui: true, v2_sidebar_subject_selector: true }
     }))
@@ -3440,7 +3292,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -3845,7 +3696,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: { v2_ui: true, v2_sidebar_subject_selector: true }
     }))
@@ -3970,7 +3820,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -10005,7 +9854,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -11557,7 +11405,6 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({
       current_user: {
         ...bootstrapPayload().current_user,
-        layout_version: "v2"
       },
       feature_flags: {
         v2_ui: true
@@ -11780,7 +11627,6 @@ function bootstrapPayload(overrides: Record<string, unknown> & { setupStatus?: R
       agent_provider: "claude",
       agent_max_turns: 200,
       theme: "light",
-      layout_version: "v1"
     },
     team_user_count: 1,
     app: {
