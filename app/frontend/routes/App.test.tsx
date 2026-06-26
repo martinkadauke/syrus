@@ -5018,7 +5018,7 @@ describe("App", () => {
     })))
 
     try {
-      renderAppAt("/app-shell/admin/queue/active?smart_folder_id=10")
+      renderAppAt("/app-shell/admin/queue/active?smart_folder_id=10&q=dGVzdA")
 
       expect(await screen.findByText("No active claimed executions.")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Folders and filters"))
@@ -5447,7 +5447,7 @@ describe("App", () => {
     })))
 
     try {
-      renderAppAt("/app-shell/admin/processes?smart_folder_id=11")
+      renderAppAt("/app-shell/admin/processes?smart_folder_id=11&q=dGVzdA")
 
       expect(await screen.findByText("No processes match this filter.")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Folders and filters"))
@@ -5717,7 +5717,7 @@ describe("App", () => {
     })))
 
     try {
-      renderAppAt("/app-shell/admin/users?smart_folder_id=12")
+      renderAppAt("/app-shell/admin/users?smart_folder_id=12&q=dGVzdA")
 
       expect(await screen.findByText("No users match these filters.")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Folders and filters"))

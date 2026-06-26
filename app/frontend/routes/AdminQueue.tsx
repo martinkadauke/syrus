@@ -142,6 +142,7 @@ function QueueContent({ basePath, onNavigate, onSmartFolderMutationSuccess, path
           onMutationSuccess={onSmartFolderMutationSuccess}
           prefix={prefix}
           queryKey={queryKey}
+          search={search}
           subjectType="admin_queue"
         />
       ) : null}

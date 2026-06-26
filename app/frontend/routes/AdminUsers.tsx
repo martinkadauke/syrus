@@ -62,6 +62,7 @@ export function AdminUsersIndex() {
                 void queryClient.invalidateQueries({ queryKey: ["admin", "users"] })
               }}
               prefix={prefix}
+              search={location.search}
               subjectType="admin_user"
             />
           }

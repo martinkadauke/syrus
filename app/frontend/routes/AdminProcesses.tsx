@@ -59,6 +59,7 @@ export function AdminProcessesIndex() {
                 void queryClient.invalidateQueries({ queryKey: ["admin", "processes"] })
               }}
               prefix={prefix}
+              search={location.search}
               subjectType="spawned_process"
             />
           }
