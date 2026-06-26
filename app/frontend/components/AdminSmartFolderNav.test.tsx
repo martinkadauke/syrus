@@ -96,7 +96,7 @@ function renderNav({ folders = smartFolders(), onMutationSuccess = vi.fn() }: { 
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <MemoryRouter>
         <AdminSmartFolderNav
-          activeSmartFolderId={null}
+          activeFolderId={null}
           allLabel="All queue"
           allPath="/admin/queue/active"
           ariaLabel="Admin queue smart folders"

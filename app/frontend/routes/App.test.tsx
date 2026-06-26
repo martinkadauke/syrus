@@ -3793,7 +3793,7 @@ describe("App", () => {
       expect(within(foldersPanel).getByRole("link", { name: "Inbox 3" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=1")
       const moreGroup = within(foldersPanel).getByText("More").closest("details")
       expect(moreGroup).not.toBeNull()
-      expect(within(moreGroup!).getByRole("link", { name: "All jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=all")
+      expect(within(moreGroup!).getByRole("link", { name: "All jobs" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&smart_folder_id=all")
       expect(within(moreGroup!).getByRole("link", { name: "Stale 1" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=2")
       expect(within(moreGroup!).getByRole("link", { name: "Merged this week 0" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?smart_folder_id=3")
       expect(within(foldersPanel).getAllByRole("link", { name: "All jobs" })).toHaveLength(1)
@@ -3914,10 +3914,7 @@ describe("App", () => {
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      }
+      feature_flags: { v2_ui: true }
     }))
     document.body.appendChild(script)
     vi.spyOn(window, "fetch").mockImplementation((input) => {
@@ -3981,10 +3978,7 @@ describe("App", () => {
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      }
+      feature_flags: { v2_ui: true }
     }))
     document.body.appendChild(script)
     vi.spyOn(window, "fetch").mockImplementation((input) => {
@@ -4048,10 +4042,7 @@ describe("App", () => {
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      }
+      feature_flags: { v2_ui: true }
     }))
     document.body.appendChild(script)
     const storedFilter = { and: [{ field: "state", op: "is", value: "open" }] }
@@ -4147,10 +4138,7 @@ describe("App", () => {
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      }
+      feature_flags: { v2_ui: true }
     }))
     document.body.appendChild(script)
     const dashboardRequests: string[] = []
@@ -4232,10 +4220,7 @@ describe("App", () => {
     script.id = "syrus-bootstrap-data"
     script.type = "application/json"
     script.textContent = JSON.stringify(bootstrapPayload({
-      current_user: {
-        ...bootstrapPayload().current_user,
-        layout_version: "v2"
-      }
+      feature_flags: { v2_ui: true }
     }))
     document.body.appendChild(script)
     const storedFilter = { and: [{ field: "state", op: "is", value: "open" }] }
