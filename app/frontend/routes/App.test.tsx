@@ -4113,6 +4113,7 @@ describe("App", () => {
     }))
     document.body.appendChild(script)
     const appliedFilter = { and: [{ field: "state", op: "is", value: "open" }] }
+    const savedFilter = { and: [{ field: "kind", op: "is", value: "issue" }] }
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
       if (path === "/api/v1/app/chats") {
@@ -4130,14 +4131,30 @@ describe("App", () => {
           )
         )
       }
-      if (path === "/api/v1/app/dashboard?view=list&subject=job" || path.startsWith("/api/v1/app/dashboard?view=list&q=") || path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job") {
+      const url = new URL(path, "http://example.test")
+      if (url.pathname === "/api/v1/app/dashboard") {
         return Promise.resolve(
           new Response(
             JSON.stringify(
               dashboardPayload({
                 subject: "job",
                 view: "list",
+                active_smart_folder_id: url.searchParams.get("smart_folder_id") === "7" ? 7 : null,
                 filter: appliedFilter,
+                smart_folders: [
+                  {
+                    id: 7,
+                    name: "My work",
+                    kind: "user_defined",
+                    position: 2,
+                    subject_type: "job",
+                    visibility: "user_defined",
+                    count: 1,
+                    active: url.searchParams.get("smart_folder_id") === "7",
+                    filter: savedFilter,
+                    path: "/dashboard/jobs?smart_folder_id=7"
+                  }
+                ],
                 items: [dashboardJobItem()]
               })
             ),
@@ -4152,7 +4169,7 @@ describe("App", () => {
     try {
       render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&q=stale"]}>
+          <MemoryRouter initialEntries={["/app-shell/dashboard/jobs?view=list&smart_folder_id=7&q=stale"]}>
             <App />
           </MemoryRouter>
         </QueryClientProvider>
@@ -4161,7 +4178,7 @@ describe("App", () => {
       const smartFoldersPanel = await screen.findByLabelText("Dashboard smart folders panel")
       expect(within(smartFoldersPanel).queryByRole("heading", { name: "Smart folders" })).not.toBeInTheDocument()
       const folderNameInput = within(smartFoldersPanel).getByLabelText("Folder name")
-      expect(within(smartFoldersPanel).queryByRole("button", { name: /^Update / })).not.toBeInTheDocument()
+      expect(within(smartFoldersPanel).getByRole("button", { name: "Update My work" })).toBeInTheDocument()
       expect(within(smartFoldersPanel).getByRole("heading", { name: "Saved" }).compareDocumentPosition(folderNameInput) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
       fireEvent.change(folderNameInput, { target: { value: "Open work" } })
       fireEvent.click(within(smartFoldersPanel).getByRole("button", { name: "Save folder" }))
@@ -4346,7 +4363,7 @@ describe("App", () => {
       if (url.pathname === "/api/v1/app/dashboard" && url.searchParams.get("smart_folder_id") === "7") {
         dashboardRequests.push(path)
         const q = url.searchParams.get("q")
-        const filter = q ? decodeFilterQueryParam(q) : { and: [] }
+        const filter = q ? decodeFilterQueryParam(q) : storedFilter
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -4404,7 +4421,7 @@ describe("App", () => {
       expect(await within(smartFoldersPanel).findByRole("button", { name: "Update My work" })).toBeInTheDocument()
 
       fireEvent.click(screen.getByRole("button", { name: "+ Add filter" }))
-      fireEvent.click(screen.getByRole("button", { name: "State enum" }))
+      fireEvent.click(screen.getByRole("button", { name: "Has parent boolean" }))
 
       await waitFor(() => {
         const latestRequest = dashboardRequests.at(-1)
@@ -4413,6 +4430,7 @@ describe("App", () => {
         const qTree = decodeFilterQueryParam(url.searchParams.get("q")!)
         expect(qTree.and.filter((chip) => chip.field === "state")).toHaveLength(1)
         expect(qTree.and.filter((chip) => chip.field === "kind")).toHaveLength(1)
+        expect(qTree.and.filter((chip) => chip.field === "has_parent")).toHaveLength(1)
       })
     } finally {
       script.remove()
@@ -4495,7 +4513,7 @@ describe("App", () => {
         expect(url.searchParams.has("q")).toBe(true)
         expect(url.searchParams.has("smart_folder_id")).toBe(false)
       })
-      expect(await within(smartFoldersPanel).findByLabelText("Folder name")).toBeInTheDocument()
+      expect(within(smartFoldersPanel).queryByLabelText("Folder name")).not.toBeInTheDocument()
     } finally {
       script.remove()
     }
@@ -5284,21 +5302,23 @@ describe("App", () => {
 
   it("shows an update button for admin queue saved folder filter drift", async () => {
     const restoreMedia = mockMediaQuery(false)
-    const driftPayload = adminQueuePayloadWithSavedFolder({
+    let queuePayload = adminQueuePayloadWithSavedFolder({
       and: [ { field: "queue_name", op: "is", value: "chat" } ]
     })
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const url = new URL(String(input), "http://example.test")
       const method = init?.method || "GET"
       if (url.pathname === "/api/v1/app/admin/queue/active") {
-        return Promise.resolve(jsonResponse(driftPayload))
+        return Promise.resolve(jsonResponse(queuePayload))
       }
       if (url.pathname === "/api/v1/app/smart_folders/10" && method === "PATCH") {
-        return Promise.resolve(jsonResponse({ ...driftPayload, message: "Smart folder updated." }))
+        queuePayload = adminQueuePayloadWithSavedFolder(currentAdminQueueFilter())
+        return Promise.resolve(jsonResponse({ ...queuePayload, message: "Smart folder updated." }))
       }
       if (url.pathname === "/api/v1/app/smart_folders" && method === "POST") {
+        queuePayload = adminQueuePayloadWithSavedFolder(currentAdminQueueFilter())
         return Promise.resolve(jsonResponse({
-          ...driftPayload,
+          ...queuePayload,
           message: "Smart folder saved.",
           redirect_to: "/admin/queue/active?smart_folder_id=10"
         }))
@@ -5336,6 +5356,9 @@ describe("App", () => {
 
       updateView.unmount()
       fetchSpy.mockClear()
+      queuePayload = adminQueuePayloadWithSavedFolder({
+        and: [ { field: "queue_name", op: "is", value: "chat" } ]
+      })
 
       renderAppAt("/app-shell/admin/queue/active?smart_folder_id=10&q=dGVzdA")
 
@@ -5383,7 +5406,9 @@ describe("App", () => {
           )
         )
       }
-      if (path === "/api/v1/app/admin/queue/active" || path === "/api/v1/app/admin/queue/active?smart_folder_id=21") {
+      const url = new URL(path, "http://example.test")
+      if (url.pathname === "/api/v1/app/admin/queue/active") {
+        const activeFolderId = url.searchParams.get("smart_folder_id")
         return Promise.resolve(
           new Response(
             JSON.stringify({
@@ -5402,7 +5427,7 @@ describe("App", () => {
                   }
                 ]
               },
-              active_smart_folder_id: path.endsWith("smart_folder_id=21") ? 21 : null,
+              active_smart_folder_id: activeFolderId ? Number(activeFolderId) : null,
               smart_folders: [
                 {
                   id: 1,
@@ -5411,7 +5436,8 @@ describe("App", () => {
                   subject_type: "admin_queue",
                   visibility: "always",
                   count: 1,
-                  active: false,
+                  active: activeFolderId === "1",
+                  filter: { and: [ { field: "queue_name", op: "is", value: "chat" } ] },
                   path: "/admin/queue/active?smart_folder_id=1"
                 }
               ],
@@ -5437,7 +5463,7 @@ describe("App", () => {
     try {
       render(
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-          <MemoryRouter initialEntries={["/app-shell/admin/queue/active"]}>
+          <MemoryRouter initialEntries={["/app-shell/admin/queue/active?smart_folder_id=1&q=changed"]}>
             <App />
           </MemoryRouter>
         </QueryClientProvider>
@@ -5475,7 +5501,7 @@ describe("App", () => {
     }
   })
 
-  it("shows the save form for admin queue filters with no active folder", async () => {
+  it("hides the save form for admin queue filters with no active folder", async () => {
     const restoreMedia = mockMediaQuery(false)
     const payload = adminQueuePayloadWithSavedFolder(currentAdminQueueFilter())
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
@@ -5490,7 +5516,7 @@ describe("App", () => {
       expect(await screen.findByText("No active claimed executions.")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Folders and filters"))
       expect(screen.queryByRole("button", { name: "Update Run repairs" })).not.toBeInTheDocument()
-      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Save as new folder" })).not.toBeInTheDocument()
     } finally {
       fetchSpy.mockRestore()
       restoreMedia()
@@ -5764,7 +5790,7 @@ describe("App", () => {
     }
   })
 
-  it("shows the save form for admin process filters with no active folder", async () => {
+  it("hides the save form for admin process filters with no active folder", async () => {
     const restoreMedia = mockMediaQuery(false)
     const payload = adminProcessesPayloadWithSavedFolder(currentAdminProcessFilter())
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
@@ -5779,7 +5805,7 @@ describe("App", () => {
       expect(await screen.findByText("No processes match this filter.")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Folders and filters"))
       expect(screen.queryByRole("button", { name: "Update Live agents" })).not.toBeInTheDocument()
-      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Save as new folder" })).not.toBeInTheDocument()
     } finally {
       fetchSpy.mockRestore()
       restoreMedia()
@@ -6034,7 +6060,7 @@ describe("App", () => {
     }
   })
 
-  it("shows the save form for admin user filters with no active folder", async () => {
+  it("hides the save form for admin user filters with no active folder", async () => {
     const restoreMedia = mockMediaQuery(false)
     const payload = adminUsersPayloadWithSavedFolder(currentAdminUserFilter())
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({
@@ -6049,7 +6075,7 @@ describe("App", () => {
       expect(await screen.findByText("No users match these filters.")).toBeInTheDocument()
       fireEvent.click(screen.getByText("Folders and filters"))
       expect(screen.queryByRole("button", { name: "Update Low rate users" })).not.toBeInTheDocument()
-      expect(screen.getByRole("button", { name: "Save as new folder" })).toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Save as new folder" })).not.toBeInTheDocument()
     } finally {
       fetchSpy.mockRestore()
       restoreMedia()
