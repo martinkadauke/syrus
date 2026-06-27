@@ -313,6 +313,7 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   const [isComposeOpen, setIsComposeOpen] = useState(false)
   const [collapsedRepositorySlugs, setCollapsedRepositorySlugs] = useState<Set<string>>(() => new Set())
   const [retryingJobID, setRetryingJobID] = useState<number | null>(null)
+  const toastTimerRef = useRef<number | null>(null)
   const composeRef = useRef<HTMLElement>(null)
   const composeButtonRef = useRef<HTMLButtonElement>(null)
   const inboxQuery = useQuery({
@@ -345,10 +346,32 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
     refetchInterval: detailJobId !== null ? REFRESH_INTERVAL_MS : false
   })
 
-  const showErrorToast = (message: string) => {
-    setToast({ kind: "error", message })
-    window.setTimeout(() => setToast(null), 3200)
+  const clearToastTimer = () => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
   }
+
+  const clearToast = () => {
+    clearToastTimer()
+    setToast(null)
+  }
+
+  const showToast = (nextToast: ToastState, durationMs = nextToast.kind === "success" ? 2800 : 5000) => {
+    clearToastTimer()
+    setToast(nextToast)
+    toastTimerRef.current = window.setTimeout(() => {
+      toastTimerRef.current = null
+      setToast(null)
+    }, durationMs)
+  }
+
+  const showErrorToast = (message: string) => {
+    showToast({ kind: "error", message })
+  }
+
+  useEffect(() => () => clearToastTimer(), [])
 
   useEffect(() => {
     if (jobs.length === 0) {
@@ -425,7 +448,7 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
 
   const checkoutJob = async (job: SyrusJobItem) => {
     const command = `syrus checkout JOB-${job.id}`
-    setToast(null)
+    clearToast()
 
     try {
       const result = await window.syrusDesktop.checkoutJob({
@@ -433,19 +456,19 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
         repoSlug: job.repository_slug,
         branchName: job.branch_name
       })
-      setToast({ kind: "success", message: `Checked out ${result.branchName}` })
+      showToast({ kind: "success", message: `Checked out ${result.branchName}` })
       setNavigation({ view: "job-detail", jobId: job.id })
     } catch (checkoutError) {
-      setToast({
+      showToast({
         kind: "error",
         message: checkoutError instanceof Error ? checkoutError.message : "Local checkout failed.",
         copyCommand: command
-      })
+      }, 7000)
     }
   }
 
   const approveJob = async (job: SyrusJobItem) => {
-    setToast(null)
+    clearToast()
 
     try {
       const confirmed = await window.syrusDesktop.confirmApproveJob(job.id)
@@ -458,11 +481,10 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
       queryClient.setQueryData<SyrusJobItem[]>(["inbox-jobs", instanceUrl], (currentJobs = []) =>
         currentJobs.map((currentJob) => currentJob.id === job.id ? { ...currentJob, state: "approved", summary_state: "approved" } : currentJob)
       )
-      setToast({ kind: "success", message: `JOB-${job.id} approved` })
-      window.setTimeout(() => setToast(null), 2400)
+      showToast({ kind: "success", message: `JOB-${job.id} approved` })
       void inboxQuery.refetch()
     } catch (approvalError) {
-      setToast({
+      showToast({
         kind: "error",
         message: approvalError instanceof Error ? approvalError.message : `Could not approve JOB-${job.id}.`
       })
@@ -476,17 +498,17 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   }
 
   const retryJob = async (job: SyrusJobItem) => {
-    setToast(null)
+    clearToast()
     setRetryingJobID(job.id)
 
     try {
       await window.syrusDesktop.retryJob(job.id)
-      setToast({ kind: "success", message: `JOB-${job.id} queued for retry` })
+      showToast({ kind: "success", message: `JOB-${job.id} queued for retry` })
       window.setTimeout(() => {
         void inboxQuery.refetch()
       }, 900)
     } catch (retryError) {
-      setToast({
+      showToast({
         kind: "error",
         message: retryError instanceof Error ? retryError.message : `Could not retry JOB-${job.id}.`
       })
@@ -540,12 +562,12 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
 
   const handleComposeSuccess = (result: SyrusCreateJobResponse, repoSlug: string) => {
     setIsComposeOpen(false)
-    setToast({
+    showToast({
       kind: "success",
       message: `Job queued in ${repoSlug}`,
       actionLabel: "Open in Syrus",
       actionUrl: `${normalizeInstanceUrl(instanceUrl)}${result.redirect_to}`
-    })
+    }, 7000)
     void inboxQuery.refetch()
   }
 
@@ -613,14 +635,14 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
       {toast ? (
         <div
           className={[
-            "mx-3 mt-3 rounded-md border px-3 py-2 text-sm leading-5",
+            "pointer-events-none absolute left-3 right-3 top-[76px] z-30 rounded-md border px-3 py-2 text-sm leading-5 shadow-lg",
             toast.kind === "success"
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
               : "border-red-200 bg-red-50 text-red-800"
           ].join(" ")}
           role="status"
         >
-          <div className="flex items-start justify-between gap-3">
+          <div className="pointer-events-auto flex items-start justify-between gap-3">
             <span className="min-w-0 overflow-wrap-anywhere">{toast.message}</span>
             {toast.copyCommand ? (
               <button type="button" className="toast-action" onClick={copyToastCommand}>
