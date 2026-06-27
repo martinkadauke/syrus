@@ -453,7 +453,7 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
     return (
       <div className="flex h-full min-h-0 flex-col gap-4 overflow-y-auto p-4 text-sm text-gray-500 dark:text-gray-400" data-testid="chat-message-stream">
         <div className="flex flex-1 flex-col items-center justify-center gap-3">
-          <div>{payload.chat.repository ? "Start a chat with this repository." : "Attach a repository to start chatting."}</div>
+          <div>{payload.chat.repository ? "Start a chat with this repository." : "Ask anything, or attach a repository for code context."}</div>
           {agentActive ? <AgentActivityIndicator running={payload.agent_busy} /> : null}
         </div>
         {agentQuestions.length > 0 ? <AgentQuestions questions={agentQuestions} queryKey={queryKey} onNotice={onNotice} /> : null}
@@ -1100,7 +1100,7 @@ function ProposalChildren({ children, mutation }: { children: ChatProposalChild[
   )
 }
 
-function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function Compose({ commandHandlers, payload, prefix, queryKey, onNotice, onMessageSent }: { commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void; onMessageSent?: () => void }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [text, setText] = useState("")
@@ -1110,8 +1110,11 @@ function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { com
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingSlashCommandConfirmation | null>(null)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false)
+  const [attachmentPopoverOpen, setAttachmentPopoverOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const attachmentPopoverRef = useRef<HTMLDivElement | null>(null)
+  const addAttachmentButtonRef = useRef<HTMLButtonElement | null>(null)
   const submitWithEnter = useSubmitChatWithEnter()
   const search = queryKey[2]
   const agentActive = isAgentActive(payload)
@@ -1130,6 +1133,7 @@ function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { com
       setAttachmentError(null)
       setPendingConfirmation(null)
       onNotice(null)
+      onMessageSent?.()
     }
   })
   const systemAction = useMutation<ChatPayload | ChatCreatedPayload, Error, ChatSystemAction>({
@@ -1327,9 +1331,47 @@ function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { com
     setAttachmentError(null)
   }
 
+  function openAttachmentFilePicker() {
+    setAttachmentPopoverOpen(false)
+    fileInputRef.current?.click()
+  }
+
+  function focusAttachmentPopoverItem(direction: 1 | -1) {
+    const popover = attachmentPopoverRef.current
+    if (!popover) return
+
+    const focusable = Array.from(popover.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex='-1'])"))
+      .filter((element) => element.offsetParent !== null || element === document.activeElement)
+    if (focusable.length === 0) return
+
+    const activeIndex = focusable.indexOf(document.activeElement as HTMLElement)
+    const nextIndex = activeIndex === -1 ? 0 : (activeIndex + direction + focusable.length) % focusable.length
+    focusable[nextIndex]?.focus()
+  }
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     submitMessage()
+  }
+
+  function handleAttachmentPopoverKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault()
+      setAttachmentPopoverOpen(false)
+      addAttachmentButtonRef.current?.focus()
+      return
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault()
+      focusAttachmentPopoverItem(1)
+      return
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault()
+      focusAttachmentPopoverItem(-1)
+    }
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
@@ -1401,6 +1443,29 @@ function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { com
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
+  useEffect(() => {
+    if (!attachmentPopoverOpen) return
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node | null
+      if (!target) return
+      if (attachmentPopoverRef.current?.contains(target)) return
+      if (addAttachmentButtonRef.current?.contains(target)) return
+
+      setAttachmentPopoverOpen(false)
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown)
+    return () => document.removeEventListener("pointerdown", handlePointerDown)
+  }, [attachmentPopoverOpen])
+
+  useEffect(() => {
+    if (!attachmentPopoverOpen) return
+
+    const firstControl = attachmentPopoverRef.current?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled), select:not(:disabled)")
+    firstControl?.focus()
+  }, [attachmentPopoverOpen])
+
   return (
     <form
       className={`relative rounded border border-gray-200 bg-white p-3 transition-shadow dark:border-gray-700 dark:bg-gray-900 ${isDragOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
@@ -1469,14 +1534,38 @@ function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { com
           type="file"
         />
         <button
+          aria-controls={attachmentPopoverOpen ? "chat-attachment-popover" : undefined}
+          aria-expanded={attachmentPopoverOpen}
           aria-label="Add attachment"
+          aria-haspopup="dialog"
           className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gray-300 bg-white text-xl leading-none text-gray-700 hover:bg-gray-50 disabled:text-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-600"
           disabled={send.isPending || systemAction.isPending}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => setAttachmentPopoverOpen((open) => !open)}
+          ref={addAttachmentButtonRef}
           type="button"
         >
           +
         </button>
+        {attachmentPopoverOpen ? (
+          <div
+            aria-label="Add attachment"
+            className="absolute bottom-[4.25rem] left-3 z-20 w-[min(28rem,calc(100%-1.5rem))] rounded border border-gray-200 bg-white p-3 shadow-lg dark:border-gray-700 dark:bg-gray-950"
+            id="chat-attachment-popover"
+            onKeyDown={handleAttachmentPopoverKeyDown}
+            ref={attachmentPopoverRef}
+            role="dialog"
+          >
+            <div className="space-y-3">
+              <section>
+                <button className={`${secondaryButton()} w-full justify-center`} onClick={openAttachmentFilePicker} type="button">Upload file</button>
+              </section>
+              <section className="border-t border-gray-200 pt-3 dark:border-gray-800">
+                <h3 className="mb-2 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Attach context</h3>
+                <AddAttachment payload={payload} prefix={prefix} queryKey={queryKey} onAttached={() => setAttachmentPopoverOpen(false)} onNotice={onNotice} />
+              </section>
+            </div>
+          </div>
+        ) : null}
         <textarea
           aria-controls={commandPaletteOpen ? "chat-slash-command-palette" : undefined}
           aria-expanded={commandPaletteOpen}
@@ -1488,7 +1577,7 @@ function Compose({ commandHandlers, payload, prefix, queryKey, onNotice }: { com
             if (clearConfirmationOpen) setClearConfirmationOpen(false)
           }}
           onKeyDown={handleKeyDown}
-          placeholder={agentActive ? "Queue a follow-up message..." : payload.chat.repository ? "Ask about this repository..." : "Attach a repository to start chatting..."}
+          placeholder={agentActive ? "Queue a follow-up message..." : payload.chat.repository ? "Ask about this repository..." : "Ask anything — or attach a repository to give the agent context..."}
           ref={textareaRef}
           required
           rows={1}
@@ -1941,14 +2030,27 @@ function ChatWorkspace({
 }
 
 function ChatColumn({ bookmarkTarget, commandHandlers, payload, prefix, queryKey, onNotice, onPendingActionSelect }: { bookmarkTarget: BookmarkTarget | null; commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void; onPendingActionSelect: (messageId: number) => void }) {
+  const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false)
+  const landing = payload.messages.length === 0 && !hasSentFirstMessage
+
+  useEffect(() => {
+    setHasSentFirstMessage(false)
+  }, [payload.chat.id])
+
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-      <PendingActions payload={payload} onSelectMessage={onPendingActionSelect} />
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+    <section className={`flex min-h-0 min-w-0 flex-1 flex-col transition-all duration-500 ${landing ? "items-center justify-center gap-6 px-4" : "gap-3"}`}>
+      {landing ? (
+        <h1 className="text-center text-3xl font-semibold tracking-normal text-gray-950 sm:text-4xl dark:text-gray-100">What would you like to build?</h1>
+      ) : (
+        <PendingActions payload={payload} onSelectMessage={onPendingActionSelect} />
+      )}
+      <div className={`relative min-h-0 overflow-hidden rounded border border-gray-200 bg-white transition-all duration-500 ease-out dark:border-gray-700 dark:bg-gray-950 ${landing ? "h-0 w-full max-w-2xl opacity-0" : "flex-1 opacity-100"}`}>
         <MessageStream bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         <UsageOverlay payload={payload} />
       </div>
-      <Compose commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+      <div className={landing ? "w-full max-w-sm sm:max-w-2xl" : undefined}>
+        <Compose commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} onMessageSent={() => setHasSentFirstMessage(true)} />
+      </div>
     </section>
   )
 }
@@ -2613,12 +2715,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }
 
-function Attachments({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   return (
     <>
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Attachments</h2>
-        <a className="rounded bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-950 dark:hover:bg-gray-200" href="#add-attachment">Add attachment</a>
       </div>
       <div className="space-y-4">
         <AttachmentGroup label="Repos" rows={payload.attachment_groups.repositories} queryKey={queryKey} onNotice={onNotice} />
@@ -2639,7 +2740,6 @@ function Attachments({ payload, prefix, queryKey, onNotice }: { payload: ChatPay
           </div>
         ) : <div className="text-xs text-gray-400 dark:text-gray-500">No documents in scope.</div>}
       </section>
-      <AddAttachment payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
     </>
   )
 }
@@ -2679,7 +2779,7 @@ function AttachmentGroup({ label, rows, queryKey, onNotice }: { label: string; r
   )
 }
 
-function AddAttachment({ payload, prefix, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function AddAttachment({ payload, prefix, queryKey, onAttached, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onAttached?: () => void; onNotice: (message: string | null) => void }) {
   const queryClient = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
@@ -2691,6 +2791,7 @@ function AddAttachment({ payload, prefix, queryKey, onNotice }: { payload: ChatP
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
       onNotice(updated.message || null)
+      onAttached?.()
     }
   })
 
@@ -2709,8 +2810,7 @@ function AddAttachment({ payload, prefix, queryKey, onNotice }: { payload: ChatP
   }
 
   return (
-    <div className="rounded border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800" id="add-attachment">
-      <h3 className="mb-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Add attachment</h3>
+    <div>
       <form className="space-y-3" onSubmit={submit}>
         <label className="block text-xs font-medium text-gray-600 dark:text-gray-300">
           Type
