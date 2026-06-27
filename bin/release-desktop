@@ -56,6 +56,10 @@ BUILD_VERSION="$(syrus_release_semver "$VERSION")"
 
 syrus_release_prepare_output_dir "$OUT_DIR"
 
+clean_desktop_package_output() {
+  rm -rf "$ROOT/desktop/out"
+}
+
 assert_packaged_renderer_assets() {
   local index_html="$ROOT/desktop/dist/index.html"
 
@@ -130,6 +134,8 @@ assert_packaged_renderer_assets
 echo "== Building desktop main process =="
 npm --prefix "$ROOT/desktop" run build:main
 
+clean_desktop_package_output
+
 echo "== Packaging desktop app =="
 (
   cd "$ROOT/desktop"
@@ -141,11 +147,12 @@ while IFS= read -r -d '' artifact; do
 done < <(
   find "$ROOT/desktop/out" -maxdepth 1 -type f \
     \( -name '*.dmg' -o -name '*.zip' -o -name '*.AppImage' -o -name '*.exe' \) \
+    -name "*$BUILD_VERSION*" \
     -print0
 )
 
 if ! find "$OUT_DIR" -maxdepth 1 -type f | grep -q .; then
-  echo "No desktop artifacts were produced in desktop/out." >&2
+  echo "No desktop artifacts for version $BUILD_VERSION were produced in desktop/out." >&2
   exit 1
 fi
 
