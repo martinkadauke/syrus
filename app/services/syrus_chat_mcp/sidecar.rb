@@ -26,75 +26,97 @@ module SyrusChatMcp
   #       "syrus-chat-sidecar": {
   #         "type": "stdio",
   #         "command": "/app/bin/syrus-chat-sidecar",
-  #         "env": { "SYRUS_CHAT_SESSION_ID": "123" },
+  #         "env": {
+  #           "SYRUS_CHAT_SESSION_ID": "123",
+  #           "SYRUS_CHAT_MCP_TOOL_TIER": "essential",
+  #           "SYRUS_CHAT_MCP_SERVER_NAME": "syrus-chat-sidecar"
+  #         },
   #         "alwaysLoad": true
+  #       },
+  #       "syrus-chat-deferred-sidecar": {
+  #         "type": "stdio",
+  #         "command": "/app/bin/syrus-chat-deferred-sidecar",
+  #         "env": {
+  #           "SYRUS_CHAT_SESSION_ID": "123",
+  #           "SYRUS_CHAT_MCP_TOOL_TIER": "deferred",
+  #           "SYRUS_CHAT_MCP_SERVER_NAME": "syrus-chat-deferred-sidecar"
+  #         }
   #       }
   #     }
   #   }
   #
-  # `alwaysLoad: true` keeps these proposal tools in the active MCP toolset
-  # across resumed sessions, matching the existing run sidecar convention.
+  # The chat harness registers this binary twice: an essential `alwaysLoad`
+  # server whose schemas are injected at turn start, and a deferred server
+  # whose schemas are resolved through Claude Code ToolSearch on demand.
   class Sidecar
-    TOOLS = [
+    ESSENTIAL_TOOLS = [
       AttachRepositoryTool,
       ProposeIssueTool,
       ProposeEpicTool,
       ProposeJobTool,
-      RenameChatTool,
-      UpdatePinnedContextTool,
-      RemovePinnedContextTool,
-      AskUserQuestionTool,
       SetBookmarkTool,
       ProposeEpicWithJobsTool,
-      ListChatsTool,
-      ListRepositoriesTool,
       ListProposalsTool,
       DeleteProposalTool,
       ListEpicsTool,
       ReadEpicTool,
+      ReadJobTool,
+      ListJobsTool,
+      SearchJobsTool,
+      ApproveJobTool,
+      SetJobPriorityTool,
+      AssignJobToEpicTool,
+      CancelJobTool,
+      RetryJobTool,
+      SubmitChatFeedbackTool,
+      WriteMemoryTool,
+      ReadMemoryTool,
+      RepoInfoTool
+    ].freeze
+
+    DEFERRED_TOOLS = [
+      RenameChatTool,
+      UpdatePinnedContextTool,
+      RemovePinnedContextTool,
+      AskUserQuestionTool,
+      ListChatsTool,
+      ListRepositoriesTool,
+      AddRepoNoteTool,
+      ReadRepoNotesTool,
+      RemoveRepoNoteTool,
+      GetJobDiffTool,
+      UpdateJobTool,
+      ListJobWorkflowsTool,
+      ReadWorkflowTool,
+      ReadRunTranscriptTool,
+      ListOpenIssuesTool,
+      ListOpenPrsTool,
+      SearchChatsTool,
+      ReadChatMessagesTool,
+      GetSpendingTool,
+      ListTagsTool,
+      CreateTagTool,
+      AddJobTagTool,
+      RemoveJobTagTool,
+      RebaseJobTool,
+      ReopenJobTool,
+      PollJobFeedbackTool,
+      CheckJobMergeabilityTool,
+      DelegateIssueTool,
+      ReadPrTool,
+      UnapproveJobTool,
+      RemoveJobFromEpicTool,
       StartEpicTool,
       MoveEpicToBacklogTool,
       ArchiveEpicTool,
       UpdateEpicTool,
       AddEpicDependencyTool,
       RemoveEpicDependencyTool,
-      ReadJobTool,
-      GetJobDiffTool,
-      UpdateJobTool,
-      ListJobWorkflowsTool,
-      ReadWorkflowTool,
-      ReadRunTranscriptTool,
-      SearchChatsTool,
-      ReadChatMessagesTool,
-      ListJobsTool,
-      SearchJobsTool,
-      GetSpendingTool,
-      ListTagsTool,
-      CreateTagTool,
-      AddJobTagTool,
-      RemoveJobTagTool,
-      ApproveJobTool,
-      UnapproveJobTool,
-      SetJobPriorityTool,
-      AssignJobToEpicTool,
-      RemoveJobFromEpicTool,
-      CancelJobTool,
-      RetryJobTool,
-      RebaseJobTool,
-      ReopenJobTool,
-      PollJobFeedbackTool,
-      CheckJobMergeabilityTool,
-      SubmitChatFeedbackTool,
-      DelegateIssueTool,
-      ReadPrTool,
-      WriteMemoryTool,
-      ReadMemoryTool,
       SearchMemoriesTool,
       ListMemoriesTool,
       DeleteMemoryTool,
       PublishMemoryTool,
       UnpublishMemoryTool,
-      RepoInfoTool,
       ListRepoDocumentsTool,
       ReadRepoDocumentTool,
       CreateRepoDocumentTool,
@@ -125,10 +147,7 @@ module SyrusChatMcp
       FireScheduledTaskNowTool,
       PauseLandingQueueTool,
       ResumeLandingQueueTool,
-      ReadQueueTool
-    ].freeze
-
-    ADMIN_TOOLS = [
+      ReadQueueTool,
       AdminOverviewTool,
       AdminStuckJobsTool,
       AdminQueueDetailTool,
@@ -150,14 +169,18 @@ module SyrusChatMcp
       AdminRefreshInstallationsTool
     ].freeze
 
-    def self.tool_names(chat_session = nil)
-      tools = chat_session ? tools_for(chat_session) : TOOLS
+    TOOLS = (ESSENTIAL_TOOLS + DEFERRED_TOOLS).freeze
+    ADMIN_TOOLS = DEFERRED_TOOLS.select { |tool| tool.name.demodulize.start_with?("Admin") }.freeze
+
+    def self.tool_names(chat_session = nil, tier: :all)
+      tools = chat_session ? tools_for(chat_session, tier: tier) : tools_for_tier(tier)
       tools.map { |tool| tool.name.demodulize.sub(/Tool\z/, "").underscore }
     end
 
-    def self.tools_for(chat_session)
-      tools = TOOLS.dup
-      tools += ADMIN_TOOLS if chat_session.user.admin?
+    def self.tools_for(chat_session, tier: :all)
+      tools = tools_for_tier(tier).select do |tool|
+        !admin_tool?(tool) || chat_session.user.admin?
+      end
       tools.map { |tool| authorize_tool(tool) }
     end
 
@@ -167,10 +190,32 @@ module SyrusChatMcp
       tool
     end
 
-    def initialize(session_id: ENV["SYRUS_CHAT_SESSION_ID"], current_message_id: ENV["SYRUS_CHAT_CURRENT_MESSAGE_ID"])
+    def self.tools_for_tier(tier)
+      case tier.to_s
+      when "essential"
+        ESSENTIAL_TOOLS
+      when "deferred"
+        DEFERRED_TOOLS
+      when "all"
+        TOOLS
+      else
+        raise ArgumentError, "unknown chat MCP tool tier: #{tier.inspect}"
+      end
+    end
+
+    def self.admin_tool?(tool)
+      ADMIN_TOOLS.include?(tool)
+    end
+
+    def initialize(session_id: ENV["SYRUS_CHAT_SESSION_ID"],
+                   current_message_id: ENV["SYRUS_CHAT_CURRENT_MESSAGE_ID"],
+                   tool_tier: ENV.fetch("SYRUS_CHAT_MCP_TOOL_TIER", "all"),
+                   server_name: ENV.fetch("SYRUS_CHAT_MCP_SERVER_NAME", "syrus-chat-sidecar"))
       raise KeyError, "SYRUS_CHAT_SESSION_ID is required" if session_id.blank?
 
       @chat_session = ChatSession.find(session_id)
+      @tool_tier = tool_tier
+      @server_name = server_name
       @current_message = if current_message_id.present?
         @chat_session.messages.find_by(id: current_message_id)
       else
@@ -180,8 +225,8 @@ module SyrusChatMcp
 
     def run
       server = MCP::Server.new(
-        name: "syrus-chat-sidecar",
-        tools: self.class.tools_for(@chat_session),
+        name: @server_name,
+        tools: self.class.tools_for(@chat_session, tier: @tool_tier),
         server_context: { chat_session: @chat_session, current_message: @current_message }.compact
       )
       transport = MCP::Server::Transports::StdioTransport.new(server)

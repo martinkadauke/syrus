@@ -6,10 +6,10 @@ RSpec.describe SyrusChatMcp::Sidecar do
   let(:repository) { Factories.repository(user: user) }
   let(:chat_session) { ChatSession.create!(user: user, repository: repository) }
 
-  def server_for(chat_session)
+  def server_for(chat_session, tier: :all)
     MCP::Server.new(
       name: "syrus-chat-sidecar",
-      tools: described_class.tools_for(chat_session),
+      tools: described_class.tools_for(chat_session, tier: tier),
       server_context: { chat_session: chat_session }
     )
   end
@@ -17,6 +17,14 @@ RSpec.describe SyrusChatMcp::Sidecar do
   def jsonrpc(server, method, id: 1, params: {})
     raw = server.handle_json({ jsonrpc: "2.0", id: id, method: method, params: params }.to_json)
     raw && JSON.parse(raw, symbolize_names: true)
+  end
+
+  def call_tool(server, name, arguments = {})
+    jsonrpc(server, "tools/call", params: { name: name, arguments: arguments })
+  end
+
+  def response_payload(response)
+    JSON.parse(response.dig(:result, :content, 0, :text), symbolize_names: true)
   end
 
   def with_chat_session_env(value)
@@ -35,6 +43,14 @@ RSpec.describe SyrusChatMcp::Sidecar do
     original.nil? ? ENV.delete("SYRUS_CHAT_CURRENT_MESSAGE_ID") : ENV["SYRUS_CHAT_CURRENT_MESSAGE_ID"] = original
   end
 
+  def with_sidecar_env(values)
+    originals = values.keys.to_h { |key| [ key, ENV[key] ] }
+    values.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+    yield
+  ensure
+    originals.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+  end
+
   describe "MCP handshake" do
     it "responds to initialize with the chat sidecar server name" do
       response = jsonrpc(server_for(chat_session), "initialize", params: { protocolVersion: "2025-06-18", clientInfo: { name: "test", version: "1" } })
@@ -43,8 +59,8 @@ RSpec.describe SyrusChatMcp::Sidecar do
       expect(response[:result][:protocolVersion]).to be_a(String)
     end
 
-    it "advertises the proposal tools via tools/list" do
-      server = server_for(chat_session)
+    it "advertises only essential tools via the essential tools/list" do
+      server = server_for(chat_session, tier: :essential)
       _ = jsonrpc(server, "initialize", id: 0)
 
       response = jsonrpc(server, "tools/list", id: 1)
@@ -55,66 +71,54 @@ RSpec.describe SyrusChatMcp::Sidecar do
         propose_issue
         propose_epic
         propose_job
-        rename_chat
-        update_pinned_context
-        remove_pinned_context
-        ask_user_question
         set_bookmark
         propose_epic_with_jobs
-        list_chats
-        list_repositories
         list_proposals
         delete_proposal
         list_epics
         read_epic
-        start_epic
-        move_epic_to_backlog
-        archive_epic
-        update_epic
-        add_epic_dependency
-        remove_epic_dependency
         read_job
-        get_job_diff
-        update_job
-        list_job_workflows
-        read_workflow
-        read_run_transcript
-        search_chats
-        read_chat_messages
         list_jobs
         search_jobs
+        approve_job
+        set_job_priority
+        assign_job_to_epic
+        cancel_job
+        retry_job
+        submit_chat_feedback
+        write_memory
+        read_memory
+        repo_info
+      ])
+      expect(tool_names.size).to eq(22)
+    end
+
+    it "advertises specialty tools via the deferred tools/list" do
+      server = server_for(chat_session, tier: :deferred)
+      _ = jsonrpc(server, "initialize", id: 0)
+
+      response = jsonrpc(server, "tools/list", id: 1)
+
+      tool_names = response[:result][:tools].map { |tool| tool[:name] }
+      expect(tool_names).to include(*%w[
+        read_scene
+        rename_chat
+        update_pinned_context
+        list_chats
+        ask_user_question
+        list_memories
+        delete_memory
+        publish_memory
+        search_chats
+        read_chat_messages
+        add_epic_dependency
+        remove_epic_dependency
         get_spending
+        get_job_diff
         list_tags
         create_tag
         add_job_tag
         remove_job_tag
-        approve_job
-        unapprove_job
-        set_job_priority
-        assign_job_to_epic
-        remove_job_from_epic
-        cancel_job
-        retry_job
-        rebase_job
-        reopen_job
-        poll_job_feedback
-        check_job_mergeability
-        submit_chat_feedback
-        delegate_issue
-        read_pr
-        write_memory
-        read_memory
-        search_memories
-        list_memories
-        delete_memory
-        publish_memory
-        unpublish_memory
-        repo_info
-        list_repo_documents
-        read_repo_document
-        create_repo_document
-        delete_repo_document
-        read_scene
         draw_shape
         draw_text
         draw_line
@@ -141,11 +145,85 @@ RSpec.describe SyrusChatMcp::Sidecar do
         pause_landing_queue
         resume_landing_queue
         read_queue
+        list_repositories
+        list_open_issues
+        list_open_prs
+        add_repo_note
+        read_repo_notes
+        remove_repo_note
+        unapprove_job
+        remove_job_from_epic
       ])
+      expect(tool_names).to include(
+        "read_workflow",
+        "read_run_transcript",
+        "list_job_workflows",
+        "read_queue",
+        "read_pr",
+        "rebase_job",
+        "schedule_recurring",
+        "list_scheduled_tasks",
+        "pause_scheduled_task",
+        "resume_scheduled_task",
+        "delete_scheduled_task",
+        "list_repo_documents",
+        "read_repo_document"
+      )
+      expect(tool_names).not_to include("repo_info", "propose_job", "read_job", "write_memory", "read_memory")
+    end
+
+    it "assigns every chat MCP tool file to exactly one tier" do
+      file_tool_names = Dir[Rails.root.join("app/services/syrus_chat_mcp/*_tool.rb")]
+        .map { |path| File.basename(path, ".rb").sub(/_tool\z/, "") }
+        .sort
+      essential_names = described_class.tool_names(tier: :essential)
+      deferred_names = described_class.tool_names(tier: :deferred)
+
+      expect(essential_names & deferred_names).to be_empty
+      expect((essential_names + deferred_names).sort).to eq(file_tool_names)
+    end
+
+    it "keeps deferred tool schemas callable through the deferred server" do
+      server = server_for(chat_session, tier: :deferred)
+      _ = jsonrpc(server, "initialize", id: 0)
+
+      response = jsonrpc(server, "tools/list", id: 1)
+
+      draw_shape = response[:result][:tools].find { |tool| tool[:name] == "draw_shape" }
+      expect(draw_shape[:inputSchema]).to include(type: "object")
+      expect(draw_shape[:description]).to be_present
+    end
+
+    it "keeps one deferred tool from each new MCP epic callable after deferred resolution" do
+      admin = Factories.user(admin: true)
+      admin_repository = Factories.repository(user: admin)
+      admin_session = ChatSession.create!(user: admin, repository: admin_repository, title: "Admin chat")
+      server = server_for(admin_session, tier: :deferred)
+      _ = jsonrpc(server, "initialize", id: 0)
+      prerequisite = Factories.epic(user: admin, repository: admin_repository)
+      dependent = Factories.epic(user: admin, repository: admin_repository)
+
+      calls = {
+        "list_chats" => {},
+        "list_memories" => {},
+        "read_chat_messages" => { chat_session_id: admin_session.id },
+        "add_epic_dependency" => { epic_id: dependent.id, depends_on_epic_id: prerequisite.id },
+        "get_spending" => {},
+        "admin_overview" => {}
+      }
+
+      calls.each do |tool_name, arguments|
+        response = call_tool(server, tool_name, arguments)
+
+        expect(response.dig(:result, :isError)).to be_falsey
+      end
+
+      expect(response_payload(call_tool(server, "list_chats"))[:chats].pluck(:id)).to include(admin_session.id)
+      expect(dependent.reload.depends_on_epics).to contain_exactly(prerequisite)
     end
 
     it "does not advertise admin tools to non-admin users" do
-      server = server_for(chat_session)
+      server = server_for(chat_session, tier: :deferred)
       _ = jsonrpc(server, "initialize", id: 0)
 
       response = jsonrpc(server, "tools/list", id: 1)
@@ -177,7 +255,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
     it "advertises admin tools to admin users" do
       admin = Factories.user(admin: true)
       admin_session = ChatSession.create!(user: admin, repository: Factories.repository(user: admin))
-      server = server_for(admin_session)
+      server = server_for(admin_session, tier: :deferred)
       _ = jsonrpc(server, "initialize", id: 0)
 
       response = jsonrpc(server, "tools/list", id: 1)
@@ -204,6 +282,8 @@ RSpec.describe SyrusChatMcp::Sidecar do
         "admin_cleanup_workspace",
         "admin_refresh_installations"
       )
+      expect(described_class.tool_names(tier: :essential)).not_to include(*tool_names.grep(/\Aadmin_/))
+      expect(described_class.tool_names(tier: :deferred)).to include(*tool_names.grep(/\Aadmin_/))
     end
   end
 
@@ -227,6 +307,18 @@ RSpec.describe SyrusChatMcp::Sidecar do
       with_current_message_env(message.id.to_s) do
         sidecar = described_class.new(session_id: chat_session.id)
         expect(sidecar.instance_variable_get(:@current_message)).to eq(message)
+      end
+    end
+
+    it "loads tool tier and server name from env" do
+      with_sidecar_env(
+        "SYRUS_CHAT_MCP_TOOL_TIER" => "deferred",
+        "SYRUS_CHAT_MCP_SERVER_NAME" => "syrus-chat-deferred-sidecar"
+      ) do
+        sidecar = described_class.new(session_id: chat_session.id)
+
+        expect(sidecar.instance_variable_get(:@tool_tier)).to eq("deferred")
+        expect(sidecar.instance_variable_get(:@server_name)).to eq("syrus-chat-deferred-sidecar")
       end
     end
 
