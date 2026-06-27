@@ -32,6 +32,9 @@
 
 # Ignore assets.
 /node_modules/
+/desktop/node_modules/
+/desktop/dist/
+/desktop/dist-electron/
 /app/assets/builds/*
 !/app/assets/builds/.keep
 /public/assets

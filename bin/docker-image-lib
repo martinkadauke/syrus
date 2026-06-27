@@ -90,12 +90,96 @@ syrus_verify_pushed() {
   fi
 }
 
+syrus_docker_arg_tags() {
+  local arg
+
+  while [ $# -gt 0 ]; do
+    arg="$1"
+    case "$arg" in
+      -t|--tag)
+        shift
+        [ $# -gt 0 ] && printf '%s\n' "$1"
+        ;;
+      --tag=*)
+        printf '%s\n' "${arg#--tag=}"
+        ;;
+    esac
+    shift || true
+  done
+}
+
+syrus_docker_tags_match_label() {
+  local label_key="${1:?usage: syrus_docker_tags_match_label LABEL_KEY LABEL_VALUE TAG...}"
+  local label_value="${2:?usage: syrus_docker_tags_match_label LABEL_KEY LABEL_VALUE TAG...}"
+  shift 2
+  local tag tag_value
+
+  for tag in "$@"; do
+    tag_value="$(docker image inspect --format "{{ index .Config.Labels \"$label_key\" }}" "$tag" 2>/dev/null)" || return 1
+    [ "$tag_value" = "$label_value" ] || return 1
+  done
+}
+
 syrus_docker_build_image() {
   local target="${1:?usage: syrus_docker_build_image TARGET GIT_SHA [docker build args...]}"
   local git_sha="${2:?usage: syrus_docker_build_image TARGET GIT_SHA [docker build args...]}"
   shift 2
 
-  docker build -f Dockerfile --target "$target" --build-arg "GIT_SHA=$git_sha" "$@"
+  local -a build_args tags
+  build_args=("$@")
+  tags=()
+  while IFS= read -r tag; do
+    tags+=("$tag")
+  done < <(syrus_docker_arg_tags "${build_args[@]}")
+
+  if [ "${#tags[@]}" -eq 0 ] || [ "${SYRUS_DOCKER_BUILD_STALE_CLIENT_GUARD:-1}" = "0" ]; then
+    docker build -f Dockerfile --target "$target" --build-arg "GIT_SHA=$git_sha" "${build_args[@]}"
+    return
+  fi
+
+  local build_pid state status exported_at now grace interval guard_label guard_value
+  guard_label="com.syrus.build.guard"
+  guard_value="${target}-${git_sha}-$$-$(date +%s)"
+  grace="${SYRUS_DOCKER_BUILD_POST_EXPORT_GRACE:-20}"
+  interval="${SYRUS_DOCKER_BUILD_POLL_INTERVAL:-2}"
+  exported_at=""
+
+  docker build -f Dockerfile --target "$target" --build-arg "GIT_SHA=$git_sha" --label "$guard_label=$guard_value" "${build_args[@]}" &
+  build_pid=$!
+
+  while true; do
+    state="$(ps -p "$build_pid" -o stat= 2>/dev/null || true)"
+    if [ -z "$state" ] || [[ "$state" == *Z* ]]; then
+      if wait "$build_pid"; then
+        status=0
+      else
+        status=$?
+      fi
+      return "$status"
+    fi
+
+    if [ -z "$exported_at" ] && syrus_docker_tags_match_label "$guard_label" "$guard_value" "${tags[@]}"; then
+      exported_at="$(date +%s)"
+    fi
+
+    if [ -n "$exported_at" ]; then
+      now="$(date +%s)"
+      if [ $((now - exported_at)) -ge "$grace" ]; then
+        echo "→ docker build exported ${tags[*]} but the Docker client did not exit after ${grace}s; terminating stale client and continuing" >&2
+        kill "$build_pid" 2>/dev/null || true
+        sleep 2
+        state="$(ps -p "$build_pid" -o stat= 2>/dev/null || true)"
+        if [ -n "$state" ] && [[ "$state" != *Z* ]]; then
+          kill -9 "$build_pid" 2>/dev/null || true
+        fi
+        wait "$build_pid" 2>/dev/null || true
+        echo "→ stale Docker client terminated after verified image export" >&2
+        return 0
+      fi
+    fi
+
+    sleep "$interval"
+  done
 }
 
 syrus_docker_buildx_image() {
