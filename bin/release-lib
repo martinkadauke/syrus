@@ -14,6 +14,49 @@ syrus_release_local_version() {
   printf '%s' "v0.0.0-local"
 }
 
+syrus_release_latest_stable_version() {
+  local latest
+
+  latest="$(
+    git tag --list |
+      sed -nE 's/^v?([0-9]+)\.([0-9]+)\.([0-9]+)$/\1 \2 \3/p' |
+      sort -n -k1,1 -k2,2 -k3,3 |
+      tail -n 1
+  )"
+
+  if [ -z "$latest" ]; then
+    printf '%s' "0.0.0"
+    return 0
+  fi
+
+  read -r major minor patch <<<"$latest"
+  printf '%s.%s.%s' "$major" "$minor" "$patch"
+}
+
+syrus_release_next_version() {
+  local bump="${1:?usage: syrus_release_next_version patch|minor}"
+  local latest major minor patch
+
+  latest="$(syrus_release_latest_stable_version)"
+  IFS=. read -r major minor patch <<<"$latest"
+
+  case "$bump" in
+    patch)
+      patch=$((patch + 1))
+      ;;
+    minor)
+      minor=$((minor + 1))
+      patch=0
+      ;;
+    *)
+      echo "Unknown next-version bump: $bump" >&2
+      return 2
+      ;;
+  esac
+
+  printf 'v%s.%s.%s' "$major" "$minor" "$patch"
+}
+
 syrus_release_validate_version() {
   local version="${1:-}"
 
@@ -100,7 +143,7 @@ syrus_release_upload_dir() {
   IFS=$'\n' assets=($(printf '%s\n' "${assets[@]}" | sort))
   unset IFS
 
-  gh release upload "$version" "${assets[@]}" --clobber
+  gh release upload "$version" "${assets[@]}"
 }
 
 syrus_release_require_clean_tree() {
@@ -114,7 +157,8 @@ syrus_release_ensure_tag() {
   local version="${1:?usage: syrus_release_ensure_tag VERSION}"
 
   if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
-    return 0
+    echo "Release tag already exists locally: $version" >&2
+    return 1
   fi
 
   git tag -a "$version" -m "Release $version"
@@ -132,10 +176,37 @@ syrus_release_ensure_github_release() {
   syrus_release_require_command gh
 
   if gh release view "$version" >/dev/null 2>&1; then
-    return 0
+    echo "GitHub release already exists: $version" >&2
+    return 1
   fi
 
   gh release create "$version" \
     --title "Syrus $version" \
     --notes "Local Syrus release $version."
+}
+
+syrus_release_fetch_tags() {
+  git fetch --tags --quiet
+}
+
+syrus_release_assert_new_version() {
+  local version="${1:?usage: syrus_release_assert_new_version VERSION}"
+  local remote_tag
+
+  if git rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+    echo "Release tag already exists locally: $version" >&2
+    return 1
+  fi
+
+  remote_tag="$(git ls-remote --tags origin "refs/tags/$version" 2>/dev/null || true)"
+  if [ -n "$remote_tag" ]; then
+    echo "Release tag already exists on origin: $version" >&2
+    return 1
+  fi
+
+  syrus_release_require_command gh
+  if gh release view "$version" >/dev/null 2>&1; then
+    echo "GitHub release already exists: $version" >&2
+    return 1
+  fi
 }

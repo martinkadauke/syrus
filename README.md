@@ -339,6 +339,19 @@ npm --prefix desktop run build     # packaged app in desktop/out
 Maintainers publish release artifacts with `bin/release`, which coordinates
 the CLI, desktop app, and Docker image release scripts.
 
+To publish a new release, either pass the exact version or ask the script to
+derive the next stable semver tag from the existing git tags:
+
+```bash
+bin/release v0.4.0
+bin/release --next-patch
+bin/release --next-minor
+```
+
+Upload releases refuse to reuse an existing local tag, remote tag, or GitHub
+release, and release asset uploads do not overwrite existing assets. Use a new
+version for every published release.
+
 To test the packaged desktop release locally before tagging or uploading
 anything, run:
 

@@ -2,11 +2,12 @@
 # Build and publish Syrus release artifacts from this checkout.
 #
 # Usage:
-#   bin/release [VERSION] [--cli] [--desktop] [--image] [--all]
+#   bin/release [VERSION] [--next-patch|--next-minor] [--cli] [--desktop] [--image] [--all]
 #                       [--no-upload] [--skip-tests] [--skip-install]
 #                       [--multi-arch] [--launch-desktop]
 #
-# Defaults to --all. With upload enabled, this creates/pushes the git tag,
+# Defaults to --all. With upload enabled, this refuses existing versions,
+# creates/pushes the git tag,
 # ensures the GitHub release exists, uploads CLI/Desktop artifacts, and
 # publishes the Docker image. Use --no-upload for local artifact builds only;
 # when no VERSION is provided, --no-upload defaults to v0.0.0-local.
@@ -21,6 +22,7 @@ SKIP_TESTS=0
 SKIP_INSTALL=0
 MULTI_ARCH=0
 LAUNCH_DESKTOP=0
+NEXT_BUMP=""
 SELECTED=()
 UPLOAD_DIRS=()
 IMAGE_SELECTED=0
@@ -44,6 +46,22 @@ select_component() {
 
 for arg in "$@"; do
   case "$arg" in
+    --next-patch)
+      if [ -n "$NEXT_BUMP" ]; then
+        echo "Specify only one of --next-patch or --next-minor." >&2
+        usage >&2
+        exit 2
+      fi
+      NEXT_BUMP=patch
+      ;;
+    --next-minor)
+      if [ -n "$NEXT_BUMP" ]; then
+        echo "Specify only one of --next-patch or --next-minor." >&2
+        usage >&2
+        exit 2
+      fi
+      NEXT_BUMP=minor
+      ;;
     --cli) select_component cli ;;
     --desktop) select_component desktop ;;
     --image) select_component image ;;
@@ -66,8 +84,22 @@ for arg in "$@"; do
   esac
 done
 
+if [ -n "$NEXT_BUMP" ] && [ -n "$VERSION" ]; then
+  echo "Specify either VERSION or --next-$NEXT_BUMP, not both." >&2
+  usage >&2
+  exit 2
+fi
+
 if [ "${#SELECTED[@]}" -eq 0 ]; then
   SELECTED=(cli desktop image)
+fi
+
+if [ -n "$NEXT_BUMP" ]; then
+  if [ "$UPLOAD" = 1 ]; then
+    syrus_release_fetch_tags
+  fi
+  VERSION="$(syrus_release_next_version "$NEXT_BUMP")"
+  echo "== Using next $NEXT_BUMP release: $VERSION =="
 fi
 
 if [ -z "$VERSION" ] && [ "$UPLOAD" = 0 ]; then
@@ -78,6 +110,8 @@ syrus_release_validate_version "$VERSION"
 
 if [ "$UPLOAD" = 1 ]; then
   syrus_release_require_clean_tree
+  syrus_release_fetch_tags
+  syrus_release_assert_new_version "$VERSION"
 else
   echo "== Local release build only (--no-upload) =="
 fi
