@@ -37,7 +37,7 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("Attached repository checkouts are READ-ONLY for you.")
     expect(out).to include("/syrus-home/.syrus/chat-workspaces/*/repositories/")
     expect(out).to match(/must NEVER use\s+Write, Edit, or Bash to create, modify, delete, rename,\s+move, format, or generate files/)
-    expect(out).to match(/propose a Syrus Job, Epic, or issue and wait\s+for the operator to confirm it\./)
+    expect(out).to match(/propose a Syrus Job or Epic and wait\s+for the operator to confirm it\./)
     expect(out).to match(/You may write only to your own non-repository chat memory\s+directory/)
     expect(out).to include("Recommend; don't decide.")
   end
@@ -449,13 +449,13 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("The durable products of this session are proposals")
     expect(out).to include("`propose_epic`")
     expect(out).to include("`propose_job`")
-    expect(out).to include("`propose_issue`")
-    expect(out).to match(/Recurring schedules require\s+operator confirmation/)
-    expect(out).to include("Use unique, stable, descriptive `slug`s")
-    expect(out).to match(/always\s+use the slug, never the numeric `id`/)
+    expect(out).not_to include("`propose_issue`")
+    expect(out).to match(/Recurring schedules\s+require operator confirmation/)
+    expect(out).to include("`propose_epic_with_jobs` requires unique, stable, descriptive")
+    expect(out).to match(/always\s+use the slug, never the\s+numeric `id`/)
     expect(out).to match(/That `id` is an internal record identifier invisible to the\s+operator\./)
     expect(out).to include("Express dependencies between proposals when they exist")
-    expect(out).to include("Default `kind: \"syrus_issue\"`")
+    expect(out).to include("Use `propose_job` for direct Syrus Job creation")
     expect(out).to include("Use `schedule_recurring(cron_expression, label, prompt)` only")
   end
 

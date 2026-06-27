@@ -73,8 +73,8 @@ Job pipeline.
    proposal also files its transitive upstream closure (with an
    operator confirmation modal); discarding cascades downstream
    (also with confirmation).
-7. **Filing is strictly operator-gated.** The MCP sidecar can
-   `propose_issue` but cannot file. Filing happens via the
+7. **Filing is strictly operator-gated.** The MCP sidecar can draft
+   proposal cards but cannot file them. Filing happens via the
    Proposals tab UI. Keeps proposals reviewable; agent's job is
    to draft, operator's job is to commit.
 8. **Default proposal kind is `syrus_issue`.** Direct `Job`
@@ -224,7 +224,7 @@ pattern as the existing sidecar.
 
 | Tool | Purpose |
 |---|---|
-| `propose_issue(slug, title, body, kind?, labels?, depends_on?)` | Create or update a `ChatProposal` row. Idempotent on `slug`. Validates `depends_on` slugs exist in this session at call time. Rejects cycles. |
+| `propose_job(repo, title, description, epic_id?, depends_on?)` | Create a Syrus Job proposal card. Validates `depends_on` slugs exist in this session at call time. Rejects cycles. |
 | `list_proposals()` | Returns all proposals on this session (pending/filed/discarded) with their full content + dependency graph. Lets the agent re-orient after context summary. |
 | `delete_proposal(slug)` | Marks the proposal `discarded`. Cascade-discards downstream dependents (returns the cascade list so the agent can mention it). |
 | `read_job(job_id)` | Pulls Job metadata + summary + transcript head/tail. Lets the agent cite prior work. |
@@ -422,7 +422,7 @@ The chat page (`app/views/repositories/chats/show.html.erb`):
 | (turbo-streamed message rows)                   |
 | user: ...                                       |
 | assistant: ...                                  |
-| tool_use: propose_issue (slug: "add-auth")      |
+| tool_use: propose_job (title: "Add auth")       |
 |   → ChatProposal #42 created (pending)          |
 | assistant: ...                                  |
 +-------------------------------------------------+
@@ -482,7 +482,7 @@ module Prompts
         Your output:
 
           - The only durable products of this session are the proposals
-            you draft via the `propose_issue` MCP tool. The operator
+            you draft via the proposal MCP tools. The operator
             reviews proposals in a separate UI; they choose what to
             file and when. You are a drafter, not a dispatcher.
           - Use unique, stable, descriptive `slug`s — they identify
@@ -552,7 +552,7 @@ credential).
 - `app/services/chat_proposal_filer.rb`
 - `app/services/prompts/chat_system.rb`
 - `app/services/syrus_chat_mcp/sidecar.rb`
-- `app/services/syrus_chat_mcp/propose_issue_tool.rb`
+- `app/services/syrus_chat_mcp/propose_job_tool.rb`
 - `app/services/syrus_chat_mcp/list_proposals_tool.rb`
 - `app/services/syrus_chat_mcp/delete_proposal_tool.rb`
 - `app/services/syrus_chat_mcp/read_job_tool.rb`

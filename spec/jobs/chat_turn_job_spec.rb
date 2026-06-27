@@ -62,16 +62,16 @@ RSpec.describe ChatTurnJob do
 
       kwargs[:log_sink].call("Here is the shape of it.", kind: "assistant_text")
       kwargs[:log_sink].call(
-        "● propose_issue(...)",
+        "● propose_job(...)",
         kind: "tool_call",
-        tool_name: "propose_issue",
-        tool_input: { "slug" => "x", "title" => "T", "body" => "b" }
+        tool_name: "propose_job",
+        tool_input: { "repo" => repository.slug, "title" => "T", "description" => "b" }
       )
       kwargs[:log_sink].call(
-        "  Issue drafted",
+        "  Job drafted",
         kind: "tool_result",
-        tool_name: "propose_issue",
-        tool_result_content: [ { "type" => "text", "text" => "Issue drafted" } ],
+        tool_name: "propose_job",
+        tool_result_content: [ { "type" => "text", "text" => "Job drafted" } ],
         tool_result_error: false
       )
       result_fixture(

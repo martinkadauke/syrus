@@ -51,7 +51,6 @@ module SyrusChatMcp
   class Sidecar
     ESSENTIAL_TOOLS = [
       AttachRepositoryTool,
-      ProposeIssueTool,
       ProposeEpicTool,
       ProposeJobTool,
       SetBookmarkTool,

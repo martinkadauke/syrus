@@ -7,7 +7,7 @@ class AgentEnvironmentSnapshot
   CHAT_TOOL_GROUPS = {
     "repository context" => %w[attach_repository repo_info read_repo_document list_repo_documents create_repo_document delete_repo_document read_repo_notes add_repo_note remove_repo_note],
     "live Syrus state" => %w[list_chats list_jobs read_job read_pr list_open_issues list_open_prs cancel_job retry_job rebase_job reopen_job poll_job_feedback check_job_mergeability delegate_issue pause_landing_queue resume_landing_queue read_epic],
-    "proposals" => %w[propose_job propose_epic propose_epic_with_jobs propose_issue list_proposals delete_proposal set_bookmark schedule_recurring],
+    "proposals" => %w[propose_job propose_epic propose_epic_with_jobs list_proposals delete_proposal set_bookmark schedule_recurring],
     "whiteboard" => %w[read_scene draw_shape draw_text draw_line draw_arrow draw_freedraw draw_frame draw_embed draw_image move_element delete_element save_canvas clear_canvas update_scene]
   }.freeze
 
@@ -73,7 +73,7 @@ class AgentEnvironmentSnapshot
       "- Workspace: #{chat_workspace_label}",
       "- Agent provider: Claude chat turn with `syrus-chat-sidecar` MCP tools.",
       "- Tool availability: no commit, push, or PR-opening tool is available in chat; draft proposals or schedules for operator confirmation.",
-      "- Repository checkout rule: attached checkouts under `/syrus-home/.syrus/chat-workspaces/*/repositories/` are read-only; never use Write, Edit, or Bash to create, modify, delete, rename, move, format, or generate files there. Propose Syrus Jobs, Epics, or issues for code changes and wait for operator confirmation.",
+      "- Repository checkout rule: attached checkouts under `/syrus-home/.syrus/chat-workspaces/*/repositories/` are read-only; never use Write, Edit, or Bash to create, modify, delete, rename, move, format, or generate files there. Propose Syrus Jobs or Epics for code changes and wait for operator confirmation.",
       "- Writable area: only your own non-repository chat memory directory may be written when needed; attached repository checkouts must not be written.",
       "- Repository freshness: attached checkouts may drift; use `repo_info`, `git fetch`, or `git pull --ff-only` inside an attached repo when current state matters."
     ]

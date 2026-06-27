@@ -68,7 +68,6 @@ RSpec.describe SyrusChatMcp::Sidecar do
       tool_names = response[:result][:tools].map { |tool| tool[:name] }
       expect(tool_names).to eq(%w[
         attach_repository
-        propose_issue
         propose_epic
         propose_job
         set_bookmark
