@@ -259,6 +259,86 @@ needed. The cache path requires a GHCR token in `$GHCR_TOKEN` or
 `bin/publish-image` publishes the host architecture by default; pass
 `--multi-arch` when you need both `linux/amd64` and `linux/arm64`.
 
+## Install the companion CLI and desktop app
+
+Syrus has two companion clients:
+
+- `syrus`, a standalone Go CLI for chat, inbox review, checkout, approvals,
+  test plans, and repository-scoped operator commands.
+- Syrus Desktop, a menubar/tray app for the compact inbox, Job actions, local
+  checkout, and native notifications.
+
+Both clients talk to an existing Syrus web installation. Before using either
+one, open Syrus in your browser, go to **Credentials**, and generate an API
+token. The CLI and desktop app share the same local credentials file, so logging
+in once is enough for both.
+
+### CLI from a release
+
+Download the archive for your platform from the
+[GitHub Releases](https://github.com/tkadauke/syrus/releases) page:
+
+```bash
+# Example for Apple Silicon macOS. Pick the matching OS/architecture archive.
+curl -LO https://github.com/tkadauke/syrus/releases/download/v0.4.0/syrus_v0.4.0_darwin_arm64.tar.gz
+tar -xzf syrus_v0.4.0_darwin_arm64.tar.gz
+
+install -d ~/.local/bin
+install syrus_v0.4.0_darwin_arm64/syrus ~/.local/bin/syrus
+```
+
+Make sure `~/.local/bin` is on your `PATH`, then log in:
+
+```bash
+syrus login
+```
+
+`syrus login` asks for the Syrus instance URL and the API token from
+**Credentials**, then saves them for future CLI and desktop use. Run `syrus`
+with no subcommand to start terminal chat, or `syrus inbox` to review work from
+the terminal. See `website/src/content/docs/cli.md` for the command reference.
+
+### Desktop app from a release
+
+Download the desktop artifact for your OS from
+[GitHub Releases](https://github.com/tkadauke/syrus/releases):
+
+- macOS: download the `.dmg` or `.zip`, open it, and move **Syrus Desktop** to
+  Applications.
+- Linux: download the `.AppImage`, mark it executable, and run it.
+- Windows: download the installer when a Windows build is published.
+
+On first launch, Syrus Desktop prompts for the same Syrus URL and API token as
+`syrus login`. If you already logged in with the CLI, it starts authenticated.
+On macOS it runs as a menubar app without a Dock icon; click the Syrus icon to
+open the compact inbox.
+
+Desktop checkout actions shell out to the `syrus` CLI, so install the CLI on
+your `PATH` as well if you want the desktop app to check out Job branches.
+
+### Build the clients from source
+
+From a source checkout, `bin/setup` builds the CLI under `cli/bin/syrus`.
+To install it on your `PATH`:
+
+```bash
+bin/setup --install-cli
+# or:
+cd cli
+make install PREFIX=~/.local
+```
+
+To run or package the desktop app from source:
+
+```bash
+npm --prefix desktop install
+npm --prefix desktop run dev       # local development
+npm --prefix desktop run build     # packaged app in desktop/out
+```
+
+Maintainers publish release artifacts with `bin/release`, which coordinates
+the CLI, desktop app, and Docker image release scripts.
+
 ## Production Configuration
 
 Production configuration is driven by environment variables so each deployment
