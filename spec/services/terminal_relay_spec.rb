@@ -76,6 +76,18 @@ RSpec.describe TerminalRelay do
     end
   end
 
+  def relay_for_host
+    described_class.new(session: session, command: [ "bash" ], env: {})
+  end
+
+  def with_terminal_host(value)
+    previous = ENV["SYRUS_TERMINAL_HOST"]
+    value.nil? ? ENV.delete("SYRUS_TERMINAL_HOST") : ENV["SYRUS_TERMINAL_HOST"] = value
+    yield
+  ensure
+    previous.nil? ? ENV.delete("SYRUS_TERMINAL_HOST") : ENV["SYRUS_TERMINAL_HOST"] = previous
+  end
+
   after do
     Thread.list.each do |thread|
       next if thread == Thread.current
@@ -168,5 +180,23 @@ RSpec.describe TerminalRelay do
     socket&.close unless socket&.closed?
     child_output_write&.close unless child_output_write&.closed?
     pty_input_read&.close unless pty_input_read&.closed?
+  end
+
+  it "uses SYRUS_TERMINAL_HOST when set" do
+    with_terminal_host("worker") do
+      expect(relay_for_host.relay_host).to eq("worker")
+    end
+  end
+
+  it "falls back to localhost when SYRUS_TERMINAL_HOST is not set" do
+    with_terminal_host(nil) do
+      expect(relay_for_host.relay_host).to eq("127.0.0.1")
+    end
+  end
+
+  it "falls back to localhost when SYRUS_TERMINAL_HOST is blank" do
+    with_terminal_host("") do
+      expect(relay_for_host.relay_host).to eq("127.0.0.1")
+    end
   end
 end

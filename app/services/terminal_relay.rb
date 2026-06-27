@@ -4,6 +4,7 @@ require "pty"
 require "socket"
 
 class TerminalRelay
+  DEFAULT_RELAY_HOST = "127.0.0.1".freeze
   SELECT_TIMEOUT_SECONDS = 0.1
   KILL_POLL_INTERVAL_SECONDS = 5
   READ_CHUNK_BYTES = 16 * 1024
@@ -16,10 +17,15 @@ class TerminalRelay
     @env = env
   end
 
+  def relay_host
+    ENV["SYRUS_TERMINAL_HOST"].presence || DEFAULT_RELAY_HOST
+  end
+
   def run
-    server = TCPServer.new(relay_host, 0)
+    host = relay_host
+    server = TCPServer.new(host, 0)
     port = server.addr[1]
-    @session.update!(relay_address: "#{relay_host}:#{port}")
+    @session.update!(relay_address: "#{host}:#{port}")
 
     spawn_pty do |pty_out, pty_in, pid|
       conn = server.accept
@@ -38,10 +44,6 @@ class TerminalRelay
   end
 
   private
-
-  def relay_host
-    ENV.fetch("SYRUS_TERMINAL_HOST", "127.0.0.1")
-  end
 
   def spawn_pty(&block)
     PTY.spawn(@env, *@command, chdir: @session.working_directory, &block)
@@ -132,8 +134,9 @@ class TerminalRelay
         return +""
       end
 
-      line, pending = pending.split("\n", 2)
-      return +"#{line}\n" if pending.nil?
+      newline_index = pending.index("\n")
+      line = pending[0...newline_index]
+      pending = pending[(newline_index + 1)..] || +""
 
       unless handle_control_frame("#{line}\n", pty_in)
         pty_in.write("#{line}\n")
