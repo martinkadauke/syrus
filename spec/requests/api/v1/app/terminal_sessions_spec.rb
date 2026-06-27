@@ -2,6 +2,7 @@ require "rails_helper"
 
 RSpec.describe "App API terminal sessions", type: :request do
   include ActiveJob::TestHelper
+
   let(:user) { Factories.user }
   let(:other_user) { Factories.user }
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
@@ -24,6 +25,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: user,
       name: "Shell",
       working_directory: "/tmp/shell",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
     Feature.find_by!(slug: "terminal").update!(enabled: false)
@@ -50,6 +52,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: user,
       name: "Shell",
       working_directory: "/tmp/shell",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
 
@@ -76,6 +79,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: user,
       name: "Older",
       working_directory: "/tmp/older",
+      auth_token: SecureRandom.hex(32),
       started_at: 2.hours.ago
     )
     newer = TerminalSession.create!(
@@ -84,12 +88,14 @@ RSpec.describe "App API terminal sessions", type: :request do
       name: "Newer",
       working_directory: "/tmp/newer",
       relay_address: "127.0.0.1:4000",
+      auth_token: SecureRandom.hex(32),
       started_at: 1.hour.ago
     )
     TerminalSession.create!(
       user: user,
       name: "Done",
       working_directory: "/tmp/done",
+      auth_token: SecureRandom.hex(32),
       started_at: 3.hours.ago,
       finished_at: 1.hour.ago,
       outcome: "exited"
@@ -98,6 +104,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: other_user,
       name: "Other",
       working_directory: "/tmp/other",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
 
@@ -160,14 +167,15 @@ RSpec.describe "App API terminal sessions", type: :request do
       workflow: workflow,
       name: "Shell",
       working_directory: "/tmp/shell",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
-    expect(session.auth_token).to match(/\A\h{64}\z/)
 
     get "/api/v1/app/terminal_sessions/#{session.id}"
 
     expect(response).to have_http_status(:ok)
     expect(parse_body["session"]).to include("id" => session.id, "workflow_id" => workflow.id)
+    expect(parse_body["session"]).not_to have_key("auth_token")
   end
 
   it "does not show another user's session" do
@@ -176,6 +184,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: other_user,
       name: "Other",
       working_directory: "/tmp/other",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
 
@@ -190,6 +199,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: user,
       name: "Shell",
       working_directory: "/tmp/shell",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
 
@@ -207,6 +217,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: user,
       name: "Shell",
       working_directory: "/tmp/shell",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
 
@@ -223,6 +234,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       user: other_user,
       name: "Other",
       working_directory: "/tmp/other",
+      auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
 

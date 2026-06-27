@@ -21,7 +21,7 @@ export function TerminalRoute() {
     queryFn: fetchBootstrap,
     enabled: false
   })
-  const terminalEnabled = Boolean(bootstrap.data?.feature_flags.terminal)
+  const terminalEnabled = Boolean(bootstrap.data?.feature_flags?.terminal)
   const [activeSessionId, setActiveSessionId] = useState<number | null>(() => {
     const id = Number(new URLSearchParams(location.search).get("session"))
     return Number.isFinite(id) && id > 0 ? id : null
