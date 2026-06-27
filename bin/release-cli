@@ -2,10 +2,11 @@
 # Build and optionally upload Syrus CLI release artifacts.
 #
 # Usage:
-#   bin/release-cli VERSION [--upload] [--skip-tests]
+#   bin/release-cli [VERSION] [--upload] [--skip-tests]
 #
 # Examples:
 #   bin/release-cli v0.4.0
+#   bin/release-cli
 #   bin/release-cli v0.4.0 --upload
 set -euo pipefail
 
@@ -36,6 +37,10 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [ -z "$VERSION" ] && [ "$UPLOAD" = 0 ]; then
+  VERSION="$(syrus_release_local_version)"
+fi
 
 syrus_release_validate_version "$VERSION"
 syrus_release_require_command go

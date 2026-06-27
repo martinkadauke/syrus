@@ -10,6 +10,10 @@ syrus_release_semver() {
   printf '%s' "${1#v}"
 }
 
+syrus_release_local_version() {
+  printf '%s' "v0.0.0-local"
+}
+
 syrus_release_validate_version() {
   local version="${1:-}"
 

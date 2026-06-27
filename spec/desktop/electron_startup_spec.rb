@@ -7,6 +7,7 @@ RSpec.describe "desktop Electron startup" do
   let(:desktop_root) { File.expand_path("../../desktop", __dir__) }
   let(:package_json) { JSON.parse(File.read(File.join(desktop_root, "package.json"))) }
   let(:main_process) { File.read(File.join(desktop_root, "electron/main.ts")) }
+  let(:vite_config) { File.read(File.join(desktop_root, "vite.config.ts")) }
 
   it "uses the same loopback host for Vite and Electron in dev" do
     dev_script = package_json.fetch("scripts").fetch("dev")
@@ -25,6 +26,10 @@ RSpec.describe "desktop Electron startup" do
   it "loads the preload bridge as CommonJS so Electron exposes syrusDesktop" do
     expect(File).to exist(File.join(desktop_root, "electron/preload.cts"))
     expect(main_process).to include('preload: path.join(__dirname, "preload.cjs")')
+  end
+
+  it "builds renderer assets with relative URLs for packaged file loading" do
+    expect(vite_config).to include('base: "./"')
   end
 
   it "keeps the tray popover and native context menu on separate gestures" do

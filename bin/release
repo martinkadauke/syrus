@@ -2,13 +2,14 @@
 # Build and publish Syrus release artifacts from this checkout.
 #
 # Usage:
-#   bin/release VERSION [--cli] [--desktop] [--image] [--all]
+#   bin/release [VERSION] [--cli] [--desktop] [--image] [--all]
 #                       [--no-upload] [--skip-tests] [--skip-install]
-#                       [--multi-arch]
+#                       [--multi-arch] [--launch-desktop]
 #
 # Defaults to --all. With upload enabled, this creates/pushes the git tag,
 # ensures the GitHub release exists, uploads CLI/Desktop artifacts, and
-# publishes the Docker image. Use --no-upload for local artifact builds only.
+# publishes the Docker image. Use --no-upload for local artifact builds only;
+# when no VERSION is provided, --no-upload defaults to v0.0.0-local.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -19,6 +20,7 @@ UPLOAD=1
 SKIP_TESTS=0
 SKIP_INSTALL=0
 MULTI_ARCH=0
+LAUNCH_DESKTOP=0
 SELECTED=()
 UPLOAD_DIRS=()
 IMAGE_SELECTED=0
@@ -50,6 +52,7 @@ for arg in "$@"; do
     --skip-tests) SKIP_TESTS=1 ;;
     --skip-install) SKIP_INSTALL=1 ;;
     --multi-arch) MULTI_ARCH=1 ;;
+    --launch-desktop) LAUNCH_DESKTOP=1 ;;
     --help|-h) usage; exit 0 ;;
     -*) echo "Unknown flag: $arg" >&2; usage >&2; exit 2 ;;
     *)
@@ -65,6 +68,10 @@ done
 
 if [ "${#SELECTED[@]}" -eq 0 ]; then
   SELECTED=(cli desktop image)
+fi
+
+if [ -z "$VERSION" ] && [ "$UPLOAD" = 0 ]; then
+  VERSION="$(syrus_release_local_version)"
 fi
 
 syrus_release_validate_version "$VERSION"
@@ -87,6 +94,7 @@ for component in "${SELECTED[@]}"; do
       args=("$VERSION")
       [ "$SKIP_TESTS" = 1 ] && args+=(--skip-tests)
       [ "$SKIP_INSTALL" = 1 ] && args+=(--skip-install)
+      [ "$LAUNCH_DESKTOP" = 1 ] && args+=(--launch)
       "$ROOT/bin/release-desktop" "${args[@]}"
       UPLOAD_DIRS+=("$(syrus_release_output_dir "$VERSION" desktop)")
       ;;

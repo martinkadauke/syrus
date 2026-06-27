@@ -339,6 +339,18 @@ npm --prefix desktop run build     # packaged app in desktop/out
 Maintainers publish release artifacts with `bin/release`, which coordinates
 the CLI, desktop app, and Docker image release scripts.
 
+To test the packaged desktop release locally before tagging or uploading
+anything, run:
+
+```bash
+bin/release --desktop --no-upload --launch-desktop
+```
+
+That builds the same renderer and Electron package used for release, checks
+that packaged `file://` asset loading will work, writes artifacts under
+`dist/releases/v0.0.0-local/desktop`, and opens the packaged app. Pass an
+explicit version only when you want the local artifacts to use that version.
+
 ## Production Configuration
 
 Production configuration is driven by environment variables so each deployment

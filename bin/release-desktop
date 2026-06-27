@@ -2,10 +2,12 @@
 # Build and optionally upload Syrus Desktop release artifacts.
 #
 # Usage:
-#   bin/release-desktop VERSION [--upload] [--skip-tests] [--skip-install]
+#   bin/release-desktop [VERSION] [--upload] [--skip-tests] [--skip-install] [--launch]
 #
 # Examples:
 #   bin/release-desktop v0.4.0
+#   bin/release-desktop --launch
+#   bin/release-desktop v0.4.0 --launch
 #   bin/release-desktop v0.4.0 --upload
 set -euo pipefail
 
@@ -16,6 +18,7 @@ VERSION=""
 UPLOAD=0
 SKIP_TESTS=0
 SKIP_INSTALL=0
+LAUNCH=0
 
 usage() {
   awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"
@@ -26,6 +29,7 @@ for arg in "$@"; do
     --upload) UPLOAD=1 ;;
     --skip-tests) SKIP_TESTS=1 ;;
     --skip-install) SKIP_INSTALL=1 ;;
+    --launch) LAUNCH=1 ;;
     --help|-h) usage; exit 0 ;;
     -*) echo "Unknown flag: $arg" >&2; usage >&2; exit 2 ;;
     *)
@@ -39,6 +43,10 @@ for arg in "$@"; do
   esac
 done
 
+if [ -z "$VERSION" ] && [ "$UPLOAD" = 0 ]; then
+  VERSION="$(syrus_release_local_version)"
+fi
+
 syrus_release_validate_version "$VERSION"
 syrus_release_require_command npm
 syrus_release_require_command shasum
@@ -47,6 +55,59 @@ OUT_DIR="$(syrus_release_output_dir "$VERSION" desktop)"
 BUILD_VERSION="$(syrus_release_semver "$VERSION")"
 
 syrus_release_prepare_output_dir "$OUT_DIR"
+
+assert_packaged_renderer_assets() {
+  local index_html="$ROOT/desktop/dist/index.html"
+
+  if [ ! -f "$index_html" ]; then
+    echo "Desktop renderer did not produce dist/index.html." >&2
+    exit 1
+  fi
+
+  if grep -Eq '(src|href)="/' "$index_html"; then
+    cat >&2 <<MSG
+Desktop renderer emitted root-absolute asset URLs in dist/index.html.
+Packaged Electron loads this file through file://, so /assets/... would
+resolve to file:///assets/... and the released app would show a blank window.
+MSG
+    exit 1
+  fi
+}
+
+launch_packaged_desktop() {
+  local platform
+  platform="$(uname -s)"
+
+  case "$platform" in
+    Darwin)
+      local app_path
+      app_path="$(find "$ROOT/desktop/out" -maxdepth 3 -type d -name "Syrus Desktop.app" -print -quit)"
+      if [ -z "$app_path" ]; then
+        echo "Could not find packaged Syrus Desktop.app under desktop/out." >&2
+        exit 1
+      fi
+
+      echo "== Launching packaged desktop app =="
+      open "$app_path"
+      ;;
+    Linux)
+      local app_image
+      app_image="$(find "$OUT_DIR" -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+      if [ -z "$app_image" ]; then
+        echo "Could not find packaged AppImage under $OUT_DIR." >&2
+        exit 1
+      fi
+
+      echo "== Launching packaged desktop app =="
+      chmod +x "$app_image"
+      "$app_image" &
+      ;;
+    *)
+      echo "--launch is only supported on macOS and Linux." >&2
+      exit 1
+      ;;
+  esac
+}
 
 if [ "$SKIP_INSTALL" = 1 ]; then
   echo "== Skipping desktop npm ci =="
@@ -64,6 +125,7 @@ fi
 
 echo "== Building desktop renderer =="
 npm --prefix "$ROOT/desktop" run build:renderer
+assert_packaged_renderer_assets
 
 echo "== Building desktop main process =="
 npm --prefix "$ROOT/desktop" run build:main
@@ -92,6 +154,10 @@ syrus_release_checksums "$OUT_DIR" SHA256SUMS-desktop.txt
 echo
 echo "Desktop release artifacts:"
 find "$OUT_DIR" -maxdepth 1 -type f -print | sort
+
+if [ "$LAUNCH" = 1 ]; then
+  launch_packaged_desktop
+fi
 
 if [ "$UPLOAD" = 1 ]; then
   echo
