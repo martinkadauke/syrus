@@ -89,7 +89,7 @@ RSpec.describe SyrusChatMcp::Sidecar do
         read_memory
         repo_info
       ])
-      expect(tool_names.size).to eq(22)
+      expect(tool_names.size).to eq(21)
     end
 
     it "advertises specialty tools via the deferred tools/list" do
@@ -249,6 +249,17 @@ RSpec.describe SyrusChatMcp::Sidecar do
         "admin_cleanup_workspace",
         "admin_refresh_installations"
       )
+    end
+
+    it "exposes every chat tool advertised in the agent environment snapshot" do
+      server = server_for(chat_session)
+      _ = jsonrpc(server, "initialize", id: 0)
+
+      response = jsonrpc(server, "tools/list", id: 1)
+
+      tool_names = response[:result][:tools].map { |tool| tool[:name] }
+      advertised_tool_names = AgentEnvironmentSnapshot::CHAT_TOOL_GROUPS.values.flatten
+      expect(tool_names).to include(*advertised_tool_names)
     end
 
     it "advertises admin tools to admin users" do
