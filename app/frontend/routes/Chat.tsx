@@ -82,6 +82,7 @@ const CHAT_COMPOSE_MAX_ROWS = 5
 const CHAT_WORKSPACE_WIDTH_KEY = "syrus.chat.workspace.width"
 const CHAT_WORKSPACE_TAB_KEY = "syrus.chat.workspace.tab"
 const CHAT_WORKSPACE_COLLAPSED_KEY = "syrus.chat.workspace.collapsed"
+const CHAT_DRAFT_KEY_PREFIX = "syrus.chat.draft."
 const CHAT_WORKSPACE_DEFAULT_WIDTH = 520
 const CHAT_WORKSPACE_MIN_WIDTH = 360
 const CHAT_WORKSPACE_MAX_WIDTH = 760
@@ -124,7 +125,7 @@ export function ChatRoute() {
     >
       {chat.isPending ? <PanelMessage>Loading chat...</PanelMessage> : null}
       {chat.isError ? <PanelMessage tone="error">{errorMessage(chat.error, "Unable to load chat.")}</PanelMessage> : null}
-      {chat.isSuccess ? <ChatView payload={chat.data} prefix={prefix} queryKey={queryKey} /> : null}
+      {chat.isSuccess ? <ChatView chatId={id} payload={chat.data} prefix={prefix} queryKey={queryKey} /> : null}
     </main>
   )
 }
@@ -189,7 +190,7 @@ function appendSearch(path: string, search: string) {
   return search ? `${path}${search}` : path
 }
 
-function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey }) {
+function ChatView({ chatId, payload, prefix, queryKey }: { chatId: string; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey }) {
   const [notice, setNotice] = useState<string | null>(payload.message || null)
   const [whiteboardFullscreen, setWhiteboardFullscreen] = useState(false)
   const isDesktop = useMediaQuery("(min-width: 1024px)", true)
@@ -230,6 +231,7 @@ function ChatView({ payload, prefix, queryKey }: { payload: ChatPayload; prefix:
         </section>
       ) : (
         <ChatWorkspace
+          chatId={chatId}
           payload={payload}
           prefix={prefix}
           queryKey={queryKey}
@@ -1124,10 +1126,16 @@ function ProposalChildren({ children, mutation }: { children: ChatProposalChild[
   )
 }
 
-function Compose({ autoFocus = false, commandHandlers, payload, prefix, queryKey, onNotice, onMessageSent }: { autoFocus?: boolean; commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void; onMessageSent?: () => void }) {
+function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, queryKey, onNotice, onMessageSent }: { autoFocus?: boolean; chatId: string; commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void; onMessageSent?: () => void }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [text, setText] = useState("")
+  const [text, setText] = useState(() => {
+    try {
+      return window.localStorage.getItem(CHAT_DRAFT_KEY_PREFIX + chatId) || ""
+    } catch (_error) {
+      return ""
+    }
+  })
   const [attachments, setAttachments] = useState<ChatComposeAttachment[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [isDragOver, setIsDragOver] = useState(false)
@@ -1145,6 +1153,20 @@ function Compose({ autoFocus = false, commandHandlers, payload, prefix, queryKey
   const queuedMessages = payload.queued_messages || []
   const commandQuery = slashCommandQuery(text)
   const matchingCommands = useMemo(() => commandQuery == null ? [] : filterSlashCommands(commandQuery), [commandQuery])
+
+  useEffect(() => {
+    if (text.length > 0) {
+      storeWorkspacePreference(CHAT_DRAFT_KEY_PREFIX + chatId, text)
+      return
+    }
+
+    try {
+      window.localStorage.removeItem(CHAT_DRAFT_KEY_PREFIX + chatId)
+    } catch (_error) {
+      // Local storage can be unavailable in hardened browser modes.
+    }
+  }, [chatId, text])
+
   const send = useMutation({
     mutationFn: (messageText: string) => agentActive
       ? enqueueChatMessage(appendSearch(payload.paths.app_enqueue_message_path, search), messageText, attachments)
@@ -1153,6 +1175,11 @@ function Compose({ autoFocus = false, commandHandlers, payload, prefix, queryKey
       queryClient.setQueryData(queryKey, updated)
       updateRecentChatCache(queryClient, currentRecentChat(updated) || updated.chat, { prepend: true })
       setText("")
+      try {
+        window.localStorage.removeItem(CHAT_DRAFT_KEY_PREFIX + chatId)
+      } catch (_error) {
+        // Local storage can be unavailable in hardened browser modes.
+      }
       setAttachments([])
       setAttachmentError(null)
       setPendingConfirmation(null)
@@ -1853,6 +1880,7 @@ type WorkspaceTab = "whiteboard" | "context" | "media"
 type MobileChatTab = "chat" | WorkspaceTab
 
 function ChatWorkspace({
+  chatId,
   payload,
   prefix,
   queryKey,
@@ -1860,6 +1888,7 @@ function ChatWorkspace({
   whiteboardFullscreen,
   onWhiteboardFullscreenChange
 }: {
+  chatId: string
   payload: ChatPayload
   prefix: string
   queryKey: ChatQueryKey
@@ -1977,7 +2006,7 @@ function ChatWorkspace({
         </nav>
         <div className="flex min-h-0 w-full flex-1">
           {activeMobileTab === "chat" ? (
-            <ChatColumn bookmarkTarget={bookmarkTarget} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} onPendingActionSelect={selectBookmark} />
+            <ChatColumn bookmarkTarget={bookmarkTarget} chatId={chatId} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} onPendingActionSelect={selectBookmark} />
           ) : (
             <ChatWorkspacePanel
               activeTab={activeTab}
@@ -2012,7 +2041,7 @@ function ChatWorkspace({
             }
       }
     >
-      {expanded ? null : <ChatColumn bookmarkTarget={bookmarkTarget} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} onPendingActionSelect={selectBookmark} />}
+      {expanded ? null : <ChatColumn bookmarkTarget={bookmarkTarget} chatId={chatId} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} onPendingActionSelect={selectBookmark} />}
       {expanded || panelCollapsed ? null : (
         <button
           aria-label="Resize chat workspace"
@@ -2057,7 +2086,7 @@ function ChatWorkspace({
   )
 }
 
-function ChatColumn({ bookmarkTarget, commandHandlers, payload, prefix, queryKey, onNotice, onPendingActionSelect }: { bookmarkTarget: BookmarkTarget | null; commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void; onPendingActionSelect: (messageId: number) => void }) {
+function ChatColumn({ bookmarkTarget, chatId, commandHandlers, payload, prefix, queryKey, onNotice, onPendingActionSelect }: { bookmarkTarget: BookmarkTarget | null; chatId: string; commandHandlers: ChatSystemCommandHandlers; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void; onPendingActionSelect: (messageId: number) => void }) {
   const [hasSentFirstMessage, setHasSentFirstMessage] = useState(false)
   const landing = payload.messages.length === 0 && !hasSentFirstMessage
 
@@ -2077,7 +2106,7 @@ function ChatColumn({ bookmarkTarget, commandHandlers, payload, prefix, queryKey
         <UsageOverlay payload={payload} />
       </div>
       <div className={landing ? "w-full max-w-sm sm:max-w-2xl" : undefined}>
-        <Compose autoFocus={landing} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} onMessageSent={() => setHasSentFirstMessage(true)} />
+        <Compose key={chatId} autoFocus={landing} chatId={chatId} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} onMessageSent={() => setHasSentFirstMessage(true)} />
       </div>
     </section>
   )
