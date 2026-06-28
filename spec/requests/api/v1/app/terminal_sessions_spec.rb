@@ -1,6 +1,7 @@
 require "rails_helper"
 
 RSpec.describe "App API terminal sessions", type: :request do
+  include ActiveJob::TestHelper
   let(:user) { Factories.user }
   let(:other_user) { Factories.user }
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
@@ -127,13 +128,14 @@ RSpec.describe "App API terminal sessions", type: :request do
     expect {
       post "/api/v1/app/terminal_sessions", params: { terminal_session: { workflow_id: workflow.id, name: "Workspace shell", working_directory: "/ignored" } }, as: :json
     }.to change { TerminalSession.count }.by(1)
-      .and have_enqueued_job(TerminalSessionJob)
+      .and have_enqueued_job(TerminalSessionJob).on_queue("chat")
 
     session = TerminalSession.last
     expect(response).to have_http_status(:created)
     expect(session.user).to eq(user)
     expect(session.workflow).to eq(workflow)
     expect(session.working_directory).to eq("/tmp/workflows/#{workflow.id}")
+    expect(session.auth_token).to match(/\A\h{64}\z/)
     expect(parse_body["session"]).to include(
       "id" => session.id,
       "name" => "Workspace shell",
@@ -147,7 +149,6 @@ RSpec.describe "App API terminal sessions", type: :request do
     sign_in_as(user)
 
     post "/api/v1/app/terminal_sessions", params: { terminal_session: { name: "Scratch" } }, as: :json
-
     expect(response).to have_http_status(:created)
     expect(TerminalSession.last.working_directory).to eq(Rails.root.to_s)
   end
@@ -161,6 +162,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       working_directory: "/tmp/shell",
       started_at: Time.current
     )
+    expect(session.auth_token).to match(/\A\h{64}\z/)
 
     get "/api/v1/app/terminal_sessions/#{session.id}"
 

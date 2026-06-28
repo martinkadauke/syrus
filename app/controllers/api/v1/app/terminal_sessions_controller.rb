@@ -13,8 +13,10 @@ module Api
             workflow: selected_workflow,
             name: session_name,
             working_directory: working_directory,
+            auth_token: SecureRandom.hex(32),
             started_at: Time.current
           )
+          TerminalSessionJob.perform_later(session.id)
 
           TerminalSessionJob.perform_later(session.id)
 
