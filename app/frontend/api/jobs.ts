@@ -100,6 +100,11 @@ export type JobSourceChat = {
   label: string
 }
 
+export type JobOriginChat = {
+  chat_session_id: number
+  message_id: number
+}
+
 export type JobTag = {
   id: number
   name: string
@@ -349,6 +354,7 @@ export type JobDetailPayload = {
   job: JobRecord
   repository: JobRepository
   epic: JobEpic | null
+  origin_chat: JobOriginChat | null
   pinned: boolean
   tags: JobTag[]
   tag_options: JobTag[]
