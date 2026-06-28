@@ -170,6 +170,7 @@ RSpec.describe "App API terminal sessions", type: :request do
       auth_token: SecureRandom.hex(32),
       started_at: Time.current
     )
+    expect(session.auth_token).to match(/\A\h{64}\z/)
 
     get "/api/v1/app/terminal_sessions/#{session.id}"
 

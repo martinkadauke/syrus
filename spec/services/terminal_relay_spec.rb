@@ -1,5 +1,6 @@
 require "rails_helper"
 require "socket"
+require "timeout"
 
 RSpec.describe TerminalRelay do
   class FakePtyInput
@@ -94,7 +95,8 @@ RSpec.describe TerminalRelay do
     child_output_write.write("from pty")
     expect(read_available(socket)).to eq("from pty")
 
-    socket.write("from tcp")
+    socket.write({ type: "input", data: "from tcp" }.to_json)
+    socket.write("\n")
     expect(read_available(pty_input_read)).to eq("from tcp")
 
     socket.close

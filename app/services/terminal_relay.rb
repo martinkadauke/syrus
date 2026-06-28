@@ -124,34 +124,44 @@ class TerminalRelay
     return +"" if data.empty?
 
     pending = control_buffer.empty? ? data : "#{control_buffer}#{data}"
-    return pending if partial_resize_frame?(pending)
+    return pending if partial_control_frame?(pending)
 
-    if pending.start_with?("{") && pending.include?("\n")
-      line, rest = pending.split("\n", 2)
-      if handle_control_frame("#{line}\n", pty_in)
-        pty_in.write(rest) if rest.present?
+    until pending.empty?
+      unless pending.start_with?("{") && pending.include?("\n")
+        pty_in.write(pending)
         return +""
+      end
+
+      line, pending = pending.split("\n", 2)
+      return +"#{line}\n" if pending.nil?
+
+      unless handle_control_frame("#{line}\n", pty_in)
+        pty_in.write("#{line}\n")
       end
     end
 
-    pty_in.write(pending)
     +""
   end
 
-  def partial_resize_frame?(data)
-    data.start_with?('{"type":"resize"') && !data.include?("\n")
+  def partial_control_frame?(data)
+    data.start_with?("{") && !data.include?("\n")
   end
 
   def handle_control_frame(frame, pty_in)
     payload = JSON.parse(frame)
-    return false unless payload["type"] == "resize"
 
-    cols = Integer(payload["cols"])
-    rows = Integer(payload["rows"])
-    return true unless rows.positive? && cols.positive?
-
-    pty_in.winsize = [ rows, cols ]
-    true
+    case payload["type"]
+    when "input"
+      pty_in.write(payload["data"].to_s)
+      true
+    when "resize"
+      cols = Integer(payload["cols"])
+      rows = Integer(payload["rows"])
+      pty_in.winsize = [ rows, cols ] if rows.positive? && cols.positive?
+      true
+    else
+      false
+    end
   rescue JSON::ParserError, ArgumentError, TypeError
     false
   end
