@@ -35,6 +35,8 @@
 /desktop/node_modules/
 /desktop/dist/
 /desktop/dist-electron/
+/desktop/out/
+/dist/
 /app/assets/builds/*
 !/app/assets/builds/.keep
 /public/assets
