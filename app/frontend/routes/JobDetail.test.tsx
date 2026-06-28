@@ -389,6 +389,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       repository_path: "/repositories/2"
     },
     epic: null,
+    origin_chat: null,
     pinned: false,
     tags: [],
     tag_options: [],
