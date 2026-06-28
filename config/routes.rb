@@ -95,6 +95,11 @@ Rails.application.routes.draw do
         post "jobs/:job_id/runs/:run_id/diagnose", to: "job_run_commands#diagnose", constraints: { job_id: /\d+/, run_id: /\d+/ }
         post "jobs/:job_id/workflows/:workflow_id/retry_step", to: "job_run_commands#retry_step", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
         post "jobs/:job_id/workflows/:workflow_id/push_commits", to: "job_run_commands#push_commits", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
+        resources :terminal_sessions, only: %i[ index create show destroy ] do
+          member do
+            post :kill
+          end
+        end
         get "epics", to: "epics#index"
         get "epics/new", to: "epics#new"
         get "epics/:id", to: "epics#show", constraints: { id: /\d+/ }
@@ -348,6 +353,7 @@ Rails.application.routes.draw do
   get "dashboard/jobs", to: "spa#show", as: :dashboard_jobs
   get "dashboard/workflows", to: "spa#show", as: :dashboard_workflows
   get "insights/spending", to: "spa#show", as: :insights_spending
+  get "terminal", to: "spa#show", as: :terminal
   get "jobs", to: redirect(status: 302) { |_params, request|
     query = request.query_parameters.except("subject").to_query
     query.present? ? "/dashboard/jobs?#{query}" : "/dashboard/jobs"
