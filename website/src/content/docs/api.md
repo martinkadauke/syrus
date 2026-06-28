@@ -173,7 +173,10 @@ context for Jobs and Epics, and `created_at`. Job and Epic slugs such as
 `JOB-123` and `EPIC-456` return the matching record when it belongs to the
 authenticated user. Query terms use Google-style matching: `foo bar`
 requires both words in any order, `"foo bar"` searches for the exact phrase,
-and `foo "bar baz"` combines a required word with a required phrase.
+and `foo "bar baz"` combines a required word with a required phrase. Chat
+results are grouped by conversation: the best matching message is the
+representative result, and grouped chat rows may include `grouped_matches`,
+`total_match_count`, and `has_more_matches` for inline expansion.
 
 ```bash
 curl "https://syrus.example.com/api/v1/app/search?q=deploy&types[]=job&types[]=chat" \
