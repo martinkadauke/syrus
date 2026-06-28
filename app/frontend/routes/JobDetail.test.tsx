@@ -386,13 +386,6 @@ function workflowPagination(totalWorkflows: number): JobDetailPayload["workflows
   }
 }
 
-function jsonResponse(body: unknown) {
-  return new Response(JSON.stringify(body), {
-    status: 200,
-    headers: { "Content-Type": "application/json" }
-  })
-}
-
 function baseJob(): JobDetailPayload["job"] {
   return {
     id: 1,
