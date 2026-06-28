@@ -1329,7 +1329,9 @@ function JobDetailView({
     <article className="job-detail">
       <section className="job-detail__summary" aria-label={`JOB-${job.id}`}>
         <div className="min-w-0">
-          <h1 className="job-detail__title">{jobTitle(job)}</h1>
+          <h1 className="job-detail__title" title={jobTitle(job)}>
+            {jobTitle(job)}
+          </h1>
           <p className="job-detail__meta">{job.repository_slug}</p>
         </div>
         <StatusPill state={displayState} />
@@ -1726,7 +1728,12 @@ function JobRow({
       }}
     >
       <div className="job-row__content">
-        <button type="button" className="job-row__title" onClick={onOpenDetail}>
+        <button
+          type="button"
+          className="job-row__title"
+          title={jobTitle(job)}
+          onClick={onOpenDetail}
+        >
           {jobTitle(job)}
         </button>
         <span className="job-row__meta">
