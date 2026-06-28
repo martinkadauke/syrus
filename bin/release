@@ -7,10 +7,10 @@
 #                       [--multi-arch] [--launch-desktop]
 #
 # Defaults to --all. With upload enabled, this refuses existing versions,
-# creates/pushes the git tag,
-# ensures the GitHub release exists, uploads CLI/Desktop artifacts, and
-# publishes the Docker image. Use --no-upload for local artifact builds only;
-# when no VERSION is provided, --no-upload defaults to v0.0.0-local.
+# creates/pushes the git tag, generates Claude-written GitHub release notes,
+# ensures the GitHub release exists, uploads CLI/Desktop artifacts, and publishes
+# the Docker image. Use --no-upload for local artifact builds only; when no
+# VERSION is provided, --no-upload defaults to v0.0.0-local.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -143,9 +143,12 @@ for component in "${SELECTED[@]}"; do
 done
 
 if [ "$UPLOAD" = 1 ]; then
+  RELEASE_NOTES_FILE="$(syrus_release_notes_file "$VERSION")"
+  "$ROOT/bin/release-notes" "$VERSION"
+
   syrus_release_ensure_tag "$VERSION"
   syrus_release_push_tag "$VERSION"
-  syrus_release_ensure_github_release "$VERSION"
+  syrus_release_ensure_github_release "$VERSION" "$RELEASE_NOTES_FILE"
 
   for output_dir in "${UPLOAD_DIRS[@]:-}"; do
     echo

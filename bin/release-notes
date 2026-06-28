@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# Generate Claude-written GitHub release notes from git history.
+#
+# Usage:
+#   bin/release-notes VERSION
+#   bin/release-notes --next-patch
+#   bin/release-notes --next-minor
+#
+# Writes dist/releases/<version>/RELEASE_NOTES.md.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$ROOT/bin/release-lib"
+
+VERSION=""
+NEXT_BUMP=""
+
+usage() {
+  awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --next-patch)
+      if [ -n "$NEXT_BUMP" ]; then
+        echo "Specify only one of --next-patch or --next-minor." >&2
+        usage >&2
+        exit 2
+      fi
+      NEXT_BUMP=patch
+      ;;
+    --next-minor)
+      if [ -n "$NEXT_BUMP" ]; then
+        echo "Specify only one of --next-patch or --next-minor." >&2
+        usage >&2
+        exit 2
+      fi
+      NEXT_BUMP=minor
+      ;;
+    --help|-h) usage; exit 0 ;;
+    -*) echo "Unknown flag: $arg" >&2; usage >&2; exit 2 ;;
+    *)
+      if [ -n "$VERSION" ]; then
+        echo "Unexpected argument: $arg" >&2
+        usage >&2
+        exit 2
+      fi
+      VERSION="$arg"
+      ;;
+  esac
+done
+
+if [ -n "$NEXT_BUMP" ] && [ -n "$VERSION" ]; then
+  echo "Specify either VERSION or --next-$NEXT_BUMP, not both." >&2
+  usage >&2
+  exit 2
+fi
+
+syrus_release_fetch_tags
+
+if [ -n "$NEXT_BUMP" ]; then
+  VERSION="$(syrus_release_next_version "$NEXT_BUMP")"
+  echo "== Using next $NEXT_BUMP release: $VERSION =="
+fi
+
+syrus_release_validate_version "$VERSION"
+syrus_release_require_command claude
+
+PREVIOUS_TAG="$(syrus_release_previous_stable_tag_for "$VERSION")"
+TARGET_REF="HEAD"
+if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+  TARGET_REF="$VERSION"
+fi
+
+if [ -n "$PREVIOUS_TAG" ]; then
+  RANGE="$PREVIOUS_TAG..$TARGET_REF"
+  RANGE_LABEL="$PREVIOUS_TAG..$TARGET_REF"
+  DIFF_STAT="$(git diff --stat "$RANGE" || true)"
+else
+  RANGE="$TARGET_REF"
+  RANGE_LABEL="$TARGET_REF"
+  DIFF_STAT=""
+fi
+
+COMMIT_LOG="$(git log "$RANGE" --reverse --date=short --pretty=format:'%h%x09%ad%x09%s' || true)"
+if [ -z "$COMMIT_LOG" ]; then
+  COMMIT_LOG="(No commits found in $RANGE_LABEL.)"
+fi
+
+NOTES_FILE="$(syrus_release_notes_file "$VERSION")"
+mkdir -p "$(dirname "$NOTES_FILE")"
+
+echo "== Generating release notes for $VERSION with Claude =="
+{
+  cat <<PROMPT
+You are writing GitHub release notes for Syrus.
+
+Write Markdown suitable for the GitHub release page. Be concise, factual, and user-facing.
+Do not mention docs/release_notes.md or any checked-in release notes file.
+Do not invent changes not supported by the git history below.
+Group related changes under useful headings such as Highlights, CLI, Desktop app, Web app, Docker and deployment, Fixes, and Internal. Omit headings that have no meaningful entries.
+Call out breaking changes, upgrade notes, or operational notes only when the commit history supports them.
+
+Release: $VERSION
+Previous stable release: ${PREVIOUS_TAG:-none}
+Git range: $RANGE_LABEL
+Target ref: $TARGET_REF
+
+Commits:
+PROMPT
+  printf '%s\n' "$COMMIT_LOG"
+  if [ -n "$DIFF_STAT" ]; then
+    cat <<PROMPT
+
+Diff stat:
+$DIFF_STAT
+PROMPT
+  fi
+} | claude --print > "$NOTES_FILE"
+
+if [ ! -s "$NOTES_FILE" ]; then
+  echo "Claude produced empty release notes." >&2
+  exit 1
+fi
+
+echo "Release notes written to $NOTES_FILE"

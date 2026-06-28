@@ -90,6 +90,39 @@ syrus_release_output_dir() {
   printf '%s/dist/releases/%s/%s' "$root" "$version" "$component"
 }
 
+syrus_release_notes_file() {
+  local version="${1:?usage: syrus_release_notes_file VERSION}"
+  local root
+
+  root="$(syrus_release_root)"
+  printf '%s/dist/releases/%s/RELEASE_NOTES.md' "$root" "$version"
+}
+
+syrus_release_previous_stable_tag_for() {
+  local version="${1:?usage: syrus_release_previous_stable_tag_for VERSION}"
+  local semver target_major target_minor target_patch_with_suffix target_patch
+  local major minor patch tag previous
+
+  semver="$(syrus_release_semver "$version")"
+  IFS=. read -r target_major target_minor target_patch_with_suffix <<<"$semver"
+  target_patch="${target_patch_with_suffix%%[-+]*}"
+  previous=""
+
+  while read -r major minor patch tag; do
+    if [ "$major" -lt "$target_major" ] ||
+      { [ "$major" -eq "$target_major" ] && [ "$minor" -lt "$target_minor" ]; } ||
+      { [ "$major" -eq "$target_major" ] && [ "$minor" -eq "$target_minor" ] && [ "$patch" -lt "$target_patch" ]; }; then
+      previous="$tag"
+    fi
+  done < <(
+    git tag --list |
+      sed -nE 's/^(v?([0-9]+)\.([0-9]+)\.([0-9]+))$/\2 \3 \4 \1/p' |
+      sort -n -k1,1 -k2,2 -k3,3
+  )
+
+  printf '%s' "$previous"
+}
+
 syrus_release_prepare_output_dir() {
   local output_dir="${1:?usage: syrus_release_prepare_output_dir OUTPUT_DIR}"
 
@@ -172,6 +205,8 @@ syrus_release_push_tag() {
 
 syrus_release_ensure_github_release() {
   local version="${1:?usage: syrus_release_ensure_github_release VERSION}"
+  local notes_file="${2:-}"
+  local -a args
 
   syrus_release_require_command gh
 
@@ -180,9 +215,18 @@ syrus_release_ensure_github_release() {
     return 1
   fi
 
-  gh release create "$version" \
-    --title "Syrus $version" \
-    --notes "Local Syrus release $version."
+  args=(release create "$version" --title "Syrus $version")
+  if [ -n "$notes_file" ]; then
+    if [ ! -s "$notes_file" ]; then
+      echo "Release notes file is missing or empty: $notes_file" >&2
+      return 1
+    fi
+    args+=(--notes-file "$notes_file")
+  else
+    args+=(--notes "Local Syrus release $version.")
+  fi
+
+  gh "${args[@]}"
 }
 
 syrus_release_fetch_tags() {

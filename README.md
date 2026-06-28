@@ -348,6 +348,18 @@ bin/release --next-patch
 bin/release --next-minor
 ```
 
+`bin/release` generates GitHub release notes through Claude from the git
+history before it creates the tag. To inspect the notes without publishing a
+release, run the same notes generator directly:
+
+```bash
+bin/release-notes v0.4.0
+bin/release-notes --next-patch
+bin/release-notes --next-minor
+```
+
+The generated Markdown is written to `dist/releases/<version>/RELEASE_NOTES.md`.
+
 Upload releases refuse to reuse an existing local tag, remote tag, or GitHub
 release, and release asset uploads do not overwrite existing assets. Use a new
 version for every published release.
