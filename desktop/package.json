@@ -8,10 +8,11 @@
   "desktopName": "SyrusDesktop",
   "main": "dist-electron/main.js",
   "scripts": {
-    "build": "npm run build:renderer && npm run build:main && electron-builder",
+    "build": "npm run build:renderer && npm run build:main && npm run ensure:electron && electron-builder",
     "build:main": "tsc -p tsconfig.electron.json",
     "build:renderer": "vite build",
-    "dev": "concurrently -k -n renderer,electron -c cyan,yellow \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && npm run build:main && electron .\"",
+    "dev": "concurrently -k -n renderer,electron -c cyan,yellow \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && npm run build:main && npm run ensure:electron && electron .\"",
+    "ensure:electron": "node scripts/ensure-electron.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit"
   },
   "dependencies": {
@@ -64,5 +65,10 @@
         "AppImage"
       ]
     }
+  },
+  "allowScripts": {
+    "electron@39.8.10": true,
+    "electron-winstaller@5.4.0": true,
+    "fsevents@2.3.3": true
   }
 }
