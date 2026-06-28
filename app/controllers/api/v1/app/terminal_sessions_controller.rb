@@ -18,8 +18,6 @@ module Api
           )
           TerminalSessionJob.perform_later(session.id)
 
-          TerminalSessionJob.perform_later(session.id)
-
           render json: { session: session_json(session) }, status: :created
         end
 
