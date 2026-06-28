@@ -50,11 +50,12 @@ RSpec.describe "MySQL fresh install compatibility" do
   # MismatchedForeignKey on db:prepare (SQLite silently tolerates it, so
   # dev/test/CI stay green while every MySQL deploy crash-loops the web
   # pod's db-prepare init container).
-  it "never adds an :integer column whose name ends in _id" do
+  it "never adds an :integer foreign-key column" do
     offenders = migration_sources.flat_map do |filename, source|
-      source.scan(/add_column\s+:\w+,\s+:(\w*_id),\s+:integer/).map do |(column)|
-        "#{filename}: #{column}"
-      end
+      add_column_offenders = source.scan(/add_column\s+:\w+,\s+:(\w*_id),\s+:integer/).map { |(column)| column }
+      add_reference_offenders = source.scan(/add_reference\s+:\w+,\s+:\w+,[^\n]*type:\s+:integer/).map(&:strip)
+
+      add_column_offenders.concat(add_reference_offenders).map { |column| "#{filename}: #{column}" }
     end
 
     expect(offenders).to be_empty

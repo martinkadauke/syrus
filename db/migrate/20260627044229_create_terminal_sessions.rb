@@ -4,12 +4,8 @@ class CreateTerminalSessions < ActiveRecord::Migration[8.1]
       t.timestamps
     end
 
-    unless column_exists?(:terminal_sessions, :user_id)
-      add_reference :terminal_sessions, :user, type: :integer, null: false, index: false
-    end
-    unless column_exists?(:terminal_sessions, :workflow_id)
-      add_reference :terminal_sessions, :workflow, type: :integer, null: true, index: false
-    end
+    ensure_bigint_reference(:terminal_sessions, :user, null: false)
+    ensure_bigint_reference(:terminal_sessions, :workflow, null: true)
     add_column :terminal_sessions, :name, :string, null: false unless column_exists?(:terminal_sessions, :name)
     unless column_exists?(:terminal_sessions, :working_directory)
       add_column :terminal_sessions, :working_directory, :string, null: false
@@ -47,5 +43,20 @@ class CreateTerminalSessions < ActiveRecord::Migration[8.1]
     remove_reference :terminal_sessions, :workflow if column_exists?(:terminal_sessions, :workflow_id)
     remove_reference :terminal_sessions, :user if column_exists?(:terminal_sessions, :user_id)
     drop_table :terminal_sessions, if_exists: true
+  end
+
+  private
+
+  def ensure_bigint_reference(table, reference, null:)
+    column_name = :"#{reference}_id"
+
+    if column_exists?(table, column_name)
+      column = connection.columns(table).find { |candidate| candidate.name == column_name.to_s }
+      needs_bigint = column.type == :integer && column.limit != 8
+      needs_nullability = column.null != null
+      change_column table, column_name, :bigint, null: null if needs_bigint || needs_nullability
+    else
+      add_reference table, reference, type: :bigint, null:, index: false
+    end
   end
 end
