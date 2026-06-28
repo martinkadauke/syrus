@@ -18,13 +18,18 @@ For deployment-specific placement, see [Deployment](/docs/deployment).
 ## `.syrus.yml`
 
 `.syrus.yml` is read from the root of the target repository during the
-`prepare` Step. It currently configures deterministic setup commands that
-run before the agent is invoked.
+`prepare` Step and by local CLI checkout commands. It configures
+deterministic setup commands before the agent runs, plus optional local
+hooks after an operator checks out a Syrus branch.
 
 ```yaml
 prepare:
   - bundle install
   - npm ci
+
+hooks:
+  post_checkout:
+    - bundle exec rails db:migrate
 ```
 
 Schema:
@@ -34,12 +39,15 @@ Schema:
 | `prepare` | Array of strings | Shell commands to run in order before agent work starts |
 | `prepare` | `[]` | Explicitly run no preparation commands |
 | `prepare` | `false` | Opt out of preparation entirely |
+| `hooks.post_checkout` | Array of strings | Shell commands the CLI runs after `syrus checkout` succeeds |
 
-Commands run from the workspace root under `bash -c`, so quoting, pipes,
-and `&&` work. Each command has a 10 minute timeout. The environment is
-scrubbed to a small safe allowlist so the Syrus worker's own Bundler,
-Rails, or production environment settings do not leak into the target
-repo's install.
+### `prepare`
+
+`prepare` commands run from the workspace root under `bash -c`, so
+quoting, pipes, and `&&` work. Each command has a 10 minute timeout. The
+environment is scrubbed to a small safe allowlist so the Syrus worker's
+own Bundler, Rails, or production environment settings do not leak into
+the target repo's install.
 
 When an **explicit** `.syrus.yml` prepare command fails, Syrus fails the
 workflow before starting the agent and records the command, workspace
@@ -71,6 +79,25 @@ wedging onboarding — the very first Job on a repo can still run and add a
 `.syrus.yml` or fix the lockfile. Add an explicit `prepare:` list whenever
 you want setup to be authoritative (and to fail loudly when it breaks).
 
+### `hooks.post_checkout`
+
+`hooks.post_checkout` commands are optional shell strings. They run only
+in the local operator checkout after `syrus checkout JOB-<id>` or
+`syrus checkout EPIC-<id>` successfully switches branches. The CLI runs
+each hook in order from the repository root with `sh -c`, streams output
+to the terminal, and fails fast on the first non-zero exit. Pass
+`--no-hooks` to bypass hooks for one checkout:
+
+```bash
+syrus checkout --no-hooks JOB-<id>
+syrus checkout --no-hooks EPIC-<id>
+```
+
+When a post-checkout hook fails, the CLI prints the failed command and
+exit code, then exits non-zero. The checkout itself is not rolled back:
+fix the local problem and rerun the command manually, or run checkout
+again with `--no-hooks` if you only need the branch.
+
 ## Worked Examples
 
 Syrus's own repo uses `.syrus.yml` to pin Bundler output into the cloned
@@ -88,6 +115,20 @@ A Node repo that needs generated client code before the agent starts:
 prepare:
   - npm ci
   - npm run generate
+```
+
+A Rails app that installs dependencies for the agent and runs local
+post-checkout maintenance for the developer:
+
+```yaml
+prepare:
+  - bundle install
+  - yarn install --frozen-lockfile
+
+hooks:
+  post_checkout:
+    - bundle exec rails db:migrate
+    - yarn install --frozen-lockfile
 ```
 
 A repo with no useful setup step:
