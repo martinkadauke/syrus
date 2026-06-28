@@ -27,6 +27,7 @@ type RepoPathDraft = {
 
 const REFRESH_INTERVAL_MS = 30_000
 const EMPTY_JOBS: SyrusJobItem[] = []
+const INBOX_COLLAPSED_REPOS_KEY = "syrus.desktop.inbox.collapsed-repos"
 
 const normalizeInstanceUrl = (url: string) => url.trim().replace(/\/+$/, "")
 
@@ -88,6 +89,20 @@ const groupJobsByRepository = (jobs: SyrusJobItem[]) => {
   }
 
   return Array.from(groups.values()).sort((a, b) => a.repositorySlug.localeCompare(b.repositorySlug))
+}
+
+function readCollapsedRepos(): Set<string> {
+  try {
+    const raw = localStorage.getItem(INBOX_COLLAPSED_REPOS_KEY)
+    if (!raw) return new Set()
+
+    const parsed = JSON.parse(raw)
+    if (Array.isArray(parsed)) return new Set(parsed as string[])
+  } catch {
+    // Ignore unavailable storage or malformed persisted state.
+  }
+
+  return new Set()
 }
 
 const isMacPlatform = () => /Mac|iPhone|iPad|iPod/.test(navigator.platform)
@@ -369,7 +384,7 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   const [pendingApprovals, setPendingApprovals] = useState<Set<number>>(() => new Set())
   const [toast, setToast] = useState<ToastState | null>(null)
   const [isComposeOpen, setIsComposeOpen] = useState(false)
-  const [collapsedRepositorySlugs, setCollapsedRepositorySlugs] = useState<Set<string>>(() => new Set())
+  const [collapsedRepositorySlugs, setCollapsedRepositorySlugs] = useState<Set<string>>(readCollapsedRepos)
   const [retryingJobID, setRetryingJobID] = useState<number | null>(null)
   const [feedbackBody, setFeedbackBody] = useState("")
   const [feedbackSubmitting, setFeedbackSubmitting] = useState(false)
@@ -452,6 +467,14 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   }
 
   useEffect(() => () => clearToastTimer(), [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(INBOX_COLLAPSED_REPOS_KEY, JSON.stringify([...collapsedRepositorySlugs]))
+    } catch {
+      // Ignore unavailable storage, private mode, or quota errors.
+    }
+  }, [collapsedRepositorySlugs])
 
   useEffect(() => {
     const count = notificationsQuery.data?.unread_count
