@@ -1,4 +1,9 @@
 features:
+  - slug: v2_ui
+    category: "UI Experiments"
+    name: "V2 UI"
+    description: "Enables the redesigned app shell. Introduced in PR #1185."
+    default: false
   - slug: v2_sidebar_subject_selector
     category: "UI Experiments"
     name: "V2 Sidebar Subject Selector"
