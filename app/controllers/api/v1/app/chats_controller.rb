@@ -162,6 +162,7 @@ module Api
 
         def create
           chat_session = create_chat_session
+          return if performed?
 
           render json: {
             message: chat_session.messages.exists? ? "Message sent." : "Chat created.",
@@ -969,6 +970,9 @@ module Api
         def create_chat_session
           text = message_text
           repository = repository_from_params
+          content = message_content(text) if text.present?
+          return if performed?
+
           chat_session = nil
           user_message = nil
 
@@ -981,7 +985,7 @@ module Api
               last_message_at: text.present? ? Time.current : nil
             )
             if text.present?
-              user_message = chat_session.messages.create!(role: "user", content: { "text" => text })
+              user_message = chat_session.messages.create!(role: "user", content: content)
             end
           end
 
