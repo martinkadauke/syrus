@@ -88,10 +88,15 @@ derive `<root>/<repo-name>` paths, or add per-repository absolute path
 overrides for repositories that live elsewhere. Desktop delegates
 checkout to `syrus checkout JOB-<id>` from the resolved local path, so the
 CLI handles branch fetching, dirty working trees, backup branches, and
-repository-origin validation. After a successful checkout, the popover
-automatically navigates to that Job's detail view so the test plan is
-visible immediately. Admin users also see subtle footer toggles for
-pausing or resuming repository polling and new Run starts, with
+repository-origin validation. When the popover opens, Desktop runs
+`syrus status --json` from the last checked-out or configured local
+checkout path. If that checkout is on a Syrus Job branch, the matching
+inbox row gets a local badge; branches behind remote show an amber
+warning, and hidden or filtered Jobs appear as a compact "Checked out"
+status line. After a successful checkout, the popover automatically
+navigates to that Job's detail view so the test plan is visible
+immediately. Admin users also see subtle footer toggles for pausing or
+resuming repository polling and new Run starts, with
 confirmation before either switch changes. Right-click the tray icon to
 open the connected Syrus instance in your browser, open Preferences, or
 quit the app.
@@ -242,6 +247,34 @@ syrus approve JOB-456
 
 On success, Syrus queues the landing workflow.
 
+## Local Status
+
+`syrus status` reports whether the current checkout is on a Syrus Job
+branch and whether that branch is behind `origin`:
+
+```bash
+syrus status
+syrus status --json
+```
+
+On a Job branch, it fetches the matching remote branch before counting
+commits behind:
+
+```text
+JOB-1291 (syrus/direct-1291) — up to date
+JOB-1291 (syrus/direct-1291) — ⚠ 2 commit(s) behind remote
+```
+
+The JSON form is intended for desktop and scripting integrations:
+
+```json
+{"job_id":1291,"branch":"syrus/direct-1291","behind":2}
+```
+
+When the current branch is not a Syrus Job branch, it prints `Not on a
+Syrus job branch.` or returns `{"job_id":0,"branch":"","behind":0}` with
+`--json`.
+
 ## Epics
 
 Use `syrus epic` to inspect and create Epics:
@@ -265,12 +298,12 @@ These commands show the configured account and visible repositories:
 ```bash
 syrus whoami
 syrus repo list
-syrus status
-syrus status --repo acme/widgets
-syrus status --closed
+syrus jobs
+syrus jobs --repo acme/widgets
+syrus jobs --closed
 ```
 
-`status` lists active Jobs across repositories by default and can scope
+`jobs` lists active Jobs across repositories by default and can scope
 to one repository.
 
 ## Schedules
