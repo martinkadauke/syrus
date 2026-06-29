@@ -51,6 +51,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_29_171941) do
   end
 
   create_table "app_settings", force: :cascade do |t|
+    t.integer "adversarial_review_rounds", default: 0, null: false
     t.datetime "created_at", null: false
     t.bigint "github_app_id"
     t.text "github_app_private_key_pem"
