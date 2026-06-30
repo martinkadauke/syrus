@@ -90,6 +90,8 @@ class StepDispatcher
   end
 
   def advance!
+    return if handle_successful_adversarial_loop_iteration
+
     next_step = find_next_runnable
     if next_step
       # Idempotency: cascade_failure_to_step fires fail_from twice
@@ -128,14 +130,48 @@ class StepDispatcher
 
   private
 
+  def handle_successful_adversarial_loop_iteration
+    return false unless @from_step&.kind == "adversarial_review"
+    return false unless @from_step.loop_id.present?
+
+    loop_node = loop_node_for(@from_step)
+    return false unless loop_node&.fetch("type") == "loop"
+    return false unless loop_step_kinds(loop_node).last == "adversarial_review"
+
+    if @from_step.iteration < loop_max_iterations(loop_node)
+      enqueue_next_loop_iteration!(loop_node)
+      true
+    else
+      false
+    end
+  end
+
   def handle_loop_iteration
     loop_node = loop_node_for(@from_step)
     return hard_fail_workflow! unless loop_node
 
     if @from_step.iteration < loop_max_iterations(loop_node)
       enqueue_next_loop_iteration!(loop_node)
+    elsif @from_step.succeeded?
+      advance_to_next_runnable!
     else
       exhaust_loop!
+    end
+  end
+
+  def advance_to_next_runnable!
+    next_step = find_next_runnable
+    if next_step
+      # Idempotency: cascade_failure_to_step fires fail_from twice
+      # (once from Step#fail_workflow!, once explicitly from
+      # Run#cascade_failure_to_step). For grader Steps that
+      # advance-on-fail, both calls would try to create a Run on
+      # the same next_step. Skip if already materialized.
+      return if next_step.runs.any?
+
+      self.class.create_run_and_enqueue(next_step, @workflow)
+    else
+      finish_workflow!
     end
   end
 
@@ -258,6 +294,9 @@ class StepDispatcher
     loop_node = loop_node_for(@from_step)
     agent_step_kind =
       if loop_node
+        # In adversarial loops, both implement and adversarial_review are agentic.
+        # Resuming the first agentic loop kind keeps implementer sessions chained;
+        # the reviewer handler separately finds prior adversarial_review sessions.
         loop_step_kinds(loop_node).find { |kind| Step::AGENTIC_KINDS.include?(kind.to_s) }
       end
     return nil unless agent_step_kind
