@@ -136,6 +136,7 @@ module Api
             chat_session = ChatSession.create!(
               user: Current.user,
               repository: repository,
+              chat_provider: Current.user.effective_chat_provider,
               onboarding: true,
               last_message_at: Time.current
             )
@@ -623,7 +624,7 @@ module Api
           {
             message: message,
             chat: chat_json(chat_session),
-            chat_available: Current.user.claude_oauth_token.present?,
+            chat_available: Current.user.chat_available?,
             turn_in_flight: chat_session.turn_in_flight?,
             agent_busy: chat_session.agent_busy?,
             has_more_older: has_more_older,
@@ -975,6 +976,7 @@ module Api
             chat_session = ChatSession.create!(
               user: Current.user,
               repository: repository,
+              chat_provider: Current.user.effective_chat_provider,
               title: text.present? ? nil : ChatSession.fallback_title_for(repository),
               last_message_at: text.present? ? Time.current : nil
             )

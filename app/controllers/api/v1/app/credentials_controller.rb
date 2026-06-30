@@ -173,7 +173,7 @@ module Api
             user: user_json(user),
             credential_status: credential_status_json(user),
             github_rate_limit: github_rate_limit_json(user),
-            options: credentials_options
+            options: credentials_options(user)
           }
         end
 
@@ -199,6 +199,7 @@ module Api
             avatar_url: user.avatar_url,
             admin: user.admin?,
             agent_provider: user.agent_provider,
+            chat_provider: user.chat_provider,
             codex_auth_mode: user.codex_auth_mode,
             agent_max_turns: user.agent_max_turns,
             scheduling_paused: user.scheduling_paused,
@@ -244,9 +245,10 @@ module Api
           }
         end
 
-        def credentials_options
+        def credentials_options(user)
           {
             agent_providers: User::AGENT_PROVIDERS,
+            chat_providers: User::CHAT_PROVIDERS.select { |provider| user.chat_provider_configured?(provider) },
             codex_auth_modes: User::CODEX_AUTH_MODES,
             agent_max_turns: {
               min: User::AGENT_MAX_TURNS_RANGE.first,
@@ -270,7 +272,7 @@ module Api
         def credentials_params
           params.expect(user: [ :name, :first_name, :last_name, :github_handle, :profile_bio, :avatar_url,
                                 :profile_company, :profile_website,
-                                :profile_location, :agent_provider, :claude_oauth_token, :codex_auth_mode,
+                                :profile_location, :agent_provider, :chat_provider, :claude_oauth_token, :codex_auth_mode,
                                 :codex_api_key, :codex_auth_json, :github_token,
                                 :agent_max_turns, :scheduling_paused, :auto_approve_mode,
                                 { notification_preferences: [ :desktop_job_implemented, :desktop_job_failed ] } ])
