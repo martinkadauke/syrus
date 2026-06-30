@@ -16,6 +16,7 @@ class Epic < ApplicationRecord
   belongs_to :owner_user, class_name: "User", optional: true, inverse_of: :dashboard_owned_epics
   has_many :jobs, dependent: :nullify
   has_many :chat_proposals, dependent: :nullify
+  has_many :versions, class_name: "EpicVersion", dependent: :destroy, inverse_of: :epic
   has_many :dependencies,
            class_name: "EpicDependency",
            dependent: :destroy,
@@ -41,6 +42,7 @@ class Epic < ApplicationRecord
   after_create_commit :enqueue_search_index_after_create
   after_create_commit :broadcast_app_epic_created
   after_update_commit :sync_job_epic_titles, if: :saved_change_to_title?
+  after_update_commit :record_version, if: :title_or_description_changed?
   after_update_commit :enqueue_search_index_after_update
   after_update_commit :broadcast_app_epic_updated
   after_update_commit :refresh_dependent_epic_auto_states, if: :saved_change_to_state?
@@ -58,7 +60,7 @@ class Epic < ApplicationRecord
     state :ready, :in_progress, :done, :archived
 
     event :auto_ready do
-      transitions from: :backlog, to: :ready, guard: :ready_to_start?
+      transitions from: :backlog, to: :ready, guards: [ :ready_to_start?, :actor_can_advance? ]
     end
 
     event :move_to_backlog do
@@ -66,9 +68,9 @@ class Epic < ApplicationRecord
     end
 
     event :start do
-      transitions from: :ready, to: :in_progress, after: -> {
+      transitions from: :ready, to: :in_progress, guard: :actor_can_advance?, after: ->(actor: nil, user: nil) {
         self.state = "in_progress"
-        claim!(user, force: true) unless claimed?
+        claim!(actor || user || self.user, force: true) unless claimed?
         unblock_child_jobs!
       }
     end
@@ -81,7 +83,7 @@ class Epic < ApplicationRecord
     end
 
     event :auto_complete do
-      transitions from: :in_progress, to: :done, guard: :complete?, after: -> {
+      transitions from: :in_progress, to: :done, guards: [ :complete?, :actor_can_advance? ], after: -> {
         stamp_done_at
         notify_epic_completed
       }
@@ -155,12 +157,33 @@ class Epic < ApplicationRecord
     jobs.update_all(epic_title: title)
   end
 
+  def title_or_description_changed?
+    saved_change_to_title? || saved_change_to_description?
+  end
+
+  def record_version
+    title_change = saved_change_to_title
+    description_change = saved_change_to_description
+
+    versions.create!(
+      user: Current.user,
+      title_before: title_change&.first,
+      title_after: title_change&.last,
+      description_before: description_change&.first,
+      description_after: description_change&.last
+    )
+  end
+
   def clear_job_epic_titles
     jobs.update_all(epic_title: nil)
   end
 
   def ready_to_start?
     jobs.exists? && dependencies_done? && child_jobs_confirmed?
+  end
+
+  def actor_can_advance?(actor: nil, user: nil)
+    !epic_advancement_actor(actor || user)&.product_owner?
   end
 
   def complete?
@@ -196,9 +219,10 @@ class Epic < ApplicationRecord
 
   # Operator escape hatch for the card menu. This intentionally bypasses
   # the AASM graph while preserving side effects that matter to execution.
-  def override_state!(target_state)
+  def override_state!(target_state, actor: nil)
     target_state = target_state.to_s
     raise ArgumentError, "unknown Epic state: #{target_state}" unless STATES.include?(target_state)
+    raise ArgumentError, "Product owners cannot advance Epics beyond backlog." if product_owner_advancement?(target_state, actor)
 
     transaction do
       was_in_progress = in_progress?
@@ -313,6 +337,14 @@ class Epic < ApplicationRecord
 
   def child_jobs_confirmed?
     jobs.where(state: "triaging").none?
+  end
+
+  def product_owner_advancement?(target_state, actor)
+    target_state.in?(%w[ready in_progress done]) && epic_advancement_actor(actor)&.product_owner?
+  end
+
+  def epic_advancement_actor(actor)
+    actor.respond_to?(:user) ? actor.user : actor
   end
 
   def stamp_done_at

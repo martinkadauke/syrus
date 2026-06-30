@@ -175,6 +175,7 @@ Rails.application.routes.draw do
             post :archive
             post :unarchive
             post :retry_failed_jobs
+            post :release_needs_triage_job
           end
         end
         post "repositories/:id/notes", to: "repositories#create_note", constraints: { id: /\d+/ }
@@ -208,7 +209,7 @@ Rails.application.routes.draw do
             end
           end
           get "runs/:run_id/transcript", to: "transcripts#show"
-          resources :users, only: %i[ index show ] do
+          resources :users, only: %i[ index show update ] do
             member do
               post :pause_scheduling
               post :unpause_scheduling

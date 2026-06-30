@@ -63,17 +63,28 @@ Jobs are confirmed, then mark it done automatically when all child Jobs
 close through merged PR or no-change outcomes. When every child Job is
 closed but at least one did not complete successfully, operators can use
 **Mark as done** or drag the Epic to **Done** instead of archiving it.
+Product owners can create and refine backlog Epics, but developers own
+elaboration: product owners cannot move Epics to `ready`, `in_progress`,
+or `done`, and cannot add Jobs to Epics directly.
 
 The Epic detail page shows both sides of the dependency graph: Epics this
 Epic depends on, and Epics that depend on it. Operators can add an Epic
 dependency by ID or remove an existing dependency from that page; Syrus
-rejects changes that would create a cycle.
+rejects changes that would create a cycle. The page also includes a
+collapsible history section that records title and description changes with
+the actor, timestamp, and before/after text.
 
 Chats can propose Epics or propose an Epic with child Jobs, including
 Epic-level dependencies on existing Epics or other chat Epic proposals. Chat
 Epic proposals can reference each other by proposal slug, so operators can
 review the full plan first; Syrus wires the real Epic dependency once both
 proposal cards are confirmed.
+
+When a developer opens chat on a backlog Epic with no child Jobs, Syrus treats
+it as product-owner-authored planning input. The chat agent surfaces the
+original description, helps elaborate technical decisions, updates the Epic
+description first so version history preserves that elaboration step, and then
+proposes child Jobs against the existing Epic.
 
 ## Schedules
 
@@ -140,6 +151,9 @@ Clearing a non-empty canvas automatically saves the previous scene first.
 Chats do not silently materialize work just because the assistant suggested
 it. Proposal tools create cards; confirmation creates the real Job, Epic,
 GitHub issue, or scheduled task.
+When a product owner confirms proposals, Syrus accepts standalone backlog
+Epics and non-Epic Jobs, but rejects proposals that would create Jobs inside
+an Epic until a developer claims and elaborates that Epic.
 Proposal cards can also declare dependency edges up front, including Jobs
 blocked on existing Epics, Epics blocked on existing Jobs, and proposed Jobs
 blocked on specific Job proposals in other cards from the same chat session.
@@ -248,6 +262,11 @@ of a GitHub issue. Choose a repository, title, priority, optional provider,
 prompt, and attachments. Syrus creates a `direct` Job and runs the normal
 Initial workflow.
 
+When the creator is a `product_owner`, Syrus holds the Job in
+`needs_triage` instead of starting implementation. A developer or admin can
+open the repository overview, review Jobs waiting under **Needs triage**,
+and release each one into the normal triage flow.
+
 Use direct Jobs for internal chores, private context, or experiments that
 do not need a GitHub issue first. Use GitHub issues when the work should be
 visible in the repository's ordinary planning flow.
@@ -256,7 +275,7 @@ visible in the repository's ordinary planning flow.
 
 Each user owns their own profile, credentials, defaults, and preferences:
 
-- **Profile** stores display name, GitHub handle, avatar, bio, and public team profile fields.
+- **Profile** stores display name, role, GitHub handle, avatar, bio, and public team profile fields.
 - **Credentials** stores GitHub PAT fallback, Claude credentials, Codex credentials, and the admin API token panel for admins.
 - **Agent Settings** stores the default agent provider, max-turn setting, and auto-approval fallback.
 - **Preferences** stores account-level toggles such as scheduling pause.
@@ -283,7 +302,7 @@ constructed for the individual push command and are not written into
 
 Syrus works well as a single-user deployment for one operator's own
 repositories, and it can grow into one deployment serving multiple users.
-Users have their own repositories, credentials, provider defaults,
+Users have their own role, repositories, credentials, provider defaults,
 schedules, chats, Epics, Jobs, and admin/API permissions. Repository
 settings can override the user's provider default when a codebase needs a
 specific agent.
@@ -320,6 +339,11 @@ provider override, prepare behavior, PR cost footer, auto-merge settings,
 and approval behavior. The repository issues panel can list GitHub issues
 and delegate work by adding the trigger label through the same credential
 path Syrus uses for polling.
+
+If a labeled GitHub issue was created by a Syrus user whose GitHub handle
+maps to a `product_owner` account, polling creates the Job in
+`needs_triage`. Developers and admins release those held Jobs from the
+repository overview before classifier triage or implementation can start.
 
 For command examples, continue to [Recipes](/docs/recipes). For failure
 paths, use [Troubleshooting](/docs/troubleshooting).

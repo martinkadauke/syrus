@@ -29,6 +29,46 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("propose_epic_with_jobs")
   end
 
+  it "injects product owner guidance near the top for product owner chats" do
+    user = Factories.user(role: "product_owner")
+    repo = repository(user: user, owner: "acme", name: "roadmap")
+    chat = ChatSession.create!(user: user, repository: repo)
+
+    out = described_class.new(repository: repo, chat_session: chat).to_s
+
+    expect(out).to include("## Product Owner Mode")
+    expect(out.index("## Product Owner Mode")).to be < out.index("Repository context:")
+    expect(out).to include("Propose Epics with `propose_epic` only. Never use")
+    expect(out).to include("`propose_epic_with_jobs`; the MCP sidecar will reject any attempt")
+    expect(out).to include("add Jobs directly to Epics for this role.")
+    expect(out).to include("outcomes, user needs, business value")
+    expect(out).to include("Do not include\n  file paths, architecture, implementation details, code references, or\n  line-number citations.")
+    expect(out).to include("That's a decision for the developer who claims\n  this Epic.")
+    expect(out).to include("Frame bug reports as Jobs from the user's perspective")
+    expect(out).to include("what broke,\n  what was expected, and reproduction steps")
+    expect(out).to include("Do not prescribe a fix.")
+    expect(out).to include("created Jobs go through triage review before\n  implementation begins.")
+    expect(out).to include("Avoid showing file paths or line-number citations in responses.")
+  end
+
+  it "omits product owner guidance for developer chats" do
+    user = Factories.user(role: "developer")
+    repo = repository(user: user)
+    chat = ChatSession.create!(user: user, repository: repo)
+
+    out = described_class.new(repository: repo, chat_session: chat).to_s
+
+    expect(out).not_to include("## Product Owner Mode")
+    expect(out).not_to include("the MCP sidecar will reject any attempt")
+    expect(out).not_to include("That's a decision for the developer who claims")
+  end
+
+  it "omits product owner guidance when no chat session is present" do
+    out = described_class.new(repository: repo).to_s
+
+    expect(out).not_to include("## Product Owner Mode")
+  end
+
   it "frames chat as planning and proposal drafting, not editing" do
     out = described_class.new(repository: repo).to_s
 
@@ -170,6 +210,40 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("no commit, push, or PR-opening tool is available in chat")
     expect(out).to include("live Syrus state: list_chats, list_jobs, read_job, read_pr")
     expect(out.index("Agent environment snapshot:")).to be < out.index("Attached context:")
+  end
+
+  it "adds developer elaboration guidance for PO-authored backlog Epics without Jobs" do
+    repo.user.update!(role: "developer")
+    epic = Factories.epic(
+      user: repo.user,
+      repository: repo,
+      title: "Launch customer exports",
+      description: "Customers need exports for audit workflows.",
+      state: "backlog"
+    )
+    chat = ChatSession.create!(user: repo.user, repository: repo)
+    chat.messages.create!(role: "user", content: { "text" => "Please elaborate EPIC-#{epic.id}." })
+
+    out = described_class.new(repository: repo, chat_session: chat).to_s
+
+    expect(out).to include("## Developer Epic Elaboration Mode")
+    expect(out).to include("This Epic was written by a product owner. Your role is to elaborate it technically before adding Jobs.")
+    expect(out).to include("Product owner description: Customers need exports")
+    expect(out).to include("Propose `update_epic` with a technically enriched description before proposing any Jobs")
+    expect(out).to include("referencing the existing Epic with `epic_id: #{epic.id}`")
+    expect(out).to include("product owner's original description is preserved in Epic version history")
+    expect(out.index("Developer Epic Elaboration Mode")).to be < out.index("Attached context:")
+  end
+
+  it "does not add developer elaboration guidance for product owner chats" do
+    repo.user.update!(role: "product_owner")
+    epic = Factories.epic(user: repo.user, repository: repo, state: "backlog")
+    chat = ChatSession.create!(user: repo.user, repository: repo)
+    chat.messages.create!(role: "user", content: { "text" => "Please elaborate EPIC-#{epic.id}." })
+
+    out = described_class.new(repository: repo, chat_session: chat).to_s
+
+    expect(out).not_to include("Developer Epic Elaboration Mode")
   end
 
   it "includes recent proposal activity when proposals were resolved recently" do

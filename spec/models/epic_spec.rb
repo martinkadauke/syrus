@@ -78,6 +78,49 @@ RSpec.describe Epic do
     expect(job.reload.epic_title).to eq("Landing train")
   end
 
+  it "records title and description versions with the current actor" do
+    actor = Factories.user(email_address: "actor@example.com")
+    epic = Factories.epic(title: "Migration train", description: "Old notes")
+
+    Current.api_user = actor
+
+    expect {
+      epic.update!(title: "Landing train", description: "New notes")
+    }.to change(EpicVersion, :count).by(1)
+
+    version = epic.versions.last
+    expect(version.user).to eq(actor)
+    expect(version.title_before).to eq("Migration train")
+    expect(version.title_after).to eq("Landing train")
+    expect(version.description_before).to eq("Old notes")
+    expect(version.description_after).to eq("New notes")
+  ensure
+    Current.reset
+  end
+
+  it "records system versions when no current actor is present" do
+    epic = Factories.epic(title: "Migration train")
+
+    expect {
+      epic.update!(description: "System note")
+    }.to change(EpicVersion, :count).by(1)
+
+    version = epic.versions.last
+    expect(version.user).to be_nil
+    expect(version.title_before).to be_nil
+    expect(version.title_after).to be_nil
+    expect(version.description_before).to be_nil
+    expect(version.description_after).to eq("System note")
+  end
+
+  it "does not record a version for unrelated updates" do
+    epic = Factories.epic(title: "Migration train", state: "ready")
+
+    expect {
+      epic.update!(claimed_at: Time.current)
+    }.not_to change(EpicVersion, :count)
+  end
+
   it "rejects unknown auto-approval modes" do
     epic = Factories.epic
     epic.auto_approve_mode = "always"
@@ -442,6 +485,25 @@ RSpec.describe Epic do
 
     expect(job.workflows.first.trigger_kind).to eq("initial")
     expect(job.runs.first.prompt).to include("build the thing")
+  end
+
+  it "does not let product owners advance Epics to ready or in-progress through guarded transitions" do
+    product_owner = Factories.user(role: "product_owner")
+    epic = described_class.create!(user: user, repository: repository, title: "Launch", state: "ready")
+    Factories.job_record(user: user, repository: repository, epic: epic, state: "blocked_by_epic")
+
+    epic.move_to_backlog!
+
+    expect(epic.auto_ready!(actor: product_owner)).to be false
+    expect(epic.reload).to be_backlog
+
+    expect {
+      epic.override_state!("in_progress", actor: product_owner)
+    }.to raise_error(ArgumentError, "Product owners cannot advance Epics beyond backlog.")
+
+    epic.update!(state: "ready")
+    expect(epic.start!(actor: product_owner)).to be false
+    expect(epic.reload).to be_ready
   end
 
   it "releases child Jobs from the Epic block without starting them while Job dependencies are unsatisfied" do
