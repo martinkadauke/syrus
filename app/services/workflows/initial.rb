@@ -1,7 +1,11 @@
 module Workflows
   # Issue → PR.
   #
-  #   prepare → [retry_until(implement, adversarial_review) → implement] → retry_until(implement, grader_fanout, grader_collect) → summarize → test_plan → pr_open
+  # When adversarial review is enabled, insert a bounded
+  # implement/reviewer loop before the normal grade retry loop:
+  #
+  #   prepare → loop(implement, adversarial_review)
+  #     → retry_until(implement, grader_fanout, grader_collect) → ...
   #
   # prepare reads `.syrus.yml` (or auto-detects from lockfiles)
   # and runs deterministic setup like `bundle install` so the
@@ -40,30 +44,41 @@ module Workflows
     def self.trigger_kind = "initial"
 
     def self.steps_for(job)
-      chain = [ "prepare" ]
-
-      adversarial_review_plan = RepoAdversarialReviewPlan.for_job(job)
-      if adversarial_review_plan.enabled?
-        chain << Workflows::RetryUntil.new(
-          max_iterations: adversarial_review_plan.rounds,
+      chain = [
+        "prepare",
+        adversarial_review_loop(job),
+        Workflows::RetryUntil.new(
+          max_iterations: AppSetting.grade_max_iterations,
           repair: [ :implement ],
-          check: [ :adversarial_review ]
-        )
-        chain << "implement"
-      end
-
-      chain << Workflows::RetryUntil.new(
-        max_iterations: AppSetting.grade_max_iterations,
-        repair: [ :implement ],
-        check: [ :grader_fanout, :grader_collect ]
-      )
-      chain += [ "summarize", "test_plan", "pr_open" ]
-
+          check: [ :grader_fanout, :grader_collect ]
+        ),
+        "summarize",
+        "test_plan",
+        "pr_open"
+      ].compact
       prepare_skipped_for?(job) ? chain.reject { |node| node == "prepare" } : chain
     end
 
     def self.prepare_skipped_for?(job)
       job.skip_prepare?
+    end
+
+    def self.adversarial_review_loop(job)
+      rounds = adversarial_review_rounds(job)
+      return nil unless rounds.positive?
+
+      Workflows::Loop.new(
+        max_iterations: rounds,
+        steps: [ :implement, :adversarial_review ]
+      )
+    end
+
+    def self.adversarial_review_rounds(job)
+      plan = RepoAdversarialReviewPlan.for_job(job)
+      return plan.rounds if plan.enabled?
+      return plan.rounds if plan.source == ".syrus.yml" && plan.note.nil?
+
+      AppSetting.adversarial_review_rounds
     end
   end
 end

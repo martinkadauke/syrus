@@ -381,71 +381,58 @@ RSpec.describe StepDispatcher do
       expect(retry_workflow.steps.find_by(kind: "landing_fix")).to be_nil
     end
 
-    it "routes successful adversarial_review steps through loop iteration handling" do
-      review_workflow = workflow_with_adversarial_loop(max_iterations: 2)
-      review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
-
-      expect_any_instance_of(described_class).to receive(:handle_loop_iteration).and_call_original
-
-      expect {
-        described_class.advance_from(review)
-      }.to change { review_workflow.steps.count }.by(2)
-    end
-
-    it "materializes the next adversarial loop iteration before the final implement" do
-      review_workflow = workflow_with_adversarial_loop(max_iterations: 2)
+    it "exits an exhausted adversarial review loop to the final implement step" do
+      review_workflow = workflow_with_adversarial_review_loop(max_iterations: 1)
       implement = review_workflow.steps.find_by!(kind: "implement", iteration: 1)
       review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
-      final_implement = review.next_step
-      run = implement.runs.create!(job: job, trigger_kind: "initial")
-      ClaudeSession.create!(resumable: run, session_id: "implementer-session", transcript_jsonl: "{}\n")
+      final_implement = review_workflow.steps.where(kind: "implement").where.not(loop_id: review.loop_id).sole
+      ClaudeSession.create!(
+        run: implement.runs.create!(job: job, trigger_kind: "initial"),
+        session_id: "implement-1",
+        transcript_jsonl: "{}\n"
+      )
 
-      expect {
-        described_class.advance_from(review)
-      }.to change { Run.count }.by(1)
-
-      loop_id = implement.loop_id
-      expect(review_workflow.steps.order(:position).pluck(:kind, :position, :iteration, :loop_id)).to eq([
-        [ "prepare", 0, 1, nil ],
-        [ "implement", 1, 1, loop_id ],
-        [ "adversarial_review", 2, 1, loop_id ],
-        [ "implement", 3, 2, loop_id ],
-        [ "adversarial_review", 4, 2, loop_id ],
-        [ "implement", 5, 1, nil ],
-        [ "implement", 6, 1, "grade-loop" ],
-        [ "grader_fanout", 7, 1, "grade-loop" ],
-        [ "grader_collect", 8, 1, "grade-loop" ],
-        [ "summarize", 9, 1, nil ],
-        [ "pr_open", 10, 1, nil ]
-      ])
-      expect(review.reload.next_step).to eq(review_workflow.steps.find_by!(kind: "implement", iteration: 2, loop_id: loop_id))
-      expect(review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 2).next_step).to eq(final_implement)
-      expect(final_implement.reload.position).to eq(5)
-      expect(review.next_step.runs.last.parent_session_id).to eq("implementer-session")
-    end
-
-    it "advances from the exhausted adversarial loop to the standalone final implement" do
-      review_workflow = workflow_with_adversarial_loop(max_iterations: 1)
-      review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
-      final_implement = review.next_step
-      review.update_columns(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+      original_step_count = review_workflow.steps.count
 
       expect {
         described_class.advance_from(review)
       }.to change { final_implement.runs.count }.by(1)
 
-      expect(review_workflow.reload).to be_queued
-      expect(final_implement.runs.last.iteration).to eq(1)
+      expect(review_workflow.steps.count).to eq(original_step_count)
+      expect(final_implement.runs.last.parent_session_id).to be_nil
+    end
+
+    it "materializes the next adversarial review iteration before the final implement step" do
+      review_workflow = workflow_with_adversarial_review_loop(max_iterations: 2)
+      implement = review_workflow.steps.find_by!(kind: "implement", iteration: 1)
+      review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
+      final_implement = review_workflow.steps.where(kind: "implement").where.not(loop_id: review.loop_id).sole
+      ClaudeSession.create!(
+        run: implement.runs.create!(job: job, trigger_kind: "initial"),
+        session_id: "implement-1",
+        transcript_jsonl: "{}\n"
+      )
+
+      expect {
+        described_class.advance_from(review)
+      }.to change { review_workflow.steps.count }.by(2)
+        .and change { Run.count }.by(1)
+
+      new_steps = review_workflow.reload.steps.where(loop_id: review.loop_id, iteration: 2).order(:position).to_a
+      expect(new_steps.map(&:kind)).to eq(%w[ implement adversarial_review ])
+      expect(review.reload.next_step).to eq(new_steps.first)
+      expect(new_steps.last.next_step).to eq(final_implement)
+      expect(new_steps.first.runs.last.parent_session_id).to eq("implement-1")
     end
 
     it "uses the implement session, not the reviewer session, for adversarial loop repair continuity" do
-      review_workflow = workflow_with_adversarial_loop(max_iterations: 2)
+      review_workflow = workflow_with_adversarial_review_loop(max_iterations: 2)
       implement = review_workflow.steps.find_by!(kind: "implement", iteration: 1)
       review = review_workflow.steps.find_by!(kind: "adversarial_review", iteration: 1)
       implement_run = implement.runs.create!(job: job, trigger_kind: "initial")
       review_run = review.runs.create!(job: job, trigger_kind: "initial")
-      ClaudeSession.create!(resumable: implement_run, session_id: "implementer-session", transcript_jsonl: "{}\n")
-      ClaudeSession.create!(resumable: review_run, session_id: "reviewer-session", transcript_jsonl: "{}\n")
+      ClaudeSession.create!(run: implement_run, session_id: "implementer-session", transcript_jsonl: "{}\n")
+      ClaudeSession.create!(run: review_run, session_id: "reviewer-session", transcript_jsonl: "{}\n")
 
       dispatcher = described_class.new(review_workflow, advancing_from: review)
 
@@ -507,48 +494,33 @@ RSpec.describe StepDispatcher do
     end
   end
 
-  def workflow_with_adversarial_loop(max_iterations:)
+  def workflow_with_adversarial_review_loop(max_iterations:)
     Workflow.create!(
       job: job,
       trigger_kind: "initial",
       chain_template: [
         { "type" => "step", "kind" => "prepare" },
-        {
-          "type" => "retry_until",
-          "max_iterations" => max_iterations,
-          "repair" => %w[ implement ],
-          "check" => %w[ adversarial_review ],
-          "repair_first" => true
-        },
-        { "type" => "step", "kind" => "implement" },
+        { "type" => "loop", "max_iterations" => max_iterations, "steps" => %w[ implement adversarial_review ] },
         {
           "type" => "retry_until",
           "max_iterations" => 1,
           "repair" => %w[ implement ],
           "check" => %w[ grader_fanout grader_collect ],
           "repair_first" => true
-        },
-        { "type" => "step", "kind" => "summarize" },
-        { "type" => "step", "kind" => "pr_open" }
+        }
       ]
     ).tap do |wf|
       prepare = Step.create!(workflow: wf, kind: "prepare", position: 0)
       implement = Step.create!(workflow: wf, kind: "implement", position: 1, iteration: 1, loop_id: "review-loop")
       review = Step.create!(workflow: wf, kind: "adversarial_review", position: 2, iteration: 1, loop_id: "review-loop")
-      final_implement = Step.create!(workflow: wf, kind: "implement", position: 3)
-      grade_implement = Step.create!(workflow: wf, kind: "implement", position: 4, iteration: 1, loop_id: "grade-loop")
-      grader_fanout = Step.create!(workflow: wf, kind: "grader_fanout", position: 5, iteration: 1, loop_id: "grade-loop")
-      grader_collect = Step.create!(workflow: wf, kind: "grader_collect", position: 6, iteration: 1, loop_id: "grade-loop")
-      summarize = Step.create!(workflow: wf, kind: "summarize", position: 7)
-      pr_open = Step.create!(workflow: wf, kind: "pr_open", position: 8)
+      final_implement = Step.create!(workflow: wf, kind: "implement", position: 3, iteration: 1, loop_id: "grade-loop")
+      grader_fanout = Step.create!(workflow: wf, kind: "grader_fanout", position: 4, iteration: 1, loop_id: "grade-loop")
+      grader_collect = Step.create!(workflow: wf, kind: "grader_collect", position: 5, iteration: 1, loop_id: "grade-loop")
       prepare.update!(next_step_id: implement.id)
       implement.update!(next_step_id: review.id)
       review.update!(next_step_id: final_implement.id)
-      final_implement.update!(next_step_id: grade_implement.id)
-      grade_implement.update!(next_step_id: grader_fanout.id)
+      final_implement.update!(next_step_id: grader_fanout.id)
       grader_fanout.update!(next_step_id: grader_collect.id)
-      grader_collect.update!(next_step_id: summarize.id)
-      summarize.update!(next_step_id: pr_open.id)
     end
   end
 end

@@ -59,29 +59,27 @@ RSpec.describe Workflows do
         .and_return(RepoAdversarialReviewPlan::Result.new(rounds: 2, source: ".syrus.yml", note: nil))
 
       wf = Workflows::Initial.instantiate(job: job)
+      review_loop_id = wf.steps.find_by!(kind: "adversarial_review").loop_id
+      grade_loop_id = wf.steps.find_by!(kind: "grader_collect").loop_id
 
-      expect(wf.steps.pluck(:kind, :position)).to eq([
-        [ "prepare", 0 ],
-        [ "implement", 1 ],
-        [ "adversarial_review", 2 ],
-        [ "implement", 3 ],
-        [ "implement", 4 ],
-        [ "grader_fanout", 5 ],
-        [ "grader_collect", 6 ],
-        [ "summarize", 7 ],
-        [ "test_plan", 8 ],
-        [ "pr_open", 9 ]
+      expect(wf.steps.pluck(:kind, :position, :iteration, :loop_id)).to eq([
+        [ "prepare", 0, 1, nil ],
+        [ "implement", 1, 1, review_loop_id ],
+        [ "adversarial_review", 2, 1, review_loop_id ],
+        [ "implement", 3, 1, grade_loop_id ],
+        [ "grader_fanout", 4, 1, grade_loop_id ],
+        [ "grader_collect", 5, 1, grade_loop_id ],
+        [ "summarize", 6, 1, nil ],
+        [ "test_plan", 7, 1, nil ],
+        [ "pr_open", 8, 1, nil ]
       ])
       expect(wf.chain_template).to eq([
         { "type" => "step", "kind" => "prepare" },
         {
-          "type" => "retry_until",
+          "type" => "loop",
           "max_iterations" => 2,
-          "repair" => %w[ implement ],
-          "check" => %w[ adversarial_review ],
-          "repair_first" => true
+          "steps" => %w[ implement adversarial_review ]
         },
-        { "type" => "step", "kind" => "implement" },
         {
           "type" => "retry_until",
           "max_iterations" => AppSetting.grade_max_iterations,
@@ -94,6 +92,85 @@ RSpec.describe Workflows do
         { "type" => "step", "kind" => "pr_open" }
       ])
       expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ implement adversarial_review implement grader_fanout grader_collect ])
+    end
+
+    it "keeps the Initial chain unchanged when adversarial review rounds is zero" do
+      allow(RepoAdversarialReviewPlan).to receive(:for_job)
+        .with(job)
+        .and_return(RepoAdversarialReviewPlan::Result.new(rounds: 0, source: "none", note: "no .syrus.yml"))
+      AppSetting.current.update!(adversarial_review_rounds: 0)
+
+      wf = Workflows::Initial.instantiate(job: job)
+
+      expect(wf.steps.pluck(:kind, :position, :iteration)).to eq([
+        [ "prepare", 0, 1 ],
+        [ "implement", 1, 1 ],
+        [ "grader_fanout", 2, 1 ],
+        [ "grader_collect", 3, 1 ],
+        [ "summarize", 4, 1 ],
+        [ "test_plan", 5, 1 ],
+        [ "pr_open", 6, 1 ]
+      ])
+      expect(wf.chain_template).to eq([
+        { "type" => "step", "kind" => "prepare" },
+        {
+          "type" => "retry_until",
+          "max_iterations" => AppSetting.grade_max_iterations,
+          "repair" => %w[ implement ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => true
+        },
+        { "type" => "step", "kind" => "summarize" },
+        { "type" => "step", "kind" => "test_plan" },
+        { "type" => "step", "kind" => "pr_open" }
+      ])
+    end
+
+    it "falls back to AppSetting adversarial review rounds when the repo has no plan" do
+      allow(RepoAdversarialReviewPlan).to receive(:for_job)
+        .with(job)
+        .and_return(RepoAdversarialReviewPlan::Result.new(rounds: 0, source: "none", note: "no .syrus.yml"))
+      AppSetting.current.update!(adversarial_review_rounds: 1)
+
+      wf = Workflows::Initial.instantiate(job: job)
+      review_loop_id = wf.steps.find_by!(kind: "adversarial_review").loop_id
+      grade_loop_id = wf.steps.find_by!(kind: "grader_collect").loop_id
+
+      expect(wf.steps.pluck(:kind, :position, :iteration, :loop_id)).to eq([
+        [ "prepare", 0, 1, nil ],
+        [ "implement", 1, 1, review_loop_id ],
+        [ "adversarial_review", 2, 1, review_loop_id ],
+        [ "implement", 3, 1, grade_loop_id ],
+        [ "grader_fanout", 4, 1, grade_loop_id ],
+        [ "grader_collect", 5, 1, grade_loop_id ],
+        [ "summarize", 6, 1, nil ],
+        [ "test_plan", 7, 1, nil ],
+        [ "pr_open", 8, 1, nil ]
+      ])
+      expect(review_loop_id).not_to eq(grade_loop_id)
+      expect(wf.chain_template).to include(
+        {
+          "type" => "loop",
+          "max_iterations" => 1,
+          "steps" => %w[ implement adversarial_review ]
+        }
+      )
+    end
+
+    it "records the configured adversarial review round budget in the chain template" do
+      allow(RepoAdversarialReviewPlan).to receive(:for_job)
+        .with(job)
+        .and_return(RepoAdversarialReviewPlan::Result.new(rounds: 2, source: ".syrus.yml", note: nil))
+
+      wf = Workflows::Initial.instantiate(job: job)
+
+      expect(wf.chain_template.second).to eq(
+        {
+          "type" => "loop",
+          "max_iterations" => 2,
+          "steps" => %w[ implement adversarial_review ]
+        }
+      )
     end
 
     it "creates the workflow + chain for Retry with test_plan before pr_open" do
