@@ -36,4 +36,8 @@ done
 
 syrus_release_validate_version "$VERSION"
 
-"$ROOT/bin/publish-image" "$VERSION" "${PASSTHROUGH[@]}"
+if [ "${#PASSTHROUGH[@]}" -gt 0 ]; then
+  "$ROOT/bin/publish-image" "$VERSION" "${PASSTHROUGH[@]}"
+else
+  "$ROOT/bin/publish-image" "$VERSION"
+fi
