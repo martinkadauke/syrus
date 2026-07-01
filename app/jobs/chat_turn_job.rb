@@ -63,6 +63,8 @@ class ChatTurnJob < ApplicationJob
     attachment_context = attachment_context_for(workspace_path)
     return if stop_requested?
 
+    @chat.broadcast_controls if provider.provider == "codex"
+
     result = with_chat_mcp_config do |mcp_config|
       with_git_askpass_env do |agent_env|
         provider_with_turn_context(provider, attachment_context, agent_env).invoke(
