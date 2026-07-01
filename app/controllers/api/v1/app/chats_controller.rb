@@ -82,6 +82,15 @@ module Api
           render json: chat_payload(chat_session.reload, message: chat_session.pinned? ? "Chat pinned" : "Chat unpinned")
         end
 
+        def share
+          chat_session = find_chat_session
+          chat_session.with_lock do
+            chat_session.update!(share_token: SecureRandom.uuid) if chat_session.share_token.blank?
+          end
+
+          render json: { share_url: shared_chat_url(token: chat_session.share_token) }
+        end
+
         def search
           query = search_query
           scope = filtered_chat_search_scope
@@ -803,8 +812,8 @@ module Api
               app_rename_path: "/api/v1/app/chats/#{chat_session.id}/rename",
               app_clear_path: "/api/v1/app/chats/#{chat_session.id}/messages",
               app_branch_path: "/api/v1/app/chats/#{chat_session.id}/branch",
+              app_share_path: "/api/v1/app/chats/#{chat_session.id}/share",
               app_enqueue_message_path: "/api/v1/app/chats/#{chat_session.id}/queued_messages",
-              app_rename_path: "/api/v1/app/chats/#{chat_session.id}/rename",
               app_stop_path: "/api/v1/app/chats/#{chat_session.id}/stop",
               app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
               app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",

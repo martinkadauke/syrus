@@ -130,6 +130,7 @@ Rails.application.routes.draw do
         get "chats/more", to: "chats#more"
         get "chats/search", to: "chats#search"
         get "chats/search/messages", to: "chats#search_messages"
+        get "shared_chats/:token", to: "shared_chats#show"
         get "settings/hidden_chats", to: "chats#hidden"
         post "chats", to: "chats#create"
         post "chats/onboarding", to: "chats#onboarding"
@@ -147,6 +148,7 @@ Rails.application.routes.draw do
         post "chats/:id/rename", to: "chats#rename", constraints: { id: /\d+/ }
         patch "chats/:id/rename", to: "chats#rename", constraints: { id: /\d+/ }
         post "chats/:id/branch", to: "chats#branch", constraints: { id: /\d+/ }
+        post "chats/:id/share", to: "chats#share", constraints: { id: /\d+/ }
         delete "chats/:id/messages", to: "chats#clear_messages", constraints: { id: /\d+/ }
         post "chats/:id/message", to: "chats#message", constraints: { id: /\d+/ }
         post "chats/:id/queued_messages", to: "chats#enqueue_message", constraints: { id: /\d+/ }
@@ -345,6 +347,7 @@ Rails.application.routes.draw do
 
   get "chats/new", to: "spa#show", as: :new_chat
   get "chats/search", to: "spa#show", as: :search_chats
+  get "chats/shared/:token", to: "spa#show", as: :shared_chat
   get "chats/:id", to: "spa#show", as: :chat, constraints: { id: /\d+/ }
 
   get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks

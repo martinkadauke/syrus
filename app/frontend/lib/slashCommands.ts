@@ -38,6 +38,7 @@ export const slashCommands = [
   { name: "/search", kind: "system", args: [{ name: "query", required: false }], description: "Find and open another chat" },
   { name: "/pin", kind: "system", args: [], description: (context) => context.chat?.pinned ? "Unpin this chat" : "Pin this chat to the top of the sidebar" },
   { name: "/report", kind: "system", args: [], description: "File a GitHub issue about Syrus" },
+  { name: "/share", kind: "system", args: [], description: "Copy a shareable link to this chat" },
   {
     name: "/jobs",
     kind: "system",
