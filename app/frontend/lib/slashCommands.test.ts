@@ -16,6 +16,7 @@ describe("slashCommands", () => {
     "/prs",
     "/issues",
     "/proposals",
+    "/branch",
     "/pin",
     "/bookmark",
     "/discard",
@@ -39,6 +40,15 @@ describe("slashCommands", () => {
       expect(command?.kind).toBe("system")
       expect(command).not.toHaveProperty("toPrompt")
     }
+  })
+
+  it("registers /branch as a no-argument system command", () => {
+    const match = findSlashCommand("/branch")
+
+    expect(match?.command.kind).toBe("system")
+    expect(match?.command.description).toBe("Start a new chat branched from this point")
+    expect(match?.command.args).toEqual([])
+    expect(match ? slashCommandSignature(match.command) : "missing").toBe("")
   })
 
   it("registers /copy as a system command without args", () => {

@@ -155,6 +155,18 @@ curl -X PATCH https://syrus.example.com/api/v1/app/chats/123 \
   -d '{ "chat": { "pinned": true } }'
 ```
 
+## Branch a Chat
+
+`POST /api/v1/app/chats/:id/branch` creates a new chat session for the
+authenticated user, attached to the same repository, with the current
+transcript copied into it. The response includes the new chat `id` and
+`app_path` for navigation.
+
+```bash
+curl -X POST https://syrus.example.com/api/v1/app/chats/123/branch \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN"
+```
+
 ## Hide or Restore a Chat
 
 `PATCH /api/v1/app/chats/:id/hide` hides one of the authenticated user's
