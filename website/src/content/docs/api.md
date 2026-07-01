@@ -90,6 +90,23 @@ curl -X POST https://syrus.example.com/api/v1/app/jobs/123/chat_feedback \
 
 Blank feedback or a non-actionable Job returns `422` with a JSON error.
 
+## File a Syrus Report Issue
+
+`POST /api/v1/app/report_issue` lets the authenticated user file a GitHub
+issue against the configured Syrus report repository. The default target is
+`tkadauke/syrus`; operators can change `AppSetting.report_issue_repo_slug`.
+The user must have a connected GitHub token.
+
+```bash
+curl -X POST https://syrus.example.com/api/v1/app/report_issue \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "title": "Chat composer bug", "body": "Context and reproduction steps." }'
+```
+
+The response is `{ "issue_url": "https://github.com/..." }`. Missing title
+or GitHub credentials returns `422` with a JSON error.
+
 ## Create an Epic
 
 `POST /api/v1/admin/epics` creates an Epic in a repository owned by the
@@ -139,6 +156,52 @@ curl -X POST https://syrus.example.com/api/v1/app/chats/123/rename \
   -H "Authorization: Bearer $SYRUS_API_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{ "name": "Release planning" }'
+```
+
+## Pin or Unpin a Chat
+
+`PATCH /api/v1/app/chats/:id` accepts `{ "pinned": true }` or
+`{ "chat": { "pinned": true } }` for one of the authenticated user's chat
+sessions. Use `false` to unpin. Pinned chats sort ahead of unpinned chats in
+the sidebar.
+
+```bash
+curl -X PATCH https://syrus.example.com/api/v1/app/chats/123 \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "chat": { "pinned": true } }'
+```
+
+## Branch a Chat
+
+`POST /api/v1/app/chats/:id/branch` creates a new chat session for the
+authenticated user, attached to the same repository, with the current
+transcript copied into it. The response includes the new chat `id` and
+`app_path` for navigation.
+
+```bash
+curl -X POST https://syrus.example.com/api/v1/app/chats/123/branch \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN"
+```
+
+## Share a Chat
+
+`POST /api/v1/app/chats/:id/share` creates a stable same-instance share
+token for one of the authenticated user's chat sessions and returns
+`share_url`. Repeating the request returns the same link.
+
+```bash
+curl -X POST https://syrus.example.com/api/v1/app/chats/123/share \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN"
+```
+
+`GET /api/v1/app/shared_chats/:token` is available to any authenticated user
+on the same Syrus instance. It returns a read-only transcript payload with
+chat metadata and messages only; unknown tokens return 404.
+
+```bash
+curl https://syrus.example.com/api/v1/app/shared_chats/8b0d6a08-6f8d-4a2e-b2d8-0f2a2a2d8f6f \
+  -H "Authorization: Bearer $SYRUS_API_TOKEN"
 ```
 
 ## Hide or Restore a Chat

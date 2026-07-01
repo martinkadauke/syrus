@@ -60,6 +60,37 @@ module Api
           render json: chat_payload(find_chat_session)
         end
 
+        def update
+          chat_session = ChatSession.find(params[:id])
+          unless chat_session.user_id == Current.user.id
+            render_error("forbidden", "You do not have permission to update this chat.", status: :forbidden)
+            return
+          end
+
+          pinned = if params[:chat].respond_to?(:key?) && params[:chat].key?(:pinned)
+            params[:chat][:pinned]
+          else
+            params[:pinned]
+          end
+          if pinned.nil?
+            render_error("validation_failed", "pinned is required.", status: :unprocessable_content)
+            return
+          end
+
+          chat_session.update!(pinned: ActiveModel::Type::Boolean.new.cast(pinned))
+
+          render json: chat_payload(chat_session.reload, message: chat_session.pinned? ? "Chat pinned" : "Chat unpinned")
+        end
+
+        def share
+          chat_session = find_chat_session
+          chat_session.with_lock do
+            chat_session.update!(share_token: SecureRandom.uuid) if chat_session.share_token.blank?
+          end
+
+          render json: { share_url: shared_chat_url(token: chat_session.share_token) }
+        end
+
         def search
           query = search_query
           scope = filtered_chat_search_scope
@@ -236,6 +267,25 @@ module Api
           chat_session.update!(title: name)
 
           render json: chat_payload(chat_session.reload, message: "Chat renamed.")
+        end
+
+        def branch
+          source_chat = find_branch_source_chat_session
+          return if performed?
+
+          branched_chat = nil
+          ApplicationRecord.transaction do
+            branched_chat = ChatSession.create!(
+              user: source_chat.user,
+              repository: source_chat.repository,
+              title: "#{source_chat.title.presence || ChatSession.fallback_title_for(source_chat.repository).presence || "New chat"} (branch)",
+              chat_provider: source_chat.chat_provider,
+              last_message_at: Time.current
+            )
+            branch_chat_messages!(source_chat, branched_chat)
+          end
+
+          render json: { id: branched_chat.id, app_path: chat_path(branched_chat) }, status: :created
         end
 
         def clear_messages
@@ -761,8 +811,9 @@ module Api
               app_message_path: "/api/v1/app/chats/#{chat_session.id}/message",
               app_rename_path: "/api/v1/app/chats/#{chat_session.id}/rename",
               app_clear_path: "/api/v1/app/chats/#{chat_session.id}/messages",
+              app_branch_path: "/api/v1/app/chats/#{chat_session.id}/branch",
+              app_share_path: "/api/v1/app/chats/#{chat_session.id}/share",
               app_enqueue_message_path: "/api/v1/app/chats/#{chat_session.id}/queued_messages",
-              app_rename_path: "/api/v1/app/chats/#{chat_session.id}/rename",
               app_stop_path: "/api/v1/app/chats/#{chat_session.id}/stop",
               app_bookmarks_path: "/api/v1/app/chats/#{chat_session.id}/bookmarks",
               app_attachments_path: "/api/v1/app/chats/#{chat_session.id}/attachments",
@@ -817,7 +868,7 @@ module Api
         def recent_chats_json(current_chat_session)
           chat_ids = Current.user.chat_sessions
             .visible
-            .order(Arel.sql("#{chat_activity_order_sql} DESC"), id: :desc)
+            .order(Arel.sql("chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC"), id: :desc)
             .limit(20)
             .pluck(:id)
 
@@ -899,7 +950,9 @@ module Api
         def chat_index_before(scope, before_chat)
           timestamp = chat_activity_timestamp(before_chat)
           scope.where(
-            "(#{chat_activity_order_sql}) < ? OR ((#{chat_activity_order_sql}) = ? AND chat_sessions.id < ?)",
+            "chat_sessions.pinned < ? OR (chat_sessions.pinned = ? AND ((#{chat_activity_order_sql}) < ? OR ((#{chat_activity_order_sql}) = ? AND chat_sessions.id < ?)))",
+            before_chat.pinned? ? 1 : 0,
+            before_chat.pinned? ? 1 : 0,
             timestamp,
             timestamp,
             before_chat.id
@@ -910,7 +963,7 @@ module Api
           scope = Current.user.chat_sessions
             .visible
             .left_outer_joins(:repository_attachments)
-            .order(Arel.sql("#{chat_activity_order_sql} DESC, chat_sessions.id DESC"))
+            .order(Arel.sql("chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC, chat_sessions.id DESC"))
 
           if repository_id.present?
             scope.where(chat_attachments: { attachable_type: "Repository", attachable_id: repository_id })
@@ -1200,6 +1253,32 @@ module Api
           Current.user.chat_sessions.find(params[:id])
         end
 
+        def find_branch_source_chat_session
+          chat_session = ChatSession.find(params[:id])
+          return chat_session if chat_session.user_id == Current.user.id
+
+          render_error("forbidden", "You cannot branch this chat.", status: :forbidden)
+          nil
+        end
+
+        def branch_chat_messages!(source_chat, branched_chat)
+          rows = source_chat.messages.order(:created_at, :id).map do |message|
+            message.attributes.slice(
+              "role",
+              "content",
+              "tool_name",
+              "tool_use_id",
+              "created_at",
+              "updated_at"
+            ).merge(
+              "chat_session_id" => branched_chat.id,
+              "proposal_id" => nil,
+              "pending_action_id" => nil
+            )
+          end
+          ChatMessage.insert_all!(rows) if rows.any?
+        end
+
         def find_pending_action(chat_session)
           chat_session.pending_actions.find(params[:pending_action_id])
         end
@@ -1403,6 +1482,7 @@ module Api
             id: chat_session.id,
             title: chat_session.title.presence || ChatSession.fallback_title_for(repository),
             title_pending: chat_session.title_pending?,
+            pinned: chat_session.pinned?,
             pinned_context: chat_session.pinned_context,
             chat_path: chat_path(chat_session),
             repository: repository ? repository_json(repository).merge(repository_path: repository_path(repository)) : nil,

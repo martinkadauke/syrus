@@ -42,6 +42,72 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body["repositories_path"]).to eq(repositories_path)
   end
 
+  describe "sharing" do
+    let(:chat_session) { ChatSession.create!(user: user, title: "Launch planning") }
+
+    it "generates a stable share token and returns the shared URL" do
+      sign_in_as(user)
+
+      post "/api/v1/app/chats/#{chat_session.id}/share"
+
+      expect(response).to have_http_status(:ok)
+      first_token = chat_session.reload.share_token
+      expect(first_token).to be_present
+      expect(parse_body["share_url"]).to eq(shared_chat_url(token: first_token))
+
+      post "/api/v1/app/chats/#{chat_session.id}/share"
+
+      expect(response).to have_http_status(:ok)
+      expect(chat_session.reload.share_token).to eq(first_token)
+      expect(parse_body["share_url"]).to eq(shared_chat_url(token: first_token))
+    end
+
+    it "does not let another user create a share link for an owned chat" do
+      sign_in_as(Factories.user)
+
+      post "/api/v1/app/chats/#{chat_session.id}/share"
+
+      expect(response).to have_http_status(:not_found)
+      expect(chat_session.reload.share_token).to be_nil
+    end
+
+    it "lets another authenticated user read the shared message payload" do
+      chat_session.update!(share_token: SecureRandom.uuid)
+      chat_session.messages.create!(role: "user", content: { "text" => "Can you review the rollout?" })
+      chat_session.messages.create!(role: "assistant", content: { "text" => "The rollout needs a staged deploy." })
+      sign_in_as(Factories.user)
+
+      get "/api/v1/app/shared_chats/#{chat_session.share_token}"
+
+      expect(response).to have_http_status(:ok)
+      body = parse_body
+      expect(body["chat"]).to include("id" => chat_session.id, "title" => "Launch planning")
+      expect(body["messages"].map { |message| message["text"] }).to eq([
+        "Can you review the rollout?",
+        "The rollout needs a staged deploy."
+      ])
+      expect(body).not_to have_key("pending_actions")
+      expect(body).not_to have_key("queued_messages")
+      expect(body).not_to have_key("agent_questions")
+    end
+
+    it "requires authentication to read a shared chat" do
+      chat_session.update!(share_token: SecureRandom.uuid)
+
+      get "/api/v1/app/shared_chats/#{chat_session.share_token}"
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "404s for unknown shared chat tokens" do
+      sign_in_as(user)
+
+      get "/api/v1/app/shared_chats/unknown-token"
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
   it "defaults the new chat form to the most recent chat repository" do
     sign_in_as(user)
     repository
@@ -77,6 +143,44 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(response).to have_http_status(:ok)
     expect(parse_body["repositories"]).to eq([])
     expect(parse_body["default_repository_id"]).to be_nil
+  end
+
+  it "branches a chat with copied messages, the same owner, and a derived name" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Release planning", last_message_at: 1.hour.ago)
+    chat.messages.create!(role: "user", content: { "text" => "Plan the launch." }, created_at: 2.hours.ago)
+    chat.messages.create!(role: "assistant", content: { "text" => "Draft milestones." }, created_at: 90.minutes.ago)
+
+    expect {
+      post "/api/v1/app/chats/#{chat.id}/branch"
+    }.to change(ChatSession, :count).by(1)
+      .and change(ChatMessage, :count).by(2)
+
+    expect(response).to have_http_status(:created)
+    branched = ChatSession.find(parse_body["id"])
+    expect(parse_body["app_path"]).to eq(chat_path(branched))
+    expect(branched.user).to eq(user)
+    expect(branched.repository).to eq(repository)
+    expect(branched.title).to eq("Release planning (branch)")
+    expect(branched.messages.count).to eq(chat.messages.count)
+    expect(branched.messages.order(:created_at, :id).pluck(:role)).to eq(%w[user assistant])
+    expect(branched.messages.order(:created_at, :id).map { |message| message.content["text"] })
+      .to eq([ "Plan the launch.", "Draft milestones." ])
+  end
+
+  it "rejects branching another user's chat" do
+    sign_in_as(user)
+    other_user = Factories.user
+    other_repository = Factories.repository(user: other_user, owner: "other", name: "repo")
+    other_chat = ChatSession.create!(user: other_user, repository: other_repository, title: "Private")
+    other_chat.messages.create!(role: "user", content: { "text" => "Private context." })
+
+    expect {
+      post "/api/v1/app/chats/#{other_chat.id}/branch"
+    }.not_to change(ChatSession, :count)
+
+    expect(response).to have_http_status(:forbidden)
+    expect(parse_body.dig("error", "code")).to eq("forbidden")
   end
 
   it "lists recent chat groups and active repositories for CLI session picking" do
@@ -190,6 +294,42 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     body = parse_body
     expect(body["chats"].map { |chat| chat["id"] }).to eq(chats.last(2).map(&:id))
     expect(body["has_more"]).to eq(false)
+  end
+
+  it "orders pinned sidebar chats before unpinned chats in each group" do
+    sign_in_as(user)
+    unpinned_recent = ChatSession.create!(user: user, repository: repository, title: "Recent", last_message_at: 1.hour.ago)
+    pinned_older = ChatSession.create!(user: user, repository: repository, title: "Pinned", pinned: true, last_message_at: 2.days.ago)
+
+    get "/api/v1/app/chats"
+
+    expect(response).to have_http_status(:ok)
+    group = parse_body["groups"].find { |candidate| candidate["repository_id"] == repository.id }
+    expect(group["chats"].map { |chat| chat["id"] }).to eq([ pinned_older.id, unpinned_recent.id ])
+    expect(group["chats"].first["pinned"]).to eq(true)
+  end
+
+  it "toggles chat pinning for the owner only" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Plan")
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { pinned: true } }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.pinned?).to eq(true)
+    expect(parse_body.dig("chat", "pinned")).to eq(true)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { pinned: false }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.pinned?).to eq(false)
+
+    other_user = Factories.user
+    sign_in_as(other_user)
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { pinned: true } }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(chat.reload.pinned?).to eq(false)
   end
 
   it "does not load hidden chats when paginating one sidebar group" do

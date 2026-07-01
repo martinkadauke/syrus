@@ -693,6 +693,68 @@ describe("repositoryless chat compose", () => {
   })
 })
 
+describe("chat slash commands", () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    mockDesktopViewport()
+  })
+
+  it("copies the last assistant response to the clipboard", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText }
+    })
+    vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/mark_read" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(null, { status: 204 }))
+      }
+
+      return Promise.resolve(jsonResponse(chatPayload({
+        messages: [
+          {
+            type: "message",
+            id: 9,
+            role: "assistant",
+            tool_name: null,
+            content: { text: "First assistant response." },
+            text: "First assistant response.",
+            bookmarkable: true
+          },
+          {
+            type: "message",
+            id: 10,
+            role: "user",
+            tool_name: null,
+            content: { text: "Thanks." },
+            text: "Thanks.",
+            bookmarkable: true
+          },
+          {
+            type: "message",
+            id: 11,
+            role: "assistant",
+            tool_name: null,
+            content: { text: "Latest assistant response." },
+            text: "Latest assistant response.",
+            bookmarkable: true
+          }
+        ]
+      })))
+    })
+
+    renderRoute()
+
+    const textarea = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(textarea, { target: { value: "/copy" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(writeText).toHaveBeenCalledWith("Latest assistant response.")
+    expect(await screen.findByText("Copied to clipboard")).toBeInTheDocument()
+  })
+})
+
 function renderRoute() {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -900,6 +962,7 @@ function chatPayload(overrides: { chat?: Record<string, unknown>; messages?: Arr
       id: 8,
       title: "Aqueduct planning",
       title_pending: false,
+      pinned: false,
       pinned_context: null,
       chat_path: "/chats/8",
       repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
@@ -951,6 +1014,7 @@ function chatPayload(overrides: { chat?: Record<string, unknown>; messages?: Arr
       app_message_path: "/api/v1/app/chats/8/message",
       app_rename_path: "/api/v1/app/chats/8/rename",
       app_clear_path: "/api/v1/app/chats/8/messages",
+      app_branch_path: "/api/v1/app/chats/8/branch",
       app_enqueue_message_path: "/api/v1/app/chats/8/queued_messages",
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",

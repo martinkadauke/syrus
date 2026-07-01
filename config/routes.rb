@@ -27,6 +27,7 @@ Rails.application.routes.draw do
         post "auth/passwords", to: "auth#create_password"
         patch "auth/passwords/:token", to: "auth#update_password"
         post "bug_reports", to: "bug_reports#create"
+        post "report_issue", to: "report_issue#create"
         get "search", to: "search#index"
         post "filters/usage", to: "filters#usage"
         resources :tags, only: %i[ index create update destroy ]
@@ -129,10 +130,12 @@ Rails.application.routes.draw do
         get "chats/more", to: "chats#more"
         get "chats/search", to: "chats#search"
         get "chats/search/messages", to: "chats#search_messages"
+        get "shared_chats/:token", to: "shared_chats#show"
         get "settings/hidden_chats", to: "chats#hidden"
         post "chats", to: "chats#create"
         post "chats/onboarding", to: "chats#onboarding"
         get "chats/:id", to: "chats#show", constraints: { id: /\d+/ }
+        patch "chats/:id", to: "chats#update", constraints: { id: /\d+/ }
         get "chats/:id/messages", to: "chats#messages", constraints: { id: /\d+/ }
         get "chats/:id/whiteboard", to: "chat_whiteboards#show", constraints: { id: /\d+/ }
         patch "chats/:id/whiteboard", to: "chat_whiteboards#update", constraints: { id: /\d+/ }
@@ -144,6 +147,8 @@ Rails.application.routes.draw do
         patch "chats/:id/unhide", to: "chats#unhide", constraints: { id: /\d+/ }
         post "chats/:id/rename", to: "chats#rename", constraints: { id: /\d+/ }
         patch "chats/:id/rename", to: "chats#rename", constraints: { id: /\d+/ }
+        post "chats/:id/branch", to: "chats#branch", constraints: { id: /\d+/ }
+        post "chats/:id/share", to: "chats#share", constraints: { id: /\d+/ }
         delete "chats/:id/messages", to: "chats#clear_messages", constraints: { id: /\d+/ }
         post "chats/:id/message", to: "chats#message", constraints: { id: /\d+/ }
         post "chats/:id/queued_messages", to: "chats#enqueue_message", constraints: { id: /\d+/ }
@@ -342,6 +347,7 @@ Rails.application.routes.draw do
 
   get "chats/new", to: "spa#show", as: :new_chat
   get "chats/search", to: "spa#show", as: :search_chats
+  get "chats/shared/:token", to: "spa#show", as: :shared_chat
   get "chats/:id", to: "spa#show", as: :chat, constraints: { id: /\d+/ }
 
   get "scheduled_tasks", to: "spa#show", as: :scheduled_tasks

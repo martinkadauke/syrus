@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_06_30_050437) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_01_160428) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -62,6 +62,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_30_050437) do
     t.boolean "merge_train_enabled", default: false, null: false
     t.integer "merge_train_max_size", default: 20, null: false
     t.boolean "polling_paused", default: false, null: false
+    t.string "report_issue_repo_slug", default: "tkadauke/syrus", null: false
     t.boolean "runs_paused", default: false, null: false
     t.boolean "signups_open", default: false, null: false
     t.text "telegram_bot_token"
@@ -250,12 +251,15 @@ ActiveRecord::Schema[8.1].define(version: 2026_06_30_050437) do
     t.datetime "last_message_at"
     t.datetime "last_read_at"
     t.boolean "onboarding", default: false, null: false
+    t.boolean "pinned", default: false, null: false
     t.text "pinned_context"
+    t.string "share_token"
     t.datetime "stop_requested_at"
     t.string "title"
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
     t.string "workspace_path"
+    t.index ["share_token"], name: "index_chat_sessions_on_share_token", unique: true
     t.index ["user_id", "hidden_at"], name: "index_chat_sessions_on_user_id_and_hidden_at"
     t.index ["user_id"], name: "index_chat_sessions_on_user_id"
     t.index ["workspace_path"], name: "index_chat_sessions_on_workspace_path"

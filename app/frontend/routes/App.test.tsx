@@ -11356,6 +11356,111 @@ describe("App", () => {
     expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
   })
 
+  it("pins the current chat from the /pin system slash command", async () => {
+    const pinnedPayload = chatPayload({ message: "Chat pinned", pinned: true })
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8" && init?.method === "PATCH") {
+        return Promise.resolve(new Response(JSON.stringify(pinnedPayload), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/pin" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    expect(await screen.findByText("Chat pinned")).toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8", expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ chat: { pinned: true } })
+    }))
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+  })
+
+  it("copies a shared chat link from the share slash command", async () => {
+    const clipboardWrite = mockClipboardWrite()
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/share" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ share_url: "http://syrus.test/chats/shared/token-123" }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...") as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: "/share" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    await waitFor(() => expect(clipboardWrite).toHaveBeenCalledWith("http://syrus.test/chats/shared/token-123"))
+    expect(await screen.findByText("Share link copied to clipboard")).toBeInTheDocument()
+    expect(input.value).toBe("")
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8/share", expect.objectContaining({ method: "POST" }))
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+  })
+
+  it("renders shared chats as read-only message streams", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({
+        chat: { id: 8, title: "Aqueduct planning" },
+        messages: [
+          {
+            type: "message",
+            id: 10,
+            role: "user",
+            tool_name: null,
+            content: { text: "Can the team view this?" },
+            text: "Can the team view this?",
+            bookmarkable: false
+          },
+          {
+            type: "message",
+            id: 11,
+            role: "assistant",
+            tool_name: null,
+            content: { text: "Yes, this is read-only." },
+            text: "Yes, this is read-only.",
+            bookmarkable: false
+          }
+        ]
+      }), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/shared/token-123"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByRole("heading", { name: "Aqueduct planning" })).toBeInTheDocument()
+    expect(screen.getByText("View only")).toBeInTheDocument()
+    expect(screen.getByText("Can the team view this?")).toBeInTheDocument()
+    expect(screen.getByText("Yes, this is read-only.")).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("Ask about this repository...")).toBeNull()
+    expect(screen.queryByRole("button", { name: /Bookmark/ })).toBeNull()
+    expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/shared_chats/token-123", expect.objectContaining({ credentials: "same-origin" }))
+  })
+
   it("updates the v2 sidebar immediately after chat slash commands change chats", async () => {
     const script = document.createElement("script")
     script.id = "syrus-bootstrap-data"
@@ -11497,6 +11602,51 @@ describe("App", () => {
       body: JSON.stringify({ attachable_type: "Repository", repository_slug: "acme/tools" })
     }))
     expect(screen.getByRole("heading", { name: "Attachments" })).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
+  })
+
+  it("files GitHub issues from the report slash command", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/report_issue" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ issue_url: "https://github.com/tkadauke/syrus/issues/123" }), { status: 201, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/report" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+
+    const dialog = await screen.findByRole("dialog", { name: "File a GitHub issue about Syrus" })
+    const bodyInput = within(dialog).getByLabelText("Body") as HTMLTextAreaElement
+    expect(bodyInput.value).toContain("Chat: Aqueduct planning")
+    expect(bodyInput.value).toContain("URL: http://localhost:3000/app-shell/chats/8")
+
+    fireEvent.change(within(dialog).getByLabelText("Title"), { target: { value: "Report from chat" } })
+    fireEvent.change(bodyInput, { target: { value: "Filed from chat context." } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Submit" }))
+
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/report_issue",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ title: "Report from chat", body: "Filed from chat context." })
+        })
+      )
+    })
+    expect(await screen.findByText("Issue filed — https://github.com/tkadauke/syrus/issues/123")).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "File a GitHub issue about Syrus" })).not.toBeInTheDocument()
     expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
   })
 
@@ -15097,6 +15247,7 @@ function sidebarChat(overrides: {
   id: number
   title: string | null
   title_pending?: boolean
+  pinned?: boolean
   repository: { id: number; slug: string; repository_path: string } | null
   last_message_at: string | null
   unread?: boolean
@@ -15107,6 +15258,7 @@ function sidebarChat(overrides: {
     id: overrides.id,
     title: overrides.title,
     title_pending: overrides.title_pending ?? false,
+    pinned: overrides.pinned ?? false,
     pinned_context: null,
     chat_path: `/chats/${overrides.id}`,
     repository: overrides.repository,
@@ -15156,6 +15308,7 @@ function chatPayload(overrides: {
   turnInFlight?: boolean
   agentBusy?: boolean
   hasMoreOlder?: boolean
+  pinned?: boolean
 } = {}) {
   return {
     message: overrides.message,
@@ -15163,6 +15316,7 @@ function chatPayload(overrides: {
       id: overrides.id ?? 8,
       title: "Aqueduct planning",
       title_pending: false,
+      pinned: overrides.pinned ?? false,
       pinned_context: null,
       chat_path: overrides.chatPath ?? "/chats/8",
       repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
@@ -15195,6 +15349,7 @@ function chatPayload(overrides: {
         id: 8,
         title: "Aqueduct planning",
         title_pending: false,
+        pinned: overrides.pinned ?? false,
         pinned_context: null,
         chat_path: "/chats/8",
         repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
@@ -15210,6 +15365,7 @@ function chatPayload(overrides: {
         id: 4,
         title: "Road survey",
         title_pending: false,
+        pinned: false,
         pinned_context: null,
         chat_path: "/chats/4",
         repository: { id: 4, slug: "acme/roads", repository_path: "/repositories/4" },
@@ -15250,6 +15406,7 @@ function chatPayload(overrides: {
       app_message_path: "/api/v1/app/chats/8/message",
       app_rename_path: "/api/v1/app/chats/8/rename",
       app_clear_path: "/api/v1/app/chats/8/messages",
+      app_share_path: "/api/v1/app/chats/8/share",
       app_enqueue_message_path: "/api/v1/app/chats/8/queued_messages",
       app_stop_path: "/api/v1/app/chats/8/stop",
       app_bookmarks_path: "/api/v1/app/chats/8/bookmarks",

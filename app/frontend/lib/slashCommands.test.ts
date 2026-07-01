@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { findSlashCommand, slashCommandPrompt, slashCommandSignature, slashCommands, type SlashCommand } from "./slashCommands"
+import { findSlashCommand, slashCommandDescription, slashCommandPrompt, slashCommandSignature, slashCommands, type SlashCommand } from "./slashCommands"
 
 function promptFor(commandName: string, args = "") {
   const command: SlashCommand | undefined = slashCommands.find((item) => item.name === commandName)
@@ -16,6 +16,8 @@ describe("slashCommands", () => {
     "/prs",
     "/issues",
     "/proposals",
+    "/branch",
+    "/pin",
     "/bookmark",
     "/discard",
     "/cancel",
@@ -38,6 +40,51 @@ describe("slashCommands", () => {
       expect(command?.kind).toBe("system")
       expect(command).not.toHaveProperty("toPrompt")
     }
+  })
+
+  it("registers /branch as a no-argument system command", () => {
+    const match = findSlashCommand("/branch")
+
+    expect(match?.command.kind).toBe("system")
+    expect(match?.command.description).toBe("Start a new chat branched from this point")
+    expect(match?.command.args).toEqual([])
+    expect(match ? slashCommandSignature(match.command) : "missing").toBe("")
+  })
+
+  it("registers /copy as a system command without args", () => {
+    const match = findSlashCommand("/copy")
+
+    expect(match?.command.kind).toBe("system")
+    expect(match?.command.description).toBe("Copy last response to clipboard")
+    expect(match?.command.args).toEqual([])
+    expect(match ? slashCommandSignature(match.command) : "missing").toBe("")
+  })
+
+  it("registers /search as a system command with an optional query", () => {
+    const match = findSlashCommand("/search deployment notes")
+
+    expect(match?.command.kind).toBe("system")
+    expect(match?.command.description).toBe("Find and open another chat")
+    expect(match?.command.args).toEqual([{ name: "query", required: false }])
+    expect(match?.argsText).toBe("deployment notes")
+    expect(match ? slashCommandSignature(match.command) : "missing").toBe("[query]")
+  })
+
+  it("describes /pin from the current chat pinned state", () => {
+    const match = findSlashCommand("/pin")
+
+    expect(match?.command.kind).toBe("system")
+    expect(match ? slashCommandDescription(match.command, { chat: { pinned: false } }) : "missing").toBe("Pin this chat to the top of the sidebar")
+    expect(match ? slashCommandDescription(match.command, { chat: { pinned: true } }) : "missing").toBe("Unpin this chat")
+  })
+
+  it("registers /share as a no-argument system command", () => {
+    const match = findSlashCommand("/share")
+
+    expect(match?.command.kind).toBe("system")
+    expect(match?.command.description).toBe("Copy a shareable link to this chat")
+    expect(match?.command.args).toEqual([])
+    expect(match ? slashCommandSignature(match.command) : "missing").toBe("")
   })
 
   it("keeps agent-backed commands as skill commands", () => {

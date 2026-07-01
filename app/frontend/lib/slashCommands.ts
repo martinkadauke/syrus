@@ -9,9 +9,15 @@ export type SlashCommand = {
   name: `/${string}`
   kind: SlashCommandKind
   args: SlashCommandArg[]
-  description: string
+  description: string | ((context: SlashCommandContext) => string)
   toPrompt?: (args: string) => string
   requiresConfirmation?: boolean
+}
+
+export type SlashCommandContext = {
+  chat?: {
+    pinned?: boolean
+  }
 }
 
 export type SlashCommandMatch = {
@@ -24,9 +30,15 @@ export const slashCommands = [
   { name: "/rename", kind: "system", args: [{ name: "title", required: true }], description: "Rename the current chat." },
   { name: "/clear", kind: "system", args: [], description: "Clear this chat's message history." },
   { name: "/new", kind: "system", args: [], description: "Start a new chat." },
+  { name: "/branch", kind: "system", args: [], description: "Start a new chat branched from this point" },
   { name: "/bookmarks", kind: "system", args: [], description: "Show saved bookmarks in this chat." },
   { name: "/attach", kind: "system", args: [{ name: "owner/repo", required: false }], description: "Attach a repository or open attachment controls." },
   { name: "/settings", kind: "system", args: [], description: "Open chat settings." },
+  { name: "/copy", kind: "system", args: [], description: "Copy last response to clipboard" },
+  { name: "/search", kind: "system", args: [{ name: "query", required: false }], description: "Find and open another chat" },
+  { name: "/pin", kind: "system", args: [], description: (context) => context.chat?.pinned ? "Unpin this chat" : "Pin this chat to the top of the sidebar" },
+  { name: "/report", kind: "system", args: [], description: "File a GitHub issue about Syrus" },
+  { name: "/share", kind: "system", args: [], description: "Copy a shareable link to this chat" },
   {
     name: "/jobs",
     kind: "system",
@@ -94,6 +106,10 @@ export const slashCommandPattern = /^\s*(\/[a-z]+(?:-[a-z]+)*)\b/i
 
 export function slashCommandSignature(command: SlashCommand) {
   return command.args.map((arg) => arg.required ? `<${arg.name}>` : `[${arg.name}]`).join(" ")
+}
+
+export function slashCommandDescription(command: SlashCommand, context: SlashCommandContext = {}) {
+  return typeof command.description === "function" ? command.description(context) : command.description
 }
 
 export function findSlashCommand(text: string): SlashCommandMatch | null {

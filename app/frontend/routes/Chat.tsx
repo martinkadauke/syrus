@@ -13,6 +13,7 @@ import {
   addChatAttachment,
   answerAgentQuestion,
   attachChatRepository,
+  branchChat,
   clearChatHistory,
   confirmChatProposal,
   confirmPendingAction,
@@ -25,6 +26,7 @@ import {
   enqueueChatMessage,
   fetchChat,
   fetchChatMessages,
+  fetchSharedChat,
   fetchChatWhiteboard,
   fetchWhiteboardSnapshot,
   fetchWhiteboardSnapshots,
@@ -37,12 +39,15 @@ import {
   searchChatJobs,
   searchChatProposals,
   sendChatMessage,
+  shareChat,
   stopChat,
   updateChatProposal,
+  updateChatPinned,
   updateQueuedChatMessage,
   type ChatAttachmentResult,
   type ChatAttachmentRow,
   type ChatAgentQuestion,
+  type ChatBranchPayload,
   type ChatMessageAttachmentInput,
   type ChatCreatedPayload,
   type ChatMcpHealth,
@@ -65,6 +70,8 @@ import {
   type ChatWhiteboardElement,
   type ChatWhiteboardScene,
   type ChatToolGroupItem,
+  type ShareChatPayload,
+  type SharedChatPayload,
   type WhiteboardSnapshot
 } from "../api/chats"
 import { postJobCommand } from "../api/jobs"
@@ -78,12 +85,14 @@ import { highlightCode, inferToolResultLanguage } from "../lib/syntaxHighlight"
 import {
   filterSlashCommands,
   findSlashCommand,
+  slashCommandDescription,
   slashCommandPrompt,
   slashCommandQuery,
   slashCommandSignature,
   type SlashCommand,
   type SlashCommandMatch
 } from "../lib/slashCommands"
+import { createReportIssue } from "../api/reportIssues"
 
 const WHITEBOARD_SAVE_DEBOUNCE_MS = 500
 const CHAT_ENTER_SUBMIT_MIN_WIDTH = 1024
@@ -151,6 +160,113 @@ export function ChatRoute() {
   )
 }
 
+export function SharedChatRoute() {
+  const params = useParams()
+  const token = params.token || ""
+  const chat = useQuery({
+    queryKey: ["shared-chat", token],
+    queryFn: () => fetchSharedChat(token),
+    enabled: token.length > 0
+  })
+
+  return (
+    <main
+      aria-label="Shared chat"
+      className="mx-auto flex h-full max-w-[64rem] flex-col gap-4 overflow-hidden p-3 sm:p-6"
+      style={useChatVisualViewportStyle()}
+    >
+      {chat.isPending ? <PanelMessage>Loading shared chat...</PanelMessage> : null}
+      {chat.isError ? <PanelMessage tone="error">{errorMessage(chat.error, "Unable to load shared chat.")}</PanelMessage> : null}
+      {chat.isSuccess ? <SharedChatView payload={chat.data} /> : null}
+    </main>
+  )
+}
+
+function SharedChatView({ payload }: { payload: SharedChatPayload }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3 dark:border-gray-700">
+        <h1 className="break-words text-2xl font-semibold text-gray-900 dark:text-gray-100">{payload.chat.title || "Shared chat"}</h1>
+        <span className="rounded border border-blue-200 bg-blue-50 px-3 py-1 text-sm font-medium text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">View only</span>
+      </header>
+      <section className="min-h-0 flex-1 overflow-hidden rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-950">
+        <ReadOnlyMessageStream payload={payload} />
+      </section>
+    </div>
+  )
+}
+
+function ReadOnlyMessageStream({ payload }: { payload: SharedChatPayload }) {
+  const items = renderChatMessages(payload.messages)
+  const placeholderPayload = sharedChatRenderPayload(payload)
+
+  if (items.length === 0) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center overflow-y-auto p-4 text-sm text-gray-500 dark:text-gray-400" data-testid="chat-message-stream">
+        This shared chat has no messages.
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full min-h-0 space-y-4 overflow-y-auto p-3 sm:p-4" data-testid="chat-message-stream">
+      {items.map((item) => item.type === "tool_group" ? (
+        <ToolGroup item={item} key={renderItemKey(item)} />
+      ) : (
+        <ChatMessage item={item} key={renderItemKey(item)} payload={placeholderPayload} pendingActionIds={new Set()} prefix="" queryKey={chatQueryKey(payload.chat.id, "")} readOnly onNotice={() => undefined} />
+      ))}
+    </div>
+  )
+}
+
+function sharedChatRenderPayload(payload: SharedChatPayload): ChatPayload {
+  return {
+    chat: {
+      id: payload.chat.id,
+      title: payload.chat.title,
+      title_pending: false,
+      pinned: false,
+      pinned_context: null,
+      chat_path: `/chats/shared/${payload.chat.id}`,
+      repository: null,
+      stop_requested_at: null,
+      cumulative_input_tokens: 0,
+      cumulative_output_tokens: 0,
+      cumulative_cost_usd: 0
+    },
+    chat_available: false,
+    turn_in_flight: false,
+    agent_busy: false,
+    has_more_older: false,
+    messages: payload.messages,
+    bookmarks: [],
+    recent_chats: [],
+    pending_actions: [],
+    agent_questions: [],
+    queued_messages: [],
+    attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
+    documents_in_scope: [],
+    attachment_results: [],
+    whiteboard: { version: 1, elements: [], appState: {}, files: {} },
+    paths: {
+      new_chat_path: "/chats/new",
+      credentials_path: "/credentials",
+      repositories_path: "/repositories",
+      app_messages_path: "",
+      app_message_path: "",
+      app_rename_path: "",
+      app_clear_path: "",
+      app_branch_path: "",
+      app_share_path: "",
+      app_enqueue_message_path: "",
+      app_stop_path: "",
+      app_bookmarks_path: "",
+      app_attachments_path: "",
+      app_whiteboard_path: ""
+    }
+  }
+}
+
 function useChatVisualViewportStyle() {
   const [height, setHeight] = useState(visualViewportHeight)
 
@@ -205,7 +321,10 @@ type ChatSystemAction =
   | { kind: "rename"; title: string }
   | { kind: "clear" }
   | { kind: "new" }
+  | { kind: "branch" }
+  | { kind: "share" }
   | { kind: "attach"; slug: string }
+  | { kind: "pin"; pinned: boolean }
 
 type ChatSystemCommandAction =
   | { kind: "bookmark"; label: string }
@@ -559,12 +678,12 @@ function AgentActivityIndicator({ running }: { running: boolean }) {
   )
 }
 
-function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
   if (item.role === "user") {
     return (
       <article className="group/message relative flex justify-end pt-6" id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
-        <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />
+        {readOnly ? null : <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />}
         <div className="max-w-[min(42rem,85%)] space-y-2">
           <PlainText className="whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
           <MessageImageAttachments attachments={item.attachments} align="end" />
@@ -577,14 +696,14 @@ function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, onNoti
     return (
       <article className="group/message relative pt-6" id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
-        <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />
+        {readOnly ? null : <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />}
         <div className="space-y-3">
           <div className="max-w-3xl rounded border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-900">
             <Markdown className="chat-prose text-gray-800 dark:text-gray-100" text={item.text} />
           </div>
           <MessageImageAttachments attachments={item.attachments} />
-          {item.proposal ? <ProposalCard proposal={item.proposal} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
-          {!item.proposal && item.pending_action && !pendingActionIds.has(item.pending_action.id) ? <PendingActionCard pendingAction={item.pending_action} queryKey={queryKey} onNotice={onNotice} /> : null}
+          {!readOnly && item.proposal ? <ProposalCard proposal={item.proposal} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
+          {!readOnly && !item.proposal && item.pending_action && !pendingActionIds.has(item.pending_action.id) ? <PendingActionCard pendingAction={item.pending_action} queryKey={queryKey} onNotice={onNotice} /> : null}
         </div>
       </article>
     )
@@ -1495,6 +1614,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingSlashCommandConfirmation | null>(null)
   const [activeCommandIndex, setActiveCommandIndex] = useState(0)
   const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false)
+  const [reportDialogOpen, setReportDialogOpen] = useState(false)
   const [attachmentPopoverOpen, setAttachmentPopoverOpen] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -1546,19 +1666,36 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       onMessageSent?.()
     }
   })
-  const systemAction = useMutation<ChatPayload | ChatCreatedPayload, Error, ChatSystemAction>({
+  const systemAction = useMutation<ChatPayload | ChatCreatedPayload | ChatBranchPayload | ShareChatPayload, Error, ChatSystemAction>({
     mutationFn: (action) => {
       if (action.kind === "rename") return renameChat(appendSearch(payload.paths.app_rename_path, search), action.title)
       if (action.kind === "clear") return clearChatHistory(appendSearch(payload.paths.app_clear_path, search))
       if (action.kind === "new") return createChat({ repositoryId: payload.chat.repository ? String(payload.chat.repository.id) : "", text: "" })
+      if (action.kind === "pin") return updateChatPinned(chatId, action.pinned)
+      if (action.kind === "branch") return branchChat(appendSearch(payload.paths.app_branch_path, search))
+      if (action.kind === "share") return shareChat(appendSearch(payload.paths.app_share_path, search))
       return attachChatRepository(appendSearch(payload.paths.app_attachments_path, search), action.slug)
     },
-    onSuccess: (updated, action) => {
+    onSuccess: async (updated, action) => {
       if (action.kind === "new") {
         const created = updated as ChatCreatedPayload
         updateRecentChatCache(queryClient, created.chat, { prepend: true })
         refreshRecentChats(queryClient)
         navigate(withRoutePrefix(created.redirect_to, prefix))
+        return
+      }
+
+      if (action.kind === "branch") {
+        const branched = updated as ChatBranchPayload
+        refreshRecentChats(queryClient)
+        navigate(withRoutePrefix(branched.app_path, prefix))
+        return
+      }
+
+      if (action.kind === "share") {
+        await navigator.clipboard.writeText((updated as ShareChatPayload).share_url)
+        setText("")
+        onNotice("Share link copied to clipboard")
         return
       }
 
@@ -1568,7 +1705,8 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       refreshRecentChats(queryClient)
       setText("")
       setClearConfirmationOpen(false)
-      onNotice(updated.message || null)
+      onNotice(action.kind === "pin" ? (action.pinned ? "Chat pinned" : "Chat unpinned") : chatPayload.message || null)
+      onNotice(action.kind === "pin" ? (action.pinned ? "Chat pinned" : "Chat unpinned") : chatPayload.message || null)
       if (action.kind === "attach") commandHandlers.openAttachments()
     }
   })
@@ -1712,6 +1850,13 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       return
     }
 
+    if (command.name === "/branch") {
+      setText("")
+      onNotice("Branching chat…")
+      systemAction.mutate({ kind: "branch" })
+      return
+    }
+
     if (command.name === "/bookmarks") {
       commandHandlers.openBookmarks()
       setText("")
@@ -1830,6 +1975,44 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
 
     if (command.name === "/clear-canvas") {
       systemCommandAction.mutate({ kind: "clear-canvas" })
+      return
+    }
+
+    if (command.name === "/copy") {
+      const lastAssistantMessage = lastAssistantRenderedMessage(payload.messages)
+      if (!lastAssistantMessage) {
+        onNotice("No assistant response to copy")
+        return
+      }
+
+      void navigator.clipboard.writeText(lastAssistantMessage.text)
+      setText("")
+      onNotice("Copied to clipboard")
+      return
+    }
+
+    if (command.name === "/search") {
+      const path = argsText ? `/chats/search?q=${encodeURIComponent(argsText)}` : "/chats/search"
+      navigate(withRoutePrefix(path, prefix))
+      setText("")
+      onNotice(null)
+      return
+    }
+
+    if (command.name === "/report") {
+      setReportDialogOpen(true)
+      setText("")
+      onNotice(null)
+      return
+    }
+
+    if (command.name === "/pin") {
+      systemAction.mutate({ kind: "pin", pinned: !payload.chat.pinned })
+      return
+    }
+
+    if (command.name === "/share") {
+      systemAction.mutate({ kind: "share" })
       return
     }
 
@@ -2092,6 +2275,16 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           </button>
         </div>
       ) : null}
+      {reportDialogOpen ? (
+        <ReportIssueDialog
+          body={reportIssueBody(payload, prefix)}
+          onClose={() => setReportDialogOpen(false)}
+          onFiled={(issueUrl) => {
+            onNotice(`Issue filed — ${issueUrl}`)
+            setReportDialogOpen(false)
+          }}
+        />
+      ) : null}
       <form
         className={`relative rounded border border-gray-200 bg-white p-3 transition-shadow dark:border-gray-700 dark:bg-gray-900 ${isDragOver ? "ring-2 ring-blue-400 dark:ring-blue-500" : ""}`}
         onDragEnter={handleDragEnter}
@@ -2126,6 +2319,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           <SlashCommandPalette
             activeIndex={activeCommandIndex}
             commands={matchingCommands}
+            context={{ chat: { pinned: payload.chat.pinned } }}
             query={commandQuery}
             onSelect={(command) => completeSlashCommand(command)}
           />
@@ -2255,6 +2449,68 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   )
 }
 
+function ReportIssueDialog({ body, onClose, onFiled }: { body: string; onClose: () => void; onFiled: (issueUrl: string) => void }) {
+  const [title, setTitle] = useState("")
+  const [issueBody, setIssueBody] = useState(body)
+  const report = useMutation({
+    mutationFn: () => createReportIssue({ title, body: issueBody }),
+    onSuccess: (result) => onFiled(result.issue_url)
+  })
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (title.trim().length === 0 || report.isPending) return
+
+    report.mutate()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="presentation">
+      <form aria-label="File a GitHub issue about Syrus" aria-modal="true" className="w-full max-w-lg rounded border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-950" onSubmit={submit} role="dialog">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">File a GitHub issue</h2>
+          </div>
+          <button aria-label="Close report dialog" className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100" disabled={report.isPending} onClick={onClose} type="button">
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </div>
+        <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="report-issue-title">Title</label>
+        <input
+          autoFocus
+          className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          disabled={report.isPending}
+          id="report-issue-title"
+          onChange={(event) => setTitle(event.target.value)}
+          required
+          type="text"
+          value={title}
+        />
+        <label className="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="report-issue-body">Body</label>
+        <textarea
+          className="mt-1 h-40 w-full resize-y rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+          disabled={report.isPending}
+          id="report-issue-body"
+          onChange={(event) => setIssueBody(event.target.value)}
+          value={issueBody}
+        />
+        {report.isError ? <p className="mt-3 text-sm text-red-700 dark:text-red-300" role="alert">{errorMessage(report.error, "Issue could not be filed.")}</p> : null}
+        <div className="mt-4 flex justify-end gap-2">
+          <button className={secondaryButton()} disabled={report.isPending} onClick={onClose} type="button">Cancel</button>
+          <button className={primaryButton()} disabled={report.isPending || title.trim().length === 0} type="submit">Submit</button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
+function reportIssueBody(payload: ChatPayload, prefix: string) {
+  const path = withRoutePrefix(payload.chat.chat_path, prefix)
+  const url = typeof window === "undefined" ? path : new URL(path, window.location.origin).toString()
+
+  return `Context:\n- Chat: ${chatDisplayTitle(payload.chat)}\n- URL: ${url}\n\n`
+}
+
 function readAttachmentFile(file: File): Promise<ChatComposeAttachment> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -2288,7 +2544,7 @@ function SlashCommandConfirmation({ commandName, disabled, text, onCancel, onCon
   )
 }
 
-function SlashCommandPalette({ activeIndex, commands, query, onSelect }: { activeIndex: number; commands: SlashCommand[]; query: string; onSelect: (command: SlashCommand) => void }) {
+function SlashCommandPalette({ activeIndex, commands, context, query, onSelect }: { activeIndex: number; commands: SlashCommand[]; context: { chat: { pinned?: boolean } }; query: string; onSelect: (command: SlashCommand) => void }) {
   return (
     <div
       aria-label="Slash commands"
@@ -2315,7 +2571,7 @@ function SlashCommandPalette({ activeIndex, commands, query, onSelect }: { activ
                 <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">{highlightSlashCommand(command.name, query)}</span>
                 {signature.length > 0 ? <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{signature}</span> : null}
               </span>
-              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{command.description}</span>
+              <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{slashCommandDescription(command, context)}</span>
             </span>
             <span className={`shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-semibold uppercase ${command.kind === "system" ? "bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-200" : "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-200"}`}>{command.kind}</span>
           </button>
@@ -3684,6 +3940,16 @@ function renderChatMessages(messages: ChatMessageItem[]): ChatRenderItem[] {
   }
 
   return items
+}
+
+function lastAssistantRenderedMessage(messages: ChatMessageItem[]) {
+  const items = renderChatMessages(messages)
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index]
+    if (item.type === "message" && item.role === "assistant") return item
+  }
+
+  return null
 }
 
 function buildMessageStreamItems(items: ChatRenderItem[], pendingActions: ChatPendingAction[]): ChatStreamItem[] {
