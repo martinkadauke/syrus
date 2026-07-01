@@ -12438,6 +12438,35 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: "Queue setup" })).not.toBeInTheDocument()
   })
 
+  it("renders Codex tool rows with descriptive tool labels", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({
+        messages: [
+          {
+            type: "message",
+            id: 10,
+            role: "tool_use",
+            tool_name: "mcp__syrus-chat-sidecar__repo_info",
+            content: { input: { repository_id: 12, status: "started" } },
+            text: "",
+            bookmarkable: false
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("repo_info")).toBeInTheDocument()
+    expect(screen.queryByText("tool_use")).not.toBeInTheDocument()
+  })
+
   it("runs chat commands through the app API", async () => {
     const search = "?attachment_type=Repository&attachment_query=tools"
     const proposalMessage = {
