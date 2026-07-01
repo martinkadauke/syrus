@@ -170,6 +170,7 @@ export type ChatMessageItem = {
   content?: unknown
   text: string
   bookmarkable: boolean
+  created_at?: string
   attachments?: Array<{ name: string; mime_type: string; data: string }>
   proposal?: ChatProposal | null
   pending_action?: ChatPendingActionInline | null
