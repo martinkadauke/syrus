@@ -223,7 +223,9 @@ repository, branch the current transcript into a new chat session, open
 bookmarks, attach another repository by `owner/repo`, and open chat settings
 without sending a message to the agent. `/pin` pins the current chat to the
 top of the sidebar, and switches to unpinning when the chat is already pinned.
-Read-only skill commands include `/jobs [filter]`, `/job <id>`,
+`/report` opens a small form that files a GitHub issue against the configured
+Syrus report repository with the current chat as context. Read-only skill
+commands include `/jobs [filter]`, `/job <id>`,
 `/epic <id>`, `/prs`, `/issues`, `/proposals`, `/canvas`, and
 `/bookmark <label>`; Syrus expands each one into a prompt that asks the agent
 to call the matching chat MCP tool and format the result. The `/propose` skill
