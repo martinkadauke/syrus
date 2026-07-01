@@ -63,7 +63,20 @@ module Api
             return
           end
 
-          pinned = if params[:chat].respond_to?(:key?) && params[:chat].key?(:pinned)
+          chat_params = params[:chat]
+          if chat_params.respond_to?(:key?) && chat_params.key?(:chat_provider)
+            provider = normalized_chat_provider_param(chat_params[:chat_provider])
+            unless provider.nil? || Current.user.chat_provider_configured?(provider)
+              render_error("validation_failed", "Chat provider is not configured.", status: :unprocessable_content)
+              return
+            end
+
+            chat_session.update!(chat_provider: provider)
+            render json: chat_payload(chat_session.reload, message: "Chat provider updated.")
+            return
+          end
+
+          pinned = if chat_params.respond_to?(:key?) && chat_params.key?(:pinned)
             params[:chat][:pinned]
           else
             params[:pinned]
@@ -173,7 +186,6 @@ module Api
             chat_session = ChatSession.create!(
               user: Current.user,
               repository: repository,
-              chat_provider: Current.user.effective_chat_provider,
               onboarding: true,
               last_message_at: Time.current
             )
@@ -250,7 +262,9 @@ module Api
         def stop
           chat_session = find_chat_session
           chat_session.update!(stop_requested_at: Time.current)
-          chat_session.broadcast_controls
+          request_chat_agent_kill!(chat_session)
+          ChatStopReconciler.reconcile!(chat_session: chat_session)
+          chat_session.reload.broadcast_controls if chat_session.stop_requested_at?
 
           render json: chat_payload(chat_session.reload, message: "Stop requested.")
         end
@@ -484,11 +498,15 @@ module Api
             ChatProposalFiler.new(user: Current.user, repository: proposal.effective_repository).file!([ proposal ])
           end
 
-          chat_session.messages.create!(
+          confirmation_message = chat_session.messages.create!(
             role: "system",
-            content: { "text" => proposal_confirmation_text(proposal.reload, result) }
+            content: proposal_outcome_control_content(
+              proposal.reload,
+              text: proposal_confirmation_text(proposal, result),
+              outcome: :confirmed
+            )
           )
-          notify_agent_of_proposal_outcome(proposal, outcome: :confirmed)
+          notify_agent_of_proposal_outcome(confirmation_message)
 
           render json: chat_payload(chat_session.reload, message: proposal_confirmed_notice(proposal, result))
         rescue ActiveRecord::RecordInvalid => e
@@ -510,11 +528,15 @@ module Api
                 rejected_at: now
               )
             end
-            chat_session.messages.create!(
+            rejection_message = chat_session.messages.create!(
               role: "system",
-              content: { "text" => proposal_rejection_text(proposal) }
+              content: proposal_outcome_control_content(
+                proposal,
+                text: proposal_rejection_text(proposal),
+                outcome: :rejected
+              )
             )
-            notify_agent_of_proposal_outcome(proposal, outcome: :rejected)
+            notify_agent_of_proposal_outcome(rejection_message)
             render json: chat_payload(chat_session.reload, message: "Proposal rejected.")
           else
             render_error("validation_failed", "Proposal is no longer proposed.", status: :unprocessable_content)
@@ -1136,7 +1158,6 @@ module Api
             chat_session = ChatSession.create!(
               user: Current.user,
               repository: repository,
-              chat_provider: Current.user.effective_chat_provider,
               title: nil,
               last_message_at: text.present? ? Time.current : nil
             )
@@ -1173,32 +1194,27 @@ module Api
           end
         end
 
-        def notify_agent_of_proposal_outcome(proposal, outcome:)
-          chat_session = proposal.chat_session
+        def notify_agent_of_proposal_outcome(message)
+          chat_session = message.chat_session
           return unless chat_session
 
-          text = case outcome
-          when :confirmed
-            ChatProposalOutcomeNotification.confirmed_message(proposal.reload)
-          when :rejected
-            ChatProposalOutcomeNotification.rejected_message(proposal.reload)
-          else
-            raise ArgumentError, "unknown proposal outcome: #{outcome}"
-          end
-
-          notification = nil
           ApplicationRecord.transaction do
-            notification = chat_session.messages.create!(
-              role: "user",
-              content: { "text" => text, "source" => ChatProposalOutcomeNotification::SOURCE }
-            )
             chat_session.update!(
               last_message_at: Time.current,
               title: chat_session.title.presence
             )
           end
 
-          enqueue_chat_turn(chat_session, notification)
+          enqueue_chat_turn(chat_session, message)
+        end
+
+        def proposal_outcome_control_content(proposal, text:, outcome:)
+          {
+            "text" => text,
+            "source" => ChatProposalOutcomeNotification::SOURCE,
+            "outcome" => outcome.to_s,
+            "acknowledgment" => ChatProposalOutcomeNotification.acknowledgment(proposal, outcome: outcome)
+          }
         end
 
         def promote_queued_message(chat_session, queued_message)
@@ -1478,6 +1494,10 @@ module Api
             title_pending: chat_session.title_pending?,
             pinned: chat_session.pinned?,
             pinned_context: chat_session.pinned_context,
+            chat_provider: chat_session.chat_provider,
+            effective_chat_provider: chat_session.effective_chat_provider,
+            effective_chat_provider_label: chat_provider_label(chat_session.effective_chat_provider),
+            chat_provider_options: chat_provider_options(chat_session),
             chat_path: chat_path(chat_session),
             repository: repository ? repository_json(repository).merge(repository_path: repository_path(repository)) : nil,
             turn_in_flight: chat_session.turn_in_flight?,
@@ -1492,11 +1512,50 @@ module Api
           }
         end
 
+        def request_chat_agent_kill!(chat_session)
+          SpawnedProcess.running
+                        .where(kind: "agent", workdir: chat_session.workspace_root.to_s)
+                        .find_each { |process| process.request_kill!(user: Current.user) }
+        end
+
         def repository_json(repository)
           {
             id: repository.id,
             slug: repository.slug
           }
+        end
+
+        def normalized_chat_provider_param(value)
+          value.to_s.strip.presence
+        end
+
+        def chat_provider_label(provider)
+          case provider
+          when "claude" then "Claude"
+          when "codex" then "Codex"
+          else provider.to_s.titleize
+          end
+        end
+
+        def chat_provider_options(chat_session)
+          configured = Current.user.configured_agent_providers
+          [
+            {
+              value: nil,
+              label: "Default",
+              configured: Current.user.chat_provider_configured?(chat_session.user.effective_chat_provider),
+              effective_provider: chat_session.user.effective_chat_provider,
+              effective_label: chat_provider_label(chat_session.user.effective_chat_provider)
+            }
+          ] + User::CHAT_PROVIDERS.map do |provider|
+            {
+              value: provider,
+              label: chat_provider_label(provider),
+              configured: configured.include?(provider),
+              effective_provider: provider,
+              effective_label: chat_provider_label(provider)
+            }
+          end
         end
 
         def attachment_label(record)

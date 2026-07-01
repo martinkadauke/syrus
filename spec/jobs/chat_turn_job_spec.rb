@@ -393,6 +393,7 @@ RSpec.describe ChatTurnJob do
       result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
     }
 
+    allow(AppEvents).to receive(:broadcast)
     expect(AppEvents).to receive(:broadcast).with(
       user: chat.user,
       type: "updated",
@@ -435,11 +436,13 @@ RSpec.describe ChatTurnJob do
 
   it "clears mid-turn stop requests and broadcasts controls when the agent errors" do
     message = user_message
+    queued_message = chat.chat_queued_messages.create!(content: { "text" => "Continue after failure" })
     ChatTurnJob.agent_runner = ->(**_) {
       chat.update!(stop_requested_at: Time.current)
       raise "agent failed"
     }
 
+    allow(AppEvents).to receive(:broadcast)
     expect(AppEvents).to receive(:broadcast).with(
       user: chat.user,
       type: "updated",
@@ -452,9 +455,16 @@ RSpec.describe ChatTurnJob do
       )
     )
 
-    described_class.perform_now(chat.id, message.id)
+    expect {
+      described_class.perform_now(chat.id, message.id)
+    }.to have_enqueued_job(described_class).with(chat.id, kind_of(Integer))
 
     expect(chat.reload.stop_requested_at).to be_nil
+    expect(queued_message.reload.delivered_at).to be_present
+    expect(chat.messages.order(:created_at).pluck(:role, :content)).to include(
+      [ "system", { "text" => "Cancelled by operator." } ],
+      [ "user", { "text" => "Continue after failure" } ]
+    )
   end
 
   it "promotes the next queued message after the agent turn finishes" do
@@ -473,11 +483,130 @@ RSpec.describe ChatTurnJob do
     expect(chat.reload.queued_messages).to be_empty
   end
 
-  it "broadcasts chat controls when the agent process starts" do
+  it "promotes the next queued message after a provider failure finalizes the turn" do
+    queued_message = chat.chat_queued_messages.create!(content: { "text" => "Recover from the failure" })
+    ChatTurnJob.agent_runner = ->(**_) { raise "provider unavailable" }
+
+    expect {
+      described_class.perform_now(chat.id, user_message.id)
+    }.to have_enqueued_job(described_class).with(chat.id, kind_of(Integer))
+
+    expect(chat.reload.stop_requested_at).to be_nil
+    expect(queued_message.reload.delivered_at).to be_present
+    expect(chat.messages.order(:created_at, :id).pluck(:role, :content)).to include(
+      [ "system", { "text" => "Agent turn failed." } ],
+      [ "user", { "text" => "Recover from the failure" } ]
+    )
+  end
+
+  it "cancels without starting the agent when stop was requested before process start" do
     message = user_message
+    queued_message = chat.chat_queued_messages.create!(content: { "text" => "Promote after cancellation" })
+    chat.update!(stop_requested_at: Time.current)
+    called = false
+    ChatTurnJob.agent_runner = ->(**_) {
+      called = true
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    expect {
+      described_class.perform_now(chat.id, message.id)
+    }.to have_enqueued_job(described_class).with(chat.id, kind_of(Integer))
+
+    expect(called).to eq(false)
+    expect(chat.messages.order(:created_at).pluck(:role, :content)).to include(
+      [ "system", { "text" => "Cancelled by operator." } ],
+      [ "user", { "text" => "Promote after cancellation" } ]
+    )
+    expect(queued_message.reload.delivered_at).to be_present
+    expect(chat.reload.queued_messages).to be_empty
+    expect(chat.stop_requested_at).to be_nil
+  end
+
+  it "promotes a queued follow-up after cancellation once the process is terminal" do
+    queued_message = chat.chat_queued_messages.create!(content: { "text" => "Continue after stop" })
+    ChatTurnJob.agent_runner = ->(workspace_path:, process_started:, stop_requested:, **_) {
+      process = SpawnedProcess.create!(
+        kind: "agent",
+        command: "claude --print",
+        workdir: workspace_path,
+        hostname: "worker-1",
+        started_at: Time.current
+      )
+      process_started.call(process)
+      chat.update!(stop_requested_at: Time.current)
+
+      expect(stop_requested.call).to eq(true)
+      process.update!(finished_at: Time.current, outcome: "stopped")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    expect {
+      described_class.perform_now(chat.id, user_message.id)
+    }.to have_enqueued_job(described_class).with(chat.id, kind_of(Integer))
+
+    expect(chat.messages.order(:created_at).pluck(:role, :content)).to include(
+      [ "system", { "text" => "Cancelled by operator." } ],
+      [ "user", { "text" => "Continue after stop" } ]
+    )
+    expect(queued_message.reload.delivered_at).to be_present
+    expect(chat.reload.queued_messages).to be_empty
+    expect(chat.stop_requested_at).to be_nil
+  end
+
+  it "does not promote a queued follow-up while the agent process is still live" do
+    queued_message = chat.chat_queued_messages.create!(content: { "text" => "Wait for process exit" })
+    ChatTurnJob.agent_runner = ->(workspace_path:, process_started:, stop_requested:, **_) {
+      process = SpawnedProcess.create!(
+        kind: "agent",
+        command: "claude --print",
+        workdir: workspace_path,
+        hostname: "worker-1",
+        started_at: Time.current
+      )
+      process_started.call(process)
+      chat.update!(stop_requested_at: Time.current)
+
+      expect(stop_requested.call).to eq(true)
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    expect {
+      described_class.perform_now(chat.id, user_message.id)
+    }.not_to have_enqueued_job(described_class)
+
+    expect(queued_message.reload.delivered_at).to be_nil
+    expect(chat.reload.queued_messages).to contain_exactly(queued_message)
+    expect(chat).to be_agent_busy
+  end
+
+  it "delivers one queued message under repeated promotion attempts" do
+    chat.messages.create!(role: "assistant", content: { "text" => "Done" })
+    first = chat.chat_queued_messages.create!(content: { "text" => "First queued" })
+    second = chat.chat_queued_messages.create!(content: { "text" => "Second queued" })
+
+    expect {
+      2.times { ChatQueuedMessagePromoter.deliver_one_if_idle!(chat) }
+    }.to have_enqueued_job(described_class).once
+
+    expect(first.reload.delivered_at).to be_present
+    expect(second.reload.delivered_at).to be_nil
+    user_texts = chat.messages.where(role: "user").map { |message| message.content["text"] }
+    expect(user_texts.count("First queued")).to eq(1)
+    expect(user_texts.count("Second queued")).to eq(0)
+  end
+
+  it "broadcasts chat controls before Codex pre-spawn work and when the agent process starts" do
+    codex_user = Factories.user(codex_api_key: "sk-test", github_token: "ghp-test", chat_provider: "codex")
+    codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "broadcast-widgets", default_branch: "main")
+    codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user)
+    message = codex_chat.messages.create!(role: "user", content: { text: "Use Codex" })
+    codex_workspace_path = workspace_root.join("codex-broadcast-chat")
+    allow(ChatWorkspace).to receive(:path_for).with(codex_chat).and_return(codex_workspace_path)
+    allow(ChatWorkspace).to receive(:ensure_root!).with(codex_chat).and_return(codex_workspace_path)
     events = []
     allow(AppEvents).to receive(:broadcast) { |**kwargs| events << kwargs }
-    ChatTurnJob.agent_runner = ->(workspace_path:, process_started:, **_) {
+    ChatTurnJob.agent_runner = ->(workspace_path:, process_started:, log_sink:, **_) {
       process = SpawnedProcess.create!(
         kind: "agent",
         command: "claude --print",
@@ -487,13 +616,15 @@ RSpec.describe ChatTurnJob do
       )
       process_started.call(process)
       process.update!(finished_at: Time.current, outcome: "succeeded")
+      log_sink.call("Codex is ready.", kind: "assistant_text")
       result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
     }
 
-    described_class.perform_now(chat.id, message.id)
+    described_class.perform_now(codex_chat.id, message.id)
 
     control_events = events.select { |event| event[:changed] == [ "controls" ] }
-    expect(control_events.map { |event| event.dig(:payload, :agent_busy) }).to eq([ true, false ])
+    expect(control_events.map { |event| event.dig(:payload, :turn_in_flight) || event.dig(:payload, :agent_busy) }).to eq([ true, true, false ])
+    expect(control_events.first.dig(:payload, :agent_busy)).to eq(false)
   end
 
   it "resumes the existing Claude session with a fresh snapshot and without the full system prompt" do
@@ -521,6 +652,94 @@ RSpec.describe ChatTurnJob do
     )
   end
 
+  it "includes compact persisted chat history when resuming a Claude session" do
+    chat.messages.create!(role: "user", content: { text: "Earlier: focus on billing exports." })
+    chat.messages.create!(role: "assistant", content: { text: "I found the CSV exporter and suggested adding filters." })
+    chat.messages.create!(
+      role: "system",
+      content: {
+        text: %(Proposal "Billing export" was confirmed as JOB-123 (proposal slug: billing-export).),
+        source: "proposal_notification"
+      }
+    )
+    chat.create_claude_session!(provider: "claude", session_id: "chat-session-1", transcript_jsonl: "old")
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "chat-session-2", transcript_jsonl: "new")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(received[:resume_session_id]).to eq("chat-session-1")
+    expect(received[:prompt]).to include("Recent persisted chat context fallback:")
+    expect(received[:prompt]).to include("user: Earlier: focus on billing exports.")
+    expect(received[:prompt]).to include("assistant: I found the CSV exporter")
+    expect(received[:prompt]).to include("system: Proposal \"Billing export\" was confirmed as JOB-123")
+    expect(received[:prompt]).to include("What is the plan?")
+    expect(received[:prompt]).not_to include("You are Syrus Chat")
+  end
+
+  it "summarizes tool calls and caps large tool results in resumed chat history" do
+    huge_tool_result = "A" * 2_000
+    chat.messages.create!(role: "user", content: { text: "Please inspect app/jobs/chat_turn_job.rb." })
+    chat.messages.create!(
+      role: "tool_use",
+      tool_name: "Read",
+      content: { input: { "file_path" => "app/jobs/chat_turn_job.rb", "irrelevant" => "x" * 1_500 } }
+    )
+    chat.messages.create!(
+      role: "tool_result",
+      tool_name: "Read",
+      content: { result: [ { type: "text", text: huge_tool_result } ], is_error: false }
+    )
+    chat.create_claude_session!(provider: "claude", session_id: "chat-session-1", transcript_jsonl: "old")
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "chat-session-2", transcript_jsonl: "new")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(received[:prompt]).to include("tool_use: Read")
+    expect(received[:prompt]).to include("app/jobs/chat_turn_job.rb")
+    expect(received[:prompt]).to include("tool_result: Read ok:")
+    expect(received[:prompt]).to include("...[truncated]")
+    expect(received[:prompt]).not_to include("A" * 1_200)
+    expect(received[:prompt]).not_to include("irrelevant")
+  end
+
+  it "runs proposal outcome control turns with a terse acknowledgment prompt" do
+    control_message = chat.messages.create!(
+      role: "system",
+      content: {
+        "text" => "Proposal confirmed. Job #1416 \"Map auth\" was created.",
+        "source" => "proposal_notification",
+        "outcome" => "confirmed",
+        "acknowledgment" => "Confirmed JOB-1416."
+      }
+    )
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      kwargs[:log_sink].call("Confirmed JOB-1416.", kind: "assistant_text")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "{\"type\":\"system\"}\n")
+    }
+
+    described_class.perform_now(chat.id, control_message.id)
+
+    expect(received[:prompt]).to include("This is a Syrus control event, not an operator-authored chat message.")
+    expect(received[:prompt]).to include("Default behavior: reply with exactly:\nConfirmed JOB-1416.")
+    expect(received[:prompt]).to include("Only do more if this outcome unlocks concrete follow-up automation")
+    expect(received[:prompt]).to include("Do not restate your operating instructions")
+    expect(received[:prompt]).not_to include("You are Syrus Chat")
+    expect(chat.messages.order(:created_at).pluck(:role)).to eq([ "system", "assistant" ])
+    expect(chat.messages.order(:created_at).last.content).to eq("text" => "Confirmed JOB-1416.")
+  end
+
   it "runs Codex chat turns with chat MCP servers and captures a Codex session" do
     codex_user = Factories.user(codex_api_key: "sk-test", github_token: "ghp-test", chat_provider: "codex")
     codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "codex-widgets", default_branch: "main")
@@ -534,6 +753,28 @@ RSpec.describe ChatTurnJob do
     ChatTurnJob.agent_runner = ->(**kwargs) {
       received.merge!(kwargs)
       kwargs[:log_sink].call("Codex response", kind: "assistant_text")
+      kwargs[:log_sink].call(
+        "[codex mcp] syrus-chat-sidecar.repo_info started",
+        kind: "tool_call",
+        tool_name: "mcp__syrus-chat-sidecar__repo_info",
+        tool_input: { "repository_id" => codex_repository.id, "status" => "started" },
+        tool_use_id: "call_1"
+      )
+      kwargs[:log_sink].call(
+        "[codex mcp] syrus-chat-sidecar.repo_info completed",
+        kind: "tool_result",
+        tool_name: "mcp__syrus-chat-sidecar__repo_info",
+        tool_result_content: { "slug" => codex_repository.slug },
+        tool_result_error: false,
+        tool_use_id: "call_1"
+      )
+      kwargs[:log_sink].call(
+        "[codex command] bin/rails test started",
+        kind: "tool_call",
+        tool_name: "Command",
+        tool_input: { "command" => "bin/rails test", "status" => "started" },
+        tool_use_id: "cmd_1"
+      )
       result_fixture(session_id: "codex-thread-1", transcript_jsonl: "{\"type\":\"session_meta\"}\n")
     }
 
@@ -561,13 +802,122 @@ RSpec.describe ChatTurnJob do
       "SYRUS_CHAT_CURRENT_MESSAGE_ID" => codex_message.id.to_s,
       "SYRUS_CHAT_MCP_SERVER_NAME" => "syrus-chat-sidecar"
     )
-    expect(codex_chat.messages.order(:created_at).pluck(:role)).to eq([ "user", "assistant" ])
+    messages = codex_chat.messages.order(:created_at).to_a
+    expect(messages.map(&:role)).to eq([ "user", "assistant", "tool_use", "tool_result", "tool_use" ])
+    expect(messages.third).to have_attributes(
+      tool_name: "mcp__syrus-chat-sidecar__repo_info",
+      content: { "input" => { "repository_id" => codex_repository.id, "status" => "started" } }
+    )
+    expect(messages.fourth).to have_attributes(
+      tool_name: "mcp__syrus-chat-sidecar__repo_info",
+      content: {
+        "result" => { "slug" => codex_repository.slug },
+        "is_error" => false,
+        "tool_use_id" => "call_1"
+      }
+    )
+    expect(messages.fifth).to have_attributes(
+      tool_name: "Command",
+      content: { "input" => { "command" => "bin/rails test", "status" => "started" } }
+    )
     expect(codex_chat.reload.claude_session).to have_attributes(
       provider: "codex",
       session_id: "codex-thread-1",
       transcript_jsonl: "{\"type\":\"session_meta\"}\n",
       raw_provider_transcript: "{\"type\":\"session_meta\"}\n"
     )
+  end
+
+  it "uses the chat-level provider override for a turn" do
+    mixed_user = Factories.user(
+      agent_provider: "claude",
+      chat_provider: nil,
+      claude_oauth_token: "oat-test",
+      codex_api_key: "sk-test",
+      github_token: "ghp-test"
+    )
+    mixed_repository = Factories.repository(user: mixed_user, owner: "acme", name: "provider-override", default_branch: "main")
+    mixed_chat = ChatSession.create!(repository: mixed_repository, user: mixed_user, chat_provider: "codex")
+    mixed_message = mixed_chat.messages.create!(role: "user", content: { text: "Use the chat override" })
+    mixed_workspace_path = workspace_root.join("provider-override-chat")
+    allow(ChatWorkspace).to receive(:path_for).with(mixed_chat).and_return(mixed_workspace_path)
+    allow(ChatWorkspace).to receive(:ensure_root!).with(mixed_chat).and_return(mixed_workspace_path)
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "codex-thread-override", transcript_jsonl: "{\"type\":\"session_meta\"}\n")
+    }
+
+    described_class.perform_now(mixed_chat.id, mixed_message.id)
+
+    expect(received).to include(
+      api_key: "sk-test",
+      codex_home: ChatWorkspace.agent_home_for(mixed_chat, "codex").to_s
+    )
+    expect(mixed_chat.reload.claude_session.provider).to eq("codex")
+  end
+
+  it "uses the user default chat provider when the chat provider is blank" do
+    codex_user = Factories.user(
+      agent_provider: "codex",
+      chat_provider: nil,
+      codex_api_key: "sk-test",
+      github_token: "ghp-test"
+    )
+    codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "default-provider", default_branch: "main")
+    codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user, chat_provider: nil)
+    codex_message = codex_chat.messages.create!(role: "user", content: { text: "Use my default" })
+    codex_workspace_path = workspace_root.join("default-provider-chat")
+    allow(ChatWorkspace).to receive(:path_for).with(codex_chat).and_return(codex_workspace_path)
+    allow(ChatWorkspace).to receive(:ensure_root!).with(codex_chat).and_return(codex_workspace_path)
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "codex-thread-default", transcript_jsonl: "{\"type\":\"session_meta\"}\n")
+    }
+
+    described_class.perform_now(codex_chat.id, codex_message.id)
+
+    expect(received).to include(
+      api_key: "sk-test",
+      codex_home: ChatWorkspace.agent_home_for(codex_chat, "codex").to_s
+    )
+    expect(codex_chat.reload.claude_session.provider).to eq("codex")
+  end
+
+  it "includes compact persisted chat history when resuming a Codex session" do
+    codex_user = Factories.user(codex_api_key: "sk-test", github_token: "ghp-test", chat_provider: "codex")
+    codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "codex-context", default_branch: "main")
+    codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user)
+    codex_chat.messages.create!(role: "user", content: { text: "Earlier Codex request: inspect the queue filters." })
+    codex_chat.messages.create!(role: "assistant", content: { text: "The queue filters are in Admin::Queue::Filter." })
+    codex_chat.create_claude_session!(
+      provider: "codex",
+      session_id: "codex-thread-1",
+      transcript_jsonl: "{\"type\":\"session_meta\"}\n"
+    )
+    codex_message = codex_chat.messages.create!(role: "user", content: { text: "Continue from there." })
+    codex_workspace_path = workspace_root.join("codex-context-chat")
+    allow(ChatWorkspace).to receive(:path_for).with(codex_chat).and_return(codex_workspace_path)
+    allow(ChatWorkspace).to receive(:ensure_root!).with(codex_chat).and_return(codex_workspace_path)
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "codex-thread-2", transcript_jsonl: "{\"type\":\"turn\"}\n")
+    }
+
+    described_class.perform_now(codex_chat.id, codex_message.id)
+
+    expect(received[:resume_session_id]).to eq("codex-thread-1")
+    expect(received[:resume_transcript_jsonl]).to include("session_meta")
+    expect(received[:prompt]).to include("Recent persisted chat context fallback:")
+    expect(received[:prompt]).to include("user: Earlier Codex request: inspect the queue filters.")
+    expect(received[:prompt]).to include("assistant: The queue filters are in Admin::Queue::Filter.")
+    expect(received[:prompt]).to include("Continue from there.")
+    expect(received[:prompt]).not_to include("You are Syrus Chat")
   end
 
   it "does not resume a stored session from a different chat provider" do
@@ -600,6 +950,17 @@ RSpec.describe ChatTurnJob do
       session_id: "codex-thread-1",
       transcript_jsonl: "new"
     )
+  end
+
+  it "does not persist nameless tool call events" do
+    ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+      log_sink.call("[codex mcp] started", kind: "tool_call", tool_input: { "status" => "started" })
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "{}\n")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(chat.messages.where(role: "tool_use")).to be_empty
   end
 
   it "records available and unavailable MCP tools while suppressing pending-only MCP health" do

@@ -7,6 +7,10 @@ require "tmpdir"
 
 class ChatTurnJob < ApplicationJob
   CONCURRENCY_GROUP = "repository_chat"
+  HISTORY_FALLBACK_MESSAGE_LIMIT = 24
+  HISTORY_FALLBACK_MAX_BYTES = 12_000
+  HISTORY_FALLBACK_ENTRY_MAX_BYTES = 1_000
+  HISTORY_FALLBACK_TOOL_RESULT_MAX_BYTES = 400
 
   queue_as :chat
   discard_on StandardError
@@ -40,9 +44,11 @@ class ChatTurnJob < ApplicationJob
     ).find(chat_session_id)
     @user_message = @chat.messages.find(user_message_id)
     @turn_started_at = Time.current
+    @stop_request_cutoff_at = @user_message.created_at || @turn_started_at
     @cancelled = false
 
-    @chat.update!(stop_requested_at: nil)
+    clear_stale_stop_request!
+    return if stop_requested?
 
     provider = chat_provider
 
@@ -55,6 +61,9 @@ class ChatTurnJob < ApplicationJob
     workspace_path = ensure_workspace!
     parent_session_id = resume_session_id_for(provider)
     attachment_context = attachment_context_for(workspace_path)
+    return if stop_requested?
+
+    @chat.broadcast_controls if provider.provider == "codex"
 
     result = with_chat_mcp_config do |mcp_config|
       with_git_askpass_env do |agent_env|
@@ -73,12 +82,24 @@ class ChatTurnJob < ApplicationJob
     capture_session!(provider, result) if result
     @chat.record_turn_usage!(result) if result
     touch_chat!
-    deliver_next_queued_message!
+    stop_requested?
+    create_terminal_completion_message! unless @cancelled
+  rescue StandardError
+    stop_requested? || create_terminal_failure_message!
+    touch_chat! if @chat
+    raise
   ensure
-    clear_stop_request_and_broadcast_controls!
+    finalize_turn!
   end
 
   private
+
+  def clear_stale_stop_request!
+    @chat.reload
+    return unless @chat.stop_requested_at && @chat.stop_requested_at <= @stop_request_cutoff_at
+
+    @chat.update!(stop_requested_at: nil)
+  end
 
   def clear_stop_request_and_broadcast_controls!
     return unless @chat
@@ -86,6 +107,13 @@ class ChatTurnJob < ApplicationJob
     @chat.reload
     @chat.update!(stop_requested_at: nil) if @chat.stop_requested_at?
     @chat.broadcast_controls
+  end
+
+  def finalize_turn!
+    return unless @chat
+
+    clear_stop_request_and_broadcast_controls!
+    ChatQueuedMessagePromoter.deliver_one_if_idle!(@chat)
   end
 
   def ensure_workspace!
@@ -129,12 +157,180 @@ class ChatTurnJob < ApplicationJob
 
   def prompt_for(parent_session_id, user_text:)
     snapshot = AgentEnvironmentSnapshot.for_chat(repository: @chat.repository, chat_session: @chat)
+    return proposal_outcome_prompt(snapshot: snapshot, user_text: user_text) if proposal_outcome_message?
+
     if parent_session_id.present?
       elaboration_guidance = Prompts::ChatSystem.new(repository: @chat.repository, chat_session: @chat).elaboration_guidance
-      return [ snapshot, elaboration_guidance.presence, user_text ].compact.join("\n\n---\n\n")
+      return [ snapshot, elaboration_guidance.presence, chat_history_fallback, user_text ].compact.join("\n\n---\n\n")
     end
 
     [ Prompts::ChatSystem.new(repository: @chat.repository, chat_session: @chat).to_s, user_text ].join("\n\n")
+  end
+
+  def chat_history_fallback
+    messages = @chat.messages
+                    .includes(:proposal, :pending_action)
+                    .where.not(id: @user_message.id)
+                    .order(created_at: :desc, id: :desc)
+                    .limit(HISTORY_FALLBACK_MESSAGE_LIMIT)
+                    .to_a
+                    .reverse
+    entries = messages.filter_map { |message| chat_history_entry(message) }
+    return nil if entries.empty?
+
+    body = bounded_history_entries(entries)
+    return nil if body.blank?
+
+    <<~TEXT.strip
+      Recent persisted chat context fallback:
+      Provider resume should still be attempted, but this compact transcript is included so you can continue coherently if provider-side session history is missing, stale, incomplete, or rejected.
+
+      #{body}
+    TEXT
+  end
+
+  def chat_history_entry(message)
+    case message.role
+    when "user", "assistant"
+      text = content_text(message)
+      lines = [ "#{message.role}: #{bounded_history_text(text)}" ]
+      lines << proposal_summary(message.proposal) if message.proposal
+      lines << pending_action_summary(message.pending_action) if message.pending_action
+      lines.join("\n")
+    when "system"
+      text = content_text(message)
+      return nil unless important_system_message?(message, text)
+
+      "system: #{bounded_history_text(text)}"
+    when "tool_use"
+      tool_name = message.tool_name.presence || "tool"
+      content = message.content.is_a?(Hash) ? message.content : {}
+      summary = compact_tool_input(content["input"])
+      [ "tool_use: #{tool_name}", summary.presence ].compact.join(" ")
+    when "tool_result"
+      tool_result_summary(message)
+    end
+  end
+
+  def bounded_history_entries(entries)
+    selected = []
+    total_bytes = 0
+
+    entries.reverse_each do |entry|
+      next if entry.blank?
+
+      separator_bytes = selected.empty? ? 0 : 2
+      candidate_bytes = entry.bytesize + separator_bytes
+      break if total_bytes + candidate_bytes > HISTORY_FALLBACK_MAX_BYTES
+
+      selected << entry
+      total_bytes += candidate_bytes
+    end
+
+    selected.reverse.join("\n\n")
+  end
+
+  def content_text(message)
+    return message.content["text"].to_s if message.content.is_a?(Hash)
+
+    message.content.to_s
+  end
+
+  def bounded_history_text(text, max_bytes = HISTORY_FALLBACK_ENTRY_MAX_BYTES)
+    value = text.to_s.strip
+    return "" if value.blank?
+    return value if value.bytesize <= max_bytes
+
+    "#{value.safe_byteslice(0, max_bytes).strip} ...[truncated]"
+  end
+
+  def important_system_message?(message, text)
+    content = message.content.is_a?(Hash) ? message.content : {}
+    content["source"].to_s == "proposal_notification" ||
+      text.match?(/\AProposal .*(confirmed|rejected|withdrawn|created|materialized)/i) ||
+      text.match?(/\A(Cancelled by operator|Agent turn failed|Agent turn completed|MCP unavailable|Codex resume)/i)
+  end
+
+  def proposal_summary(proposal)
+    return nil unless proposal
+
+    materialized = proposal.materialized_label.presence
+    parts = [
+      "proposal=#{proposal.slug}",
+      "state=#{proposal.state}",
+      "kind=#{proposal.kind}",
+      "title=#{proposal.title.inspect}"
+    ]
+    parts << "materialized=#{materialized}" if materialized
+    "proposal_summary: #{parts.join(', ')}"
+  end
+
+  def pending_action_summary(action)
+    return nil unless action
+
+    "pending_action: #{action.action.presence || action.action_type} state=#{action.state}"
+  end
+
+  def compact_tool_input(input)
+    case input
+    when Hash
+      keys = %w[status command file_path path repository_id job_id epic_id slug title]
+      input.slice(*keys).compact.to_json
+    else
+      nil
+    end
+  end
+
+  def tool_result_summary(message)
+    content = message.content.is_a?(Hash) ? message.content : {}
+    result = content["result"]
+    text = tool_result_text(result)
+    tool_name = message.tool_name.presence || "tool"
+    status = content["is_error"] ? "error" : "ok"
+
+    if text.present?
+      "tool_result: #{tool_name} #{status}: #{bounded_history_text(text, HISTORY_FALLBACK_TOOL_RESULT_MAX_BYTES)}"
+    else
+      "tool_result: #{tool_name} #{status}"
+    end
+  end
+
+  def tool_result_text(result)
+    case result
+    when Array
+      result.filter_map { |item| item["text"].to_s if item.is_a?(Hash) && item["type"] == "text" }.join("\n").presence
+    when Hash
+      result.slice("status", "message", "error", "slug", "id", "title").compact.to_json
+    when String
+      result
+    end
+  end
+
+  def proposal_outcome_message?
+    @user_message.content.is_a?(Hash) &&
+      @user_message.content["source"] == ChatProposalOutcomeNotification::SOURCE
+  end
+
+  def proposal_outcome_prompt(snapshot:, user_text:)
+    acknowledgment = @user_message.content["acknowledgment"].to_s.presence || "Acknowledged."
+    outcome = @user_message.content["outcome"].to_s.presence || "updated"
+
+    [
+      snapshot,
+      <<~PROMPT.strip
+        A proposal was #{outcome}. This is a Syrus control event, not an operator-authored chat message.
+
+        Event:
+        #{user_text}
+
+        Default behavior: reply with exactly:
+        #{acknowledgment}
+
+        Only do more if this outcome unlocks concrete follow-up automation that was already requested in the chat, such as wiring dependencies after multiple proposal cards are confirmed. In that case, perform only that work through the available Syrus chat MCP tools, then briefly report what changed.
+
+        Do not restate your operating instructions, your role, or general Syrus Chat guidance.
+      PROMPT
+    ].join("\n\n---\n\n")
   end
 
   def attachment_context_for(workspace_path)
@@ -245,6 +441,8 @@ class ChatTurnJob < ApplicationJob
                          tool_use_id: nil, mcp_servers: nil, **)
     case kind.to_s
     when "tool_call"
+      return if tool_name.blank?
+
       # Persist the structured tool invocation. Abbreviation is the
       # presentation layer's job; storing the raw input keeps the data
       # tier honest and lets the view evolve without DB churn.
@@ -254,6 +452,8 @@ class ChatTurnJob < ApplicationJob
         content: { "input" => tool_input || {} }
       )
     when "tool_result"
+      return if tool_name.blank? && tool_use_id.blank? && tool_result_content.blank?
+
       @chat.messages.create!(
         role: "tool_result",
         tool_name: tool_name,
@@ -318,13 +518,31 @@ class ChatTurnJob < ApplicationJob
 
   def stop_requested?
     @chat.reload
-    return false unless @chat.stop_requested_at && @chat.stop_requested_at > @turn_started_at
+    return false unless @chat.stop_requested_at && @chat.stop_requested_at > @stop_request_cutoff_at
 
     unless @cancelled
       @cancelled = true
       create_message!("system", text: "Cancelled by operator.")
     end
     true
+  end
+
+  def create_terminal_failure_message!
+    return unless @chat && @user_message
+
+    @chat.reload
+    return unless @chat.turn_in_flight?
+
+    create_message!("system", text: "Agent turn failed.")
+  end
+
+  def create_terminal_completion_message!
+    return unless @chat && @user_message
+
+    @chat.reload
+    return unless @chat.turn_in_flight?
+
+    create_message!("system", text: "Agent turn completed.")
   end
 
   def create_message!(role, content)
@@ -334,6 +552,8 @@ class ChatTurnJob < ApplicationJob
   def capture_session!(provider, result)
     capture = provider.session_capture(result)
     return unless capture
+
+    create_message!("system", text: capture.missing_message) if capture.missing_message.present?
 
     attrs = {
       provider: capture.provider,
@@ -360,24 +580,4 @@ class ChatTurnJob < ApplicationJob
     @chat.update!(last_message_at: Time.current)
   end
 
-  def deliver_next_queued_message!
-    user_message = nil
-
-    ApplicationRecord.transaction do
-      locked_chat = ChatSession.lock.find(@chat.id)
-      queued_message = locked_chat.queued_messages.first
-      if queued_message
-        user_message = locked_chat.messages.create!(role: "user", content: queued_message.content)
-        queued_message.update!(delivered_at: Time.current)
-        locked_chat.update!(
-          last_message_at: Time.current,
-          title: locked_chat.title.presence
-        )
-      end
-    end
-    return false unless user_message
-
-    ChatTurnJob.perform_later(@chat.id, user_message.id)
-    true
-  end
 end

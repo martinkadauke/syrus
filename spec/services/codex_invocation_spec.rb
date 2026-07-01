@@ -18,6 +18,7 @@ RSpec.describe CodexInvocation do
   describe "#run" do
     it "delegates to the injected runner with all kwargs" do
       received = {}
+      startup_timing = described_class::StartupTiming.new(source: "spec", sink: ->(_) {})
       runner = ->(**kwargs) {
         received.merge!(kwargs)
         result_fixture
@@ -30,7 +31,8 @@ RSpec.describe CodexInvocation do
                                    codex_home: "/tmp/codex-home",
                                    mcp_server: { command: "sidecar", args: [] },
                                    resume_session_id: "abc",
-                                   resume_transcript_jsonl: "jsonl").run
+                                   resume_transcript_jsonl: "jsonl",
+                                   startup_timing: startup_timing).run
 
       expect(received).to include(
         workspace_path: "/tmp/wkt",
@@ -39,25 +41,31 @@ RSpec.describe CodexInvocation do
         codex_home: "/tmp/codex-home",
         resume_session_id: "abc",
         resume_transcript_jsonl: "jsonl",
-        model: "gpt-5.5"
+        model: "gpt-5.5",
+        startup_timing: startup_timing
       )
       expect(result).to be_success
     end
   end
 
   describe "default_runner" do
-    def capture_popen(invocation)
+    def capture_popen(invocation, lines: nil, exitstatus: 0)
       captured = { env: nil, cmd: nil, opts: nil }
       allow(Open3).to receive(:popen2e) do |env, *args, **opts, &blk|
         captured[:env] = env
         captured[:cmd] = args
         captured[:opts] = opts
         rd, wr = IO.pipe
-        wr.write({ type: "thread.started", thread_id: "019e-test" }.to_json + "\n")
-        wr.write({ type: "item.completed", item: { type: "agent_message", text: "done" } }.to_json + "\n")
-        wr.write({ type: "turn.completed", usage: { input_tokens: 1, output_tokens: 2, reasoning_output_tokens: 0, cached_input_tokens: 3 } }.to_json + "\n")
+        (lines || [
+          { type: "thread.started", thread_id: "019e-test" },
+          { type: "item.completed", item: { type: "agent_message", text: "done" } },
+          { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 2, reasoning_output_tokens: 0, cached_input_tokens: 3 } }
+        ]).each do |line|
+          wr.write(line.is_a?(String) ? line : line.to_json)
+          wr.write("\n")
+        end
         wr.close
-        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 0)
+        fake_wait = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(exitstatus), 0)
         blk.call($stdin, rd, fake_wait)
         rd.close
       end
@@ -118,6 +126,53 @@ RSpec.describe CodexInvocation do
         expect(restored.size).to eq(1)
         expect(File.read(restored.first)).to eq(jsonl)
         expect(result.transcript_path).to eq(restored.first)
+      end
+    end
+
+    it "logs when a resumed Codex session has no rollout JSONL to restore" do
+      Dir.mktmpdir do |home|
+        events = []
+        invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test",
+                                         codex_home: home,
+                                         resume_session_id: "019e-missing",
+                                         log_sink: ->(chunk, **kwargs) { events << [ chunk, kwargs ] })
+
+        capture_popen(invocation)
+
+        expect(events).to include([
+          "[codex resume] no stored rollout JSONL for session 019e-missing; provider resume may be rejected or incomplete",
+          { kind: "system" }
+        ])
+      end
+    end
+
+    it "logs when a Codex resume turn fails" do
+      Dir.mktmpdir do |home|
+        events = []
+        invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test",
+                                         codex_home: home,
+                                         resume_session_id: "019e-gone",
+                                         resume_transcript_jsonl: "{}\n",
+                                         log_sink: ->(chunk, **kwargs) { events << [ chunk, kwargs ] })
+
+        _, result = capture_popen(
+          invocation,
+          lines: [
+            { type: "thread.started", thread_id: "019e-gone" },
+            { type: "turn.failed", error: "session not found" }
+          ],
+          exitstatus: 1
+        )
+
+        expect(result).not_to be_success
+        expect(events).to include([
+          "[codex error] session not found",
+          { kind: "system" }
+        ])
+        expect(events).to include([
+          "[codex resume] resume for session 019e-gone did not complete successfully: session not found",
+          { kind: "system" }
+        ])
       end
     end
 
@@ -229,6 +284,66 @@ RSpec.describe CodexInvocation do
       end
     end
 
+    it "does not rewrite an unchanged Codex config" do
+      Dir.mktmpdir do |home|
+        invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test", codex_home: home)
+        capture_popen(invocation)
+
+        config_path = File.join(home, "config.toml")
+        expect(File).not_to receive(:write).with(config_path, anything)
+
+        capture_popen(invocation)
+      end
+    end
+
+    it "emits startup timing diagnostics for spawn, MCP startup, and first output" do
+      Dir.mktmpdir do |home|
+        events = []
+        timing = described_class::StartupTiming.new(source: "spec", sink: ->(event) { events << event })
+        invocation = described_class.new(
+          "/tmp/wkt",
+          prompt: "P",
+          api_key: "sk-test",
+          codex_home: home,
+          startup_timing: timing,
+          mcp_servers: {
+            "syrus-chat-sidecar" => {
+              command: "/app/bin/syrus-chat-sidecar",
+              args: [],
+              env: {},
+              required: true
+            }
+          }
+        )
+
+        capture_popen(invocation, lines: [
+          { type: "thread.started", thread_id: "019e-test" },
+          {
+            type: "item.started",
+            item: {
+              type: "mcp_tool_call",
+              server: "syrus-chat-sidecar",
+              tool: "repo_info",
+              arguments: {},
+              call_id: "call_1"
+            }
+          },
+          { type: "item.completed", item: { type: "agent_message", text: "done" } },
+          { type: "turn.completed", usage: { input_tokens: 1, output_tokens: 2 } }
+        ])
+
+        expect(events.join("\n")).to include(
+          'stage="codex_home_prepare"',
+          'stage="config_write"',
+          'stage="transcript_restore"',
+          'stage="process_spawn"',
+          'stage="first_agent_event"',
+          'stage="mcp_startup"',
+          'stage="first_agent_message"'
+        )
+      end
+    end
+
     it "parses JSONL events into the common AgentInvocation::Result shape" do
       Dir.mktmpdir do |home|
         invocation = described_class.new("/tmp/wkt", prompt: "P", api_key: "sk-test", codex_home: home)
@@ -244,6 +359,98 @@ RSpec.describe CodexInvocation do
         expect(result.cache_read_input_tokens).to eq(3)
         expect(result).to be_success
       end
+    end
+  end
+
+  describe "Codex item event logging" do
+    it "passes structured metadata for MCP tool calls and results" do
+      invocation = described_class.new("/tmp/wkt", prompt: "P")
+      events = []
+      log_sink = ->(chunk, **kwargs) { events << [ chunk, kwargs ] }
+
+      invocation.send(:process_event, {
+        type: "item.started",
+        item: {
+          type: "mcp_tool_call",
+          server: "syrus-chat-sidecar",
+          tool: "repo_info",
+          arguments: { "repository_id" => 12 },
+          call_id: "call_1"
+        }
+      }.to_json, log_sink)
+      invocation.send(:process_event, {
+        type: "item.completed",
+        item: {
+          type: "mcp_tool_call",
+          server: "syrus-chat-sidecar",
+          tool: "repo_info",
+          result: { "slug" => "acme/widgets" },
+          call_id: "call_1"
+        }
+      }.to_json, log_sink)
+
+      expect(events).to contain_exactly(
+        [
+          "[codex mcp] syrus-chat-sidecar.repo_info started",
+          include(
+            kind: "tool_call",
+            tool_name: "mcp__syrus-chat-sidecar__repo_info",
+            tool_input: { "repository_id" => 12, "status" => "started" },
+            tool_use_id: "call_1"
+          )
+        ],
+        [
+          "[codex mcp] syrus-chat-sidecar.repo_info completed",
+          include(
+            kind: "tool_result",
+            tool_name: "mcp__syrus-chat-sidecar__repo_info",
+            tool_result_content: { "slug" => "acme/widgets" },
+            tool_result_error: false,
+            tool_use_id: "call_1"
+          )
+        ]
+      )
+    end
+
+    it "passes structured metadata for command executions" do
+      invocation = described_class.new("/tmp/wkt", prompt: "P")
+      events = []
+      log_sink = ->(chunk, **kwargs) { events << [ chunk, kwargs ] }
+
+      invocation.send(:process_event, {
+        type: "item.started",
+        item: {
+          type: "command_execution",
+          command: "bin/rspec spec/services/codex_invocation_spec.rb",
+          id: "cmd_1"
+        }
+      }.to_json, log_sink)
+
+      expect(events).to eq([
+        [
+          "[codex command] bin/rspec spec/services/codex_invocation_spec.rb started",
+          {
+            kind: "tool_call",
+            tool_name: "Command",
+            tool_input: {
+              "command" => "bin/rspec spec/services/codex_invocation_spec.rb",
+              "status" => "started"
+            },
+            tool_use_id: "cmd_1"
+          }
+        ]
+      ])
+    end
+
+    it "does not log nameless MCP or command tool rows" do
+      invocation = described_class.new("/tmp/wkt", prompt: "P")
+      events = []
+      log_sink = ->(chunk, **kwargs) { events << [ chunk, kwargs ] }
+
+      invocation.send(:process_event, { type: "item.started", item: { type: "mcp_tool_call" } }.to_json, log_sink)
+      invocation.send(:process_event, { type: "item.started", item: { type: "command_execution" } }.to_json, log_sink)
+
+      expect(events).to be_empty
     end
   end
 end

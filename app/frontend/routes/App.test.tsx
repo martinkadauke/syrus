@@ -11609,6 +11609,57 @@ describe("App", () => {
     expect(fetchSpy).not.toHaveBeenCalledWith("/api/v1/app/chats/8/message", expect.objectContaining({ method: "POST" }))
   })
 
+  it("updates the chat provider from chat settings", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8" && init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body))
+        const chatProvider = body.chat.chat_provider || null
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({
+          chatProvider,
+          effectiveChatProvider: chatProvider || "claude"
+        })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const input = await screen.findByPlaceholderText("Ask about this repository...")
+    fireEvent.change(input, { target: { value: "/settings" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }))
+
+    const select = await screen.findByLabelText("Chat provider")
+    expect(within(select).getByRole("option", { name: "Default" })).toHaveValue("")
+    expect(within(select).getByRole("option", { name: "Claude" })).toHaveValue("claude")
+    expect(within(select).getByRole("option", { name: "Codex" })).toHaveValue("codex")
+
+    fireEvent.change(select, { target: { value: "codex" } })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8", expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ chat: { chat_provider: "codex" } })
+    })))
+
+    fireEvent.change(await screen.findByLabelText("Chat provider"), { target: { value: "claude" } })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8", expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ chat: { chat_provider: "claude" } })
+    })))
+
+    fireEvent.change(await screen.findByLabelText("Chat provider"), { target: { value: "" } })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8", expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ chat: { chat_provider: null } })
+    })))
+  })
+
   it("files GitHub issues from the report slash command", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -11877,6 +11928,59 @@ describe("App", () => {
     const status = await screen.findByRole("status", { name: "girding itself" })
     expect(status).toHaveTextContent("Accingitur")
     expect(screen.getByTitle("girding itself")).toHaveTextContent("Accingitur")
+  })
+
+  it("keeps Stop acknowledged until chat controls broadcast completion", async () => {
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
+      const path = String(input)
+      if (path === "/api/v1/app/chats/8/stop" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({
+          agentBusy: true,
+          stopRequestedAt: "2026-07-01T12:00:00Z"
+        })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/chats/8") {
+        return Promise.resolve(new Response(JSON.stringify(chatPayload({ agentBusy: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+
+      return Promise.resolve(new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } }))
+    })
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    const stop = await screen.findByRole("button", { name: "Stop agent" })
+    fireEvent.click(stop)
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/chats/8/stop", expect.objectContaining({ method: "POST" })))
+    await waitFor(() => expect(stop).toBeDisabled())
+
+    const subscriptionCalls = actionCable.createSubscription.mock.calls as unknown[][]
+    const appEventSubscription = subscriptionCalls.at(-1)?.[1] as { received?: (event: unknown) => void } | undefined
+    act(() => {
+      appEventSubscription?.received?.({
+        type: "chat.updated",
+        resource: "chat",
+        id: 8,
+        changed: ["controls"],
+        occurred_at: "2026-07-01T12:00:01.000Z",
+        payload: {
+          action: "update_controls",
+          turn_in_flight: false,
+          agent_busy: false,
+          stop_requested_at: null,
+          queued_messages: []
+        }
+      })
+    })
+
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Stop agent" })).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Send message" })).toBeInTheDocument()
   })
 
   it("grows the chat input up to five rows", async () => {
@@ -12436,6 +12540,35 @@ describe("App", () => {
 
     expect(await screen.findByText("tool_result")).toBeInTheDocument()
     expect(screen.queryByRole("heading", { name: "Queue setup" })).not.toBeInTheDocument()
+  })
+
+  it("renders Codex tool rows with descriptive tool labels", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(chatPayload({
+        messages: [
+          {
+            type: "message",
+            id: 10,
+            role: "tool_use",
+            tool_name: "mcp__syrus-chat-sidecar__repo_info",
+            content: { input: { repository_id: 12, status: "started" } },
+            text: "",
+            bookmarkable: false
+          }
+        ]
+      })), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    expect(await screen.findByText("repo_info")).toBeInTheDocument()
+    expect(screen.queryByText("tool_use")).not.toBeInTheDocument()
   })
 
   it("runs chat commands through the app API", async () => {
@@ -15245,7 +15378,18 @@ function chatPayload(overrides: {
   agentBusy?: boolean
   hasMoreOlder?: boolean
   pinned?: boolean
+  stopRequestedAt?: string | null
+  chatProvider?: string | null
+  effectiveChatProvider?: string
+  chatProviderOptions?: Array<Record<string, unknown>>
 } = {}) {
+  const chatProviderOptions = overrides.chatProviderOptions || [
+    { value: null, label: "Default", configured: true, effective_provider: "claude", effective_label: "Claude" },
+    { value: "claude", label: "Claude", configured: true, effective_provider: "claude", effective_label: "Claude" },
+    { value: "codex", label: "Codex", configured: true, effective_provider: "codex", effective_label: "Codex" }
+  ]
+  const effectiveChatProvider = overrides.effectiveChatProvider ?? overrides.chatProvider ?? "claude"
+  const effectiveChatProviderLabel = effectiveChatProvider === "codex" ? "Codex" : "Claude"
   return {
     message: overrides.message,
     chat: {
@@ -15254,9 +15398,13 @@ function chatPayload(overrides: {
       title_pending: false,
       pinned: overrides.pinned ?? false,
       pinned_context: null,
+      chat_provider: overrides.chatProvider ?? null,
+      effective_chat_provider: effectiveChatProvider,
+      effective_chat_provider_label: effectiveChatProviderLabel,
+      chat_provider_options: chatProviderOptions,
       chat_path: overrides.chatPath ?? "/chats/8",
       repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
-      stop_requested_at: null,
+      stop_requested_at: overrides.stopRequestedAt ?? null,
       cumulative_input_tokens: overrides.cumulativeInputTokens ?? 12400,
       cumulative_output_tokens: overrides.cumulativeOutputTokens ?? 3200,
       cumulative_cost_usd: overrides.cumulativeCostUsd ?? 0.0123
@@ -15287,6 +15435,10 @@ function chatPayload(overrides: {
         title_pending: false,
         pinned: overrides.pinned ?? false,
         pinned_context: null,
+        chat_provider: overrides.chatProvider ?? null,
+        effective_chat_provider: effectiveChatProvider,
+        effective_chat_provider_label: effectiveChatProviderLabel,
+        chat_provider_options: chatProviderOptions,
         chat_path: "/chats/8",
         repository: { id: 3, slug: "acme/widgets", repository_path: "/repositories/3" },
         stop_requested_at: null,
@@ -15303,6 +15455,10 @@ function chatPayload(overrides: {
         title_pending: false,
         pinned: false,
         pinned_context: null,
+        chat_provider: null,
+        effective_chat_provider: "claude",
+        effective_chat_provider_label: "Claude",
+        chat_provider_options: chatProviderOptions,
         chat_path: "/chats/4",
         repository: { id: 4, slug: "acme/roads", repository_path: "/repositories/4" },
         stop_requested_at: null,

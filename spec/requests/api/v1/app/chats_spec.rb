@@ -101,9 +101,9 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     end
   end
 
-  it "branches a chat with copied messages, the same owner, and a derived name" do
+  it "branches a chat with copied messages, the same owner, provider setting, and a derived name" do
     sign_in_as(user)
-    chat = ChatSession.create!(user: user, repository: repository, title: "Release planning", last_message_at: 1.hour.ago)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Release planning", chat_provider: "claude", last_message_at: 1.hour.ago)
     chat.messages.create!(role: "user", content: { "text" => "Plan the launch." }, created_at: 2.hours.ago)
     chat.messages.create!(role: "assistant", content: { "text" => "Draft milestones." }, created_at: 90.minutes.ago)
 
@@ -118,10 +118,21 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(branched.user).to eq(user)
     expect(branched.repository).to eq(repository)
     expect(branched.title).to eq("Release planning (branch)")
+    expect(branched.chat_provider).to eq("claude")
     expect(branched.messages.count).to eq(chat.messages.count)
     expect(branched.messages.order(:created_at, :id).pluck(:role)).to eq(%w[user assistant])
     expect(branched.messages.order(:created_at, :id).map { |message| message.content["text"] })
       .to eq([ "Plan the launch.", "Draft milestones." ])
+  end
+
+  it "preserves a default provider setting when branching a chat" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Release planning", chat_provider: nil)
+
+    post "/api/v1/app/chats/#{chat.id}/branch"
+
+    expect(response).to have_http_status(:created)
+    expect(ChatSession.find(parse_body["id"]).chat_provider).to be_nil
   end
 
   it "rejects branching another user's chat" do
@@ -576,7 +587,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(response).to have_http_status(:created)
     chat = ChatSession.last
     expect(chat.user).to eq(user)
-    expect(chat.chat_provider).to eq("claude")
+    expect(chat.chat_provider).to be_nil
+    expect(chat.effective_chat_provider).to eq("claude")
     expect(chat.title).to be_nil
     expect(chat).not_to be_title_pending
     expect(chat.attached_repositories).to contain_exactly(repository)
@@ -584,6 +596,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body.dig("chat", "title")).to eq("widgets")
     expect(parse_body.dig("chat", "title_pending")).to eq(false)
     expect(parse_body.dig("chat", "repository", "slug")).to eq("acme/widgets")
+    expect(parse_body.dig("chat", "chat_provider")).to be_nil
+    expect(parse_body.dig("chat", "effective_chat_provider")).to eq("claude")
   end
 
   it "creates an empty chat session without a first message" do
@@ -597,13 +611,55 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(response).to have_http_status(:created)
     chat = ChatSession.last
     expect(chat.user).to eq(user)
-    expect(chat.chat_provider).to eq("claude")
+    expect(chat.chat_provider).to be_nil
+    expect(chat.effective_chat_provider).to eq("claude")
     expect(chat.repository).to be_nil
     expect(chat.last_message_at).to be_nil
     expect(chat.messages).to be_empty
     expect(ChatMessage.count).to eq(0)
     expect(enqueued_jobs).to be_empty
     expect(parse_body).to include("message" => "Chat created.", "redirect_to" => chat_path(chat))
+  end
+
+  it "updates a chat provider setting to default or a configured explicit provider" do
+    sign_in_as(user)
+    user.update!(codex_api_key: "sk-test")
+    chat = ChatSession.create!(user: user, repository: repository)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { chat_provider: "codex" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.chat_provider).to eq("codex")
+    expect(parse_body.dig("chat", "chat_provider")).to eq("codex")
+    expect(parse_body.dig("chat", "effective_chat_provider")).to eq("codex")
+    expect(parse_body.dig("chat", "chat_provider_options")).to include(
+      include("value" => nil, "label" => "Default", "configured" => true),
+      include("value" => "claude", "label" => "Claude", "configured" => true),
+      include("value" => "codex", "label" => "Codex", "configured" => true)
+    )
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { chat_provider: "" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.chat_provider).to be_nil
+    expect(parse_body.dig("chat", "chat_provider")).to be_nil
+  end
+
+  it "rejects unknown or unconfigured explicit chat providers" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { chat_provider: "codex" } }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to eq("Chat provider is not configured.")
+    expect(chat.reload.chat_provider).to be_nil
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { chat_provider: "oracle" } }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to eq("Chat provider is not configured.")
+    expect(chat.reload.chat_provider).to be_nil
   end
 
   it "enqueues title generation when an unstarted chat receives its first message" do
@@ -639,7 +695,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(response).to have_http_status(:created)
     chat = ChatSession.last
     expect(chat.onboarding?).to be true
-    expect(chat.chat_provider).to eq("claude")
+    expect(chat.chat_provider).to be_nil
+    expect(chat.effective_chat_provider).to eq("claude")
     expect(chat.repository).to eq(repository)
     expect(chat.messages.last.role).to eq("user")
     expect(chat.messages.last.content["text"]).to include("setting up Syrus")
@@ -1453,6 +1510,44 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body.dig("chat", "title")).to eq("Canal review")
   end
 
+  it "requests a kill for a running agent process when stopping a chat" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Active turn", last_message_at: Time.current)
+    process = SpawnedProcess.create!(
+      kind: "agent",
+      command: "claude --print",
+      workdir: chat.workspace_root.to_s,
+      hostname: "worker-1",
+      started_at: Time.current
+    )
+
+    post "/api/v1/app/chats/#{chat.id}/stop"
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.stop_requested_at).to be_present
+    expect(process.reload.kill_requested_at).to be_present
+    expect(process.kill_requested_by_user).to eq(user)
+    expect(parse_body["message"]).to eq("Stop requested.")
+    expect(parse_body.dig("chat", "stop_requested_at")).to be_present
+  end
+
+  it "reconciles a stop immediately when no chat agent process is live" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository, title: "Already stopped", last_message_at: Time.current)
+    chat.messages.create!(role: "user", content: { "text" => "Please stop" })
+
+    post "/api/v1/app/chats/#{chat.id}/stop"
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.stop_requested_at).to be_nil
+    expect(chat.messages.order(:created_at).pluck(:role, :content)).to include(
+      [ "system", { "text" => "Cancelled by operator." } ]
+    )
+    expect(parse_body["message"]).to eq("Stop requested.")
+    expect(parse_body.dig("chat", "stop_requested_at")).to be_nil
+    expect(parse_body.dig("chat", "turn_in_flight")).to eq(false)
+  end
+
   it "clears chat messages and queued messages through the app API" do
     sign_in_as(user)
     chat = ChatSession.create!(user: user, repository: repository, title: "Keep title", last_message_at: Time.current, stop_requested_at: Time.current)
@@ -1509,7 +1604,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       post "/api/v1/app/chats/#{chat.id}/proposals/#{confirmed.id}/confirm"
     }.to change(Job, :count).by(1)
       .and change { chat.messages.reload.where(role: "system").count }.by(1)
-      .and change { chat.messages.reload.where(role: "user").count }.by(1)
+      .and change { chat.messages.reload.where(role: "user").count }.by(0)
       .and have_enqueued_job(ChatTurnJob).with(chat.id, kind_of(Integer))
 
     expect(response).to have_http_status(:ok)
@@ -1520,18 +1615,17 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(confirmation_message).to have_attributes(role: "system", proposal_id: nil)
     expect(confirmation_message.proposal_id).to be_nil
     expect(confirmation_message.content).to eq(
-      "text" => %(Proposal confirmed. Job ##{confirmed.job.id} "Map auth" was created.)
+      "text" => %(Proposal confirmed. Job ##{confirmed.job.id} "Map auth" was created.),
+      "source" => "proposal_notification",
+      "outcome" => "confirmed",
+      "acknowledgment" => "Confirmed JOB-#{confirmed.job.id}."
     )
-    confirmation_notification = chat.messages.where(role: "user").order(:created_at, :id).last
-    expect(confirmation_notification.content).to eq(
-      "text" => %(Proposal "Map auth" was confirmed as JOB-#{confirmed.job.id} (proposal slug: auth-map).),
-      "source" => "proposal_notification"
-    )
+    expect(ChatTurnJob).to have_been_enqueued.with(chat.id, confirmation_message.id)
 
     expect {
       post "/api/v1/app/chats/#{chat.id}/proposals/#{rejected.id}/reject"
     }.to change { chat.messages.reload.where(role: "system").count }.by(1)
-      .and change { chat.messages.reload.where(role: "user").count }.by(1)
+      .and change { chat.messages.reload.where(role: "user").count }.by(0)
       .and have_enqueued_job(ChatTurnJob).with(chat.id, kind_of(Integer))
 
     expect(response).to have_http_status(:ok)
@@ -1541,13 +1635,12 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(rejection_message).to have_attributes(role: "system", proposal_id: nil)
     expect(rejection_message.proposal_id).to be_nil
     expect(rejection_message.content).to eq(
-      "text" => %(Proposal rejected. "Clean up" was discarded.)
+      "text" => %(Proposal rejected. "Clean up" was discarded.),
+      "source" => "proposal_notification",
+      "outcome" => "rejected",
+      "acknowledgment" => "Rejected proposal cleanup."
     )
-    rejection_notification = chat.messages.where(role: "user").order(:created_at, :id).last
-    expect(rejection_notification.content).to eq(
-      "text" => %(Proposal "Clean up" was rejected (proposal slug: cleanup).),
-      "source" => "proposal_notification"
-    )
+    expect(ChatTurnJob).to have_been_enqueued.with(chat.id, rejection_message.id)
   end
 
   it "records confirmed Epic bundle details in a system chat message" do
@@ -1587,12 +1680,12 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       "Proposal confirmed. Epic ##{proposal.epic.id} \"Ship auth\" was created. " \
       "Child jobs: Job ##{schema.job.id} \"Auth schema\", Job ##{ui.job.id} \"Auth UI\"."
     )
-    notification = chat.messages.where(role: "user").order(:created_at, :id).last
-    expect(notification.content).to eq(
-      "text" => "Proposal \"Ship auth\" was confirmed as EPIC-#{proposal.epic.id} " \
-        "with child jobs JOB-#{schema.job.id}, JOB-#{ui.job.id} (proposal slug: ship-auth).",
-      "source" => "proposal_notification"
+    expect(confirmation_message.content).to include(
+      "source" => "proposal_notification",
+      "outcome" => "confirmed",
+      "acknowledgment" => "Confirmed EPIC-#{proposal.epic.id}."
     )
+    expect(chat.messages.where(role: "user").count).to eq(0)
   end
 
   it "rejects proposed child proposals when rejecting an Epic proposal" do
@@ -1696,7 +1789,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(proposal.epic).to be_nil
   end
 
-  it "enqueues proposal outcome notifications while a chat turn is active" do
+  it "enqueues proposal outcome control events while a chat turn is active" do
     sign_in_as(user)
     chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)
     proposal = chat.proposals.create!(slug: "cleanup", title: "Clean up", body: "Sweep it.")
@@ -1710,15 +1803,18 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect {
       post "/api/v1/app/chats/#{chat.id}/proposals/#{proposal.id}/reject"
-    }.to change { chat.messages.reload.where(role: "user").count }.by(1)
+    }.to change { chat.messages.reload.where(role: "system").count }.by(1)
+      .and change { chat.messages.reload.where(role: "user").count }.by(0)
       .and have_enqueued_job(ChatTurnJob).with(chat.id, kind_of(Integer))
 
     expect(response).to have_http_status(:ok)
-    notification = chat.messages.where(role: "user").order(:created_at, :id).last
-    expect(notification.content).to include(
-      "text" => %(Proposal "Clean up" was rejected (proposal slug: cleanup).),
-      "source" => "proposal_notification"
+    control_event = chat.messages.where(role: "system").order(:created_at, :id).last
+    expect(control_event.content).to include(
+      "text" => %(Proposal rejected. "Clean up" was discarded.),
+      "source" => "proposal_notification",
+      "acknowledgment" => "Rejected proposal cleanup."
     )
+    expect(ChatTurnJob).to have_been_enqueued.with(chat.id, control_event.id)
   end
 
   it "confirms and rejects pending actions through the app API" do
