@@ -157,6 +157,8 @@ class ChatTurnJob < ApplicationJob
 
   def prompt_for(parent_session_id, user_text:)
     snapshot = AgentEnvironmentSnapshot.for_chat(repository: @chat.repository, chat_session: @chat)
+    return proposal_outcome_prompt(snapshot: snapshot, user_text: user_text) if proposal_outcome_message?
+
     if parent_session_id.present?
       elaboration_guidance = Prompts::ChatSystem.new(repository: @chat.repository, chat_session: @chat).elaboration_guidance
       return [ snapshot, elaboration_guidance.presence, chat_history_fallback, user_text ].compact.join("\n\n---\n\n")
@@ -302,6 +304,33 @@ class ChatTurnJob < ApplicationJob
     when String
       result
     end
+  end
+
+  def proposal_outcome_message?
+    @user_message.content.is_a?(Hash) &&
+      @user_message.content["source"] == ChatProposalOutcomeNotification::SOURCE
+  end
+
+  def proposal_outcome_prompt(snapshot:, user_text:)
+    acknowledgment = @user_message.content["acknowledgment"].to_s.presence || "Acknowledged."
+    outcome = @user_message.content["outcome"].to_s.presence || "updated"
+
+    [
+      snapshot,
+      <<~PROMPT.strip
+        A proposal was #{outcome}. This is a Syrus control event, not an operator-authored chat message.
+
+        Event:
+        #{user_text}
+
+        Default behavior: reply with exactly:
+        #{acknowledgment}
+
+        Only do more if this outcome unlocks concrete follow-up automation that was already requested in the chat, such as wiring dependencies after multiple proposal cards are confirmed. In that case, perform only that work through the available Syrus chat MCP tools, then briefly report what changed.
+
+        Do not restate your operating instructions, your role, or general Syrus Chat guidance.
+      PROMPT
+    ].join("\n\n---\n\n")
   end
 
   def attachment_context_for(workspace_path)
