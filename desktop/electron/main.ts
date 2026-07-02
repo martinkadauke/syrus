@@ -1389,11 +1389,13 @@ const showWebAppWindow = async () => {
   })
   updateDockVisibility()
 
-  // Whenever a same-origin page finishes loading and the tray isn't
-  // configured for this instance yet, try to mint its token from the
-  // signed-in web session. Cheap no-op once credentials match.
+  // Whenever a same-origin page is showing and the tray isn't configured
+  // for this instance yet, try to mint its token from the signed-in web
+  // session. Cheap no-op once credentials match. Signing in happens via
+  // client-side routing (no did-finish-load), so in-page navigations
+  // trigger the attempt too.
   const handle = webAppWindow
-  handle.window.webContents.on("did-finish-load", () => {
+  const attemptTokenProvisioning = () => {
     let sameOrigin = false
     try {
       sameOrigin = new URL(handle.window.webContents.getURL()).origin === new URL(serverUrl).origin
@@ -1409,7 +1411,9 @@ const showWebAppWindow = async () => {
       getCachedCredentials: () => cachedCredentials,
       saveCredentials
     })
-  })
+  }
+  handle.window.webContents.on("did-finish-load", attemptTokenProvisioning)
+  handle.window.webContents.on("did-navigate-in-page", attemptTokenProvisioning)
 
   try {
     await webAppWindow.loadServerUrl()

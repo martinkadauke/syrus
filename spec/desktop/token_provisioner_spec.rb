@@ -49,7 +49,12 @@ RSpec.describe "desktop token provisioning" do
   it "persists through main.ts's saveCredentials (validation + cable + 0600 file)" do
     expect(provisioner).not_to include("writeCredentialsFile")
     expect(main_process).to include("maybeProvisionDesktopToken")
-    expect(main_process).to match(/did-finish-load[\s\S]*?maybeProvisionDesktopToken/)
+  end
+
+  it "triggers on full loads AND in-page navigations — SPA sign-in fires no did-finish-load" do
+    expect(main_process).to include('.on("did-finish-load", attemptTokenProvisioning)')
+    expect(main_process).to include('.on("did-navigate-in-page", attemptTokenProvisioning)')
+    expect(provisioner).to include("attemptInFlight")
   end
 
   it "only runs against same-origin pages, never the fallback surface" do

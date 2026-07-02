@@ -51,6 +51,9 @@ type ProvisionDeps = {
 
 const normalizeUrl = (url: string) => url.trim().replace(/\/+$/, "")
 
+// In-page navigations can fire in bursts; one attempt at a time is plenty.
+let attemptInFlight = false
+
 export const maybeProvisionDesktopToken = async (
   webContents: WebContents,
   serverUrl: string,
@@ -65,11 +68,18 @@ export const maybeProvisionDesktopToken = async (
     return normalizeUrl(cached.url) === normalized ? "already-configured" : "different-instance"
   }
 
+  if (attemptInFlight) {
+    return "error"
+  }
+
+  attemptInFlight = true
   let result: { state?: string; apiToken?: unknown }
   try {
     result = (await webContents.executeJavaScript(PROVISION_SCRIPT, true)) as { state?: string; apiToken?: unknown }
   } catch {
     return "error"
+  } finally {
+    attemptInFlight = false
   }
 
   if (result?.state === "ok" && typeof result.apiToken === "string" && result.apiToken !== "") {
