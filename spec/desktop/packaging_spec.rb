@@ -51,6 +51,9 @@ RSpec.describe "desktop packaging" do
 
   it "publishes to the tkadauke/syrus GitHub feed the shipped apps will read" do
     expect(builder_config).to match(/provider: github\s+owner: tkadauke\s+repo: syrus/)
+    # Without releaseType, electron-builder creates DRAFT releases —
+    # invisible to auto-update and the releases/latest download permalink.
+    expect(builder_config).to include("releaseType: release")
   end
 
   it "bundles the backend installer assets as sealed extraResources" do
@@ -65,6 +68,10 @@ RSpec.describe "desktop packaging" do
     expect(staging_script).to include("ghcr.io/tkadauke/syrus-local:${version}")
     expect(staging_script).to include('ghcr.io/tkadauke/syrus-local:latest')
     expect(staging_script).to include("manifest.json")
+    # Only actual release-workflow builds pin the versioned tag; a local
+    # `npm run build` at a release-looking version must not pin an image
+    # that was never published.
+    expect(staging_script).to include('process.env.SYRUS_RELEASE_BUILD === "1"')
   end
 
   it "keeps staged resources out of git" do

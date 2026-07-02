@@ -67,3 +67,6 @@ publish:
   - provider: github
     owner: tkadauke
     repo: syrus
+    # electron-builder defaults to DRAFT releases, which are invisible to
+    # both auto-update and the website's releases/latest permalink.
+    releaseType: release

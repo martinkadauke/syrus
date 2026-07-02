@@ -25,14 +25,16 @@ for (const name of ["install.sh", "docker-compose.yml", "compose.env.example"]) 
 }
 fs.chmodSync(path.join(stagingDir, "install.sh"), 0o755)
 
-// Release builds pin the image tag published by `bin/publish-image X.Y.Z`
-// (the release workflow verifies the tag exists before building). Dev and
-// prerelease versions fall back to :latest so unpublished builds still run.
+// Release builds (SYRUS_RELEASE_BUILD=1, set by the release workflow) pin
+// the image tag published by `bin/publish-image X.Y.Z`; the workflow
+// verifies that tag exists before building. Everything else — including a
+// plain local `npm run build` whose package.json version looks like a
+// release — falls back to :latest so unpublished builds still install.
 const version = String(pkg.version ?? "")
-const isReleaseVersion = /^\d+\.\d+\.\d+$/.test(version)
+const isReleaseBuild = process.env.SYRUS_RELEASE_BUILD === "1"
 const image =
   process.env.SYRUS_BACKEND_IMAGE ??
-  (isReleaseVersion ? `ghcr.io/tkadauke/syrus-local:${version}` : "ghcr.io/tkadauke/syrus-local:latest")
+  (isReleaseBuild ? `ghcr.io/tkadauke/syrus-local:${version}` : "ghcr.io/tkadauke/syrus-local:latest")
 
 fs.writeFileSync(
   path.join(stagingDir, "manifest.json"),
