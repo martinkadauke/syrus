@@ -1,0 +1,51 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+
+# The winged-stylus brand mark (issue #933) ships at fixed sizes that the
+# layout, the PWA manifest, and electron-builder all rely on. Dimensions are
+# read straight from the PNG IHDR header — no image library needed.
+RSpec.describe "brand icons" do
+  let(:repo_root) { File.expand_path("../..", __dir__) }
+
+  def png_dimensions(relative_path)
+    File.open(File.join(repo_root, relative_path), "rb") do |file|
+      header = file.read(24)
+      raise "#{relative_path} is not a PNG" unless header[0, 8] == "\x89PNG\r\n\n".b
+      header[16, 8].unpack("N2")
+    end
+  end
+
+  it "ships the favicon and PWA icons at the sizes the layout and manifest declare" do
+    expect(png_dimensions("public/icon.png")).to eq([512, 512])
+    expect(png_dimensions("public/icon-192.png")).to eq([192, 192])
+    expect(png_dimensions("public/icon-512.png")).to eq([512, 512])
+  end
+
+  it "keeps the SVG favicon a valid standalone document" do
+    svg = File.read(File.join(repo_root, "public/icon.svg"), encoding: "UTF-8")
+    expect(svg).to include("<svg")
+    expect(svg).to include('viewBox="0 0 512 512"')
+    expect(svg).not_to include("circle") # the red-dot placeholder is gone
+  end
+
+  it "ships the desktop app icon at 1024 with the in-app icon at 512" do
+    expect(png_dimensions("desktop/build/icon.png")).to eq([1024, 1024])
+    expect(png_dimensions("desktop/assets/syrusIcon.png")).to eq([512, 512])
+  end
+
+  it "keeps the menu-bar template icon small and square" do
+    width, height = png_dimensions("desktop/assets/syrusMenubarTemplate.png")
+    expect(width).to eq(height)
+    expect(width).to be_between(18, 64)
+  end
+
+  it "leaves the existing icon references intact" do
+    layout = File.read(File.join(repo_root, "app/views/layouts/spa.html.erb"), encoding: "UTF-8")
+    expect(layout).to include('href="/icon.png"')
+    expect(layout).to include('href="/icon.svg"')
+    manifest = File.read(File.join(repo_root, "app/views/pwa/manifest.json.erb"), encoding: "UTF-8")
+    expect(manifest).to include("/icon-192.png")
+    expect(manifest).to include("/icon-512.png")
+  end
+end
