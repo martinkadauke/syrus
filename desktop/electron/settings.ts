@@ -1,0 +1,123 @@
+import fs from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
+import Store from "electron-store"
+
+export const DEFAULT_GLOBAL_HOTKEY = "CommandOrControl+Shift+S"
+
+// "" means onboarding has not completed yet; "local" is a Docker stack this
+// app installed and manages; "remote" is an existing Syrus instance we only
+// connect to.
+export type BackendMode = "local" | "remote" | ""
+
+export type LocalInstall = {
+  stateDir: string
+  port: number
+}
+
+export type WindowBounds = {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export type DesktopSettings = {
+  localProjectsRoot: string
+  localRepoPaths: Record<string, string>
+  lastUsedRepo: string
+}
+
+export type DesktopSettingsInput = Pick<DesktopSettings, "localProjectsRoot" | "localRepoPaths">
+
+export type DesktopStore = DesktopSettings & {
+  globalHotkey: string
+  backendMode: BackendMode
+  serverUrl: string
+  localInstall: LocalInstall | null
+  webAppWindowBounds: WindowBounds | null
+  onboardingCompletedAt: string
+}
+
+export const store = new Store<DesktopStore>({
+  defaults: {
+    localProjectsRoot: "",
+    localRepoPaths: {},
+    lastUsedRepo: "",
+    globalHotkey: DEFAULT_GLOBAL_HOTKEY,
+    backendMode: "",
+    serverUrl: "",
+    localInstall: null,
+    webAppWindowBounds: null,
+    onboardingCompletedAt: ""
+  }
+})
+
+// Mutable state of a local install (.env, synced docker-compose.yml,
+// install.log). Lives next to ~/.syrus/credentials: shared Syrus home, no
+// spaces in the path for the shell tooling, and users can still drive it
+// manually with `docker compose` from that directory.
+export const localStateDir = () => path.join(os.homedir(), ".syrus", "local")
+
+export const getBackendMode = (): BackendMode => store.get("backendMode", "")
+
+export const getServerUrl = () => store.get("serverUrl", "").trim()
+
+export const getLocalInstall = (): LocalInstall | null => store.get("localInstall", null)
+
+export type BackendConfig =
+  | { mode: "remote"; serverUrl: string }
+  | { mode: "local"; serverUrl: string; localInstall: LocalInstall }
+
+export const saveBackendConfig = (config: BackendConfig) => {
+  store.set("backendMode", config.mode)
+  store.set("serverUrl", config.serverUrl.trim().replace(/\/+$/, ""))
+  store.set("localInstall", config.mode === "local" ? config.localInstall : null)
+  store.set("onboardingCompletedAt", new Date().toISOString())
+}
+
+export const clearBackendConfig = () => {
+  store.set("backendMode", "")
+  store.set("serverUrl", "")
+  store.set("localInstall", null)
+  store.set("onboardingCompletedAt", "")
+}
+
+const parsePortFromEnvFile = (contents: string) => {
+  const match = contents.match(/^SYRUS_PORT=(\d+)$/m)
+  if (!match) {
+    return 3000
+  }
+
+  const port = Number.parseInt(match[1], 10)
+  return Number.isFinite(port) && port > 0 ? port : 3000
+}
+
+// Zero-prompt adoption for users who already ran Syrus before this app knew
+// about backend modes: existing tray credentials mean a reachable instance
+// (remote mode), an existing ~/.syrus/local install means we manage it
+// (local mode), anything else stays "" so onboarding opens.
+export const migrateBackendConfig = async (credentialsUrl: string | null) => {
+  if (getBackendMode() !== "") {
+    return getBackendMode()
+  }
+
+  if (credentialsUrl && credentialsUrl.trim() !== "") {
+    saveBackendConfig({ mode: "remote", serverUrl: credentialsUrl })
+    return "remote" as const
+  }
+
+  const stateDir = localStateDir()
+  try {
+    const envContents = await fs.readFile(path.join(stateDir, ".env"), "utf8")
+    const port = parsePortFromEnvFile(envContents)
+    saveBackendConfig({
+      mode: "local",
+      serverUrl: `http://localhost:${port}`,
+      localInstall: { stateDir, port }
+    })
+    return "local" as const
+  } catch {
+    return "" as const
+  }
+}

@@ -6,20 +6,23 @@ import os from "node:os"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 import { promisify } from "node:util"
-import Store from "electron-store"
 import { DESKTOP_NOTIFICATION_EVENT, desktopNotificationEvents } from "./appUserEvents.js"
 import { dispatchNativeNotification } from "./nativeNotifications.js"
+import {
+  deleteCredentialsFile,
+  parseCredentials,
+  readCredentialsFile,
+  validateCredentialsShape,
+  writeCredentialsFile
+} from "./credentialsStore.js"
+import type { Credentials } from "./credentialsStore.js"
+import { DEFAULT_GLOBAL_HOTKEY, migrateBackendConfig, store } from "./settings.js"
+import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const TOKEN_DOCS_URL = "https://syrus.dev/docs/cli/"
-const DEFAULT_GLOBAL_HOTKEY = "CommandOrControl+Shift+S"
 const execFileAsync = promisify(execFile)
-
-type Credentials = {
-  url: string
-  token: string
-}
 
 type JobItem = {
   id: number
@@ -112,18 +115,6 @@ type ApiErrorPayload = {
   }
 }
 
-type DesktopSettings = {
-  localProjectsRoot: string
-  localRepoPaths: Record<string, string>
-  lastUsedRepo: string
-}
-
-type DesktopSettingsInput = Pick<DesktopSettings, "localProjectsRoot" | "localRepoPaths">
-
-type DesktopStore = DesktopSettings & {
-  globalHotkey: string
-}
-
 type CheckoutAvailability = {
   cliAvailable: boolean
   localPath: string | null
@@ -208,66 +199,19 @@ const APP_USER_CABLE_MAX_RECONNECT_MS = 30_000
 let appUserCableReconnectMs = APP_USER_CABLE_INITIAL_RECONNECT_MS
 let registeredGlobalHotkey = ""
 
-const store = new Store<DesktopStore>({
-  defaults: {
-    localProjectsRoot: "",
-    localRepoPaths: {},
-    lastUsedRepo: "",
-    globalHotkey: DEFAULT_GLOBAL_HOTKEY
-  }
-})
-
-const credentialsPath = () => path.join(os.homedir(), ".syrus", "credentials")
-
-const validateCredentialsShape = (credentials: Credentials) => {
-  if (credentials.url.trim() === "" || credentials.token.trim() === "") {
-    throw new Error("Syrus instance URL and API token are required.")
-  }
-}
-
-const trimWrappingQuotes = (value: string) => value.replace(/^["']+|["']+$/g, "")
-
-const parseCredentials = (contents: string): Credentials => {
-  const credentials: Credentials = { url: "", token: "" }
-
-  for (const rawLine of contents.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    if (line === "" || line.startsWith("#")) {
-      continue
-    }
-
-    const separatorIndex = line.indexOf("=")
-    if (separatorIndex === -1) {
-      throw new Error(`Invalid credentials line: ${line}`)
-    }
-
-    const key = line.slice(0, separatorIndex).trim()
-    const value = trimWrappingQuotes(line.slice(separatorIndex + 1).trim())
-
-    if (key === "url") {
-      credentials.url = value
-    } else if (key === "token") {
-      credentials.token = value
-    }
-  }
-
-  validateCredentialsShape(credentials)
-  return credentials
-}
-
 const loadCredentials = async (): Promise<Credentials | null> => {
-  let contents: string
+  let contents: string | null
 
   try {
-    contents = await fs.readFile(credentialsPath(), "utf8")
+    contents = await readCredentialsFile()
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      cachedCredentials = null
-      return null
-    }
-
     cachedCredentials = null
     throw error
+  }
+
+  if (contents === null) {
+    cachedCredentials = null
+    return null
   }
 
   try {
@@ -1125,16 +1069,7 @@ const saveCredentials = async (credentials: Credentials) => {
   }
 
   await validateCredentialsWithServer(normalizedCredentials)
-
-  const filePath = credentialsPath()
-  await fs.mkdir(path.dirname(filePath), { recursive: true, mode: 0o700 })
-  await fs.chmod(path.dirname(filePath), 0o700)
-  await fs.writeFile(
-    filePath,
-    `url=${normalizedCredentials.url}\ntoken=${normalizedCredentials.token}\n`,
-    { mode: 0o600 }
-  )
-  await fs.chmod(filePath, 0o600)
+  await writeCredentialsFile(normalizedCredentials)
 
   cachedCredentials = normalizedCredentials
   startAppUserCable(normalizedCredentials)
@@ -1145,13 +1080,7 @@ const saveCredentials = async (credentials: Credentials) => {
 }
 
 const deleteCredentials = async () => {
-  try {
-    await fs.unlink(credentialsPath())
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-      throw error
-    }
-  }
+  await deleteCredentialsFile()
 
   cachedCredentials = null
   setUnreadCount(0)
@@ -1514,6 +1443,7 @@ app.whenReady().then(async () => {
 
   createMenu()
   await loadCredentials()
+  await migrateBackendConfig(cachedCredentials?.url ?? null)
   startAppUserCable(cachedCredentials)
   createTray()
   if (cachedCredentials) {
