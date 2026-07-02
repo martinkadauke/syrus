@@ -1,0 +1,69 @@
+# Packaging for the Syrus desktop app. Signing + notarization activate when
+# the Apple credentials are present in the environment (CSC_LINK,
+# CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER —
+# see .github/workflows/release-desktop.yml); local builds without them
+# produce unsigned artifacts for development only. Never ship an unsigned
+# release build: Gatekeeper blocks it and auto-update refuses to install it.
+appId: app.syrus.desktop
+productName: Syrus
+directories:
+  output: out
+  buildResources: build
+files:
+  - assets/**/*
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+# Staged by scripts/stage-backend-assets.mjs: install.sh, docker-compose.yml,
+# compose.env.example, manifest.json (the backend image pin for this app
+# version). Sealed by the code signature — never written to at runtime.
+extraResources:
+  - from: resources/backend
+    to: backend
+artifactName: ${productName}-${version}-${arch}.${ext}
+mac:
+  category: public.app-category.developer-tools
+  # 512px master; a 1024px design asset would sharpen the Retina dock icon.
+  icon: build/icon.png
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  notarize: true
+  target:
+    # zip is REQUIRED alongside dmg: electron-updater on macOS installs
+    # updates from the zip, and latest-mac.yml references it.
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+dmg:
+  title: Syrus ${version}
+  iconSize: 128
+  # TODO(design): drag-to-Applications background art (660x400 + @2x tiff)
+  # to fully mirror the Claude Desktop look; layout works without it.
+  window:
+    width: 660
+    height: 400
+  contents:
+    - x: 170
+      y: 190
+      type: file
+    - x: 490
+      y: 190
+      type: link
+      path: /Applications
+win:
+  target:
+    - nsis
+linux:
+  category: Development
+  syncDesktopName: true
+  target:
+    - AppImage
+# The auto-update feed. Baked into shipped apps (app-update.yml) — changing
+# it later strands installed apps on the old feed.
+publish:
+  - provider: github
+    owner: tkadauke
+    repo: syrus
