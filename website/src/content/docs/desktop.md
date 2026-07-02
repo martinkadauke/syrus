@@ -27,15 +27,20 @@ terminal, no clone, no manual configuration.
   issues) open in your default browser.
 - **The menu-bar inbox.** Implemented and failed Jobs, notifications with
   badge counts, approve/retry/feedback actions, and a compose shortcut —
-  one keyboard shortcut away. Signing in inside the app window wires the
-  menu bar up automatically; there is no token to copy.
+  one keyboard shortcut away. For admins — which includes the first (and
+  usually only) user of a local install — signing in inside the app window
+  wires the menu bar up automatically; there is no token to copy.
+  Non-admin users on a shared remote instance paste an API token into
+  Preferences instead.
 - **Lifecycle management.** The app starts your local Syrus when it
   launches and leaves it running when you quit, so GitHub polling and
   agent runs continue in the background. Start, stop, and restart live
   in the **Backend** menu.
 - **Automatic updates.** The app updates itself, and each app release
-  pins the exact backend image version it was tested with — backend
-  upgrades ride app updates.
+  pins the exact backend image version it was tested with. After an app
+  update, the next launch offers to bring the local backend up to the
+  pinned version — the update pulls the new image and restarts the
+  backend, so the app asks first instead of doing it behind your back.
 
 ## Requirements
 
