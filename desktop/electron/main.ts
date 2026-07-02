@@ -28,7 +28,7 @@ import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWin
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const TOKEN_DOCS_URL = "https://syrus.dev/docs/cli/"
+const TOKEN_DOCS_URL = "https://www.syrus-ai.dev/docs/cli/"
 const execFileAsync = promisify(execFile)
 
 type JobItem = {
@@ -1936,6 +1936,7 @@ ipcMain.handle("approve-job", async (_event, jobID: number) => approveJob(jobID)
 ipcMain.handle("retry-job", async (_event, jobID: number) => retryJob(jobID))
 ipcMain.handle("submit-job-feedback", async (_event, jobID: number, body: string) => submitJobFeedback(jobID, body))
 ipcMain.handle("get-app-version", async () => app.getVersion())
+ipcMain.handle("get-server-url", async () => getServerUrl())
 ipcMain.handle("onboarding:get-state", async () => ensureOnboardingDriver().getState())
 ipcMain.handle("onboarding:choose-mode", async (_event, mode: "local" | "remote") => {
   ensureOnboardingDriver().chooseMode(mode)

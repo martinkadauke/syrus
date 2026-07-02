@@ -2319,8 +2319,13 @@ export function App() {
   useEffect(() => {
     let isMounted = true
 
-    Promise.all([window.syrusDesktop.getCredentials(), window.syrusDesktop.getDesktopSettings(), window.syrusDesktop.getGlobalHotkey()])
-      .then(([credentials, desktopSettings, savedGlobalHotkey]) => {
+    Promise.all([
+      window.syrusDesktop.getCredentials(),
+      window.syrusDesktop.getDesktopSettings(),
+      window.syrusDesktop.getGlobalHotkey(),
+      window.syrusDesktop.getServerUrl().catch(() => "")
+    ])
+      .then(([credentials, desktopSettings, savedGlobalHotkey, serverUrl]) => {
         if (!isMounted) {
           return
         }
@@ -2341,6 +2346,11 @@ export function App() {
           setToken(credentials.token)
           setAuthState(isPreferencesView ? "setup" : "authenticated")
         } else {
+          // The tray isn't connected yet, but onboarding already knows which
+          // instance this app talks to — prefill it so setup is token-only.
+          if (serverUrl) {
+            setUrl(serverUrl)
+          }
           setAuthState("setup")
         }
       })
