@@ -157,6 +157,15 @@ type ToggleAdminControlResult = {
   controls: AdminControls
 }
 
+// The full discriminated union lives in the renderer's vite-env.d.ts and the
+// main process's installerDriver.ts; the bridge passes it through opaquely.
+type OnboardingState = { phase: string } & Record<string, unknown>
+
+type ConnectRemoteRequest = {
+  url: string
+  token?: string
+}
+
 contextBridge.exposeInMainWorld("syrusDesktop", {
   getCredentials: () => ipcRenderer.invoke("get-credentials") as Promise<Credentials | null>,
   saveCredentials: (credentials: Credentials) =>
@@ -203,6 +212,30 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.invoke("toggle-admin-control", control, pause) as Promise<ToggleAdminControlResult>,
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url) as Promise<void>,
   openTokenDocs: () => ipcRenderer.invoke("open-token-docs") as Promise<void>,
+  getOnboardingState: () => ipcRenderer.invoke("onboarding:get-state") as Promise<OnboardingState>,
+  chooseOnboardingMode: (mode: "local" | "remote") =>
+    ipcRenderer.invoke("onboarding:choose-mode", mode) as Promise<void>,
+  connectRemote: (request: ConnectRemoteRequest) =>
+    ipcRenderer.invoke("onboarding:connect-remote", request) as Promise<void>,
+  startInstall: (port?: number) => ipcRenderer.invoke("onboarding:start-install", port) as Promise<void>,
+  cancelInstall: () => ipcRenderer.invoke("onboarding:cancel-install") as Promise<void>,
+  retryOnboarding: () => ipcRenderer.invoke("onboarding:retry") as Promise<void>,
+  onboardingBack: () => ipcRenderer.invoke("onboarding:back") as Promise<void>,
+  locateEnvFile: () => ipcRenderer.invoke("onboarding:locate-env") as Promise<void>,
+  wipeLocalData: () => ipcRenderer.invoke("onboarding:wipe-data") as Promise<void>,
+  openOrbStackDownload: () => ipcRenderer.invoke("onboarding:open-orbstack-download") as Promise<void>,
+  adoptRunningInstance: () => ipcRenderer.invoke("onboarding:adopt-running") as Promise<void>,
+  finishOnboarding: () => ipcRenderer.invoke("onboarding:finish") as Promise<void>,
+  onOnboardingState: (callback: (state: OnboardingState) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, state: OnboardingState) => callback(state)
+    ipcRenderer.on("onboarding:state-changed", listener)
+    return () => ipcRenderer.removeListener("onboarding:state-changed", listener)
+  },
+  onOnboardingLogLine: (callback: (line: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, line: string) => callback(line)
+    ipcRenderer.on("onboarding:log-line", listener)
+    return () => ipcRenderer.removeListener("onboarding:log-line", listener)
+  },
   onDesktopSettingsUpdated: (callback: () => void) => {
     const listener = () => callback()
     ipcRenderer.on("desktop-settings-updated", listener)

@@ -2,6 +2,8 @@ import React from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { App } from "./App"
+import { OnboardingApp } from "./onboarding/OnboardingApp"
+import "./styles.css"
 
 const root = document.getElementById("root")
 
@@ -9,12 +11,17 @@ if (!root) {
   throw new Error("Missing root element")
 }
 
-const queryClient = new QueryClient()
+// Windows pick their surface via ?view=. Onboarding is a self-contained
+// first-run flow — no server state, so no query client.
+const view = new URLSearchParams(window.location.search).get("view")
 
-createRoot(root).render(
-  <React.StrictMode>
-    <QueryClientProvider client={queryClient}>
+const surface =
+  view === "onboarding" ? (
+    <OnboardingApp />
+  ) : (
+    <QueryClientProvider client={new QueryClient()}>
       <App />
     </QueryClientProvider>
-  </React.StrictMode>
-)
+  )
+
+createRoot(root).render(<React.StrictMode>{surface}</React.StrictMode>)

@@ -155,6 +155,40 @@ type SyrusToggleAdminControlResult = {
   controls: SyrusAdminControls
 }
 
+type SyrusInstallStepId =
+  | "runtime_check"
+  | "runtime_start"
+  | "compose_resolve"
+  | "env_check"
+  | "env_generate"
+  | "image_pull"
+  | "stack_up"
+  | "health"
+
+type SyrusInstallStep = {
+  id: SyrusInstallStepId
+  status: "pending" | "running" | "ok" | "skipped"
+}
+
+type SyrusOnboardingState =
+  | { phase: "welcome" }
+  | { phase: "connect.form"; error: string | null }
+  | { phase: "connect.checking"; url: string }
+  | { phase: "local.precheck" }
+  | { phase: "local.adoptRunning"; url: string }
+  | { phase: "local.adoptExisting"; error: string | null }
+  | { phase: "local.runtimeMissing"; polling: boolean }
+  | { phase: "local.runtimeStarting" }
+  | { phase: "local.portConflict"; port: number }
+  | { phase: "local.installing"; steps: SyrusInstallStep[]; currentStep: SyrusInstallStepId | null }
+  | { phase: "local.failed"; code: number; step: string | null; message: string; logTail: string[] }
+  | { phase: "done"; mode: "local" | "remote"; url: string }
+
+type SyrusConnectRemoteRequest = {
+  url: string
+  token?: string
+}
+
 interface Window {
   syrusDesktop: {
     getCredentials: () => Promise<SyrusCredentials | null>
@@ -190,6 +224,20 @@ interface Window {
     toggleAdminControl: (control: SyrusAdminControl, pause: boolean) => Promise<SyrusToggleAdminControlResult>
     openExternal: (url: string) => Promise<void>
     openTokenDocs: () => Promise<void>
+    getOnboardingState: () => Promise<SyrusOnboardingState>
+    chooseOnboardingMode: (mode: "local" | "remote") => Promise<void>
+    connectRemote: (request: SyrusConnectRemoteRequest) => Promise<void>
+    startInstall: (port?: number) => Promise<void>
+    cancelInstall: () => Promise<void>
+    retryOnboarding: () => Promise<void>
+    onboardingBack: () => Promise<void>
+    locateEnvFile: () => Promise<void>
+    wipeLocalData: () => Promise<void>
+    openOrbStackDownload: () => Promise<void>
+    adoptRunningInstance: () => Promise<void>
+    finishOnboarding: () => Promise<void>
+    onOnboardingState: (callback: (state: SyrusOnboardingState) => void) => () => void
+    onOnboardingLogLine: (callback: (line: string) => void) => () => void
     onDesktopSettingsUpdated: (callback: () => void) => () => void
     onCredentialsCleared: (callback: () => void) => () => void
     onCredentialsSaved: (callback: (credentials: SyrusCredentials) => void) => () => void
