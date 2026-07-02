@@ -1,4 +1,7 @@
-import { execFile } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
+import { createWriteStream } from "node:fs"
+import fs from "node:fs/promises"
+import path from "node:path"
 import { promisify } from "node:util"
 import { getBackendMode, getLocalInstall, localStateDir } from "../settings.js"
 import {
@@ -9,6 +12,7 @@ import {
   startRuntimeApp,
   syrusHealthy
 } from "./dockerRuntime.js"
+import { installerScriptPath } from "./installPaths.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -119,6 +123,70 @@ export const stopBackend = async (): Promise<boolean> => {
     // "containers-down" failure within the next tick.
     lastHealthy = false
     return true
+  } catch {
+    return false
+  } finally {
+    busy = false
+  }
+}
+
+// The SYRUS_IMAGE pin the local install actually runs; null when .env is
+// missing or has no pin (pre-pin installs float on :latest).
+export const currentImagePin = async (): Promise<string | null> => {
+  try {
+    const contents = await fs.readFile(path.join(stateDir(), ".env"), "utf8")
+    return contents.match(/^SYRUS_IMAGE=(.*)$/m)?.[1]?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+// Applies a new pinned image by re-running the bundled installer against the
+// existing state dir — the same audited path a fresh install takes: rewrite
+// the SYRUS_IMAGE pin, pull, recreate containers, health-gate. Output appends
+// to install.log so Backend → Open Install Log covers updates too.
+export const updateBackend = async (image: string): Promise<boolean> => {
+  if (getBackendMode() !== "local" || busy) {
+    return false
+  }
+
+  busy = true
+  try {
+    if (!(await ensureDaemon())) {
+      return false
+    }
+
+    const env = execEnv()
+    // Test-pacing overrides are for onboarding-driver specs only.
+    delete env.SYRUS_HEALTH_POLLS
+    delete env.SYRUS_PULL_RETRY_DELAY
+
+    const log = createWriteStream(path.join(stateDir(), "install.log"), { flags: "a" })
+    try {
+      return await new Promise<boolean>((resolve) => {
+        const child = spawn(
+          "/bin/bash",
+          [
+            installerScriptPath(),
+            "--docker",
+            "--non-interactive",
+            "--json",
+            "--skip-runtime-install",
+            "--target-dir",
+            stateDir(),
+            "--image",
+            image
+          ],
+          { env }
+        )
+        child.stdout.pipe(log, { end: false })
+        child.stderr.pipe(log, { end: false })
+        child.on("error", () => resolve(false))
+        child.on("close", (code) => resolve(code === 0))
+      })
+    } finally {
+      log.end()
+    }
   } catch {
     return false
   } finally {

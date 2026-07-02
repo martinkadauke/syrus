@@ -1,4 +1,4 @@
-import { app } from "electron"
+import { app, autoUpdater as nativeAutoUpdater } from "electron"
 import electronUpdater from "electron-updater"
 
 const { autoUpdater } = electronUpdater
@@ -19,6 +19,10 @@ type UpdateDeps = {
   // main.ts re-renders the app menu and tray menu with a
   // "Restart to update Syrus (vX)" item.
   onUpdateDownloaded: (version: string) => void
+  // main.ts sets its isQuitting flag: quitAndInstall closes all windows
+  // before any quit event fires, so the tray's hide-on-close handler would
+  // otherwise preventDefault and silently abort the install.
+  onBeforeQuitForUpdate: () => void
 }
 
 export const initAutoUpdates = (deps: UpdateDeps) => {
@@ -32,6 +36,10 @@ export const initAutoUpdates = (deps: UpdateDeps) => {
     downloadedVersion = info.version
     deps.onUpdateDownloaded(info.version)
   })
+
+  // Fired by Squirrel.Mac for any install path, including electron-updater's
+  // autoInstallOnAppQuit — belt-and-braces beyond our own menu item.
+  nativeAutoUpdater.on("before-quit-for-update", deps.onBeforeQuitForUpdate)
 
   // Log-only: a tray app that dialogs about failed update checks would spam
   // every offline user.
@@ -47,8 +55,9 @@ export const initAutoUpdates = (deps: UpdateDeps) => {
 
 export const downloadedUpdateVersion = () => downloadedVersion
 
-// The existing before-quit handler sets isQuitting, so windows close for
-// real instead of hiding — quitAndInstall composes with the tray lifecycle.
+// Callers MUST set the tray lifecycle's isQuitting flag first:
+// quitAndInstall closes all windows before any quit event fires, so the
+// hide-on-close handler would otherwise preventDefault and abort the install.
 export const quitAndInstallUpdate = () => {
   autoUpdater.quitAndInstall()
 }

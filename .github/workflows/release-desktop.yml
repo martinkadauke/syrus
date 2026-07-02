@@ -1,18 +1,15 @@
 # Builds, signs, notarizes, and publishes the Syrus macOS desktop app on
 # every v* tag. See docs/releasing.md for the end-to-end runbook and the
-# required repository secrets. `workflow_dispatch` with unsigned_dry_run
-# exercises the pipeline before Apple credentials exist (publishes nothing).
+# required repository secrets. A workflow_dispatch run exercises the
+# pipeline unsigned before Apple credentials exist (publishes nothing).
 name: Release desktop app
 
 on:
   push:
     tags: ["v*"]
+  # Any workflow_dispatch run is an unsigned, publish-nothing pipeline test;
+  # only v* tag pushes build, sign, and publish.
   workflow_dispatch:
-    inputs:
-      unsigned_dry_run:
-        description: "Build unsigned and publish nothing (pipeline test)"
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -32,12 +29,16 @@ jobs:
             echo "version=$(node -p "require('./desktop/package.json').version")" >> "$GITHUB_OUTPUT"
           fi
 
+      # The tag name is attacker-influenceable for anyone with tag-push
+      # access; it reaches shell only via env, never inline interpolation.
       - name: "Guard: package.json version matches the tag"
         if: github.ref_type == 'tag'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           PKG_VERSION=$(node -p "require('./desktop/package.json').version")
-          if [[ "$PKG_VERSION" != "${{ steps.version.outputs.version }}" ]]; then
-            echo "::error::desktop/package.json version ($PKG_VERSION) does not match the tag (${{ steps.version.outputs.version }}). Bump the version, merge, then tag."
+          if [[ "$PKG_VERSION" != "$VERSION" ]]; then
+            echo "::error::desktop/package.json version ($PKG_VERSION) does not match the tag ($VERSION). Bump the version, merge, then tag."
             exit 1
           fi
 
@@ -46,8 +47,9 @@ jobs:
       # DMG's bundled installer pins this exact image tag.
       - name: "Guard: backend image tag exists on GHCR"
         if: github.ref_type == 'tag'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:tkadauke/syrus-local:pull" | jq -r .token)
           if ! curl -fsSL -o /dev/null \
             -H "Authorization: Bearer $TOKEN" \
@@ -89,6 +91,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYRUS_RELEASE_BUILD: "1"
         run: npm --prefix desktop run build -- --publish always
 
       - name: Build unsigned (dry run)
@@ -113,7 +116,7 @@ jobs:
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           cp "desktop/out/Syrus-$VERSION-arm64.dmg" "$RUNNER_TEMP/Syrus.dmg"
           gh release upload "v$VERSION" "$RUNNER_TEMP/Syrus.dmg" --clobber

@@ -12,8 +12,12 @@ halves as a tested pair:
   the pin into the app's `manifest.json`).
 
 Backend upgrades ride app auto-update: a new app version carries a new image
-pin, and the app's installer pulls it. `:latest` keeps being published for
-the clone-and-`install.sh` audience; nothing changes for them.
+pin, and on the next launch the app compares the pin against the local
+install's `.env` and offers to update — accepting re-runs the bundled
+installer (pull, recreate, health-gate). The pin is only written on release
+builds (`SYRUS_RELEASE_BUILD=1`, set by the release workflow); local packaging
+stages `:latest` so dev builds never prompt. `:latest` keeps being published
+for the clone-and-`install.sh` audience; nothing changes for them.
 
 ## Runbook
 
@@ -71,8 +75,8 @@ The workflow refuses to publish a tag build without signing secrets:
 
 ## Testing the pipeline without credentials
 
-- `workflow_dispatch` → "Release desktop app" with `unsigned_dry_run` builds
-  unsigned artifacts and publishes nothing.
+- `workflow_dispatch` → "Release desktop app" builds unsigned artifacts and
+  publishes nothing (only `v*` tag pushes publish).
 - Local packaging check: `npm --prefix desktop run build` (unsigned without
   the Apple env vars) or `npx electron-builder --dir` for an unpacked app.
 - Signing verification, once credentials exist (run from a clean, non-Dropbox

@@ -38,6 +38,33 @@ RSpec.describe "desktop auto-update and release pipeline" do
     expect(main_process).to include("appUpdates.initAutoUpdates")
   end
 
+  it "sets the quit flag before installing so hide-on-close cannot abort the update" do
+    # quitAndInstall closes all windows before any quit event fires; without
+    # the flag the tray's hide-on-close handler preventDefaults and the
+    # update silently never installs.
+    expect(main_process).to match(/isQuitting = true\s*\n\s*appUpdates\.quitAndInstallUpdate\(\)/)
+    expect(main_process).to match(/onBeforeQuitForUpdate: \(\) => \{\s*\n\s*isQuitting = true/)
+    expect(app_updates).to include('nativeAutoUpdater.on("before-quit-for-update"')
+  end
+
+  it "offers the pinned backend upgrade after an app update instead of mutating silently" do
+    lifecycle = read(desktop_root, "electron/installer/backendLifecycle.ts")
+
+    # main.ts compares the release manifest pin against the install's .env pin
+    # once the backend is up, and asks before applying.
+    expect(main_process).to include("offerBackendUpdateIfPinned")
+    expect(main_process).to match(/ensureRunning\(\)\.then\(\(\) => offerBackendUpdateIfPinned\(\)\)/)
+    expect(main_process).to include("readBackendManifest")
+    expect(main_process).to include('"Update Backend"')
+
+    # The update re-runs the bundled installer against the state dir — the
+    # same audited pull/up/health path a fresh install takes.
+    expect(lifecycle).to match(/currentImagePin[\s\S]*?SYRUS_IMAGE=/)
+    expect(lifecycle).to match(/updateBackend[\s\S]*?"--image",\s*\n\s*image/)
+    expect(lifecycle).to match(/updateBackend = async[\s\S]*?"--skip-runtime-install"/)
+    expect(lifecycle).to include('createWriteStream(path.join(stateDir(), "install.log"), { flags: "a" })')
+  end
+
   it "declares the electron-updater dependency" do
     package_json = JSON.parse(read(desktop_root, "package.json"))
     expect(package_json.dig("dependencies", "electron-updater")).not_to be_nil
@@ -50,6 +77,19 @@ RSpec.describe "desktop auto-update and release pipeline" do
     expect(release_workflow).to include("--publish always")
     expect(release_workflow).to match(/if: github\.ref_type == 'tag'\s+env:[\s\S]*?run: npm --prefix desktop run build -- --publish always/)
     expect(release_workflow).to include('CSC_IDENTITY_AUTO_DISCOVERY: "false"')
+  end
+
+  it "release workflow pins the backend image and never interpolates the tag into shell" do
+    # Release builds must stage the versioned image pin (stage-backend-assets
+    # only writes it when SYRUS_RELEASE_BUILD=1).
+    expect(release_workflow).to match(/SYRUS_RELEASE_BUILD: "1"[\s\S]{0,200}?--publish always/)
+
+    # The tag name is attacker-influenceable; it must reach run: bodies only
+    # via env indirection, never ${{ }} inside shell.
+    run_bodies = release_workflow.scan(/run: \|[\s\S]*?(?=\n      - |\n\njobs:|\z)/)
+    run_bodies.each do |body|
+      expect(body).not_to include("${{ steps.version.outputs.version }}")
+    end
   end
 
   it "release workflow enforces version match and the publish-image-first ordering" do
