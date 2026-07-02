@@ -62,6 +62,48 @@ docker compose down                 # stop
 ./install.sh --docker               # pull updates and restart
 ```
 
+## Driving the installer from automation
+
+`install.sh --docker` doubles as a headless installer — the Syrus macOS
+desktop app drives this exact script during its first-run setup. All flags
+are optional; without them the behavior above is unchanged.
+
+| Flag | Effect |
+| --- | --- |
+| `--non-interactive` | Never prompt; a missing decision is a usage error (exit 2). |
+| `--json` | Machine-readable NDJSON events on stdout (`start`, `step`, `log`, `error`, `done`); human-readable output moves to stderr. |
+| `--target-dir DIR` | Directory that owns mutable state: `.env` plus a synced copy of `docker-compose.yml`. Compose runs from there. Default: the script's own directory (the clone). |
+| `--skip-runtime-install` | Never install Homebrew/OrbStack. An installed-but-stopped runtime is still started; with no runtime at all the script exits 10. |
+| `--image REF` | Pin `SYRUS_IMAGE` to a specific tag. The pin is persisted into `.env` so later plain `docker compose up` runs use the same tag. |
+| `--port N` | First install only: serve on this port instead of 3000 (sets `SYRUS_PORT` and `SYRUS_APP_HOST` during `.env` generation). |
+
+`step` events carry an `id` from this fixed sequence: `runtime_check`,
+`runtime_install`, `runtime_start`, `compose_resolve`, `env_check`,
+`env_generate`, `image_pull`, `stack_up`, `health`. The final `health` step
+polls the app's `/up` endpoint, so `done` means the web UI actually answers,
+not just that containers were created.
+
+Failures are classified by exit code so a driving process can react without
+parsing text:
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | Success — the app answers on its port. |
+| `2` | Usage error (unknown flag, missing mode in non-interactive runs). |
+| `10` | No container runtime and `--skip-runtime-install` was set. |
+| `11` | A runtime exists but its daemon never became ready. |
+| `12` | Docker Compose is not available. |
+| `20` | The `syrus_syrus-data` volume exists but `.env` is missing — the encryption-key guard. Restore the original `.env` or wipe with `docker compose down -v`. |
+| `30` | Image pull failed (network, tag, or package visibility). |
+| `40` | `docker compose up` failed. |
+| `41` | The stack started but never became healthy. |
+
+One `.env` owns an installation. If you first installed from a clone (`.env`
+at the repo root) and later point an automated install at a different
+`--target-dir`, the guard exits 20 because the data volume exists but that
+directory has no `.env` — copy your original `.env` into the target
+directory to adopt the existing installation.
+
 ## Build or customize the image
 
 From a checkout of the repo:
