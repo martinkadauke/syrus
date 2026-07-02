@@ -32,6 +32,13 @@ RSpec.describe "desktop web-container window" do
     expect(web_app_window).to include("shell.openExternal")
   end
 
+  it "lets GitHub flows open a child window so the manifest POST survives" do
+    # Externally-opened URLs are GETs; the GitHub App registration form POSTs
+    # a manifest with target=_blank and would arrive empty.
+    expect(web_app_window).to match(/target\.origin === "https:\/\/github\.com"[\s\S]{0,400}action: "allow"/)
+    expect(web_app_window).to match(/overrideBrowserWindowOptions[\s\S]{0,200}sandbox: true/)
+  end
+
   it "falls back to the status page only for real main-frame failures of the server URL" do
     expect(web_app_window).to include('"did-fail-load"')
     # ERR_ABORTED (-3) is benign (superseded navigation / download) and must

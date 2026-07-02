@@ -72,7 +72,30 @@ export const createWebAppWindow = ({
       const target = new URL(url)
       if (target.origin === serverOrigin) {
         void window.loadURL(target.toString())
-      } else if (["http:", "https:"].includes(target.protocol)) {
+        return { action: "deny" }
+      }
+
+      // GitHub App registration POSTs a manifest form to github.com with
+      // target=_blank. Opening that externally would drop the POST body
+      // (the browser gets a GET → an empty Create form), so GitHub flows
+      // run in a child window instead; GitHub redirects it back to the
+      // instance when the App is created.
+      if (target.origin === "https://github.com") {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: {
+            width: 1080,
+            height: 780,
+            webPreferences: {
+              contextIsolation: true,
+              nodeIntegration: false,
+              sandbox: true
+            }
+          }
+        }
+      }
+
+      if (["http:", "https:"].includes(target.protocol)) {
         void shell.openExternal(target.toString())
       }
     } catch {
