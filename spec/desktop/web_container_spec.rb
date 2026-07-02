@@ -32,9 +32,23 @@ RSpec.describe "desktop web-container window" do
     expect(web_app_window).to include("shell.openExternal")
   end
 
-  it "falls back to the status page only for main-frame failures of the server URL" do
+  it "falls back to the status page only for real main-frame failures of the server URL" do
     expect(web_app_window).to include('"did-fail-load"')
-    expect(web_app_window).to include("if (!isMainFrame || !validatedURL.startsWith(serverOrigin))")
+    # ERR_ABORTED (-3) is benign (superseded navigation / download) and must
+    # not yank a healthy app to the status page.
+    expect(web_app_window).to include("if (errorCode === -3 || !isMainFrame || !validatedURL.startsWith(serverOrigin))")
+  end
+
+  it "denies renderer-initiated file: navigations" do
+    # The old guard carried a file: exemption; the condition must not.
+    expect(web_app_window).not_to include('target.protocol !== "file:"')
+    expect(web_app_window).to include("if (target.origin !== serverOrigin) {")
+  end
+
+  it "gates startup on the single-instance lock so the losing instance runs nothing" do
+    expect(main_process).to include("const hasSingleInstanceLock = app.requestSingleInstanceLock()")
+    when_ready = main_process[/app\.whenReady\(\)\.then\(async \(\) => \{[\s\S]{0,200}/]
+    expect(when_ready).to include("if (!hasSingleInstanceLock)")
   end
 
   it "recovers by polling /up from the main process and reloading" do

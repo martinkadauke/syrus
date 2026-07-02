@@ -1646,7 +1646,11 @@ ipcMain.handle("open-external", async (_event, url: string) => {
 })
 
 // One Syrus at a time: a second launch focuses the existing instance.
-if (!app.requestSingleInstanceLock()) {
+// app.quit() is asynchronous: the losing instance's whenReady handler would
+// still run (racing store writes against the primary, flashing a second
+// tray) unless startup is explicitly gated on the lock.
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) {
   app.quit()
 }
 
@@ -1655,6 +1659,10 @@ app.on("second-instance", () => {
 })
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) {
+    return
+  }
+
   if (process.platform === "darwin") {
     app.dock?.hide()
   }

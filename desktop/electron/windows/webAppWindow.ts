@@ -46,7 +46,10 @@ export const createWebAppWindow = ({
   })
 
   // Same-origin navigation stays in the window; everything else (GitHub PRs,
-  // issue links, docs) opens in the user's default browser.
+  // issue links, docs) opens in the user's default browser. No file:
+  // exemption: will-navigate never fires for the main process's own
+  // loadFile/loadURL calls, so any file: navigation seen here is remote
+  // content trying to reach local files — deny it.
   window.webContents.on("will-navigate", (event, targetUrl) => {
     let target: URL
     try {
@@ -56,7 +59,7 @@ export const createWebAppWindow = ({
       return
     }
 
-    if (target.origin !== serverOrigin && target.protocol !== "file:") {
+    if (target.origin !== serverOrigin) {
       event.preventDefault()
       if (["http:", "https:"].includes(target.protocol)) {
         void shell.openExternal(target.toString())
@@ -79,8 +82,12 @@ export const createWebAppWindow = ({
     return { action: "deny" }
   })
 
-  window.webContents.on("did-fail-load", (_event, _errorCode, _description, validatedURL, isMainFrame) => {
-    if (!isMainFrame || !validatedURL.startsWith(serverOrigin)) {
+  window.webContents.on("did-fail-load", (_event, errorCode, _description, validatedURL, isMainFrame) => {
+    // ERR_ABORTED (-3) is benign — a load superseded by another navigation
+    // or converted into a download (e.g. the web app's transcript download
+    // links). Treating it as backend failure would yank the user off their
+    // page while the backend is perfectly healthy.
+    if (errorCode === -3 || !isMainFrame || !validatedURL.startsWith(serverOrigin)) {
       return
     }
 
