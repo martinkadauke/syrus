@@ -76,6 +76,14 @@ your original `.env` (it copies the file, never moves it). See the
 [Docker Compose](/docs/deployment/docker-compose#driving-the-installer-from-automation)
 page for the underlying installer contract.
 
+## Starting over
+
+**Syrus → Run Setup Again…** forgets the app's backend configuration and
+reopens the first-run setup — useful after moving your instance, wiping
+Docker, or pointing the app at the wrong URL. It never deletes your
+credentials or your Syrus data. If the app detects that Docker is healthy
+but the Syrus data volume is gone entirely, it offers this itself.
+
 ## Uninstall
 
 1. Quit Syrus and stop the stack: **Backend → Stop Syrus** (or
