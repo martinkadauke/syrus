@@ -67,14 +67,16 @@ RSpec.describe ChatTurnJob do
         "● propose_job(...)",
         kind: "tool_call",
         tool_name: "propose_job",
-        tool_input: { "repo" => repository.slug, "title" => "T", "description" => "b" }
+        tool_input: { "repo" => repository.slug, "title" => "T", "description" => "b" },
+        tool_use_id: "toolu_abc123"
       )
       kwargs[:log_sink].call(
         "  Job drafted",
         kind: "tool_result",
         tool_name: "propose_job",
         tool_result_content: [ { "type" => "text", "text" => "Job drafted" } ],
-        tool_result_error: false
+        tool_result_error: false,
+        tool_use_id: "toolu_abc123"
       )
       result_fixture(
         session_id: "chat-session-1",
@@ -737,7 +739,7 @@ RSpec.describe ChatTurnJob do
     expect(received[:prompt]).to include("Do not restate your operating instructions")
     expect(received[:prompt]).not_to include("You are Syrus Chat")
     expect(chat.messages.order(:created_at).pluck(:role)).to eq([ "system", "assistant" ])
-    expect(chat.messages.order(:created_at).last.content).to eq("text" => "Confirmed JOB-1416.")
+    expect(chat.messages.order(:created_at).last.content).to eq([ { "type" => "text", "text" => "Confirmed JOB-1416." } ])
   end
 
   it "runs Codex chat turns with chat MCP servers and captures a Codex session" do
@@ -806,19 +808,30 @@ RSpec.describe ChatTurnJob do
     expect(messages.map(&:role)).to eq([ "user", "assistant", "tool_use", "tool_result", "tool_use" ])
     expect(messages.third).to have_attributes(
       tool_name: "mcp__syrus-chat-sidecar__repo_info",
-      content: { "input" => { "repository_id" => codex_repository.id, "status" => "started" } }
+      content: {
+        "type" => "tool_use",
+        "id" => "call_1",
+        "name" => "mcp__syrus-chat-sidecar__repo_info",
+        "input" => { "repository_id" => codex_repository.id, "status" => "started" }
+      }
     )
     expect(messages.fourth).to have_attributes(
       tool_name: "mcp__syrus-chat-sidecar__repo_info",
       content: {
-        "result" => { "slug" => codex_repository.slug },
-        "is_error" => false,
-        "tool_use_id" => "call_1"
+        "type" => "tool_result",
+        "tool_use_id" => "call_1",
+        "content" => { "slug" => codex_repository.slug },
+        "is_error" => false
       }
     )
     expect(messages.fifth).to have_attributes(
       tool_name: "Command",
-      content: { "input" => { "command" => "bin/rails test", "status" => "started" } }
+      content: {
+        "type" => "tool_use",
+        "id" => "cmd_1",
+        "name" => "Command",
+        "input" => { "command" => "bin/rails test", "status" => "started" }
+      }
     )
     expect(codex_chat.reload.claude_session).to have_attributes(
       provider: "codex",
@@ -920,7 +933,7 @@ RSpec.describe ChatTurnJob do
     expect(received[:prompt]).not_to include("You are Syrus Chat")
   end
 
-  it "does not resume a stored session from a different chat provider" do
+  it "rehydrates a Codex transcript from ChatMessages when the prior session was Claude" do
     codex_user = Factories.user(codex_api_key: "sk-test", github_token: "ghp-test", chat_provider: "codex")
     codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "mixed-provider", default_branch: "main")
     codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user)
@@ -929,7 +942,8 @@ RSpec.describe ChatTurnJob do
       session_id: "claude-session-1",
       transcript_jsonl: "old"
     )
-    codex_message = codex_chat.messages.create!(role: "user", content: { text: "Start fresh in Codex" })
+    codex_chat.messages.create!(role: "assistant", content: [{ "type" => "text", "text" => "Here is what I found." }])
+    codex_message = codex_chat.messages.create!(role: "user", content: { text: "Continue in Codex" })
     codex_workspace_path = workspace_root.join("mixed-provider-chat")
     allow(ChatWorkspace).to receive(:path_for).with(codex_chat).and_return(codex_workspace_path)
     allow(ChatWorkspace).to receive(:ensure_root!).with(codex_chat).and_return(codex_workspace_path)
@@ -942,14 +956,106 @@ RSpec.describe ChatTurnJob do
 
     described_class.perform_now(codex_chat.id, codex_message.id)
 
-    expect(received[:resume_session_id]).to be_nil
-    expect(received[:resume_transcript_jsonl]).to be_nil
-    expect(received[:prompt]).to include("You are Syrus Chat")
+    # Session_id is passed through regardless of provider so rehydration can use it as thread_id
+    expect(received[:resume_session_id]).to eq("claude-session-1")
+    # Rehydrated Codex JSONL from ChatMessage rows
+    expect(received[:resume_transcript_jsonl]).to be_present
+    rehydrated = received[:resume_transcript_jsonl].lines.map { |l| JSON.parse(l) }
+    expect(rehydrated.first).to include("type" => "thread.started", "thread_id" => "claude-session-1")
+    expect(rehydrated.last).to include("type" => "turn.completed")
+    # Elaboration-guidance path instead of full system prompt (we have a session to resume)
+    expect(received[:prompt]).not_to include("You are Syrus Chat")
     expect(codex_chat.reload.claude_session).to have_attributes(
       provider: "codex",
       session_id: "codex-thread-1",
       transcript_jsonl: "new"
     )
+  end
+
+  it "uses the cached Codex transcript directly on same-provider resume" do
+    codex_user = Factories.user(codex_api_key: "sk-test", github_token: "ghp-test", chat_provider: "codex")
+    codex_repository = Factories.repository(user: codex_user, owner: "acme", name: "codex-resume", default_branch: "main")
+    codex_chat = ChatSession.create!(repository: codex_repository, user: codex_user)
+    codex_chat.create_claude_session!(
+      provider: "codex",
+      session_id: "codex-thread-1",
+      transcript_jsonl: "{\"type\":\"thread.started\"}\n"
+    )
+    codex_message = codex_chat.messages.create!(role: "user", content: { text: "Next Codex turn" })
+    codex_workspace_path = workspace_root.join("codex-resume-chat")
+    allow(ChatWorkspace).to receive(:path_for).with(codex_chat).and_return(codex_workspace_path)
+    allow(ChatWorkspace).to receive(:ensure_root!).with(codex_chat).and_return(codex_workspace_path)
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "codex-thread-1", transcript_jsonl: "updated")
+    }
+
+    described_class.perform_now(codex_chat.id, codex_message.id)
+
+    expect(received[:resume_session_id]).to eq("codex-thread-1")
+    # Uses the cached transcript directly (fast path), not a freshly rehydrated one
+    expect(received[:resume_transcript_jsonl]).to eq("{\"type\":\"thread.started\"}\n")
+  end
+
+  it "writes a rehydrated Claude JSONL to disk when resuming after a Codex session" do
+    Dir.mktmpdir("syrus-claude-home") do |home|
+      saved_home = ENV["HOME"]
+      ENV["HOME"] = home
+
+      codex_chat = ChatSession.create!(repository: repository, user: user)
+      codex_chat.create_claude_session!(provider: "codex", session_id: "codex-thread-1", transcript_jsonl: "codex-data")
+      codex_chat.messages.create!(role: "assistant", content: [{ "type" => "text", "text" => "Codex was here." }])
+      claude_message = codex_chat.messages.create!(role: "user", content: { text: "Now use Claude" })
+      allow(ChatWorkspace).to receive(:path_for).with(codex_chat).and_return(workspace_path)
+      allow(ChatWorkspace).to receive(:ensure_root!).with(codex_chat).and_return(workspace_path)
+
+      written_before_run = nil
+      ChatTurnJob.agent_runner = ->(**kwargs) {
+        path = ClaudeSession.canonical_path_for(home: home, cwd: workspace_path, session_id: "codex-thread-1")
+        written_before_run = File.read(path) if File.exist?(path)
+        result_fixture(session_id: "codex-thread-1", transcript_jsonl: "x")
+      }
+
+      described_class.perform_now(codex_chat.id, claude_message.id)
+
+      # The rehydrated Claude JSONL must be on disk before the runner is called
+      expect(written_before_run).to be_present
+      rehydrated = written_before_run.lines.map { |l| JSON.parse(l) }
+      expect(rehydrated.first).to include("type" => "system", "subtype" => "init", "session_id" => "codex-thread-1")
+    ensure
+      ENV["HOME"] = saved_home
+    end
+  end
+
+  it "writes a rehydrated Claude JSONL to disk when the session file is missing for same-provider resume" do
+    Dir.mktmpdir("syrus-claude-home") do |home|
+      saved_home = ENV["HOME"]
+      ENV["HOME"] = home
+
+      chat.create_claude_session!(provider: "claude", session_id: "missing-session-1", transcript_jsonl: "old-cached")
+      chat.messages.create!(role: "assistant", content: [{ "type" => "text", "text" => "Prior response." }])
+      next_message = chat.messages.create!(role: "user", content: { text: "Resume please" })
+
+      # No JSONL file on disk — simulate a missing disk file (worker restart, etc.)
+      path = ClaudeSession.canonical_path_for(home: home, cwd: workspace_path, session_id: "missing-session-1")
+      expect(File.exist?(path)).to eq(false)
+
+      written_before_run = nil
+      ChatTurnJob.agent_runner = ->(**kwargs) {
+        written_before_run = File.read(path) if File.exist?(path)
+        result_fixture(session_id: "missing-session-1", transcript_jsonl: "x")
+      }
+
+      described_class.perform_now(chat.id, next_message.id)
+
+      expect(written_before_run).to be_present
+      rehydrated = written_before_run.lines.map { |l| JSON.parse(l) }
+      expect(rehydrated.first).to include("type" => "system", "subtype" => "init", "session_id" => "missing-session-1")
+    ensure
+      ENV["HOME"] = saved_home
+    end
   end
 
   it "does not persist nameless tool call events" do
@@ -1076,6 +1182,126 @@ RSpec.describe ChatTurnJob do
       role: "system",
       content: include("text" => match(/Claude credentials are missing/))
     )
+  end
+
+  it "stores assistant messages in canonical content-blocks array format" do
+    ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+      log_sink.call("Here is the answer.", kind: "assistant_text")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    assistant_msg = chat.messages.find_by(role: "assistant")
+    expect(assistant_msg.content).to eq([ { "type" => "text", "text" => "Here is the answer." } ])
+  end
+
+  it "accumulates thinking blocks and text blocks into one assistant message" do
+    ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+      log_sink.call("Reasoning...", kind: "thinking", thinking: "Reasoning...", signature: "sig-xyz")
+      log_sink.call("Conclusion.", kind: "assistant_text")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    assistant_msg = chat.messages.find_by(role: "assistant")
+    expect(assistant_msg.content).to eq([
+      { "type" => "thinking", "thinking" => "Reasoning...", "signature" => "sig-xyz" },
+      { "type" => "text", "text" => "Conclusion." }
+    ])
+    expect(chat.messages.where(role: "assistant").count).to eq(1)
+  end
+
+  it "omits signature from thinking block when it is absent" do
+    ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+      log_sink.call("Thinking...", kind: "thinking", thinking: "Thinking...", signature: nil)
+      log_sink.call("Done.", kind: "assistant_text")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    block = chat.messages.find_by(role: "assistant").content.first
+    expect(block).to eq({ "type" => "thinking", "thinking" => "Thinking..." })
+    expect(block).not_to have_key("signature")
+  end
+
+  it "flushes accumulated assistant content before a tool_use message" do
+    ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+      log_sink.call("Thinking...", kind: "thinking", thinking: "Thinking...", signature: "s")
+      log_sink.call("Using tool.", kind: "assistant_text")
+      log_sink.call("● Read(...)", kind: "tool_call", tool_name: "Read", tool_input: { "file_path" => "/x" }, tool_use_id: "toolu_1")
+      log_sink.call("content", kind: "tool_result", tool_name: "Read", tool_result_content: "content", tool_result_error: false, tool_use_id: "toolu_1")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    roles = chat.messages.order(:created_at, :id).pluck(:role)
+    expect(roles).to eq(%w[user assistant tool_use tool_result])
+  end
+
+  it "stores tool_use messages in canonical content-blocks format with id, name, and input" do
+    ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+      log_sink.call("● propose_job(...)", kind: "tool_call",
+                    tool_name: "propose_job",
+                    tool_input: { "title" => "T" },
+                    tool_use_id: "toolu_abc")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    tool_use_msg = chat.messages.find_by(role: "tool_use")
+    expect(tool_use_msg.content).to eq({
+      "type" => "tool_use",
+      "id" => "toolu_abc",
+      "name" => "propose_job",
+      "input" => { "title" => "T" }
+    })
+    expect(tool_use_msg.tool_use_id).to eq("toolu_abc")
+  end
+
+  it "stores tool_result messages in canonical content-blocks format with type, tool_use_id, content, and is_error" do
+    ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+      log_sink.call("● Read(...)", kind: "tool_call", tool_name: "Read",
+                    tool_input: { "file_path" => "/x" }, tool_use_id: "toolu_r1")
+      log_sink.call("file content", kind: "tool_result", tool_name: "Read",
+                    tool_result_content: [ { "type" => "text", "text" => "file content" } ],
+                    tool_result_error: false, tool_use_id: "toolu_r1")
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    tool_result_msg = chat.messages.find_by(role: "tool_result")
+    expect(tool_result_msg.content).to eq({
+      "type" => "tool_result",
+      "tool_use_id" => "toolu_r1",
+      "content" => [ { "type" => "text", "text" => "file content" } ],
+      "is_error" => false
+    })
+    expect(tool_result_msg.tool_use_id).to eq("toolu_r1")
+  end
+
+  it "flushes partial assistant content before the cancellation system message on stop" do
+    ChatTurnJob.agent_runner = ->(log_sink:, stop_requested:, **_) {
+      log_sink.call("Working...", kind: "thinking", thinking: "Working...", signature: "s")
+      log_sink.call("In progress.", kind: "assistant_text")
+      chat.update!(stop_requested_at: 1.second.from_now)
+
+      expect(stop_requested.call).to eq(true)
+      result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    roles = chat.messages.order(:created_at, :id).pluck(:role)
+    system_idx = roles.index("system")
+    assistant_idx = roles.index("assistant")
+    expect(assistant_idx).to be < system_idx, "assistant message should precede the cancellation system message"
+    expect(chat.messages.find_by(role: "system").content["text"]).to eq("Cancelled by operator.")
   end
 
   it "polls stop_requested_at between stream events and records cancellation" do
