@@ -57,6 +57,14 @@ Run Syrus on infrastructure you control, register repositories whose code and
 setup commands you are willing to execute, scope GitHub tokens narrowly, keep
 secrets out of repositories, and review generated PRs before merging.
 
+## Getting started (macOS app)
+
+The easiest install on a Mac is the desktop app: download
+[Syrus.dmg](https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg),
+drag it into Applications, and the first-run setup installs and manages the
+Docker backend for you — no terminal required. Details in the
+[desktop app docs](website/src/content/docs/desktop.md).
+
 ## Getting started (macOS, bare metal)
 
 This is the full from-nothing setup on a Mac with Homebrew. Every command is

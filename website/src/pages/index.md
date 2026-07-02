@@ -19,6 +19,8 @@ creating branches, preparing workspaces, running the agent, recording
 transcripts and diffs, pushing commits, and keeping the PR current. The
 agent writes code; Syrus handles the job control around it.
 
+**[Download Syrus for Mac](https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg)** — drag to Applications, and the app installs and runs Syrus for you. ([Other platforms & details](/docs/desktop))
+
 [What is Syrus?](/what-is-syrus) · [Why use Syrus?](/why-use-syrus) · [Get Started](/docs/getting-started) · [Run locally](/docs/deployment/docker-compose) · [Read the docs](/docs/getting-started) · [Star on GitHub](https://github.com/tkadauke/syrus)
 
 ## The Loop
