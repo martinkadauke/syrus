@@ -1,0 +1,119 @@
+# Builds, signs, notarizes, and publishes the Syrus macOS desktop app on
+# every v* tag. See docs/releasing.md for the end-to-end runbook and the
+# required repository secrets. `workflow_dispatch` with unsigned_dry_run
+# exercises the pipeline before Apple credentials exist (publishes nothing).
+name: Release desktop app
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      unsigned_dry_run:
+        description: "Build unsigned and publish nothing (pipeline test)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=$(node -p "require('./desktop/package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Guard: package.json version matches the tag"
+        if: github.ref_type == 'tag'
+        run: |
+          PKG_VERSION=$(node -p "require('./desktop/package.json').version")
+          if [[ "$PKG_VERSION" != "${{ steps.version.outputs.version }}" ]]; then
+            echo "::error::desktop/package.json version ($PKG_VERSION) does not match the tag (${{ steps.version.outputs.version }}). Bump the version, merge, then tag."
+            exit 1
+          fi
+
+      # Enforces the release ordering: bin/publish-image X.Y.Z --multi-arch
+      # runs (and gates on bin/test-docker) BEFORE the tag is pushed. The
+      # DMG's bundled installer pins this exact image tag.
+      - name: "Guard: backend image tag exists on GHCR"
+        if: github.ref_type == 'tag'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          TOKEN=$(curl -fsSL "https://ghcr.io/token?scope=repository:tkadauke/syrus-local:pull" | jq -r .token)
+          if ! curl -fsSL -o /dev/null \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json" \
+            "https://ghcr.io/v2/tkadauke/syrus-local/manifests/$VERSION"; then
+            echo "::error::ghcr.io/tkadauke/syrus-local:$VERSION not found (or the package is private). Run bin/publish-image $VERSION --multi-arch first and make the package public."
+            exit 1
+          fi
+
+      # Never publish an unsigned release: Gatekeeper blocks it for users and
+      # Squirrel.Mac refuses to auto-update into it, stranding the installed base.
+      - name: "Guard: signing secrets present"
+        if: github.ref_type == 'tag'
+        run: |
+          if [[ -z "${{ secrets.CSC_LINK }}" || -z "${{ secrets.APPLE_API_KEY_P8 }}" ]]; then
+            echo "::error::Signing secrets missing (CSC_LINK / APPLE_API_KEY_P8). Refusing to publish an unsigned release."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix desktop
+
+      - name: Write App Store Connect API key
+        if: github.ref_type == 'tag'
+        run: printf '%s' "${{ secrets.APPLE_API_KEY_P8 }}" > "$RUNNER_TEMP/apple_api_key.p8"
+
+      - name: Build, sign, notarize, and publish
+        if: github.ref_type == 'tag'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/apple_api_key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm --prefix desktop run build -- --publish always
+
+      - name: Build unsigned (dry run)
+        if: github.ref_type != 'tag'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm --prefix desktop run build -- --publish never
+
+      - name: Verify signature and stapled notarization
+        if: github.ref_type == 'tag'
+        run: |
+          APP=$(find desktop/out -maxdepth 2 -name "Syrus.app" | head -1)
+          codesign --verify --deep --strict "$APP"
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep "Developer ID Application"
+          for dmg in desktop/out/Syrus-*.dmg; do
+            xcrun stapler validate "$dmg"
+          done
+
+      # A second, unversioned copy of the arm64 DMG so the website can
+      # permalink https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg
+      - name: Upload stable-named DMG alias
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          cp "desktop/out/Syrus-$VERSION-arm64.dmg" "$RUNNER_TEMP/Syrus.dmg"
+          gh release upload "v$VERSION" "$RUNNER_TEMP/Syrus.dmg" --clobber

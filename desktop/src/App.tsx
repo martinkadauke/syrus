@@ -2306,7 +2306,15 @@ export function App() {
   const [hotkeyError, setHotkeyError] = useState("")
   const [isRecordingHotkey, setIsRecordingHotkey] = useState(false)
   const [isSavingHotkey, setIsSavingHotkey] = useState(false)
+  const [appVersion, setAppVersion] = useState("")
   const hotkeyRecorderRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    window.syrusDesktop
+      .getAppVersion()
+      .then(setAppVersion)
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -2693,6 +2701,10 @@ export function App() {
             </div>
           )}
         </section>
+
+        {appVersion ? (
+          <p className="pb-4 text-center text-xs text-slate-400">Syrus v{appVersion}</p>
+        ) : null}
       </main>
     )
   }

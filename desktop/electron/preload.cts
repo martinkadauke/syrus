@@ -212,6 +212,7 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.invoke("toggle-admin-control", control, pause) as Promise<ToggleAdminControlResult>,
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url) as Promise<void>,
   openTokenDocs: () => ipcRenderer.invoke("open-token-docs") as Promise<void>,
+  getAppVersion: () => ipcRenderer.invoke("get-app-version") as Promise<string>,
   getOnboardingState: () => ipcRenderer.invoke("onboarding:get-state") as Promise<OnboardingState>,
   chooseOnboardingMode: (mode: "local" | "remote") =>
     ipcRenderer.invoke("onboarding:choose-mode", mode) as Promise<void>,

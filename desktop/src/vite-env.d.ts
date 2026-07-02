@@ -224,6 +224,7 @@ interface Window {
     toggleAdminControl: (control: SyrusAdminControl, pause: boolean) => Promise<SyrusToggleAdminControlResult>
     openExternal: (url: string) => Promise<void>
     openTokenDocs: () => Promise<void>
+    getAppVersion: () => Promise<string>
     getOnboardingState: () => Promise<SyrusOnboardingState>
     chooseOnboardingMode: (mode: "local" | "remote") => Promise<void>
     connectRemote: (request: SyrusConnectRemoteRequest) => Promise<void>
