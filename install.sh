@@ -367,14 +367,22 @@ run_docker() {
     fi
   done
   if [ "$pull_ok" != "1" ]; then
-    echo >&2
-    echo "Couldn't pull $IMAGE. See the error above. Common causes:" >&2
-    echo "  - The package is private and you're not logged in. Log in once:" >&2
-    echo "      echo <YOUR_PAT_with_read:packages> | docker login ghcr.io -u <your-username> --password-stdin" >&2
-    echo "    (you must be a collaborator on the package)" >&2
-    echo "  - No network, or the tag doesn't exist." >&2
-    echo "Then re-run ./install.sh --docker." >&2
-    die "couldn't pull $IMAGE after 3 attempts" 30
+    # A locally built or previously pulled copy still works — key for fork
+    # iteration (build the image locally, install without any registry) and
+    # for offline reinstalls.
+    if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+      info "Pull failed, but $IMAGE exists locally — continuing with the local copy."
+      emit_log pull "pull failed; using the local image copy"
+    else
+      echo >&2
+      echo "Couldn't pull $IMAGE. See the error above. Common causes:" >&2
+      echo "  - The package is private and you're not logged in. Log in once:" >&2
+      echo "      echo <YOUR_PAT_with_read:packages> | docker login ghcr.io -u <your-username> --password-stdin" >&2
+      echo "    (you must be a collaborator on the package)" >&2
+      echo "  - No network, or the tag doesn't exist." >&2
+      echo "Then re-run ./install.sh --docker." >&2
+      die "couldn't pull $IMAGE after 3 attempts" 30
+    fi
   fi
   emit_step image_pull ok
 
@@ -396,7 +404,7 @@ run_docker() {
   local tries=0
   until curl -fs -o /dev/null "http://localhost:${port}/up" 2>/dev/null; do
     tries=$((tries + 1))
-    [ "$tries" -gt 90 ] && die \
+    [ "$tries" -gt "${SYRUS_HEALTH_POLLS:-90}" ] && die \
       "Syrus didn't become healthy within 3 minutes. Check: docker compose logs web worker" 41
     sleep 2
   done

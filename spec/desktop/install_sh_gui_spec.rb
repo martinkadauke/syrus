@@ -18,20 +18,24 @@ RSpec.describe "install.sh GUI interface" do
 
   def run_install(*args, stub_dir: nil)
     path = [stub_dir, "/usr/bin", "/bin"].compact.join(":")
-    # Zero retry delay keeps the pull-failure examples fast.
-    Open3.capture3({ "PATH" => path, "SYRUS_PULL_RETRY_DELAY" => "0" }, "bash", script, *args)
+    # Zero retry delay and a single health poll keep failure examples fast.
+    env = { "PATH" => path, "SYRUS_PULL_RETRY_DELAY" => "0", "SYRUS_HEALTH_POLLS" => "1" }
+    Open3.capture3(env, "bash", script, *args)
   end
 
   # A fake `docker` that answers the exact calls the docker path makes.
   # volume_exists controls the encryption-key guard; `compose pull` fails by
-  # default so most examples halt before anything needing a real daemon.
-  def write_docker_stub(dir, volume_exists:, pull_ok: false)
+  # default so most examples halt before anything needing a real daemon —
+  # unless pull_ok succeeds it, or local_image makes the pull-fallback adopt
+  # a "local" copy.
+  def write_docker_stub(dir, volume_exists:, pull_ok: false, local_image: false)
     stub = File.join(dir, "docker")
     File.write(stub, <<~SH)
       #!/bin/bash
       case "$1" in
         info) exit 0 ;;
         volume) exit #{volume_exists ? 0 : 1} ;;
+        image) exit #{local_image ? 0 : 1} ;;
         compose)
           case "$2" in
             version) exit 0 ;;
@@ -126,6 +130,32 @@ RSpec.describe "install.sh GUI interface" do
         expect(events.last).to include("event" => "error", "code" => 20, "step" => "env_check")
         expect(err).to include("undecryptable")
         expect(File.exist?(File.join(target, ".env"))).to be(false)
+      end
+    end
+  end
+
+  it "continues with a locally built image when the registry pull fails" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        write_docker_stub(stub_dir, volume_exists: false, local_image: true)
+        out, _err, status = run_install(
+          "--docker", "--json", "--non-interactive", "--skip-runtime-install",
+          "--target-dir", target, "--port", "3999",
+          "--image", "syrus-local:built-here", stub_dir: stub_dir
+        )
+
+        # Pull fails, the local copy is adopted, the stack "starts", and the
+        # run dies at the health poll (nothing actually listens on the port) —
+        # proving the install proceeded past image_pull.
+        expect(status.exitstatus).to eq(41)
+        events = parse_events(out)
+        expect(events).to include(
+          hash_including("event" => "log", "stream" => "pull", "line" => "pull failed; using the local image copy")
+        )
+        expect(events).to include(
+          hash_including("event" => "step", "id" => "stack_up", "status" => "ok")
+        )
+        expect(events.last).to include("event" => "error", "code" => 41, "step" => "health")
       end
     end
   end
