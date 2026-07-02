@@ -16,9 +16,17 @@ module SyrusMcp
     class << self
       def call(id:, server_context:)
         run = SyrusMcp.run_from_context(server_context)
-        memory = ChatMemory.find_by!(id: id, user_id: run.job.user_id)
+        memory = ChatMemory.find_by(id: id, user_id: run.job.user_id, deleted_at: nil)
+
+        unless memory
+          return MCP::Tool::Response.new(
+            [ { type: "text", text: "Error: memory not found or not accessible: #{id}" } ],
+            error: true
+          )
+        end
 
         payload = {
+          id: memory.id,
           kind: memory.kind,
           scope: memory.scope,
           content: memory.content,
@@ -26,17 +34,9 @@ module SyrusMcp
         }
 
         MCP::Tool::Response.new([ { type: "text", text: JSON.generate(payload) } ])
-      rescue ActiveRecord::RecordNotFound
-        invalid("memory not found: #{id}")
       rescue StandardError => e
         Rails.logger.error("[SyrusMcp::ReadMemoryTool] #{e.class}: #{e.message}")
         MCP::Tool::Response.new([ { type: "text", text: "Error: #{e.class}: #{e.message}" } ], error: true)
-      end
-
-      private
-
-      def invalid(reason)
-        MCP::Tool::Response.new([ { type: "text", text: "Error: #{reason}" } ], error: true)
       end
     end
   end

@@ -2,13 +2,19 @@ require "rails_helper"
 
 RSpec.describe SyrusMcp::ReadMemoryTool do
   let(:run) { Factories.job.initial_run }
+  let(:user) { run.job.user }
+
+  def create_memory(owner: user, **attrs)
+    ChatMemory.create!({
+      user: owner,
+      kind: "feedback",
+      scope: "global",
+      content: "Always prefer short functions."
+    }.merge(attrs))
+  end
 
   def call(id:, context: { run_id: run.id })
     described_class.call(id: id, server_context: context)
-  end
-
-  def payload_from(response)
-    JSON.parse(response.content.first[:text])
   end
 
   describe ".call" do
@@ -24,10 +30,12 @@ RSpec.describe SyrusMcp::ReadMemoryTool do
       response = call(id: memory.id)
 
       expect(response).not_to be_error
-      expect(payload_from(response)).to eq(
-        "kind" => "project_fact",
-        "scope" => "repository",
-        "content" => "The deploy pipeline runs on Buildkite.",
+      payload = JSON.parse(response.content.first[:text])
+      expect(payload).to include(
+        "id"         => memory.id,
+        "kind"       => "project_fact",
+        "scope"      => "repository",
+        "content"    => "The deploy pipeline runs on Buildkite.",
         "created_at" => memory.created_at.iso8601
       )
     end
@@ -36,23 +44,33 @@ RSpec.describe SyrusMcp::ReadMemoryTool do
       response = call(id: 0)
 
       expect(response).to be_error
-      expect(response.content.first[:text]).to include("memory not found: 0")
+      expect(response.content.first[:text]).to include("not found")
     end
 
     it "rejects memories owned by another user" do
-      other_repository = Factories.repository(user: Factories.user)
-      memory = ChatMemory.create!(
-        user: other_repository.user,
-        kind: "reference",
-        scope: "repository",
-        scope_id: other_repository.id,
-        content: "Private context from another user."
-      )
+      other_memory = create_memory(owner: Factories.user)
+
+      response = call(id: other_memory.id)
+
+      expect(response).to be_error
+      expect(response.content.first[:text]).to include("not found")
+    end
+
+    it "rejects a soft-deleted memory" do
+      memory = create_memory
+      memory.update!(deleted_at: Time.current)
 
       response = call(id: memory.id)
 
       expect(response).to be_error
-      expect(response.content.first[:text]).to include("memory not found: #{memory.id}")
+      expect(response.content.first[:text]).to include("not found")
+    end
+
+    it "returns an error for an invalid run context" do
+      response = call(id: 1, context: { run_id: 0 })
+
+      expect(response).to be_error
+      expect(response.content.first[:text]).to include("ActiveRecord::RecordNotFound")
     end
   end
 
