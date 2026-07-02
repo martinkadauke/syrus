@@ -54,6 +54,16 @@ const normalizeUrl = (url: string) => url.trim().replace(/\/+$/, "")
 // In-page navigations can fire in bursts; one attempt at a time is plenty.
 let attemptInFlight = false
 
+// A 403 is terminal for this instance (non-admin user): without the latch
+// every SPA route change would re-POST and 403 again for the whole session.
+let forbiddenInstanceUrl: string | null = null
+
+// executeJavaScript's promise can simply never settle when the frame is torn
+// down mid-flight (navigation, window close). Unbounded, that would wedge
+// attemptInFlight and silently disable provisioning for the rest of the run.
+const EXECUTE_TIMEOUT_MS = 15_000
+const EXECUTE_TIMED_OUT = Symbol("execute-timed-out")
+
 export const maybeProvisionDesktopToken = async (
   webContents: WebContents,
   serverUrl: string,
@@ -68,6 +78,10 @@ export const maybeProvisionDesktopToken = async (
     return normalizeUrl(cached.url) === normalized ? "already-configured" : "different-instance"
   }
 
+  if (normalized === forbiddenInstanceUrl) {
+    return "forbidden"
+  }
+
   if (attemptInFlight) {
     return "error"
   }
@@ -75,7 +89,23 @@ export const maybeProvisionDesktopToken = async (
   attemptInFlight = true
   let result: { state?: string; apiToken?: unknown }
   try {
-    result = (await webContents.executeJavaScript(PROVISION_SCRIPT, true)) as { state?: string; apiToken?: unknown }
+    const execution = webContents.executeJavaScript(PROVISION_SCRIPT, true)
+    // The race may abandon the execution promise; a later rejection must not
+    // surface as an unhandled rejection.
+    execution.catch(() => {})
+    let timeoutTimer: NodeJS.Timeout | undefined
+    const raced = await Promise.race([
+      execution,
+      new Promise((resolve) => {
+        timeoutTimer = setTimeout(() => resolve(EXECUTE_TIMED_OUT), EXECUTE_TIMEOUT_MS)
+      })
+    ]).finally(() => clearTimeout(timeoutTimer))
+
+    if (raced === EXECUTE_TIMED_OUT) {
+      return "error"
+    }
+
+    result = raced as { state?: string; apiToken?: unknown }
   } catch {
     return "error"
   } finally {
@@ -92,7 +122,12 @@ export const maybeProvisionDesktopToken = async (
   }
 
   const state = result?.state
-  if (state === "signed_out" || state === "no_csrf" || state === "forbidden") {
+  if (state === "forbidden") {
+    forbiddenInstanceUrl = normalized
+    return state
+  }
+
+  if (state === "signed_out" || state === "no_csrf") {
     return state
   }
 

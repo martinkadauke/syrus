@@ -1529,6 +1529,10 @@ const runSetupAgain = async ({ skipConfirmation = false } = {}) => {
   backendLifecycle.stopWatchdog()
   stopBackendRecoveryPolling()
   clearBackendConfig()
+  // A leftover driver still holds the previous run's terminal state
+  // (done/failed) — without a reset the reopened wizard shows that stale
+  // phase instead of Welcome.
+  onboardingDriver?.reset()
   webAppWindow?.window.close()
   createMenu() // drops the Backend menu until a new local install exists
   await showOnboardingWindow()

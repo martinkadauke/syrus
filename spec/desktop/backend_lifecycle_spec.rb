@@ -54,6 +54,9 @@ RSpec.describe "desktop backend lifecycle" do
     expect(main_process).to include('"Run Setup Again…"')
     setup_again = main_process[/const runSetupAgain = async[\s\S]*?\n\}/]
     expect(setup_again).to include("clearBackendConfig()")
+    # Without a driver reset the reopened wizard shows the previous run's
+    # terminal phase (done/failed) instead of Welcome.
+    expect(setup_again).to include("onboardingDriver?.reset()")
     expect(setup_again).to include("await showOnboardingWindow()")
     expect(setup_again).not_to include("deleteCredentials")
     expect(setup_again).not_to include("down")

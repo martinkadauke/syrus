@@ -67,7 +67,7 @@ export const createWebAppWindow = ({
     }
   })
 
-  window.webContents.setWindowOpenHandler(({ url }) => {
+  window.webContents.setWindowOpenHandler(({ url, postBody }) => {
     try {
       const target = new URL(url)
       if (target.origin === serverOrigin) {
@@ -75,12 +75,12 @@ export const createWebAppWindow = ({
         return { action: "deny" }
       }
 
-      // GitHub App registration POSTs a manifest form to github.com with
-      // target=_blank. Opening that externally would drop the POST body
-      // (the browser gets a GET → an empty Create form), so GitHub flows
-      // run in a child window instead; GitHub redirects it back to the
-      // instance when the App is created.
-      if (target.origin === "https://github.com") {
+      // A popup carrying a POST body — a form submitted with target=_blank,
+      // e.g. the GitHub App registration manifest — can't be handed to the
+      // external browser: the browser would issue a GET and the payload
+      // would be dropped. Those flows run in a sandboxed child window
+      // instead, locked down by did-create-window below.
+      if (postBody && ["http:", "https:"].includes(target.protocol)) {
         return {
           action: "allow",
           overrideBrowserWindowOptions: {
@@ -103,6 +103,37 @@ export const createWebAppWindow = ({
     }
 
     return { action: "deny" }
+  })
+
+  // Child windows are remote content too: no non-web protocols, and any
+  // popup THEY spawn goes to the external browser.
+  window.webContents.on("did-create-window", (child) => {
+    child.webContents.on("will-navigate", (event, targetUrl) => {
+      let target: URL
+      try {
+        target = new URL(targetUrl)
+      } catch {
+        event.preventDefault()
+        return
+      }
+
+      if (!["http:", "https:"].includes(target.protocol)) {
+        event.preventDefault()
+      }
+    })
+
+    child.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        const target = new URL(url)
+        if (["http:", "https:"].includes(target.protocol)) {
+          void shell.openExternal(target.toString())
+        }
+      } catch {
+        // Ignore unparseable URLs.
+      }
+
+      return { action: "deny" }
+    })
   })
 
   window.webContents.on("did-fail-load", (_event, errorCode, _description, validatedURL, isMainFrame) => {

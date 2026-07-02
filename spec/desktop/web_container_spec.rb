@@ -32,11 +32,16 @@ RSpec.describe "desktop web-container window" do
     expect(web_app_window).to include("shell.openExternal")
   end
 
-  it "lets GitHub flows open a child window so the manifest POST survives" do
-    # Externally-opened URLs are GETs; the GitHub App registration form POSTs
-    # a manifest with target=_blank and would arrive empty.
-    expect(web_app_window).to match(/target\.origin === "https:\/\/github\.com"[\s\S]{0,400}action: "allow"/)
+  it "keeps POST-carrying popups in a locked-down child window so form payloads survive" do
+    # Externally-opened URLs are GETs; a form submitted with target=_blank
+    # (e.g. the GitHub App registration manifest) would arrive empty in the
+    # browser. Keyed on the POST body, not a hardcoded origin.
+    expect(web_app_window).to match(/if \(postBody && \["http:", "https:"\]\.includes\(target\.protocol\)\)[\s\S]{0,400}action: "allow"/)
     expect(web_app_window).to match(/overrideBrowserWindowOptions[\s\S]{0,200}sandbox: true/)
+    # The child is remote content too: non-web protocols blocked, its own
+    # popups go to the external browser.
+    expect(web_app_window).to match(/did-create-window[\s\S]*?will-navigate/)
+    expect(web_app_window).to match(/did-create-window[\s\S]*?setWindowOpenHandler/)
   end
 
   it "falls back to the status page only for real main-frame failures of the server URL" do
