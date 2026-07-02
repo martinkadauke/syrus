@@ -116,6 +116,27 @@ const parsePortFromEnv = (contents: string) => {
   return Number.isFinite(port) && port > 0 ? port : DEFAULT_PORT
 }
 
+const portFromUrl = (url: string): number | null => {
+  try {
+    const parsed = new URL(url)
+    const port = Number.parseInt(parsed.port || (parsed.protocol === "https:" ? "443" : "80"), 10)
+    return Number.isFinite(port) && port > 0 ? port : null
+  } catch {
+    return null
+  }
+}
+
+// "Does this URL actually serve Syrus?" — a bare 200 from /up is not enough
+// (every Rails 7.1+ app ships /up).
+const isSyrusInstance = async (url: string) => {
+  try {
+    await fingerprintSyrus(url)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export class OnboardingDriver {
   private state: OnboardingState = { phase: "welcome" }
   private child: ChildProcess | null = null
@@ -141,7 +162,7 @@ export class OnboardingDriver {
     this.stopPolling()
     if (this.child) {
       this.cancelRequested = true
-      this.child.kill("SIGTERM")
+      this.killInstallChild()
       return // handleExit finishes the transition once the child dies
     }
 
@@ -201,9 +222,13 @@ export class OnboardingDriver {
 
     // A healthy Syrus already answering that we don't own: offer to adopt it
     // as remote-at-localhost (no lifecycle control) instead of clobbering.
+    // Fingerprinted — a foreign app's /up must not masquerade as Syrus.
     if (!hasEnv && (await syrusHealthy(this.port))) {
-      this.setState({ phase: "local.adoptRunning", url: `http://localhost:${this.port}` })
-      return
+      const localUrl = `http://localhost:${this.port}`
+      if (await isSyrusInstance(localUrl)) {
+        this.setState({ phase: "local.adoptRunning", url: localUrl })
+        return
+      }
     }
 
     const binary = await findDockerBinary()
@@ -229,7 +254,12 @@ export class OnboardingDriver {
       return
     }
 
-    if (!(await syrusHealthy(this.port)) && (await portInUse(this.port))) {
+    // Port-conflict resolution is only meaningful for a fresh install: with
+    // an existing .env the port is owned by that file (install.sh ignores
+    // --port), and a busy-but-unhealthy port there is usually our own stack
+    // still booting — let the install proceed; a genuine foreign bind
+    // surfaces as compose exit 40.
+    if (!hasEnv && !(await syrusHealthy(this.port)) && (await portInUse(this.port))) {
       this.setState({ phase: "local.portConflict", port: this.port })
       return
     }
@@ -438,7 +468,15 @@ export class OnboardingDriver {
     const logStream = createWriteStream(path.join(stateDir, "install.log"), { flags: "a" })
     logStream.write(`\n--- install started ${new Date().toISOString()} ---\n`)
 
-    const child = spawn("/bin/bash", args, { env: execEnv() })
+    // detached: the script's docker/compose grandchildren live in the same
+    // process group, so cancel can signal the whole group instead of
+    // orphaning an in-flight multi-GB pull. The spec knobs are scrubbed so a
+    // stray value in the user's environment can't silently gate a real
+    // install.
+    const env = execEnv()
+    delete env.SYRUS_HEALTH_POLLS
+    delete env.SYRUS_PULL_RETRY_DELAY
+    const child = spawn("/bin/bash", args, { env, detached: true })
     this.child = child
 
     readline.createInterface({ input: child.stdout }).on("line", (line) => {
@@ -455,11 +493,28 @@ export class OnboardingDriver {
       logStream.write(`spawn error: ${String(error)}\n`)
     })
 
-    child.on("exit", (code) => {
+    // "close", not "exit": close fires only after stdio has drained, so the
+    // final NDJSON error/done lines are guaranteed to have been parsed and
+    // nothing writes to the log stream after end().
+    child.on("close", (code) => {
       this.child = null
       logStream.end()
       this.handleExit(code ?? 1)
     })
+  }
+
+  // Signal the whole detached process group so docker/compose grandchildren
+  // die with the script instead of racing a retried install.
+  private killInstallChild() {
+    if (!this.child?.pid) {
+      return
+    }
+
+    try {
+      process.kill(-this.child.pid, "SIGTERM")
+    } catch {
+      this.child.kill("SIGTERM")
+    }
   }
 
   cancelInstall() {
@@ -468,7 +523,22 @@ export class OnboardingDriver {
     }
 
     this.cancelRequested = true
-    this.child.kill("SIGTERM")
+    this.killInstallChild()
+  }
+
+  // Forget all wizard progress so a reopened onboarding starts at Welcome —
+  // used by "Run Setup Again…", which clears the backend config.
+  reset() {
+    this.stopPolling()
+    if (this.child) {
+      this.cancelRequested = true
+      this.killInstallChild()
+    }
+
+    this.logTail = []
+    this.lastError = null
+    this.doneUrl = null
+    this.setState({ phase: "welcome" })
   }
 
   private appendLog(line: string) {
@@ -508,7 +578,12 @@ export class OnboardingDriver {
       return
     }
 
-    if (event.event === "step" && this.state.phase === "local.installing" && typeof event.id === "string") {
+    if (
+      event.event === "step" &&
+      this.state.phase === "local.installing" &&
+      typeof event.id === "string" &&
+      (INSTALL_STEP_IDS as readonly string[]).includes(event.id)
+    ) {
       const steps = this.state.steps.map((step): InstallStep => {
         if (step.id !== event.id) {
           return step
@@ -539,17 +614,35 @@ export class OnboardingDriver {
     if (code === 0) {
       const stateDir = localStateDir()
       const url = this.doneUrl ?? `http://localhost:${this.port}`
+      // The done URL carries the port .env actually owns (install.sh ignores
+      // --port when .env pre-exists); deriving localInstall.port from it
+      // keeps the lifecycle watchdog probing the port the stack serves.
+      const port = portFromUrl(url) ?? this.port
       saveBackendConfig({
         mode: "local",
         serverUrl: url,
-        localInstall: { stateDir, port: this.port }
+        localInstall: { stateDir, port }
       })
       this.setState({ phase: "done", mode: "local", url })
       return
     }
 
-    if (code === 10 || code === 11) {
+    if (code === 10) {
       this.setState({ phase: "local.runtimeMissing", polling: false })
+      return
+    }
+
+    // Exit 11 means a runtime exists but its daemon never became ready —
+    // the download-OrbStack screen would be misleading here.
+    if (code === 11) {
+      this.setState({
+        phase: "local.failed",
+        code,
+        step: "runtime_start",
+        message:
+          "Your Docker runtime is installed but its daemon never became ready. Open it, finish any setup prompt, then retry.",
+        logTail: [...this.logTail].slice(-40)
+      })
       return
     }
 

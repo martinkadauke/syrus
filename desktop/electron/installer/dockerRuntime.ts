@@ -75,7 +75,18 @@ export const daemonUp = async (): Promise<boolean> => {
   }
 }
 
-export type RuntimeApp = "OrbStack" | "Docker Desktop"
+export type RuntimeApp = "OrbStack" | "Docker Desktop" | "Colima"
+
+const colimaBinary = (): string | null => {
+  for (const dir of ["/opt/homebrew/bin", "/usr/local/bin"]) {
+    const candidate = path.join(dir, "colima")
+    if (fs.existsSync(candidate)) {
+      return candidate
+    }
+  }
+
+  return null
+}
 
 export const installedRuntimeApp = (): RuntimeApp | null => {
   if (fs.existsSync("/Applications/OrbStack.app")) {
@@ -86,10 +97,24 @@ export const installedRuntimeApp = (): RuntimeApp | null => {
     return "Docker Desktop"
   }
 
+  // App-less runtime: a stopped Colima should be started, not treated as
+  // "no runtime installed" (which pushes its user to download OrbStack).
+  if (colimaBinary()) {
+    return "Colima"
+  }
+
   return null
 }
 
 export const startRuntimeApp = async (runtimeApp: RuntimeApp) => {
+  if (runtimeApp === "Colima") {
+    const binary = colimaBinary()
+    if (binary) {
+      await execFileAsync(binary, ["start"], { env: execEnv(), timeout: 180_000 })
+    }
+    return
+  }
+
   const appName = runtimeApp === "OrbStack" ? "OrbStack" : "Docker"
   await execFileAsync("open", ["-a", appName])
 }

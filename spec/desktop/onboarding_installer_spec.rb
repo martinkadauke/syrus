@@ -21,8 +21,11 @@ RSpec.describe "desktop onboarding installer" do
   let(:preload) { read("electron/preload.cts") }
   let(:renderer_entry) { read("src/main.tsx") }
 
-  it "spawns the bundled install.sh with the headless flag set" do
-    expect(driver).to include('spawn("/bin/bash", args, { env: execEnv() })')
+  it "spawns the bundled install.sh detached, with the headless flag set and scrubbed env" do
+    expect(driver).to include('spawn("/bin/bash", args, { env, detached: true })')
+    # A stray spec knob in the user's environment must not gate a real install.
+    expect(driver).to include("delete env.SYRUS_HEALTH_POLLS")
+    expect(driver).to include("delete env.SYRUS_PULL_RETRY_DELAY")
     %w[--docker --non-interactive --json --skip-runtime-install --target-dir].each do |flag|
       expect(driver).to include(%("#{flag}"))
     end
@@ -40,7 +43,10 @@ RSpec.describe "desktop onboarding installer" do
   end
 
   it "maps installer exit codes onto recovery states" do
-    expect(driver).to include("if (code === 10 || code === 11)")
+    # 10 = no runtime at all -> guided download; 11 = runtime present but
+    # daemon never ready -> accurate failure, NOT the download screen.
+    expect(driver).to include("if (code === 10)")
+    expect(driver).to match(/code === 11[\s\S]{0,200}installed but its daemon never became ready/)
     expect(driver).to include("if (code === 20)")
     expect(driver).to match(/code === 20.*adoptExisting/m)
     expect(driver).to include('"local.failed"')
@@ -50,8 +56,10 @@ RSpec.describe "desktop onboarding installer" do
     expect(driver).to match(/code === 0[\s\S]*?saveBackendConfig\(\{\s*mode: "local"/)
   end
 
-  it "cancels a running install with SIGTERM and returns to welcome" do
-    expect(driver).to include('this.child.kill("SIGTERM")')
+  it "cancels the whole process group and finalizes only after stdio drains" do
+    expect(driver).to include('process.kill(-this.child.pid, "SIGTERM")')
+    expect(driver).to include('child.on("close", (code) => {')
+    expect(driver).not_to include('child.on("exit"')
     expect(driver).to match(/cancelRequested[\s\S]*?\{ phase: "welcome" \}/)
   end
 
@@ -93,6 +101,42 @@ RSpec.describe "desktop onboarding installer" do
   it "routes the onboarding view to its own renderer surface" do
     expect(renderer_entry).to include('view === "onboarding"')
     expect(renderer_entry).to include("<OnboardingApp />")
+  end
+
+  it "fingerprints a running instance before offering adoption" do
+    # A bare 200 from /up isn't Syrus — every Rails 7.1+ app ships /up.
+    expect(driver).to match(/adoptRunning[\s\S]{0,600}isSyrusInstance/m) if driver.index("adoptRunning") > driver.index("isSyrusInstance")
+    expect(driver).to match(/await isSyrusInstance\(localUrl\)/)
+  end
+
+  it "offers the port-conflict picker only for fresh installs" do
+    # With an existing .env the port is owned by that file (install.sh
+    # ignores --port), and a busy port there is usually our own stack booting.
+    expect(driver).to match(/!hasEnv && !\(await syrusHealthy[\s\S]{0,80}portInUse/)
+  end
+
+  it "derives the persisted port from the installer's done URL" do
+    expect(driver).to include("const port = portFromUrl(url) ?? this.port")
+  end
+
+  it "ignores unknown step ids from the installer protocol" do
+    expect(driver).to include("(INSTALL_STEP_IDS as readonly string[]).includes(event.id)")
+  end
+
+  it "can reset to Welcome so a reopened wizard never shows stale terminal state" do
+    reset_fn = driver[/  reset\(\) \{[\s\S]*?\n  \}/]
+    expect(reset_fn).to include('this.setState({ phase: "welcome" })')
+    expect(reset_fn).to include("this.killInstallChild()")
+  end
+
+  it "starts a stopped Colima instead of pushing its user to OrbStack" do
+    expect(docker_runtime).to include('"Colima"')
+    expect(docker_runtime).to match(/colima.*\["start"\]|\["start"\], \{ env: execEnv\(\)/)
+  end
+
+  it "guards against duplicate onboarding windows during renderer load" do
+    expect(main_process).to include("onboardingWindowOpening")
+    expect(main_process).to match(/if \(onboardingWindowOpening\) \{\s*return onboardingWindowOpening/)
   end
 
   it "gates the destructive wipe behind a typed confirmation in the renderer" do

@@ -1233,6 +1233,12 @@ const ensureOnboardingDriver = () => {
   return onboardingDriver
 }
 
+// In-flight guard: the window variable is only assigned after the renderer
+// finishes loading, and a second call during that gap (tray "Open Syrus",
+// activate, second-instance) would otherwise create a duplicate window that
+// stops receiving driver state pushes.
+let onboardingWindowOpening: Promise<void> | null = null
+
 const showOnboardingWindow = async () => {
   if (onboardingWindow) {
     onboardingWindow.show()
@@ -1240,21 +1246,33 @@ const showOnboardingWindow = async () => {
     return
   }
 
-  ensureOnboardingDriver()
-  if (process.platform === "darwin") {
-    app.dock?.show()
+  if (onboardingWindowOpening) {
+    return onboardingWindowOpening
   }
 
-  onboardingWindow = await createOnboardingWindow({
-    preloadPath: path.join(__dirname, "preload.cjs"),
-    loadRenderer,
-    onClosed: () => {
-      onboardingWindow = null
-      if (process.platform === "darwin") {
-        app.dock?.hide()
-      }
+  onboardingWindowOpening = (async () => {
+    ensureOnboardingDriver()
+    if (process.platform === "darwin") {
+      app.dock?.show()
     }
-  })
+
+    onboardingWindow = await createOnboardingWindow({
+      preloadPath: path.join(__dirname, "preload.cjs"),
+      loadRenderer,
+      onClosed: () => {
+        onboardingWindow = null
+        if (process.platform === "darwin") {
+          app.dock?.hide()
+        }
+      }
+    })
+  })()
+
+  try {
+    await onboardingWindowOpening
+  } finally {
+    onboardingWindowOpening = null
+  }
 }
 
 // After onboarding completes: close the window and open the instance.
