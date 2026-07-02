@@ -349,10 +349,24 @@ run_docker() {
   fi
 
   # 4. Pull the prebuilt image. The daemon is already known reachable, so a
-  #    failure here is about the image itself — surface the real error.
+  #    failure here is about the image itself — surface the real error. The
+  #    download is large, so a transient network blip (e.g. "tls: bad record
+  #    MAC" mid-pull) gets a couple of automatic retries before we give up.
   step "Pulling $IMAGE"
   emit_step image_pull start "$IMAGE"
-  if ! run_logged pull compose pull; then
+  pull_ok=0
+  for pull_attempt in 1 2 3; do
+    if run_logged pull compose pull; then
+      pull_ok=1
+      break
+    fi
+    if [ "$pull_attempt" -lt 3 ]; then
+      info "Pull failed (attempt $pull_attempt/3) — retrying…"
+      emit_log pull "pull attempt $pull_attempt failed; retrying"
+      sleep "${SYRUS_PULL_RETRY_DELAY:-5}"
+    fi
+  done
+  if [ "$pull_ok" != "1" ]; then
     echo >&2
     echo "Couldn't pull $IMAGE. See the error above. Common causes:" >&2
     echo "  - The package is private and you're not logged in. Log in once:" >&2
@@ -360,7 +374,7 @@ run_docker() {
     echo "    (you must be a collaborator on the package)" >&2
     echo "  - No network, or the tag doesn't exist." >&2
     echo "Then re-run ./install.sh --docker." >&2
-    die "couldn't pull $IMAGE" 30
+    die "couldn't pull $IMAGE after 3 attempts" 30
   fi
   emit_step image_pull ok
 

@@ -18,7 +18,8 @@ RSpec.describe "install.sh GUI interface" do
 
   def run_install(*args, stub_dir: nil)
     path = [stub_dir, "/usr/bin", "/bin"].compact.join(":")
-    Open3.capture3({ "PATH" => path }, "bash", script, *args)
+    # Zero retry delay keeps the pull-failure examples fast.
+    Open3.capture3({ "PATH" => path, "SYRUS_PULL_RETRY_DELAY" => "0" }, "bash", script, *args)
   end
 
   # A fake `docker` that answers the exact calls the docker path makes.
@@ -141,7 +142,8 @@ RSpec.describe "install.sh GUI interface" do
         out, _err, status = run_install(*args, stub_dir: stub_dir)
 
         # The stub fails `compose pull`, halting the script right after the
-        # .env work we want to assert on — classified as exit 30.
+        # .env work we want to assert on — classified as exit 30 after the
+        # transient-failure retries are exhausted.
         expect(status.exitstatus).to eq(30)
         events = parse_events(out)
         expect(events).to include(
@@ -150,6 +152,8 @@ RSpec.describe "install.sh GUI interface" do
         expect(events).to include(
           hash_including("event" => "log", "stream" => "pull", "line" => "stub: pull refused")
         )
+        retry_logs = events.select { |e| e["event"] == "log" && e["line"].to_s.include?("retrying") }
+        expect(retry_logs.length).to eq(2)
         expect(events.last).to include("event" => "error", "code" => 30, "step" => "image_pull")
 
         env = File.read(File.join(target, ".env"), encoding: "UTF-8")
