@@ -33,7 +33,14 @@ const PROVISION_SCRIPT = `
   })()
 `
 
-type ProvisionResult = "already-configured" | "provisioned" | "signed_out" | "no_csrf" | "forbidden" | "error"
+type ProvisionResult =
+  | "already-configured"
+  | "different-instance"
+  | "provisioned"
+  | "signed_out"
+  | "no_csrf"
+  | "forbidden"
+  | "error"
 
 type ProvisionDeps = {
   getCachedCredentials: () => Credentials | null
@@ -51,8 +58,11 @@ export const maybeProvisionDesktopToken = async (
 ): Promise<ProvisionResult> => {
   const normalized = normalizeUrl(serverUrl)
   const cached = deps.getCachedCredentials()
-  if (cached && normalizeUrl(cached.url) === normalized) {
-    return "already-configured"
+  if (cached) {
+    // ~/.syrus/credentials is shared with the syrus CLI. Credentials
+    // configured for a DIFFERENT instance must never be overwritten by
+    // auto-provisioning — that would silently retarget the user's CLI.
+    return normalizeUrl(cached.url) === normalized ? "already-configured" : "different-instance"
   }
 
   let result: { state?: string; apiToken?: unknown }

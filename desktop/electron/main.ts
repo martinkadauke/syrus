@@ -16,7 +16,7 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConfig, store } from "./settings.js"
+import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
@@ -1081,6 +1081,17 @@ const saveCredentials = async (credentials: Credentials) => {
 
   cachedCredentials = normalizedCredentials
   startAppUserCable(normalizedCredentials)
+
+  // In remote mode the tray URL and the app window must stay in lockstep:
+  // a manual URL change in Preferences retargets the web container too
+  // (local mode's URL is owned by its .env, never by credentials). The open
+  // window closes so its next open uses the new instance.
+  const normalizedServerUrl = normalizedCredentials.url.replace(/\/+$/, "")
+  if (getBackendMode() === "remote" && getServerUrl() !== normalizedServerUrl) {
+    saveBackendConfig({ mode: "remote", serverUrl: normalizedServerUrl })
+    webAppWindow?.window.close()
+  }
+
   await fetchBootstrap()
   mainWindow?.webContents.send("credentials-saved", normalizedCredentials)
   preferencesWindow?.webContents.send("credentials-saved", normalizedCredentials)

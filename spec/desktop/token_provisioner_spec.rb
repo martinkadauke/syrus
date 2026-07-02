@@ -33,6 +33,19 @@ RSpec.describe "desktop token provisioning" do
     expect(provisioner).to include('"already-configured"')
   end
 
+  it "never overwrites credentials configured for a different instance" do
+    # ~/.syrus/credentials is shared with the syrus CLI; auto-provisioning
+    # against instance B must not silently retarget a CLI pointed at A.
+    expect(provisioner).to include('"different-instance"')
+    expect(provisioner).to match(/if \(cached\) \{[\s\S]{0,400}different-instance/)
+  end
+
+  it "keeps the app window in lockstep with a Preferences URL change (remote mode)" do
+    save_credentials = main_process[/const saveCredentials = async[\s\S]*?\n\}/]
+    expect(save_credentials).to include('getBackendMode() === "remote"')
+    expect(save_credentials).to include('saveBackendConfig({ mode: "remote", serverUrl: normalizedServerUrl })')
+  end
+
   it "persists through main.ts's saveCredentials (validation + cable + 0600 file)" do
     expect(provisioner).not_to include("writeCredentialsFile")
     expect(main_process).to include("maybeProvisionDesktopToken")
