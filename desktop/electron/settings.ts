@@ -37,6 +37,7 @@ export type DesktopStore = DesktopSettings & {
   localInstall: LocalInstall | null
   webAppWindowBounds: WindowBounds | null
   onboardingCompletedAt: string
+  backendConfigMigratedAt: string
 }
 
 export const store = new Store<DesktopStore>({
@@ -49,7 +50,8 @@ export const store = new Store<DesktopStore>({
     serverUrl: "",
     localInstall: null,
     webAppWindowBounds: null,
-    onboardingCompletedAt: ""
+    onboardingCompletedAt: "",
+    backendConfigMigratedAt: ""
   }
 })
 
@@ -101,6 +103,14 @@ export const migrateBackendConfig = async (credentialsUrl: string | null) => {
   if (getBackendMode() !== "") {
     return getBackendMode()
   }
+
+  // Runs at most once per install: afterwards an empty backendMode is a
+  // deliberate state (e.g. "Run Setup Again…") and must reopen onboarding,
+  // not silently re-adopt the surviving credentials file.
+  if (store.get("backendConfigMigratedAt", "") !== "") {
+    return "" as const
+  }
+  store.set("backendConfigMigratedAt", new Date().toISOString())
 
   if (credentialsUrl && credentialsUrl.trim() !== "") {
     saveBackendConfig({ mode: "remote", serverUrl: credentialsUrl })

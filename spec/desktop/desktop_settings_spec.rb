@@ -37,6 +37,15 @@ RSpec.describe "desktop settings and credentials modules" do
     expect(settings_module).to match(/SYRUS_PORT=/)
   end
 
+  it "runs the migration at most once, so a cleared config reopens onboarding" do
+    # After "Run Setup Again…" clears backendMode, a relaunch must NOT
+    # silently re-adopt remote mode from the surviving credentials file.
+    expect(settings_module).to include('store.get("backendConfigMigratedAt", "") !== ""')
+    expect(settings_module).to include('store.set("backendConfigMigratedAt", new Date().toISOString())')
+    clear_config = settings_module[/export const clearBackendConfig[\s\S]*?\n\}/]
+    expect(clear_config).not_to include("backendConfigMigratedAt")
+  end
+
   it "runs the migration on startup after credentials load" do
     expect(main_process).to include("await migrateBackendConfig(cachedCredentials?.url ?? null)")
     expect(main_process.index("await loadCredentials()")).to be < main_process.index("await migrateBackendConfig")
