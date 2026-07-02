@@ -33,6 +33,8 @@ class RunFailureClassifier
       result("rate_limited", 0.90, true, "The run hit an external rate limit.")
     when timeout?
       result("timeout", 0.85, true, "The run failed because an operation timed out.")
+    when mcp_sidecar?
+      result("mcp_sidecar_failure", 0.75, true, "The agent sidecar failed or disconnected.")
     when process_died?
       result("worker_died", 0.95, true, "The worker or agent process disappeared while the run was active.")
     when git_state_corrupt?
@@ -47,8 +49,6 @@ class RunFailureClassifier
       result("provider_transient", 0.75, true, "The provider failed transiently.")
     when database_lock?
       result("database_lock", 0.80, true, "The run failed during a transient database lock or timeout.")
-    when mcp_sidecar?
-      result("mcp_sidecar_failure", 0.75, true, "The agent sidecar failed or disconnected.")
     when git_failure?
       result("git_failure", 0.70, false, "A git operation failed.")
     else
@@ -133,7 +133,10 @@ class RunFailureClassifier
   end
 
   def mcp_sidecar?
-    text_match?(/mcp|sidecar|initialize response|connection closed/i)
+    run.agent_outcome == "mcp_sidecar_failed" ||
+      text_match?(
+        /\[mcp_servers\].*failed|No such tool available: mcp__syrus-mcp-sidecar|mcp.*sidecar.*failed|sidecar.*failed|initialize response|connection closed: initialize/i
+      )
   end
 
   def git_failure?

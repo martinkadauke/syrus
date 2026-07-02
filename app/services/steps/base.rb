@@ -146,6 +146,7 @@ module Steps
       end
 
       agent_adapter.record_result!(result, log: ->(message) { log(message) })
+      capture_mcp_sidecar_stderr if result.outcome == "mcp_sidecar_failed"
 
       raise StepFailed, "agent timed out"                            if result.timed_out
       raise StepFailed, "agent reported #{result.outcome || 'error'}" if result.is_error
@@ -166,6 +167,13 @@ module Steps
         workspace: workspace,
         parent_session_id: parent_session_id
       )
+    end
+
+    def capture_mcp_sidecar_stderr
+      stderr = McpSidecarLog.tail(run.id)
+      return if stderr.blank?
+
+      log("[mcp_sidecar_stderr]\n#{stderr}", kind: "system")
     end
 
     # Session continuation. v1 contract: `--resume` only crosses Step

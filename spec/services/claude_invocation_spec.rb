@@ -282,6 +282,37 @@ RSpec.describe ClaudeInvocation do
       )
     end
 
+    it "marks failed MCP server init as an MCP sidecar failure" do
+      events = []
+      event = {
+        type: "system",
+        subtype: "init",
+        session_id: "abc-123-xyz",
+        mcp_servers: [
+          { "name" => "syrus-mcp-sidecar", "status" => "failed" }
+        ]
+      }.to_json
+
+      update = invocation.send(:process_event, event, ->(line, **kwargs) { events << [ line, kwargs ] })
+
+      expect(update).to eq(
+        session_id: "abc-123-xyz",
+        mcp_server_failed: true,
+        is_error: true,
+        outcome: "mcp_sidecar_failed",
+        final_text: nil
+      )
+      expect(events).to contain_exactly(
+        [
+          "[mcp_servers] syrus-mcp-sidecar=failed",
+          {
+            kind: "system",
+            mcp_servers: [ { "name" => "syrus-mcp-sidecar", "status" => "failed" } ]
+          }
+        ]
+      )
+    end
+
     it "ignores other system subtypes (only system/init carries the session_id we need)" do
       event = { type: "system", subtype: "other", session_id: "xxx" }.to_json
       update = invocation.send(:process_event, event, ->(l, **_) { lines << l })

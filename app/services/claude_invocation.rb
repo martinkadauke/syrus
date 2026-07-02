@@ -97,6 +97,7 @@ class ClaudeInvocation
       cost_usd: nil, input_tokens: nil, output_tokens: nil,
       cache_creation_input_tokens: nil, cache_read_input_tokens: nil
     }
+    mcp_server_failed = false
     current_run = Thread.current[:syrus_current_run]
     runner_result = ProcessRunner.new(
       env: env,
@@ -107,13 +108,21 @@ class ClaudeInvocation
       kind: "agent",
       run: current_run,
       workflow: current_run&.workflow,
-      stop_requested: stop_requested,
+      stop_requested: -> { mcp_server_failed || stop_requested.call },
       on_spawned_process: process_started,
       on_output_line: ->(line) do
         update = process_event(line, log_sink)
-        metadata.merge!(update.compact) if update
+        if update
+          mcp_server_failed = true if update.delete(:mcp_server_failed)
+          metadata.merge!(update.compact)
+        end
       end
     ).run
+    if mcp_server_failed
+      metadata[:is_error] = true
+      metadata[:outcome] = "mcp_sidecar_failed"
+      metadata[:final_text] = nil
+    end
 
     AgentInvocation::Result.new(
       turns: metadata[:turns],
@@ -243,7 +252,17 @@ class ClaudeInvocation
             mcp_servers: servers
           )
         end
-        { session_id: event["session_id"] } if event["session_id"]
+        updates = {}
+        updates[:session_id] = event["session_id"] if event["session_id"]
+        if servers&.any? { |server| server["status"] == "failed" }
+          updates.merge!(
+            mcp_server_failed: true,
+            is_error: true,
+            outcome: "mcp_sidecar_failed",
+            final_text: nil
+          )
+        end
+        updates.presence
       end
     when "result"
       usage = event["usage"] || {}

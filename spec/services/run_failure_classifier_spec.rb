@@ -100,6 +100,19 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("git_state_corrupt")
   end
 
+  it "prefers MCP sidecar failures over max-turns when the tool never registered" do
+    run.update!(state: "failed", agent_outcome: "error_max_turns")
+    process("stopped")
+    JobLog.append!(
+      run: run,
+      kind: "system",
+      chunk: "[mcp_servers] syrus-mcp-sidecar=failed\nNo such tool available: mcp__syrus-mcp-sidecar__submit_summary"
+    )
+
+    expect(classification.classification).to eq("mcp_sidecar_failure")
+    expect(classification.retryable).to eq(true)
+  end
+
   it "classifies validation and user-input failures" do
     run.update!(state: "failed")
     diagnostic("ActiveRecord::RecordInvalid", "Validation failed: Prompt cannot be blank")

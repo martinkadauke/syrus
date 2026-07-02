@@ -4,6 +4,22 @@
 #
 # Boots full Rails so the sidecar can read/write the Run via
 # ActiveRecord and append to JobLog. Same boot path as bin/jobs.
+require "fileutils"
+require "time"
+
+run_id_index = ARGV.index("--run-id")
+run_id_arg = ARGV[run_id_index + 1] if run_id_index && ARGV[run_id_index + 1]
+
+if run_id_arg.to_s.match?(/\A\d+\z/)
+  data_root = ENV["SYRUS_DATA_ROOT"].to_s.empty? ? File.expand_path("~/.syrus") : ENV["SYRUS_DATA_ROOT"]
+  log_dir = File.join(data_root, "mcp-sidecar-logs")
+  FileUtils.mkdir_p(log_dir)
+  stderr_path = File.join(log_dir, "run-#{run_id_arg}.stderr.log")
+  ENV["SYRUS_MCP_SIDECAR_STDERR_LOG"] = stderr_path
+  STDERR.reopen(stderr_path, "w")
+  STDERR.sync = true
+  warn "[#{Time.now.utc.iso8601}] starting syrus-mcp-sidecar pid=#{Process.pid} run_id=#{run_id_arg}"
+end
 
 # Force Bundler to use Syrus's own Gemfile, no matter what the
 # spawning process inherited. AgentInvocation sets BUNDLE_GEMFILE
@@ -23,9 +39,15 @@ ENV["BUNDLE_GEMFILE"] = File.expand_path("../Gemfile", __dir__)
 ENV["SYRUS_MCP_SIDECAR"] = "1"
 ENV.delete("SYRUS_ROLE")
 
-require_relative "../config/environment"
-
-run_id_index = ARGV.index("--run-id")
 abort("usage: syrus-mcp-sidecar --run-id <id>") unless run_id_index && ARGV[run_id_index + 1]
 
-SyrusMcp::Sidecar.new(run_id: ARGV[run_id_index + 1].to_i).run
+begin
+  require_relative "../config/environment"
+
+  SyrusMcp::Sidecar.new(run_id: ARGV[run_id_index + 1].to_i).run
+rescue Exception => e # rubocop:disable Lint/RescueException
+  run_id = run_id_arg.to_s.empty? ? "(missing)" : run_id_arg
+  warn "[syrus-mcp-sidecar] failed to start for run #{run_id}: #{e.class}: #{e.message}"
+  e.backtrace&.first(20)&.each { |line| warn "[syrus-mcp-sidecar] #{line}" }
+  raise
+end

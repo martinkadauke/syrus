@@ -179,6 +179,32 @@ RSpec.describe Steps::Base do
       expect(received_prompt).to include("MCP/tools: run sidecar `syrus-mcp-sidecar`")
       expect(received_prompt).to include("repair the aqueduct")
     end
+
+    it "logs MCP sidecar stderr when the agent reports sidecar startup failure" do
+      result = AgentInvocation::Result.new(
+        turns: nil,
+        exit_status: 1,
+        timed_out: false,
+        is_error: true,
+        outcome: "mcp_sidecar_failed",
+        final_text: nil,
+        session_id: nil
+      )
+      fake_adapter = instance_double(AgentProviders::Base)
+      allow(handler).to receive(:agent_adapter).and_return(fake_adapter)
+      allow(fake_adapter).to receive(:run).and_return(result)
+      allow(fake_adapter).to receive(:record_result!).and_return(result)
+      allow(McpSidecarLog).to receive(:tail).with(run.id).and_return("boot exploded")
+
+      expect {
+        handler.send(:run_agent, prompt: "summarize")
+      }.to raise_error(Steps::Base::StepFailed, "agent reported mcp_sidecar_failed")
+
+      log = run.job_logs.order(:sequence).last
+      expect(log.kind).to eq("system")
+      expect(log.chunk).to include("[mcp_sidecar_stderr]")
+      expect(log.chunk).to include("boot exploded")
+    end
   end
 
   describe "#perform_agentic_change_step" do
