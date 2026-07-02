@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile)
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const WATCHDOG_INTERVAL_MS = 30_000
-const DAEMON_WAIT_POLLS = 90 // × 2s = 180s
+const DAEMON_WAIT_DEADLINE_MS = 180_000
 const HEALTH_WAIT_POLLS = 60 // × 2s = 120s
 
 export type BackendDiagnosis = "daemon-down" | "containers-down" | "stopped"
@@ -59,8 +59,12 @@ const ensureDaemon = async () => {
     return false
   }
 
-  for (let poll = 0; poll < DAEMON_WAIT_POLLS; poll += 1) {
-    if (await daemonUp()) {
+  // Wall-clock deadline with a short per-poll probe: a wedged daemon can
+  // hang `docker info` for its full timeout, so an iteration-counted loop
+  // with 10s probes silently stretched "3 minutes" to ~18.
+  const deadline = Date.now() + DAEMON_WAIT_DEADLINE_MS
+  while (Date.now() < deadline) {
+    if (await daemonUp(2_000)) {
       return true
     }
 
@@ -71,6 +75,7 @@ const ensureDaemon = async () => {
 }
 
 let busy = false
+let lastHealthy = true
 
 export const startBackend = async (): Promise<boolean> => {
   if (getBackendMode() !== "local" || busy) {
@@ -109,6 +114,10 @@ export const stopBackend = async (): Promise<boolean> => {
   busy = true
   try {
     await compose(["stop"])
+    // A deliberate stop is not an outage: pre-marking the transition keeps
+    // the watchdog from overwriting the "stopped" status page with a
+    // "containers-down" failure within the next tick.
+    lastHealthy = false
     return true
   } catch {
     return false
@@ -118,7 +127,11 @@ export const stopBackend = async (): Promise<boolean> => {
 }
 
 export const restartBackend = async (): Promise<boolean> => {
-  await stopBackend()
+  const stopped = await stopBackend()
+  if (!stopped) {
+    return false
+  }
+
   return startBackend()
 }
 
@@ -142,7 +155,6 @@ type WatchdogDeps = {
 
 let watchdogTimer: NodeJS.Timeout | null = null
 let watchdogTickInFlight = false
-let lastHealthy = true
 
 // Reports transitions only; it never auto-restarts (a crash-looping stack
 // would otherwise fight the user). Recovery actions live in the Backend

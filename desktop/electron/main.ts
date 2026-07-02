@@ -1255,6 +1255,14 @@ const ensureOnboardingDriver = () => {
     saveRemoteCredentials: (credentials) => saveCredentials(credentials),
     onState: (state) => {
       onboardingWindow?.webContents.send("onboarding:state-changed", state)
+      // Supervision starts the moment a local install completes — not only
+      // when the user clicks "Open Syrus". Closing the wizard via the
+      // traffic light must not leave the session without the watchdog and
+      // Backend menu.
+      if (state.phase === "done" && state.mode === "local") {
+        createMenu()
+        startLocalBackendSupervision()
+      }
     },
     onLogLine: (line) => {
       onboardingWindow?.webContents.send("onboarding:log-line", line)
@@ -1460,6 +1468,25 @@ const confirmStopBackend = async () => {
 
   if (await backendLifecycle.stopBackend()) {
     showBackendUnavailable("stopped")
+  } else {
+    await reportBackendActionFailure("stop Syrus")
+  }
+}
+
+// Backend-menu actions return false when refused (busy) or failed; silent
+// no-ops made the menu look dead.
+const reportBackendActionFailure = async (label: string) => {
+  await dialog.showMessageBox({
+    type: "warning",
+    message: `Couldn't ${label}.`,
+    detail:
+      "Another backend operation may still be in progress, or Docker isn't ready. Check Backend → Open Install Log for details."
+  })
+}
+
+const runBackendAction = async (label: string, action: () => Promise<boolean>) => {
+  if (!(await action())) {
+    await reportBackendActionFailure(label)
   }
 }
 
@@ -1629,7 +1656,7 @@ const createMenu = () => {
         {
           label: "Start Syrus",
           click: () => {
-            void backendLifecycle.startBackend()
+            void runBackendAction("start Syrus", backendLifecycle.startBackend)
           }
         },
         {
@@ -1641,7 +1668,7 @@ const createMenu = () => {
         {
           label: "Restart Syrus",
           click: () => {
-            void backendLifecycle.restartBackend()
+            void runBackendAction("restart Syrus", backendLifecycle.restartBackend)
           }
         },
         { type: "separator" },

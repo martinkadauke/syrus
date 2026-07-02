@@ -56,6 +56,34 @@ RSpec.describe "desktop backend lifecycle" do
     expect(main_process).to include('"Open Install Log"')
   end
 
+  it "suppresses the watchdog after a deliberate stop" do
+    # Backend -> Stop Syrus shows the "stopped" page; the next watchdog tick
+    # must not overwrite it with a "containers-down" failure.
+    stop_fn = lifecycle[/export const stopBackend[\s\S]*?\n\}/]
+    expect(stop_fn).to include("lastHealthy = false")
+  end
+
+  it "makes restart honest and surfaces refused menu actions" do
+    restart_fn = lifecycle[/export const restartBackend[\s\S]*?\n\}/]
+    expect(restart_fn).to include("if (!stopped)")
+    expect(main_process).to include("runBackendAction")
+    expect(main_process).to include("reportBackendActionFailure")
+  end
+
+  it "bounds the daemon wait by wall clock with short probes" do
+    # Iteration-counted polls with 10s docker-info timeouts stretched the
+    # nominal 3-minute wait to ~18 minutes against a wedged daemon.
+    expect(lifecycle).to include("DAEMON_WAIT_DEADLINE_MS")
+    expect(lifecycle).to include("await daemonUp(2_000)")
+    expect(lifecycle).not_to include("DAEMON_WAIT_POLLS")
+  end
+
+  it "starts supervision when a local install completes, not only on Open Syrus" do
+    on_state = main_process[/onState: \(state\) => \{[\s\S]*?\n    \}/]
+    expect(on_state).to include('state.phase === "done" && state.mode === "local"')
+    expect(on_state).to include("startLocalBackendSupervision()")
+  end
+
   it "rebuilds the menu and starts supervision when onboarding finishes" do
     finish = main_process[/const finishOnboarding = async \(\) => \{[\s\S]*?\n\}/]
     expect(finish).to include("createMenu()")
