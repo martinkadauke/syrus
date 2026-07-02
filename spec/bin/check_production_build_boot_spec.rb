@@ -16,7 +16,9 @@ RSpec.describe "bin/check-production-build-boot" do
         "PATH" => ENV.fetch("PATH"),
         "TMPDIR" => ENV["TMPDIR"]
       }.compact,
-      script,
+      # [script, script] (argv0 form) — a bare string gets word-split by
+      # spawn, which breaks on checkout paths containing spaces.
+      [script, script],
       chdir: root,
       unsetenv_others: true
     )
