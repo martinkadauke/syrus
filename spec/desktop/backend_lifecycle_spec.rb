@@ -43,9 +43,25 @@ RSpec.describe "desktop backend lifecycle" do
     expect(lifecycle).to include("if (healthy === lastHealthy)")
   end
 
-  it "diagnoses daemon-down vs containers-down without auto-restarting" do
-    expect(lifecycle).to include('(await daemonUp()) ? "containers-down" : "daemon-down"')
+  it "diagnoses daemon-down vs data-gone vs containers-down without auto-restarting" do
+    expect(lifecycle).to include('"daemon-down"')
+    expect(lifecycle).to include('"containers-down"')
+    expect(lifecycle).to match(/volumeExists\(DATA_VOLUME_NAME\)[\s\S]{0,80}"data-gone"/)
     expect(lifecycle).not_to match(/onHealthyChanged[\s\S]*startBackend\(\)/)
+  end
+
+  it "offers a setup escape hatch that never touches data or credentials" do
+    expect(main_process).to include('"Run Setup Again…"')
+    setup_again = main_process[/const runSetupAgain = async[\s\S]*?\n\}/]
+    expect(setup_again).to include("clearBackendConfig()")
+    expect(setup_again).to include("await showOnboardingWindow()")
+    expect(setup_again).not_to include("deleteCredentials")
+    expect(setup_again).not_to include("down")
+  end
+
+  it "prompts once for a fresh setup when the data volume is gone" do
+    expect(main_process).to match(/diagnosis === "data-gone"[\s\S]{0,80}offerSetupAfterDataLoss/)
+    expect(main_process).to include("dataLossPromptShown")
   end
 
   it "adds the Backend menu only for local installs, with a confirmed stop" do
@@ -90,9 +106,10 @@ RSpec.describe "desktop backend lifecycle" do
     expect(finish).to include("startLocalBackendSupervision()")
   end
 
-  it "explains each unavailable state on the status page" do
-    %w[daemon-down containers-down stopped remote].each do |detail|
+  it "explains each unavailable state on the status page, with the setup escape hatch" do
+    %w[daemon-down containers-down stopped remote data-gone].each do |detail|
       expect(backend_status).to include(%("#{detail}")).or include("#{detail}:")
     end
+    expect(backend_status).to include("Run Setup Again")
   end
 end

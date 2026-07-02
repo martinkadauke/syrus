@@ -16,7 +16,7 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
+import { clearBackendConfig, DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import * as appUpdates from "./appUpdates.js"
 import * as backendLifecycle from "./installer/backendLifecycle.js"
@@ -1494,10 +1494,63 @@ const startLocalBackendSupervision = () => {
     onHealthyChanged: (healthy, diagnosis) => {
       if (!healthy) {
         showBackendUnavailable(diagnosis ?? "local")
+        if (diagnosis === "data-gone") {
+          void offerSetupAfterDataLoss()
+        }
       }
       // Recovery polling reloads the app when it becomes healthy again.
     }
   })
+}
+
+// The escape hatch out of any wedged backend state (instance gone, Docker
+// wiped, wrong URL): forget the backend config — never the data or the
+// ~/.syrus credentials — and start onboarding over.
+const runSetupAgain = async ({ skipConfirmation = false } = {}) => {
+  if (!skipConfirmation) {
+    const confirmation = await dialog.showMessageBox({
+      type: "question",
+      buttons: ["Run Setup", "Cancel"],
+      defaultId: 0,
+      cancelId: 1,
+      message: "Set up Syrus again?",
+      detail: "Choose again where Syrus runs. Your credentials and any local Syrus data stay untouched."
+    })
+
+    if (confirmation.response !== 0) {
+      return
+    }
+  }
+
+  backendLifecycle.stopWatchdog()
+  stopBackendRecoveryPolling()
+  clearBackendConfig()
+  webAppWindow?.window.close()
+  createMenu() // drops the Backend menu until a new local install exists
+  await showOnboardingWindow()
+}
+
+// Shown once per app run when the watchdog finds Docker healthy but the
+// Syrus data volume missing — the stack can never come back on its own.
+let dataLossPromptShown = false
+const offerSetupAfterDataLoss = async () => {
+  if (dataLossPromptShown) {
+    return
+  }
+
+  dataLossPromptShown = true
+  const choice = await dialog.showMessageBox({
+    type: "warning",
+    buttons: ["Run Setup Again", "Not Now"],
+    defaultId: 0,
+    cancelId: 1,
+    message: "Your local Syrus data is gone.",
+    detail: "Docker is running, but the Syrus data volume no longer exists (it may have been deleted along with your containers). Syrus can't start again until it's set up fresh."
+  })
+
+  if (choice.response === 0) {
+    await runSetupAgain({ skipConfirmation: true })
+  }
 }
 
 const confirmStopBackend = async () => {
@@ -1720,6 +1773,12 @@ const createMenu = () => {
           label: "Check for Updates…",
           click: () => {
             void checkForUpdatesInteractively()
+          }
+        },
+        {
+          label: "Run Setup Again…",
+          click: () => {
+            void runSetupAgain()
           }
         },
         { type: "separator" },

@@ -20,6 +20,10 @@ const DETAIL_MESSAGES: Record<string, { title: string; body: string }> = {
   stopped: {
     title: "Syrus is stopped",
     body: "You stopped Syrus, so GitHub polling and agent runs are paused. Start it again from Backend → Start Syrus."
+  },
+  "data-gone": {
+    title: "Your Syrus data is gone",
+    body: "Docker is running, but the Syrus data volume no longer exists — it may have been deleted along with your containers. Syrus needs a fresh setup."
   }
 }
 
@@ -38,6 +42,10 @@ export function BackendStatus() {
       <img src={syrusIconUrl} alt="" className="h-12 w-12 opacity-70" />
       <h1 className="mt-5 text-xl font-semibold">{message.title}</h1>
       <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-600">{message.body}</p>
+      <p className="mt-3 max-w-sm text-xs leading-relaxed text-slate-400">
+        Removed or moved your Syrus? Choose <span className="font-medium">Syrus → Run Setup Again…</span>{" "}
+        from the menu to start over.
+      </p>
       <p className="mt-6 text-sm text-slate-400" role="status">
         <span
           aria-hidden
