@@ -40,8 +40,10 @@ mac:
 dmg:
   title: Syrus ${version}
   iconSize: 128
-  # TODO(design): drag-to-Applications background art (660x400 + @2x tiff)
-  # to fully mirror the Claude Desktop look; layout works without it.
+  # Parchment + terracotta arrow + motto; sources are the sibling PNGs
+  # (1x/2x combined via `tiffutil -cathidpicheck`). Arrow geometry assumes
+  # the contents positions below — keep them in sync.
+  background: build/dmg-background.tiff
   window:
     width: 660
     height: 400

@@ -24,6 +24,10 @@ RSpec.describe "desktop packaging" do
 
   it "ships as Syrus.app, mirroring Claude Desktop naming" do
     expect(builder_config).to include("productName: Syrus\n")
+    # Electron derives app.name — and the userData dir — from package.json's
+    # productName; without it the packaged app stores config under the npm
+    # package name instead of "Syrus".
+    expect(package_json["productName"]).to eq("Syrus")
   end
 
   it "configures Gatekeeper-clean signing: hardened runtime, entitlements, notarization" do
@@ -44,9 +48,12 @@ RSpec.describe "desktop packaging" do
     expect(builder_config).to match(/- target: zip\s+arch:/)
   end
 
-  it "lays the DMG out as drag-to-Applications" do
+  it "lays the DMG out as drag-to-Applications with the branded background" do
     expect(builder_config).to include("type: link")
     expect(builder_config).to include("path: /Applications")
+    expect(builder_config).to include("background: build/dmg-background.tiff")
+    expect(File).to exist(File.join(desktop_root, "build/dmg-background.tiff"))
+    expect(File).to exist(File.join(desktop_root, "build/dmg-background@2x.png"))
   end
 
   it "publishes to the tkadauke/syrus GitHub feed the shipped apps will read" do
