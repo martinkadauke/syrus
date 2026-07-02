@@ -147,6 +147,34 @@ module Api
           render_job(job.reload, message: "Pushing commits to GitHub...", changed: [ "workflows" ], workflow: workflow)
         end
 
+        def force_push_branch
+          job = find_job
+          workflow = find_workflow(job)
+          return unless workflow
+
+          result = BranchDivergenceRecovery.force_push!(workflow: workflow, user: Current.user)
+          unless result.success?
+            render_error("validation_failed", result.error, status: :unprocessable_content)
+            return
+          end
+
+          render_job(job.reload, message: "PR branch replaced with this workflow's output.", changed: [ "workflows", "runs", "state" ], workflow: workflow.reload, tab: "workflows")
+        end
+
+        def discard_branch_output
+          job = find_job
+          workflow = find_workflow(job)
+          return unless workflow
+
+          result = BranchDivergenceRecovery.discard!(workflow: workflow, user: Current.user)
+          unless result.success?
+            render_error("validation_failed", result.error, status: :unprocessable_content)
+            return
+          end
+
+          render_job(job.reload, message: "Discarded this workflow's stale branch output.", changed: [ "workflows", "state" ], workflow: workflow.reload, tab: "workflows")
+        end
+
         def diagnose
           job = find_job
           run = job.runs.find_by(id: params[:run_id])
@@ -167,6 +195,15 @@ module Api
 
         def find_job
           Current.user.jobs.includes(:repository, :runs, workflows: :steps).find(params[:job_id])
+        end
+
+        def find_workflow(job)
+          workflow = job.workflows.find_by(id: params[:workflow_id])
+          unless workflow
+            render_error("not_found", "Workflow not found.", status: :not_found)
+            return nil
+          end
+          workflow
         end
 
         def valid_configured_agent_provider?(agent_provider)

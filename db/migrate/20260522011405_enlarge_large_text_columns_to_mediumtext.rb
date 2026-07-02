@@ -37,15 +37,15 @@ class EnlargeLargeTextColumnsToMediumtext < ActiveRecord::Migration[8.1]
   # SQLite ignores the limit (TEXT has no upper bound there), so
   # dev/test sees no schema change.
   PROMOTIONS = [
-    %i[ jobs                    issue_body ],
-    %i[ chat_proposals          body ],
-    %i[ runs                    agent_pr_body ],
-    %i[ scheduled_tasks         prompt ],
-    %i[ cron_templates          prompt ],
-    %i[ run_diagnostics         error_backtrace ],
-    %i[ run_diagnostics         environment_snapshot ],
-    %i[ run_diagnostics         git_snapshot ],
-    %i[ run_diagnostics         repo_snapshot ]
+    %i[ jobs issue_body ],
+    %i[ chat_proposals body ],
+    %i[ runs agent_pr_body ],
+    %i[ scheduled_tasks prompt ],
+    %i[ cron_templates prompt ],
+    %i[ run_diagnostics error_backtrace ],
+    %i[ run_diagnostics environment_snapshot ],
+    %i[ run_diagnostics git_snapshot ],
+    %i[ run_diagnostics repo_snapshot ]
   ].freeze
 
   def up

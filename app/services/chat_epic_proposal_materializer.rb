@@ -181,5 +181,4 @@ class ChatEpicProposalMaterializer
       end
     end
   end
-
 end

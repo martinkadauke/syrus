@@ -63,7 +63,7 @@ RSpec.describe RetryWorkflowEnqueuer do
     expect {
       result = described_class.call(job: job)
       expect(result).not_to be_success
-      expect(result.error).to eq("Thread is closed — use Start over to begin a new one.")
+      expect(result.error).to eq("Thread is closed - use Start over to begin a new one.")
     }.not_to change { job.workflows.where(trigger_kind: "retry").count }
   end
 
@@ -71,8 +71,44 @@ RSpec.describe RetryWorkflowEnqueuer do
     expect {
       result = described_class.call(job: job)
       expect(result).not_to be_success
-      expect(result.error).to eq("A Run is already in progress — wait for it to finish.")
+      expect(result.error).to eq("A Run is already in progress - wait for it to finish.")
     }.not_to change { job.workflows.where(trigger_kind: "retry").count }
+  end
+
+  it "rejects retries before the initial workflow has run" do
+    job.initial_run.destroy!
+
+    expect {
+      result = described_class.call(job: job)
+      expect(result).not_to be_success
+      expect(result.error).to eq("The initial workflow has not run yet - start or wait for it before retrying.")
+    }.not_to change { job.workflows.where(trigger_kind: "retry").count }
+  end
+
+  it "rejects approved jobs" do
+    finish_current_run!
+    job.update!(state: "implemented")
+    job.approve!(via: "operator", by_user: user)
+    job.save!
+
+    expect {
+      result = described_class.call(job: job)
+      expect(result).not_to be_success
+      expect(result.error).to eq("Job is already approved for landing - unapprove it before retrying.")
+    }.not_to change { job.workflows.where(trigger_kind: "retry").count }
+  end
+
+  it "cancels queued retry workflows when the job is approved" do
+    finish_current_run!
+    retry_workflow = Workflows::Retry.instantiate(job: job, agent_provider: job.agent_provider)
+    job.update!(state: "implemented")
+
+    expect {
+      job.approve!(via: "operator", by_user: user)
+      job.save!
+    }.to change { retry_workflow.reload.state }.from("queued").to("cancelled")
+
+    expect(retry_workflow.artifact("retry_cancelled_reason")).to eq("job_approved")
   end
 
   it "syncs skip-prepare from the source issue before instantiating the workflow" do

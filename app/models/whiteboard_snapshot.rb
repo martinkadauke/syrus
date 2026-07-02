@@ -34,10 +34,10 @@ class WhiteboardSnapshot < ApplicationRecord
 
   def self.default_name_for(kind)
     prefix = case kind
-             when "auto_clear" then "Before clear"
-             when "auto_before_load" then "Before load"
-             else "Snapshot"
-             end
+    when "auto_clear" then "Before clear"
+    when "auto_before_load" then "Before load"
+    else "Snapshot"
+    end
 
     "#{prefix} - #{Time.current.strftime('%b %-d %H:%M')}"
   end

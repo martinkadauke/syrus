@@ -127,6 +127,54 @@ RSpec.describe Steps::PrOpen do
     expect(job.reload.pr_number).to eq(99)
   end
 
+  it "fails clearly when an existing PR branch moved before push" do
+    job.update!(state: "running", pr_number: 77)
+    pr_open_run = Run.create!(
+      job: job,
+      step: pr_open_step,
+      trigger_kind: workflow.trigger_kind,
+      agent_provider: workflow.agent_provider
+    )
+    handler = described_class.new(pr_open_run)
+    path = Pathname.new("/tmp/syrus-pr-open-spec")
+    workspace = instance_double(WorkflowWorkspace, branch_name: "syrus/issue-42-#{job.id}", path: path)
+    client = instance_double(GithubClient, access_token: "token")
+    git = instance_double(GitRunner)
+    push_url = repository.authenticated_push_url("token")
+
+    allow(handler).to receive(:workspace).and_return(workspace)
+    allow(handler).to receive(:streaming_git).and_return(git)
+    allow(GithubClient).to receive(:for).with(repository: repository, user: job.user).and_return(client)
+    allow(git).to receive(:run).with(
+      "fetch",
+      push_url,
+      "+refs/heads/syrus/issue-42-#{job.id}:refs/remotes/origin/syrus/issue-42-#{job.id}",
+      chdir: path.to_s
+    ).and_return("")
+    allow(git).to receive(:run)
+      .with("rev-parse", "refs/remotes/origin/syrus/issue-42-#{job.id}", chdir: path.to_s)
+      .and_return("remote-sha\n")
+    allow(git).to receive(:run)
+      .with("rev-parse", "HEAD", chdir: path.to_s)
+      .and_return("local-sha\n")
+    allow(git).to receive(:run)
+      .with("merge-base", "--is-ancestor", "remote-sha", "HEAD", chdir: path.to_s)
+      .and_raise(GitRunner::GitError.new([ "merge-base" ], 1, "not ancestor"))
+
+    expect {
+      handler.send(:push_branch)
+    }.to raise_error(Steps::PrOpen::BranchDiverged, /PR branch changed before Syrus could push/)
+
+    artifact = workflow.reload.artifact("branch_divergence")
+    expect(artifact).to include(
+      "branch" => "syrus/issue-42-#{job.id}",
+      "remote_sha" => "remote-sha",
+      "local_sha" => "local-sha",
+      "message" => "remote PR branch moved before push"
+    )
+    expect(git).not_to have_received(:run).with("push", anything, anything, chdir: anything)
+  end
+
   context "when falling back to the second-shot summarizer" do
     let(:user) { Factories.user(agent_provider: "codex", codex_api_key: "sk-test") }
     let(:workflow_provider) { "codex" }

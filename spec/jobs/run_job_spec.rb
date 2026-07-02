@@ -71,6 +71,30 @@ RSpec.describe RunJob do
     FileUtils.rm_rf(@data_root) if @data_root
   end
 
+  describe "stale retry workflows" do
+    it "cancels a retry run if the job was approved before it started" do
+      initial_run = job.initial_run
+      initial_run.start!
+      initial_run.succeed!
+      initial_run.save!
+
+      retry_workflow = Workflows::Retry.instantiate(job: job, agent_provider: job.agent_provider)
+      retry_step = retry_workflow.first_step
+      retry_run = retry_step.runs.create!(
+        job: job,
+        trigger_kind: "retry",
+        agent_provider: job.agent_provider
+      )
+      job.update_columns(state: "approved", updated_at: Time.current)
+
+      RunJob.perform_now(retry_run.id)
+
+      expect(retry_workflow.reload).to be_cancelled
+      expect(retry_workflow.artifact("retry_cancelled_reason")).to eq("approved")
+      expect(retry_run.reload).to be_cancelled
+    end
+  end
+
   # ----- Initial workflow ----------------------------------------
 
   describe "Initial workflow (issue → PR)" do

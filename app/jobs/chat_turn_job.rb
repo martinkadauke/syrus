@@ -600,5 +600,4 @@ class ChatTurnJob < ApplicationJob
   def touch_chat!
     @chat.update!(last_message_at: Time.current)
   end
-
 end

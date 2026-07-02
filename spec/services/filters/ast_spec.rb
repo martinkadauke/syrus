@@ -25,7 +25,7 @@ RSpec.describe Filters::Ast do
         { "or" => [
           { "field" => "state", "op" => "is", "value" => "open" },
           { "field" => "state", "op" => "is", "value" => "closed" }
-        ]}
+        ] }
       ])
 
       group = ast.children.first
@@ -43,7 +43,7 @@ RSpec.describe Filters::Ast do
     it "parses NOT wrappers around OR groups" do
       ast = described_class.parse("not" => { "or" => [
         { "field" => "state", "op" => "is", "value" => "open" }
-      ]})
+      ] })
 
       expect(ast).to be_a(described_class::NotNode)
       expect(ast.child).to be_a(described_class::OrNode)
@@ -84,7 +84,7 @@ RSpec.describe Filters::Ast do
           { "or" => [
             { "field" => "tags", "op" => "contains_any", "value" => [ 1, 2 ] },
             { "field" => "attention", "op" => "is", "value" => "stale" }
-          ]},
+          ] },
           { "not" => { "field" => "repository_id", "op" => "is", "value" => 99 } }
         ]
       }

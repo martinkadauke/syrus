@@ -10,6 +10,8 @@ module Steps
   # Job that already opened a PR), skip PR creation and just push
   # the new commits.
   class PrOpen < Base
+    class BranchDiverged < StepFailed; end
+
     def call
       workspace.setup
       log("pr_open: pushing branch and opening PR (#{workflow.slug})")
@@ -54,8 +56,76 @@ module Steps
     def push_branch
       git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
       push_url = repository.authenticated_push_url(GithubClient.for(repository: repository, user: job.user).access_token)
+      verify_existing_pr_branch_not_diverged!(git, push_url) if job.pr_number.present?
       git.run("push", push_url, "HEAD:refs/heads/#{workspace.branch_name}",
               chdir: workspace.path.to_s)
+    rescue GitRunner::GitError => e
+      raise unless job.pr_number.present? && non_fast_forward_push?(e)
+
+      record_branch_divergence!(git, e.message)
+      raise BranchDiverged, branch_divergence_message
+    end
+
+    def verify_existing_pr_branch_not_diverged!(git, push_url)
+      remote_sha = fetch_remote_branch!(git, push_url)
+      return if remote_sha.blank?
+
+      local_sha = current_head_sha(git)
+      return if remote_sha == local_sha
+      return if ancestor?(git, remote_sha, "HEAD")
+
+      record_branch_divergence!(git, "remote PR branch moved before push", remote_sha: remote_sha, local_sha: local_sha)
+      raise BranchDiverged, branch_divergence_message
+    end
+
+    def fetch_remote_branch!(git, push_url)
+      branch = workspace.branch_name
+      git.run(
+        "fetch", push_url, "+refs/heads/#{branch}:refs/remotes/origin/#{branch}",
+        chdir: workspace.path.to_s
+      )
+      git.run("rev-parse", "refs/remotes/origin/#{branch}", chdir: workspace.path.to_s).strip
+    rescue GitRunner::GitError => e
+      return nil if e.output.to_s.match?(/couldn't find remote ref|could not find remote ref|fatal:.*remote ref/i)
+
+      raise
+    end
+
+    def ancestor?(git, ancestor, descendant)
+      git.run("merge-base", "--is-ancestor", ancestor, descendant, chdir: workspace.path.to_s)
+      true
+    rescue GitRunner::GitError
+      false
+    end
+
+    def record_branch_divergence!(git, message, remote_sha: nil, local_sha: nil)
+      workflow.set_artifact!("branch_divergence", {
+        "branch" => workspace.branch_name,
+        "remote_sha" => remote_sha.presence || remote_branch_sha(git),
+        "local_sha" => local_sha.presence || current_head_sha(git),
+        "detected_at" => Time.current.iso8601,
+        "message" => message.to_s
+      }.compact)
+      artifact = workflow.artifact("branch_divergence")
+      log("pr_open: branch diverged for #{workspace.branch_name}; remote=#{artifact['remote_sha']} local=#{artifact['local_sha']}")
+    end
+
+    def remote_branch_sha(git)
+      git.run("rev-parse", "refs/remotes/origin/#{workspace.branch_name}", chdir: workspace.path.to_s).strip
+    rescue GitRunner::GitError
+      nil
+    end
+
+    def current_head_sha(git)
+      git.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
+    end
+
+    def non_fast_forward_push?(error)
+      error.output.to_s.match?(/non-fast-forward|fetch first|rejected|stale info/i)
+    end
+
+    def branch_divergence_message
+      "PR branch changed before Syrus could push #{workflow.slug}; choose whether to retry from the current PR branch or replace it with this workflow's output."
     end
 
     # Three-tier degradation, same shape as legacy

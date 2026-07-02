@@ -331,6 +331,7 @@ class Job < ApplicationRecord
   after_update_commit :promote_queued_chat_pending_actions, if: :saved_change_to_implemented?
   after_update_commit :cancel_queued_chat_pending_actions, if: :saved_change_to_closed?
   after_update_commit :start_dependent_jobs_after_approval, if: :saved_change_to_approved?
+  after_update_commit :cancel_queued_retry_workflows_after_approval, if: :saved_change_to_approved?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
   after_update_commit :enqueue_search_index_after_update
   after_update_commit :broadcast_app_job_updated
@@ -727,6 +728,17 @@ class Job < ApplicationRecord
 
   def saved_change_to_approved?
     saved_change_to_state? && approved?
+  end
+
+  def cancel_queued_retry_workflows_after_approval
+    workflows.where(trigger_kind: "retry", state: "queued").find_each do |workflow|
+      workflow.artifacts = (workflow.artifacts || {}).merge(
+        "retry_cancelled_reason" => "job_approved",
+        "retry_cancelled_at" => Time.current.iso8601
+      )
+      workflow.cancel! if workflow.may_cancel?
+      workflow.save!
+    end
   end
 
   def promote_queued_chat_pending_actions

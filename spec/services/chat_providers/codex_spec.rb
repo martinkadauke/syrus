@@ -68,11 +68,11 @@ RSpec.describe ChatProviders::Codex do
       result = described_class.new(chat: chat, runner: runner).invoke(
         workspace_path: "/tmp/chat-workspace",
         prompt: "What is the plan?",
-        log_sink: ->(*, **) {},
+        log_sink: ->(*, **) { },
         mcp_config: mcp_config.path,
         resume_session_id: "codex-thread-1",
         stop_requested: -> { false },
-        process_started: ->(_process) {}
+        process_started: ->(_process) { }
       )
 
       expect(result.session_id).to eq("codex-thread-2")

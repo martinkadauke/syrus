@@ -37,6 +37,8 @@ class RunFailureClassifier
       result("mcp_sidecar_failure", 0.75, true, "The agent sidecar failed or disconnected.")
     when process_died?
       result("worker_died", 0.95, true, "The worker or agent process disappeared while the run was active.")
+    when branch_diverged?
+      result("branch_diverged", 0.95, false, "The PR branch changed before Syrus could push this workflow.")
     when git_state_corrupt?
       result("git_state_corrupt", 0.85, false, "The workspace git state was corrupt or unsafe.")
     when max_turns?
@@ -87,6 +89,11 @@ class RunFailureClassifier
     run.agent_outcome == "worker_died" ||
       text_match?(/ProcessPrunedError|worker died|process (is )?gone|process died|sigkill|killed|terminated|exit status/i) ||
       spawned_processes.any? { |process| %w[aliveness_failed orphaned stopped operator_killed].include?(process.outcome) }
+  end
+
+  def branch_diverged?
+    diagnostic&.error_class.to_s.match?(/Steps::PrOpen::BranchDiverged/) ||
+      text_match?(/PR branch changed before Syrus could push|branch diverged|non-fast-forward/i)
   end
 
   def git_state_corrupt?

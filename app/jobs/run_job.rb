@@ -121,6 +121,8 @@ class RunJob < ApplicationJob
       return
     end
 
+    return if cancel_ineligible_retry_workflow!
+
     if @step.terminal?
       log("step ##{@step.id} already terminal (#{@step.state}); abandoning run")
       @run.cancel! if @run.may_cancel?
@@ -181,6 +183,22 @@ class RunJob < ApplicationJob
     @step.succeed!
     @step.save!
     log("step #{@step.kind} done (#{@workflow.slug})")
+  end
+
+  def cancel_ineligible_retry_workflow!
+    return false unless @workflow.trigger_kind == "retry"
+
+    eligibility = RetryWorkflowEligibility.call(job: @job, workflow: @workflow)
+    return false if eligibility.eligible?
+
+    log("retry workflow cancelled: #{eligibility.message}")
+    @workflow.artifacts = (@workflow.artifacts || {}).merge(
+      "retry_cancelled_reason" => eligibility.code,
+      "retry_cancelled_at" => Time.current.iso8601
+    )
+    @workflow.cancel! if @workflow.may_cancel?
+    @workflow.save!
+    true
   end
 
   # Snapshot the diagnostic, fail the Run, and let Run/Step

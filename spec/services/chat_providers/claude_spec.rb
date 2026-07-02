@@ -37,11 +37,11 @@ RSpec.describe ChatProviders::Claude do
       result = adapter.invoke(
         workspace_path: "/tmp/chat-workspace",
         prompt: "What is the plan?",
-        log_sink: ->(*, **) {},
+        log_sink: ->(*, **) { },
         mcp_config: "/tmp/mcp.json",
         resume_session_id: "chat-session-0",
         stop_requested: -> { false },
-        process_started: ->(_process) {}
+        process_started: ->(_process) { }
       )
 
       expect(result.session_id).to eq("chat-session-1")

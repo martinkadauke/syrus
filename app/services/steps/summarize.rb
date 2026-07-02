@@ -21,6 +21,7 @@ module Steps
         rewrite_implement_commit_message!
         return
       end
+      raise StepFailed, "#{workflow.slug} has no completed implement run to summarize" if missing_required_implement_run?
 
       run.update!(prompt: Prompts::Summarize.new.to_s) if run.prompt.blank?
 
@@ -35,8 +36,27 @@ module Steps
     private
 
     def implement_run_with_summary
-      impl_run = step.previous_step&.latest_run
+      impl_run = successful_implement_run
       impl_run if impl_run&.agent_pr_title.present?
+    end
+
+    def parent_session_id
+      run.parent_session_id.presence || implement_session_id || super
+    end
+
+    def implement_session_id
+      successful_implement_run&.claude_session&.session_id
+    end
+
+    def successful_implement_run
+      workflow.steps.where(kind: "implement")
+        .order(:position)
+        .flat_map { |step| step.runs.select(&:succeeded?) }
+        .max_by(&:created_at)
+    end
+
+    def missing_required_implement_run?
+      workflow.steps.exists?(kind: "implement") && successful_implement_run.blank?
     end
 
     def promote_artifacts!(from: nil)

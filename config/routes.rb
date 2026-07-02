@@ -98,6 +98,8 @@ Rails.application.routes.draw do
         post "jobs/:job_id/runs/:run_id/diagnose", to: "job_run_commands#diagnose", constraints: { job_id: /\d+/, run_id: /\d+/ }
         post "jobs/:job_id/workflows/:workflow_id/retry_step", to: "job_run_commands#retry_step", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
         post "jobs/:job_id/workflows/:workflow_id/push_commits", to: "job_run_commands#push_commits", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
+        post "jobs/:job_id/workflows/:workflow_id/force_push_branch", to: "job_run_commands#force_push_branch", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
+        post "jobs/:job_id/workflows/:workflow_id/discard_branch_output", to: "job_run_commands#discard_branch_output", constraints: { job_id: /\d+/, workflow_id: /\d+/ }
         resources :terminal_sessions, only: %i[ index create show destroy ] do
           member do
             post :kill

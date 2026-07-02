@@ -38,7 +38,7 @@ RSpec.describe Filters::Compiler do
       { "or" => [
         { "field" => "state", "op" => "is", "value" => queued_job.state },
         { "field" => "state", "op" => "is", "value" => "closed" }
-      ]}
+      ] }
     ])
 
     expect(result).to contain_exactly(queued_job, closed_job)
@@ -61,7 +61,7 @@ RSpec.describe Filters::Compiler do
 
     result = compile("not" => { "or" => [
       { "field" => "state", "op" => "is", "value" => "closed" }
-    ]})
+    ] })
 
     expect(result).to contain_exactly(open_job)
   end

@@ -54,5 +54,4 @@ class EpicDependency < ApplicationRecord
   def refresh_dependent_epic
     epic.refresh_auto_state! if epic&.persisted?
   end
-
 end

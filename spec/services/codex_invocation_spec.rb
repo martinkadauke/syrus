@@ -18,7 +18,7 @@ RSpec.describe CodexInvocation do
   describe "#run" do
     it "delegates to the injected runner with all kwargs" do
       received = {}
-      startup_timing = described_class::StartupTiming.new(source: "spec", sink: ->(_) {})
+      startup_timing = described_class::StartupTiming.new(source: "spec", sink: ->(_) { })
       runner = ->(**kwargs) {
         received.merge!(kwargs)
         result_fixture

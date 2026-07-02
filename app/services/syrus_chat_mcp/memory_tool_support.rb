@@ -54,7 +54,7 @@ module SyrusChatMcp
       memory = ChatMemory.active.find_by(id: id)
       return unless memory
       return memory if memory.user_id == chat_session.user_id
-      return memory if memory.repository? && memory.published? && attached_repository_ids(chat_session).include?(memory.scope_id)
+      memory if memory.repository? && memory.published? && attached_repository_ids(chat_session).include?(memory.scope_id)
     end
 
     def owned_memory_for(chat_session, memory_id)

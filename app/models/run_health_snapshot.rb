@@ -9,5 +9,4 @@ class RunHealthSnapshot < ApplicationRecord
 
   scope :ordered, -> { order(:created_at) }
   scope :prunable, -> { where("created_at < ?", RETAIN_AFTER.ago) }
-
 end

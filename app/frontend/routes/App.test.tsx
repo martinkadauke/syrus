@@ -15033,6 +15033,8 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
         updated_at: "2026-05-30T12:00:00Z",
         app_retry_step_path: "/api/v1/app/jobs/42/workflows/5/retry_step",
         app_push_commits_path: "/api/v1/app/jobs/42/workflows/5/push_commits",
+        app_force_push_branch_path: "/api/v1/app/jobs/42/workflows/5/force_push_branch",
+        app_discard_branch_output_path: "/api/v1/app/jobs/42/workflows/5/discard_branch_output",
         steps: [
           {
             id: 6,

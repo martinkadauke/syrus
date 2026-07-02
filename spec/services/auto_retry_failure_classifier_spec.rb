@@ -44,6 +44,10 @@ RSpec.describe AutoRetryFailureClassifier do
     expect(described_class.non_retryable_message?("auto_merge: PR is dirty and rebase cap reached")).to be(true)
   end
 
+  it "recognizes branch divergence as non-retryable" do
+    expect(described_class.non_retryable_message?("PR branch changed before Syrus could push WF-123")).to be(true)
+  end
+
   it "classifies timeout diagnostics as retryable" do
     fail_run!(error_class: "Timeout::Error", error_message: "execution expired")
 

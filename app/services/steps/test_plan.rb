@@ -7,6 +7,8 @@ module Steps
 
     def call
       workspace.setup
+      raise StepFailed, "#{workflow.slug} has no completed implement run for test_plan" if missing_required_implement_run?
+
       run.update!(prompt: Prompts::TestPlan.new.to_s) if run.prompt.blank?
 
       log("invoking agent for test_plan step (#{workflow.slug}, --resume from implement)")
@@ -24,12 +26,18 @@ module Steps
     end
 
     def implement_session_id
-      workflow.steps.where(kind: "implement", state: "succeeded")
+      successful_implement_run&.claude_session&.session_id
+    end
+
+    def successful_implement_run
+      workflow.steps.where(kind: "implement")
         .order(:position)
-        .last
-        &.latest_run
-        &.claude_session
-        &.session_id
+        .flat_map { |step| step.runs.select(&:succeeded?) }
+        .max_by(&:created_at)
+    end
+
+    def missing_required_implement_run?
+      workflow.steps.exists?(kind: "implement") && successful_implement_run.blank?
     end
   end
 end

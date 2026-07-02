@@ -94,6 +94,8 @@ module ChatProviders
       jsonl = ChatSessionRehydrator::Claude.new(chat, session_id: session_id, cwd: workspace_path.to_s).call
       FileUtils.mkdir_p(File.dirname(path))
       File.write(path, jsonl)
+    rescue SystemCallError => e
+      Rails.logger.warn("[ChatProviders::Claude] unable to rehydrate Claude session #{session_id}: #{e.class}: #{e.message}")
     end
 
     def normalized_session_id(session_id)

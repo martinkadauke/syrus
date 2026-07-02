@@ -411,6 +411,8 @@ module App
           updated_at: iso8601(workflow.updated_at),
           app_retry_step_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/retry_step",
           app_push_commits_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/push_commits",
+          app_force_push_branch_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/force_push_branch",
+          app_discard_branch_output_path: "/api/v1/app/jobs/#{@job.id}/workflows/#{workflow.id}/discard_branch_output",
           failure_classification: workflow_failure_classification_json(workflow),
           steps: workflow.steps.order(:position).map { |step| step_json(step, workflow: workflow) }
         }

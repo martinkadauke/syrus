@@ -17,8 +17,8 @@ class RetryWorkflowEnqueuer
 
   def call
     validate_provider_validation!
-    return failure("Thread is closed — use Start over to begin a new one.") if job.closed?
-    return failure("A Run is already in progress — wait for it to finish.") if job.any_active_run?
+    eligibility = RetryWorkflowEligibility.call(job: job)
+    return failure(eligibility.message) unless eligibility.eligible?
     return failure("That agent is not available for retry.") unless agent_provider_allowed?
     return circuit_failure if automatic? && provider_circuit.open?
 

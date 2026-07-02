@@ -34,7 +34,7 @@ RSpec.describe AgentProviders::SessionStore do
         missing_message: nil
       )
 
-      described_class.new(run: run, log: ->(_message) {}).capture!(capture)
+      described_class.new(run: run, log: ->(_message) { }).capture!(capture)
 
       transcript = run.reload.claude_session.transcript_jsonl
       expect(transcript).to include("● Bash(ls)")

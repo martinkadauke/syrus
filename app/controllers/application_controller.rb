@@ -34,5 +34,4 @@ class ApplicationController < ActionController::Base
 
     chat_session ? chat_path(chat_session) : dashboard_path
   end
-
 end

@@ -100,6 +100,14 @@ RSpec.describe RunFailureClassifier do
     expect(classification.classification).to eq("git_state_corrupt")
   end
 
+  it "classifies branch divergence as non-retryable" do
+    run.update!(state: "failed")
+    diagnostic("Steps::PrOpen::BranchDiverged", "PR branch changed before Syrus could push WF-123")
+
+    expect(classification.classification).to eq("branch_diverged")
+    expect(classification.retryable).to eq(false)
+  end
+
   it "prefers MCP sidecar failures over max-turns when the tool never registered" do
     run.update!(state: "failed", agent_outcome: "error_max_turns")
     process("stopped")

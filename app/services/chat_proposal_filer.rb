@@ -271,5 +271,4 @@ class ChatProposalFiler
 
     ChatEpicProposalDependencyWirer.new(user: user).wire_for!(proposal)
   end
-
 end

@@ -6,6 +6,9 @@ RSpec.describe Steps::TestPlan do
   let(:job) { Factories.job(repository: repository) }
   let(:workflow) { Workflows::Initial.instantiate(job: job) }
   let(:implement_step) { workflow.steps.find_by!(kind: "implement") }
+  let!(:implement_run) do
+    Run.create!(job: job, step: implement_step, trigger_kind: "initial", state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+  end
   let(:test_plan_step) { workflow.steps.find_by!(kind: "test_plan") }
   let(:run) do
     Run.create!(job: job, step: test_plan_step, trigger_kind: "initial").tap { |r| r.start!; r.save! }
@@ -36,8 +39,6 @@ RSpec.describe Steps::TestPlan do
   end
 
   it "resumes from the succeeded implement session" do
-    implement_step.update!(state: "succeeded")
-    implement_run = Run.create!(job: job, step: implement_step, trigger_kind: "initial", state: "succeeded")
     ClaudeSession.create!(resumable: implement_run, session_id: "implement-thread", transcript_jsonl: "{}\n")
 
     handler.singleton_class.send(:public, :parent_session_id)

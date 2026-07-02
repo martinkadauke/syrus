@@ -49,6 +49,13 @@ type HeaderAction = {
   input: CommandInput
   tone: ButtonTone
 }
+type BranchDivergence = {
+  branch: string
+  remote_sha: string | null
+  local_sha: string | null
+  detected_at: string | null
+  message: string | null
+}
 type PrepareFailure = {
   command?: string
   workdir?: string
@@ -930,6 +937,7 @@ function WorkflowsPagination({ payload, prefix }: { payload: JobDetailPayload; p
 
 function WorkflowCard({ workflow, payload, command, prefix }: { workflow: JobWorkflow; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; prefix: string }) {
   const stepItems = workflowStepItems(workflow.steps)
+  const branchDivergence = workflowBranchDivergence(workflow)
   const navigate = useNavigate()
   const [terminalOpening, setTerminalOpening] = useState(false)
 
@@ -968,6 +976,7 @@ function WorkflowCard({ workflow, payload, command, prefix }: { workflow: JobWor
           {workflow.state === "failed" && !workflow.cleaned_up_at ? <CommandButton command={command} input={{ method: "post", path: workflow.app_push_commits_path }} tone="secondary">Push commits</CommandButton> : null}
         </div>
       </div>
+      {branchDivergence ? <BranchDivergencePanel command={command} divergence={branchDivergence} payload={payload} prefix={prefix} workflow={workflow} /> : null}
       <div className="mt-4 overflow-hidden rounded border border-gray-200 dark:border-gray-700">
         {stepItems.map((item, index) => item.type === "loop" ? (
           <LoopGroup command={command} item={item} key={item.loopId} payload={payload} />
@@ -977,6 +986,69 @@ function WorkflowCard({ workflow, payload, command, prefix }: { workflow: JobWor
       </div>
     </section>
   )
+}
+
+function workflowBranchDivergence(workflow: JobWorkflow): BranchDivergence | null {
+  const artifacts = workflow.artifacts || {}
+  if (artifacts.branch_divergence_recovery) return null
+  const raw = artifacts.branch_divergence
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+
+  const row = raw as Record<string, unknown>
+  return {
+    branch: typeof row.branch === "string" ? row.branch : "",
+    remote_sha: typeof row.remote_sha === "string" ? row.remote_sha : null,
+    local_sha: typeof row.local_sha === "string" ? row.local_sha : null,
+    detected_at: typeof row.detected_at === "string" ? row.detected_at : null,
+    message: typeof row.message === "string" ? row.message : null
+  }
+}
+
+function BranchDivergencePanel({
+  divergence,
+  workflow,
+  payload,
+  command,
+  prefix
+}: {
+  divergence: BranchDivergence
+  workflow: JobWorkflow
+  payload: JobDetailPayload
+  command: ReturnType<typeof useJobCommand>
+  prefix: string
+}) {
+  const sourcePath = withRoutePrefix(`/jobs/${payload.job.id}/source`, prefix)
+  const branch = divergence.branch || "the PR branch"
+
+  return (
+    <div className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-100">
+      <div className="font-semibold">PR branch changed before this workflow could push.</div>
+      <p className="mt-1 text-amber-900 dark:text-amber-200">
+        Review this workflow's output, then choose whether to retry from the current PR branch or replace it with this workflow's output.
+      </p>
+      <dl className="mt-2 grid gap-1 text-xs text-amber-900 dark:text-amber-200 sm:grid-cols-3">
+        <div><dt className="font-semibold uppercase tracking-wide">Branch</dt><dd className="font-mono">{branch}</dd></div>
+        <div><dt className="font-semibold uppercase tracking-wide">Remote</dt><dd className="font-mono">{shortSha(divergence.remote_sha)}</dd></div>
+        <div><dt className="font-semibold uppercase tracking-wide">Local</dt><dd className="font-mono">{shortSha(divergence.local_sha)}</dd></div>
+      </dl>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Link className={buttonClass("secondary")} to={sourcePath}>Open source browser</Link>
+        <CommandButton command={command} input={{ method: "post", path: payload.paths.app_run_again_path }} tone="secondary">
+          Retry from current PR branch
+        </CommandButton>
+        <CommandButton command={command} input={{ method: "post", path: workflow.app_force_push_branch_path, confirm: `Replace ${branch} with this workflow's output?` }} tone="danger">
+          Replace PR branch
+        </CommandButton>
+        <CommandButton command={command} input={{ method: "post", path: workflow.app_discard_branch_output_path }} tone="secondary">
+          Discard stale output
+        </CommandButton>
+      </div>
+    </div>
+  )
+}
+
+function shortSha(sha: string | null) {
+  return sha ? sha.slice(0, 7) : "unknown"
 }
 
 function LoopGroup({ item, payload, command }: { item: LoopStepItem; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand> }) {

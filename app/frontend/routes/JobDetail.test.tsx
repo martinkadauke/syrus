@@ -702,6 +702,8 @@ function workflow(overrides: Partial<JobWorkflow>): JobWorkflow {
     updated_at: null,
     app_retry_step_path: `/workflows/${id}/retry`,
     app_push_commits_path: `/workflows/${id}/push_commits`,
+    app_force_push_branch_path: `/workflows/${id}/force_push_branch`,
+    app_discard_branch_output_path: `/workflows/${id}/discard_branch_output`,
     steps: [],
     ...overrides
   }
