@@ -22,11 +22,10 @@ RSpec.describe "brand icons" do
     expect(png_dimensions("public/icon-512.png")).to eq([512, 512])
   end
 
-  it "keeps the SVG favicon a valid standalone document" do
-    svg = File.read(File.join(repo_root, "public/icon.svg"), encoding: "UTF-8")
-    expect(svg).to include("<svg")
-    expect(svg).to include('viewBox="0 0 512 512"')
-    expect(svg).not_to include("circle") # the red-dot placeholder is gone
+  it "does not ship the base64-PNG-wrapped SVG favicon" do
+    # public/icon.svg was a 133KB SVG that merely base64-embedded the PNG —
+    # strictly worse than the PNG favicon it duplicated.
+    expect(File.exist?(File.join(repo_root, "public/icon.svg"))).to be(false)
   end
 
   it "ships the desktop app icon at 1024 with the in-app icon at 512" do
@@ -43,7 +42,7 @@ RSpec.describe "brand icons" do
   it "leaves the existing icon references intact" do
     layout = File.read(File.join(repo_root, "app/views/layouts/spa.html.erb"), encoding: "UTF-8")
     expect(layout).to include('href="/icon.png"')
-    expect(layout).to include('href="/icon.svg"')
+    expect(layout).not_to include("icon.svg")
     manifest = File.read(File.join(repo_root, "app/views/pwa/manifest.json.erb"), encoding: "UTF-8")
     expect(manifest).to include("/icon-192.png")
     expect(manifest).to include("/icon-512.png")
