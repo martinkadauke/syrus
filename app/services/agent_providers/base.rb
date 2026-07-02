@@ -140,7 +140,17 @@ module AgentProviders
     end
 
     def sidecar_env
-      ENV.slice(*SIDECAR_ENV_FORWARD).compact
+      env = ENV.slice(*SIDECAR_ENV_FORWARD).compact
+      pin_rubygems_to_bundle_path(env)
+      env
+    end
+
+    def pin_rubygems_to_bundle_path(env)
+      bundle_path = env["BUNDLE_PATH"].presence
+      return unless bundle_path
+
+      env["GEM_HOME"] ||= bundle_path
+      env["GEM_PATH"] ||= bundle_path
     end
 
     def sidecar_command

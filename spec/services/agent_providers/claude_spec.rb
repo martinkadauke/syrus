@@ -36,6 +36,8 @@ RSpec.describe AgentProviders::Claude do
         "SYRUS_SQLITE" => "1",
         "SYRUS_DATA_ROOT" => "/home/rails/.syrus",
         "BUNDLE_PATH" => "/usr/local/bundle",
+        "GEM_HOME" => "/usr/local/bundle",
+        "GEM_PATH" => "/usr/local/bundle",
         "BUNDLE_DEPLOYMENT" => "1",
         "BUNDLE_WITHOUT" => "development:test",
         "TZ" => "America/New_York",

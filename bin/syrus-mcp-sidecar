@@ -4,23 +4,6 @@
 #
 # Boots full Rails so the sidecar can read/write the Run via
 # ActiveRecord and append to JobLog. Same boot path as bin/jobs.
-require "fileutils"
-require "time"
-
-run_id_index = ARGV.index("--run-id")
-run_id_arg = ARGV[run_id_index + 1] if run_id_index && ARGV[run_id_index + 1]
-
-if run_id_arg.to_s.match?(/\A\d+\z/)
-  data_root = ENV["SYRUS_DATA_ROOT"].to_s.empty? ? File.expand_path("~/.syrus") : ENV["SYRUS_DATA_ROOT"]
-  log_dir = File.join(data_root, "mcp-sidecar-logs")
-  FileUtils.mkdir_p(log_dir)
-  stderr_path = File.join(log_dir, "run-#{run_id_arg}.stderr.log")
-  ENV["SYRUS_MCP_SIDECAR_STDERR_LOG"] = stderr_path
-  STDERR.reopen(stderr_path, "w")
-  STDERR.sync = true
-  warn "[#{Time.now.utc.iso8601}] starting syrus-mcp-sidecar pid=#{Process.pid} run_id=#{run_id_arg}"
-end
-
 # Force Bundler to use Syrus's own Gemfile, no matter what the
 # spawning process inherited. AgentInvocation sets BUNDLE_GEMFILE
 # to the target repo's Gemfile when the workspace is a Bundler
@@ -38,6 +21,23 @@ end
 ENV["BUNDLE_GEMFILE"] = File.expand_path("../Gemfile", __dir__)
 ENV["SYRUS_MCP_SIDECAR"] = "1"
 ENV.delete("SYRUS_ROLE")
+%w[BUNDLE_APP_CONFIG BUNDLE_USER_HOME BUNDLE_USER_CACHE BUNDLE_BIN_PATH RUBYOPT].each { |key| ENV.delete(key) }
+
+require "fileutils"
+
+run_id_index = ARGV.index("--run-id")
+run_id_arg = ARGV[run_id_index + 1] if run_id_index && ARGV[run_id_index + 1]
+
+if run_id_arg.to_s.match?(/\A\d+\z/)
+  data_root = ENV["SYRUS_DATA_ROOT"].to_s.empty? ? File.expand_path("~/.syrus") : ENV["SYRUS_DATA_ROOT"]
+  log_dir = File.join(data_root, "mcp-sidecar-logs")
+  FileUtils.mkdir_p(log_dir)
+  stderr_path = File.join(log_dir, "run-#{run_id_arg}.stderr.log")
+  ENV["SYRUS_MCP_SIDECAR_STDERR_LOG"] = stderr_path
+  STDERR.reopen(stderr_path, "w")
+  STDERR.sync = true
+  warn "[#{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')}] starting syrus-mcp-sidecar pid=#{Process.pid} run_id=#{run_id_arg}"
+end
 
 abort("usage: syrus-mcp-sidecar --run-id <id>") unless run_id_index && ARGV[run_id_index + 1]
 

@@ -36,6 +36,7 @@ RSpec.describe ChatTurnJob do
       "SYRUS_FORCE_SSL" => "true",
       "SYRUS_SQLITE" => "1",
       "SYRUS_DATA_ROOT" => "/home/rails/.syrus",
+      "BUNDLE_PATH" => "/usr/local/bundle",
       "ACTIVE_RECORD_ENCRYPTION_PRIMARY_KEY" => "primary",
       "ACTIVE_RECORD_ENCRYPTION_DETERMINISTIC_KEY" => "deterministic",
       "ACTIVE_RECORD_ENCRYPTION_KEY_DERIVATION_SALT" => "salt"
@@ -54,6 +55,7 @@ RSpec.describe ChatTurnJob do
       expect(essential.dig("env", "SYRUS_CHAT_MCP_TOOL_TIER")).to eq("essential")
       expect(essential.dig("env", "SYRUS_CHAT_MCP_SERVER_NAME")).to eq("syrus-chat-sidecar")
       expect(essential["env"]).to include(host_env)
+      expect(essential["env"]).to include("GEM_HOME" => "/usr/local/bundle", "GEM_PATH" => "/usr/local/bundle")
       expect(essential["alwaysLoad"]).to eq(true)
       expect(deferred["command"]).to eq(Rails.root.join("bin/syrus-chat-deferred-sidecar").to_s)
       expect(deferred.dig("env", "SYRUS_CHAT_SESSION_ID")).to eq(chat.id.to_s)
