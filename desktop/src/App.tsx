@@ -2483,7 +2483,7 @@ export function App() {
     return (
       <main className="shell">
         <section className="panel panel--status" aria-label="Loading Syrus Desktop">
-          <p className="eyebrow">Syrus Desktop</p>
+          <p className="eyebrow">Syrus</p>
           <h1>Loading</h1>
         </section>
       </main>
@@ -2498,9 +2498,9 @@ export function App() {
 
     return (
       <main className="shell">
-        <section className="panel" aria-label="Syrus Desktop settings">
+        <section className="panel" aria-label="Syrus settings">
           <div>
-            <p className="eyebrow">Syrus Desktop</p>
+            <p className="eyebrow">Syrus</p>
             <h1>Connect Syrus</h1>
           </div>
 
