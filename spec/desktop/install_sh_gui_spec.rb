@@ -22,9 +22,9 @@ RSpec.describe "install.sh GUI interface" do
   end
 
   # A fake `docker` that answers the exact calls the docker path makes.
-  # volume_exists controls the encryption-key guard; `compose pull` always
-  # fails so the script halts before anything that would need a real daemon.
-  def write_docker_stub(dir, volume_exists:)
+  # volume_exists controls the encryption-key guard; `compose pull` fails by
+  # default so most examples halt before anything needing a real daemon.
+  def write_docker_stub(dir, volume_exists:, pull_ok: false)
     stub = File.join(dir, "docker")
     File.write(stub, <<~SH)
       #!/bin/bash
@@ -34,7 +34,7 @@ RSpec.describe "install.sh GUI interface" do
         compose)
           case "$2" in
             version) exit 0 ;;
-            pull) echo "stub: pull refused"; exit 1 ;;
+            pull) #{pull_ok ? "exit 0" : 'echo "stub: pull refused"; exit 1'} ;;
             *) exit 0 ;;
           esac ;;
       esac
@@ -165,6 +165,60 @@ RSpec.describe "install.sh GUI interface" do
           hash_including("event" => "step", "id" => "env_generate", "status" => "skipped")
         )
         expect(File.read(File.join(target, ".env"), encoding: "UTF-8")).to eq(env)
+      end
+    end
+  end
+
+  it "rejects an --image value containing sed metacharacters as a usage error" do
+    out, _err, status = run_install("--json", "--docker", "--image", "bad|ref&name")
+    expect(status.exitstatus).to eq(2)
+    expect(parse_events(out).last).to include("event" => "error", "code" => 2)
+  end
+
+  it "announces a changed SYRUS_IMAGE pin instead of rewriting it silently" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        write_docker_stub(stub_dir, volume_exists: false)
+        base = ["--docker", "--json", "--non-interactive", "--skip-runtime-install", "--target-dir", target]
+        run_install(*base, "--image", "ghcr.io/example/pinned:1", stub_dir: stub_dir)
+        out, _err, = run_install(*base, "--image", "ghcr.io/example/pinned:2", stub_dir: stub_dir)
+
+        env = File.read(File.join(target, ".env"), encoding: "UTF-8")
+        expect(env).to include("SYRUS_IMAGE=ghcr.io/example/pinned:2")
+        expect(env).not_to include("pinned:1")
+        expect(parse_events(out)).to include(
+          hash_including(
+            "event" => "log", "stream" => "env",
+            "line" => "SYRUS_IMAGE pin updated: ghcr.io/example/pinned:1 -> ghcr.io/example/pinned:2"
+          )
+        )
+      end
+    end
+  end
+
+  it "survives an adopted .env without SYRUS_PORT and resolves the runtime_start step" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        write_docker_stub(stub_dir, volume_exists: false, pull_ok: true)
+        # A stub curl makes the health step pass instantly, so the run reaches
+        # the port-derivation line that used to die under pipefail.
+        File.write(File.join(stub_dir, "curl"), "#!/bin/bash\nexit 0\n")
+        File.chmod(0o755, File.join(stub_dir, "curl"))
+        # A hand-written .env (e.g. adopted via the app's Locate-.env flow)
+        # with no SYRUS_PORT line.
+        File.write(File.join(target, ".env"), "SECRET_KEY_BASE=abc123\n")
+
+        out, _err, status = run_install(
+          "--docker", "--json", "--non-interactive", "--skip-runtime-install",
+          "--target-dir", target, stub_dir: stub_dir
+        )
+
+        expect(status.exitstatus).to eq(0)
+        events = parse_events(out)
+        expect(events).to include(
+          hash_including("event" => "step", "id" => "runtime_start", "status" => "skipped")
+        )
+        expect(events.last).to include("event" => "done", "url" => "http://localhost:3000")
       end
     end
   end

@@ -63,10 +63,13 @@ info() {
   else printf '   %s\n' "$1"; fi
 }
 
-json_escape() { # backslashes, quotes, newlines, tabs — enough for our own strings
+json_escape() { # produce valid RFC 8259 string content from arbitrary text
   local s="$1"
   s=${s//\\/\\\\}; s=${s//\"/\\\"}
   s=${s//$'\n'/\\n}; s=${s//$'\r'/}; s=${s//$'\t'/\\t}
+  # Remaining C0 control bytes (ANSI ESC from tool output, etc.) would make
+  # the JSON unparseable for the GUI driver — strip them.
+  s="$(printf '%s' "$s" | tr -d '\000-\010\013\014\016-\037')"
   printf '%s' "$s"
 }
 emit() { [ "$JSON" = "1" ] && printf '%s\n' "$1"; return 0; }
@@ -141,6 +144,10 @@ ensure_docker_runtime() {
   if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     info "Docker runtime is up."
     emit_step runtime_check ok
+    # The GUI ensures the daemon is up before spawning us, so this is the
+    # common path — resolve the start step so its checklist row never
+    # dangles as pending.
+    emit_step runtime_start skipped
     return 0
   fi
   emit_step runtime_check ok "runtime not ready yet"
@@ -201,6 +208,9 @@ while [ $# -gt 0 ]; do
       TARGET_DIR="$2"; shift ;;
     --image)
       [ $# -ge 2 ] || die "--image needs an image reference" 2
+      # Validated because the value is spliced into a sed replacement below;
+      # docker references never contain sed metacharacters anyway.
+      case "$2" in ''|*[!A-Za-z0-9._/:@-]*) die "--image must be a plain image reference, got: $2" 2 ;; esac
       IMAGE_OVERRIDE="$2"; shift ;;
     --port)
       [ $# -ge 2 ] || die "--port needs a number" 2
@@ -323,9 +333,16 @@ run_docker() {
 
   # Persist an explicit image pin so later plain `docker compose up` runs (e.g.
   # the desktop app's Start/Stop controls) use the same tag as this install.
+  # Unlike --port, this intentionally updates an existing .env — app updates
+  # move the pin forward — but never silently: a changed pin is announced.
   if [ -n "$IMAGE_OVERRIDE" ]; then
     if grep -qE '^SYRUS_IMAGE=' .env; then
-      sed -e "s|^SYRUS_IMAGE=.*|SYRUS_IMAGE=$IMAGE_OVERRIDE|" .env > .env.tmp && mv .env.tmp .env
+      current_pin="$(grep -E '^SYRUS_IMAGE=' .env | head -1 | cut -d= -f2-)"
+      if [ "$current_pin" != "$IMAGE_OVERRIDE" ]; then
+        info "Updating the SYRUS_IMAGE pin: ${current_pin:-<empty>} -> $IMAGE_OVERRIDE"
+        emit_log env "SYRUS_IMAGE pin updated: ${current_pin:-<empty>} -> $IMAGE_OVERRIDE"
+        sed -e "s|^SYRUS_IMAGE=.*|SYRUS_IMAGE=$IMAGE_OVERRIDE|" .env > .env.tmp && mv .env.tmp .env
+      fi
     else
       printf 'SYRUS_IMAGE=%s\n' "$IMAGE_OVERRIDE" >> .env
     fi
@@ -353,7 +370,9 @@ run_docker() {
   run_logged up compose up -d || die "docker compose up failed" 40
   emit_step stack_up ok
 
-  port="$(grep -E '^SYRUS_PORT=' .env | cut -d= -f2)"
+  # `|| true`: a hand-written/adopted .env may lack SYRUS_PORT, and under
+  # pipefail the failed grep would otherwise kill the whole script here.
+  port="$(grep -E '^SYRUS_PORT=' .env | cut -d= -f2 || true)"
   port="${port:-3000}"
 
   # 6. Wait until the web app actually answers, so success means "usable",
@@ -370,7 +389,9 @@ run_docker() {
   emit_step health ok
   emit "{\"event\":\"done\",\"url\":\"http://localhost:${port}\"}"
 
-  echo
+  # In --json mode stdout is protocol-only; the blank spacer line must not
+  # leak into the NDJSON stream.
+  [ "$JSON" = "1" ] || echo
   info "Syrus is running at http://localhost:${port}"
   info "Next steps:"
   info "  1. Open http://localhost:${port} and create the first admin account."
