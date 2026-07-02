@@ -19,6 +19,7 @@ import type { Credentials } from "./credentialsStore.js"
 import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
+import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
 
@@ -1365,6 +1366,28 @@ const showWebAppWindow = async () => {
     }
   })
   updateDockVisibility()
+
+  // Whenever a same-origin page finishes loading and the tray isn't
+  // configured for this instance yet, try to mint its token from the
+  // signed-in web session. Cheap no-op once credentials match.
+  const handle = webAppWindow
+  handle.window.webContents.on("did-finish-load", () => {
+    let sameOrigin = false
+    try {
+      sameOrigin = new URL(handle.window.webContents.getURL()).origin === new URL(serverUrl).origin
+    } catch {
+      sameOrigin = false
+    }
+
+    if (!sameOrigin) {
+      return
+    }
+
+    void maybeProvisionDesktopToken(handle.window.webContents, serverUrl, {
+      getCachedCredentials: () => cachedCredentials,
+      saveCredentials
+    })
+  })
 
   try {
     await webAppWindow.loadServerUrl()

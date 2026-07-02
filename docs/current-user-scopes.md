@@ -21,6 +21,7 @@ per-user/private:
   - app/controllers/api/v1/app/credentials/documents_controller.rb
   - app/controllers/api/v1/app/cron_templates_controller.rb
   - app/controllers/api/v1/app/dashboard_controller.rb
+  - app/controllers/api/v1/app/desktop_tokens_controller.rb
   - app/controllers/api/v1/app/direct_jobs_controller.rb
   - app/controllers/api/v1/app/epics_controller.rb
   - app/controllers/api/v1/app/filters_controller.rb

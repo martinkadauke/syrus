@@ -45,6 +45,7 @@ Rails.application.routes.draw do
         patch "notifications/:id/mark_read", to: "notifications#mark_read", constraints: { id: /\d+/ }
         get "notification_preferences", to: "notification_preferences#show"
         patch "notification_preferences", to: "notification_preferences#update"
+        post "desktop/api_token", to: "desktop_tokens#create"
         resource :credentials, only: %i[ show update ] do
           post :clear_credential
           post :test_credential
