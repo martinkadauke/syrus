@@ -5,9 +5,9 @@ require "spec_helper"
 
 RSpec.describe "desktop Electron startup" do
   let(:desktop_root) { File.expand_path("../../desktop", __dir__) }
-  let(:package_json) { JSON.parse(File.read(File.join(desktop_root, "package.json"))) }
-  let(:main_process) { File.read(File.join(desktop_root, "electron/main.ts")) }
-  let(:vite_config) { File.read(File.join(desktop_root, "vite.config.ts")) }
+  let(:package_json) { JSON.parse(File.read(File.join(desktop_root, "package.json"), encoding: "UTF-8")) }
+  let(:main_process) { File.read(File.join(desktop_root, "electron/main.ts"), encoding: "UTF-8") }
+  let(:vite_config) { File.read(File.join(desktop_root, "vite.config.ts"), encoding: "UTF-8") }
 
   it "uses the same loopback host for Vite and Electron in dev" do
     dev_script = package_json.fetch("scripts").fetch("dev")

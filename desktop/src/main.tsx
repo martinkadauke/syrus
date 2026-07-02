@@ -2,6 +2,7 @@ import React from "react"
 import { createRoot } from "react-dom/client"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { App } from "./App"
+import { BackendStatus } from "./BackendStatus"
 import { OnboardingApp } from "./onboarding/OnboardingApp"
 import "./styles.css"
 
@@ -18,6 +19,8 @@ const view = new URLSearchParams(window.location.search).get("view")
 const surface =
   view === "onboarding" ? (
     <OnboardingApp />
+  ) : view === "backend-status" ? (
+    <BackendStatus />
   ) : (
     <QueryClientProvider client={new QueryClient()}>
       <App />

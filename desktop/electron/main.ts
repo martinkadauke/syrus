@@ -20,6 +20,7 @@ import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConf
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
+import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -186,6 +187,8 @@ let mainWindow: BrowserWindow | null = null
 let preferencesWindow: BrowserWindow | null = null
 let onboardingWindow: BrowserWindow | null = null
 let onboardingDriver: OnboardingDriver | null = null
+let webAppWindow: WebAppWindowHandle | null = null
+let backendRecoveryTimer: NodeJS.Timeout | null = null
 let tray: Tray | null = null
 let cachedCredentials: Credentials | null = null
 let isQuitting = false
@@ -1220,6 +1223,20 @@ const showSetupWindow = async () => {
   preferencesWindow?.webContents.send("credentials-cleared")
 }
 
+// The dock icon appears only while a real window is open; tray-only mode
+// (today's behavior) keeps it hidden.
+const updateDockVisibility = () => {
+  if (process.platform !== "darwin") {
+    return
+  }
+
+  if (onboardingWindow || webAppWindow) {
+    app.dock?.show()
+  } else {
+    app.dock?.hide()
+  }
+}
+
 const ensureOnboardingDriver = () => {
   onboardingDriver ??= new OnboardingDriver({
     saveRemoteCredentials: (credentials) => saveCredentials(credentials),
@@ -1261,9 +1278,7 @@ const showOnboardingWindow = async () => {
       loadRenderer,
       onClosed: () => {
         onboardingWindow = null
-        if (process.platform === "darwin") {
-          app.dock?.hide()
-        }
+        updateDockVisibility()
       }
     })
   })()
@@ -1275,24 +1290,102 @@ const showOnboardingWindow = async () => {
   }
 }
 
-// After onboarding completes: close the window and open the instance.
-// (An in-app web-container window replaces the external browser next.)
-const finishOnboarding = async () => {
-  const serverUrl = getServerUrl()
-  onboardingWindow?.close()
-  if (serverUrl !== "") {
-    await shell.openExternal(serverUrl)
+// The web-container fallback page. It carries no IPC bridge on purpose —
+// the same window later loads remote content — so it only explains, and
+// startBackendRecoveryPolling() swaps the real app back in when /up answers.
+const loadBackendStatus = async (window: BrowserWindow, detail: string) => {
+  if (app.isPackaged) {
+    await window.loadFile(path.join(__dirname, "../dist/index.html"), {
+      query: { view: "backend-status", detail }
+    })
+  } else {
+    const url = new URL("http://127.0.0.1:5173")
+    url.searchParams.set("view", "backend-status")
+    url.searchParams.set("detail", detail)
+    await window.loadURL(url.toString())
   }
 }
 
-const openSyrusInBrowser = async () => {
-  const credentials = cachedCredentials ?? (await loadCredentials())
-  if (credentials) {
-    await shell.openExternal(credentials.url)
+const stopBackendRecoveryPolling = () => {
+  if (backendRecoveryTimer) {
+    clearInterval(backendRecoveryTimer)
+    backendRecoveryTimer = null
+  }
+}
+
+const startBackendRecoveryPolling = () => {
+  stopBackendRecoveryPolling()
+  const serverUrl = getServerUrl()
+  if (serverUrl === "") {
     return
   }
 
-  await showPreferencesWindow()
+  backendRecoveryTimer = setInterval(() => {
+    void (async () => {
+      try {
+        const response = await fetch(`${serverUrl}/up`, { signal: AbortSignal.timeout(2_000) })
+        if (response.ok) {
+          stopBackendRecoveryPolling()
+          await webAppWindow?.loadServerUrl()
+        }
+      } catch {
+        // Keep polling; the backend may still be starting.
+      }
+    })()
+  }, 3_000)
+}
+
+const showWebAppWindow = async () => {
+  if (webAppWindow) {
+    if (webAppWindow.window.isMinimized()) {
+      webAppWindow.window.restore()
+    }
+
+    webAppWindow.window.show()
+    webAppWindow.window.focus()
+    return
+  }
+
+  const serverUrl = getServerUrl()
+  if (serverUrl === "") {
+    await showOnboardingWindow()
+    return
+  }
+
+  webAppWindow = createWebAppWindow({
+    serverUrl,
+    savedBounds: store.get("webAppWindowBounds", null),
+    loadFallback: (window) => loadBackendStatus(window, getBackendMode() === "remote" ? "remote" : "local"),
+    onBoundsChanged: (bounds) => store.set("webAppWindowBounds", bounds),
+    onLoadFailed: () => startBackendRecoveryPolling(),
+    onClosed: () => {
+      webAppWindow = null
+      stopBackendRecoveryPolling()
+      updateDockVisibility()
+    }
+  })
+  updateDockVisibility()
+
+  try {
+    await webAppWindow.loadServerUrl()
+  } catch {
+    // did-fail-load swaps in the backend-status page and starts recovery.
+  }
+}
+
+const openSyrus = async () => {
+  if (getBackendMode() === "") {
+    await showOnboardingWindow()
+    return
+  }
+
+  await showWebAppWindow()
+}
+
+// After onboarding completes: close the wizard and open the app window.
+const finishOnboarding = async () => {
+  onboardingWindow?.close()
+  await showWebAppWindow()
 }
 
 const trayContextMenu = () =>
@@ -1300,7 +1393,7 @@ const trayContextMenu = () =>
     {
       label: "Open Syrus",
       click: () => {
-        void openSyrusInBrowser()
+        void openSyrus()
       }
     },
     {
@@ -1413,6 +1506,10 @@ const createMenu = () => {
       ]
     },
     {
+      label: "File",
+      submenu: [{ role: "close" }]
+    },
+    {
       label: "Edit",
       submenu: [
         { role: "undo" },
@@ -1422,6 +1519,19 @@ const createMenu = () => {
         { role: "copy" },
         { role: "paste" },
         { role: "selectAll" }
+      ]
+    },
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn" },
+        { role: "zoomOut" },
+        { type: "separator" },
+        { role: "togglefullscreen" }
       ]
     }
   ])
@@ -1535,9 +1645,41 @@ ipcMain.handle("open-external", async (_event, url: string) => {
   await shell.openExternal(parsedUrl.toString())
 })
 
+// One Syrus at a time: a second launch focuses the existing instance.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+}
+
+app.on("second-instance", () => {
+  void openSyrus()
+})
+
 app.whenReady().then(async () => {
   if (process.platform === "darwin") {
     app.dock?.hide()
+  }
+
+  // The classic DMG mistake: running from the mounted image. Offer the move
+  // before anything else; on success macOS relaunches us from /Applications.
+  if (app.isPackaged && process.platform === "darwin" && !app.isInApplicationsFolder()) {
+    const choice = await dialog.showMessageBox({
+      type: "question",
+      buttons: ["Move to Applications", "Not Now"],
+      defaultId: 0,
+      cancelId: 1,
+      message: "Move Syrus to your Applications folder?",
+      detail: "Syrus works best when it runs from Applications. It will reopen automatically after moving."
+    })
+
+    if (choice.response === 0) {
+      try {
+        if (app.moveToApplicationsFolder()) {
+          return
+        }
+      } catch {
+        // Keep running from the current location.
+      }
+    }
   }
 
   createMenu()
@@ -1556,12 +1698,12 @@ app.whenReady().then(async () => {
 
   if (getBackendMode() === "") {
     await showOnboardingWindow()
-  } else if (!app.isPackaged) {
-    await showPopoverWindow()
+  } else {
+    await showWebAppWindow()
   }
 
   app.on("activate", async () => {
-    await showPopoverWindow()
+    await openSyrus()
   })
 })
 
