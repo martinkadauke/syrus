@@ -80,7 +80,7 @@ module Api
               render_error("validation_failed", repository.errors.full_messages.to_sentence, status: :unprocessable_content)
               return
             end
-            repository.repository_memberships.create!(user: Current.user, role: "owner")
+            repository.repository_memberships.find_or_create_by!(user: Current.user) { |m| m.role = "owner" }
           else
             if repository.repository_memberships.exists?(user: Current.user)
               render_error("validation_failed", "#{repository.slug} is already in your workspace.", status: :unprocessable_content)

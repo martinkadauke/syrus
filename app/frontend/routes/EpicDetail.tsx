@@ -165,14 +165,14 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
               <Markdown className="chat-prose mt-2 text-sm text-gray-700 dark:text-gray-300" text={payload.epic.description} />
             </section>
           ) : null}
-          <JobsSection jobs={payload.jobs} newJobPath={`/jobs/new?repository_id=${payload.epic.repository.id}`} prefix={prefix} />
+          <JobsSection epicRepositorySlug={payload.epic.repository.slug} jobs={payload.jobs} newJobPath={`/jobs/new?repository_id=${payload.epic.repository.id}`} prefix={prefix} />
           <DependencyGraph graph={payload.graph} />
           <HistorySection versions={payload.versions || []} />
         </div>
 
         <div className="space-y-6">
           <DependenciesSection command={dependencyCommand} currentEpicId={payload.epic.id} dependencies={payload.dependencies} dependents={payload.dependents} prefix={prefix} />
-          <DetailsPanel epic={payload.epic} prefix={prefix} />
+          <DetailsPanel epic={payload.epic} jobs={payload.jobs} prefix={prefix} />
         </div>
       </div>
     </>
@@ -475,7 +475,7 @@ function DiffValue({ label, multiline = false, value }: { label: string; multili
   )
 }
 
-export function JobsSection({ jobs, newJobPath, prefix }: { jobs: EpicDetailJob[]; newJobPath: string; prefix: string }) {
+export function JobsSection({ epicRepositorySlug, jobs, newJobPath, prefix }: { epicRepositorySlug?: string; jobs: EpicDetailJob[]; newJobPath: string; prefix: string }) {
   return (
     <section className="rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
@@ -486,15 +486,25 @@ export function JobsSection({ jobs, newJobPath, prefix }: { jobs: EpicDetailJob[
         <ul className="divide-y divide-gray-100 text-sm dark:divide-gray-700">
           {jobs.map((job) => (
             <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" key={job.id}>
-              <div className="min-w-0">
-                {job.title ? (
-                  <>
-                    <span className="font-medium text-gray-600 dark:text-gray-400">{job.label}</span>
-                    <Link className="ml-1 text-gray-700 hover:underline dark:text-gray-200" to={withRoutePrefix(job.path, prefix)}>{job.title}</Link>
-                  </>
-                ) : (
-                  <Link className="font-medium text-blue-600 underline hover:no-underline" to={withRoutePrefix(job.path, prefix)}>{job.label}</Link>
-                )}
+              <div className="min-w-0 space-y-0.5">
+                <div>
+                  {job.title ? (
+                    <>
+                      <span className="font-medium text-gray-600 dark:text-gray-400">{job.label}</span>
+                      <Link className="ml-1 text-gray-700 hover:underline dark:text-gray-200" to={withRoutePrefix(job.path, prefix)}>{job.title}</Link>
+                    </>
+                  ) : (
+                    <Link className="font-medium text-blue-600 underline hover:no-underline" to={withRoutePrefix(job.path, prefix)}>{job.label}</Link>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+                  {epicRepositorySlug && job.repository_slug !== epicRepositorySlug ? (
+                    <span className="font-mono">{job.repository_slug}</span>
+                  ) : null}
+                  {job.owner_user ? (
+                    <span>{job.owner_user.email_address}</span>
+                  ) : null}
+                </div>
               </div>
               <StatePill state={job.state} />
             </li>
@@ -561,8 +571,9 @@ export function StateChips({ jobs }: { jobs: EpicDetailJob[] }) {
   )
 }
 
-function DetailsPanel({ epic, prefix }: { epic: EpicDetailPayload["epic"]; prefix: string }) {
+function DetailsPanel({ epic, jobs, prefix }: { epic: EpicDetailPayload["epic"]; jobs: EpicDetailJob[]; prefix: string }) {
   const owner = epic.owner_user || epic.owner
+  const activeMembers = uniqueActiveMembers(jobs)
 
   return (
     <section className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
@@ -572,6 +583,16 @@ function DetailsPanel({ epic, prefix }: { epic: EpicDetailPayload["epic"]; prefi
           <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Owner</dt>
           <dd className="mt-0.5 text-gray-700 dark:text-gray-200">{owner ? owner.email_address : "Unclaimed"}</dd>
         </div>
+        {activeMembers.length > 0 ? (
+          <div>
+            <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Active members</dt>
+            <dd className="mt-0.5 space-y-0.5">
+              {activeMembers.map((member) => (
+                <div className="text-gray-700 dark:text-gray-200" key={member.id}>{member.email_address}</div>
+              ))}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Repository</dt>
           <dd className="mt-0.5">
@@ -587,6 +608,18 @@ function DetailsPanel({ epic, prefix }: { epic: EpicDetailPayload["epic"]; prefi
       </dl>
     </section>
   )
+}
+
+function uniqueActiveMembers(jobs: EpicDetailJob[]) {
+  const seen = new Set<number>()
+  const members: EpicOwnerUser[] = []
+  for (const job of jobs) {
+    if (job.owner_user && !seen.has(job.owner_user.id)) {
+      seen.add(job.owner_user.id)
+      members.push(job.owner_user)
+    }
+  }
+  return members
 }
 
 function routePrefix(pathname: string) {

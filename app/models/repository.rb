@@ -44,6 +44,7 @@ class Repository < ApplicationRecord
   before_validation :normalize_agent_provider
   before_validation :normalize_upstream_metadata
   before_save :link_installation_from_owner
+  after_create :seed_owner_membership
   before_destroy :destroy_chat_sessions, prepend: true
 
   scope :active,   -> { where(archived_at: nil) }
@@ -132,5 +133,10 @@ class Repository < ApplicationRecord
 
   def destroy_chat_sessions
     chat_sessions.find_each(&:destroy)
+  end
+
+  def seed_owner_membership
+    return unless user_id.present?
+    repository_memberships.find_or_create_by!(user_id: user_id) { |m| m.role = "owner" }
   end
 end

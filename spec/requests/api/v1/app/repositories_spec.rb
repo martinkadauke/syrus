@@ -128,7 +128,6 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
   it "rejects a second connect attempt for the same user on the same repository" do
     sign_in_as(user)
     existing_repo = Factories.repository(user: user, owner: "acme", name: "widgets")
-    existing_repo.repository_memberships.create!(user: user, role: "owner")
 
     expect {
       post "/api/v1/app/repositories", params: {

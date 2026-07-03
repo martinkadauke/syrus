@@ -1077,7 +1077,11 @@ class Job < ApplicationRecord
     return unless epic
 
     errors.add(:epic, "must belong to the same user") if epic.user_id != user_id
-    errors.add(:epic, "must belong to the same repository") if epic.repository_id != repository_id
+    # Allow: direct repo match, OR fork-to-upstream (job's repo is a fork whose
+    # upstream is the epic's repo).
+    same_repo = epic.repository_id == repository_id
+    fork_to_upstream = repository.upstream_repository_id == epic.repository_id
+    errors.add(:epic, "must belong to the same repository") unless same_repo || fork_to_upstream
   end
 
   def sync_epic_title

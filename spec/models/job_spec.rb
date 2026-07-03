@@ -1209,4 +1209,27 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       expect(ordinary.runs).to be_empty
     end
   end
+
+  describe "epic_belongs_to_same_user_and_repository" do
+    let(:user) { Factories.user }
+    let(:repository) { Factories.repository(user: user) }
+
+    it "allows a job on a fork to be associated with an epic on the upstream repo" do
+      upstream = Factories.repository(user: user, owner: "upstream", name: "lib")
+      fork = Factories.repository(user: user, owner: "acme", name: "lib-fork", upstream_repository: upstream)
+      epic = Factories.epic(user: user, repository: upstream)
+
+      job = Factories.job_record(user: user, repository: fork, epic: epic, issue_number: 55)
+      expect(job.errors[:epic]).to be_empty
+    end
+
+    it "rejects a job whose repository is unrelated to the epic's repository" do
+      other_repo = Factories.repository(user: user, owner: "acme", name: "other")
+      epic = Factories.epic(user: user, repository: repository)
+
+      job = Job.new(user: user, owner_user: user, repository: other_repo, epic: epic, issue_number: 56, kind: "issue")
+      job.valid?
+      expect(job.errors[:epic]).to include("must belong to the same repository")
+    end
+  end
 end

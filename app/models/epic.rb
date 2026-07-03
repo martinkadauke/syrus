@@ -32,7 +32,7 @@ class Epic < ApplicationRecord
   validates :number, presence: true, numericality: { only_integer: true, greater_than: 0 }, uniqueness: true
   validates :title, presence: true
   validates :state, presence: true, inclusion: { in: STATES }
-  validate :repository_belongs_to_user
+  validate :user_is_repository_member
 
   after_initialize :default_pending_epic_dependency_refs
   before_validation :assign_number, on: :create
@@ -53,6 +53,13 @@ class Epic < ApplicationRecord
   scope :owned_by, ->(user) { where("owner_id = :user_id OR owner_user_id = :user_id", user_id: user&.id) }
   scope :other_owned_by, ->(user) {
     where("(owner_id IS NOT NULL AND owner_id != :user_id) OR (owner_user_id IS NOT NULL AND owner_user_id != :user_id)", user_id: user&.id)
+  }
+  # Epics visible to a user: any epic on a repository they're a member of,
+  # plus epics on upstream repositories of any repository they're a member of.
+  scope :accessible_to, ->(user) {
+    member_repo_ids = RepositoryMembership.where(user: user).select(:repository_id)
+    upstream_ids = Repository.where(id: member_repo_ids).where.not(upstream_repository_id: nil).select(:upstream_repository_id)
+    where(repository_id: member_repo_ids).or(where(repository_id: upstream_ids))
   }
 
   aasm column: :state, whiny_transitions: false do
@@ -326,11 +333,11 @@ class Epic < ApplicationRecord
     self.pending_epic_dependency_refs ||= []
   end
 
-  def repository_belongs_to_user
+  def user_is_repository_member
     return unless repository && user
-    return if repository.user_id == user_id
+    return if repository.repository_memberships.exists?(user: user)
 
-    errors.add(:repository, "must belong to the same user")
+    errors.add(:repository, "must have an active membership for the current user")
   end
 
   def dependencies_done?

@@ -146,7 +146,6 @@ RSpec.describe Repository do
     it "can have multiple members through memberships" do
       repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
       collaborator = Factories.user
-      repo.repository_memberships.create!(user: owner, role: "owner")
       repo.repository_memberships.create!(user: collaborator, role: "collaborator")
 
       expect(repo.members).to include(owner, collaborator)
@@ -154,7 +153,6 @@ RSpec.describe Repository do
 
     it "enforces unique membership per user per repository" do
       repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
-      repo.repository_memberships.create!(user: owner, role: "owner")
       dup = repo.repository_memberships.build(user: owner, role: "collaborator")
       expect(dup).not_to be_valid
       expect(dup.errors[:user_id]).to be_present
