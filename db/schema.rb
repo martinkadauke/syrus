@@ -669,11 +669,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_03_214113) do
   end
 
   create_table "repository_memberships", force: :cascade do |t|
+    t.string "agent_provider"
     t.datetime "created_at", null: false
+    t.bigint "installation_id"
     t.integer "repository_id", null: false
     t.string "role", default: "owner", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
+    t.index ["installation_id"], name: "index_repository_memberships_on_installation_id"
     t.index ["repository_id", "user_id"], name: "index_repository_memberships_on_repository_id_and_user_id", unique: true
     t.index ["repository_id"], name: "index_repository_memberships_on_repository_id"
     t.index ["user_id"], name: "index_repository_memberships_on_user_id"
@@ -1080,6 +1083,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_03_214113) do
   add_foreign_key "repositories", "installations"
   add_foreign_key "repositories", "repositories", column: "upstream_repository_id"
   add_foreign_key "repositories", "users"
+  add_foreign_key "repository_memberships", "installations", on_delete: :nullify
   add_foreign_key "repository_memberships", "repositories"
   add_foreign_key "repository_memberships", "users"
   add_foreign_key "run_diagnostics", "runs"
