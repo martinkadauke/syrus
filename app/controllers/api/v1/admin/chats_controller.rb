@@ -157,7 +157,7 @@ module Api
           when Repository
             record.slug
           when Job
-            "Job ##{record.id}"
+            record.slug
           when Epic
             record.display_number
           when Document

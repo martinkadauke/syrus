@@ -43,7 +43,7 @@ module Steps
       if job.issue?
         "#{repository.slug}##{job.issue_number}"
       elsif job.direct?
-        "direct job ##{job.id}"
+        "direct #{job.slug}"
       else
         "scheduled task ##{job.scheduled_task_id}"
       end

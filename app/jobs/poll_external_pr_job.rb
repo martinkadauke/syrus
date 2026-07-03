@@ -20,7 +20,7 @@ class PollExternalPrJob < ApplicationJob
   private
 
   def close_with(reason)
-    Rails.logger.info("[PollExternalPrJob] closing job #{@job.id}: #{reason}")
+    Rails.logger.info("[PollExternalPrJob] closing #{@job.slug}: #{reason}")
     @job.runs.active.find_each do |r|
       r.cancel! if r.may_cancel?
       r.save!

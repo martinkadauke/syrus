@@ -8,7 +8,7 @@ RSpec.describe ChatWakeupFireJob do
     ChatWakeup.create!(
       chat_session: chat_session,
       user: user,
-      prompt: "Check job #123 and report back.",
+      prompt: "Check JOB-123 and report back.",
       fire_at: 1.minute.ago,
       state: state
     )

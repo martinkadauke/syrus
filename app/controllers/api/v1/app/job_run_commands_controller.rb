@@ -221,7 +221,7 @@ module Api
           GithubClient.for(repository: job.repository, user: job.user)
                       .pull_request(job.repository.slug, pr_number, bypass_cache: true)
         rescue StandardError => e
-          Rails.logger.info("[App::JobRunCommandsController] failed to load PR ##{pr_number} for rebase job #{job.id}: #{e.class}: #{e.message}")
+          Rails.logger.info("[App::JobRunCommandsController] failed to load PR ##{pr_number} for rebase #{job.slug}: #{e.class}: #{e.message}")
           nil
         end
 

@@ -239,10 +239,10 @@ module App
       if job.issue? && job.issue_number.present?
         title = job.issue_title.to_s.strip
         title = " - #{title}" if title.present?
-        "#{job.repository.slug} ##{job.issue_number}#{title} (#{::App::Presentation.job_slug(job)})"
+        "#{job.repository.slug} ##{job.issue_number}#{title} (#{job.slug})"
       else
         title = job.issue_title.to_s.strip.presence || job.kind.titleize
-        "#{job.repository.slug} #{::App::Presentation.job_slug(job)} - #{title}"
+        "#{job.repository.slug} #{job.slug} - #{title}"
       end
     end
 
@@ -365,8 +365,8 @@ module App
     def landing_queue_waiting_job_json(job)
       {
         id: job.id,
-        label: job.issue_number.present? ? "##{job.issue_number}" : App::Presentation.job_slug(job),
-        title: job.issue_title.presence || App::Presentation.job_slug(job),
+        label: job.issue_number.present? ? "##{job.issue_number}" : job.slug,
+        title: job.issue_title.presence || job.slug,
         job_path: "/jobs/#{job.id}"
       }
     end
@@ -374,7 +374,7 @@ module App
     def landing_queue_blocker_job_json(job, entry)
       json = {
         id: job.id,
-        title: job.issue_title.presence || App::Presentation.job_slug(job),
+        title: job.issue_title.presence || job.slug,
         job_path: "/jobs/#{job.id}",
         state: job.state,
         pr_number: job.pr_number || job.external_pr_number,

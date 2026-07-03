@@ -18,11 +18,11 @@ module Steps
         results << entry.merge("result" => result.to_h)
 
         if result.succeeded?
-          log("stack_auto_rebase: job #{stack_job.id} clean - #{result.note || result.reason}")
+          log("stack_auto_rebase: #{stack_job.slug} clean - #{result.note || result.reason}")
           next
         end
 
-        log("stack_auto_rebase: job #{stack_job.id} #{result.reason} - falling through to stack_agent_rebase")
+        log("stack_auto_rebase: #{stack_job.slug} #{result.reason} - falling through to stack_agent_rebase")
         pending << entry
         break
       end

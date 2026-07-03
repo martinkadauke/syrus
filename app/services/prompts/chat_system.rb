@@ -554,7 +554,7 @@ module Prompts
       pr = job.pr_number || job.external_pr_number
       pr_label = pr ? ", PR ##{pr}" : ""
       title = job.issue_title.presence || "Untitled Job"
-      "Job ##{job.id}: #{title} (#{job.state}, #{job.repository.slug}#{pr_label})"
+      "#{job.slug}: #{title} (#{job.state}, #{job.repository.slug}#{pr_label})"
     end
 
     def documents_hint

@@ -66,7 +66,7 @@ class PollRepositoryJob < ApplicationJob
       sync_issue_label_state!(prior, issue)
 
       if linked && prior.external_pr_number != linked[:number]
-        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} preempt-attach to Job ##{prior.id}: external PR ##{linked[:number]}")
+        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} preempt-attach to #{prior.slug}: external PR ##{linked[:number]}")
         prior.update!(external_pr_number: linked[:number])
         # If Syrus has nothing in flight here, close the thread as
         # preempted so the operator sees the right state. Open Jobs
@@ -76,7 +76,7 @@ class PollRepositoryJob < ApplicationJob
           prior.cancel_active_runs_and_close!("preempted")
         end
       else
-        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior Job ##{prior.id} exists")
+        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior #{prior.slug} exists")
       end
       return
     end
@@ -129,7 +129,7 @@ class PollRepositoryJob < ApplicationJob
       .without_pr
       .where(issue_number: issue_numbers)
       .find_each do |job|
-        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{job.issue_number} closed upstream; closing Job ##{job.id}")
+        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{job.issue_number} closed upstream; closing #{job.slug}")
         job.cancel_active_runs_and_close!("issue_closed")
       end
   end
@@ -160,7 +160,7 @@ class PollRepositoryJob < ApplicationJob
     prior = latest_job_for_issue(repository, issue.number)
     if prior
       sync_issue_label_state!(prior, issue)
-      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior Job ##{prior.id} exists")
+      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior #{prior.slug} exists")
       return
     end
 

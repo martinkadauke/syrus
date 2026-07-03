@@ -44,7 +44,7 @@ func newJobActionCommand(name string, action string, message string) *cobra.Comm
 			if err := client.RunJobAction(cmd.Context(), args[0], action); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Job #%s %s.\n", args[0], strings.TrimSuffix(strings.ToLower(message), "."))
+			fmt.Fprintf(cmd.OutOrStdout(), "%s %s.\n", jobSlug(args[0]), strings.TrimSuffix(strings.ToLower(message), "."))
 			return nil
 		},
 	}
@@ -160,7 +160,7 @@ func runJobCreate(cmd *cobra.Command, repo string, yes bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Job #%d created. Track with: syrus job watch %d\n", job.Job.ID, job.Job.ID)
+	fmt.Fprintf(cmd.OutOrStdout(), "%s created. Track with: syrus job watch %d\n", jobSlug(job.Job.ID), job.Job.ID)
 	return nil
 }
 
@@ -210,7 +210,7 @@ func runJobCheckout(cmd *cobra.Command, id string, noHooks bool) error {
 	}
 	branch := job.Job.BranchName
 	if branch == "" {
-		return fmt.Errorf("Job #%s has no branch yet", id)
+		return fmt.Errorf("%s has no branch yet", jobSlug(id))
 	}
 	repo := job.Repository.Slug
 	if repo == "" {
@@ -221,7 +221,7 @@ func runJobCheckout(cmd *cobra.Command, id string, noHooks bool) error {
 		return errors.New("run from the matching GitHub checkout")
 	}
 	if current != repo {
-		return fmt.Errorf("current checkout is %s, but Job #%s belongs to %s", current, id, repo)
+		return fmt.Errorf("current checkout is %s, but %s belongs to %s", current, jobSlug(id), repo)
 	}
 	if err := checkoutJobBranch(cmd.Context(), checkoutRunGit, repo, branch); err != nil {
 		return err
@@ -262,6 +262,10 @@ func renderTestPlan(out io.Writer, plan any) {
 			fmt.Fprintf(out, "   %s\n", step.Notes)
 		}
 	}
+}
+
+func jobSlug(id any) string {
+	return fmt.Sprintf("JOB-%v", id)
 }
 
 type testPlanStep struct {

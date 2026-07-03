@@ -33,7 +33,7 @@ class ReconcileJobStatesJob < ApplicationJob
     return unless plan
 
     Rails.logger.info(
-      "[ReconcileJobStates] Job ##{job.id} #{job.state} → #{plan.target_state} " \
+      "[ReconcileJobStates] #{job.slug} #{job.state} → #{plan.target_state} " \
       "(reason: #{plan.reason})"
     )
 
@@ -42,7 +42,7 @@ class ReconcileJobStatesJob < ApplicationJob
   rescue StandardError => e
     # One Job's reconciliation failure must not poison the whole batch.
     Rails.logger.warn(
-      "[ReconcileJobStates] Job ##{job.id} reconcile failed: " \
+      "[ReconcileJobStates] #{job.slug} reconcile failed: " \
       "#{e.class}: #{e.message}"
     )
   end

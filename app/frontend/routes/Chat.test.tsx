@@ -345,9 +345,9 @@ describe("proposal outcome system events", () => {
     mockChatPayload(chatPayload({
       messages: [
         {
-          ...chatMessage(9, "system", 'Proposal confirmed. Job #88 "Map auth" was created.', localDateAt(9, 0)),
+          ...chatMessage(9, "system", 'Proposal confirmed. JOB-88 "Map auth" was created.', localDateAt(9, 0)),
           content: {
-            text: 'Proposal confirmed. Job #88 "Map auth" was created.',
+            text: 'Proposal confirmed. JOB-88 "Map auth" was created.',
             source: "proposal_notification",
             outcome: "confirmed",
             acknowledgment: "Confirmed JOB-88."
@@ -359,7 +359,7 @@ describe("proposal outcome system events", () => {
 
     renderRoute()
 
-    const notice = await screen.findByText('Proposal confirmed. Job #88 "Map auth" was created.')
+    const notice = await screen.findByText('Proposal confirmed. JOB-88 "Map auth" was created.')
     expect(notice).toBeInTheDocument()
     expect(notice.closest(".bg-blue-600")).toBeNull()
     expect(notice.closest(".flex.justify-center")).toBeInTheDocument()

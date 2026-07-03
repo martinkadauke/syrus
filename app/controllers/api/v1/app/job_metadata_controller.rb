@@ -179,10 +179,10 @@ module Api
           if job.issue? && job.issue_number.present?
             title = job.issue_title.to_s.strip
             title = " — #{title}" if title.present?
-            "#{job.repository.slug} ##{job.issue_number}#{title} (#{::App::Presentation.job_slug(job)})"
+            "#{job.repository.slug} ##{job.issue_number}#{title} (#{job.slug})"
           else
             title = job.issue_title.to_s.strip.presence || job.kind.titleize
-            "#{job.repository.slug} #{::App::Presentation.job_slug(job)} — #{title}"
+            "#{job.repository.slug} #{job.slug} — #{title}"
           end
         end
       end

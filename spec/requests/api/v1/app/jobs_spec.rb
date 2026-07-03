@@ -509,7 +509,7 @@ RSpec.describe "App API job detail", type: :request do
     expect(option_labels.scan("#41").size).to eq(1)
     expect(option_labels).to include("JOB-#{newer_issue_job.id}")
     expect(option_labels).to include("JOB-#{direct_job.id} - One-off cleanup")
-    expect(option_labels).not_to include("Job ##{newer_issue_job.id}", "Job ##{direct_job.id}")
+    expect(option_labels).not_to match(/Job\s+#(?:#{newer_issue_job.id}|#{direct_job.id})/)
     expect(option_labels).to include("Latest attempt")
     expect(option_labels).to include("One-off cleanup")
 

@@ -150,8 +150,12 @@ class Job < ApplicationRecord
     claimed_by_user_id.present?
   end
 
+  def slug
+    App::Presentation.job_slug(self)
+  end
+
   def title
-    issue_title.presence || App::Presentation.job_slug(self)
+    issue_title.presence || slug
   end
 
   # Returns an "issue-shaped" object (responds to #title, #body) for
@@ -885,7 +889,7 @@ class Job < ApplicationRecord
   end
 
   def log_epic_auto_reopen(closed_epic)
-    message = "Epic #{closed_epic.display_number} auto-reopened for #{::App::Presentation.job_slug(self)}."
+    message = "Epic #{closed_epic.display_number} auto-reopened for #{slug}."
     Rails.logger.info("[EpicAssignment] #{message}")
 
     planning_chat_for(closed_epic)&.messages&.create!(
@@ -977,7 +981,7 @@ class Job < ApplicationRecord
           dependency.source = "parsed"
         end
         Rails.logger.info(
-          "[JobDependency] job ##{id}: Depends-on: " \
+          "[JobDependency] #{slug}: Depends-on: " \
           "#{reference.owner}/#{reference.repo}##{reference.number} — " \
           "no Syrus Job exists yet; recorded as pending"
         )
@@ -1008,12 +1012,12 @@ class Job < ApplicationRecord
 
       dependency.resolve!(depends_on_job: self)
       Rails.logger.info(
-        "[JobDependency] resolved pending dep on job ##{dependency.job_id}: " \
-        "Depends-on: #{repository.owner}/#{repository.name}##{issue_number} -> job ##{id}"
+        "[JobDependency] resolved pending dep on #{::App::Presentation.job_slug(dependency.job_id)}: " \
+        "Depends-on: #{repository.owner}/#{repository.name}##{issue_number} -> #{slug}"
       )
     rescue ActiveRecord::RecordInvalid => e
       Rails.logger.warn(
-        "[JobDependency] failed to resolve pending dep on job ##{dependency.job_id}: #{e.message}"
+        "[JobDependency] failed to resolve pending dep on #{::App::Presentation.job_slug(dependency.job_id)}: #{e.message}"
       )
     end
   end

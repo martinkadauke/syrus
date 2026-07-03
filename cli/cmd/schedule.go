@@ -148,7 +148,7 @@ func newScheduleRunCommand() *cobra.Command {
 				}
 				return errors.New("schedule run did not create a job")
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Created job #%d\n", payload.FireResult.JobID)
+			fmt.Fprintf(cmd.OutOrStdout(), "Created %s\n", jobSlug(payload.FireResult.JobID))
 			return nil
 		},
 	}

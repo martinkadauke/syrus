@@ -21,7 +21,7 @@ class PollScheduledTasksJob < ApplicationJob
       if result.skipped
         Rails.logger.info("[PollScheduledTasksJob] task ##{task.id} skipped: #{result.reason}")
       else
-        Rails.logger.info("[PollScheduledTasksJob] task ##{task.id} fired → job ##{result.job.id}")
+        Rails.logger.info("[PollScheduledTasksJob] task ##{task.id} fired → #{result.job.slug}")
       end
     rescue StandardError => e
       Rails.logger.warn("[PollScheduledTasksJob] task ##{task.id} fire failed: #{e.class}: #{e.message}")

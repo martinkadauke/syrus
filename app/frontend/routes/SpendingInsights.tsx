@@ -256,7 +256,7 @@ function TopRunsTable({ payload, prefix }: { payload: SpendingPayload; prefix: s
                     <div className="text-xs text-gray-500 dark:text-gray-400">{humanize(run.trigger_kind)} / {run.agent_provider}</div>
                   </td>
                   <td className="max-w-0 px-4 py-3">
-                    <Link className="block truncate text-blue-700 dark:text-blue-300 underline hover:no-underline" title={run.job.title || `Job #${run.job.id}`} to={withRoutePrefix(run.job.path, prefix)}>{run.job.title || `Job #${run.job.id}`}</Link>
+                    <Link className="block truncate text-blue-700 dark:text-blue-300 underline hover:no-underline" title={run.job.title || `JOB-${run.job.id}`} to={withRoutePrefix(run.job.path, prefix)}>{run.job.title || `JOB-${run.job.id}`}</Link>
                     {run.epic ? <div className="truncate text-xs text-gray-500 dark:text-gray-400" title={`${run.epic.display_number} / ${run.epic.title}`}>{run.epic.display_number} / {run.epic.title}</div> : null}
                   </td>
                   <td className="max-w-0 px-4 py-3">

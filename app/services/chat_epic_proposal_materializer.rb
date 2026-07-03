@@ -136,12 +136,12 @@ class ChatEpicProposalMaterializer
 
       dependency.resolve!(depends_on_job: job)
       Rails.logger.info(
-        "[JobDependency] resolved pending proposal dep on job ##{dependency.job_id}: " \
-        "#{proposal.slug} -> job ##{job.id}"
+        "[JobDependency] resolved pending proposal dep on #{::App::Presentation.job_slug(dependency.job_id)}: " \
+        "#{proposal.slug} -> #{job.slug}"
       )
     rescue ActiveRecord::RecordInvalid => e
       Rails.logger.warn(
-        "[JobDependency] failed to resolve pending proposal dep on job ##{dependency.job_id}: #{e.message}"
+        "[JobDependency] failed to resolve pending proposal dep on #{::App::Presentation.job_slug(dependency.job_id)}: #{e.message}"
       )
     end
   end

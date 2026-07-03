@@ -49,7 +49,7 @@ class LocalMergeabilityCheck
     end
   rescue StandardError => e
     abort_rebase
-    Rails.logger.warn("[LocalMergeabilityCheck] job #{@job.id} failed: #{e.class}: #{e.message}")
+    Rails.logger.warn("[LocalMergeabilityCheck] #{@job.slug} failed: #{e.class}: #{e.message}")
     Result.new(
       state: "error",
       mergeable: nil,

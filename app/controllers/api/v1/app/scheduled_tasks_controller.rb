@@ -113,7 +113,7 @@ module Api
           end
 
           result = ScheduledTaskFire.new(task).call
-          message = result.fired? ? "Fired (job ##{result.job.id})." : "Fire skipped: #{result.reason}."
+          message = result.fired? ? "Fired (#{result.job.slug})." : "Fire skipped: #{result.reason}."
           render json: scheduled_task_detail_payload(task.reload).merge(message: message, fire_result: fire_result_json(result))
         rescue StandardError => e
           Rails.logger.warn("[API ScheduledTasks#fire_now] task ##{task&.id}: #{e.class}: #{e.message}")

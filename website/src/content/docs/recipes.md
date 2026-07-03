@@ -223,7 +223,7 @@ GenerateJobTitleJob.perform_later(job) if job.title_pending?
 workflow = Workflows::Initial.instantiate(job: job, agent_provider: job.agent_provider)
 StepDispatcher.start_workflow(workflow, prompt: Prompts::DirectJob.new(prompt: prompt).to_s)
 
-puts "Created Job ##{job.id}"
+puts "Created JOB-#{job.id}"
 RUBY
 ```
 

@@ -28,27 +28,27 @@ class IngestIssueImagesJob < ApplicationJob
 
     head = request(:head, URI.parse(url), headers_for(job, url))
     unless head.is_a?(Net::HTTPSuccess)
-      Rails.logger.warn("[IngestIssueImagesJob] job ##{job.id}: HEAD #{url} returned #{head.code}; skipping")
+      Rails.logger.warn("[IngestIssueImagesJob] #{job.slug}: HEAD #{url} returned #{head.code}; skipping")
       return
     end
 
     content_type = normalized_content_type(head["content-type"])
     unless image_content_type?(content_type)
-      Rails.logger.warn("[IngestIssueImagesJob] job ##{job.id}: #{url} is #{content_type.inspect}; skipping")
+      Rails.logger.warn("[IngestIssueImagesJob] #{job.slug}: #{url} is #{content_type.inspect}; skipping")
       return
     end
 
     content_length = head["content-length"].to_i if head["content-length"].present?
     if content_length && content_length > MAX_BYTES
-      Rails.logger.warn("[IngestIssueImagesJob] job ##{job.id}: #{url} is #{content_length} bytes; skipping")
+      Rails.logger.warn("[IngestIssueImagesJob] #{job.slug}: #{url} is #{content_length} bytes; skipping")
       return
     end
 
     download_to_attachment(job, url, content_type)
   rescue DownloadTooLarge => e
-    Rails.logger.warn("[IngestIssueImagesJob] job ##{job.id}: #{e.message}; skipping")
+    Rails.logger.warn("[IngestIssueImagesJob] #{job.slug}: #{e.message}; skipping")
   rescue => e
-    Rails.logger.warn("[IngestIssueImagesJob] job ##{job.id}: failed to ingest #{url}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[IngestIssueImagesJob] #{job.slug}: failed to ingest #{url}: #{e.class}: #{e.message}")
   end
 
   def download_to_attachment(job, url, content_type)
@@ -59,7 +59,7 @@ class IngestIssueImagesJob < ApplicationJob
     Tempfile.create([ "syrus-issue-image-", extension_for(content_type) ]) do |file|
       response = request(:get, uri, headers)
       unless response.is_a?(Net::HTTPSuccess)
-        Rails.logger.warn("[IngestIssueImagesJob] job ##{job.id}: GET #{url} returned #{response.code}; skipping")
+        Rails.logger.warn("[IngestIssueImagesJob] #{job.slug}: GET #{url} returned #{response.code}; skipping")
         return
       end
 
@@ -123,7 +123,7 @@ class IngestIssueImagesJob < ApplicationJob
     headers["Authorization"] = "Bearer #{token}" if token.present?
     headers
   rescue => e
-    Rails.logger.warn("[IngestIssueImagesJob] job ##{job.id}: could not build authenticated headers for #{url}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[IngestIssueImagesJob] #{job.slug}: could not build authenticated headers for #{url}: #{e.class}: #{e.message}")
     headers
   end
 

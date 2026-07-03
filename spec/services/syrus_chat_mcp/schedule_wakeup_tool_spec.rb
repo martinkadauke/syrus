@@ -33,7 +33,7 @@ RSpec.describe SyrusChatMcp::ScheduleWakeupTool do
 
   it "creates a wakeup for the current chat session and user" do
     travel_to Time.zone.parse("2026-06-24 12:00:00 UTC") do
-      response = call_tool(prompt: "Check job #123 and reschedule if needed.", delay_minutes: 30)
+      response = call_tool(prompt: "Check JOB-123 and reschedule if needed.", delay_minutes: 30)
 
       wakeup = ChatWakeup.sole
       expect(response[:result][:isError]).to be_falsey
@@ -45,7 +45,7 @@ RSpec.describe SyrusChatMcp::ScheduleWakeupTool do
       expect(wakeup).to have_attributes(
         chat_session: chat_session,
         user: user,
-        prompt: "Check job #123 and reschedule if needed.",
+        prompt: "Check JOB-123 and reschedule if needed.",
         state: "pending"
       )
       expect(wakeup.fire_at).to eq(Time.zone.parse("2026-06-24 12:30:00 UTC"))

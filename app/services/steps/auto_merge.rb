@@ -71,7 +71,7 @@ module Steps
 
       raise StepFailed, "auto_merge: GitHub did not report the PR as merged" unless merge.respond_to?(:merged) ? merge.merged : merge[:merged]
 
-      comment = "Merged automatically by Syrus after approval and green checks. Job ##{job.id}: #{job_url}"
+      comment = "Merged automatically by Syrus after approval and green checks. #{job.slug}: #{job_url}"
       client.add_issue_comment(repository.slug, job.pr_number, comment)
       job.close_with_reason!("pr_merged") if job.open?
       log("auto_merge: merged PR ##{job.pr_number}")
@@ -191,7 +191,7 @@ module Steps
         host: ENV.fetch("SYRUS_APP_HOST", "localhost")
       )
     rescue StandardError
-      "job #{job.id}"
+      job.slug
     end
   end
 end

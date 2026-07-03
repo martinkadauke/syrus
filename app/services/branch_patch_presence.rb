@@ -21,7 +21,7 @@ class BranchPatchPresence
     fetch_branch_head
     no_unique_patches?
   rescue StandardError => e
-    Rails.logger.info("[BranchPatchPresence] job #{@job.id} check failed: #{e.class}: #{e.message}")
+    Rails.logger.info("[BranchPatchPresence] #{@job.slug} check failed: #{e.class}: #{e.message}")
     false
   ensure
     cleanup_clone

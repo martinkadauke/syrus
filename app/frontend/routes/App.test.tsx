@@ -6388,7 +6388,7 @@ describe("App", () => {
     expect(await screen.findByText("Run #4 · transcript")).toBeInTheDocument()
     expect(screen.getByText(/claude-sonnet-4-6/)).toBeInTheDocument()
     expect(screen.getAllByText("Bash").length).toBeGreaterThan(0)
-    expect(screen.getByRole("link", { name: "back to job #1" })).toHaveAttribute("href", "/app-shell/jobs/1")
+    expect(screen.getByRole("link", { name: "back to JOB-1" })).toHaveAttribute("href", "/app-shell/jobs/1")
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/admin/runs/4/transcript?page=3&per=1")
     expect(screen.getByRole("link", { name: "Download JSONL" })).toHaveAttribute("href", "/admin/runs/4/transcript/download")
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -12691,8 +12691,8 @@ describe("App", () => {
     })
     expect(await screen.findByRole("heading", { name: "Map auth" })).toBeInTheDocument()
     expect(screen.getAllByText("Confirmed").length).toBeGreaterThanOrEqual(2)
-    expect(screen.getByRole("link", { name: "#88" })).toHaveAttribute("href", "/app-shell/jobs/88")
-    expect(screen.getByText((_, element) => element?.textContent === '→ Job #88 "Map auth"')).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "JOB-88" })).toHaveAttribute("href", "/app-shell/jobs/88")
+    expect(screen.getByText((_, element) => element?.textContent === '→ JOB-88 "Map auth"')).toBeInTheDocument()
     const proposalNotice = await screen.findByRole("status")
     expect(proposalNotice).toHaveClass("fixed")
     expect(proposalNotice).toHaveTextContent("Proposal confirmed and filed as JOB-88.")
@@ -13147,7 +13147,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("link", { name: "#11" })).toHaveAttribute("href", "/app-shell/epics/11")
     expect(screen.getByText((_, element) => element?.textContent === '→ Epic #11 "Raise the forum"')).toBeInTheDocument()
-    expect(screen.getByText((_, element) => element?.textContent === 'Jobs: #154 "Add inspection tools", #155 "Add trigger"')).toBeInTheDocument()
+    expect(screen.getByText((_, element) => element?.textContent === 'Jobs: JOB-154 "Add inspection tools", JOB-155 "Add trigger"')).toBeInTheDocument()
   })
 
   it("shows rejected proposal state on proposal cards", async () => {
@@ -13193,7 +13193,7 @@ describe("App", () => {
 
     expect(await screen.findByRole("heading", { name: "Map auth" })).toBeInTheDocument()
     expect(screen.getAllByText("Rejected").length).toBeGreaterThan(0)
-    expect(screen.queryByText(/Job #/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Job\s+#/)).not.toBeInTheDocument()
   })
 
   it("loads older chat messages when scrolling near the top", async () => {

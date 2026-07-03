@@ -176,7 +176,7 @@ module App
 
       {
         id: job.id,
-        title: job.issue_title.presence || ::App::Presentation.job_slug(job),
+        title: job.issue_title.presence || job.slug,
         state: job.state,
         closure_reason: job.closure_reason,
         pr_number: job.pr_number || job.external_pr_number,

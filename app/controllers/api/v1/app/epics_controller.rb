@@ -236,7 +236,7 @@ module Api
 
           if dependency.depends_on_job_id.present?
             job = dependency.depends_on_job
-            return "waiting for Job ##{job.issue_number || job.id} to merge"
+            return "waiting for #{job.slug} to merge"
           end
 
           "waiting for Epic ##{dependency.depends_on_epic.number} to complete"
@@ -316,7 +316,7 @@ module Api
           elsif job.issue_number.present?
             "##{job.issue_number}"
           else
-            ::App::Presentation.job_slug(job)
+            job.slug
           end
 
           {

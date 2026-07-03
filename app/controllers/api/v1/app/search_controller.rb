@@ -96,7 +96,7 @@ module Api
             {
               job_id: job.id,
               rank: -1.0,
-              snippet: "<mark>#{ERB::Util.html_escape(::App::Presentation.job_slug(job))}</mark>"
+              snippet: "<mark>#{ERB::Util.html_escape(job.slug)}</mark>"
             }
           end
         end

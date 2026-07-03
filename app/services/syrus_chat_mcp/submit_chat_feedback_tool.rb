@@ -44,7 +44,7 @@ module SyrusChatMcp
             pending_action_id: pending_action.id,
             state: pending_action.state,
             status: "queued",
-            message: "Feedback queued - will appear for your confirmation once #{::App::Presentation.job_slug(job)} finishes its current run."
+            message: "Feedback queued - will appear for your confirmation once #{job.slug} finishes its current run."
           )
         end
 

@@ -1128,7 +1128,7 @@ module App
     def landing_queue_blocker_job_json(job, entry)
       json = {
         id: job.id,
-        title: job.issue_title.presence || App::Presentation.job_slug(job),
+        title: job.issue_title.presence || job.slug,
         job_path: "/jobs/#{job.id}",
         state: job.state,
         pr_number: job.pr_number || job.external_pr_number,

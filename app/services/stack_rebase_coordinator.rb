@@ -63,7 +63,7 @@ class StackRebaseCoordinator
                 .update_pull_request_base(child.repository.slug, child.pr_number, base: base)
   rescue StandardError => e
     Rails.logger.info(
-      "[StackRebaseCoordinator] failed to retarget PR for job #{child.id} " \
+      "[StackRebaseCoordinator] failed to retarget PR for #{child.slug} " \
       "to #{base || child.repository.default_branch}: #{e.class}: #{e.message}"
     )
   end
@@ -72,7 +72,7 @@ class StackRebaseCoordinator
     jobs.compact.uniq.each do |job|
       PrStackFooter.refresh!(job)
     rescue StandardError => e
-      Rails.logger.info("[StackRebaseCoordinator] failed to refresh stack footer for job #{job.id}: #{e.class}: #{e.message}")
+      Rails.logger.info("[StackRebaseCoordinator] failed to refresh stack footer for #{job.slug}: #{e.class}: #{e.message}")
     end
   end
 end

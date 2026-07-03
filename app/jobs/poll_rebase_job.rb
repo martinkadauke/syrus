@@ -63,7 +63,7 @@ class PollRebaseJob < ApplicationJob
     return if attempt_cap_reached?(pr)
     return if repo_rebase_concurrency_reached?
 
-    Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{pr_number} unmergeable; instantiating rebase workflow")
+    Rails.logger.info("[PollRebaseJob] #{@job.slug} PR ##{pr_number} unmergeable; instantiating rebase workflow")
     workflow = RebaseWorkflowSelector.instantiate(job: @job, pr: pr)
     StepDispatcher.start_workflow(workflow)
   end
@@ -90,14 +90,14 @@ class PollRebaseJob < ApplicationJob
   def noop_rebase_already_covers?(pr)
     return false unless RebaseLoopGuard.noop_rebase_for?(job: @job, pr: pr, client: @client)
 
-    Rails.logger.info("[PollRebaseJob] job #{@job.id} PR ##{@job.pr_number || @job.external_pr_number} still unmergeable after no-op rebase for same head/base; waiting")
+    Rails.logger.info("[PollRebaseJob] #{@job.slug} PR ##{@job.pr_number || @job.external_pr_number} still unmergeable after no-op rebase for same head/base; waiting")
     true
   end
 
   def attempt_cap_reached?(pr)
     return false unless RebaseAttemptGuard.cap_reached?(@job, pr: pr)
 
-    Rails.logger.info("[PollRebaseJob] job #{@job.id} hit rebase cap (#{REBASE_ATTEMPT_CAP} consecutive failures); skipping")
+    Rails.logger.info("[PollRebaseJob] #{@job.slug} hit rebase cap (#{REBASE_ATTEMPT_CAP} consecutive failures); skipping")
     true
   end
 
@@ -108,7 +108,7 @@ class PollRebaseJob < ApplicationJob
   def repo_rebase_concurrency_reached?
     active = RebaseWorkflowSelector.active_in_repository(@job.repository).count
     return false if active < CONCURRENT_REBASES_PER_REPO
-    Rails.logger.info("[PollRebaseJob] job #{@job.id} repo #{@job.repository.slug} at concurrent-rebase cap (#{active}/#{CONCURRENT_REBASES_PER_REPO}); deferring")
+    Rails.logger.info("[PollRebaseJob] #{@job.slug} repo #{@job.repository.slug} at concurrent-rebase cap (#{active}/#{CONCURRENT_REBASES_PER_REPO}); deferring")
     true
   end
 end

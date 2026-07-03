@@ -47,7 +47,7 @@ class ClassifyIssueJob < ApplicationJob
     # short-circuits cleanly if conditions changed since enqueue.
     return unless job.triaging? && job.triaging_reason_classifier_pending?
     unless job.user.agent_provider_configured?(job.agent_provider)
-      Rails.logger.warn("[ClassifyIssueJob] Job ##{job.id}: agent provider " \
+      Rails.logger.warn("[ClassifyIssueJob] #{job.slug}: agent provider " \
                         "#{job.agent_provider.inspect} not configured for user " \
                         "#{job.user.id}; deferring")
       return

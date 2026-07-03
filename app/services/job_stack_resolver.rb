@@ -46,7 +46,7 @@ class JobStackResolver
     jobs.compact.uniq.each do |job|
       PrStackFooter.refresh!(job)
     rescue StandardError => e
-      Rails.logger.info("[JobStackResolver] failed to refresh stack footer for job #{job.id}: #{e.class}: #{e.message}")
+      Rails.logger.info("[JobStackResolver] failed to refresh stack footer for #{job.slug}: #{e.class}: #{e.message}")
     end
   end
 

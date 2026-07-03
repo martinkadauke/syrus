@@ -32,7 +32,7 @@ class ReapClassifierPendingJob < ApplicationJob
                .where("created_at < ?", cutoff)
 
     stuck.find_each do |job|
-      Rails.logger.info("[ReapClassifierPendingJob] re-enqueuing classify for Job ##{job.id} " \
+      Rails.logger.info("[ReapClassifierPendingJob] re-enqueuing classify for #{job.slug} " \
                         "(issue ##{job.issue_number} @ #{job.repository.slug}, " \
                         "stuck since #{job.created_at})")
       ClassifyIssueJob.perform_later(job.id)

@@ -35,7 +35,7 @@ module Steps
 
       members.each do |member|
         branch = member.branch_name
-        raise StepFailed, "merge_train: member Job ##{member.id} has no branch" if branch.blank?
+        raise StepFailed, "merge_train: member #{member.slug} has no branch" if branch.blank?
 
         fetch_branch!(branch)
         integrate!(member, branch)

@@ -65,7 +65,7 @@ module Steps
 
         PrStackFooter.refresh!(stack_job)
       rescue StandardError => e
-        log("stack_force_push: failed to refresh stack footer for job #{entry["job_id"]}: #{e.class}: #{e.message}")
+        log("stack_force_push: failed to refresh stack footer for #{::App::Presentation.job_slug(entry["job_id"])}: #{e.class}: #{e.message}")
       end
     end
   end

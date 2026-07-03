@@ -128,7 +128,7 @@ class IngestionClassifier
   end
 
   def mark_uncertain(reason)
-    Rails.logger.warn("[IngestionClassifier] Job ##{job.id} uncertain: #{reason}")
+    Rails.logger.warn("[IngestionClassifier] #{job.slug} uncertain: #{reason}")
     job.mark_classifier_uncertain! if job.may_mark_classifier_uncertain?
     failure(reason)
   end

@@ -10,7 +10,7 @@ module Prompts
     def to_s
       rows = @stack_entries.map.with_index(1) do |entry, index|
         pr = entry["pr_number"].present? ? "PR ##{entry["pr_number"]}" : "no PR number"
-        "#{index}. job #{entry["job_id"]}: `#{entry["branch_name"]}` onto `#{entry["base_branch"]}` (#{pr})"
+        "#{index}. #{::App::Presentation.job_slug(entry["job_id"])}: `#{entry["branch_name"]}` onto `#{entry["base_branch"]}` (#{pr})"
       end.join("\n")
 
       context = <<~CONTEXT.strip

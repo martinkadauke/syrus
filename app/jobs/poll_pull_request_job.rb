@@ -56,7 +56,7 @@ class PollPullRequestJob < ApplicationJob
   private
 
   def close_with(reason)
-    Rails.logger.info("[PollPullRequestJob] closing job #{@job.id}: #{reason}")
+    Rails.logger.info("[PollPullRequestJob] closing #{@job.slug}: #{reason}")
     @job.runs.active.find_each do |r|
       r.cancel! if r.may_cancel?
       r.save!
@@ -218,7 +218,7 @@ class PollPullRequestJob < ApplicationJob
     # shouldn't all die because CI scope is missing.
     reason = strip_docs_url(e.message)
     @job.user.mark_gh_api_blocked!("check-runs: #{reason}")
-    Rails.logger.warn("[PollPullRequestJob] job #{@job.id}: ci_failure path disabled — #{reason[0, 160]}")
+    Rails.logger.warn("[PollPullRequestJob] #{@job.slug}: ci_failure path disabled — #{reason[0, 160]}")
   end
 
   # Octokit error messages are shaped:
@@ -241,7 +241,7 @@ class PollPullRequestJob < ApplicationJob
                            .where("created_at >= ?", CI_FAILURE_WINDOW.ago)
                            .count
     return false unless recent >= CI_FAILURE_CAP
-    Rails.logger.info("[PollPullRequestJob] job #{@job.id} hit ci_failure cap (#{CI_FAILURE_CAP} in #{CI_FAILURE_WINDOW.inspect}); skipping")
+    Rails.logger.info("[PollPullRequestJob] #{@job.slug} hit ci_failure cap (#{CI_FAILURE_CAP} in #{CI_FAILURE_WINDOW.inspect}); skipping")
     true
   end
 
@@ -256,7 +256,7 @@ class PollPullRequestJob < ApplicationJob
     return false unless circuit.open?
 
     Rails.logger.info(
-      "[PollPullRequestJob] job #{@job.id}: #{trigger_kind} suppressed because #{circuit.provider} circuit is open " \
+      "[PollPullRequestJob] #{@job.slug}: #{trigger_kind} suppressed because #{circuit.provider} circuit is open " \
       "(#{circuit.reason}, failures=#{circuit.failure_count}, jobs=#{circuit.job_count}, retry_after=#{circuit.retry_after})"
     )
     true
@@ -271,7 +271,7 @@ class PollPullRequestJob < ApplicationJob
     workflow = Workflows::CiFailure.instantiate(job: @job, artifacts: artifacts, agent_provider: @agent_provider)
     StepDispatcher.start_workflow(workflow)
     @job.update!(last_ci_handled_sha: head_sha)
-    Rails.logger.info("[PollPullRequestJob] job #{@job.id}: enqueued CiFailure workflow ##{workflow.id} for #{head_sha[0..6]} (#{failed_checks.size} failing)")
+    Rails.logger.info("[PollPullRequestJob] #{@job.slug}: enqueued CiFailure workflow ##{workflow.id} for #{head_sha[0..6]} (#{failed_checks.size} failing)")
   end
 
   def enrich_failed_check(check)

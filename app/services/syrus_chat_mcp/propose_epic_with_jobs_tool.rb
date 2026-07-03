@@ -90,7 +90,7 @@ module SyrusChatMcp
         normalized_jobs.each do |job|
           repository = repository_for(user, chat_session, job[:target_repo])
           return SyrusChatMcp.invalid("unknown job target_repo for #{job[:slug]}: #{job[:target_repo]}") unless repository
-          return SyrusChatMcp.invalid("job #{job[:slug]} target_repo must match the Epic target_repo") unless repository.id == epic_repository.id
+          return SyrusChatMcp.invalid("proposal item #{job[:slug]} target_repo must match the Epic target_repo") unless repository.id == epic_repository.id
 
           job_repositories[job[:slug]] = repository
         end
@@ -162,10 +162,10 @@ module SyrusChatMcp
 
         jobs.each do |job|
           return "job slug is required" if job[:slug].empty?
-          return "job #{job[:slug]} title is required" if job[:title].empty?
-          return "job #{job[:slug]} description is required" if job[:description].empty?
-          return "job #{job[:slug]} target_repo is required" if job[:target_repo].empty?
-          return "job #{job[:slug]} cannot depend on itself" if job[:depends_on].include?(job[:slug])
+          return "proposal item #{job[:slug]} title is required" if job[:title].empty?
+          return "proposal item #{job[:slug]} description is required" if job[:description].empty?
+          return "proposal item #{job[:slug]} target_repo is required" if job[:target_repo].empty?
+          return "proposal item #{job[:slug]} cannot depend on itself" if job[:depends_on].include?(job[:slug])
         end
 
         dependency_slugs = jobs.flat_map { |job| job[:depends_on] }.uniq

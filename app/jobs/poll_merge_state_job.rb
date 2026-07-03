@@ -65,7 +65,7 @@ class PollMergeStateJob < ApplicationJob
       return false
     end
 
-    Rails.logger.info("[PollMergeStateJob] finalized preempted job #{@job.id}: external PR ##{@job.external_pr_number} -> #{@job.closure_reason}")
+    Rails.logger.info("[PollMergeStateJob] finalized preempted #{@job.slug}: external PR ##{@job.external_pr_number} -> #{@job.closure_reason}")
     true
   end
 
@@ -82,19 +82,19 @@ class PollMergeStateJob < ApplicationJob
 
     @job.approve_for_landing!
     audit("landing_queue: approved PR ##{@job.pr_number}; queued for landing")
-    Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} approved and clean; queued for landing")
+    Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} approved and clean; queued for landing")
   end
 
   def dispatch_rebase
     if rebase_deferred_until_front_of_queue?
       audit("auto_merge: PR ##{@job.pr_number} is #{mergeable_state} but not near the front of the landing queue; deferring rebase until it advances")
-      Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} #{mergeable_state} but far back in landing queue; skipping proactive rebase")
+      Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} #{mergeable_state} but far back in landing queue; skipping proactive rebase")
       return
     end
 
     if RebaseLoopGuard.noop_rebase_for?(job: @job, pr: @pr, client: @client)
       audit("auto_merge: #{mergeable_state} for same head/base after a no-op rebase; waiting for GitHub mergeability to refresh")
-      Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} still #{mergeable_state} after no-op rebase; waiting")
+      Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} still #{mergeable_state} after no-op rebase; waiting")
       return
     end
 
@@ -103,7 +103,7 @@ class PollMergeStateJob < ApplicationJob
 
     workflow = RebaseWorkflowSelector.instantiate(job: @job, pr: @pr)
     audit("auto_merge: dispatching rebase #{workflow.slug} before merge")
-    Rails.logger.info("[PollMergeStateJob] job #{@job.id} PR ##{@job.pr_number} needs rebase before merge-state evaluation")
+    Rails.logger.info("[PollMergeStateJob] #{@job.slug} PR ##{@job.pr_number} needs rebase before merge-state evaluation")
     StepDispatcher.start_workflow(workflow)
   end
 

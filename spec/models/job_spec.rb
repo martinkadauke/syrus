@@ -7,6 +7,14 @@ RSpec.describe Job do
     clear_enqueued_jobs
   end
 
+  describe "#slug" do
+    it "returns the canonical Job slug" do
+      job = Factories.job_record
+
+      expect(job.slug).to eq("JOB-#{job.id}")
+    end
+  end
+
   describe "search indexing" do
     it "enqueues indexing when created" do
       repo = Factories.repository

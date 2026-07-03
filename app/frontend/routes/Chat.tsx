@@ -1523,9 +1523,10 @@ function ProposalResultFooter({ proposal, prefix, onNotice }: { proposal: ChatPr
 function ProposalMaterializedResult({ proposal, prefix }: { proposal: ChatProposal; prefix: string }) {
   const materialized = proposal.materialized
   if (materialized?.kind === "job") {
+    const label = proposal.materialized_label || `JOB-${materialized.job_id}`
     return (
       <span>
-        → Job <ProposalResultLink path={proposal.materialized_path} prefix={prefix}>#{materialized.job_id}</ProposalResultLink>{materialized.job_title ? ` "${materialized.job_title}"` : ""}
+        → <ProposalResultLink path={proposal.materialized_path} prefix={prefix}>{label}</ProposalResultLink>{materialized.job_title ? ` "${materialized.job_title}"` : ""}
       </span>
     )
   }
@@ -1542,7 +1543,7 @@ function ProposalMaterializedResult({ proposal, prefix }: { proposal: ChatPropos
             Jobs: {children.map((job, index) => (
               <span key={`${job.job_id}-${index}`}>
                 {index > 0 ? ", " : ""}
-                #{job.job_id}{job.title ? ` "${job.title}"` : ""}
+                JOB-{job.job_id}{job.title ? ` "${job.title}"` : ""}
               </span>
             ))}
           </span>

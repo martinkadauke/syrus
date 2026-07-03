@@ -81,7 +81,7 @@ class JobImageAttachmentIngestor
     attachment.save!
     true
   rescue StandardError => e
-    Rails.logger.warn("[JobImageAttachmentIngestor] job #{@job.id}: skipped #{source_url}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[JobImageAttachmentIngestor] #{@job.slug}: skipped #{source_url}: #{e.class}: #{e.message}")
     false
   end
 
@@ -116,7 +116,7 @@ class JobImageAttachmentIngestor
       filename: filename_for(uri, content_type)
     )
   rescue ArgumentError, URI::InvalidURIError, SocketError, SystemCallError, Timeout::Error, Net::OpenTimeout, Net::ReadTimeout => e
-    Rails.logger.warn("[JobImageAttachmentIngestor] job #{@job.id}: skipped #{source_url}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[JobImageAttachmentIngestor] #{@job.slug}: skipped #{source_url}: #{e.class}: #{e.message}")
     nil
   end
 

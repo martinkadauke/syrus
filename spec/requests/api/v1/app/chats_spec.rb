@@ -1615,7 +1615,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(confirmation_message).to have_attributes(role: "system", proposal_id: nil)
     expect(confirmation_message.proposal_id).to be_nil
     expect(confirmation_message.content).to eq(
-      "text" => %(Proposal confirmed. Job ##{confirmed.job.id} "Map auth" was created.),
+      "text" => %(Proposal confirmed. JOB-#{confirmed.job.id} "Map auth" was created.),
       "source" => "proposal_notification",
       "outcome" => "confirmed",
       "acknowledgment" => "Confirmed JOB-#{confirmed.job.id}."
@@ -1678,7 +1678,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(confirmation_message).to have_attributes(role: "system", proposal_id: nil)
     expect(confirmation_message.content.fetch("text")).to eq(
       "Proposal confirmed. Epic ##{proposal.epic.id} \"Ship auth\" was created. " \
-      "Child jobs: Job ##{schema.job.id} \"Auth schema\", Job ##{ui.job.id} \"Auth UI\"."
+      "Child jobs: JOB-#{schema.job.id} \"Auth schema\", JOB-#{ui.job.id} \"Auth UI\"."
     )
     expect(confirmation_message.content).to include(
       "source" => "proposal_notification",

@@ -55,7 +55,7 @@ module Steps
           client.add_issue_comment(
             repository.slug,
             member_job.pr_number,
-            "Landed via Epic merge-train (integration PR ##{integration_pr.number}). Job ##{member_job.id}."
+            "Landed via Epic merge-train (integration PR ##{integration_pr.number}). #{member_job.slug}."
           )
           client.close_pull_request(repository.slug, member_job.pr_number)
         end
@@ -73,7 +73,7 @@ module Steps
       lines = [ "Atomic Epic landing via Syrus merge-train.", "", "Members:" ]
       train.members.includes(:job).each do |member|
         member_job = member.job
-        ref = member_job.pr_number.present? ? "##{member_job.pr_number}" : "Job ##{member_job.id}"
+        ref = member_job.pr_number.present? ? "##{member_job.pr_number}" : member_job.slug
         lines << "- #{ref} (#{member_job.branch_name})"
       end
       lines.join("\n")

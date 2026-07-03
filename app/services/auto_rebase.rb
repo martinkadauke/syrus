@@ -99,7 +99,7 @@ class AutoRebase
     Result.new(false, "lease_rejected", e.message, pre_sha: @expected_remote_sha)
   rescue StandardError => e
     abort_rebase
-    Rails.logger.warn("[AutoRebase] job #{@job.id} unexpected error: #{e.class}: #{e.message}")
+    Rails.logger.warn("[AutoRebase] #{@job.slug} unexpected error: #{e.class}: #{e.message}")
     Result.new(false, "error", e.message)
   ensure
     cleanup_clone

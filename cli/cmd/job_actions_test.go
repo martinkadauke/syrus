@@ -54,7 +54,7 @@ func TestJobCreatePostsDirectJob(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	if !strings.Contains(output.String(), "Job #456 created. Track with: syrus job watch 456") {
+	if !strings.Contains(output.String(), "JOB-456 created. Track with: syrus job watch 456") {
 		t.Fatalf("output = %q", output.String())
 	}
 }
@@ -78,7 +78,7 @@ func TestJobActionPostsEndpoint(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	if got := strings.TrimSpace(output.String()); got != "Job #456 approved." {
+	if got := strings.TrimSpace(output.String()); got != "JOB-456 approved." {
 		t.Fatalf("output = %q", got)
 	}
 }
@@ -131,7 +131,7 @@ func TestJobCheckoutFailsWhenBranchMissing(t *testing.T) {
 	command.SetArgs([]string{"job", "checkout", "456"})
 
 	err := command.Execute()
-	if err == nil || err.Error() != "Job #456 has no branch yet" {
+	if err == nil || err.Error() != "JOB-456 has no branch yet" {
 		t.Fatalf("error = %v", err)
 	}
 }

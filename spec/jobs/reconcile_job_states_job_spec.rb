@@ -138,7 +138,7 @@ RSpec.describe ReconcileJobStatesJob do
 
       allow_any_instance_of(Job).to receive(:retry_after_failure!).and_raise(StandardError, "kaboom")
 
-      expect(Rails.logger).to receive(:warn).with(/Job ##{job.id} reconcile failed/)
+      expect(Rails.logger).to receive(:warn).with(/JOB-#{job.id} reconcile failed/)
       expect { described_class.new.perform }.not_to raise_error
     end
   end

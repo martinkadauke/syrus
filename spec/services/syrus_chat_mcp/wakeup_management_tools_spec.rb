@@ -31,7 +31,7 @@ RSpec.describe "SyrusChatMcp wakeup management tools" do
     JSON.parse(response.fetch(:result).fetch(:content).first.fetch(:text), symbolize_names: true)
   end
 
-  def create_wakeup(chat_session:, fire_at:, prompt: "Check job #123 and report back.", state: "pending")
+  def create_wakeup(chat_session:, fire_at:, prompt: "Check JOB-123 and report back.", state: "pending")
     ChatWakeup.create!(
       chat_session: chat_session,
       user: chat_session.user,

@@ -59,7 +59,7 @@ class RebaseLoopGuard
   def self.current_base_sha(job:, pr:, client:)
     live_base_sha(job: job, pr: pr, client: client) || pr_base_sha(pr)
   rescue StandardError => e
-    Rails.logger.warn("[RebaseLoopGuard] live base lookup failed for job #{job.id}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[RebaseLoopGuard] live base lookup failed for #{job.slug}: #{e.class}: #{e.message}")
     pr_base_sha(pr)
   end
   private_class_method :current_base_sha

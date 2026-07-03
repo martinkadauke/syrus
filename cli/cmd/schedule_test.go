@@ -185,7 +185,7 @@ func TestScheduleRunPrintsCreatedJob(t *testing.T) {
 			t.Fatalf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"message":"Fired (job #99).","fire_result":{"fired":true,"job_id":99}}`))
+		w.Write([]byte(`{"message":"Fired (JOB-99).","fire_result":{"fired":true,"job_id":99}}`))
 	}))
 	defer server.Close()
 	withCredentials(t, server.URL, "secret-token")
@@ -198,7 +198,7 @@ func TestScheduleRunPrintsCreatedJob(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}
-	if output.String() != "Created job #99\n" {
+	if output.String() != "Created JOB-99\n" {
 		t.Fatalf("output = %q", output.String())
 	}
 }

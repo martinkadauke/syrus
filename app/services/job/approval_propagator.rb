@@ -42,7 +42,7 @@ class Job::ApprovalPropagator
     job.save! if job.changed?
     Result.new(message: "GitHub review left.", status: :success)
   rescue Octokit::Error => e
-    Rails.logger.warn("[Job::ApprovalPropagator] GitHub review failed for Job #{job.id}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[Job::ApprovalPropagator] GitHub review failed for #{job.slug}: #{e.class}: #{e.message}")
     Result.new(message: "GitHub review failed: #{e.message}.", status: :failure)
   end
 
@@ -54,7 +54,7 @@ class Job::ApprovalPropagator
     client.dismiss_pr_review(job.repository.slug, job.pr_number, review_id, message: "Dismissed via Syrus.")
     Result.new(message: "GitHub review dismissed.", status: :success)
   rescue Octokit::Error => e
-    Rails.logger.warn("[Job::ApprovalPropagator] GitHub dismiss failed for Job #{job.id}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[Job::ApprovalPropagator] GitHub dismiss failed for #{job.slug}: #{e.class}: #{e.message}")
     Result.new(message: "GitHub review dismiss failed: #{e.message}.", status: :failure)
   end
 

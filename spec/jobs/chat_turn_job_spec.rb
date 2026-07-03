@@ -149,7 +149,7 @@ RSpec.describe ChatTurnJob do
     expect(received[:prompt]).to include("Attached context:")
     expect(received[:prompt]).to include("#{epic.display_number}: Stabilize the aqueduct")
     expect(received[:prompt]).to include("Make the water arrive")
-    expect(received[:prompt]).to include("Job ##{child.id}: Seal the northern arch")
+    expect(received[:prompt]).to include("JOB-#{child.id}: Seal the northern arch")
     expect(received[:prompt]).to include("Use `read_epic` with id #{epic.id}")
   end
 
@@ -720,7 +720,7 @@ RSpec.describe ChatTurnJob do
     control_message = chat.messages.create!(
       role: "system",
       content: {
-        "text" => "Proposal confirmed. Job #1416 \"Map auth\" was created.",
+        "text" => "Proposal confirmed. JOB-1416 \"Map auth\" was created.",
         "source" => "proposal_notification",
         "outcome" => "confirmed",
         "acknowledgment" => "Confirmed JOB-1416."

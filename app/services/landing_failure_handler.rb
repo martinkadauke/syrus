@@ -66,7 +66,7 @@ class LandingFailureHandler
       chunk: "landing_queue: paused landing because auto-merge hit an infrastructure blocker; resume landing after clearing it (#{reason.truncate(180)})"
     )
   rescue StandardError => e
-    Rails.logger.warn("[LandingFailureHandler] failed to log landing pause for Job ##{job.id}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[LandingFailureHandler] failed to log landing pause for #{job.slug}: #{e.class}: #{e.message}")
   end
 
   def log_rebase_cap!
@@ -79,6 +79,6 @@ class LandingFailureHandler
       chunk: "landing_queue: deferred landing because the rebase cap was reached; run a manual rebase or wait for the PR head/base to change before retrying"
     )
   rescue StandardError => e
-    Rails.logger.warn("[LandingFailureHandler] failed to log rebase-cap blocker for Job ##{job.id}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[LandingFailureHandler] failed to log rebase-cap blocker for #{job.slug}: #{e.class}: #{e.message}")
   end
 end

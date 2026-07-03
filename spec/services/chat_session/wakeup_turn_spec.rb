@@ -9,7 +9,7 @@ RSpec.describe ChatSession::WakeupTurn do
     ChatWakeup.create!(
       chat_session: chat_session,
       user: user,
-      prompt: "Check job #123 and reschedule if it is not done.",
+      prompt: "Check JOB-123 and reschedule if it is not done.",
       fire_at: 5.minutes.from_now
     )
   end
@@ -23,7 +23,7 @@ RSpec.describe ChatSession::WakeupTurn do
 
     expect(message).to have_attributes(role: "user", chat_session: chat_session)
     expect(message.content).to include(
-      "text" => "Check job #123 and reschedule if it is not done.",
+      "text" => "Check JOB-123 and reschedule if it is not done.",
       "requested_by" => "wakeup",
       "wakeup_id" => wakeup.id
     )

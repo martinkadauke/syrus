@@ -75,7 +75,7 @@ class ScheduledTaskFire
 
   def close_prior_open_prs
     @task.open_pr_jobs.find_each do |old_job|
-      Rails.logger.info("[ScheduledTaskFire] task ##{@task.id} closing prior PR ##{old_job.pr_number} (job ##{old_job.id}) per replace policy")
+      Rails.logger.info("[ScheduledTaskFire] task ##{@task.id} closing prior PR ##{old_job.pr_number} (#{old_job.slug}) per replace policy")
       begin
         GithubClient.for(repository: @task.repository, user: @task.user).close_pull_request(@task.repository.slug, old_job.pr_number)
       rescue StandardError => e
