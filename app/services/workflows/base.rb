@@ -19,7 +19,9 @@ module Workflows
     #   class Initial < Base
     #     steps :implement, :summarize, :pr_open
     #   end
-    # Control nodes are allowed as top-level nodes only:
+    # Control nodes are allowed as top-level nodes only, except that a
+    # Workflows::Try failure branch may declare its own RetryUntil/Loop
+    # recovery segment:
     #   steps :prepare,
     #         Workflows::Loop.new(max_iterations: 5, steps: [:implement, :grade]),
     #         :summarize
@@ -97,10 +99,26 @@ module Workflows
       false
     end
 
+    def self.follow_up_push(max_iterations: nil)
+      Workflows::Try.new(:push).on_failure(
+        "remote_branch_advanced_rebase_conflict",
+        [
+          :push_agent_rebase,
+          Workflows::RetryUntil.new(
+            max_iterations: max_iterations,
+            repair_first: false,
+            repair: [ :landing_fix ],
+            check: [ :grader_fanout, :grader_collect ]
+          ),
+          :push_after_rebase
+        ]
+      )
+    end
+
     def self.normalize_chain_template(nodes)
       nodes.map do |node|
         case node
-        when Workflows::Loop, Workflows::RetryUntil
+        when Workflows::Loop, Workflows::RetryUntil, Workflows::Try
           validate_control_node!(node)
           node
         when Symbol, String
@@ -113,10 +131,22 @@ module Workflows
     end
 
     def self.validate_control_node!(node)
-      nested = control_node_steps(node).any? do |step|
-        step.is_a?(Workflows::Loop) || step.is_a?(Workflows::RetryUntil)
+      if node.is_a?(Workflows::Try)
+        node.failure_branches.each_value do |branch|
+          branch.each do |branch_node|
+            if branch_node.is_a?(Workflows::Try)
+              raise ArgumentError, "nested workflow try nodes are not supported"
+            end
+
+            validate_control_node!(branch_node) if branch_node.is_a?(Workflows::Loop) || branch_node.is_a?(Workflows::RetryUntil)
+          end
+        end
+      else
+        nested = control_node_steps(node).any? do |step|
+          step.is_a?(Workflows::Loop) || step.is_a?(Workflows::RetryUntil) || step.is_a?(Workflows::Try)
+        end
+        raise ArgumentError, "nested workflow control nodes are not supported" if nested
       end
-      raise ArgumentError, "nested workflow control nodes are not supported" if nested
     end
 
     def self.control_node_steps(node)
@@ -125,6 +155,8 @@ module Workflows
         node.steps
       when Workflows::RetryUntil
         node.repair_steps + node.check_steps
+      when Workflows::Try
+        [ node.step_kind ] + node.failure_branches.values.flatten
       else
         []
       end
@@ -132,7 +164,7 @@ module Workflows
 
     def self.serialize_chain_template(nodes)
       nodes.map do |node|
-        if node.is_a?(Workflows::Loop) || node.is_a?(Workflows::RetryUntil)
+        if node.is_a?(Workflows::Loop) || node.is_a?(Workflows::RetryUntil) || node.is_a?(Workflows::Try)
           node.to_chain_template
         else
           { "type" => "step", "kind" => node.to_s }
@@ -143,7 +175,17 @@ module Workflows
     def self.materialize_steps!(workflow, nodes)
       position = 0
       nodes.flat_map do |node|
-        if node.is_a?(Workflows::Loop) || node.is_a?(Workflows::RetryUntil)
+        if node.is_a?(Workflows::Try)
+          step = Step.create!(
+            workflow: workflow,
+            kind: node.step_kind,
+            position: position,
+            iteration: 1,
+            details: { "try_id" => node.id }
+          )
+          position += 1
+          step
+        elsif node.is_a?(Workflows::Loop) || node.is_a?(Workflows::RetryUntil)
           loop_id = SecureRandom.uuid
           node.step_kinds.map do |kind|
             step = Step.create!(

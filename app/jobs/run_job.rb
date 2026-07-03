@@ -87,7 +87,7 @@ class RunJob < ApplicationJob
     end
   rescue StandardError => e
     handle_failure(e)
-    if loop_controlled_grade_failure?
+    if workflow_controlled_failure?
       continue_inline_after_controlled_failure
     else
       raise
@@ -236,13 +236,13 @@ class RunJob < ApplicationJob
     end
 
     record_landing_failure!(exception)
-    @workflow&.record_run_failure! unless loop_controlled_grade_failure?
+    @workflow&.record_run_failure! unless workflow_controlled_failure?
   end
 
   def record_landing_failure!(exception)
     return unless @workflow&.trigger_kind == "auto_merge"
     return unless @job&.landing?
-    return if loop_controlled_grade_failure?
+    return if workflow_controlled_failure?
 
     LandingFailureHandler.call(job: @job, reason: "#{exception.class}: #{exception.message}", run: @run)
   end
@@ -260,14 +260,26 @@ class RunJob < ApplicationJob
     )
   end
 
-  # A failure is "loop-controlled" when the dispatcher's per-kind
+  # A failure is "workflow-controlled" when the dispatcher's per-kind
   # fail logic takes over (advances to next sibling for graders,
-  # iterates for grader_collect / grade) rather than failing the
-  # workflow. RunJob must swallow these so the outer perform loop
-  # can continue inline on the next Step's Run.
+  # iterates for grader_collect / grade, or expands a declared
+  # Try failure branch) rather than failing the workflow. RunJob
+  # must swallow these so the outer perform loop can continue inline
+  # on the next Step's Run.
+  def workflow_controlled_failure?
+    loop_controlled_grade_failure? || dispatcher_continued_workflow?
+  end
+
   def loop_controlled_grade_failure?
     return false unless @step&.loop_id.present?
     %w[ grade grader grader_collect ].include?(@step.kind)
+  end
+
+  def dispatcher_continued_workflow?
+    return false unless @workflow
+    return false if @workflow.reload.terminal?
+
+    next_inline_run.present?
   end
 
   def continue_inline_after_controlled_failure
@@ -284,7 +296,7 @@ class RunJob < ApplicationJob
         perform_step
       rescue StandardError => e
         handle_failure(e)
-        raise unless loop_controlled_grade_failure?
+        raise unless workflow_controlled_failure?
       end
     end
   end

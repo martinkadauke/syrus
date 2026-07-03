@@ -2,7 +2,9 @@ module Workflows
   # Reviewer left a comment on the PR. Address it on the existing
   # branch, push.
   #
-  #   prepare → retry_until(respond, grade) → summarize_amend → push
+  #   prepare → retry_until(respond, grade) → summarize_amend → try(push)
+  #     on remote-branch rebase conflict:
+  #       push_agent_rebase → retry_until(grade, repair: landing_fix) → push_after_rebase
   #
   # respond runs the agent with the comment text + diff context —
   # *fresh* agent session (no --resume from the prior workflow's
@@ -14,7 +16,7 @@ module Workflows
     steps :prepare,
           Workflows::RetryUntil.new(repair: [ :respond ], check: [ :grader_fanout, :grader_collect ]),
           :summarize_amend,
-          :push
+          follow_up_push
 
     def self.trigger_kind = "pr_comment"
 
@@ -27,7 +29,7 @@ module Workflows
           check: [ :grader_fanout, :grader_collect ]
         ),
         "summarize_amend",
-        "push"
+        follow_up_push(max_iterations: AppSetting.grade_max_iterations)
       ]
     end
 

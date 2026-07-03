@@ -6,7 +6,7 @@ module Workflows
     steps :prepare,
           Workflows::RetryUntil.new(repair: [ :respond ], check: [ :grader_fanout, :grader_collect ]),
           :summarize_amend,
-          :push
+          follow_up_push
 
     def self.trigger_kind = "chat_feedback"
 
@@ -19,7 +19,7 @@ module Workflows
           check: [ :grader_fanout, :grader_collect ]
         ),
         "summarize_amend",
-        "push"
+        follow_up_push(max_iterations: AppSetting.grade_max_iterations)
       ]
     end
   end

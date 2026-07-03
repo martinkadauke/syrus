@@ -16,7 +16,7 @@ Syrus watches open PRs it created. When GitHub Checks report a completed
 failure on the PR head SHA, Syrus creates a `ci_failure` Workflow:
 
 ```text
-prepare -> analyze_and_fix -> summarize_amend -> push
+prepare -> analyze_and_fix -> summarize_amend -> try(push)
 ```
 
 No repo-local trigger config is required. The important setup is:
@@ -54,7 +54,10 @@ hooks:
 Then let Syrus open a PR from a labeled issue. If CI fails on that PR,
 the next PR poll, which runs about every five minutes, inspects the
 failed checks and asks the agent to diagnose and fix them. Syrus pushes
-the fix to the same branch, so GitHub reruns CI on the new commit.
+the fix to the same branch, so GitHub reruns CI on the new commit. If the
+remote PR branch advanced first, Syrus rebases the follow-up work onto the
+current remote tip; conflicts go through an agentic rebase, grader loop,
+and final push.
 
 Expected outcome: the Job page shows a new **CI failure** Workflow, the
 transcript includes the failed check names and parsed error context, and
@@ -71,7 +74,7 @@ comments, and line comments. When it sees new feedback, it creates a
 `pr_comment` Workflow:
 
 ```text
-prepare -> respond -> summarize_amend -> push
+prepare -> retry_until(respond -> grader_fanout -> grader_collect) -> summarize_amend -> try(push)
 ```
 
 There is no GitHub inbound callback to install and no per-repo GitHub Action.
@@ -82,9 +85,11 @@ Could you split the parser into a small object and add a regression spec?
 ```
 
 Syrus records the comment payload on the Workflow, runs the agent against
-the existing branch, and pushes another commit. If you do not want to
-wait for the five-minute poller, open the Job in Syrus and click
-**Check for PR feedback**.
+the existing branch, runs configured graders, and pushes another commit.
+If another workflow updated the same PR branch before that push, Syrus
+rebases the feedback work onto the current branch tip and grades it before
+pushing. If you do not want to wait for the five-minute poller, open the
+Job in Syrus and click **Check for PR feedback**.
 
 Expected outcome: the Job page shows a **PR feedback** Workflow, and the
 PR branch gets a commit that addresses the comment. Syrus does not post a

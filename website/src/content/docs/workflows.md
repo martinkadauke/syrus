@@ -10,7 +10,8 @@ When something happens, such as a labelled issue, PR feedback, a retry
 click, or an unmergeable branch, Syrus creates a Workflow from the matching
 template and starts its first Step.
 
-In v1, templates are linear chains:
+In v1, templates are linear happy paths with bounded loops and declared
+typed failure branches:
 
 ```text
 Workflow(trigger_kind) -> Step -> Step -> Step
@@ -40,24 +41,28 @@ with a PR number attached.
 ### PrFeedback
 
 Trigger: new review feedback or PR comments on an existing Syrus PR. Steps:
-`prepare -> retry_until(respond -> grader_fanout -> grader_collect) -> summarize_amend -> push`.
+`prepare -> retry_until(respond -> grader_fanout -> grader_collect) -> summarize_amend -> try(push)`.
 The agent receives the new comments plus PR context, commits follow-up
 changes on the existing branch, and graders can force another bounded
 response iteration before `summarize_amend` rewrites the follow-up commit
-message. A successful workflow pushes to the already-open PR.
+message. A successful workflow pushes to the already-open PR. If the
+remote PR branch advanced before the push, Syrus first tries a mechanical
+rebase; if that conflicts, it expands a recovery branch:
+`push_agent_rebase -> retry_until(grader_fanout -> grader_collect, repair: landing_fix) -> push_after_rebase`.
 
 ### ChatFeedback
 
 Trigger: operator-confirmed feedback proposed from Syrus Chat on an
 implemented or approved Job. Steps:
-`prepare -> retry_until(respond -> grader_fanout -> grader_collect) -> summarize_amend -> push`.
+`prepare -> retry_until(respond -> grader_fanout -> grader_collect) -> summarize_amend -> try(push)`.
 The agent receives the agreed chat feedback as structured workflow input
 and commits follow-up changes on the existing branch. Submitting feedback
 on an approved Job unapproves it so the updated PR returns to review before
 landing. Feedback proposed while the Job is queued or running is held as a
 queued pending action and becomes confirmable once the Job is implemented.
 The app API can also create this Workflow directly for implemented or failed
-Jobs when an operator submits feedback outside the chat flow.
+Jobs when an operator submits feedback outside the chat flow. Push recovery
+uses the same remote-advanced branch as PR feedback.
 
 ### Rebase
 
@@ -89,12 +94,12 @@ instead of opening a second PR.
 ### AutoMerge
 
 Trigger: an approved Job reaches the landing queue. Steps:
-`retry_until(grader_fanout -> grader_collect, repair: landing_fix) -> push -> auto_merge`.
-The final gate first runs graders on the exact PR branch Syrus is about to
-merge, after any last rebase. If required graders fail, the agent receives
-the grader output and gets a bounded `landing_fix` repair iteration before
-the graders run again. `push` publishes any final fix commits, and
-`auto_merge` re-checks GitHub approval,
+`mergeability_preflight -> prepare -> retry_until(grader_fanout -> grader_collect, repair: landing_fix) -> push -> auto_merge`.
+The final gate first verifies mergeability and then runs graders on the
+exact PR branch Syrus is about to merge, after any last rebase. If required
+graders fail, the agent receives the grader output and gets a bounded
+`landing_fix` repair iteration before the graders run again. `push`
+publishes any final fix commits, and `auto_merge` re-checks GitHub approval,
 mergeability, branch state, and repository policy immediately before
 calling the merge API. Because GitHub recomputes mergeability
 asynchronously after a push, `auto_merge` briefly polls for a transient
@@ -151,10 +156,11 @@ open a PR by themselves.
 ### CiFailure
 
 Trigger: polling sees failed CI checks on an existing Syrus PR. Steps:
-`prepare -> analyze_and_fix -> summarize_amend -> push`. The agent receives
+`prepare -> analyze_and_fix -> summarize_amend -> try(push)`. The agent receives
 the failing check payload, diagnoses the failure, commits a fix, and pushes
-the updated branch. A rolling cap prevents endless CI-failure loops on the
-same Job.
+the updated branch. If the remote PR branch advanced first, Syrus uses the
+same rebase, grade, and push recovery branch as feedback workflows. A
+rolling cap prevents endless CI-failure loops on the same Job.
 
 ## Step Kinds
 
@@ -170,7 +176,9 @@ same Job.
 | `summarize_amend` | Yes | Produce follow-up commit copy for PR feedback and CI-failure workflows |
 | `test_plan` | Yes | Collect reviewer-facing test steps for Initial PR bodies |
 | `pr_open` | No | Push the branch and open the pull request if one does not already exist |
-| `push` | No | Push commits to an existing PR branch and update the cost footer |
+| `push` | No | Push commits to an existing PR branch, update the cost footer, and clean-rebase once if the remote branch advanced |
+| `push_agent_rebase` | Yes | Resolve a conflicting follow-up push rebase onto the current remote PR branch |
+| `push_after_rebase` | No | Push a branch after the agentic follow-up rebase and grade loop |
 | `grader_fanout` | No | Materialize one grader Step per configured repo grader |
 | `grader_collect` | No | Aggregate grader results and decide whether retry_until continues |
 | `auto_rebase` | No | Try a deterministic rebase before involving an agent |

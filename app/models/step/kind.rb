@@ -16,6 +16,8 @@ class Step
       Entry.new(kind: "respond", handler: "Respond", label: "Address feedback", style: "bg-cyan-100 text-cyan-700", agentic: true),
       Entry.new(kind: "summarize_amend", handler: "SummarizeAmend", label: "Summarize", style: "bg-indigo-100 text-indigo-700", agentic: true),
       Entry.new(kind: "push", handler: "Push", label: "Push", style: "bg-emerald-100 text-emerald-700", agentic: false),
+      Entry.new(kind: "push_agent_rebase", handler: "PushAgentRebase", label: "Resolve push rebase", style: "bg-teal-100 text-teal-700", agentic: true),
+      Entry.new(kind: "push_after_rebase", handler: "PushAfterRebase", label: "Push rebased branch", style: "bg-emerald-100 text-emerald-700", agentic: false),
       Entry.new(kind: "analyze_and_fix", handler: "AnalyzeAndFix", label: "Fix CI failures", style: "bg-red-100 text-red-700", agentic: true),
       Entry.new(kind: "auto_rebase", handler: "AutoRebase", label: "Auto-rebase", style: "bg-teal-100 text-teal-700", agentic: false),
       Entry.new(kind: "agent_rebase", handler: "AgentRebase", label: "Agent rebase", style: "bg-teal-100 text-teal-700", agentic: true),

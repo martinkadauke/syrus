@@ -84,8 +84,9 @@ Current chains:
 
 ```
 initial:     prepare → retry_until(implement → graders) → summarize → test_plan → pr_open
-pr_comment:  prepare → retry_until(respond → graders) → summarize_amend → push
-ci_failure:  prepare → analyze_and_fix → summarize_amend → push
+pr_comment:  prepare → retry_until(respond → graders) → summarize_amend → try(push)
+chat_feedback: prepare → retry_until(respond → graders) → summarize_amend → try(push)
+ci_failure:  prepare → analyze_and_fix → summarize_amend → try(push)
 retry:       prepare → retry_until(implement → graders) → summarize → test_plan → pr_open
 resume:      manual
 rebase:      auto_rebase → agent_rebase → force_push
@@ -124,6 +125,14 @@ Key steps:
   and still `force_push`. On conflict, `agent_rebase` resolves it, then
   `force_push` updates the PR branch with an explicit `--force-with-lease`
   against the branch SHA Syrus observed.
+- **`push`** / **`push_agent_rebase`** / **`push_after_rebase`** — Follow-up
+  push chain for feedback and CI repair. `push` first attempts a normal
+  update; on a non-fast-forward rejection it fetches the current PR branch,
+  tries a deterministic rebase, and retries the push if clean. If that rebase
+  conflicts, the declared `try(push)` branch dynamically inserts
+  `push_agent_rebase`, a check-first grade loop repaired by `landing_fix`, and
+  `push_after_rebase`. The inserted Steps are normal Step rows, so a later
+  failure can use retry-from-failed-step.
 - **`grader_fanout`** / **`grader`** / **`grader_collect`** — Read grader
   commands from `.syrus.yml`, materialize one immutable `grader` Step per
   configured grader, and aggregate required failures. `Workflows::RetryUntil`
@@ -162,8 +171,9 @@ Key steps:
   `summarize`. It asks the agent to call `submit_test_plan` with concise
   reviewer-facing checks; `pr_open` appends them as a Test Plan section
   headed by a copy-pasteable `syrus checkout JOB-<id>` command.
-- **`pr_open`** / **`push`** —
-  Non-agentic: run service code (`PullRequestOpener`, `git push`, etc.).
+- **`pr_open`** —
+  Non-agentic: run service code (`PullRequestOpener`) to push the branch and
+  open the PR if needed.
 
 **MCP sidecar** — `bin/syrus-mcp-sidecar`, spawned by `claude` over stdio
 via a per-step `mcp.json` tempfile. Exposes `read_live_state(detail)`,
@@ -320,7 +330,7 @@ across web/worker processes.
 - **Prompts** all live under `app/services/prompts/` as PORO classes
   (`Prompts::Initial`, `Prompts::PrFeedback`, `Prompts::PullRequestSummary`,
   `Prompts::SubmitSummaryInstructions`, `Prompts::TestPlan`,
-  `Prompts::Rebase`,
+  `Prompts::Rebase`, `Prompts::PushRebase`,
   `Prompts::ScheduledTask`, `Prompts::DirectJob`, `Prompts::EpicContext`).
   Each has a `to_s`. Compose by appending; never inline prompt text in
   jobs/services. Epic-aware prompts append `Prompts::EpicContext` as

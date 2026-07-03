@@ -3,17 +3,66 @@ module Steps
   # Pushes the existing branch to origin (no PR opening — PR
   # already exists from the original Initial workflow).
   class Push < Base
+    class RemoteBranchAdvancedRebaseConflict < StepFailed
+      FAILURE_CODE = "remote_branch_advanced_rebase_conflict".freeze
+    end
+
     def call
       workspace.setup
       log("push: pushing branch #{workspace.branch_name} (#{workflow.slug})")
       git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
       push_url = repository.authenticated_push_url(GithubClient.for(repository: repository, user: job.user).access_token)
-      git.run("push", push_url, "HEAD:refs/heads/#{workspace.branch_name}",
-              chdir: workspace.path.to_s)
+      push_branch(git, push_url)
       update_managed_pr_footers
     end
 
     private
+
+    def push_branch(git, push_url)
+      git.run("push", push_url, "HEAD:refs/heads/#{workspace.branch_name}",
+              chdir: workspace.path.to_s)
+    rescue GitRunner::GitError => e
+      raise unless non_fast_forward_push?(e)
+
+      log("push: remote branch advanced; rebasing #{workspace.branch_name} onto the current remote tip and retrying")
+      rebase_onto_remote_branch!(git, push_url)
+      git.run("push", push_url, "HEAD:refs/heads/#{workspace.branch_name}",
+              chdir: workspace.path.to_s)
+    end
+
+    def rebase_onto_remote_branch!(git, push_url)
+      branch = workspace.branch_name
+      git.run("fetch", push_url, "+refs/heads/#{branch}:refs/remotes/origin/#{branch}",
+              chdir: workspace.path.to_s)
+      workflow.set_artifact!("push_rebase_remote_ref", "refs/remotes/origin/#{branch}")
+      workflow.set_artifact!("push_rebase_remote_sha", git.run("rev-parse", "refs/remotes/origin/#{branch}", chdir: workspace.path.to_s).strip)
+      workflow.set_artifact!("push_rebase_branch", branch)
+      workflow.set_artifact!("push_rebase_started_at", Time.current.iso8601)
+      run_rebase_onto_remote_branch!(git, branch)
+    end
+
+    def run_rebase_onto_remote_branch!(git, branch)
+      git.run("rebase", "refs/remotes/origin/#{branch}", chdir: workspace.path.to_s)
+    rescue GitRunner::GitError => e
+      abort_rebase(git)
+      mark_failure_code!(RemoteBranchAdvancedRebaseConflict::FAILURE_CODE)
+      raise RemoteBranchAdvancedRebaseConflict,
+        "push: remote branch advanced and automatic rebase failed for #{branch}: #{e.message}"
+    end
+
+    def abort_rebase(git)
+      git.run("rebase", "--abort", chdir: workspace.path.to_s)
+    rescue GitRunner::GitError
+      nil
+    end
+
+    def non_fast_forward_push?(error)
+      error.output.to_s.match?(/non-fast-forward|fetch first|rejected|stale info/i)
+    end
+
+    def mark_failure_code!(code)
+      step.update!(details: step.details.to_h.merge("failure_code" => code))
+    end
 
     def update_managed_pr_footers
       return if job.pr_number.blank?

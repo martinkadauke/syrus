@@ -396,7 +396,7 @@ RSpec.describe RunJob do
 
   # ----- PrFeedback workflow -------------------------------------
 
-  describe "PrFeedback workflow (pr_comment → respond → grade → summarize_amend → push)" do
+  describe "PrFeedback workflow (pr_comment → respond → grade → summarize_amend → try(push))" do
     before do
       # Initial workflow first so the branch exists on origin.
       job; drain_workflow!(job)

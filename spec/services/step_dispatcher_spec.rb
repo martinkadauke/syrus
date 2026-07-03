@@ -220,6 +220,34 @@ RSpec.describe StepDispatcher do
       expect(enqueued_jobs.any? { |entry| entry[:job] == RunJob }).to be(true)
     end
 
+    it "cascades stack child rebases after a recovered push workflow succeeds" do
+      clear_enqueued_jobs
+      job.update!(state: "implemented", pr_number: 42, branch_name: "syrus/issue-42-#{job.id}")
+      child = Factories.job(repository: job.repository, issue_number: 43).tap do |child_job|
+        JobDependency.create!(job: child_job, depends_on_job: job, source: "manual")
+        child_job.update!(
+          state: "implemented",
+          parent_job: job,
+          branch_name: "syrus/issue-43-#{child_job.id}",
+          pr_number: 43
+        )
+        child_job.workflows.update_all(state: "succeeded")
+      end
+      follow_up = Workflow.create!(job: job, trigger_kind: "pr_comment")
+      push_after_rebase = Step.create!(workflow: follow_up, kind: "push_after_rebase", position: 0)
+      follow_up.start!
+      follow_up.save!
+      push_after_rebase.update_columns(state: "succeeded", started_at: 1.minute.ago, finished_at: Time.current)
+
+      expect {
+        described_class.advance_from(push_after_rebase)
+      }.to change { child.reload.workflows.where(trigger_kind: "rebase").count }.by(1)
+
+      child_rebase = child.workflows.where(trigger_kind: "rebase").last
+      expect(child_rebase.artifact("rebase_base_branch")).to eq(job.branch_name)
+      expect(enqueued_jobs.any? { |entry| entry[:job] == RunJob }).to be(true)
+    end
+
     it "advances a succeeded grade step to the post-loop step" do
       loop_wf = workflow_with_loop(max_iterations: 3)
       grade = loop_wf.steps.find_by!(kind: "grade", iteration: 1)
@@ -406,6 +434,74 @@ RSpec.describe StepDispatcher do
       expect(retry_workflow.steps.find_by(kind: "landing_fix")).to be_nil
     end
 
+    it "expands a Try failure branch before the continuation step" do
+      try_workflow = workflow_with_try_push_branch
+      push = try_workflow.steps.find_by!(kind: "push")
+      continuation = try_workflow.steps.find_by!(kind: "auto_merge")
+      push.update!(details: push.details.merge("failure_code" => "remote_branch_advanced_rebase_conflict"))
+
+      expect {
+        described_class.fail_from(push)
+      }.to change { try_workflow.steps.count }.by(4)
+        .and change { Run.count }.by(1)
+
+      branch_steps = try_workflow.reload.steps.order(:position).to_a
+      loop_id = try_workflow.steps.find_by!(kind: "grader_collect").loop_id
+
+      expect(branch_steps.map { |step| [ step.kind, step.position, step.iteration, step.loop_id ] }).to eq([
+        [ "summarize_amend", 0, 1, nil ],
+        [ "push", 1, 1, nil ],
+        [ "push_agent_rebase", 2, 1, nil ],
+        [ "grader_fanout", 3, 1, loop_id ],
+        [ "grader_collect", 4, 1, loop_id ],
+        [ "push_after_rebase", 5, 1, nil ],
+        [ "auto_merge", 6, 1, nil ]
+      ])
+      expect(push.reload.next_step).to eq(try_workflow.steps.find_by!(kind: "push_agent_rebase"))
+      expect(try_workflow.steps.find_by!(kind: "push_after_rebase").next_step).to eq(continuation)
+      expect(try_workflow.steps.find_by!(kind: "push_agent_rebase").runs.last.trigger_kind).to eq("pr_comment")
+      expect(push.details).to include(
+        "try_branch_expanded" => true,
+        "try_branch_failure_code" => "remote_branch_advanced_rebase_conflict"
+      )
+
+      expect {
+        described_class.fail_from(push.reload)
+      }.not_to change { try_workflow.steps.count }
+    end
+
+    it "runs retry_until repair iterations inside an expanded Try branch" do
+      try_workflow = workflow_with_try_push_branch
+      push = try_workflow.steps.find_by!(kind: "push")
+      push.update!(details: push.details.merge("failure_code" => "remote_branch_advanced_rebase_conflict"))
+      described_class.fail_from(push)
+
+      grader_collect = try_workflow.reload.steps.find_by!(kind: "grader_collect", iteration: 1)
+      push_after_rebase = try_workflow.steps.find_by!(kind: "push_after_rebase")
+
+      expect {
+        described_class.fail_from(grader_collect)
+      }.to change { try_workflow.steps.count }.by(3)
+        .and change { Run.count }.by(1)
+
+      loop_id = grader_collect.loop_id
+      expect(try_workflow.reload.steps.order(:position).pluck(:kind, :position, :iteration, :loop_id)).to eq([
+        [ "summarize_amend", 0, 1, nil ],
+        [ "push", 1, 1, nil ],
+        [ "push_agent_rebase", 2, 1, nil ],
+        [ "grader_fanout", 3, 1, loop_id ],
+        [ "grader_collect", 4, 1, loop_id ],
+        [ "landing_fix", 5, 2, loop_id ],
+        [ "grader_fanout", 6, 2, loop_id ],
+        [ "grader_collect", 7, 2, loop_id ],
+        [ "push_after_rebase", 8, 1, nil ],
+        [ "auto_merge", 9, 1, nil ]
+      ])
+      expect(grader_collect.reload.next_step).to eq(try_workflow.steps.find_by!(kind: "landing_fix", iteration: 2))
+      expect(try_workflow.steps.find_by!(kind: "grader_collect", iteration: 2).next_step).to eq(push_after_rebase)
+      expect(try_workflow.steps.find_by!(kind: "landing_fix", iteration: 2).runs.last).to be_present
+    end
+
     it "exits an exhausted adversarial review loop to the final implement step" do
       review_workflow = workflow_with_adversarial_review_loop(max_iterations: 1)
       implement = review_workflow.steps.find_by!(kind: "implement", iteration: 1)
@@ -546,6 +642,42 @@ RSpec.describe StepDispatcher do
       review.update!(next_step_id: final_implement.id)
       final_implement.update!(next_step_id: grader_fanout.id)
       grader_fanout.update!(next_step_id: grader_collect.id)
+    end
+  end
+
+  def workflow_with_try_push_branch
+    try_id = "try-push"
+    Workflow.create!(
+      job: job,
+      trigger_kind: "pr_comment",
+      chain_template: [
+        { "type" => "step", "kind" => "summarize_amend" },
+        {
+          "type" => "try",
+          "id" => try_id,
+          "step" => "push",
+          "on_failure" => {
+            "remote_branch_advanced_rebase_conflict" => [
+              { "type" => "step", "kind" => "push_agent_rebase" },
+              {
+                "type" => "retry_until",
+                "max_iterations" => 2,
+                "repair" => %w[ landing_fix ],
+                "check" => %w[ grader_fanout grader_collect ],
+                "repair_first" => false
+              },
+              { "type" => "step", "kind" => "push_after_rebase" }
+            ]
+          }
+        },
+        { "type" => "step", "kind" => "auto_merge" }
+      ]
+    ).tap do |wf|
+      summarize = Step.create!(workflow: wf, kind: "summarize_amend", position: 0)
+      push = Step.create!(workflow: wf, kind: "push", position: 1, details: { "try_id" => try_id })
+      auto_merge = Step.create!(workflow: wf, kind: "auto_merge", position: 2)
+      summarize.update!(next_step_id: push.id)
+      push.update!(next_step_id: auto_merge.id)
     end
   end
 end

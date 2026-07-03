@@ -96,6 +96,41 @@ RSpec.describe RunJob, "step-dispatch path" do
     expect(s_summarize.reload.runs).to be_empty
   end
 
+  it "continues inline after a Try failure branch expands" do
+    try_workflow = workflow_with_try_push_branch
+    handler_class = Class.new(Steps::Base) do
+      define_method(:call) do
+        if step.kind == "push"
+          step.update!(
+            details: step.details.merge(
+              "failure_code" => Steps::Push::RemoteBranchAdvancedRebaseConflict::FAILURE_CODE
+            )
+          )
+          raise Steps::Push::RemoteBranchAdvancedRebaseConflict, "remote branch advanced"
+        end
+      end
+    end
+    allow(Steps).to receive(:handler_for).and_return(handler_class)
+
+    StepDispatcher.start_workflow(try_workflow)
+    ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+
+    expect {
+      described_class.perform_now(try_workflow.first_step.runs.last.id)
+    }.not_to have_enqueued_job(RunJob)
+
+    expect(try_workflow.reload).to be_succeeded
+    expect(try_workflow.failure_count).to eq(0)
+    expect(try_workflow.steps.order(:position).pluck(:kind, :state)).to eq([
+      [ "summarize_amend", "succeeded" ],
+      [ "push", "failed" ],
+      [ "push_agent_rebase", "succeeded" ],
+      [ "grader_fanout", "succeeded" ],
+      [ "grader_collect", "succeeded" ],
+      [ "push_after_rebase", "succeeded" ]
+    ])
+  end
+
   describe "adversarial review loop integration" do
     it "runs one review round, then resumes the final implement from the implement session" do
       AppSetting.current.update!(adversarial_review_rounds: 1)
@@ -397,6 +432,39 @@ RSpec.describe RunJob, "step-dispatch path" do
       else
         noop_handler
       end
+    end
+  end
+
+  def workflow_with_try_push_branch
+    try_id = "try-push"
+    Workflow.create!(
+      job: job,
+      trigger_kind: "pr_comment",
+      chain_template: [
+        { "type" => "step", "kind" => "summarize_amend" },
+        {
+          "type" => "try",
+          "id" => try_id,
+          "step" => "push",
+          "on_failure" => {
+            "remote_branch_advanced_rebase_conflict" => [
+              { "type" => "step", "kind" => "push_agent_rebase" },
+              {
+                "type" => "retry_until",
+                "max_iterations" => 2,
+                "repair" => %w[ landing_fix ],
+                "check" => %w[ grader_fanout grader_collect ],
+                "repair_first" => false
+              },
+              { "type" => "step", "kind" => "push_after_rebase" }
+            ]
+          }
+        }
+      ]
+    ).tap do |wf|
+      summarize = Step.create!(workflow: wf, kind: "summarize_amend", position: 0)
+      push = Step.create!(workflow: wf, kind: "push", position: 1, details: { "try_id" => try_id })
+      summarize.update!(next_step_id: push.id)
     end
   end
 end

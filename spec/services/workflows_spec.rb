@@ -399,6 +399,47 @@ RSpec.describe Workflows do
       ])
     end
 
+    it "materializes only the happy path step for a Try node and stores the failure branch template" do
+      workflow_class = Class.new(Workflows::Base) do
+        steps Workflows::Try.new(:push).on_failure(
+          "boom",
+          [
+            :push_agent_rebase,
+            Workflows::RetryUntil.new(
+              max_iterations: 2,
+              repair_first: false,
+              repair: [ :landing_fix ],
+              check: [ :grader_fanout, :grader_collect ]
+            ),
+            :push_after_rebase
+          ]
+        ),
+        :auto_merge
+
+        def self.trigger_kind = "manual"
+      end
+
+      wf = workflow_class.instantiate(job: job)
+      try_step = wf.steps.find_by!(kind: "push")
+      try_node = wf.chain_template.first
+
+      expect(wf.steps.order(:position).pluck(:kind)).to eq(%w[ push auto_merge ])
+      expect(try_node).to include("type" => "try", "step" => "push")
+      expect(try_node["id"]).to be_present
+      expect(try_step.details).to include("try_id" => try_node["id"])
+      expect(try_node.dig("on_failure", "boom")).to eq([
+        { "type" => "step", "kind" => "push_agent_rebase" },
+        {
+          "type" => "retry_until",
+          "max_iterations" => 2,
+          "repair" => %w[ landing_fix ],
+          "check" => %w[ grader_fanout grader_collect ],
+          "repair_first" => false
+        },
+        { "type" => "step", "kind" => "push_after_rebase" }
+      ])
+    end
+
     it "stores the effective chain template on the workflow for later reconstruction" do
       workflow_class = Class.new(Workflows::Base) do
         steps :prepare,
@@ -417,7 +458,7 @@ RSpec.describe Workflows do
       ])
     end
 
-    it "instantiates PrFeedback with respond → grader_fanout → grader_collect → summarize_amend → push" do
+    it "instantiates PrFeedback with respond → grader_fanout → grader_collect → summarize_amend → try(push)" do
       wf = Workflows::PrFeedback.instantiate(job: job)
       expect(wf.steps.pluck(:kind)).to eq(%w[ prepare respond grader_fanout grader_collect summarize_amend push ])
       expect(wf.steps.where.not(loop_id: nil).pluck(:kind)).to eq(%w[ respond grader_fanout grader_collect ])
@@ -430,6 +471,7 @@ RSpec.describe Workflows do
           "repair_first" => true
         }
       )
+      expect_follow_up_push_template(wf)
     end
 
     it "instantiates ChatFeedback with chat markdown artifacts and the PR feedback chain shape" do
@@ -453,11 +495,13 @@ RSpec.describe Workflows do
           "repair_first" => true
         }
       )
+      expect_follow_up_push_template(wf)
     end
 
-    it "instantiates CiFailure with analyze_and_fix → summarize_amend → push" do
+    it "instantiates CiFailure with analyze_and_fix → summarize_amend → try(push)" do
       wf = Workflows::CiFailure.instantiate(job: job)
       expect(wf.steps.pluck(:kind)).to eq(%w[ prepare analyze_and_fix summarize_amend push ])
+      expect_follow_up_push_template(wf)
     end
 
     it "instantiates Rebase with auto_rebase → agent_rebase → force_push" do
@@ -552,5 +596,23 @@ RSpec.describe Workflows do
       expect(Workflow.where(job: job).count).to eq(baseline_wf)
       expect(Step.count).to eq(baseline_step)
     end
+  end
+
+  def expect_follow_up_push_template(workflow)
+    push_node = workflow.chain_template.last
+
+    expect(push_node).to include("type" => "try", "step" => "push")
+    expect(push_node["id"]).to be_present
+    expect(push_node.dig("on_failure", "remote_branch_advanced_rebase_conflict")).to eq([
+      { "type" => "step", "kind" => "push_agent_rebase" },
+      {
+        "type" => "retry_until",
+        "max_iterations" => AppSetting.grade_max_iterations,
+        "repair" => %w[ landing_fix ],
+        "check" => %w[ grader_fanout grader_collect ],
+        "repair_first" => false
+      },
+      { "type" => "step", "kind" => "push_after_rebase" }
+    ])
   end
 end

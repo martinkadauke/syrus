@@ -138,6 +138,8 @@ class StepDispatcher
     when "grader_collect", "grade"
       handle_loop_iteration
     else
+      return if handle_try_failure
+
       hard_fail_workflow!
     end
   end
@@ -201,7 +203,7 @@ class StepDispatcher
                             .pluck(:kind)
                             .reject { |k| k == "grader" }
 
-    Array(@workflow.chain_template).find { |node| loop_node_matches?(node, actual_kinds) }
+    workflow_template_nodes.find { |node| loop_node_matches?(node, actual_kinds) }
   end
 
   def loop_node_matches?(node, actual_kinds)
@@ -228,6 +230,115 @@ class StepDispatcher
       Array(loop_node["repair"]).map(&:to_s) + Array(loop_node["check"]).map(&:to_s)
     else
       []
+    end
+  end
+
+  def handle_try_failure
+    try_node = try_node_for(@from_step)
+    return false unless try_node
+
+    failure_code = try_failure_code(@from_step)
+    branch_nodes = Array(try_node.dig("on_failure", failure_code))
+    return false if failure_code.blank? || branch_nodes.empty?
+
+    if @from_step.details.to_h["try_branch_expanded"]
+      return true
+    end
+
+    enqueue_try_failure_branch!(branch_nodes, failure_code)
+    true
+  end
+
+  def try_node_for(step)
+    try_id = step.details.to_h["try_id"]
+    workflow_template_nodes.find do |node|
+      next false unless node["type"] == "try"
+      next false unless node["step"].to_s == step.kind
+
+      try_id.blank? || node["id"] == try_id
+    end
+  end
+
+  def try_failure_code(step)
+    step.details.to_h["failure_code"].presence
+  end
+
+  def enqueue_try_failure_branch!(branch_nodes, failure_code)
+    continuation = @from_step.next_step
+    insertion_position = @from_step.position + 1
+
+    Step.transaction do
+      step_count = branch_nodes.sum { |node| materialized_step_kinds_for(node).size }
+      shift_steps_after_branch!(from_position: insertion_position, by: step_count)
+      new_steps = materialize_branch_steps!(branch_nodes, insertion_position)
+
+      ([ @from_step ] + new_steps).each_cons(2) { |step, next_step| step.update!(next_step_id: next_step.id) }
+      new_steps.last.update!(next_step_id: continuation&.id)
+
+      @from_step.update!(
+        details: @from_step.details.to_h.merge(
+          "try_branch_expanded" => true,
+          "try_branch_failure_code" => failure_code
+        )
+      )
+      self.class.create_run_and_enqueue(new_steps.first, @workflow)
+    end
+  end
+
+  def materialize_branch_steps!(branch_nodes, insertion_position)
+    position = insertion_position
+    branch_nodes.flat_map do |node|
+      step_kinds = materialized_step_kinds_for(node)
+      loop_id = %w[ loop retry_until ].include?(node["type"]) ? SecureRandom.uuid : nil
+
+      step_kinds.map do |kind|
+        step = Step.create!(
+          workflow: @workflow,
+          kind: kind,
+          position: position,
+          iteration: 1,
+          loop_id: loop_id
+        )
+        position += 1
+        step
+      end
+    end
+  end
+
+  def materialized_step_kinds_for(node)
+    case node["type"]
+    when "step"
+      [ node.fetch("kind") ]
+    when "loop"
+      Array(node["steps"]).map(&:to_s)
+    when "retry_until"
+      if node.fetch("repair_first", true)
+        Array(node["repair"]).map(&:to_s) + Array(node["check"]).map(&:to_s)
+      else
+        Array(node["check"]).map(&:to_s)
+      end
+    else
+      raise ArgumentError, "unsupported workflow branch node: #{node.inspect}"
+    end
+  end
+
+  def shift_steps_after_branch!(from_position:, by:)
+    @workflow.steps.where("position >= ?", from_position).where.not(id: @from_step.id).update_all(
+      [ "position = position + ?", by ]
+    )
+  end
+
+  def workflow_template_nodes
+    Array(@workflow.chain_template).flat_map { |node| flatten_template_node(node) }
+  end
+
+  def flatten_template_node(node)
+    case node["type"]
+    when "try"
+      branch_nodes = node.fetch("on_failure", {}).values.flat_map { |nodes| Array(nodes) }
+      [ node ] + branch_nodes.flat_map { |branch_node| flatten_template_node(branch_node) }
+    else
+      [ node ]
     end
   end
 
@@ -363,7 +474,7 @@ class StepDispatcher
     job = @workflow.job
     return false unless job.open? && job.pr_number.present?
 
-    @workflow.steps.where(kind: %w[ pr_open push force_push stack_force_push ]).where(state: "succeeded").exists?
+    @workflow.steps.where(kind: %w[ pr_open push push_after_rebase force_push stack_force_push ]).where(state: "succeeded").exists?
   end
 
   def schedule_mergeability_recheck

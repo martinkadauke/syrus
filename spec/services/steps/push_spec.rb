@@ -28,4 +28,108 @@ RSpec.describe Steps::Push do
 
     described_class.new(run).send(:update_managed_pr_footers)
   end
+
+  it "rebases onto the remote branch and retries when a follow-up push is not a fast-forward" do
+    job.update!(branch_name: "syrus/issue-42")
+    handler = described_class.new(run)
+    workspace = instance_double(
+      WorkflowWorkspace,
+      setup: nil,
+      branch_name: "syrus/issue-42",
+      path: Pathname.new("/tmp/workspace")
+    )
+    git = instance_double(GitRunner)
+    client = instance_double(GithubClient, access_token: "token")
+    push_url = "https://push.example/repo.git"
+    push_error = GitRunner::GitError.new(
+      [ "push", push_url, "HEAD:refs/heads/syrus/issue-42" ],
+      1,
+      "! [rejected] HEAD -> syrus/issue-42 (fetch first)"
+    )
+
+    allow(handler).to receive(:workspace).and_return(workspace)
+    allow(handler).to receive(:streaming_git).and_return(git)
+    allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+    allow(repository).to receive(:authenticated_push_url).with("token").and_return(push_url)
+    allow(handler).to receive(:update_managed_pr_footers)
+
+    expect(git).to receive(:run).with(
+      "push", push_url, "HEAD:refs/heads/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).ordered.and_raise(push_error)
+    expect(git).to receive(:run).with(
+      "fetch", push_url, "+refs/heads/syrus/issue-42:refs/remotes/origin/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).ordered
+    expect(git).to receive(:run).with(
+      "rev-parse", "refs/remotes/origin/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).ordered.and_return("remote123\n")
+    expect(git).to receive(:run).with(
+      "rebase", "refs/remotes/origin/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).ordered
+    expect(git).to receive(:run).with(
+      "push", push_url, "HEAD:refs/heads/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).ordered
+
+    handler.call
+
+    expect(workflow.reload.artifact("push_rebase_remote_ref")).to eq("refs/remotes/origin/syrus/issue-42")
+    expect(workflow.artifact("push_rebase_remote_sha")).to eq("remote123")
+    expect(workflow.artifact("push_rebase_branch")).to eq("syrus/issue-42")
+    expect(run.job_logs.pluck(:chunk).join("\n")).to include("remote branch advanced")
+  end
+
+  it "fails with a clear message when automatic rebase after a rejected push conflicts" do
+    job.update!(branch_name: "syrus/issue-42")
+    handler = described_class.new(run)
+    workspace = instance_double(
+      WorkflowWorkspace,
+      setup: nil,
+      branch_name: "syrus/issue-42",
+      path: Pathname.new("/tmp/workspace")
+    )
+    git = instance_double(GitRunner)
+    client = instance_double(GithubClient, access_token: "token")
+    push_url = "https://push.example/repo.git"
+    push_error = GitRunner::GitError.new(
+      [ "push", push_url, "HEAD:refs/heads/syrus/issue-42" ],
+      1,
+      "! [rejected] HEAD -> syrus/issue-42 (fetch first)"
+    )
+    rebase_error = GitRunner::GitError.new(
+      [ "rebase", "refs/remotes/origin/syrus/issue-42" ],
+      1,
+      "CONFLICT (content): Merge conflict"
+    )
+
+    allow(handler).to receive(:workspace).and_return(workspace)
+    allow(handler).to receive(:streaming_git).and_return(git)
+    allow(GithubClient).to receive(:for).with(repository: repository, user: user).and_return(client)
+    allow(repository).to receive(:authenticated_push_url).with("token").and_return(push_url)
+
+    allow(git).to receive(:run).with(
+      "push", push_url, "HEAD:refs/heads/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).and_raise(push_error)
+    allow(git).to receive(:run).with(
+      "fetch", push_url, "+refs/heads/syrus/issue-42:refs/remotes/origin/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    )
+    allow(git).to receive(:run).with(
+      "rev-parse", "refs/remotes/origin/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).and_return("remote123\n")
+    allow(git).to receive(:run).with(
+      "rebase", "refs/remotes/origin/syrus/issue-42",
+      chdir: "/tmp/workspace"
+    ).and_raise(rebase_error)
+    allow(git).to receive(:run).with("rebase", "--abort", chdir: "/tmp/workspace")
+
+    expect { handler.call }.to raise_error(Steps::Push::RemoteBranchAdvancedRebaseConflict, /automatic rebase failed/)
+    expect(step.reload.details).to include("failure_code" => "remote_branch_advanced_rebase_conflict")
+    expect(workflow.reload.artifact("push_rebase_remote_ref")).to eq("refs/remotes/origin/syrus/issue-42")
+  end
 end
