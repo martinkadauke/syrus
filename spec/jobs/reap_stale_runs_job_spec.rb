@@ -426,6 +426,60 @@ RSpec.describe ReapStaleRunsJob do
       end
     end
 
+    describe "queued-workflow path: Workflow :queued but first Run was never created" do
+      before { ActiveJob::Base.queue_adapter.enqueued_jobs.clear }
+
+      def queued_workflow_without_runs(job_state: "queued", age: ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds)
+        orphan_job = Factories.job_record(state: job_state)
+        workflow = Workflows::Initial.instantiate(job: orphan_job)
+        workflow.update_columns(created_at: age.ago, updated_at: age.ago)
+        workflow.steps.update_all(created_at: age.ago, updated_at: age.ago)
+        [ orphan_job, workflow, workflow.first_step ]
+      end
+
+      it "starts an old queued workflow whose first Run was never created" do
+        _orphan_job, workflow, first_step = queued_workflow_without_runs
+
+        expect(first_step.runs.count).to eq(0)
+
+        expect { described_class.perform_now }
+          .to change { first_step.runs.reload.count }.by(1)
+
+        expect(workflow.reload).to be_queued
+        expect(first_step.runs.last).to be_queued
+      end
+
+      it "leaves a fresh queued workflow alone inside the grace window" do
+        _orphan_job, _workflow, first_step = queued_workflow_without_runs(age: 30.seconds)
+
+        expect { described_class.perform_now }
+          .not_to change { first_step.runs.reload.count }
+      end
+
+      it "does not restart a queued workflow for a closed Job" do
+        _orphan_job, _workflow, first_step = queued_workflow_without_runs(job_state: "closed")
+
+        expect { described_class.perform_now }
+          .not_to change { first_step.runs.reload.count }
+      end
+
+      it "does not bypass unsatisfied dependency gates" do
+        repository = Factories.repository
+        upstream = Factories.job_record(user: repository.user, repository: repository, issue_number: 41, state: "queued")
+        blocked = Factories.job_record(user: repository.user, repository: repository, issue_number: 42, state: "queued")
+        JobDependency.create!(job: blocked, depends_on_job: upstream, source: "manual")
+        workflow = Workflows::Initial.instantiate(job: blocked)
+        workflow.update_columns(
+          created_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds).ago,
+          updated_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds).ago
+        )
+        first_step = workflow.first_step
+
+        expect { described_class.perform_now }
+          .not_to change { first_step.runs.reload.count }
+      end
+    end
+
     describe "orphan-workflow path: Workflow :running but all descendants are terminal" do
       def terminal_rebase_workflow(job:, step_states:)
         workflow = Workflows::Rebase.instantiate(job: job)

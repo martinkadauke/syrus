@@ -47,6 +47,7 @@ class ReapStaleRunsJob < ApplicationJob
     reap_orphaned_running_runs        # ~3-min path
     reap_runs_with_stale_heartbeat    # 30-min backstop
     requeue_orphaned_queued_runs      # inline-drive successor never enqueued
+    start_orphaned_queued_workflows   # workflow committed, first Run never created
     cancel_unstarted_terminal_queued_steps
     finish_orphaned_terminal_workflows
     reconcile_missed_worker_died_auto_retries
@@ -117,6 +118,35 @@ class ReapStaleRunsJob < ApplicationJob
     end
   rescue ActiveRecord::StatementInvalid => e
     Rails.logger.debug("[ReapStaleRunsJob] SolidQueue tables unreachable (#{e.class}); skipping queued-orphan path")
+  end
+
+  # Recovery for the post-transaction gap where a caller instantiated
+  # a Workflow and its Step graph, then died before
+  # StepDispatcher.start_workflow created the first Run. This is a
+  # different shape from a queued successor Run: there is no Run at
+  # all, so Run-based reapers will never see it. The Workflow remains
+  # :queued and can still occupy a landing slot if its Job has already
+  # moved to :landing.
+  #
+  # Keep the repair narrow and delegate the actual start to
+  # StepDispatcher so dependency checks, prompts, queue selection, and
+  # Run creation stay in one place.
+  def start_orphaned_queued_workflows
+    cutoff = ORPHAN_RUN_GRACE_PERIOD.ago
+    Workflow.where(state: "queued")
+            .where("created_at < ?", cutoff)
+            .includes(:job)
+            .find_each do |workflow|
+      first = workflow.first_step
+      next unless first&.queued?
+      next if first.runs.exists?
+      next unless workflow.job&.open?
+      next unless workflow.job.ready_for_execution?
+      next unless workflow.job.stack_ready_for_execution?
+
+      Rails.logger.info("[ReapStaleRunsJob] Workflow ##{workflow.id} started: :queued with no first Run after #{ORPHAN_RUN_GRACE_PERIOD.inspect}")
+      StepDispatcher.start_workflow(workflow)
+    end
   end
 
   # Workflow ids that have at least one non-finalized RunJob in
