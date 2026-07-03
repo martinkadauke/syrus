@@ -166,7 +166,7 @@ rolling cap prevents endless CI-failure loops on the same Job.
 
 | Step | Agentic | Purpose |
 | --- | --- | --- |
-| `prepare` | No | Run deterministic setup from `.syrus.yml` or auto-detected lockfiles |
+| `prepare` | No | If the repository is a fork, sync its default branch with upstream (merge, then push); then run deterministic setup from `.syrus.yml` or auto-detected lockfiles |
 | `implement` | Yes | Make the requested code change for Initial, Retry, cron, and direct work |
 | `adversarial_review` | Yes | Independently review Initial workflow changes when `.syrus.yml` configures review rounds |
 | `respond` | Yes | Address PR review feedback on an existing branch |
