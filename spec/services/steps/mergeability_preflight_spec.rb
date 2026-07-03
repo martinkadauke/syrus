@@ -61,7 +61,7 @@ RSpec.describe Steps::MergeabilityPreflight do
     expect(workflow.reload).to be_running
   end
 
-  it "defers before prepare when GitHub mergeability is unknown and local rebase is clean" do
+  it "continues to prepare when GitHub mergeability is unknown and local rebase is clean" do
     local_result = LocalMergeabilityCheck::Result.new(
       state: "clean",
       mergeable: true,
@@ -75,18 +75,18 @@ RSpec.describe Steps::MergeabilityPreflight do
 
     expect {
       described_class.new(run).call
-    }.to have_enqueued_job(LandingQueueProcessorJob)
-      .at(be_within(3.seconds).of(LandingQueueProcessor::MERGEABILITY_RECHECK_DELAY.from_now))
+    }.not_to have_enqueued_job(LandingQueueProcessorJob)
 
-    expect(job.reload).to be_approved
+    expect(job.reload).to be_landing
     expect(job.github_mergeable).to be_nil
     expect(job.github_mergeable_state).to eq("unknown")
     expect(job.local_mergeable).to be(true)
     expect(job.local_mergeable_state).to eq("clean")
-    expect(run.reload).to be_cancelled
-    expect(step.reload).to be_cancelled
-    expect(workflow.reload).to be_cancelled
-    expect(workflow.steps.where(kind: "prepare").first).to be_cancelled
+    expect(run.reload).to be_running
+    expect(step.reload).to be_running
+    expect(workflow.reload).to be_running
+    expect(workflow.steps.where(kind: "prepare").first).to be_queued
+    expect(run.job_logs.pluck(:chunk)).to include(include("auto_merge: continuing - mergeable_state=unknown; local rebase preflight passed"))
   end
 
   it "dispatches a rebase before prepare when GitHub is unknown but the local check finds conflicts" do
@@ -112,6 +112,34 @@ RSpec.describe Steps::MergeabilityPreflight do
     expect(run.reload).to be_cancelled
     expect(workflow.reload).to be_cancelled
     expect(StepDispatcher).to have_received(:start_workflow).with(an_instance_of(Workflow))
+  end
+
+  it "defers before prepare when GitHub mergeability is unknown and local rebase is inconclusive" do
+    local_result = LocalMergeabilityCheck::Result.new(
+      state: "error",
+      mergeable: nil,
+      message: "GitRunner::Error: fetch failed",
+      head_sha: "abc",
+      base_sha: "def",
+      base_ref: "main"
+    )
+    allow(client).to receive(:pull_request).and_return(pr(mergeable_state: "unknown", mergeable: nil, head_sha: "abc", base_sha: "def"))
+    allow(LocalMergeabilityCheck).to receive(:new).and_return(instance_double(LocalMergeabilityCheck, call: local_result))
+
+    expect {
+      described_class.new(run).call
+    }.to have_enqueued_job(LandingQueueProcessorJob)
+      .at(be_within(3.seconds).of(LandingQueueProcessor::MERGEABILITY_RECHECK_DELAY.from_now))
+
+    expect(job.reload).to be_approved
+    expect(job.github_mergeable).to be_nil
+    expect(job.github_mergeable_state).to eq("unknown")
+    expect(job.local_mergeable).to be_nil
+    expect(job.local_mergeable_state).to eq("error")
+    expect(run.reload).to be_cancelled
+    expect(step.reload).to be_cancelled
+    expect(workflow.reload).to be_cancelled
+    expect(workflow.steps.where(kind: "prepare").first).to be_cancelled
   end
 
   it "skips prepare, graders, and push when the same head already passed grading" do
