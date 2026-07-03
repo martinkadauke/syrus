@@ -51,6 +51,73 @@ RSpec.describe GithubClient do
 
       expect { GithubClient.for(repository: repo) }.to raise_error(ArgumentError, /github_token/)
     end
+
+    context "with membership-level installation" do
+      it "prefers the user's membership installation over the repo-level installation" do
+        repo_installation = Factories.installation(
+          user: user,
+          cached_token: "repo-install-token",
+          cached_token_expires_at: 1.hour.from_now
+        )
+        repository.update!(installation: repo_installation)
+
+        member_installation = Factories.installation(
+          user: user,
+          account_login: "member-acme",
+          cached_token: "member-install-token",
+          cached_token_expires_at: 1.hour.from_now
+        )
+        repository.repository_memberships.create!(user: user, role: "owner", installation: member_installation)
+
+        stub = stub_request(:get, "https://api.github.com/repos/acme/widgets/issues/42")
+          .with(headers: { "Authorization" => "token member-install-token" })
+          .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                     body: { number: 42, title: "Member install path" }.to_json)
+
+        GithubClient.for(repository: repository, user: user).fetch_issue(repository.slug, 42)
+
+        expect(stub).to have_been_requested
+      end
+
+      it "falls back to the repo-level installation when membership has none" do
+        repo_installation = Factories.installation(
+          user: user,
+          cached_token: "repo-install-token",
+          cached_token_expires_at: 1.hour.from_now
+        )
+        repository.update!(installation: repo_installation)
+        repository.repository_memberships.create!(user: user, role: "owner")
+
+        stub = stub_request(:get, "https://api.github.com/repos/acme/widgets/issues/42")
+          .with(headers: { "Authorization" => "token repo-install-token" })
+          .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                     body: { number: 42, title: "Repo install fallback" }.to_json)
+
+        GithubClient.for(repository: repository, user: user).fetch_issue(repository.slug, 42)
+
+        expect(stub).to have_been_requested
+      end
+
+      it "falls back to the user's PAT when the membership installation has been removed" do
+        removed_installation = Factories.installation(
+          user: user,
+          account_login: "member-acme",
+          cached_token: "member-install-token",
+          cached_token_expires_at: 1.hour.from_now,
+          removed_at: Time.current
+        )
+        repository.repository_memberships.create!(user: user, role: "owner", installation: removed_installation)
+
+        stub = stub_request(:get, "https://api.github.com/repos/acme/widgets/issues/42")
+          .with(headers: { "Authorization" => "token ghp_test_token" })
+          .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                     body: { number: 42, title: "PAT fallback" }.to_json)
+
+        GithubClient.for(repository: repository, user: user).fetch_issue(repository.slug, 42)
+
+        expect(stub).to have_been_requested
+      end
+    end
   end
 
   describe "installation token refresh" do

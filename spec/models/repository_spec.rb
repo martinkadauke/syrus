@@ -38,6 +38,37 @@ RSpec.describe Repository do
     expect(repo.effective_agent_provider).to eq("codex")
   end
 
+  describe "#effective_agent_provider with user context" do
+    let(:repo) { Repository.create!(user: owner, owner: "acme", name: "widgets") }
+    let(:member) { Factories.user(agent_provider: "claude") }
+
+    it "returns membership agent_provider when the user has one set" do
+      repo.repository_memberships.create!(user: member, role: "collaborator", agent_provider: "codex")
+      expect(repo.effective_agent_provider(user: member)).to eq("codex")
+    end
+
+    it "falls back to repo-level agent_provider when membership has none" do
+      repo.update!(agent_provider: "codex")
+      repo.repository_memberships.create!(user: member, role: "collaborator")
+      expect(repo.effective_agent_provider(user: member)).to eq("codex")
+    end
+
+    it "falls back to the user's default agent_provider when both membership and repo have none" do
+      repo.repository_memberships.create!(user: member, role: "collaborator")
+      expect(repo.effective_agent_provider(user: member)).to eq("claude")
+    end
+
+    it "returns repo-level provider without a user argument" do
+      repo.update!(agent_provider: "codex")
+      expect(repo.effective_agent_provider).to eq("codex")
+    end
+
+    it "normalizes blank membership agent_provider to nil and falls through" do
+      repo.repository_memberships.create!(user: member, role: "collaborator", agent_provider: "")
+      expect(repo.effective_agent_provider(user: member)).to eq("claude")
+    end
+  end
+
   it "rejects unknown repository agent providers" do
     repo = Repository.new(user: owner, owner: "acme", name: "widgets", agent_provider: "oracle")
     expect(repo).not_to be_valid

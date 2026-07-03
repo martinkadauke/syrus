@@ -75,8 +75,12 @@ class Repository < ApplicationRecord
     "#{upstream_owner}/#{upstream_name}"
   end
 
-  def effective_agent_provider
-    agent_provider.presence || user.agent_provider
+  def effective_agent_provider(user: nil)
+    if user
+      membership_provider = repository_memberships.find_by(user_id: user.id)&.agent_provider&.presence
+      return membership_provider if membership_provider
+    end
+    agent_provider.presence || (user || self.user)&.agent_provider
   end
 
   def effective_prepare_enabled

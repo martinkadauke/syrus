@@ -1041,7 +1041,8 @@ class Job < ApplicationRecord
   end
 
   def default_agent_provider
-    self.agent_provider ||= repository&.effective_agent_provider || user&.agent_provider
+    effective_user = owner_user || user
+    self.agent_provider ||= repository&.effective_agent_provider(user: effective_user) || effective_user&.agent_provider
   end
 
   def default_credential_mode
