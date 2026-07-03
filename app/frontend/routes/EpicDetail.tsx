@@ -18,6 +18,7 @@ import {
   type EpicDependencyRecord,
   type EpicDetailJob,
   type EpicDetailPayload,
+  type EpicOwnerUser,
   type EpicVersionRecord,
   type EpicGraph,
   type EpicSearchOption,
