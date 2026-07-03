@@ -91,7 +91,7 @@ module SyrusChatMcp
   def self.target_epic_payload(proposal)
     return unless proposal.target_epic
 
-    { id: proposal.target_epic.id, number: proposal.target_epic.number, label: proposal.target_epic.display_number }
+    { id: proposal.target_epic.id, number: proposal.target_epic.number, label: proposal.target_epic.slug }
   end
 
   def self.labels_for(proposal)

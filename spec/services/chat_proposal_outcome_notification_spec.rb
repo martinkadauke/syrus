@@ -51,10 +51,10 @@ RSpec.describe ChatProposalOutcomeNotification do
     )
 
     expect(described_class.confirmed_message(proposal)).to eq(
-      "Proposal \"Ship auth\" was confirmed as EPIC-#{epic.id} " \
+      "Proposal \"Ship auth\" was confirmed as #{epic.slug} " \
       "with child jobs JOB-#{schema_job.id}, JOB-#{ui_job.id} (proposal slug: ship-auth)."
     )
-    expect(described_class.acknowledgment(proposal, outcome: :confirmed)).to eq("Confirmed EPIC-#{epic.id}.")
+    expect(described_class.acknowledgment(proposal, outcome: :confirmed)).to eq("Confirmed #{epic.slug}.")
   end
 
   it "builds a generic confirmed notification for non-Syrus materializations" do

@@ -131,7 +131,7 @@ module Api
           {
             id:                 epic.id,
             number:             epic.number,
-            display_number:     epic.display_number,
+            display_number:     epic.slug,
             state:              epic.state,
             title:              epic.title,
             owner_email:        epic.owner&.email_address,
@@ -152,7 +152,7 @@ module Api
           {
             id:                 epic.id,
             number:             epic.number,
-            display_number:     epic.display_number,
+            display_number:     epic.slug,
             state:              epic.state,
             title:              epic.title,
             description:        epic.description,

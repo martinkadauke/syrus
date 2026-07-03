@@ -253,8 +253,8 @@ RSpec.describe App::ChatMessagePayload do
       },
       {
         slug: "epic:#{resolved_epic.id}",
-        title: resolved_epic.display_number,
-        display_label: resolved_epic.display_number,
+        title: resolved_epic.slug,
+        display_label: resolved_epic.slug,
         state: resolved_epic.state,
         confirmed: true,
         anchor_message_id: nil,

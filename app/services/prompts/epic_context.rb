@@ -15,7 +15,7 @@ module Prompts
       description = @epic.description.to_s.strip
       parts = [
         "## Epic context (orientation only)",
-        "This Job belongs to #{@epic.display_number}: #{@epic.title}.",
+        "This Job belongs to #{@epic.slug}: #{@epic.title}.",
         scope_guard
       ]
       parts << "Epic description:\n\n#{truncated_description(description)}" if description.present?

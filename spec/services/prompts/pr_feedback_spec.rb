@@ -78,7 +78,7 @@ RSpec.describe Prompts::PrFeedback do
   it "includes Epic context before the review thread when supplied" do
     epic = instance_double(
       Epic,
-      display_number: "EPIC-70",
+      slug: "EPIC-70",
       title: "Syrus CLI and test planning",
       description: "Keep follow-up work aligned with the CLI track."
     )

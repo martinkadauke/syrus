@@ -39,7 +39,7 @@ RSpec.describe Prompts::CiFailure do
   it "includes Epic context before the failing checks when supplied" do
     epic = instance_double(
       Epic,
-      display_number: "EPIC-70",
+      slug: "EPIC-70",
       title: "Syrus CLI and test planning",
       description: "Keep repairs aligned with the current child Job."
     )

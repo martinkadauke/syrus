@@ -25,7 +25,7 @@ RSpec.describe EpicDependencyGraphRenderer do
     expect(result.node_count).to eq(1)
     expect(result.epic_dependency_count).to eq(0)
     expect(result.job_blocker_count).to eq(0)
-    expect(result.definition).to include("epic_#{epic.id}[\"#{epic.display_number} Forum restoration\"]")
+    expect(result.definition).to include("epic_#{epic.id}[\"#{epic.slug} Forum restoration\"]")
   end
 
   it "renders an Epic dependency touching the current Epic" do
@@ -57,7 +57,7 @@ RSpec.describe EpicDependencyGraphRenderer do
     expect(result.epic_dependency_count).to eq(0)
     expect(result.job_blocker_count).to eq(1)
     expect(result.definition).to include("epic_#{epic.id} --> job_#{blocker.id}")
-    expect(result.definition).to include("job_#{blocker.id}[\"#{other_epic.display_number} / #3 Deliver marble\"]")
+    expect(result.definition).to include("job_#{blocker.id}[\"#{other_epic.slug} / #3 Deliver marble\"]")
     expect(result.definition).to include("class job_#{blocker.id} epicJobBlocker")
   end
 

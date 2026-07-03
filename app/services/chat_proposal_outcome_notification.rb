@@ -29,7 +29,7 @@ class ChatProposalOutcomeNotification
       end
 
       if child_job_labels.any?
-        return "Proposal \"#{proposal.title}\" was confirmed as EPIC-#{proposal.epic.id} " \
+        return "Proposal \"#{proposal.title}\" was confirmed as #{proposal.epic.slug} " \
           "with child jobs #{child_job_labels.join(", ")} (proposal slug: #{proposal.slug})."
       end
     end
@@ -58,7 +58,7 @@ class ChatProposalOutcomeNotification
 
   def confirmed_acknowledgment
     return "Confirmed JOB-#{proposal.job.id}." if proposal.job
-    return "Confirmed EPIC-#{proposal.epic.id}." if proposal.epic
+    return "Confirmed #{proposal.epic.slug}." if proposal.epic
 
     "Confirmed proposal #{proposal.slug}."
   end

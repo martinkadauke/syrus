@@ -156,7 +156,7 @@ class EpicDependencyGraphRenderer
   def add_epic_node(nodes, epic_record, class_name:)
     nodes[epic_node_id(epic_record)] = {
       id: epic_node_id(epic_record),
-      label: "#{epic_record.display_number} #{epic_record.title}",
+      label: "#{epic_record.slug} #{epic_record.title}",
       class_name: class_name
     }
   end
@@ -174,7 +174,7 @@ class EpicDependencyGraphRenderer
     title = job.issue_title.to_s.strip
     base = title.present? ? "#{source} #{title}" : source
 
-    "#{job.epic&.display_number || 'No Epic'} / #{base}"
+    "#{job.epic&.slug || 'No Epic'} / #{base}"
   end
 
   def class_definitions

@@ -819,7 +819,7 @@ module App
       {
         id: epic.id,
         number: epic.number,
-        display_number: epic.display_number,
+        display_number: epic.slug,
         path: epic_path(epic)
       }
     end
@@ -841,7 +841,7 @@ module App
         type: "epic",
         id: epic.id,
         number: epic.number,
-        display_number: epic.display_number,
+        display_number: epic.slug,
         title: epic.title,
         description: epic.description.to_s,
         state: epic.state,

@@ -247,7 +247,7 @@ RSpec.describe Epic do
     epic = described_class.create!(user: user, repository: repository, title: "First pass")
 
     expect(epic.number).to be_present
-    expect(epic.display_number).to eq("EPIC-#{epic.number}")
+    expect(epic.slug).to eq("EPIC-#{epic.number}")
 
     expect {
       epic.update!(title: "Revised display name")
@@ -679,7 +679,7 @@ RSpec.describe Epic do
     expect(job.reload.epic).to be_nil
     expect(epic.reload).to be_done
     expect(chat.messages.where(role: "system").last.content["text"]).to eq(
-      "This new issue resembles closed #{epic.display_number}; reopen and attach?"
+      "This new issue resembles closed #{epic.slug}; reopen and attach?"
     )
     expect(chat.pending_actions.last).to have_attributes(
       action: "reopen_epic_and_attach_job",

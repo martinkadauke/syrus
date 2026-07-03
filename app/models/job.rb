@@ -889,7 +889,7 @@ class Job < ApplicationRecord
   end
 
   def log_epic_auto_reopen(closed_epic)
-    message = "Epic #{closed_epic.display_number} auto-reopened for #{slug}."
+    message = "Epic #{closed_epic.slug} auto-reopened for #{slug}."
     Rails.logger.info("[EpicAssignment] #{message}")
 
     planning_chat_for(closed_epic)&.messages&.create!(
@@ -904,7 +904,7 @@ class Job < ApplicationRecord
     return unless closed_epic
 
     chat = planning_chat_for_pending_action(closed_epic)
-    text = "This new issue resembles closed #{closed_epic.display_number}; reopen and attach?"
+    text = "This new issue resembles closed #{closed_epic.slug}; reopen and attach?"
     chat.messages.create!(role: "system", content: { "text" => text })
     chat.pending_actions.create!(
       action: "reopen_epic_and_attach_job",
@@ -936,7 +936,7 @@ class Job < ApplicationRecord
   def create_planning_chat_for(closed_epic)
     user.chat_sessions.create!(
       repository: repository,
-      title: "Planning #{closed_epic.display_number}"
+      title: "Planning #{closed_epic.slug}"
     ).tap do |chat|
       chat.chat_attachments.find_or_create_by!(attachable: closed_epic)
     end

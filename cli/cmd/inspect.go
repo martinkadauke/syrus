@@ -278,7 +278,7 @@ func newEpicShowCommand() *cobra.Command {
 				return err
 			}
 			out := cmd.OutOrStdout()
-			fmt.Fprintf(out, "EPIC-%d · %s\nState: %s\nRepo: %s\n\n", epic.Epic.ID, epic.Epic.Title, epic.Epic.State, epic.Epic.RepositorySlug)
+			fmt.Fprintf(out, "%s · %s\nState: %s\nRepo: %s\n\n", epicSlug(epic.Epic.Number), epic.Epic.Title, epic.Epic.State, epic.Epic.RepositorySlug)
 			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(tw, "ID\tSTATE\tREPO\tTITLE\tPR")
 			for _, job := range epic.Jobs {

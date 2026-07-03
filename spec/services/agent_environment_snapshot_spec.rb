@@ -90,7 +90,7 @@ RSpec.describe AgentEnvironmentSnapshot do
       snapshot = described_class.for_chat(repository: repo, chat_session: chat)
 
       expect(snapshot).to include("Recent proposal activity:")
-      expect(snapshot).to include(%(- EPIC-#{epic.id} "Rebuild the forum" confirmed with jobs: JOB-#{child_job.id} "Add arches" (proposal slug: forum)))
+      expect(snapshot).to include(%(- #{epic.slug} "Rebuild the forum" confirmed with jobs: JOB-#{child_job.id} "Add arches" (proposal slug: forum)))
       expect(snapshot).to include(%(- JOB-#{child_job.id} "Add arches" confirmed (proposal slug: add-arches)))
     end
 
@@ -105,11 +105,11 @@ RSpec.describe AgentEnvironmentSnapshot do
         state: "backlog"
       )
       chat = ChatSession.create!(user: repo.user, repository: repo)
-      chat.messages.create!(role: "user", content: { "text" => "Elaborate EPIC-#{epic.id}" })
+      chat.messages.create!(role: "user", content: { "text" => "Elaborate #{epic.slug}" })
 
       snapshot = described_class.for_chat(repository: repo, chat_session: chat)
 
-      expect(snapshot).to include("Developer elaboration mode: active for #{epic.display_number}")
+      expect(snapshot).to include("Developer elaboration mode: active for #{epic.slug}")
       expect(snapshot).to include("Elaboration Epic title: Plan forum restoration")
       expect(snapshot).to include("Elaboration Epic description: Restore forum posting")
     end
@@ -134,7 +134,7 @@ RSpec.describe AgentEnvironmentSnapshot do
 
       snapshot = described_class.for_chat(repository: repo, chat_session: chat)
 
-      expect(snapshot).to include("Developer elaboration mode: active for #{epic.display_number}")
+      expect(snapshot).to include("Developer elaboration mode: active for #{epic.slug}")
     end
   end
 

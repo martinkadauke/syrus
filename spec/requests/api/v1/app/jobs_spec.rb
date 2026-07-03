@@ -228,7 +228,7 @@ RSpec.describe "App API job detail", type: :request do
     expect(body["epic"]).to include(
       "id" => epic.id,
       "number" => epic.number,
-      "display_number" => epic.display_number,
+      "display_number" => epic.slug,
       "title" => "Raise the aqueduct",
       "state" => "in_progress",
       "epic_path" => "/epics/#{epic.id}"

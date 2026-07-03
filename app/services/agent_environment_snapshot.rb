@@ -243,7 +243,7 @@ class AgentEnvironmentSnapshot
     end
 
     [
-      "- Developer elaboration mode: active for #{epic.display_number} (id=#{epic.id}, state=#{epic.state}, child_jobs=0).",
+      "- Developer elaboration mode: active for #{epic.slug} (id=#{epic.id}, state=#{epic.state}, child_jobs=0).",
       "- Elaboration Epic title: #{epic.title}",
       "- Elaboration Epic description: #{clipped_description}"
     ]
@@ -339,7 +339,7 @@ class AgentEnvironmentSnapshot
     when Epic
       jobs = proposal.child_proposals.select { |child| child.job_id.present? }.map { |child| proposal_child_job_label(child.job) }
       suffix = jobs.any? ? " with jobs: #{jobs.join(', ')}" : ""
-      "- EPIC-#{proposal.epic.id} #{proposal.epic.title.inspect} confirmed#{suffix} (proposal slug: #{proposal.slug})"
+      "- #{proposal.epic.slug} #{proposal.epic.title.inspect} confirmed#{suffix} (proposal slug: #{proposal.slug})"
     when Job
       "- JOB-#{proposal.job.id} #{proposal.job.issue_title.inspect} confirmed (proposal slug: #{proposal.slug})"
     else

@@ -268,6 +268,10 @@ func jobSlug(id any) string {
 	return fmt.Sprintf("JOB-%v", id)
 }
 
+func epicSlug(number any) string {
+	return fmt.Sprintf("EPIC-%v", number)
+}
+
 type testPlanStep struct {
 	Title string
 	Notes string

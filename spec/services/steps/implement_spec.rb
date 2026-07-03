@@ -70,7 +70,7 @@ RSpec.describe Steps::Implement do
       handler.call
 
       prompt = run.reload.prompt
-      expect(prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+      expect(prompt).to include("#{epic.slug}: Syrus CLI and test planning")
       expect(prompt).to include("Track one builds the Rails planning step")
       expect(prompt).to include("Do not implement the entire Epic")
       expect(prompt).to include("Implement only the Job described above")

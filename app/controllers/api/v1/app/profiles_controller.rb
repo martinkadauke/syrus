@@ -86,7 +86,7 @@ module Api
         def epic_json(epic)
           {
             id: epic.id,
-            display_number: epic.display_number,
+            display_number: epic.slug,
             title: epic.title,
             state: epic.state,
             repository: repository_json(epic.repository),

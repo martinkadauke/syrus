@@ -57,7 +57,7 @@ RSpec.describe SyrusChatMcp::ReadEpicTool do
     expect(payload[:epic]).to include(
       id: epic.id,
       number: epic.number,
-      display_number: epic.display_number,
+      display_number: epic.slug,
       title: "Pave the Appian Way again",
       state: epic.reload.state,
       repository: "acme/roads"

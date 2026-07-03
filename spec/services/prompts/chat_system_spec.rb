@@ -221,7 +221,7 @@ RSpec.describe Prompts::ChatSystem do
       state: "backlog"
     )
     chat = ChatSession.create!(user: repo.user, repository: repo)
-    chat.messages.create!(role: "user", content: { "text" => "Please elaborate EPIC-#{epic.id}." })
+    chat.messages.create!(role: "user", content: { "text" => "Please elaborate #{epic.slug}." })
 
     out = described_class.new(repository: repo, chat_session: chat).to_s
 
@@ -238,7 +238,7 @@ RSpec.describe Prompts::ChatSystem do
     repo.user.update!(role: "product_owner")
     epic = Factories.epic(user: repo.user, repository: repo, state: "backlog")
     chat = ChatSession.create!(user: repo.user, repository: repo)
-    chat.messages.create!(role: "user", content: { "text" => "Please elaborate EPIC-#{epic.id}." })
+    chat.messages.create!(role: "user", content: { "text" => "Please elaborate #{epic.slug}." })
 
     out = described_class.new(repository: repo, chat_session: chat).to_s
 
@@ -279,7 +279,7 @@ RSpec.describe Prompts::ChatSystem do
     out = described_class.new(repository: repo, chat_session: chat).to_s
 
     expect(out).to include("Recent proposal activity:")
-    expect(out).to include(%(- EPIC-#{epic.id} "Chat-driven job feedback loop" confirmed with jobs: JOB-#{child_job.id} "Add trigger" (proposal slug: feedback-loop)))
+    expect(out).to include(%(- #{epic.slug} "Chat-driven job feedback loop" confirmed with jobs: JOB-#{child_job.id} "Add trigger" (proposal slug: feedback-loop)))
     expect(out).to include(%(- JOB-#{child_job.id} "Add trigger" confirmed (proposal slug: add-trigger)))
     expect(out).to include(%(- Proposal "Some title" was rejected (proposal slug: some-title)))
   end
@@ -390,7 +390,7 @@ RSpec.describe Prompts::ChatSystem do
 
     expect(out).to include("Attached context:")
     expect(out).to include("Epics:")
-    expect(out).to include("#{epic.display_number}: Drain the forum")
+    expect(out).to include("#{epic.slug}: Drain the forum")
     expect(out).to include("Move the puddle")
     expect(out).to include("JOB-#{child.id}: Install the humble channel")
     expect(out).to include("Use `read_epic` with id #{epic.id}")

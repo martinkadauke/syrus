@@ -103,7 +103,7 @@ RSpec.describe SyrusChatMcp::ProposeEpicWithJobsTool do
     ui = chat_session.proposals.find_by!(slug: "export-ui")
 
     expect(response[:result][:isError]).to be_falsey
-    expect(response_payload(response)).to include(target_epic: include(id: target_epic.id, label: target_epic.display_number))
+    expect(response_payload(response)).to include(target_epic: include(id: target_epic.id, label: target_epic.slug))
     expect(proposal).to have_attributes(
       kind: "epic",
       repository: repository,

@@ -142,7 +142,7 @@ module App
       {
         id: epic.id,
         number: epic.number,
-        display_number: epic.display_number,
+        display_number: epic.slug,
         title: epic.title,
         state: epic.state,
         epic_path: epic_path(epic)

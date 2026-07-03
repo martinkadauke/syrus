@@ -147,7 +147,7 @@ RSpec.describe ChatTurnJob do
     described_class.perform_now(chat.id, user_message.id)
 
     expect(received[:prompt]).to include("Attached context:")
-    expect(received[:prompt]).to include("#{epic.display_number}: Stabilize the aqueduct")
+    expect(received[:prompt]).to include("#{epic.slug}: Stabilize the aqueduct")
     expect(received[:prompt]).to include("Make the water arrive")
     expect(received[:prompt]).to include("JOB-#{child.id}: Seal the northern arch")
     expect(received[:prompt]).to include("Use `read_epic` with id #{epic.id}")
@@ -186,7 +186,7 @@ RSpec.describe ChatTurnJob do
     described_class.perform_now(chat.id, next_message.id)
 
     expect(received[:resume_session_id]).to eq("previous-session")
-    expect(received[:prompt]).to include("Developer elaboration mode: active for #{epic.display_number}")
+    expect(received[:prompt]).to include("Developer elaboration mode: active for #{epic.slug}")
     expect(received[:prompt]).to include("## Developer Epic Elaboration Mode")
     expect(received[:prompt]).to include("Propose `update_epic` with a technically enriched description before proposing any Jobs")
     expect(received[:prompt]).to include("referencing the existing Epic with `epic_id: #{epic.id}`")

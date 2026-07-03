@@ -109,7 +109,7 @@ module Api
             {
               epic_id: epic.id,
               rank: -1.0,
-              snippet: "<mark>#{ERB::Util.html_escape(epic.display_number)}</mark>"
+              snippet: "<mark>#{ERB::Util.html_escape(epic.slug)}</mark>"
             }
           end
         end

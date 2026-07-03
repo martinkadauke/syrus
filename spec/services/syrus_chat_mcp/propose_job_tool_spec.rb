@@ -35,7 +35,7 @@ RSpec.describe SyrusChatMcp::ProposeJobTool do
     proposal = chat_session.proposals.find_by!(title: "Install carved labels")
     expect(response[:result][:isError]).to be_falsey
     expect(response_payload(response)).to include(id: proposal.id, kind: "job")
-    expect(response_payload(response)[:target_epic]).to include(id: epic.id, label: epic.display_number)
+    expect(response_payload(response)[:target_epic]).to include(id: epic.id, label: epic.slug)
     expect(proposal).to have_attributes(
       kind: "job",
       repository: repository,

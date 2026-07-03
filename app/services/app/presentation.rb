@@ -18,6 +18,11 @@ module App
       "JOB-#{id}"
     end
 
+    def epic_slug(epic_or_number)
+      number = epic_or_number.respond_to?(:number) ? epic_or_number.number : epic_or_number
+      "EPIC-#{number}"
+    end
+
     # Generic install URL (operator picks repos in GitHub's UI). Used by
     # onboarding before any specific repository is selected.
     def github_app_generic_install_url

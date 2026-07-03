@@ -25,7 +25,7 @@ RSpec.describe Prompts::LandingFix do
     issue = Struct.new(:title, :body).new("Keep dashboard honest", "Run the final checks after rebasing.")
     epic = instance_double(
       Epic,
-      display_number: "EPIC-70",
+      slug: "EPIC-70",
       title: "Syrus CLI and test planning",
       description: "Do not turn a final fix into a broader Epic implementation."
     )

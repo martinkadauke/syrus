@@ -1581,7 +1581,7 @@ module Api
         def attachment_label(record)
           case record
           when Repository then record.slug
-          when Epic then [ record.display_number, record.title.presence ].compact.join(": ")
+          when Epic then [ record.slug, record.title.presence ].compact.join(": ")
           when Job then "#{record.slug}: #{record.issue_title.presence || record.issue_number || record.kind}"
           when Document then "#{record.title} (#{record.repository&.slug})"
           else record.try(:name).presence || record.try(:title).presence || "#{record.class.name} ##{record.id}"
@@ -1683,7 +1683,7 @@ module Api
           when Job
             "Proposal confirmed and filed as #{record.slug}."
           when Epic
-            "Proposal confirmed and filed as #{record.display_number}."
+            "Proposal confirmed and filed as #{record.slug}."
           else
             "Proposal confirmed."
           end

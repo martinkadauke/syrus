@@ -1402,7 +1402,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     get "/api/v1/app/chats/#{chat.id}"
 
     proposal_payload = parse_body["messages"].first.fetch("proposal")
-    expect(proposal_payload["materialized_label"]).to eq(epic.display_number)
+    expect(proposal_payload["materialized_label"]).to eq(epic.slug)
     expect(proposal_payload["materialized_path"]).to eq("/epics/#{epic.id}")
     # Epic state + state-change path so the chat can offer a "Start" action.
     expect(proposal_payload["materialized_epic_state"]).to eq(epic.state)
@@ -1476,7 +1476,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
     expect(response).to have_http_status(:ok)
     attachment = chat.reload.chat_attachments.sole
-    label = "#{epic.display_number}: Raise the forum"
+    label = "#{epic.slug}: Raise the forum"
     expect(parse_body["message"]).to eq("#{label} attached.")
     expect(parse_body.dig("attachment_groups", "epics")).to contain_exactly(include(
       "label" => label,
@@ -1683,7 +1683,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(confirmation_message.content).to include(
       "source" => "proposal_notification",
       "outcome" => "confirmed",
-      "acknowledgment" => "Confirmed EPIC-#{proposal.epic.id}."
+      "acknowledgment" => "Confirmed #{proposal.epic.slug}."
     )
     expect(chat.messages.where(role: "user").count).to eq(0)
   end

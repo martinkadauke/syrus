@@ -107,7 +107,7 @@ module App
         depends_on_epic_ids: proposal.depends_on_epic_ids || [],
         dependencies: visible_dependencies,
         has_dependencies: visible_dependencies.any?,
-        target_epic_label: proposal.target_epic&.display_number,
+        target_epic_label: proposal.target_epic&.slug,
         app_update_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}",
         app_confirm_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/confirm",
         app_reject_path: "/api/v1/app/chats/#{chat_session.id}/proposals/#{proposal.id}/reject",
@@ -152,8 +152,8 @@ module App
 
           {
             slug: token,
-            title: epic.display_number,
-            display_label: epic.display_number,
+            title: epic.slug,
+            display_label: epic.slug,
             state: epic.state,
             confirmed: true,
             anchor_message_id: nil,
@@ -164,8 +164,8 @@ module App
           if dependency&.confirmed? && dependency.epic
             {
               slug: token,
-              title: dependency.epic.display_number,
-              display_label: dependency.epic.display_number,
+              title: dependency.epic.slug,
+              display_label: dependency.epic.slug,
               state: dependency.epic.state,
               confirmed: true,
               anchor_message_id: dependency.messages.order(:id).last&.id,

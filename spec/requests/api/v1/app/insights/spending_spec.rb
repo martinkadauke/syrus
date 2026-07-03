@@ -52,7 +52,7 @@ RSpec.describe "API: /api/v1/app/insights/spending", type: :request do
     expect(body.dig("breakdowns", "repositories").map { |row| row["label"] }).to eq([ "rome/ledgers", "acme/syrus" ])
     expect(body.dig("breakdowns", "epics").first).to include(
       "label" => "Cost Senate",
-      "display_number" => epic.display_number,
+      "display_number" => epic.slug,
       "jobs_count" => 1,
       "total_usd" => 1.25,
       "average_job_usd" => 1.25

@@ -98,9 +98,11 @@ class Epic < ApplicationRecord
     end
   end
 
-  def display_number
-    "EPIC-#{number}"
+  def slug
+    App::Presentation.epic_slug(self)
   end
+
+  alias_method :display_number, :slug
 
   def notify_epic_completed
     jobs.includes(:owner_user, :user).map { |job| job.owner_user || job.user }.uniq.each do |owner|

@@ -43,7 +43,7 @@ module SyrusChatMcp
         {
           id: epic.id,
           number: epic.number,
-          display_number: epic.display_number,
+          display_number: epic.slug,
           title: epic.title,
           description: SyrusChatMcp.truncate_text(epic.description, 32.kilobytes),
           state: epic.state,
@@ -61,7 +61,7 @@ module SyrusChatMcp
         {
           id: epic.id,
           number: epic.number,
-          display_number: epic.display_number,
+          display_number: epic.slug,
           title: epic.title,
           state: epic.state,
           repository: epic.repository.slug

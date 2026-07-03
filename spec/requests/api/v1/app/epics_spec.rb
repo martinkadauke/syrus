@@ -111,7 +111,7 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
 
     expect(response).to have_http_status(:ok)
     body = parse_body
-    expect(body.dig("epic", "display_number")).to eq(epic.display_number)
+    expect(body.dig("epic", "display_number")).to eq(epic.slug)
     expect(body.dig("epic", "description")).to eq("Build **columns**.")
     expect(body.dig("epic", "stuck")).to eq(false)
     expect(body.dig("epic", "owner")).to be_nil

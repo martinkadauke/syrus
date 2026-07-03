@@ -39,7 +39,7 @@ RSpec.describe Prompts::DirectJob do
     it "includes Epic context between the operator prompt and git safety when present" do
       epic = instance_double(
         Epic,
-        display_number: "EPIC-70",
+        slug: "EPIC-70",
         title: "Syrus CLI and test planning",
         description: "The Epic covers a Go CLI and a Rails test planning step."
       )

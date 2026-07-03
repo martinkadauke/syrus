@@ -268,7 +268,7 @@ module Api
           {
             id: epic.id,
             number: epic.number,
-            display_number: epic.display_number,
+            display_number: epic.slug,
             title: epic.title.to_s,
             description: epic.description.to_s,
             state: epic.state,

@@ -393,7 +393,7 @@ module Prompts
         This Epic was written by a product owner. Your role is to elaborate it technically before adding Jobs.
 
         Starting context:
-        - Epic: #{epic.display_number} (id #{epic.id})
+        - Epic: #{epic.slug} (id #{epic.id})
         - Title: #{epic.title}
         - Product owner description: #{clip(epic.description.presence || "(blank)", 4.kilobytes)}
 
@@ -514,7 +514,7 @@ module Prompts
 
       lines = [ "  Epics:" ]
       epics.each do |epic|
-        lines << "  - [#{epic.id}] #{epic.display_number}: #{epic.title} (#{epic.state}, #{epic.repository.slug})"
+        lines << "  - [#{epic.id}] #{epic.slug}: #{epic.title} (#{epic.state}, #{epic.repository.slug})"
         description = clipped_inline(epic.description)
         lines << "    Description: #{description}" if description.present?
         lines.concat(attached_epic_child_job_lines(epic))

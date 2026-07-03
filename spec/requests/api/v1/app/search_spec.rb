@@ -117,7 +117,7 @@ RSpec.describe "App API unified search", type: :request do
   it "returns an existing epic when searching by EPIC slug" do
     epic = Factories.epic(user: user, repository: repository, title: "Unindexed epic target")
 
-    get "/api/v1/app/search", params: { q: "EPIC-#{epic.number}" }
+    get "/api/v1/app/search", params: { q: epic.slug }
 
     expect(response).to have_http_status(:ok)
     expect(parse_body).to include(
@@ -125,7 +125,7 @@ RSpec.describe "App API unified search", type: :request do
         "type" => "epic",
         "id" => epic.id,
         "title" => "Unindexed epic target",
-        "snippet" => "<mark>EPIC-#{epic.number}</mark>",
+        "snippet" => "<mark>#{epic.slug}</mark>",
         "path" => epic_path(epic),
         "repository_slug" => "acme/widgets"
       )

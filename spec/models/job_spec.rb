@@ -600,7 +600,7 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
 
       prompt = job.runs.first.prompt
       expect(prompt).to include("Build the Go checkout command.")
-      expect(prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+      expect(prompt).to include("#{epic.slug}: Syrus CLI and test planning")
       expect(prompt).to include("Do not implement the entire Epic")
       expect(prompt).to include("Implement only the Job described above")
     end

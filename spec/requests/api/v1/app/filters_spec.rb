@@ -100,7 +100,7 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
     expect(parse_body["options"]).to eq([])
 
     get "/api/v1/app/filters/fk_options", params: { field: "epic_id", q: "migration" }
-    expect(parse_body["options"]).to eq([{ "value" => epic.id, "label" => "EPIC-#{epic.number} Typeahead migration" }])
+    expect(parse_body["options"]).to eq([{ "value" => epic.id, "label" => "#{epic.slug} Typeahead migration" }])
 
     get "/api/v1/app/filters/fk_options", params: { field: "tags", q: "back" }
     expect(parse_body["options"]).to eq([{ "value" => tag.id, "label" => "backend" }])

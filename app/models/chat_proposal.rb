@@ -112,7 +112,7 @@ class ChatProposal < ApplicationRecord
     when Job
       job.slug
     when Epic
-      epic.display_number
+      epic.slug
     end
   end
 

@@ -171,7 +171,7 @@ module App
           path: "/epics/#{id}",
           jobs_count: jobs_count,
           total: total,
-          extra: { display_number: "EPIC-#{number}" }
+          extra: { display_number: App::Presentation.epic_slug(number) }
         )
       end.sort_by { |row| -row[:total_usd] }
     end
@@ -284,7 +284,7 @@ module App
             },
             epic: job.epic && {
               id: job.epic_id,
-              display_number: job.epic.display_number,
+              display_number: job.epic.slug,
               title: job.epic.title,
               path: "/epics/#{job.epic_id}"
             }

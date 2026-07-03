@@ -29,7 +29,7 @@ RSpec.describe Prompts::Initial do
   it "includes Epic context between the issue content and safety footer when present" do
     epic = instance_double(
       Epic,
-      display_number: "EPIC-70",
+      slug: "EPIC-70",
       title: "Syrus CLI and test planning",
       description: "Coordinate the Ruby workflow step and Go CLI."
     )

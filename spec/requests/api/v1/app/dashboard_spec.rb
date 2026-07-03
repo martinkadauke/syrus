@@ -89,7 +89,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         "epic" => {
           "id" => epic.id,
           "number" => epic.number,
-          "display_number" => epic.display_number,
+          "display_number" => epic.slug,
           "path" => epic_path(epic)
         },
         "tags" => [ include("name" => "aqueduct", "color" => "blue") ],
@@ -793,7 +793,7 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body["items"].sole).to include(
         "type" => "epic",
         "id" => ready.id,
-        "display_number" => ready.display_number,
+        "display_number" => ready.slug,
         "title" => "Ready aqueduct",
         "description" => "Build a calmer aqueduct.",
         "owner" => nil,

@@ -89,7 +89,7 @@ module Filters
 
     def epic_label(epic)
       number = epic.respond_to?(:number) ? epic.number : epic.id
-      "EPIC-#{number} #{epic.title}".strip
+      "#{App::Presentation.epic_slug(number)} #{epic.title}".strip
     end
   end
 end

@@ -159,7 +159,7 @@ module Api
           when Job
             record.slug
           when Epic
-            record.display_number
+            record.slug
           when Document
             record.title
           else

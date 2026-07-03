@@ -4,7 +4,7 @@ RSpec.describe Prompts::EpicContext do
   let(:epic) do
     instance_double(
       Epic,
-      display_number: "EPIC-70",
+      slug: "EPIC-70",
       title: "Syrus CLI and test planning",
       description: "Build the Go CLI and the Rails-side test planning step."
     )

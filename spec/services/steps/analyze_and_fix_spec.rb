@@ -62,7 +62,7 @@ RSpec.describe Steps::AnalyzeAndFix do
 
     handler.call
 
-    expect(run.reload.prompt).to include("EPIC-#{epic.number}: Syrus CLI and test planning")
+    expect(run.reload.prompt).to include("#{epic.slug}: Syrus CLI and test planning")
     expect(run.prompt).to include("Do not implement the entire Epic")
   end
 
