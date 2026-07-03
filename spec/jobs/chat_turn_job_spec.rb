@@ -114,7 +114,6 @@ RSpec.describe ChatTurnJob do
       provider: "claude",
       session_id: "chat-session-1",
       transcript_jsonl: "{\"type\":\"system\"}\n",
-      raw_provider_transcript: "{\"type\":\"system\"}\n",
       normalized_messages: []
     )
   ensure
@@ -838,8 +837,7 @@ RSpec.describe ChatTurnJob do
     expect(codex_chat.reload.claude_session).to have_attributes(
       provider: "codex",
       session_id: "codex-thread-1",
-      transcript_jsonl: "{\"type\":\"session_meta\"}\n",
-      raw_provider_transcript: "{\"type\":\"session_meta\"}\n"
+      transcript_jsonl: "{\"type\":\"session_meta\"}\n"
     )
   end
 
@@ -1170,6 +1168,30 @@ RSpec.describe ChatTurnJob do
     ensure
       ENV["HOME"] = saved_home
     end
+  end
+
+  it "keeps the resumable session when optional normalized metadata persistence fails" do
+    allow_any_instance_of(ClaudeSession).to receive(:update!).and_wrap_original do |original, *args|
+      attrs = args.first
+      raise ActiveRecord::ValueTooLong, "normalized metadata too large" if attrs.is_a?(Hash) && attrs.key?(:normalized_messages)
+
+      original.call(*args)
+    end
+
+    ChatTurnJob.agent_runner = ->(**_) {
+      result_fixture(
+        session_id: "chat-session-1",
+        transcript_jsonl: "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"chat-session-1\"}\n"
+      )
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(chat.reload.claude_session).to have_attributes(
+      provider: "claude",
+      session_id: "chat-session-1",
+      transcript_jsonl: "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"chat-session-1\"}\n"
+    )
   end
 
   it "writes a system message and skips the agent when Claude credentials are missing" do

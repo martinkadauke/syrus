@@ -4,7 +4,6 @@ module ChatProviders
       :provider,
       :session_id,
       :transcript_jsonl,
-      :raw_provider_transcript,
       :normalized_messages,
       :missing_message
     )
@@ -46,7 +45,6 @@ module ChatProviders
         provider: provider,
         session_id: result.session_id,
         transcript_jsonl: transcript,
-        raw_provider_transcript: transcript,
         normalized_messages: normalized_messages_for(transcript),
         missing_message: nil
       )

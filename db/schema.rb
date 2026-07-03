@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_02_022352) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_03_020058) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -292,7 +292,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_02_022352) do
     t.datetime "created_at", null: false
     t.json "normalized_messages"
     t.string "provider", default: "claude", null: false
-    t.text "raw_provider_transcript"
     t.integer "resumable_id"
     t.string "resumable_type"
     t.integer "run_id"

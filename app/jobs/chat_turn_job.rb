@@ -587,16 +587,25 @@ class ChatTurnJob < ApplicationJob
       session_id: capture.session_id,
       transcript_jsonl: capture.transcript_jsonl
     }
-    if claude_session_has_attribute?(:raw_provider_transcript)
-      attrs[:raw_provider_transcript] = capture.raw_provider_transcript
-    end
-    attrs[:normalized_messages] = capture.normalized_messages if claude_session_has_attribute?(:normalized_messages)
 
-    if @chat.claude_session
-      @chat.claude_session.update!(attrs)
+    session = if @chat.claude_session
+      @chat.claude_session.tap { |existing| existing.update!(attrs) }
     else
       @chat.create_claude_session!(attrs)
     end
+
+    persist_optional_session_metadata(session, capture)
+  end
+
+  def persist_optional_session_metadata(session, capture)
+    return unless claude_session_has_attribute?(:normalized_messages)
+
+    session.update!(normalized_messages: capture.normalized_messages)
+  rescue StandardError => e
+    Rails.logger.warn(
+      "[chat_session] optional metadata capture failed " \
+      "chat_id=#{@chat.id} session_id=#{capture.session_id}: #{e.class}: #{e.message}"
+    )
   end
 
   def claude_session_has_attribute?(attribute)

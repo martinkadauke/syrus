@@ -81,7 +81,6 @@ RSpec.describe ChatProviders::Claude do
         provider: "claude",
         session_id: "chat-session-1",
         transcript_jsonl: "#{jsonl}\n",
-        raw_provider_transcript: "#{jsonl}\n",
         missing_message: nil
       )
       expect(capture.normalized_messages).to include(
@@ -109,7 +108,6 @@ RSpec.describe ChatProviders::Claude do
         capture = described_class.new(chat: chat).session_capture(result_fixture(session_id: "chat-session-1"))
 
         expect(capture.transcript_jsonl).to eq("{\"type\":\"system\"}\n")
-        expect(capture.raw_provider_transcript).to eq("{\"type\":\"system\"}\n")
       ensure
         ENV["HOME"] = saved_home
         FileUtils.rm_rf(workspace_path) if workspace_path
@@ -124,7 +122,6 @@ RSpec.describe ChatProviders::Claude do
       expect(capture.provider).to eq("claude")
       expect(capture.session_id).to eq("../outside")
       expect(capture.transcript_jsonl).to be_nil
-      expect(capture.raw_provider_transcript).to be_nil
       expect(capture.normalized_messages).to eq([])
       expect(capture.missing_message).to include("invalid Claude session id")
     end

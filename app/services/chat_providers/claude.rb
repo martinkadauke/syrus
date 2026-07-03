@@ -62,7 +62,6 @@ module ChatProviders
           provider: provider,
           session_id: result.session_id,
           transcript_jsonl: transcript,
-          raw_provider_transcript: transcript,
           normalized_messages: normalized_messages_for(transcript),
           missing_message: nil
         )
@@ -71,7 +70,6 @@ module ChatProviders
           provider: provider,
           session_id: result.session_id,
           transcript_jsonl: nil,
-          raw_provider_transcript: nil,
           normalized_messages: [],
           missing_message: "[chat_session] no JSONL at #{path} - session continuation won't be available for this chat"
         )
@@ -110,7 +108,6 @@ module ChatProviders
         provider: provider,
         session_id: result.session_id,
         transcript_jsonl: nil,
-        raw_provider_transcript: nil,
         normalized_messages: [],
         missing_message: "[chat_session] invalid Claude session id - " \
                          "session continuation won't be available for this chat"
