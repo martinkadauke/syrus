@@ -8748,18 +8748,20 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /EPIC-7/ })).toHaveClass("dark:text-gray-100")
     expect(screen.queryByRole("link", { name: "Back to Epics" })).not.toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/epics/7/edit")
-    expect(screen.getByRole("link", { name: "acme/widgets" })).toHaveAttribute("href", "/app-shell/repositories/3")
+    expect(screen.getAllByRole("link", { name: "acme/widgets" }).every((el) => el.getAttribute("href") === "/app-shell/repositories/3")).toBe(true)
     expect(screen.getByRole("link", { name: "Survey forum" })).toHaveAttribute("href", "/app-shell/jobs/42")
-    expect(screen.getByRole("button", { name: "Move to backlog" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }))
+    expect(screen.getByRole("menuitem", { name: "Move to backlog" })).toBeInTheDocument()
     expect(screen.getByText("columns")).toBeInTheDocument()
     expect(screen.getByText("(1 epic dep, 0 job blockers)")).toBeInTheDocument()
     expect(await screen.findByRole("img", { name: "Dependency graph" })).toBeInTheDocument()
     expect(screen.getByText("Dependency graph").closest("details")).toHaveClass("dark:bg-gray-900", "dark:border-gray-700")
     expect(document.querySelector("[data-controller='mermaid-graph']")).toBeNull()
     expect(screen.getByText("Survey forum")).toBeInTheDocument()
-    expect(screen.getByText("1/1 done")).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toBeInTheDocument()
+    expect(screen.getByText("1 Closed")).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole("button", { name: "Start" }))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Start" }))
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -8773,12 +8775,10 @@ describe("App", () => {
     })
     expect(await screen.findByText("Epic updated.")).toBeInTheDocument()
     expect(screen.getByText("In Progress")).toBeInTheDocument()
-    const archiveButton = screen.getByRole("button", { name: "Archive" })
-    expect([...archiveButton.parentElement!.querySelectorAll("a,button")].map((element) => element.textContent)).toEqual([
-      "Move back to ready",
-      "Edit",
-      "Archive"
-    ])
+    expect(screen.getByRole("link", { name: "Edit" })).toHaveAttribute("href", "/app-shell/epics/7/edit")
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }))
+    expect(screen.getByRole("menuitem", { name: "Move back to ready" })).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "Archive" })).toBeInTheDocument()
   })
 
   it("renders and removes Epic dependencies from the detail page", async () => {
@@ -8979,7 +8979,7 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Epic unclaimed.")).toBeInTheDocument()
-    expect(screen.getByText(/Unclaimed/)).toBeInTheDocument()
+    expect(screen.getAllByText(/Unclaimed/).length).toBeGreaterThan(0)
   })
 
   it("does not show claim controls for an Epic owned by another user", async () => {

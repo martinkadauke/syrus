@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
-import { Fragment, type FormEvent, type ReactNode } from "react"
+import { type FormEvent, type ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
+import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { CloseIcon } from "../components/CloseIcon"
@@ -46,7 +47,7 @@ export function EpicDetailRoute() {
   })
 
   return (
-    <main aria-label="Epic" className="mx-auto max-w-6xl space-y-6 p-6">
+    <main aria-label="Epic" className="mx-auto max-w-[96rem] space-y-6 p-6">
       {epic.isPending ? <PanelMessage>Loading Epic...</PanelMessage> : null}
       {epic.isError ? <PanelMessage tone="error">{errorMessage(epic.error, "Unable to load Epic.")}</PanelMessage> : null}
       {epic.isSuccess ? <EpicDetail payload={epic.data} prefix={prefix} /> : null}
@@ -107,7 +108,7 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
           <span> · updated {formatRelative(payload.epic.updated_at)}</span>
         </p>
 
-        {payload.state_transitions.length > 0 || payload.epic.claimable ? (
+        {(payload.state_transitions.length > 0 || payload.epic.claimable || !payload.epic.archived) ? (
           <div className="flex flex-wrap items-center gap-2">
             {payload.epic.claimable && payload.epic.owner_status === "unclaimed" ? (
               <button
@@ -129,50 +130,50 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
                 Unclaim
               </button>
             ) : null}
-            {payload.state_transitions.map((transition) => (
-              <Fragment key={transition.target_state}>
-                {transition.target_state === "archived" && !payload.epic.archived ? (
-                  <Link className={secondaryButton()} to={withRoutePrefix(payload.paths.edit_epic_path, prefix)}>Edit</Link>
-                ) : null}
-                <button
-                  className={secondaryButton()}
-                  disabled={command.isPending}
-                  onClick={() => runTransition(transition)}
-                  type="button"
-                >
-                  {transition.label}
-                </button>
-              </Fragment>
-            ))}
+            {!payload.epic.archived ? (
+              <Link className={primaryButton()} to={withRoutePrefix(payload.paths.edit_epic_path, prefix)}>Edit</Link>
+            ) : null}
+            {payload.state_transitions.length > 0 ? (
+              <EpicActionsMenu disabled={command.isPending} onTransition={runTransition} transitions={payload.state_transitions} />
+            ) : null}
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <span className="rounded bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
-            {payload.summary.done_jobs_count}/{payload.summary.total_jobs_count} done
-          </span>
-          <span className="rounded bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/50 dark:text-violet-200">
-            {payload.summary.dependency_edge_count} {payload.summary.dependency_edge_count === 1 ? "dep" : "deps"}
-          </span>
-          {payload.summary.blocked ? <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">{payload.summary.blocked_reason || "Blocked"}</span> : null}
+        <div className="space-y-2">
+          <ProgressBar jobs={payload.jobs} totalCount={payload.summary.total_jobs_count} />
+          <div className="flex flex-wrap items-center gap-2">
+            <StateChips jobs={payload.jobs} />
+            {payload.summary.dependency_edge_count > 0 ? (
+              <span className="rounded bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-950/50 dark:text-violet-200">
+                {payload.summary.dependency_edge_count} {payload.summary.dependency_edge_count === 1 ? "dep" : "deps"}
+              </span>
+            ) : null}
+            {payload.summary.blocked ? <span className="rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-950/50 dark:text-amber-200">{payload.summary.blocked_reason || "Blocked"}</span> : null}
+          </div>
         </div>
       </header>
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, "Epic command failed.")}</PanelMessage> : null}
 
-      <DependencyGraph graph={payload.graph} />
-      <DependenciesSection command={dependencyCommand} currentEpicId={payload.epic.id} dependencies={payload.dependencies} dependents={payload.dependents} prefix={prefix} />
+      <div className="grid gap-6 lg:grid-cols-[62%_38%]">
+        <div className="space-y-6">
+          {payload.epic.description.trim() ? (
+            <section className="rounded border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+              <h2 className="font-semibold text-gray-900 dark:text-gray-100">Description</h2>
+              <Markdown className="chat-prose mt-2 text-sm text-gray-700 dark:text-gray-300" text={payload.epic.description} />
+            </section>
+          ) : null}
+          <JobsSection jobs={payload.jobs} newJobPath={`/jobs/new?repository_id=${payload.epic.repository.id}`} prefix={prefix} />
+          <DependencyGraph graph={payload.graph} />
+          <HistorySection versions={payload.versions || []} />
+        </div>
 
-      {payload.epic.description.trim() ? (
-        <section className="rounded border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Description</h2>
-          <Markdown className="chat-prose mt-2 text-sm text-gray-700 dark:text-gray-300" text={payload.epic.description} />
-        </section>
-      ) : null}
-
-      <HistorySection versions={payload.versions || []} />
-      <JobsSection jobs={payload.jobs} prefix={prefix} />
+        <div className="space-y-6">
+          <DependenciesSection command={dependencyCommand} currentEpicId={payload.epic.id} dependencies={payload.dependencies} dependents={payload.dependents} prefix={prefix} />
+          <DetailsPanel epic={payload.epic} prefix={prefix} />
+        </div>
+      </div>
     </>
   )
 }
@@ -201,7 +202,7 @@ function DependenciesSection({
   }
 
   return (
-    <section className="grid gap-4 lg:grid-cols-2">
+    <section className="space-y-4">
       <div className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100">Dependencies</h2>
         <h3 className="mt-3 text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Depends on</h3>
@@ -473,14 +474,15 @@ function DiffValue({ label, multiline = false, value }: { label: string; multili
   )
 }
 
-function JobsSection({ jobs, prefix }: { jobs: EpicDetailJob[]; prefix: string }) {
+export function JobsSection({ jobs, newJobPath, prefix }: { jobs: EpicDetailJob[]; newJobPath: string; prefix: string }) {
   return (
     <section className="rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-      <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+      <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
         <h2 className="font-semibold text-gray-900 dark:text-gray-100">Jobs</h2>
+        <Link className="text-xs text-blue-600 hover:underline dark:text-blue-400" to={withRoutePrefix(newJobPath, prefix)}>+ Add Job</Link>
       </div>
       {jobs.length > 0 ? (
-        <ul className="divide-y divide-gray-100 text-sm dark:divide-gray-800">
+        <ul className="divide-y divide-gray-100 text-sm dark:divide-gray-700">
           {jobs.map((job) => (
             <li className="flex flex-wrap items-center justify-between gap-3 px-4 py-3" key={job.id}>
               <div className="min-w-0">
@@ -500,6 +502,88 @@ function JobsSection({ jobs, prefix }: { jobs: EpicDetailJob[]; prefix: string }
       ) : (
         <p className="px-4 py-6 text-sm text-gray-400 dark:text-gray-500">No Jobs in this Epic.</p>
       )}
+    </section>
+  )
+}
+
+export function ProgressBar({ jobs, totalCount }: { jobs: EpicDetailJob[]; totalCount: number }) {
+  const doneCount = jobs.filter((job) => job.state === "merged" || job.state === "approved").length
+  const percent = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0
+
+  return (
+    <div aria-label={`${doneCount} of ${totalCount} jobs done`} aria-valuemax={totalCount} aria-valuemin={0} aria-valuenow={doneCount} className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700" role="progressbar">
+      <div className="h-2 rounded-full bg-blue-500 transition-[width]" style={{ width: `${percent}%` }} />
+    </div>
+  )
+}
+
+const STATE_CHIP_ORDER = ["open", "triaging", "implemented", "approved", "landing", "merged", "blocked_by_epic", "landing_failed", "closed", "preempted", "pending"]
+
+const STATE_CHIP_STYLES: Record<string, string> = {
+  open: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200",
+  triaging: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-200",
+  implemented: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-200",
+  approved: "bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-200",
+  landing: "bg-teal-100 text-teal-700 dark:bg-teal-950/50 dark:text-teal-200",
+  merged: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200",
+  blocked_by_epic: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-200",
+  landing_failed: "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-200",
+  closed: "bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-100",
+  preempted: "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-200",
+  pending: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+}
+
+export function StateChips({ jobs }: { jobs: EpicDetailJob[] }) {
+  const counts = new Map<string, number>()
+  for (const job of jobs) {
+    counts.set(job.state, (counts.get(job.state) || 0) + 1)
+  }
+  if (counts.size === 0) return null
+
+  const sortedStates = [...counts.keys()].sort((a, b) => {
+    const ai = STATE_CHIP_ORDER.indexOf(a)
+    const bi = STATE_CHIP_ORDER.indexOf(b)
+    if (ai === -1 && bi === -1) return a.localeCompare(b)
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
+
+  return (
+    <>
+      {sortedStates.map((state) => (
+        <span className={`rounded px-2 py-0.5 text-xs font-medium ${STATE_CHIP_STYLES[state] || "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200"}`} key={state}>
+          {counts.get(state)} {humanize(state)}
+        </span>
+      ))}
+    </>
+  )
+}
+
+function DetailsPanel({ epic, prefix }: { epic: EpicDetailPayload["epic"]; prefix: string }) {
+  const owner = epic.owner_user || epic.owner
+
+  return (
+    <section className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
+      <h2 className="font-semibold text-gray-900 dark:text-gray-100">Details</h2>
+      <dl className="mt-3 space-y-3">
+        <div>
+          <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Owner</dt>
+          <dd className="mt-0.5 text-gray-700 dark:text-gray-200">{owner ? owner.email_address : "Unclaimed"}</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Repository</dt>
+          <dd className="mt-0.5">
+            <Link className="font-mono text-blue-600 hover:underline dark:text-blue-300" to={withRoutePrefix(epic.repository.repository_path, prefix)}>
+              {epic.repository.slug}
+            </Link>
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Updated</dt>
+          <dd className="mt-0.5 text-gray-700 dark:text-gray-200" title={formatDateTime(epic.updated_at)}>{formatRelative(epic.updated_at)}</dd>
+        </div>
+      </dl>
     </section>
   )
 }
@@ -566,8 +650,60 @@ function PanelMessage({ children, tone = "success" }: { children: ReactNode; ton
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
+function primaryButton() {
+  return "rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-500 dark:hover:bg-blue-500"
+}
+
 function secondaryButton() {
   return "rounded border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-600"
+}
+
+function EpicActionsMenu({
+  disabled,
+  onTransition,
+  transitions
+}: {
+  disabled: boolean
+  onTransition: (transition: EpicStateTransition) => void
+  transitions: EpicStateTransition[]
+}) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useDismissiblePopup<HTMLDivElement>(open, () => setOpen(false))
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label="More actions"
+        className={secondaryButton()}
+        disabled={disabled}
+        onClick={() => setOpen((prev) => !prev)}
+        type="button"
+      >
+        ⋯
+      </button>
+      {open ? (
+        <div className="absolute left-0 z-20 mt-2 w-48 rounded border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-900" role="menu">
+          {transitions.map((transition) => (
+            <button
+              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-200 dark:hover:bg-gray-800"
+              disabled={disabled}
+              key={transition.target_state}
+              onClick={() => {
+                setOpen(false)
+                onTransition(transition)
+              }}
+              role="menuitem"
+              type="button"
+            >
+              {transition.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
 }
 
 function humanize(value: string) {
