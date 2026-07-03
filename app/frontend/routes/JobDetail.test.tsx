@@ -126,7 +126,7 @@ describe("JobDetailView", () => {
       unsatisfied_dependencies: [ parsedDependency, manualDependency ]
     }))
 
-    expect(screen.getByText("Waiting on 2 dependencies.")).toBeInTheDocument()
+    expect(screen.getByText("Blocked on 2 dependencies:")).toBeInTheDocument()
     expect(screen.getAllByRole("link", { name: "tkadauke/syrus JOB-1101 (queued)" })).toHaveLength(2)
     expect(screen.queryByText("tkadauke/syrus #1101 (queued)")).not.toBeInTheDocument()
     expect(screen.getAllByRole("link", { name: "tkadauke/syrus JOB-1101 (queued)" })[0])
@@ -305,11 +305,10 @@ describe("TestPlanPanel", () => {
     expect(screen.getByText("Check the Summary tab.")).toBeInTheDocument()
   })
 
-  it("renders the empty state when no test plan is available", () => {
+  it("renders nothing when no test plan is available", () => {
     render(<TestPlanPanel testPlan={null} />)
 
-    expect(screen.getByRole("heading", { name: "Test plan" })).toBeInTheDocument()
-    expect(screen.getByText("No test plan yet.")).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Test plan" })).not.toBeInTheDocument()
   })
 })
 
@@ -559,6 +558,7 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       can_unclaim: false,
       can_override_dependencies: false,
       can_view_timeline: false,
+      can_manage_tags: false,
       feedback_agent_options: [],
       rebase_agent_options: [],
       retry_agent_options: []
