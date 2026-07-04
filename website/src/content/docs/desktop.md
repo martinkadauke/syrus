@@ -11,8 +11,9 @@ double-click Syrus inside it (the app installs itself into
 up. No dragging, no terminal, no clone, no manual configuration.
 
 **[Download Syrus for Mac](https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg)**
-(Apple Silicon; Intel and other artifacts are on the
-[releases page](https://github.com/tkadauke/syrus/releases)).
+(Apple Silicon) ·
+**[Intel Macs](https://github.com/tkadauke/syrus/releases/latest/download/Syrus-Intel.dmg)** ·
+other artifacts on the [releases page](https://github.com/tkadauke/syrus/releases).
 
 ## What you get
 

@@ -98,10 +98,12 @@ RSpec.describe "desktop auto-update and release pipeline" do
     expect(release_workflow).to include("bin/publish-image")
   end
 
-  it "release workflow verifies the signature, stapling, and stable DMG alias" do
+  it "release workflow verifies the signature, stapling, and stable DMG aliases" do
     expect(release_workflow).to include("codesign --verify --deep --strict")
     expect(release_workflow).to include("xcrun stapler validate")
-    expect(release_workflow).to include("Syrus.dmg")
+    # Both permalinks: Syrus.dmg (Apple Silicon) and Syrus-Intel.dmg (x64).
+    expect(release_workflow).to match(%r{cp "desktop/out/Syrus-\$VERSION-arm64\.dmg" "\$RUNNER_TEMP/Syrus\.dmg"})
+    expect(release_workflow).to match(%r{cp "desktop/out/Syrus-\$VERSION-x64\.dmg" "\$RUNNER_TEMP/Syrus-Intel\.dmg"})
   end
 
   it "desktop CI covers typecheck, builds, and the installer's machine interface" do
