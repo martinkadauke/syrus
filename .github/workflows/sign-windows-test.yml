@@ -18,6 +18,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The four AZURE_SIGN_* values are account identifiers, not
+      # credentials — they may live as repo Variables (visible) or Secrets;
+      # either works. The first three are real credentials and must be
+      # Secrets.
       - name: "Guard: Azure signing secrets present"
         shell: bash
         run: |
@@ -26,17 +30,17 @@ jobs:
             if [ -z "${!var}" ]; then missing+=("$var"); fi
           done
           if [ "${#missing[@]}" -gt 0 ]; then
-            echo "::error::Missing secrets: ${missing[*]}. See docs/windows-signing.md."
+            echo "::error::Missing secrets/variables: ${missing[*]}. See docs/windows-signing.md."
             exit 1
           fi
         env:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT }}
-          AZURE_SIGN_ACCOUNT_NAME: ${{ secrets.AZURE_SIGN_ACCOUNT_NAME }}
-          AZURE_SIGN_CERT_PROFILE: ${{ secrets.AZURE_SIGN_CERT_PROFILE }}
-          AZURE_SIGN_PUBLISHER_NAME: ${{ secrets.AZURE_SIGN_PUBLISHER_NAME }}
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT || vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT_NAME: ${{ secrets.AZURE_SIGN_ACCOUNT_NAME || vars.AZURE_SIGN_ACCOUNT_NAME }}
+          AZURE_SIGN_CERT_PROFILE: ${{ secrets.AZURE_SIGN_CERT_PROFILE || vars.AZURE_SIGN_CERT_PROFILE }}
+          AZURE_SIGN_PUBLISHER_NAME: ${{ secrets.AZURE_SIGN_PUBLISHER_NAME || vars.AZURE_SIGN_PUBLISHER_NAME }}
 
       - uses: actions/setup-node@v4
         with:
@@ -59,12 +63,19 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT || vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT_NAME: ${{ secrets.AZURE_SIGN_ACCOUNT_NAME || vars.AZURE_SIGN_ACCOUNT_NAME }}
+          AZURE_SIGN_CERT_PROFILE: ${{ secrets.AZURE_SIGN_CERT_PROFILE || vars.AZURE_SIGN_CERT_PROFILE }}
+          AZURE_SIGN_PUBLISHER_NAME: ${{ secrets.AZURE_SIGN_PUBLISHER_NAME || vars.AZURE_SIGN_PUBLISHER_NAME }}
         run: |
+          # Normalize the endpoint: the portal shows it with a trailing
+          # slash, Invoke-TrustedSigning wants the bare origin.
+          AZURE_SIGN_ENDPOINT="${AZURE_SIGN_ENDPOINT%/}"
           npm --prefix desktop run build -- --win --publish never \
-            "-c.win.azureSignOptions.publisherName=${{ secrets.AZURE_SIGN_PUBLISHER_NAME }}" \
-            "-c.win.azureSignOptions.endpoint=${{ secrets.AZURE_SIGN_ENDPOINT }}" \
-            "-c.win.azureSignOptions.certificateProfileName=${{ secrets.AZURE_SIGN_CERT_PROFILE }}" \
-            "-c.win.azureSignOptions.codeSigningAccountName=${{ secrets.AZURE_SIGN_ACCOUNT_NAME }}"
+            "-c.win.azureSignOptions.publisherName=${AZURE_SIGN_PUBLISHER_NAME}" \
+            "-c.win.azureSignOptions.endpoint=${AZURE_SIGN_ENDPOINT}" \
+            "-c.win.azureSignOptions.certificateProfileName=${AZURE_SIGN_CERT_PROFILE}" \
+            "-c.win.azureSignOptions.codeSigningAccountName=${AZURE_SIGN_ACCOUNT_NAME}"
 
       - name: Verify the signature
         shell: pwsh

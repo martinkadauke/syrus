@@ -75,8 +75,16 @@ rejected for identity validation.
 ## 5. Service principal for CI (no interactive login in Actions)
 
 1. Portal search → **Microsoft Entra ID** → **App registrations** →
-   **New registration**. Name it e.g. `syrus-release-ci`. Leave the
-   default (single tenant) account type. Register.
+   **New registration**. Name it e.g. `syrus-release-ci`. Supported
+   account types MUST stay on the default, **"Accounts in this
+   organizational directory only"** (single tenant) — picking
+   **"Personal Microsoft accounts only"** registers the app outside your
+   directory, so it never shows up in the IAM member picker in step 4
+   below and client-secret auth against your tenant fails. If you
+   already created it with the wrong type, delete it and re-register
+   (the client ID and secret change; the tenant ID doesn't). Leave
+   **Redirect URI** empty — CI uses the client-credentials flow, which
+   has no interactive login and no redirect. Register.
 2. From the app's **Overview** page, copy:
    - **Application (client) ID** → `AZURE_CLIENT_ID`
    - **Directory (tenant) ID** → `AZURE_TENANT_ID`
@@ -92,6 +100,10 @@ rejected for identity validation.
    Registration is a service principal, so it only shows up under the
    first option) → **Select members** → search the app registration's
    name (e.g. `syrus-release-ci`) → select it → Review + assign.
+   Assigning the role to your own user account instead does nothing for
+   CI: the workflow authenticates as the app registration, not as you.
+   If the app doesn't appear in the picker, it was almost certainly
+   registered with the wrong account type — see step 1.
 
 ## 6. Repo secrets
 
@@ -111,9 +123,12 @@ you're testing there first):
 | `AZURE_SIGN_PUBLISHER_NAME` | The exact CN from step 4 | Not secret |
 
 None of the last five are truly sensitive (they're account identifiers, not
-credentials) — they're kept as Secrets rather than Variables purely so
-there's one settings page to manage instead of two. The client secret is
-the only one that actually gates signing access.
+credentials). The four `AZURE_SIGN_*` values may live as **Secrets or as
+Variables** — the workflow reads Secrets first and falls back to Variables,
+so either page works. The first three are real credentials and must be
+Secrets. The client secret is the only one that actually gates signing
+access. The endpoint is normalized in the workflow, so a trailing slash
+copied from the portal is harmless.
 
 The first three (`AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET`)
 are read directly by the Azure SDK's `EnvironmentCredential` — nothing in
@@ -132,6 +147,21 @@ Run **Actions → Sign Windows build (test) → Run workflow** (manual
 dispatch only — this never fires automatically). It builds both archs,
 signs via Azure, and runs `Get-AuthenticodeSignature` to verify the result
 is `Valid` before uploading the installers as a workflow artifact.
+
+**GitHub gotcha: `workflow_dispatch` workflows only appear in the Actions
+tab when the workflow file exists on the repository's default branch.**
+While this file lives only on a feature branch, the button simply isn't
+there (and `gh workflow run` can't find it either). Until the branch
+merges, test from a fork: push the feature branch to the fork's `main`
+(`git push <fork> <branch>:main --force` — fine when the fork's main has
+nothing unique), add the same secrets/variables to the fork, and dispatch
+there. The signing account doesn't care which repo the request comes
+from — only the Azure credentials matter.
+
+Prerequisites worth double-checking before the first run: identity
+validation shows **Completed**, the certificate profile shows **Active**,
+and `AZURE_SIGN_PUBLISHER_NAME` matches the profile's certificate CN
+byte-for-byte (shown on the certificate profile page).
 
 ## 8. Local signing (and why it doesn't work from this Mac)
 
