@@ -13,6 +13,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$ROOT/bin/release-lib"
+. "$ROOT/bin/signing-env"
 
 VERSION=""
 UPLOAD=0
@@ -135,6 +136,13 @@ echo "== Building desktop main process =="
 npm --prefix "$ROOT/desktop" run build:main
 
 clean_desktop_package_output
+
+# Loads ~/.config/syrus/mac-signing.env (and its Windows counterpart, which
+# is a no-op unless this happens to run on an actual Windows host) — see
+# bin/signing-env. Absent those files, this produces the same unsigned
+# local build as before.
+syrus_load_mac_signing_env
+syrus_load_windows_signing_env
 
 echo "== Packaging desktop app =="
 (

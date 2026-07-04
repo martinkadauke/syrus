@@ -63,6 +63,36 @@ Actions). The auto-update feed (`publish:` in `desktop/electron-builder.yml`)
 is baked into shipped apps — moving Releases to another repo later strands
 installed apps on the old feed.
 
+## Signing locally
+
+`bin/release-desktop` (via `bin/signing-env`) reads the same credentials
+from `~/.config/syrus/` instead of repo secrets, so a signed, notarized
+build works identically on your own machine — useful for verifying
+signing/notarization changes without spending a CI run or a real tag.
+electron-builder reads `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
+`APPLE_API_KEY_ID`, and `APPLE_API_ISSUER` straight from the environment;
+nothing else changes between a local build and CI.
+
+1. `~/.config/syrus/mac-signing.env` (`chmod 600`), dotenv-style:
+
+   ```
+   CSC_LINK=<base64 of the .p12 — base64 -i cert.p12>
+   CSC_KEY_PASSWORD=<the .p12 export password>
+   APPLE_API_KEY_ID=<from the App Store Connect API key>
+   APPLE_API_ISSUER=<from the same page>
+   ```
+
+2. `~/.config/syrus/apple-api-key.p8` (`chmod 600`) — the App Store Connect
+   API key file itself, downloaded once from
+   <https://appstoreconnect.apple.com/access/integrations/api> (App Store
+   Connect only lets you download it once; keep a copy somewhere safe).
+
+With both present, `bin/release-desktop` signs and notarizes exactly like
+`release-desktop.yml` does. Without them, it falls back to today's
+unsigned local build — nothing breaks if you skip this. This file is not
+read by anything else and is never committed; it plays the same role
+locally that repo secrets play in CI.
+
 ## Why unsigned releases are blocked
 
 The workflow refuses to publish a tag build without signing secrets:

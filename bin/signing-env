@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Shared loader for local desktop code-signing credentials. Source this
+# file; do not execute it directly.
+#
+# Mirrors the ~/.config/syrus/ghcr-token convention (bin/docker-image-lib):
+# secrets live in a chmod-600 file under ~/.config/syrus/, never in the
+# repo or shell history, and CI and a human running bin/release-desktop by
+# hand use the exact same env var names either way (docs/releasing.md,
+# docs/windows-signing.md).
+
+# macOS signing + notarization. Reads ~/.config/syrus/mac-signing.env
+# (CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY_ID, APPLE_API_ISSUER — the
+# same names release-desktop.yml sets from repo secrets) plus the App
+# Store Connect API key file at ~/.config/syrus/apple-api-key.p8. electron-
+# builder reads all of these straight from the environment; nothing else
+# has to change for a local build to sign and notarize the same way CI
+# does. Silently no-ops if the env file is absent, so bin/release-desktop
+# keeps producing today's unsigned local build until you add one.
+syrus_load_mac_signing_env() {
+  local env_file="$HOME/.config/syrus/mac-signing.env"
+  local key_file="$HOME/.config/syrus/apple-api-key.p8"
+
+  [ -f "$env_file" ] || return 0
+
+  syrus_signing_warn_permissive "$env_file"
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+
+  if [ -f "$key_file" ]; then
+    syrus_signing_warn_permissive "$key_file"
+    export APPLE_API_KEY="$key_file"
+  fi
+
+  echo "== Loaded local macOS signing credentials from $env_file =="
+}
+
+# Windows signing (Azure Artifact Signing). electron-builder's
+# win.azureSignOptions shells out to the Windows-only Invoke-TrustedSigning
+# PowerShell module, so there is no working local-signing path from macOS
+# or Linux — a Windows cross-build done on this Mac stays unsigned no
+# matter what's in this file (see "Local signing" in docs/windows-signing.md).
+# This loader exists so the identical ~/.config/syrus/windows-signing.env
+# file (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET,
+# AZURE_SIGN_ENDPOINT, AZURE_SIGN_ACCOUNT_NAME, AZURE_SIGN_CERT_PROFILE,
+# AZURE_SIGN_PUBLISHER_NAME) works unmodified if this script ever runs on
+# an actual Windows host (Git Bash/WSL). It's a deliberate no-op everywhere
+# else, guarded on uname so it never fires on macOS/Linux.
+syrus_load_windows_signing_env() {
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *) return 0 ;;
+  esac
+
+  local env_file="$HOME/.config/syrus/windows-signing.env"
+  [ -f "$env_file" ] || return 0
+
+  syrus_signing_warn_permissive "$env_file"
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
+
+  echo "== Loaded local Windows signing credentials from $env_file =="
+}
+
+syrus_signing_warn_permissive() {
+  local file="$1"
+  local mode
+
+  # GNU stat (-c) first: BSD/macOS stat also accepts -f without erroring,
+  # but means something else entirely ("filesystem status", not file mode),
+  # so trying it first would silently misparse on Linux. GNU stat rejects
+  # -c on macOS, so the fallback order below is safe on both.
+  mode="$(stat -c '%a' "$file" 2>/dev/null || stat -f '%Lp' "$file" 2>/dev/null || echo "")"
+  if [ -n "$mode" ] && [ "$mode" != "600" ]; then
+    echo "warning: $file is mode $mode, not 600 — run: chmod 600 $file" >&2
+  fi
+}

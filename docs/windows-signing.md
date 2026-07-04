@@ -85,8 +85,13 @@ rejected for identity validation.
    `AZURE_CLIENT_SECRET`.
 4. Grant that app permission to sign: go back to your Trusted Signing
    Account (step 2) → **Access control (IAM)** → **Add role assignment** →
-   role **"Trusted Signing Certificate Profile Signer"** → assign to the
-   `syrus-release-ci` app registration (search by name under "Members").
+   role **"Trusted Signing Certificate Profile Signer"** → **Members** tab →
+   **Assign access to: "User, group, or service principal"** (NOT
+   "Managed identity" — a managed identity is a different Azure object,
+   auto-created and tied to an Azure resource like a VM; an App
+   Registration is a service principal, so it only shows up under the
+   first option) → **Select members** → search the app registration's
+   name (e.g. `syrus-release-ci`) → select it → Review + assign.
 
 ## 6. Repo secrets
 
@@ -128,7 +133,27 @@ dispatch only — this never fires automatically). It builds both archs,
 signs via Azure, and runs `Get-AuthenticodeSignature` to verify the result
 is `Valid` before uploading the installers as a workflow artifact.
 
-## 8. Going live
+## 8. Local signing (and why it doesn't work from this Mac)
+
+Unlike macOS signing, there is no working local-signing path for Windows
+from a non-Windows host. `win.azureSignOptions` shells out to Azure's
+`Invoke-TrustedSigning` PowerShell module, which requires an actual Windows
+machine — there's no macOS/Linux client for electron-builder's built-in
+integration. So a Windows `.exe` cross-built on this Mac stays unsigned
+regardless of what credentials are on disk; `windows-latest` in CI (or a
+real Windows box, if one ever enters the picture) is the only place
+signing actually happens today.
+
+The plumbing is still in place for that day: `bin/signing-env`'s
+`syrus_load_windows_signing_env` reads
+`~/.config/syrus/windows-signing.env` (same seven vars as the repo secrets
+table above) and exports them — but only when `uname -s` reports a genuine
+Windows shell (Git Bash/WSL's `MINGW*`/`MSYS*`/`CYGWIN*`); it's a silent
+no-op on Darwin/Linux so it can't produce a false sense of "signed" here.
+`bin/release-desktop` doesn't cross-build a Windows target at all today
+(no `--win` wiring), so this only matters once that lands.
+
+## 9. Going live
 
 Merging this into `release-desktop.yml` (so every `vX.Y.Z` tag ships a
 signed Windows build alongside the mac one) is deliberately deferred until
