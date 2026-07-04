@@ -148,7 +148,7 @@ RSpec.describe ChatTurnJob do
     expect(received[:prompt]).to include("Attached context:")
     expect(received[:prompt]).to include("#{epic.slug}: Stabilize the aqueduct")
     expect(received[:prompt]).to include("Make the water arrive")
-    expect(received[:prompt]).to include("JOB-#{child.id}: Seal the northern arch")
+    expect(received[:prompt]).to include("#{child.slug}: Seal the northern arch")
     expect(received[:prompt]).to include("Use `read_epic` with id #{epic.id}")
   end
 

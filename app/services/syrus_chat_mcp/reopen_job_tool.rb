@@ -27,7 +27,7 @@ module SyrusChatMcp
           chat_session,
           action: "reopen_job",
           payload: { "job_id" => job.id },
-          message: "Reopen JOB-#{job.id}?"
+          message: "Reopen #{job.slug}?"
         )
       rescue ActiveRecord::RecordInvalid => e
         invalid_record(e)

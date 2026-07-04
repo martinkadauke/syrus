@@ -341,13 +341,13 @@ class AgentEnvironmentSnapshot
       suffix = jobs.any? ? " with jobs: #{jobs.join(', ')}" : ""
       "- #{proposal.epic.slug} #{proposal.epic.title.inspect} confirmed#{suffix} (proposal slug: #{proposal.slug})"
     when Job
-      "- JOB-#{proposal.job.id} #{proposal.job.issue_title.inspect} confirmed (proposal slug: #{proposal.slug})"
+      "- #{proposal.job.slug} #{proposal.job.issue_title.inspect} confirmed (proposal slug: #{proposal.slug})"
     else
       "- Proposal #{proposal.title.inspect} was #{proposal.state} (proposal slug: #{proposal.slug})"
     end
   end
 
   def proposal_child_job_label(job)
-    "JOB-#{job.id} #{job.issue_title.inspect}"
+    "#{job.slug} #{job.issue_title.inspect}"
   end
 end

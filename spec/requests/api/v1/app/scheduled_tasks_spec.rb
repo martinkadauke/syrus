@@ -254,7 +254,7 @@ RSpec.describe "API: /api/v1/app/scheduled_tasks", type: :request do
     post "/api/v1/app/scheduled_tasks/#{task.id}/fire_now"
 
     expect(response).to have_http_status(:ok)
-    expect(parse_body["message"]).to eq("Fired (JOB-#{job.id}).")
+    expect(parse_body["message"]).to eq("Fired (#{job.slug}).")
     expect(parse_body["fire_result"]).to include("fired" => true, "job_id" => job.id)
   end
 

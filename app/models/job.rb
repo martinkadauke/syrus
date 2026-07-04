@@ -726,7 +726,7 @@ class Job < ApplicationRecord
         kind: "job_failed",
         job: self,
         pr_url: notification_pr_url,
-        body: "JOB-#{id} failed after repeated retries: #{title.truncate(80)}"
+        body: "#{slug} failed after repeated retries: #{title.truncate(80)}"
       )
     end
   end
@@ -786,7 +786,7 @@ class Job < ApplicationRecord
       kind: "job_implemented",
       job: self,
       pr_url: notification_pr_url,
-      body: "Syrus opened PR ##{pr_number} for JOB-#{id}: #{title.truncate(80)}"
+      body: "Syrus opened PR ##{pr_number} for #{slug}: #{title.truncate(80)}"
     )
   end
 
@@ -798,7 +798,7 @@ class Job < ApplicationRecord
       kind: "pr_merged",
       job: self,
       pr_url: notification_pr_url,
-      body: "JOB-#{id} merged: #{title.truncate(80)}"
+      body: "#{slug} merged: #{title.truncate(80)}"
     )
   end
 

@@ -218,7 +218,7 @@ RSpec.describe "SyrusChatMcp job control tools" do
     response = call_tool("update_job", job_id: job.id, title: "New title", description: "New description")
 
     expect(response.dig(:result, :isError)).to be true
-    expect(response.dig(:result, :content, 0, :text)).to include("JOB-#{job.id} is closed and cannot be updated.")
+    expect(response.dig(:result, :content, 0, :text)).to include("#{job.slug} is closed and cannot be updated.")
     expect(job.reload).to have_attributes(issue_title: "Old title", issue_body: "Old description")
   end
 

@@ -27,7 +27,7 @@ module SyrusChatMcp
           chat_session,
           action: "check_job_mergeability",
           payload: { "job_id" => job.id },
-          message: "Check mergeability for JOB-#{job.id}?"
+          message: "Check mergeability for #{job.slug}?"
         )
       rescue ActiveRecord::RecordInvalid => e
         invalid_record(e)

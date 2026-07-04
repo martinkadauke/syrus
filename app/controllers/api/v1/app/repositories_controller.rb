@@ -238,7 +238,7 @@ module Api
           render json: repository_detail_payload(
             repository.reload,
             page: detail_page,
-            message: "Released JOB-#{job.id} for triage."
+            message: "Released #{job.slug} for triage."
           )
         end
 

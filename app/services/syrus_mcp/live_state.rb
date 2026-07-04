@@ -45,7 +45,7 @@ module SyrusMcp
     def job_payload
       {
         id: job.id,
-        slug: "JOB-#{job.id}",
+        slug: job.slug,
         kind: job.kind,
         state: job.state,
         repository: job.repository.slug,

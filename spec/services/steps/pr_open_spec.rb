@@ -52,7 +52,7 @@ RSpec.describe Steps::PrOpen do
       ## Test Plan
 
       ```sh
-      syrus checkout JOB-#{job.id}
+      syrus checkout #{job.slug}
       ```
     MARKDOWN
     expect(body).to include("- Run bin/rspec spec/services/steps/pr_open_spec.rb")

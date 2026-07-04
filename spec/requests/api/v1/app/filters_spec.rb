@@ -73,7 +73,7 @@ RSpec.describe "API: /api/v1/app/filters", type: :request do
     epic = Factories.epic(user:, repository: repo, title: "Unrelated epic")
     sign_in_as(user)
 
-    get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: "JOB-#{job.id}" }
+    get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: job.slug }
     expect(parse_body["options"].map { |row| row["value"] }).to include(job.id)
 
     get "/api/v1/app/filters/fk_options", params: { field: "job_id", q: job.id.to_s }

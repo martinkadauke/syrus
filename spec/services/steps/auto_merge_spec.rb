@@ -56,7 +56,7 @@ RSpec.describe Steps::AutoMerge do
 
     expect(client).to have_received(:merge_pull_request)
       .with("acme/widgets", 7, hash_including(merge_method: "rebase"))
-    expect(client).to have_received(:add_issue_comment).with("acme/widgets", 7, include("JOB-#{job.id}"))
+    expect(client).to have_received(:add_issue_comment).with("acme/widgets", 7, include(job.slug))
     expect(job.reload).to be_closed
     expect(job.closure_reason).to eq("pr_merged")
   end

@@ -1697,15 +1697,15 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(response).to have_http_status(:ok)
     expect(parse_body["message"]).to match(/\AProposal confirmed and filed as JOB-\d+\.\z/)
     expect(confirmed.reload).to be_confirmed
-    expect(parse_body["messages"].first.dig("proposal", "materialized_label")).to eq("JOB-#{confirmed.job.id}")
+    expect(parse_body["messages"].first.dig("proposal", "materialized_label")).to eq("#{confirmed.job.slug}")
     confirmation_message = chat.messages.where(role: "system").order(:created_at, :id).last
     expect(confirmation_message).to have_attributes(role: "system", proposal_id: nil)
     expect(confirmation_message.proposal_id).to be_nil
     expect(confirmation_message.content).to eq(
-      "text" => %(Proposal confirmed. JOB-#{confirmed.job.id} "Map auth" was created.),
+      "text" => %(Proposal confirmed. #{confirmed.job.slug} "Map auth" was created.),
       "source" => "proposal_notification",
       "outcome" => "confirmed",
-      "acknowledgment" => "Confirmed JOB-#{confirmed.job.id}."
+      "acknowledgment" => "Confirmed #{confirmed.job.slug}."
     )
     expect(ChatTurnJob).to have_been_enqueued.with(chat.id, confirmation_message.id)
 
@@ -1805,7 +1805,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(confirmation_message).to have_attributes(role: "system", proposal_id: nil)
     expect(confirmation_message.content.fetch("text")).to eq(
       "Proposal confirmed. Epic ##{proposal.epic.id} \"Ship auth\" was created. " \
-      "Child jobs: JOB-#{schema.job.id} \"Auth schema\", JOB-#{ui.job.id} \"Auth UI\"."
+      "Child jobs: #{schema.job.slug} \"Auth schema\", #{ui.job.slug} \"Auth UI\"."
     )
     expect(confirmation_message.content).to include(
       "source" => "proposal_notification",
@@ -1955,8 +1955,8 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     get "/api/v1/app/chats/#{chat.id}"
 
     expect(parse_body["pending_actions"]).to contain_exactly(
-      include("id" => confirm_action.id, "label" => "Cancel JOB-#{job_to_cancel.id}", "app_confirm_path" => "/api/v1/app/chats/#{chat.id}/pending_actions/#{confirm_action.id}/confirm"),
-      include("id" => reject_action.id, "label" => "Cancel JOB-#{job_to_keep.id}", "app_cancel_path" => "/api/v1/app/chats/#{chat.id}/pending_actions/#{reject_action.id}")
+      include("id" => confirm_action.id, "label" => "Cancel #{job_to_cancel.slug}", "app_confirm_path" => "/api/v1/app/chats/#{chat.id}/pending_actions/#{confirm_action.id}/confirm"),
+      include("id" => reject_action.id, "label" => "Cancel #{job_to_keep.slug}", "app_cancel_path" => "/api/v1/app/chats/#{chat.id}/pending_actions/#{reject_action.id}")
     )
 
     post "/api/v1/app/chats/#{chat.id}/pending_actions/#{confirm_action.id}/confirm"
@@ -1987,7 +1987,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     get "/api/v1/app/chats/#{chat.id}"
 
     expect(parse_body["pending_actions"]).to contain_exactly(
-      include("id" => action.id, "label" => "Submit feedback on JOB-#{job.id}", "detail" => "Please tighten this implementation.", "chat_message_id" => message.id)
+      include("id" => action.id, "label" => "Submit feedback on #{job.slug}", "detail" => "Please tighten this implementation.", "chat_message_id" => message.id)
     )
 
     expect {
@@ -2029,7 +2029,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     get "/api/v1/app/chats/#{chat.id}"
 
     expect(parse_body["pending_actions"]).to contain_exactly(
-      include("id" => action.id, "state" => "queued", "label" => "Submit feedback on JOB-#{job.id}", "detail" => "Please tighten this implementation.")
+      include("id" => action.id, "state" => "queued", "label" => "Submit feedback on #{job.slug}", "detail" => "Please tighten this implementation.")
     )
 
     delete "/api/v1/app/chats/#{chat.id}/pending_actions/#{action.id}"

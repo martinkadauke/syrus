@@ -16,9 +16,9 @@ RSpec.describe ChatProposalOutcomeNotification do
     )
 
     expect(described_class.confirmed_message(proposal)).to eq(
-      %(Proposal "Map auth" was confirmed as JOB-#{job.id} (proposal slug: auth-map).)
+      %(Proposal "Map auth" was confirmed as #{job.slug} (proposal slug: auth-map).)
     )
-    expect(described_class.acknowledgment(proposal, outcome: :confirmed)).to eq("Confirmed JOB-#{job.id}.")
+    expect(described_class.acknowledgment(proposal, outcome: :confirmed)).to eq("Confirmed #{job.slug}.")
   end
 
   it "builds a confirmed Epic notification with child Jobs" do
@@ -52,7 +52,7 @@ RSpec.describe ChatProposalOutcomeNotification do
 
     expect(described_class.confirmed_message(proposal)).to eq(
       "Proposal \"Ship auth\" was confirmed as #{epic.slug} " \
-      "with child jobs JOB-#{schema_job.id}, JOB-#{ui_job.id} (proposal slug: ship-auth)."
+      "with child jobs #{schema_job.slug}, #{ui_job.slug} (proposal slug: ship-auth)."
     )
     expect(described_class.acknowledgment(proposal, outcome: :confirmed)).to eq("Confirmed #{epic.slug}.")
   end

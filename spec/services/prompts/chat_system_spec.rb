@@ -279,8 +279,8 @@ RSpec.describe Prompts::ChatSystem do
     out = described_class.new(repository: repo, chat_session: chat).to_s
 
     expect(out).to include("Recent proposal activity:")
-    expect(out).to include(%(- #{epic.slug} "Chat-driven job feedback loop" confirmed with jobs: JOB-#{child_job.id} "Add trigger" (proposal slug: feedback-loop)))
-    expect(out).to include(%(- JOB-#{child_job.id} "Add trigger" confirmed (proposal slug: add-trigger)))
+    expect(out).to include(%(- #{epic.slug} "Chat-driven job feedback loop" confirmed with jobs: #{child_job.slug} "Add trigger" (proposal slug: feedback-loop)))
+    expect(out).to include(%(- #{child_job.slug} "Add trigger" confirmed (proposal slug: add-trigger)))
     expect(out).to include(%(- Proposal "Some title" was rejected (proposal slug: some-title)))
   end
 
@@ -392,10 +392,10 @@ RSpec.describe Prompts::ChatSystem do
     expect(out).to include("Epics:")
     expect(out).to include("#{epic.slug}: Drain the forum")
     expect(out).to include("Move the puddle")
-    expect(out).to include("JOB-#{child.id}: Install the humble channel")
+    expect(out).to include("#{child.slug}: Install the humble channel")
     expect(out).to include("Use `read_epic` with id #{epic.id}")
     expect(out).to include("Jobs:")
-    expect(out).to include("JOB-#{attached_job.id}: Inventory existing drains")
+    expect(out).to include("#{attached_job.slug}: Inventory existing drains")
     expect(out).to include("Documents:")
     expect(out).to include("[#{document.id}] Drainage notes (Google Doc; use `read_repo_document`)")
     expect(out.index("Attached context:")).to be < out.index("What Syrus is")

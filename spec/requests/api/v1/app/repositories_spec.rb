@@ -634,7 +634,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(job.reload).to be_queued
-    expect(parse_body["message"]).to eq("Released JOB-#{job.id} for triage.")
+    expect(parse_body["message"]).to eq("Released #{job.slug} for triage.")
     transition = StateTransition.for_subject(job).find_by!(event_name: "release_for_triage")
     expect(transition).to have_attributes(
       from_state: "needs_triage",

@@ -19,13 +19,13 @@ class ChatProposalOutcomeNotification
 
   def confirmed_message
     if proposal.job
-      return "Proposal \"#{proposal.title}\" was confirmed as JOB-#{proposal.job.id} " \
+      return "Proposal \"#{proposal.title}\" was confirmed as #{proposal.job.slug} " \
         "(proposal slug: #{proposal.slug})."
     end
 
     if proposal.epic
       child_job_labels = proposal.child_proposals.confirmed.includes(:job).filter_map do |child|
-        "JOB-#{child.job.id}" if child.job
+        "#{child.job.slug}" if child.job
       end
 
       if child_job_labels.any?
@@ -57,7 +57,7 @@ class ChatProposalOutcomeNotification
   attr_reader :proposal
 
   def confirmed_acknowledgment
-    return "Confirmed JOB-#{proposal.job.id}." if proposal.job
+    return "Confirmed #{proposal.job.slug}." if proposal.job
     return "Confirmed #{proposal.epic.slug}." if proposal.epic
 
     "Confirmed proposal #{proposal.slug}."

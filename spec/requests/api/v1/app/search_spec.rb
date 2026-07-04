@@ -99,7 +99,7 @@ RSpec.describe "App API unified search", type: :request do
   it "returns an existing job when searching by JOB slug" do
     job = Factories.job_record(user: user, repository: repository, issue_title: "Unindexed slug target")
 
-    get "/api/v1/app/search", params: { q: "JOB-#{job.id}" }
+    get "/api/v1/app/search", params: { q: job.slug }
 
     expect(response).to have_http_status(:ok)
     expect(parse_body).to include(
@@ -107,7 +107,7 @@ RSpec.describe "App API unified search", type: :request do
         "type" => "job",
         "id" => job.id,
         "title" => "Unindexed slug target",
-        "snippet" => "<mark>JOB-#{job.id}</mark>",
+        "snippet" => "<mark>#{job.slug}</mark>",
         "path" => job_path(job),
         "repository_slug" => "acme/widgets"
       )

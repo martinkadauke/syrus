@@ -244,7 +244,7 @@ module Steps
         "## Test Plan",
         "",
         "```sh",
-        "syrus checkout JOB-#{job.id}",
+        "syrus checkout #{job.slug}",
         "```",
         ""
       ]

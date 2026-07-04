@@ -27,7 +27,7 @@ module SyrusChatMcp
           chat_session,
           action: "poll_job_feedback",
           payload: { "job_id" => job.id },
-          message: "Poll PR feedback for JOB-#{job.id}?"
+          message: "Poll PR feedback for #{job.slug}?"
         )
       rescue ActiveRecord::RecordInvalid => e
         invalid_record(e)

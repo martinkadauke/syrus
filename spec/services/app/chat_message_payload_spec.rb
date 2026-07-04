@@ -127,7 +127,7 @@ RSpec.describe App::ChatMessagePayload do
       id: action.id,
       action: "cancel_job",
       state: "pending",
-      label: "Cancel JOB-#{job.id}",
+      label: "Cancel #{job.slug}",
       detail: nil,
       app_confirm_path: "/api/v1/app/chats/#{chat.id}/pending_actions/#{action.id}/confirm",
       app_reject_path: "/api/v1/app/chats/#{chat.id}/pending_actions/#{action.id}/reject",
@@ -306,7 +306,7 @@ RSpec.describe App::ChatMessagePayload do
 
     expect(ui_payload.fetch(:dependency_details)).to contain_exactly(
       include(slug: "schema", scope: "sibling", materialized_label: nil, materialized_path: nil),
-      include(slug: "upstream-job", scope: "cross_card", materialized_label: "JOB-#{cross_card.job.id}", materialized_path: "/jobs/#{cross_card.job.id}")
+      include(slug: "upstream-job", scope: "cross_card", materialized_label: "#{cross_card.job.slug}", materialized_path: "/jobs/#{cross_card.job.id}")
     )
   end
 

@@ -90,8 +90,8 @@ RSpec.describe AgentEnvironmentSnapshot do
       snapshot = described_class.for_chat(repository: repo, chat_session: chat)
 
       expect(snapshot).to include("Recent proposal activity:")
-      expect(snapshot).to include(%(- #{epic.slug} "Rebuild the forum" confirmed with jobs: JOB-#{child_job.id} "Add arches" (proposal slug: forum)))
-      expect(snapshot).to include(%(- JOB-#{child_job.id} "Add arches" confirmed (proposal slug: add-arches)))
+      expect(snapshot).to include(%(- #{epic.slug} "Rebuild the forum" confirmed with jobs: #{child_job.slug} "Add arches" (proposal slug: forum)))
+      expect(snapshot).to include(%(- #{child_job.slug} "Add arches" confirmed (proposal slug: add-arches)))
     end
 
     it "renders developer elaboration Epic context for backlog Epics with no Jobs" do
