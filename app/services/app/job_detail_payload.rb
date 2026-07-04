@@ -373,14 +373,13 @@ module App
             next unless body.present?
 
             source = workflow.artifacts&.dig("feedback_source")
-            entry = {
+            {
               kind: "chat_feedback",
               body: body,
               created_at: iso8601(workflow.created_at),
-              state: workflow.state
+              state: workflow.state,
+              feedback_source: source
             }
-            entry[:feedback_source] = source if source
-            entry
           when "pr_comment"
             comments = Array(workflow.artifacts&.dig("pr_comments"))
             next if comments.empty?
@@ -394,7 +393,8 @@ module App
               kind: "pr_comment",
               body: body,
               created_at: iso8601(workflow.created_at),
-              state: workflow.state
+              state: workflow.state,
+              feedback_source: nil
             }
           end
         end
