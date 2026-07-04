@@ -10,6 +10,14 @@ export function isDesktopShell(): boolean {
   return /\bSyrusDesktop\//.test(navigator.userAgent)
 }
 
+// The desktop app announces its build sha as a UA token
+// (SyrusDesktopBuild/<sha>) so the web UI can show which app build is
+// hosting it — see BuildBadge.
+export function desktopBuildSha(): string | null {
+  const match = navigator.userAgent.match(/\bSyrusDesktopBuild\/([0-9a-zA-Z._-]+)/)
+  return match?.[1] ?? null
+}
+
 // Opens a URL in a new tab (or, in the desktop shell, wherever the shell
 // routes it). Returns false only when a browser popup blocker genuinely
 // swallowed the open. Deliberately not passing the `noopener` feature:

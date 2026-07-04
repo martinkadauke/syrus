@@ -100,6 +100,7 @@ export type RepositoryCredentialStatus = {
   installation_account: string | null
   github_app_registered: boolean
   install_url: string | null
+  generic_install_url?: string | null
   register_path: string | null
   previous_installation_removed: boolean
   missing_github_ids: boolean

@@ -26,6 +26,9 @@ export const installerScriptPath = () => path.join(installerAssetsDir(), "instal
 // falls back to ghcr.io/tkadauke/syrus-local:latest.
 export type BackendManifest = {
   image?: string
+  // The app's own build sha (git short sha at packaging time), announced as
+  // a User-Agent token so the web UI's BuildBadge can show it.
+  appBuild?: string
 }
 
 export const readBackendManifest = async (): Promise<BackendManifest | null> => {

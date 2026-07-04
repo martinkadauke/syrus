@@ -255,6 +255,22 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
                     <Spinner /> Waiting for GitHub — this updates by itself once the App is installed…
                   </p>
                 ) : null}
+                {!awaitingInstall && saved.credential_status.generic_install_url ? (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Recommended:{" "}
+                    <button
+                      className="font-medium text-blue-700 dark:text-blue-300 underline hover:no-underline"
+                      type="button"
+                      onClick={() => {
+                        openInNewTab(saved.credential_status.generic_install_url as string)
+                        setAwaitingInstall(true)
+                      }}
+                    >
+                      install for all repositories
+                    </button>{" "}
+                    instead — every repo you add later connects automatically.
+                  </p>
+                ) : null}
               </>
             )}
 

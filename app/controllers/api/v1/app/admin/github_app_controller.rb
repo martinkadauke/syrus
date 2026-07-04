@@ -24,8 +24,11 @@ module Api
           # normally only discovered by the recurring 5-minute sync. The setup
           # UIs call this while the operator is on GitHub's install page so
           # detection takes seconds instead. Cache-throttled: hammering it
-          # from a 3s poll enqueues at most one sync per window.
-          SYNC_THROTTLE = 15.seconds
+          # from a 3s poll enqueues at most one sync per window. 5s is far
+          # from GitHub's app-auth rate limits (one installations-list call
+          # per sync) — the throttle exists to keep the queue tidy, and it is
+          # the detection-latency floor, so keep it short.
+          SYNC_THROTTLE = 5.seconds
 
           def sync_installations
             enqueued = Rails.cache.write("github_app_sync_installations_throttle", 1, unless_exist: true, expires_in: SYNC_THROTTLE)

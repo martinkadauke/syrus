@@ -48,6 +48,20 @@ RSpec.describe "desktop web-container window" do
   it "marks the web container's user agent so the web app can detect the shell" do
     expect(web_app_window).to include("SyrusDesktop/")
     expect(web_app_window).to include("setUserAgent")
+    # The app build sha rides a second UA token (from the staged manifest's
+    # appBuild) so the web UI's BuildBadge can show which build hosts it.
+    expect(web_app_window).to include("SyrusDesktopBuild/")
+    expect(main_process).to include("buildSha: manifest?.appBuild ?? null")
+  end
+
+  it "exposes the context-menu essentials to the left-click popover" do
+    expect(main_process).to include('ipcMain.handle("open-syrus"')
+    expect(main_process).to include('ipcMain.handle("quit-app"')
+    preload = read("electron/preload.cts")
+    expect(preload).to include("openSyrusWindow")
+    expect(preload).to include("quitApp")
+    tray_app = read("src/App.tsx")
+    expect(tray_app).to include("TrayActionsBar")
   end
 
   it "falls back to the status page only for real main-frame failures of the server URL" do

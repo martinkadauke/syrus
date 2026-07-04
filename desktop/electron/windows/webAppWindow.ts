@@ -4,6 +4,9 @@ import { decideWindowOpen } from "./windowOpenPolicy.js"
 
 type WebAppWindowOptions = {
   serverUrl: string
+  // Git short sha of this app build (from the staged manifest) — appended to
+  // the user agent so the web UI's BuildBadge can display it.
+  buildSha?: string | null
   savedBounds: WindowBounds | null
   // Loads the packaged renderer's backend-status view. That page is purely
   // informational — this window carries NO preload (the remote web app must
@@ -22,6 +25,7 @@ export type WebAppWindowHandle = {
 
 export const createWebAppWindow = ({
   serverUrl,
+  buildSha,
   savedBounds,
   loadFallback,
   onBoundsChanged,
@@ -48,8 +52,9 @@ export const createWebAppWindow = ({
 
   // The web app detects the shell by this marker (see
   // app/frontend/lib/desktopShell.ts) — e.g. to not report an intercepted
-  // window.open as a blocked popup.
-  window.webContents.setUserAgent(`${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}`)
+  // window.open as a blocked popup. The build token feeds the BuildBadge.
+  const buildToken = buildSha ? ` SyrusDesktopBuild/${buildSha}` : ""
+  window.webContents.setUserAgent(`${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}${buildToken}`)
 
   // Same-origin navigation stays in the window; everything else (GitHub PRs,
   // issue links, docs) opens in the user's default browser — see

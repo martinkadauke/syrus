@@ -1377,8 +1377,10 @@ const showWebAppWindow = async () => {
     return
   }
 
+  const manifest = await readBackendManifest()
   webAppWindow = createWebAppWindow({
     serverUrl,
+    buildSha: manifest?.appBuild ?? null,
     savedBounds: store.get("webAppWindowBounds", null),
     loadFallback: (window) => loadBackendStatus(window, getBackendMode() === "remote" ? "remote" : "local"),
     onBoundsChanged: (bounds) => store.set("webAppWindowBounds", bounds),
@@ -1902,6 +1904,14 @@ ipcMain.handle("checkout-job", async (_event, request: CheckoutRequest) => check
 ipcMain.handle("syrus:local-status", async () => localStatus())
 ipcMain.handle("show-preferences", async () => {
   await showPreferencesWindow()
+})
+// Tray-popover action bar: the right-click context menu's essentials
+// (open, preferences, quit) reachable from a left click too.
+ipcMain.handle("open-syrus", async () => {
+  await openSyrus()
+})
+ipcMain.handle("quit-app", () => {
+  app.quit()
 })
 ipcMain.handle("copy-text", async (_event, text: string) => {
   clipboard.writeText(text)

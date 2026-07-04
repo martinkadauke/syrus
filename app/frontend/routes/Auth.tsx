@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
+import { PasswordMatchHint, PasswordStrengthMeter } from "../components/PasswordFeedback"
 import {
   fetchSignup,
   requestPasswordReset,
@@ -145,6 +146,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
           type="password"
           value={password}
         />
+        <PasswordStrengthMeter password={password} />
       </Field>
       <Field label="Confirm password">
         <input
@@ -156,6 +158,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
           type="password"
           value={passwordConfirmation}
         />
+        <PasswordMatchHint confirmation={passwordConfirmation} password={password} />
       </Field>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button className={primaryButtonClass()} disabled={submit.isPending} type="submit">
@@ -247,6 +250,7 @@ export function PasswordResetRoute() {
             type="password"
             value={password}
           />
+          <PasswordStrengthMeter password={password} />
         </Field>
         <Field label="Confirm password">
           <input
@@ -258,6 +262,7 @@ export function PasswordResetRoute() {
             type="password"
             value={passwordConfirmation}
           />
+          <PasswordMatchHint confirmation={passwordConfirmation} password={password} />
         </Field>
         <button className={primaryButtonClass()} disabled={submit.isPending} type="submit">
           {submit.isPending ? "Saving..." : "Save"}

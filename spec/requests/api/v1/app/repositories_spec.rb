@@ -484,7 +484,9 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(parse_body["credential_status"]).to include(
       "mode" => "pat",
       "github_app_registered" => true,
-      "install_url" => "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=123&repository_ids[]=456"
+      "install_url" => "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=123&repository_ids[]=456",
+      # Account-level page for the all-repositories re-offer.
+      "generic_install_url" => "https://github.com/apps/operator-syrus/installations/new"
     )
   end
 

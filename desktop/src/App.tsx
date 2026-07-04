@@ -1331,7 +1331,42 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
           onRefresh={() => void adminControlsQuery.refetch()}
         />
       ) : null}
+      <TrayActionsBar />
     </main>
+  )
+}
+
+// The right-click context menu's essentials, reachable from the left-click
+// popover too: open the app window, Preferences, Quit.
+export function TrayActionsBar() {
+  return (
+    <footer className="border-t border-slate-200 bg-white/95 px-3 py-1.5" data-testid="tray-actions">
+      <div className="flex items-center justify-between text-[11px] font-medium text-slate-500">
+        <button
+          className="rounded px-1.5 py-1 hover:bg-slate-100 hover:text-slate-800"
+          onClick={() => void window.syrusDesktop.openSyrusWindow()}
+          type="button"
+        >
+          Open Syrus
+        </button>
+        <div className="flex items-center gap-1">
+          <button
+            className="rounded px-1.5 py-1 hover:bg-slate-100 hover:text-slate-800"
+            onClick={() => void window.syrusDesktop.showPreferences()}
+            type="button"
+          >
+            Preferences
+          </button>
+          <button
+            className="rounded px-1.5 py-1 hover:bg-slate-100 hover:text-slate-800"
+            onClick={() => void window.syrusDesktop.quitApp()}
+            type="button"
+          >
+            Quit
+          </button>
+        </div>
+      </div>
+    </footer>
   )
 }
 

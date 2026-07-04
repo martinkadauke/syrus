@@ -203,6 +203,8 @@ interface Window {
     checkoutJob: (request: SyrusCheckoutRequest) => Promise<{ branchName: string }>
     localStatus: () => Promise<SyrusLocalStatus | null>
     showPreferences: () => Promise<void>
+    openSyrusWindow: () => Promise<void>
+    quitApp: () => Promise<void>
     copyText: (text: string) => Promise<void>
     showNotification: (opts: SyrusDesktopNotificationOptions) => Promise<void>
     fetchBootstrap: () => Promise<SyrusBootstrapPayload>

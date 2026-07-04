@@ -51,6 +51,7 @@ function mockRoutes(over: { owners?: () => Response; create?: () => Response; de
     if (url.includes("/repositories/owners")) return over.owners?.() ?? jsonResponse({ user: "octocat", orgs: ["acme"] })
     if (url.includes("/repositories/repos")) return jsonResponse({ repos: [{ name: "hello-world", github_repository_id: 7, github_owner_id: 3 }] })
     if (url.includes("/repositories/branches")) return jsonResponse({ branches: ["main", "dev"], default_branch: "main" })
+    if (url.endsWith("/admin/github_app/sync_installations")) return jsonResponse({ enqueued: true })
     if (/\/api\/v1\/app\/repositories\/\d+$/.test(url) && init?.method !== "POST") {
       return over.detail?.() ?? jsonResponse({ credential_status: credentialStatus("pat") })
     }
@@ -68,6 +69,7 @@ function credentialStatus(mode: "app" | "pat") {
     installation_account: mode === "app" ? "octocat" : null,
     github_app_registered: true,
     install_url: mode === "pat" ? "https://github.com/apps/operator-syrus/installations/new?suggested_target_id=3" : null,
+    generic_install_url: mode === "pat" ? "https://github.com/apps/operator-syrus/installations/new" : null,
     register_path: null,
     previous_installation_removed: false,
     missing_github_ids: false
@@ -147,6 +149,26 @@ describe("AddRepositoryModal", () => {
       upstream_name: "",
       github_repository_id: "7"
     })
+  })
+
+  it("re-offers the account-wide install alongside the pre-scoped one", async () => {
+    mockRoutes({
+      create: () => jsonResponse({
+        message: "Saved",
+        redirect_to: "/repositories/1",
+        repository: savedRepository,
+        credential_status: credentialStatus("pat")
+      })
+    })
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({ opener: null } as unknown as Window)
+    renderModal()
+
+    await submitRepository()
+
+    const allRepos = await screen.findByRole("button", { name: /install for all repositories/ })
+    fireEvent.click(allRepos)
+    expect(openSpy).toHaveBeenCalledWith("https://github.com/apps/operator-syrus/installations/new", "_blank")
+    await waitFor(() => expect(screen.getByText(/Waiting for GitHub/)).toBeInTheDocument())
   })
 
   it("offers the pre-scoped App install after adding a PAT-fallback repository, and detects the install", async () => {

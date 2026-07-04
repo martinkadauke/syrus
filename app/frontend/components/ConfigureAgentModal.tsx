@@ -145,6 +145,18 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
               Codex
               <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">Soon</span>
             </button>
+            <button
+              aria-disabled="true"
+              aria-selected={false}
+              className="cursor-not-allowed px-4 py-2 text-sm font-medium text-gray-400 dark:text-gray-600"
+              disabled
+              role="tab"
+              title="Gemini support is planned"
+              type="button"
+            >
+              Gemini
+              <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">Soon</span>
+            </button>
           </div>
 
           {connected ? (

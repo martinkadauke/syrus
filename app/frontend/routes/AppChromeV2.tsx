@@ -8,6 +8,7 @@ import { patchJson } from "../api/client"
 import { dashboardApiSearch, fetchDashboard, type DashboardPayload, type DashboardSubject } from "../api/dashboard"
 import { fetchTerminalSessions } from "../api/terminal"
 import { BugReportButton } from "../components/BugReportButton"
+import { BuildBadge } from "../components/BuildBadge"
 import { CloseIcon } from "../components/CloseIcon"
 import { DashboardSmartFolderNav } from "../components/DashboardSmartFolderNav"
 import { NoticeToast } from "../components/NoticeToast"
@@ -272,6 +273,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
         {showQuote ? <PubliliusSyrusFooter quote={quote} /> : null}
       </main>
       {user ? <BugReportButton context={bugReportContext(location.pathname)} position="bottom-right" /> : null}
+      <BuildBadge revision={data?.app?.revision} />
     </div>
   )
 }

@@ -184,6 +184,8 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.invoke("checkout-job", request) as Promise<{ branchName: string }>,
   localStatus: () => ipcRenderer.invoke("syrus:local-status") as Promise<LocalStatus | null>,
   showPreferences: () => ipcRenderer.invoke("show-preferences") as Promise<void>,
+  openSyrusWindow: () => ipcRenderer.invoke("open-syrus") as Promise<void>,
+  quitApp: () => ipcRenderer.invoke("quit-app") as Promise<void>,
   copyText: (text: string) => ipcRenderer.invoke("copy-text", text) as Promise<void>,
   showNotification: (opts: DesktopNotificationOptions) =>
     ipcRenderer.invoke("syrusDesktop:showNotification", opts) as Promise<void>,
