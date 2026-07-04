@@ -63,7 +63,7 @@ describe("ConfigureAgentModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Authorize with Claude/ }))
 
-    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://claude.ai/oauth/authorize?state=abc", "_blank", expect.any(String)))
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://claude.ai/oauth/authorize?state=abc", "_blank"))
     await waitFor(() => expect(screen.getByPlaceholderText("paste code here")).toBeEnabled())
   })
 

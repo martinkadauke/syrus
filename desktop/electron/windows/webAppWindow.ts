@@ -1,5 +1,6 @@
-import { BrowserWindow, shell } from "electron"
+import { app, BrowserWindow, shell } from "electron"
 import type { WindowBounds } from "../settings.js"
+import { decideWindowOpen } from "./windowOpenPolicy.js"
 
 type WebAppWindowOptions = {
   serverUrl: string
@@ -45,95 +46,42 @@ export const createWebAppWindow = ({
     }
   })
 
+  // The web app detects the shell by this marker (see
+  // app/frontend/lib/desktopShell.ts) — e.g. to not report an intercepted
+  // window.open as a blocked popup.
+  window.webContents.setUserAgent(`${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}`)
+
   // Same-origin navigation stays in the window; everything else (GitHub PRs,
-  // issue links, docs) opens in the user's default browser. No file:
-  // exemption: will-navigate never fires for the main process's own
-  // loadFile/loadURL calls, so any file: navigation seen here is remote
-  // content trying to reach local files — deny it.
+  // issue links, docs) opens in the user's default browser — see
+  // windowOpenPolicy.ts for the full routing rules. No file: exemption:
+  // will-navigate never fires for the main process's own loadFile/loadURL
+  // calls, so any file: navigation seen here is remote content trying to
+  // reach local files — deny it.
   window.webContents.on("will-navigate", (event, targetUrl) => {
-    let target: URL
-    try {
-      target = new URL(targetUrl)
-    } catch {
-      event.preventDefault()
+    const action = decideWindowOpen(targetUrl, serverOrigin)
+    if (action === "main") {
       return
     }
 
-    if (target.origin !== serverOrigin) {
-      event.preventDefault()
-      if (["http:", "https:"].includes(target.protocol)) {
-        void shell.openExternal(target.toString())
-      }
+    event.preventDefault()
+    if (action === "external") {
+      void shell.openExternal(targetUrl)
     }
   })
 
-  window.webContents.setWindowOpenHandler(({ url, postBody }) => {
-    try {
-      const target = new URL(url)
-      if (target.origin === serverOrigin) {
-        void window.loadURL(target.toString())
-        return { action: "deny" }
-      }
-
-      // A popup carrying a POST body — a form submitted with target=_blank,
-      // e.g. the GitHub App registration manifest — can't be handed to the
-      // external browser: the browser would issue a GET and the payload
-      // would be dropped. Those flows run in a sandboxed child window
-      // instead, locked down by did-create-window below.
-      if (postBody && ["http:", "https:"].includes(target.protocol)) {
-        return {
-          action: "allow",
-          overrideBrowserWindowOptions: {
-            width: 1080,
-            height: 780,
-            webPreferences: {
-              contextIsolation: true,
-              nodeIntegration: false,
-              sandbox: true
-            }
-          }
-        }
-      }
-
-      if (["http:", "https:"].includes(target.protocol)) {
-        void shell.openExternal(target.toString())
-      }
-    } catch {
-      // Ignore unparseable URLs.
+  // No popup is ever allowed: same-origin popups load in this window,
+  // everything else web-y goes to the default browser. Flows that need a
+  // real logged-in browser (GitHub App registration) mark their same-origin
+  // URLs with syrus_external=1 and get handed off too.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const action = decideWindowOpen(url, serverOrigin)
+    if (action === "main") {
+      void window.loadURL(url)
+    } else if (action === "external") {
+      void shell.openExternal(url)
     }
 
     return { action: "deny" }
-  })
-
-  // Child windows are remote content too: no non-web protocols, and any
-  // popup THEY spawn goes to the external browser.
-  window.webContents.on("did-create-window", (child) => {
-    child.webContents.on("will-navigate", (event, targetUrl) => {
-      let target: URL
-      try {
-        target = new URL(targetUrl)
-      } catch {
-        event.preventDefault()
-        return
-      }
-
-      if (!["http:", "https:"].includes(target.protocol)) {
-        event.preventDefault()
-      }
-    })
-
-    child.webContents.setWindowOpenHandler(({ url }) => {
-      try {
-        const target = new URL(url)
-        if (["http:", "https:"].includes(target.protocol)) {
-          void shell.openExternal(target.toString())
-        }
-      } catch {
-        // Ignore unparseable URLs.
-      }
-
-      return { action: "deny" }
-    })
   })
 
   window.webContents.on("did-fail-load", (_event, errorCode, _description, validatedURL, isMainFrame) => {

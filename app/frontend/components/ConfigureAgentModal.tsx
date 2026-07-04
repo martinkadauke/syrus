@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTestResult } from "../api/credentials"
+import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
 
 type AgentTab = "claude" | "codex"
@@ -49,8 +50,7 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
     setPopupBlocked(null)
     try {
       const { authorize_url } = await startClaudeOauth()
-      const tab = window.open(authorize_url, "_blank", "noopener,noreferrer")
-      if (!tab) setPopupBlocked(authorize_url)
+      if (!openInNewTab(authorize_url)) setPopupBlocked(authorize_url)
       setAuthStarted(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start authorization.")

@@ -3,22 +3,15 @@ module Api
     module App
       module Admin
         class GithubAppController < BaseController
-          GITHUB_MANIFEST_URL = "https://github.com/settings/apps/new".freeze
-
           def register
-            state = SecureRandom.urlsafe_base64(24)
-            session[:github_app_manifest_state] = state
-            # Remember where registration was started so the GitHub callback can
-            # land on a minimal "you can close this" page during onboarding
-            # instead of the full admin confirmation page.
-            session[:github_app_manifest_origin] = params[:origin].to_s.presence
+            state = GithubAppManifestState.generate(user: Current.user, origin: params[:origin].to_s.presence)
 
+            # The registration itself happens in the user's default browser via
+            # the tokenized bounce page — never in an embedded window, where the
+            # user typically has no GitHub login. `syrus_external=1` tells the
+            # desktop shell to hand the URL to the OS browser.
             render json: status_payload.merge(
-              github_manifest_url: "#{GITHUB_MANIFEST_URL}?state=#{CGI.escape(state)}",
-              manifest: GithubAppManifest.new(
-                user: Current.user,
-                callback_url: admin_github_app_callback_url
-              ).to_json,
+              bounce_url: admin_github_app_manifest_url(state: state, syrus_external: 1),
               submit_label: AppSetting.github_app_registered? ? "Re-register GitHub App" : "Register GitHub App"
             )
           end

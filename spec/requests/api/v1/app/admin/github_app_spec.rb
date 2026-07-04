@@ -27,21 +27,32 @@ RSpec.describe "API: /api/v1/app/admin/github_app", type: :request do
   it "returns the manifest registration payload and stores callback state" do
     sign_in_as(admin)
 
-    get "/api/v1/app/admin/github_app/register"
+    get "/api/v1/app/admin/github_app/register", params: { origin: "onboarding" }
 
     expect(response).to have_http_status(:ok)
     body = parse_body
-    expect(body.fetch("github_manifest_url")).to match(%r{\Ahttps://github.com/settings/apps/new\?state=})
     expect(body.fetch("submit_label")).to eq("Register GitHub App")
     expect(body.dig("github_app", "registered")).to be false
-    manifest = JSON.parse(body.fetch("manifest"))
+
+    bounce = URI.parse(body.fetch("bounce_url"))
+    expect(bounce.path).to eq("/admin/github_app/manifest")
+    query = Rack::Utils.parse_query(bounce.query)
+    # The desktop shell keys off this marker to open the bounce page in the
+    # user's default browser instead of the embedded window.
+    expect(query.fetch("syrus_external")).to eq("1")
+
+    payload = GithubAppManifestState.verify(query.fetch("state"))
+    expect(payload.user_id).to eq(admin.id)
+    expect(payload.origin).to eq("onboarding")
+
+    # The manifest itself is now rendered by the bounce page, from the same
+    # template the register payload used to inline.
+    manifest = GithubAppManifest.new(user: admin, callback_url: "http://example.test/admin/github_app/callback").manifest
     expect(manifest.dig("default_permissions", "issues")).to eq("write")
     expect(manifest.dig("default_permissions", "pull_requests")).to eq("write")
     expect(manifest.dig("default_permissions", "metadata")).to eq("read")
     expect(manifest).not_to have_key("hook_attributes")
     expect(manifest.to_json).not_to include("github_app/webhook")
-    state = body.fetch("github_manifest_url").match(/state=([^&]+)/)[1]
-    expect(session[:github_app_manifest_state]).to eq(state)
   end
 
   it "returns stored registration status for the confirmation page" do

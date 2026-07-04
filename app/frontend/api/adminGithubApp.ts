@@ -10,8 +10,10 @@ export type AdminGithubAppStatus = {
 
 export type AdminGithubAppRegisterPayload = {
   github_app: AdminGithubAppStatus
-  github_manifest_url: string
-  manifest: string
+  // Same-origin page that re-submits the manifest POST to GitHub. Opened as
+  // a plain new tab; the desktop shell routes it to the default browser via
+  // its syrus_external marker.
+  bounce_url: string
   submit_label: string
 }
 

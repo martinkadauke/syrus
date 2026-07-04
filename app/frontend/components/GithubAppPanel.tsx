@@ -2,12 +2,14 @@ import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { fetchAdminGithubAppConfirm, fetchAdminGithubAppRegister } from "../api/adminGithubApp"
 import { ApiError } from "../api/client"
+import { openInNewTab } from "../lib/desktopShell"
 
 // Admin-only panel: create the singleton Syrus GitHub App from a manifest,
 // then install it. Registering the App satisfies the GitHub onboarding step.
 export function GithubAppPanel({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   const queryClient = useQueryClient()
   const [awaiting, setAwaiting] = useState(false)
+  const [popupBlocked, setPopupBlocked] = useState<string | null>(null)
 
   // Fetched once: generates the manifest + the session state GitHub echoes
   // back to the callback. Refetching would rotate that state, so keep it stable.
@@ -88,12 +90,27 @@ export function GithubAppPanel({ onClose, onSaved }: { onClose: () => void; onSa
         <li><span className="font-medium text-gray-900 dark:text-gray-100">2.</span> You'll be redirected back here; then install it on your repositories.</li>
       </ol>
 
-      <form action={register.data.github_manifest_url} method="post" rel="noopener" target="_blank" onSubmit={() => setAwaiting(true)}>
-        <input name="manifest" type="hidden" value={register.data.manifest} />
-        <button className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" type="submit">
-          {register.data.submit_label} <span aria-hidden="true">↗</span>
-        </button>
-      </form>
+      <button
+        className="inline-flex items-center gap-1 rounded bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+        type="button"
+        onClick={() => {
+          const bounceUrl = register.data.bounce_url
+          setPopupBlocked(openInNewTab(bounceUrl) ? null : bounceUrl)
+          setAwaiting(true)
+        }}
+      >
+        {register.data.submit_label} <span aria-hidden="true">↗</span>
+      </button>
+
+      {popupBlocked ? (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          Popup blocked.{" "}
+          <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
+            Open the registration page
+          </a>{" "}
+          manually.
+        </p>
+      ) : null}
 
       {awaiting ? (
         <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" role="status">

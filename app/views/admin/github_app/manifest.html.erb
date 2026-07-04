@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Continuing to GitHub…</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; background: #f9fafb; color: #111827; margin: 0; display: flex; min-height: 100vh; align-items: center; justify-content: center; }
+      .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 2rem 2.5rem; max-width: 22rem; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,.06); }
+      h1 { font-size: 1.05rem; margin: .25rem 0 .5rem; }
+      p { font-size: .9rem; color: #4b5563; margin: 0 0 1rem; }
+      button { font: inherit; font-size: .9rem; font-weight: 500; color: #fff; background: #111827; border: 0; border-radius: 8px; padding: .5rem 1rem; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Continuing to GitHub…</h1>
+      <p>Sending the Syrus App manifest to GitHub. If nothing happens, use the button below.</p>
+      <form action="<%= @github_manifest_url %>" method="post">
+        <input name="manifest" type="hidden" value="<%= @manifest_json %>">
+        <button type="submit">Continue to GitHub</button>
+      </form>
+    </div>
+    <script>
+      // GitHub's manifest flow only accepts a POST; this page exists to turn
+      // the externally-openable GET link back into that POST.
+      document.forms[0].submit();
+    </script>
+  </body>
+</html>

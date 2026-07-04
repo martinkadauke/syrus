@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { useState } from "react"
 import type { ReactNode } from "react"
 import {
   fetchAdminGithubAppConfirm,
@@ -7,6 +8,7 @@ import {
   type AdminGithubAppStatus
 } from "../api/adminGithubApp"
 import { ApiError } from "../api/client"
+import { openInNewTab } from "../lib/desktopShell"
 
 export function AdminGithubAppRegister() {
   const registration = useQuery({
@@ -58,6 +60,8 @@ export function AdminGithubAppConfirm() {
 }
 
 function RegisterView({ payload }: { payload: AdminGithubAppRegisterPayload }) {
+  const [popupBlocked, setPopupBlocked] = useState<string | null>(null)
+
   return (
     <>
       <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
@@ -72,23 +76,22 @@ function RegisterView({ payload }: { payload: AdminGithubAppRegisterPayload }) {
         <p className="mt-1 max-w-prose text-xs text-gray-600 dark:text-gray-300">
           GitHub will create the App from the manifest, then redirect back here with temporary credentials. Registration alone does not grant repository access; install the App after registration.
         </p>
-        <form
-          action={payload.github_manifest_url}
-          aria-label="GitHub manifest registration"
-          className="mt-4"
-          method="post"
-          rel="noopener"
-          target="_blank"
+        <button
+          className="mt-4 rounded bg-blue-600 dark:bg-blue-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 dark:hover:bg-blue-400"
+          type="button"
+          onClick={() => setPopupBlocked(openInNewTab(payload.bounce_url) ? null : payload.bounce_url)}
         >
-          <input name="manifest" type="hidden" value={payload.manifest} />
-          <button
-            className="rounded bg-blue-600 dark:bg-blue-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 dark:hover:bg-blue-400"
-            formTarget="_blank"
-            type="submit"
-          >
-            {payload.submit_label}
-          </button>
-        </form>
+          {payload.submit_label}
+        </button>
+        {popupBlocked ? (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            Popup blocked.{" "}
+            <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
+              Open the registration page
+            </a>{" "}
+            manually.
+          </p>
+        ) : null}
       </section>
     </>
   )

@@ -18,6 +18,7 @@ function jsonResponse(body: unknown, status = 200) {
 
 const notRegistered = { registered: false, id: null, slug: null, registered_at: null, install_url: null }
 const registered = { registered: true, id: 42, slug: "operator-syrus", registered_at: "2026-06-20T00:00:00Z", install_url: "https://github.com/apps/operator-syrus/installations/new" }
+const bounceUrl = "http://localhost:3000/admin/github_app/manifest?state=abc&syrus_external=1"
 
 function mockRoutes(over: { register?: () => Response; confirm?: () => Response } = {}) {
   return vi.spyOn(window, "fetch").mockImplementation(async (input) => {
@@ -25,8 +26,7 @@ function mockRoutes(over: { register?: () => Response; confirm?: () => Response 
     if (url.includes("/admin/github_app/register")) {
       return over.register?.() ?? jsonResponse({
         github_app: notRegistered,
-        github_manifest_url: "https://github.com/settings/apps/new?state=abc",
-        manifest: "{\"name\":\"syrus\"}",
+        bounce_url: bounceUrl,
         submit_label: "Register GitHub App"
       })
     }
@@ -40,21 +40,17 @@ describe("GithubAppPanel", () => {
     vi.restoreAllMocks()
   })
 
-  it("renders the manifest registration form when the App is not registered", async () => {
+  it("renders the registration button when the App is not registered", async () => {
     mockRoutes()
     renderPanel()
 
-    const button = await screen.findByRole("button", { name: /Register GitHub App/ })
+    await screen.findByRole("button", { name: /Register GitHub App/ })
     expect(screen.getByText("The GitHub App enables actions to appear as a bot natively on your repositories.")).toBeInTheDocument()
     expect(screen.queryByText(/recommended credential/)).not.toBeInTheDocument()
-    const form = button.closest("form") as HTMLFormElement
-    expect(form).toHaveAttribute("action", "https://github.com/settings/apps/new?state=abc")
-    expect(form).toHaveAttribute("method", "post")
-    expect(form.querySelector("input[name='manifest']")).toHaveValue("{\"name\":\"syrus\"}")
   })
 
   it("shows the install link and Done once registered", async () => {
-    mockRoutes({ register: () => jsonResponse({ github_app: registered, github_manifest_url: "x", manifest: "{}", submit_label: "Re-register GitHub App" }), confirm: () => jsonResponse({ github_app: registered }) })
+    mockRoutes({ register: () => jsonResponse({ github_app: registered, bounce_url: bounceUrl, submit_label: "Re-register GitHub App" }), confirm: () => jsonResponse({ github_app: registered }) })
     const onSaved = vi.fn()
     renderPanel({ onSaved })
 
@@ -73,17 +69,41 @@ describe("GithubAppPanel", () => {
     await waitFor(() => expect(screen.getByText(/Only an admin can register/)).toBeInTheDocument())
   })
 
-  it("starts polling after the operator submits the manifest form", async () => {
+  it("opens the bounce page in a new tab and starts polling", async () => {
     const fetchSpy = mockRoutes()
+    const opened = { opener: {} as unknown }
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(opened as Window)
     renderPanel()
 
-    const button = await screen.findByRole("button", { name: /Register GitHub App/ })
-    // jsdom can't submit cross-origin; fire submit on the form directly.
-    const form = button.closest("form") as HTMLFormElement
-    form.addEventListener("submit", (e) => e.preventDefault())
-    fireEvent.submit(form)
+    fireEvent.click(await screen.findByRole("button", { name: /Register GitHub App/ }))
+
+    expect(openSpy).toHaveBeenCalledWith(bounceUrl, "_blank")
+    expect(opened.opener).toBeNull()
+    await waitFor(() => expect(screen.getByText(/Waiting for GitHub to finish/)).toBeInTheDocument())
+    expect(screen.queryByText(/Popup blocked/)).not.toBeInTheDocument()
+    expect(fetchSpy).toHaveBeenCalled()
+  })
+
+  it("offers a manual link when the popup is blocked in a plain browser", async () => {
+    mockRoutes()
+    vi.spyOn(window, "open").mockReturnValue(null)
+    renderPanel()
+
+    fireEvent.click(await screen.findByRole("button", { name: /Register GitHub App/ }))
+
+    const manual = await screen.findByRole("link", { name: /Open the registration page/ })
+    expect(manual).toHaveAttribute("href", bounceUrl)
+  })
+
+  it("treats a null window.open as success inside the desktop shell", async () => {
+    mockRoutes()
+    vi.spyOn(window, "open").mockReturnValue(null)
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue("Mozilla/5.0 Electron/39.0.0 SyrusDesktop/0.1.0")
+    renderPanel()
+
+    fireEvent.click(await screen.findByRole("button", { name: /Register GitHub App/ }))
 
     await waitFor(() => expect(screen.getByText(/Waiting for GitHub to finish/)).toBeInTheDocument())
-    expect(fetchSpy).toHaveBeenCalled()
+    expect(screen.queryByText(/Popup blocked/)).not.toBeInTheDocument()
   })
 })
