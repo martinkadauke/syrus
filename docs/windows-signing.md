@@ -42,7 +42,16 @@ rejected for identity validation.
 
 ## 3. Identity validation
 
-1. Inside the new account, go to **Identity validation** → **Create**.
+0. **Grant yourself the verifier role first** — being subscription Owner
+   is NOT enough; the identity-validation blade needs a data-plane role
+   and shows "Please ensure you have the 'Artifact Signing Identity
+   Verifier' role assigned" until you have it. In the signing account →
+   **Access control (IAM)** → **Add role assignment** → role
+   **"Trusted Signing Identity Verifier"** (a.k.a. Artifact Signing
+   Identity Verifier) → member: your own account → Review + assign.
+   Propagation takes a minute or two; Refresh the blade until
+   **New identity** enables.
+1. Inside the new account, go to **Identity validation** → **New identity**.
 2. Choose **Individual**. Enter your legal name/address exactly as on your
    ID, matching the billing profile from step 1.
 3. Complete the ID + selfie verification flow (AU10TIX/Entra Verified ID —
