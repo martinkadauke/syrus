@@ -2,18 +2,32 @@
 # Builds the syrus-local backend image from the CURRENT WORKING TREE, for
 # iterating on the desktop app against unpublished backend changes.
 #
-#   bin/build-local-image            # tags syrus-local:dev-<short-sha>
-#   bin/build-local-image my-tag     # tags syrus-local:my-tag
+#   bin/build-local-image                    # tags syrus-local:dev-<short-sha>
+#   bin/build-local-image my-tag             # tags syrus-local:my-tag
+#   GHCR_USER=<you> bin/build-local-image --push
+#                                            # tags ghcr.io/<you>/syrus-local:dev-<short-sha>
+#                                            # and pushes it to your fork's GHCR
 #
-# Stage the result into the DMG via the existing SYRUS_BACKEND_IMAGE hook:
+# The registry is selected by DATA, not code: the DMG's manifest.json carries
+# the fully-qualified ref you stage via SYRUS_BACKEND_IMAGE, install.sh pulls
+# that ref verbatim, and release builds keep pinning ghcr.io/tkadauke — so a
+# dev DMG pointing at your fork changes nothing for normal users.
 #
-#   SYRUS_BACKEND_IMAGE=syrus-local:dev-<short-sha> npm --prefix desktop run build
+# Without --push: the tag is LOCAL-ONLY, the installer's pull fails, and
+# install.sh falls back to the local image. That breaks the moment you wipe
+# Docker to test a fresh install. With --push: the image lives in your fork's
+# GHCR, so wipe-everything installs work — after a ONE-TIME step of making
+# the ghcr.io/<you>/syrus-local package PUBLIC (GitHub → Packages →
+# syrus-local → Package settings → Change visibility). Upstream's package is
+# public precedent; note this exposes the app code baked into the image,
+# exactly as upstream's does. Never stage a published ref you do NOT control
+# (like upstream :latest): a successful pull of someone else's image would
+# clobber what you meant to test.
 #
-# The bundled installer will `docker compose pull` that tag, fail (it is not
-# in any registry), find the image locally, and install with it — that
-# fallback is install.sh's documented local-image path. Do NOT stage a
-# published ref like ghcr.io/tkadauke/syrus-local:latest for this purpose:
-# the pull would succeed and clobber your local build.
+# --push needs a token with write:packages in GHCR_TOKEN or
+# ~/.config/syrus/ghcr-token. It skips bin/test-docker on purpose: this is
+# the fast dev loop; bin/publish-image remains the gated release path and
+# the only thing that ever moves :latest.
 #
 # The first base build compiles the full agent toolchain (20-40 min);
 # SYRUS_DOCKER_REGISTRY_CACHE=1 with a GHCR token warms it from the shared
@@ -22,17 +36,50 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 . bin/docker-image-lib
 
+PUSH=0
+TAG=""
+for arg in "$@"; do
+  case "$arg" in
+    --push) PUSH=1 ;;
+    -*) echo "unknown flag: $arg" >&2; exit 2 ;;
+    *) TAG="$arg" ;;
+  esac
+done
+
 syrus_require_docker_daemon
 syrus_disable_buildx_attestations
 
 GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
-TAG="${1:-dev-${GIT_SHA}}"
-IMAGE="syrus-local:${TAG}"
+TAG="${TAG:-dev-${GIT_SHA}}"
+
+if [ "$PUSH" = "1" ]; then
+  # Require the username explicitly: defaulting to the upstream namespace
+  # would make "accidentally push a dev image as tkadauke" the failure mode.
+  GHCR_USER="${GHCR_USER:?--push needs GHCR_USER=<your GitHub username> (the fork GHCR namespace)}"
+  IMAGE_REPO="${SYRUS_IMAGE_REPO:-ghcr.io/${GHCR_USER}/syrus-local}"
+  IMAGE="${IMAGE_REPO}:${TAG}"
+else
+  IMAGE="syrus-local:${TAG}"
+fi
 
 syrus_build_local_backend_image "$IMAGE" "$GIT_SHA"
 
-echo
-echo "Built ${IMAGE} (git ${GIT_SHA})"
+if [ "$PUSH" = "1" ]; then
+  TOKEN="$(syrus_read_ghcr_token "$HOME/.config/syrus/ghcr-token")"
+  syrus_ghcr_login "$GHCR_USER" "$TOKEN"
+  docker push "$IMAGE"
+  syrus_verify_pushed "$IMAGE_REPO" "$TAG" "$TOKEN"
+  echo
+  echo "Pushed ${IMAGE} (git ${GIT_SHA})"
+  echo "One-time: make the package public so wipe-everything installs need no docker login:"
+  echo "  https://github.com/users/${GHCR_USER}/packages/container/syrus-local/settings"
+else
+  echo
+  echo "Built ${IMAGE} (git ${GIT_SHA}) — local only; a wiped Docker loses it."
+  echo "For wipe-everything install testing, push to your fork instead:"
+  echo "  GHCR_USER=<you> bin/build-local-image --push"
+fi
+
 echo "Stage it into the desktop app with:"
 echo "  SYRUS_BACKEND_IMAGE=${IMAGE} npm --prefix desktop run build"
 echo "${IMAGE}"

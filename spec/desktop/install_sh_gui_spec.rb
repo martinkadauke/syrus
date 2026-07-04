@@ -28,7 +28,7 @@ RSpec.describe "install.sh GUI interface" do
   # default so most examples halt before anything needing a real daemon —
   # unless pull_ok succeeds it, or local_image makes the pull-fallback adopt
   # a "local" copy.
-  def write_docker_stub(dir, volume_exists:, pull_ok: false, local_image: false)
+  def write_docker_stub(dir, volume_exists:, pull_ok: false, local_image: false, pull_error: "stub: pull refused")
     stub = File.join(dir, "docker")
     File.write(stub, <<~SH)
       #!/bin/bash
@@ -39,7 +39,7 @@ RSpec.describe "install.sh GUI interface" do
         compose)
           case "$2" in
             version) exit 0 ;;
-            pull) #{pull_ok ? "exit 0" : 'echo "stub: pull refused"; exit 1'} ;;
+            pull) #{pull_ok ? "exit 0" : "echo \"#{pull_error}\"; exit 1"} ;;
             *) exit 0 ;;
           esac ;;
       esac
@@ -156,6 +156,44 @@ RSpec.describe "install.sh GUI interface" do
           hash_including("event" => "step", "id" => "stack_up", "status" => "ok")
         )
         expect(events.last).to include("event" => "error", "code" => 41, "step" => "health")
+      end
+    end
+  end
+
+  it "classifies an access-denied pull as exit 31 (private package / unpublished tag)" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        # GHCR's anonymous-denied message mentions both "denied" and "does not
+        # exist" — denied must win the classification, because on GHCR an
+        # unauthorized pull is indistinguishable from a missing private repo.
+        write_docker_stub(stub_dir, volume_exists: false,
+          pull_error: "Error response from daemon: pull access denied for syrus-local, repository does not exist or may require authentication")
+        out, _err, status = run_install(
+          "--docker", "--json", "--non-interactive", "--skip-runtime-install",
+          "--target-dir", target, "--image", "ghcr.io/example/syrus-local:dev-abc", stub_dir: stub_dir
+        )
+
+        expect(status.exitstatus).to eq(31)
+        events = parse_events(out)
+        expect(events.last).to include("event" => "error", "code" => 31, "step" => "image_pull")
+        expect(events.last["message"]).to include("denied")
+      end
+    end
+  end
+
+  it "classifies a missing tag on a readable package as exit 32" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        write_docker_stub(stub_dir, volume_exists: false, pull_error: "stub: manifest unknown")
+        out, _err, status = run_install(
+          "--docker", "--json", "--non-interactive", "--skip-runtime-install",
+          "--target-dir", target, "--image", "ghcr.io/example/syrus-local:dev-gone", stub_dir: stub_dir
+        )
+
+        expect(status.exitstatus).to eq(32)
+        events = parse_events(out)
+        expect(events.last).to include("event" => "error", "code" => 32, "step" => "image_pull")
+        expect(events.last["message"]).to include("does not exist")
       end
     end
   end

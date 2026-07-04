@@ -33,8 +33,10 @@
 #
 # Exit codes: 0 ok · 2 usage · 10 no runtime (with --skip-runtime-install) ·
 # 11 daemon never became ready · 12 no compose · 20 data volume exists but .env
-# is missing (encryption-key guard) · 30 image pull failed · 40 compose up
-# failed · 41 health check timed out · 1 anything else
+# is missing (encryption-key guard) · 30 image pull failed (network/other) ·
+# 31 image pull denied (private package / unpublished tag / not logged in) ·
+# 32 image tag not found in the registry · 40 compose up failed · 41 health
+# check timed out · 1 anything else
 set -euo pipefail
 cd "$(dirname "$0")"   # the script lives at the repo root (or the app's Resources)
 ASSETS_DIR="$PWD"      # read-only home of docker-compose.yml + compose.env.example
@@ -94,6 +96,15 @@ run_logged() { # run_logged <stream> <cmd…> — stream child output as log eve
     "$@" 2>&1 | while IFS= read -r line; do emit_log "$stream" "$line"; done
   else
     "$@"
+  fi
+}
+
+run_logged_captured() { # run_logged_captured <capture-file> <stream> <cmd…> — run_logged that also tees output for failure classification
+  local capture="$1" stream="$2"; shift 2
+  if [ "$JSON" = "1" ]; then
+    "$@" 2>&1 | tee "$capture" | while IFS= read -r line; do emit_log "$stream" "$line"; done
+  else
+    "$@" 2>&1 | tee "$capture"
   fi
 }
 
@@ -355,8 +366,9 @@ run_docker() {
   step "Pulling $IMAGE"
   emit_step image_pull start "$IMAGE"
   pull_ok=0
+  pull_log="$(mktemp "${TMPDIR:-/tmp}/syrus-pull.XXXXXX")"
   for pull_attempt in 1 2 3; do
-    if run_logged pull compose pull; then
+    if run_logged_captured "$pull_log" pull compose pull; then
       pull_ok=1
       break
     fi
@@ -374,16 +386,37 @@ run_docker() {
       info "Pull failed, but $IMAGE exists locally — continuing with the local copy."
       emit_log pull "pull failed; using the local image copy"
     else
+      # Classify the last attempt so the operator (and the desktop app's
+      # error screen, keyed on the exit code) gets the real cause instead of
+      # a generic "check your network": 31 = registry refused (private
+      # package / unpublished tag / not logged in), 32 = the tag genuinely
+      # doesn't exist on a readable package, 30 = network/other.
+      pull_error="$(cat "$pull_log" 2>/dev/null || true)"
       echo >&2
-      echo "Couldn't pull $IMAGE. See the error above. Common causes:" >&2
-      echo "  - The package is private and you're not logged in. Log in once:" >&2
-      echo "      echo <YOUR_PAT_with_read:packages> | docker login ghcr.io -u <your-username> --password-stdin" >&2
-      echo "    (you must be a collaborator on the package)" >&2
-      echo "  - No network, or the tag doesn't exist." >&2
-      echo "Then re-run ./install.sh --docker." >&2
-      die "couldn't pull $IMAGE after 3 attempts" 30
+      echo "Couldn't pull $IMAGE. See the error above." >&2
+      case "$pull_error" in
+        *[Dd]enied*|*[Uu]nauthorized*|*"authentication required"*|*[Ff]orbidden*)
+          echo "The registry refused the download — the package is private, the tag was" >&2
+          echo "never published, or this machine isn't logged in. Either make the package" >&2
+          echo "public, or log in once:" >&2
+          echo "    echo <YOUR_PAT_with_read:packages> | docker login ghcr.io -u <your-username> --password-stdin" >&2
+          echo "Then re-run ./install.sh --docker." >&2
+          die "access to $IMAGE was denied (private package, unpublished tag, or not logged in)" 31
+          ;;
+        *"manifest unknown"*|*"not found"*)
+          echo "The package exists but this tag doesn't — the build that produced this" >&2
+          echo "installer references an image that was never published." >&2
+          die "the image tag $IMAGE does not exist in the registry" 32
+          ;;
+        *)
+          echo "This usually means a network problem. Check your connection and re-run" >&2
+          echo "./install.sh --docker." >&2
+          die "couldn't pull $IMAGE after 3 attempts" 30
+          ;;
+      esac
     fi
   fi
+  rm -f "$pull_log"
   emit_step image_pull ok
 
   # 5. Start the stack.
