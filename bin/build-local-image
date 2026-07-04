@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Builds the syrus-local backend image from the CURRENT WORKING TREE, for
+# iterating on the desktop app against unpublished backend changes.
+#
+#   bin/build-local-image            # tags syrus-local:dev-<short-sha>
+#   bin/build-local-image my-tag     # tags syrus-local:my-tag
+#
+# Stage the result into the DMG via the existing SYRUS_BACKEND_IMAGE hook:
+#
+#   SYRUS_BACKEND_IMAGE=syrus-local:dev-<short-sha> npm --prefix desktop run build
+#
+# The bundled installer will `docker compose pull` that tag, fail (it is not
+# in any registry), find the image locally, and install with it — that
+# fallback is install.sh's documented local-image path. Do NOT stage a
+# published ref like ghcr.io/tkadauke/syrus-local:latest for this purpose:
+# the pull would succeed and clobber your local build.
+#
+# The first base build compiles the full agent toolchain (20-40 min);
+# SYRUS_DOCKER_REGISTRY_CACHE=1 with a GHCR token warms it from the shared
+# registry cache. Later builds reuse the local layer cache.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+. bin/docker-image-lib
+
+syrus_require_docker_daemon
+syrus_disable_buildx_attestations
+
+GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+TAG="${1:-dev-${GIT_SHA}}"
+IMAGE="syrus-local:${TAG}"
+
+syrus_build_local_backend_image "$IMAGE" "$GIT_SHA"
+
+echo
+echo "Built ${IMAGE} (git ${GIT_SHA})"
+echo "Stage it into the desktop app with:"
+echo "  SYRUS_BACKEND_IMAGE=${IMAGE} npm --prefix desktop run build"
+echo "${IMAGE}"

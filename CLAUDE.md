@@ -407,6 +407,12 @@ across web/worker processes.
   `bin/deploy`, `bin/publish-image`, and `bin/compose-up`.
   `SYRUS_DOCKER_REGISTRY_CACHE=1` opts local compose/publish builds into the
   registry BuildKit cache, and `SYRUS_DOCKER_CACHE_REF` overrides the cache tag.
+  For desktop-app iteration against unpublished backend changes, `bin/build-local-image`
+  builds `syrus-local:dev-<sha>` from the working tree; stage it into the DMG
+  with `SYRUS_BACKEND_IMAGE=syrus-local:dev-<sha> npm --prefix desktop run build`
+  (the installer's pull fails for unpublished tags and falls back to the local
+  image — never stage a published ref for this, a successful pull would clobber
+  the local build).
 - **AASM events on Run** — call `start!`, `succeed!`, `fail!`, `cancel!`,
   always followed by `save!` (callbacks set timestamps but don't persist).
   See `Run` model.

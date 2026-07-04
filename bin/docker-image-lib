@@ -189,3 +189,54 @@ syrus_docker_buildx_image() {
 
   docker buildx build -f Dockerfile --target "$target" --build-arg "GIT_SHA=$git_sha" "$@"
 }
+
+# Builds syrus-local-base:latest (Dockerfile target worker-dev — the fat
+# agent toolchain) from the current working tree. Honors the registry
+# BuildKit cache like bin/compose-up: SYRUS_DOCKER_REGISTRY_CACHE=1 pulls
+# from the cache ref, and SYRUS_DOCKER_CACHE_PUSH=1 additionally writes back
+# to it (needs a token with write:packages).
+syrus_build_local_base_image() {
+  local git_sha="${1:?usage: syrus_build_local_base_image GIT_SHA}"
+
+  if syrus_registry_cache_enabled; then
+    local ghcr_user cache_ref cache_token
+    ghcr_user="${GHCR_USER:-tkadauke}"
+    cache_ref="$(syrus_docker_cache_ref)"
+    cache_token="$(syrus_read_ghcr_token "$HOME/.config/syrus/ghcr-token")"
+
+    echo "== Using registry Docker build cache: ${cache_ref} =="
+    syrus_ghcr_login "$ghcr_user" "$cache_token"
+
+    local -a cache_args
+    cache_args=(--cache-from "type=registry,ref=${cache_ref}")
+    case "${SYRUS_DOCKER_CACHE_PUSH:-}" in
+      1|true|TRUE|yes|YES|on|ON)
+        cache_args+=(--cache-to "type=registry,ref=${cache_ref},mode=max")
+        ;;
+    esac
+
+    syrus_docker_buildx_image worker-dev "$git_sha" \
+      --load \
+      "${cache_args[@]}" \
+      --provenance=false \
+      -t syrus-local-base:latest \
+      .
+  else
+    syrus_docker_build_image worker-dev "$git_sha" \
+      --provenance=false -t syrus-local-base:latest .
+  fi
+}
+
+# Builds the full local backend image: the worker-dev base plus the
+# Dockerfile.local overlay (EXTRA_APT_PACKAGES), tagged FINAL_TAG. This is
+# the image the desktop installer runs, so a locally built tag here plus
+# SYRUS_BACKEND_IMAGE at DMG stage time gives a fully local end-to-end build.
+syrus_build_local_backend_image() {
+  local final_tag="${1:?usage: syrus_build_local_backend_image FINAL_TAG GIT_SHA}"
+  local git_sha="${2:?usage: syrus_build_local_backend_image FINAL_TAG GIT_SHA}"
+
+  syrus_build_local_base_image "$git_sha"
+  docker build -f Dockerfile.local \
+    --build-arg BASE_IMAGE=syrus-local-base:latest \
+    -t "$final_tag" .
+}
