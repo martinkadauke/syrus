@@ -22,6 +22,7 @@ import * as appUpdates from "./appUpdates.js"
 import * as backendLifecycle from "./installer/backendLifecycle.js"
 import { readBackendManifest } from "./installer/installPaths.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
+import { decideOnSecondInstance, takeoverPrompt, type InstanceIdentity } from "./instanceTakeover.js"
 import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
@@ -1985,16 +1986,57 @@ ipcMain.handle("open-external", async (_event, url: string) => {
   await shell.openExternal(parsedUrl.toString())
 })
 
-// One Syrus at a time: a second launch focuses the existing instance.
-// app.quit() is asynchronous: the losing instance's whenReady handler would
-// still run (racing store writes against the primary, flashing a second
-// tray) unless startup is explicitly gated on the lock.
-const hasSingleInstanceLock = app.requestSingleInstanceLock()
+// One Syrus at a time: a second launch focuses the existing instance —
+// unless the second launch is a DIFFERENT version or bundle (a fresh DMG
+// while a stale copy still runs, or an updated install), in which case the
+// running instance offers to quit and hand over instead of silently
+// swallowing the launch. app.quit() is asynchronous: the losing instance's
+// whenReady handler would still run (racing store writes against the
+// primary, flashing a second tray) unless startup is explicitly gated on
+// the lock.
+const ownInstanceIdentity = (): InstanceIdentity => ({
+  version: app.getVersion(),
+  bundlePath: process.platform === "darwin" ? bundlePathFromExecPath(process.execPath) : process.execPath
+})
+
+const hasSingleInstanceLock = app.requestSingleInstanceLock(ownInstanceIdentity())
 if (!hasSingleInstanceLock) {
   app.quit()
 }
 
-app.on("second-instance", () => {
+let takeoverPromptOpen = false
+app.on("second-instance", (_event, _argv, _cwd, additionalData) => {
+  const incoming = additionalData as Partial<InstanceIdentity> | undefined
+  const own = ownInstanceIdentity()
+  // Takeover launches the incoming bundle via `open`; that path is
+  // macOS-only for now, matching selfInstall.ts.
+  if (process.platform === "darwin" && !takeoverPromptOpen && decideOnSecondInstance(own, incoming) === "offer") {
+    takeoverPromptOpen = true
+    const prompt = takeoverPrompt(own, incoming as InstanceIdentity)
+    void dialog
+      .showMessageBox({
+        type: "question",
+        message: prompt.message,
+        detail: prompt.detail,
+        buttons: [...prompt.buttons],
+        defaultId: prompt.switchIndex,
+        cancelId: 1
+      })
+      .then(async (choice) => {
+        takeoverPromptOpen = false
+        if (choice.response !== prompt.switchIndex) {
+          return
+        }
+        // Give up the lock BEFORE launching, or the new copy loses the
+        // race against this dying instance and quits itself — the exact
+        // trap this feature exists to break.
+        app.releaseSingleInstanceLock()
+        await launchInstalledCopy((incoming as InstanceIdentity).bundlePath)
+        app.quit()
+      })
+    return
+  }
+
   void openSyrus()
 })
 

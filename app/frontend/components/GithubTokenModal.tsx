@@ -51,7 +51,7 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
         <div className="space-y-5 p-5 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id="github-title">Connect GitHub</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id="github-title">GitHub integration</h2>
               {phase === "pat" ? (
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
                   To monitor and interact with GitHub, and to act as an independent contributor, Syrus requires both a

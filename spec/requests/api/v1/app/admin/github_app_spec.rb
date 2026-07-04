@@ -74,4 +74,35 @@ RSpec.describe "API: /api/v1/app/admin/github_app", type: :request do
       "install_url" => "https://github.com/apps/operator-syrus/installations/new"
     )
   end
+
+  it "lists active installations so setup can flip to installed the moment a sync links one" do
+    sign_in_as(admin)
+    AppSetting.current.update!(github_app_id: 12345, github_app_slug: "operator-syrus")
+    Factories.installation(account_login: "octocat", account_type: "User")
+    Factories.installation(account_login: "gone-org", removed_at: Time.current)
+
+    get "/api/v1/app/admin/github_app/confirm"
+
+    expect(parse_body.dig("github_app", "installations")).to eq(
+      [{ "account_login" => "octocat", "account_type" => "User" }]
+    )
+  end
+
+  it "enqueues an installation sync on demand, throttled" do
+    memory_cache = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(memory_cache)
+    sign_in_as(admin)
+
+    expect {
+      post "/api/v1/app/admin/github_app/sync_installations"
+    }.to have_enqueued_job(SyncInstallationsJob).with(admin.id)
+    expect(parse_body).to eq("enqueued" => true)
+
+    # A 3-second UI poll must not stack sync jobs — the cache throttle
+    # swallows repeats inside the window.
+    expect {
+      post "/api/v1/app/admin/github_app/sync_installations"
+    }.not_to have_enqueued_job(SyncInstallationsJob)
+    expect(parse_body).to eq("enqueued" => false)
+  end
 end

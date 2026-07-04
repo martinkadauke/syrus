@@ -102,10 +102,10 @@ In **Agent Settings**, choose your default agent provider. Then open
 Set **Max turns** to the cap you want for agent runs. The default is meant
 to prevent runaway loops while still allowing normal implementation work.
 
-Then configure GitHub access. To monitor and interact with GitHub, and to
-act as an independent contributor, Syrus requires both a Personal Access
-Token (PAT) and a custom GitHub App. The **Configure GitHub** step guides
-you through them one at a time, the token first, then the App:
+Then set up the GitHub integration. To monitor and interact with GitHub,
+and to act as an independent contributor, Syrus requires both a Personal
+Access Token (PAT) and a custom GitHub App. The **GitHub integration**
+step guides you through them one at a time:
 
 1. **Personal access token.** Syrus links straight to
    [github.com/settings/tokens](https://github.com/settings/tokens), tells you
@@ -117,9 +117,13 @@ you through them one at a time, the token first, then the App:
 2. **GitHub App** (admin only). Click the button: your browser opens
    GitHub, GitHub creates the singleton Syrus App from a manifest and sends
    you straight back — Syrus picks up the registration automatically.
-   That's the whole step. Connecting the App to specific repositories
-   happens later, when you add each repository (see below), because that's
-   when there's something concrete to connect it to.
+3. **Install the App** (recommended, skippable). Right after registration,
+   Syrus offers GitHub's install page for the App. Keep GitHub's
+   **All repositories** default and every repository you add to Syrus
+   connects to the App automatically; Syrus detects the installation by
+   itself within seconds and shows *Installed on \<account\>*. If you skip
+   it, Syrus works through your PAT and offers a per-repository install
+   link whenever you add a repository that isn't covered.
 
 The GitHub step completes once the token is verified and the App is
 registered. Repositories work immediately either way: with an active App
@@ -128,6 +132,13 @@ limit, auto-refreshing tokens); without one it works through your PAT.
 
 Syrus records the credential mode on repositories and Jobs so operators
 can tell whether a run used App credentials or PAT fallback.
+
+One caveat for reinstalls: the App registration lives in your instance's
+database, so ordinary updates keep it. Wiping the instance (deleting its
+data volume) and reinstalling registers a *new* App — the old one's
+private key is not recoverable — and orphaned Syrus Apps from previous
+installs can be deleted at
+[github.com/settings/apps](https://github.com/settings/apps).
 
 ### 3. Add a repository
 

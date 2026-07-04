@@ -16,11 +16,12 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
 }
 
-const notRegistered = { registered: false, id: null, slug: null, registered_at: null, install_url: null }
-const registered = { registered: true, id: 42, slug: "operator-syrus", registered_at: "2026-06-20T00:00:00Z", install_url: "https://github.com/apps/operator-syrus/installations/new" }
+const notRegistered = { registered: false, id: null, slug: null, registered_at: null, install_url: null, installations: [] }
+const registered = { registered: true, id: 42, slug: "operator-syrus", registered_at: "2026-06-20T00:00:00Z", install_url: "https://github.com/apps/operator-syrus/installations/new", installations: [] }
+const installed = { ...registered, installations: [{ account_login: "octocat", account_type: "User" }] }
 const bounceUrl = "http://localhost:3000/admin/github_app/manifest?state=abc&syrus_external=1"
 
-function mockRoutes(over: { register?: () => Response; confirm?: () => Response } = {}) {
+function mockRoutes(over: { register?: () => Response; confirm?: () => Response; sync?: () => Response } = {}) {
   return vi.spyOn(window, "fetch").mockImplementation(async (input) => {
     const url = String(input)
     if (url.includes("/admin/github_app/register")) {
@@ -31,6 +32,7 @@ function mockRoutes(over: { register?: () => Response; confirm?: () => Response 
       })
     }
     if (url.endsWith("/admin/github_app/confirm")) return over.confirm?.() ?? jsonResponse({ github_app: notRegistered })
+    if (url.endsWith("/admin/github_app/sync_installations")) return over.sync?.() ?? jsonResponse({ enqueued: true })
     throw new Error(`unexpected fetch: ${url}`)
   })
 }
@@ -49,18 +51,47 @@ describe("GithubAppPanel", () => {
     expect(screen.queryByText(/recommended credential/)).not.toBeInTheDocument()
   })
 
-  it("shows a clean success state once registered — installation happens at add-repository time", async () => {
-    mockRoutes({ register: () => jsonResponse({ github_app: registered, bounce_url: bounceUrl, submit_label: "Re-register GitHub App" }), confirm: () => jsonResponse({ github_app: registered }) })
+  it("offers the account-level install once registered, and detects the installation", async () => {
+    let confirmedInstall = false
+    mockRoutes({
+      register: () => jsonResponse({ github_app: registered, bounce_url: bounceUrl, submit_label: "Re-register GitHub App" }),
+      confirm: () => jsonResponse({ github_app: confirmedInstall ? installed : registered })
+    })
+    const opened = { opener: {} as unknown }
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(opened as Window)
     const onSaved = vi.fn()
     renderPanel({ onSaved })
 
     expect(await screen.findByText("The Syrus GitHub App is registered.")).toBeInTheDocument()
-    expect(screen.getByText(/connect it to repositories as you add them/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument()
-    // No install-on-repositories homework here: the pre-scoped install link
-    // is offered by the add-repository flow, where it's actionable.
-    expect(screen.queryByRole("link", { name: /Install the Syrus App/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/All repositories/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Skip for now" })).toBeInTheDocument()
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole("button", { name: /Install on GitHub/ }))
+    expect(openSpy).toHaveBeenCalledWith("https://github.com/apps/operator-syrus/installations/new", "_blank")
+    await waitFor(() => expect(screen.getByText(/Waiting for GitHub/)).toBeInTheDocument())
+
+    // The panel nudges the server-side installation sync while waiting.
+    const fetchSpy = window.fetch as ReturnType<typeof vi.fn>
+    await waitFor(() =>
+      expect(fetchSpy.mock.calls.some(([u]) => String(u).endsWith("/admin/github_app/sync_installations"))).toBe(true)
+    )
+
+    // Once the sync links the installation, the panel flips by itself.
+    confirmedInstall = true
+    await waitFor(() => expect(screen.getByText(/Installed on octocat/)).toBeInTheDocument(), { timeout: 8000 })
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument()
+  })
+
+  it("shows the installed state directly when an installation already exists", async () => {
+    mockRoutes({
+      register: () => jsonResponse({ github_app: installed, bounce_url: bounceUrl, submit_label: "Re-register GitHub App" }),
+      confirm: () => jsonResponse({ github_app: installed })
+    })
+    renderPanel()
+
+    expect(await screen.findByText(/Installed on octocat/)).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Install on GitHub/ })).not.toBeInTheDocument()
   })
 
   it("falls back to a note when the user is not an admin (403)", async () => {

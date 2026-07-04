@@ -212,6 +212,7 @@ Rails.application.routes.draw do
           get "stuck", to: "stuck#index"
           get "github_app/register", to: "github_app#register"
           get "github_app/confirm", to: "github_app#confirm"
+          post "github_app/sync_installations", to: "github_app#sync_installations"
           resources :processes, only: %i[ index show ], controller: "spawned_processes" do
             member do
               post :kill

@@ -66,9 +66,22 @@ RSpec.describe "desktop web-container window" do
   end
 
   it "gates startup on the single-instance lock so the losing instance runs nothing" do
-    expect(main_process).to include("const hasSingleInstanceLock = app.requestSingleInstanceLock()")
+    expect(main_process).to include("const hasSingleInstanceLock = app.requestSingleInstanceLock(ownInstanceIdentity())")
     when_ready = main_process[/app\.whenReady\(\)\.then\(async \(\) => \{[\s\S]{0,200}/]
     expect(when_ready).to include("if (!hasSingleInstanceLock)")
+  end
+
+  it "offers takeover when a different version or bundle launches against a running instance" do
+    # Field lesson: a stale copy running off a mounted DMG silently swallowed
+    # every newer launch. The launching instance identifies itself via the
+    # lock's additionalData; the running instance offers Switch/Keep, and on
+    # Switch releases the lock BEFORE launching the new copy (or the new copy
+    # loses the lock race against the dying instance — the original trap).
+    expect(main_process).to include("decideOnSecondInstance(own, incoming)")
+    handler = main_process[/app\.on\("second-instance"[\s\S]{0,1800}/]
+    expect(handler).to include("takeoverPrompt(own, incoming")
+    expect(handler.index("app.releaseSingleInstanceLock()")).to be < handler.index("launchInstalledCopy(")
+    expect(handler).to include("void openSyrus()")
   end
 
   it "recovers by polling /up from the main process and reloading" do
@@ -83,7 +96,7 @@ RSpec.describe "desktop web-container window" do
   end
 
   it "enforces a single running instance that focuses the existing one" do
-    expect(main_process).to include("app.requestSingleInstanceLock()")
+    expect(main_process).to include("app.requestSingleInstanceLock(ownInstanceIdentity())")
     expect(main_process).to include('app.on("second-instance"')
   end
 

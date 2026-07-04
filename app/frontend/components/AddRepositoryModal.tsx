@@ -11,6 +11,7 @@ import {
   type RepositoryInput,
   type RepositorySavedPayload
 } from "../api/repositories"
+import { syncAdminGithubAppInstallations } from "../api/adminGithubApp"
 import { ApiError } from "../api/client"
 import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
@@ -171,6 +172,15 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
     refetchInterval: awaitingInstall ? 3000 : false
   })
   const installedNow = installWatch.data?.credential_status.mode === "app"
+
+  // Syrus discovers installations by polling GitHub (no webhooks) — nudge
+  // the server to sync while we wait so this takes seconds, not the
+  // 5-minute recurring sweep. Server-side throttled; 403s for non-admins
+  // are fine to ignore (the recurring sync still covers them).
+  useEffect(() => {
+    if (!awaitingInstall || installedNow) return
+    syncAdminGithubAppInstallations().catch(() => {})
+  }, [awaitingInstall, installedNow, installWatch.dataUpdatedAt])
 
   function chooseOwner(owner: string) {
     setRepoOptions([])

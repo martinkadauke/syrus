@@ -20,6 +20,19 @@ module Api
             render json: status_payload
           end
 
+          # Syrus is poll-based (no webhooks), so a fresh App installation is
+          # normally only discovered by the recurring 5-minute sync. The setup
+          # UIs call this while the operator is on GitHub's install page so
+          # detection takes seconds instead. Cache-throttled: hammering it
+          # from a 3s poll enqueues at most one sync per window.
+          SYNC_THROTTLE = 15.seconds
+
+          def sync_installations
+            enqueued = Rails.cache.write("github_app_sync_installations_throttle", 1, unless_exist: true, expires_in: SYNC_THROTTLE)
+            SyncInstallationsJob.perform_later(Current.user.id) if enqueued
+            render json: { enqueued: !!enqueued }
+          end
+
           private
 
           def status_payload
@@ -31,7 +44,12 @@ module Api
                 id: setting.github_app_id,
                 slug: setting.github_app_slug,
                 registered_at: setting.github_app_registered_at&.iso8601,
-                install_url: ::App::Presentation.github_app_generic_install_url
+                install_url: ::App::Presentation.github_app_generic_install_url,
+                # Lets the setup UI flip to "installed on <account>" the
+                # moment a sync links the installation.
+                installations: Installation.active.order(:account_login).map do |installation|
+                  { account_login: installation.account_login, account_type: installation.account_type }
+                end
               }
             }
           end
