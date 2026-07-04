@@ -545,6 +545,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.integer "external_pr_number"
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
+    t.integer "fork_review_pr_number"
     t.boolean "github_mergeable"
     t.string "github_mergeable_state"
     t.json "invalidation_evidence", null: false
