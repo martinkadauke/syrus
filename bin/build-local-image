@@ -58,6 +58,9 @@ if [ "$PUSH" = "1" ]; then
   GHCR_USER="${GHCR_USER:?--push needs GHCR_USER=<your GitHub username> (the fork GHCR namespace)}"
   IMAGE_REPO="${SYRUS_IMAGE_REPO:-ghcr.io/${GHCR_USER}/syrus-local}"
   IMAGE="${IMAGE_REPO}:${TAG}"
+  # Fail fast on a missing token too — discovering it AFTER a potentially
+  # 20-40 minute build wastes exactly the wait --push exists to justify.
+  TOKEN="$(syrus_read_ghcr_token "$HOME/.config/syrus/ghcr-token")"
 else
   IMAGE="syrus-local:${TAG}"
 fi
@@ -65,7 +68,6 @@ fi
 syrus_build_local_backend_image "$IMAGE" "$GIT_SHA"
 
 if [ "$PUSH" = "1" ]; then
-  TOKEN="$(syrus_read_ghcr_token "$HOME/.config/syrus/ghcr-token")"
   syrus_ghcr_login "$GHCR_USER" "$TOKEN"
   docker push "$IMAGE"
   syrus_verify_pushed "$IMAGE_REPO" "$TAG" "$TOKEN"

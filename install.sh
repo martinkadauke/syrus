@@ -378,6 +378,10 @@ run_docker() {
       sleep "${SYRUS_PULL_RETRY_DELAY:-5}"
     fi
   done
+  # Read-then-delete up front: die() exits, so cleanup placed after the
+  # classification would never run on exactly the failure paths that use it.
+  pull_error="$(cat "$pull_log" 2>/dev/null || true)"
+  rm -f "$pull_log"
   if [ "$pull_ok" != "1" ]; then
     # A locally built or previously pulled copy still works — key for fork
     # iteration (build the image locally, install without any registry) and
@@ -391,7 +395,6 @@ run_docker() {
       # a generic "check your network": 31 = registry refused (private
       # package / unpublished tag / not logged in), 32 = the tag genuinely
       # doesn't exist on a readable package, 30 = network/other.
-      pull_error="$(cat "$pull_log" 2>/dev/null || true)"
       echo >&2
       echo "Couldn't pull $IMAGE. See the error above." >&2
       case "$pull_error" in
@@ -416,7 +419,6 @@ run_docker() {
       esac
     fi
   fi
-  rm -f "$pull_log"
   emit_step image_pull ok
 
   # 5. Start the stack.
