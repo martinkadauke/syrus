@@ -44,18 +44,42 @@ const newFormPayload = {
   repositories_path: "/repositories"
 }
 
-function mockRoutes(over: { owners?: () => Response; create?: () => Response } = {}) {
+function mockRoutes(over: { owners?: () => Response; create?: () => Response; detail?: () => Response } = {}) {
   return vi.spyOn(window, "fetch").mockImplementation(async (input, init) => {
     const url = String(input)
     if (url.includes("/repositories/new")) return jsonResponse(newFormPayload)
     if (url.includes("/repositories/owners")) return over.owners?.() ?? jsonResponse({ user: "octocat", orgs: ["acme"] })
     if (url.includes("/repositories/repos")) return jsonResponse({ repos: [{ name: "hello-world", github_repository_id: 7, github_owner_id: 3 }] })
     if (url.includes("/repositories/branches")) return jsonResponse({ branches: ["main", "dev"], default_branch: "main" })
+    if (/\/api\/v1\/app\/repositories\/\d+$/.test(url) && init?.method !== "POST") {
+      return over.detail?.() ?? jsonResponse({ credential_status: credentialStatus("pat") })
+    }
     if (url.endsWith("/api/v1/app/repositories") && init?.method === "POST") {
       return over.create?.() ?? jsonResponse({ message: "Saved", redirect_to: "/repositories/1", repository: {} })
     }
     throw new Error(`unexpected fetch: ${url}`)
   })
+}
+
+function credentialStatus(mode: "app" | "pat") {
+  return {
+    mode,
+    label: mode === "app" ? "GitHub App active" : "PAT fallback: no active App installation",
+    installation_account: mode === "app" ? "octocat" : null,
+    github_app_registered: true,
+    install_url: mode === "pat" ? "https://github.com/apps/operator-syrus/installations/new?suggested_target_id=3" : null,
+    register_path: null,
+    previous_installation_removed: false,
+    missing_github_ids: false
+  }
+}
+
+const savedRepository = { id: 1, slug: "octocat/hello-world", owner: "octocat", name: "hello-world" }
+
+async function submitRepository() {
+  fireEvent.change(await screen.findByRole("combobox", { name: "User/Org" }), { target: { value: "octocat" } })
+  fireEvent.change(await screen.findByRole("combobox", { name: "Repository" }), { target: { value: "hello-world" } })
+  fireEvent.click(screen.getByRole("button", { name: "Add repository" }))
 }
 
 describe("AddRepositoryModal", () => {
@@ -123,6 +147,59 @@ describe("AddRepositoryModal", () => {
       upstream_name: "",
       github_repository_id: "7"
     })
+  })
+
+  it("offers the pre-scoped App install after adding a PAT-fallback repository, and detects the install", async () => {
+    mockRoutes({
+      create: () => jsonResponse({
+        message: "Saved",
+        redirect_to: "/repositories/1",
+        repository: savedRepository,
+        credential_status: credentialStatus("pat")
+      }),
+      detail: () => jsonResponse({ credential_status: credentialStatus("app") })
+    })
+    const opened = { opener: {} as unknown }
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(opened as Window)
+    const onClose = vi.fn()
+    renderModal({ onClose })
+
+    await submitRepository()
+
+    expect(await screen.findByText("octocat/hello-world is ready.")).toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByText(/Optional: install the Syrus GitHub App/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: /Install on GitHub/ }))
+    expect(openSpy).toHaveBeenCalledWith("https://github.com/apps/operator-syrus/installations/new?suggested_target_id=3", "_blank")
+
+    // The install-watch poll sees the linked installation and flips the
+    // panel to a green check without any user action.
+    await waitFor(() => expect(screen.getByText(/Syrus App connected/)).toBeInTheDocument())
+    expect(screen.queryByRole("button", { name: /Install on GitHub/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }))
+    expect(onClose).toHaveBeenCalled()
+  })
+
+  it("closes immediately when the owner's installation already covers the new repository", async () => {
+    mockRoutes({
+      create: () => jsonResponse({
+        message: "Saved",
+        redirect_to: "/repositories/1",
+        repository: savedRepository,
+        credential_status: credentialStatus("app")
+      })
+    })
+    const onSaved = vi.fn()
+    const onClose = vi.fn()
+    renderModal({ onSaved, onClose })
+
+    await submitRepository()
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(onSaved).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/Optional: install the Syrus GitHub App/)).not.toBeInTheDocument()
   })
 
   it("shows a notice (no manual entry) when GitHub owners can't be loaded", async () => {

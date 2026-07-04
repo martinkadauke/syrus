@@ -30,7 +30,6 @@ export function GithubAppPanel({ onClose, onSaved }: { onClose: () => void; onSa
 
   const status = confirm.data?.github_app ?? register.data?.github_app
   const registered = !!status?.registered
-  const installUrl = status?.install_url ?? null
 
   // Once the App is registered, the GitHub step is satisfied — refresh
   // bootstrap so the checklist marks it complete, and stop polling.
@@ -59,18 +58,10 @@ export function GithubAppPanel({ onClose, onSaved }: { onClose: () => void; onSa
   if (registered) {
     return (
       <div className="space-y-4">
-        <Box tone="ok">The Syrus GitHub App is registered. Install it on the repositories Syrus should manage.</Box>
-        <ol className="space-y-2 text-sm text-gray-700 dark:text-gray-300">
-          <li>
-            {installUrl ? (
-              <a className="inline-flex items-center gap-1 rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white" href={installUrl} rel="noreferrer" target="_blank">
-                Install the Syrus App on GitHub <span aria-hidden="true">↗</span>
-              </a>
-            ) : (
-              <span className="text-gray-500 dark:text-gray-400">Install the App from its GitHub settings before adding repositories to Syrus.</span>
-            )}
-          </li>
-        </ol>
+        <Box tone="ok">The Syrus GitHub App is registered.</Box>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          You&apos;ll connect it to repositories as you add them — until then Syrus works through your personal access token.
+        </p>
         <div className="flex justify-end">
           <button className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700" onClick={onClose} type="button">
             Done
@@ -86,8 +77,8 @@ export function GithubAppPanel({ onClose, onSaved }: { onClose: () => void; onSa
         The GitHub App enables actions to appear as a bot natively on your repositories.
       </p>
       <ol className="space-y-2">
-        <li><span className="font-medium text-gray-900 dark:text-gray-100">1.</span> Create the App on GitHub (opens a new tab).</li>
-        <li><span className="font-medium text-gray-900 dark:text-gray-100">2.</span> You'll be redirected back here; then install it on your repositories.</li>
+        <li><span className="font-medium text-gray-900 dark:text-gray-100">1.</span> Create the App on GitHub (opens in your browser).</li>
+        <li><span className="font-medium text-gray-900 dark:text-gray-100">2.</span> GitHub sends you back — Syrus picks it up automatically.</li>
       </ol>
 
       <button

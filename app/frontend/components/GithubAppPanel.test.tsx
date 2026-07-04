@@ -49,16 +49,17 @@ describe("GithubAppPanel", () => {
     expect(screen.queryByText(/recommended credential/)).not.toBeInTheDocument()
   })
 
-  it("shows the install link and Done once registered", async () => {
+  it("shows a clean success state once registered — installation happens at add-repository time", async () => {
     mockRoutes({ register: () => jsonResponse({ github_app: registered, bounce_url: bounceUrl, submit_label: "Re-register GitHub App" }), confirm: () => jsonResponse({ github_app: registered }) })
     const onSaved = vi.fn()
     renderPanel({ onSaved })
 
-    const install = await screen.findByRole("link", { name: /Install the Syrus App on GitHub/ })
-    expect(install).toHaveAttribute("href", "https://github.com/apps/operator-syrus/installations/new")
+    expect(await screen.findByText("The Syrus GitHub App is registered.")).toBeInTheDocument()
+    expect(screen.getByText(/connect it to repositories as you add them/)).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument()
-    expect(screen.queryByText(/install now or later/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Open Repositories later/)).not.toBeInTheDocument()
+    // No install-on-repositories homework here: the pre-scoped install link
+    // is offered by the add-repository flow, where it's actionable.
+    expect(screen.queryByRole("link", { name: /Install the Syrus App/ })).not.toBeInTheDocument()
     await waitFor(() => expect(onSaved).toHaveBeenCalled())
   })
 

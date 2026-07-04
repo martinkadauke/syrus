@@ -41,7 +41,9 @@ RSpec.describe "brand icons" do
 
   it "leaves the existing icon references intact" do
     layout = File.read(File.join(repo_root, "app/views/layouts/spa.html.erb"), encoding: "UTF-8")
-    expect(layout).to include('href="/icon.png"')
+    # Versioned (?v=N): public/ files are cached for a year, so rebranded
+    # icons must change URL — see app/frontend/lib/brandIcon.ts.
+    expect(layout).to match(%r{href="/icon\.png\?v=\d+"})
     expect(layout).not_to include("icon.svg")
     manifest = File.read(File.join(repo_root, "app/views/pwa/manifest.json.erb"), encoding: "UTF-8")
     expect(manifest).to include("/icon-192.png")

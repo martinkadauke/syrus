@@ -82,8 +82,8 @@ RSpec.describe "SPA shell", type: :request do
     get app_shell_path
 
     expect(response).to have_http_status(:ok)
-    expect(response.body).to include('<link rel="icon" href="/icon.png" type="image/png">')
-    expect(response.body).to include('<link rel="apple-touch-icon" href="/icon-192.png">')
+    expect(response.body).to include('<link rel="icon" href="/icon.png?v=2" type="image/png">')
+    expect(response.body).to include('<link rel="apple-touch-icon" href="/icon-192.png?v=2">')
     expect(response.body).to include('<link rel="manifest" href="/manifest.json">')
   end
 

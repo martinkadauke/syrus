@@ -114,18 +114,17 @@ you through them one at a time, the token first, then the App:
    check confirms it works, while a clear message flags an invalid token or a
    missing scope before you save. The PAT covers private clones and is the
    fallback for repositories without an active App installation.
-2. **GitHub App** (admin only). This sub-step is itself two parts —
-   **create** then **install**. First Syrus creates the singleton Syrus GitHub
-   App from a manifest (click the button, GitHub creates the App and redirects
-   back). Then the modal shows an **Install** link: install the App on GitHub
-   and choose which repositories it can access. Repositories with an active
-   installation use App credentials — actions appear as a bot, with an
-   independent rate limit and auto-refreshing tokens. Install the App on at
-   least one repository before adding that repository to Syrus; without an
-   installation, Syrus cannot operate on the repository.
+2. **GitHub App** (admin only). Click the button: your browser opens
+   GitHub, GitHub creates the singleton Syrus App from a manifest and sends
+   you straight back — Syrus picks up the registration automatically.
+   That's the whole step. Connecting the App to specific repositories
+   happens later, when you add each repository (see below), because that's
+   when there's something concrete to connect it to.
 
-The GitHub step completes once the token and the App are registered, and
-repositories are ready once the App is installed for them.
+The GitHub step completes once the token is verified and the App is
+registered. Repositories work immediately either way: with an active App
+installation Syrus acts through its own bot identity (independent rate
+limit, auto-refreshing tokens); without one it works through your PAT.
 
 Syrus records the credential mode on repositories and Jobs so operators
 can tell whether a run used App credentials or PAT fallback.
@@ -143,6 +142,14 @@ inherits the default agent you chose earlier, and turns on auto-merge plus the
 standard repository defaults. It skips the upstream/fork fields. Additional
 repositories — and any fine-tuning, including the trigger label — happen later
 from the full **Repositories** page.
+
+After the repository is added, Syrus offers the one optional step that's
+now actionable: **installing the Syrus GitHub App on that owner**, via a
+link pre-scoped to the repository. Skip it and Syrus works through your
+PAT; take it and the modal detects the installation by itself and confirms
+when actions will come from the Syrus bot. If the owner already has an
+active installation, none of this appears — the repository connects to the
+App automatically.
 
 To add more repositories after the first, open **Repositories**. You
 can pick from GitHub when credentials can list accessible

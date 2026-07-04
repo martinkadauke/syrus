@@ -258,7 +258,11 @@ module Api
           {
             message: message,
             redirect_to: repositories_path,
-            repository: repository_json(repository)
+            repository: repository_json(repository),
+            # Lets the add-repository flow offer the pre-scoped App install
+            # link right when it is actionable (and skip it when the owner's
+            # installation already covers the repo).
+            credential_status: credential_status_json(repository)
           }
         end
 

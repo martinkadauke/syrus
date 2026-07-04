@@ -94,10 +94,22 @@ export type RepositoryInput = {
   github_repository_id: string
 }
 
+export type RepositoryCredentialStatus = {
+  mode: "app" | "pat"
+  label: string
+  installation_account: string | null
+  github_app_registered: boolean
+  install_url: string | null
+  register_path: string | null
+  previous_installation_removed: boolean
+  missing_github_ids: boolean
+}
+
 export type RepositorySavedPayload = {
   message: string
   redirect_to: string
   repository: RepositoryRow
+  credential_status: RepositoryCredentialStatus
 }
 
 export type GitHubOwnersPayload = {
@@ -148,16 +160,7 @@ export type RepositoryDetailPayload = {
   }
   can_release_triage_jobs: boolean
   needs_triage_jobs: RepositoryNeedsTriageJob[]
-  credential_status: {
-    mode: "app" | "pat"
-    label: string
-    installation_account: string | null
-    github_app_registered: boolean
-    install_url: string | null
-    register_path: string | null
-    previous_installation_removed: boolean
-    missing_github_ids: boolean
-  }
+  credential_status: RepositoryCredentialStatus
   jobs: RepositoryDetailJob[]
   pagination: {
     page: number
