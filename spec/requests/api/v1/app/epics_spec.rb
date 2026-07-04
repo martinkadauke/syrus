@@ -782,6 +782,76 @@ RSpec.describe "API: /api/v1/app/epics", type: :request do
     expect(parse_body).to include("message" => "Epic updated.", "redirect_to" => epic_path(epic))
   end
 
+  it "exposes Epics on shared repositories (any membership role)" do
+    sign_in_as(user)
+    owner = Factories.user(email_address: "owner@example.com")
+    shared = Factories.repository(user: owner, owner: "shared", name: "monolith")
+    shared.repository_memberships.create!(user: user, role: "collaborator")
+    epic = Factories.epic(user: owner, repository: shared, title: "Shared feature")
+
+    get "/api/v1/app/epics/#{epic.id}"
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("epic", "title")).to eq("Shared feature")
+  end
+
+  it "exposes Epics on upstream repositories of a user's fork" do
+    sign_in_as(user)
+    upstream_user = Factories.user(email_address: "upstream@example.com")
+    upstream = Factories.repository(user: upstream_user, owner: "upstream", name: "lib")
+    Factories.repository(user: user, owner: "acme", name: "lib-fork", upstream_repository: upstream)
+    upstream_epic = Factories.epic(user: upstream_user, repository: upstream, title: "Upstream feature")
+
+    get "/api/v1/app/epics/#{upstream_epic.id}"
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("epic", "title")).to eq("Upstream feature")
+  end
+
+  it "lists Epics from accessible repositories (membership and upstream) in the index" do
+    sign_in_as(user)
+    my_epic = Factories.epic(user: user, repository: repository, title: "My work")
+    upstream_user = Factories.user(email_address: "upstream@example.com")
+    upstream = Factories.repository(user: upstream_user, owner: "upstream", name: "lib")
+    Factories.repository(user: user, owner: "acme", name: "lib-fork", upstream_repository: upstream)
+    upstream_epic = Factories.epic(user: upstream_user, repository: upstream, title: "Upstream work")
+    private_user = Factories.user
+    Factories.epic(user: private_user, repository: Factories.repository(user: private_user, owner: "private", name: "stuff"), title: "Private")
+
+    get "/api/v1/app/epics"
+
+    expect(response).to have_http_status(:ok)
+    titles = parse_body["epics"].map { |e| e["title"] }
+    expect(titles).to include("My work", "Upstream work")
+    expect(titles).not_to include("Private")
+  end
+
+  it "blocks moving an Epic to a repository the user has no membership on" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, title: "Orphan road")
+    other_owner = Factories.user(email_address: "other@example.com")
+    inaccessible = Factories.repository(user: other_owner, owner: "other", name: "locked")
+
+    patch "/api/v1/app/epics/#{epic.id}", params: {
+      epic: { title: "Orphan road", repository_id: inaccessible.id }
+    }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(parse_body.dig("error", "code")).to eq("forbidden")
+    expect(epic.reload.repository_id).to eq(repository.id)
+  end
+
+  it "allows moving an Epic to a repository the user has membership on" do
+    sign_in_as(user)
+    epic = Factories.epic(user: user, repository: repository, title: "Traveling Epic")
+    target = Factories.repository(user: user, owner: "acme", name: "destination")
+
+    patch "/api/v1/app/epics/#{epic.id}", params: {
+      epic: { title: "Traveling Epic", repository_id: target.id }
+    }
+
+    expect(response).to have_http_status(:ok)
+    expect(epic.reload.repository_id).to eq(target.id)
+  end
+
   it "does not expose another user's epic" do
     sign_in_as(user)
     other_user = Factories.user

@@ -2,6 +2,8 @@ class Repository < ApplicationRecord
   include AutoApproveModes
 
   GITHUB_NAME = /\A[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?\z/
+  REVIEW_POLICIES = %w[ self two_person final_say ].freeze
+
   attribute :polling_enabled, :boolean, default: true
   attribute :prepare_enabled, :boolean, default: true
   attribute :pr_cost_footer_enabled, :boolean, default: true
@@ -12,8 +14,14 @@ class Repository < ApplicationRecord
   # logical-conflict risk for landing throughput. See Steps::ForcePush.
   attribute :trust_clean_rebase_grade, :boolean, default: false
 
-  belongs_to :user
+  belongs_to :user, optional: true
   belongs_to :installation, optional: true
+  belongs_to :upstream_repository, class_name: "Repository", optional: true, inverse_of: :fork_repositories
+  has_many :fork_repositories, class_name: "Repository", foreign_key: :upstream_repository_id, dependent: :nullify, inverse_of: :upstream_repository
+  has_many :repository_memberships, dependent: :destroy
+  has_many :members, through: :repository_memberships, source: :user
+  has_many :repository_final_approvers, dependent: :destroy
+  has_many :final_approvers, through: :repository_final_approvers, source: :user
   has_many :jobs, dependent: :destroy
   has_many :epics, dependent: :destroy
   has_many :scheduled_tasks, dependent: :destroy
@@ -30,17 +38,18 @@ class Repository < ApplicationRecord
   validates :default_branch, presence: true
   validates :trigger_label, presence: true
   validates :agent_provider, inclusion: { in: User::AGENT_PROVIDERS }, allow_nil: true
+  validates :review_policy, presence: true, inclusion: { in: REVIEW_POLICIES }
   validates :name, uniqueness: {
-    scope: [ :user_id, :owner ],
+    scope: :owner,
     case_sensitive: false,
-    message: "has already been configured for this Syrus user and GitHub owner"
+    message: "has already been registered for this GitHub owner"
   }
-  validates :owner, uniqueness: { scope: [ :user_id, :name ], case_sensitive: false }
   validate :upstream_owner_and_name_are_paired
 
   before_validation :normalize_agent_provider
   before_validation :normalize_upstream_metadata
   before_save :link_installation_from_owner
+  after_create :seed_owner_membership
   before_destroy :destroy_chat_sessions, prepend: true
 
   scope :active,   -> { where(archived_at: nil) }
@@ -72,8 +81,12 @@ class Repository < ApplicationRecord
     "#{upstream_owner}/#{upstream_name}"
   end
 
-  def effective_agent_provider
-    agent_provider.presence || user.agent_provider
+  def effective_agent_provider(user: nil)
+    if user
+      membership_provider = repository_memberships.find_by(user_id: user.id)&.agent_provider&.presence
+      return membership_provider if membership_provider
+    end
+    agent_provider.presence || (user || self.user)&.agent_provider
   end
 
   def effective_prepare_enabled
@@ -125,5 +138,10 @@ class Repository < ApplicationRecord
 
   def destroy_chat_sessions
     chat_sessions.find_each(&:destroy)
+  end
+
+  def seed_owner_membership
+    return unless user_id.present?
+    repository_memberships.find_or_create_by!(user_id: user_id) { |m| m.role = "owner" }
   end
 end

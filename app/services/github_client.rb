@@ -23,7 +23,8 @@ class GithubClient
   def self.for(repository:, user: nil)
     raise ArgumentError, "repository is required" unless repository
 
-    installation = repository.installation
+    membership_installation = user && repository.repository_memberships.find_by(user_id: user.id)&.installation
+    installation = membership_installation || repository.installation
     actor = user || repository.user
 
     if installation&.active?

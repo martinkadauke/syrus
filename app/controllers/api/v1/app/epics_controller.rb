@@ -5,7 +5,7 @@ module Api
         before_action :authorize_epic_action!, only: [ :update_state ]
 
         def index
-          epics = Current.user.epics.includes(:repository, :jobs).order(updated_at: :desc, id: :desc)
+          epics = Epic.accessible_to(Current.user).includes(:repository, :jobs).order(updated_at: :desc, id: :desc)
           if params[:repo].present?
             owner, name = params[:repo].to_s.split("/", 2)
             epics = epics.joins(:repository).where(repositories: { owner: owner, name: name })
@@ -46,8 +46,13 @@ module Api
 
         def update
           epic = find_epic
+          attrs = epic_params
 
-          if epic.update(epic_params)
+          if attrs[:repository_id].present? && attrs[:repository_id].to_i != epic.repository_id
+            return render_error("forbidden", "You do not have access to the target repository.", status: :forbidden) unless membership_on_repo?(attrs[:repository_id])
+          end
+
+          if epic.update(attrs)
             render json: saved_payload(epic, message: "Epic updated.")
           else
             render_error("validation_failed", epic.errors.full_messages.to_sentence, status: :unprocessable_content)
@@ -144,7 +149,7 @@ module Api
 
         def add_dependency
           epic = find_epic
-          depends_on_epic = Current.user.epics.find(params.require(:depends_on_epic_id))
+          depends_on_epic = Epic.accessible_to(Current.user).find(params.require(:depends_on_epic_id))
           dependency = epic.dependencies.build(depends_on_epic: depends_on_epic)
 
           if dependency.save
@@ -180,9 +185,12 @@ module Api
         class UnavailableTransition < StandardError; end
 
         def form_payload(epic)
+          accessible_repos = Repository.joins(:repository_memberships)
+                                       .where(repository_memberships: { user: Current.user })
+                                       .order(:name)
           {
             epic: epic_json(epic),
-            repositories: Current.user.repositories.order(:name).map { |repository| repository_json(repository) },
+            repositories: accessible_repos.map { |repository| repository_json(repository) },
             dashboard_epics_path: dashboard_epics_path
           }
         end
@@ -413,7 +421,11 @@ module Api
         end
 
         def find_epic
-          Current.user.epics.includes(:owner_user).find(params[:id])
+          Epic.accessible_to(Current.user).includes(:owner_user).find(params[:id])
+        end
+
+        def membership_on_repo?(repository_id)
+          RepositoryMembership.exists?(repository_id: repository_id, user: Current.user)
         end
 
         def authorize_epic_action!

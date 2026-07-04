@@ -731,4 +731,60 @@ RSpec.describe Epic do
       job.update!(issue_title: "Still attached")
     }.not_to change { job.reload.epic_id }
   end
+
+  describe "user_is_repository_member validation" do
+    it "rejects an Epic when the creator has no membership on the target repository" do
+      outsider = Factories.user(email_address: "outsider@example.com")
+      epic = Epic.new(user: outsider, repository: repository, title: "Uninvited")
+
+      expect(epic).not_to be_valid
+      expect(epic.errors[:repository]).to include("must have an active membership for the current user")
+    end
+
+    it "accepts an Epic when the creator is a collaborator member" do
+      collaborator = Factories.user(email_address: "collab@example.com")
+      repository.repository_memberships.create!(user: collaborator, role: "collaborator")
+
+      epic = Epic.new(user: collaborator, repository: repository, title: "Invited collaborator work")
+
+      expect(epic).to be_valid
+    end
+
+    it "accepts an Epic when the creator is the owner member" do
+      epic = Epic.new(user: user, repository: repository, title: "Owner work")
+
+      expect(epic).to be_valid
+    end
+  end
+
+  describe ".accessible_to" do
+    it "includes Epics on repositories where the user has direct membership" do
+      other_user = Factories.user
+      other_repo = Factories.repository(user: other_user, owner: "other", name: "private")
+      my_epic = Factories.epic(user: user, repository: repository)
+      other_epic = Factories.epic(user: other_user, repository: other_repo)
+
+      result = described_class.accessible_to(user)
+      expect(result).to include(my_epic)
+      expect(result).not_to include(other_epic)
+    end
+
+    it "includes Epics on upstream repos of repositories the user is a member of" do
+      upstream_user = Factories.user(email_address: "upstream@example.com")
+      upstream = Factories.repository(user: upstream_user, owner: "upstream", name: "lib")
+      Factories.repository(user: user, owner: "acme", name: "lib-fork", upstream_repository: upstream)
+      upstream_epic = Factories.epic(user: upstream_user, repository: upstream)
+
+      expect(described_class.accessible_to(user)).to include(upstream_epic)
+    end
+
+    it "includes Epics on repositories where the user is a collaborator" do
+      owner = Factories.user(email_address: "owner@example.com")
+      shared_repo = Factories.repository(user: owner, owner: "shared", name: "code")
+      shared_repo.repository_memberships.create!(user: user, role: "collaborator")
+      shared_epic = Factories.epic(user: owner, repository: shared_repo)
+
+      expect(described_class.accessible_to(user)).to include(shared_epic)
+    end
+  end
 end

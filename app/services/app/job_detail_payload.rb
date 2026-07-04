@@ -99,6 +99,8 @@ module App
         owner_user_id: @job.owner_user_id,
         owner_user: owner_user_json(@job.owner_user),
         approval_evidence: @job.approval_evidence,
+        job_approvals: @job.job_approvals.includes(:user).map { |a| job_approval_json(a) },
+        approval_status: approval_status_json,
         claimed_at: iso8601(@job.claimed_at),
         claimed_by_user: owner_json(@job.claimed_by_user),
         claimed_by_current_user: @job.claimed_by_user_id == @user.id,
@@ -131,6 +133,7 @@ module App
         default_branch: repository.default_branch,
         auto_merge_enabled: repository.auto_merge_enabled,
         approval_propagates_to_github: repository.approval_propagates_to_github,
+        review_policy: repository.review_policy,
         credential_mode: repository.credential_mode,
         repository_path: repository_path(repository)
       }
@@ -173,6 +176,28 @@ module App
       {
         id: owner_user.id,
         email_address: owner_user.email_address
+      }
+    end
+
+    def job_approval_json(approval)
+      {
+        id: approval.id,
+        user_id: approval.user_id,
+        user_email: approval.user.email_address,
+        approved_at: iso8601(approval.approved_at)
+      }
+    end
+
+    def approval_status_json
+      policy_name = @job.repository.review_policy
+      policy_obj = ReviewPolicies.for(policy_name).new(@job)
+      approvals = @job.job_approvals.includes(:user)
+
+      {
+        policy: policy_name,
+        satisfied: policy_obj.satisfied?,
+        pending_description: policy_obj.pending_description,
+        approvals_count: approvals.size
       }
     end
 
@@ -653,7 +678,7 @@ module App
         can_retry_from_failed_step: latest_workflow&.retry_available? || false,
         can_restart: !@job.any_active_run? && !@job.cron?,
         can_cancel: @job.open?,
-        can_approve: @job.may_approve?,
+        can_approve: @job.can_add_job_approval?(@user),
         can_unapprove: @job.may_unapprove?,
         can_reopen: @job.closed?,
         can_mark_valid: @job.validity_duplicate? || @job.validity_already_implemented?,

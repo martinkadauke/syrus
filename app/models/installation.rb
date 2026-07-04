@@ -6,6 +6,7 @@ class Installation < ApplicationRecord
 
   belongs_to :user
   has_many :repositories, dependent: :nullify
+  has_many :repository_memberships, dependent: :nullify
 
   validates :github_installation_id, presence: true, uniqueness: true
   validates :account_login, presence: true

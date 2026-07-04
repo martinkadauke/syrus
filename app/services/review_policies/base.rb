@@ -1,0 +1,21 @@
+module ReviewPolicies
+  class Base
+    def initialize(job)
+      @job = job
+    end
+
+    def satisfied?
+      raise NotImplementedError, "#{self.class} must implement #satisfied?"
+    end
+
+    def pending_description
+      raise NotImplementedError, "#{self.class} must implement #pending_description"
+    end
+
+    private
+
+    def owner_approved?
+      @job.job_approvals.where(user_id: @job.owner_user_id).exists?
+    end
+  end
+end

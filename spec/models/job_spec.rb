@@ -788,6 +788,121 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
     end
   end
 
+  describe "#approval_satisfied?" do
+    let(:owner) { Factories.user }
+    let(:other) { Factories.user }
+
+    context "review_policy: self" do
+      it "returns false when no approvals exist" do
+        repo = Factories.repository(user: owner, review_policy: "self")
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        expect(job.approval_satisfied?).to be false
+      end
+
+      it "returns true when owner has approved" do
+        repo = Factories.repository(user: owner, review_policy: "self")
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        JobApproval.create!(job: job, user: owner)
+        expect(job.approval_satisfied?).to be true
+      end
+
+      it "returns false when only a non-owner has approved" do
+        repo = Factories.repository(user: owner, review_policy: "self")
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        JobApproval.create!(job: job, user: other)
+        expect(job.approval_satisfied?).to be false
+      end
+    end
+
+    context "review_policy: two_person" do
+      it "returns false when only the owner has approved" do
+        repo = Factories.repository(user: owner, review_policy: "two_person")
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        JobApproval.create!(job: job, user: owner)
+        expect(job.approval_satisfied?).to be false
+      end
+
+      it "returns false when only a non-owner has approved" do
+        repo = Factories.repository(user: owner, review_policy: "two_person")
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        JobApproval.create!(job: job, user: other)
+        expect(job.approval_satisfied?).to be false
+      end
+
+      it "returns true when owner and one other user have approved" do
+        repo = Factories.repository(user: owner, review_policy: "two_person")
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        JobApproval.create!(job: job, user: owner)
+        JobApproval.create!(job: job, user: other)
+        expect(job.approval_satisfied?).to be true
+      end
+    end
+
+    context "review_policy: final_say" do
+      it "collapses to self when owner is a final approver" do
+        repo = Factories.repository(user: owner, review_policy: "final_say")
+        RepositoryFinalApprover.create!(repository: repo, user: owner)
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        expect(job.approval_satisfied?).to be false
+        JobApproval.create!(job: job, user: owner)
+        expect(job.approval_satisfied?).to be true
+      end
+
+      it "requires owner approval and a final approver when owner is not a final approver" do
+        final_approver = Factories.user
+        repo = Factories.repository(user: owner, review_policy: "final_say")
+        RepositoryFinalApprover.create!(repository: repo, user: final_approver)
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+
+        JobApproval.create!(job: job, user: owner)
+        expect(job.approval_satisfied?).to be false
+
+        JobApproval.create!(job: job, user: final_approver)
+        expect(job.approval_satisfied?).to be true
+      end
+
+      it "returns false when only a non-final-approver has approved alongside the owner" do
+        repo = Factories.repository(user: owner, review_policy: "final_say")
+        RepositoryFinalApprover.create!(repository: repo, user: other)
+        job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+        random_user = Factories.user
+        JobApproval.create!(job: job, user: owner)
+        JobApproval.create!(job: job, user: random_user)
+        expect(job.approval_satisfied?).to be false
+      end
+    end
+  end
+
+  describe "#can_add_job_approval?" do
+    let(:owner) { Factories.user }
+    let(:creator) { Factories.user }
+    let(:other) { Factories.user }
+
+    it "allows the owner to approve even when they are also the creator" do
+      repo = Factories.repository(user: owner)
+      job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "implemented")
+      expect(job.can_add_job_approval?(owner)).to be true
+    end
+
+    it "blocks the creator when they are not the owner" do
+      repo = Factories.repository(user: owner)
+      job = Factories.job_record(user: creator, owner_user: owner, repository: repo, state: "implemented")
+      expect(job.can_add_job_approval?(creator)).to be false
+    end
+
+    it "allows a non-creator non-owner to approve" do
+      repo = Factories.repository(user: owner)
+      job = Factories.job_record(user: creator, owner_user: owner, repository: repo, state: "implemented")
+      expect(job.can_add_job_approval?(other)).to be true
+    end
+
+    it "returns false when job is not implemented" do
+      repo = Factories.repository(user: owner)
+      job = Factories.job_record(user: owner, owner_user: owner, repository: repo, state: "queued")
+      expect(job.can_add_job_approval?(owner)).to be false
+    end
+  end
+
   describe "dependencies" do
     let(:user) { Factories.user }
     let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets") }
@@ -1187,6 +1302,103 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
     end
   end
 
+  describe "#effective_target_repository" do
+    let(:user) { Factories.user }
+    let(:repository) { Factories.repository(user: user) }
+
+    it "returns the repository when target_repository_id is nil" do
+      job = Job.create!(user: user, repository: repository, issue_number: 1)
+      expect(job.effective_target_repository).to eq(repository)
+    end
+
+    it "returns the target_repository when one is set" do
+      upstream = Factories.repository(user: user)
+      fork = Factories.repository(user: user, upstream_repository: upstream)
+      epic = Epic.create!(user: user, repository: upstream, title: "Cross-fork epic")
+      job = Job.create!(user: user, repository: fork, epic: epic, issue_number: 5)
+      expect(job.effective_target_repository).to eq(upstream)
+    end
+  end
+
+  describe "#effective_pr_repository" do
+    let(:user) { Factories.user }
+    let(:repository) { Factories.repository(user: user) }
+
+    it "returns the repository when pr_repository_id is nil" do
+      job = Job.create!(user: user, repository: repository, issue_number: 1)
+      expect(job.effective_pr_repository).to eq(repository)
+    end
+
+    it "returns pr_repository when one is set" do
+      upstream = Factories.repository(user: user)
+      job = Job.create!(user: user, repository: repository, issue_number: 6, pr_repository: upstream)
+      expect(job.effective_pr_repository).to eq(upstream)
+    end
+  end
+
+  describe "target_repository_id auto-population" do
+    let(:user) { Factories.user }
+
+    it "leaves target_repository_id nil for a job on a non-fork repository without an epic" do
+      repo = Factories.repository(user: user)
+      job = Job.create!(user: user, repository: repo, issue_number: 1)
+      expect(job.target_repository_id).to be_nil
+    end
+
+    it "leaves target_repository_id nil for a job on the canonical repo directly under its own epic" do
+      repo = Factories.repository(user: user)
+      epic = Epic.create!(user: user, repository: repo, title: "Same-repo epic")
+      job = Job.create!(user: user, repository: repo, epic: epic, issue_number: 2)
+      expect(job.target_repository_id).to be_nil
+    end
+
+    it "sets target_repository_id to the upstream when the job repo is a fork whose upstream is the epic repo" do
+      upstream = Factories.repository(user: user)
+      fork = Factories.repository(user: user, upstream_repository: upstream)
+      epic = Epic.create!(user: user, repository: upstream, title: "Cross-fork epic")
+      job = Job.create!(user: user, repository: fork, epic: epic, issue_number: 3)
+      expect(job.target_repository_id).to eq(upstream.id)
+    end
+
+    it "leaves target_repository_id nil when the fork's upstream differs from the epic's repository" do
+      unrelated_upstream = Factories.repository(user: user)
+      fork = Factories.repository(user: user, upstream_repository: unrelated_upstream)
+      epic_repo = Factories.repository(user: user)
+      epic = Epic.create!(user: user, repository: epic_repo, title: "Different upstream epic")
+      job = Job.new(user: user, repository: fork, epic: epic, issue_number: 4)
+      job.valid?
+      expect(job.target_repository_id).to be_nil
+    end
+  end
+
+  describe "epic_belongs_to_same_user_and_repository validation" do
+    let(:user) { Factories.user }
+
+    it "is valid when the epic is on the same repository" do
+      repo = Factories.repository(user: user)
+      epic = Epic.create!(user: user, repository: repo, title: "Same-repo epic")
+      job = Job.new(user: user, repository: repo, epic: epic, issue_number: 7)
+      expect(job).to be_valid
+    end
+
+    it "is valid when the epic is on the upstream of the job's fork repository" do
+      upstream = Factories.repository(user: user)
+      fork = Factories.repository(user: user, upstream_repository: upstream)
+      epic = Epic.create!(user: user, repository: upstream, title: "Upstream epic")
+      job = Job.new(user: user, repository: fork, epic: epic, issue_number: 8)
+      expect(job).to be_valid
+    end
+
+    it "is invalid when the epic is on an unrelated repository" do
+      repo = Factories.repository(user: user)
+      other_repo = Factories.repository(user: user)
+      epic = Epic.create!(user: user, repository: other_repo, title: "Unrelated epic")
+      job = Job.new(user: user, repository: repo, epic: epic, issue_number: 9)
+      expect(job).not_to be_valid
+      expect(job.errors[:epic]).to include("must belong to the same repository or its upstream")
+    end
+  end
+
   describe "preempted creation (state: closed at create time)" do
     let(:user) { Factories.user }
     let(:repository) { Factories.repository(user: user) }
@@ -1207,6 +1419,29 @@ it "auto-creates and starts a workflow for direct jobs on advance_after_triage" 
       ordinary = Job.create!(user: user, repository: repository, issue_number: 100)
       expect(ordinary).to be_triaging
       expect(ordinary.runs).to be_empty
+    end
+  end
+
+  describe "epic_belongs_to_same_user_and_repository" do
+    let(:user) { Factories.user }
+    let(:repository) { Factories.repository(user: user) }
+
+    it "allows a job on a fork to be associated with an epic on the upstream repo" do
+      upstream = Factories.repository(user: user, owner: "upstream", name: "lib")
+      fork = Factories.repository(user: user, owner: "acme", name: "lib-fork", upstream_repository: upstream)
+      epic = Factories.epic(user: user, repository: upstream)
+
+      job = Factories.job_record(user: user, repository: fork, epic: epic, issue_number: 55)
+      expect(job.errors[:epic]).to be_empty
+    end
+
+    it "rejects a job whose repository is unrelated to the epic's repository" do
+      other_repo = Factories.repository(user: user, owner: "acme", name: "other")
+      epic = Factories.epic(user: user, repository: repository)
+
+      job = Job.new(user: user, owner_user: user, repository: other_repo, epic: epic, issue_number: 56, kind: "issue")
+      job.valid?
+      expect(job.errors[:epic]).to include("must belong to the same repository or its upstream")
     end
   end
 end

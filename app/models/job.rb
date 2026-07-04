@@ -27,6 +27,10 @@ class Job < ApplicationRecord
   belongs_to :dependencies_overridden_by_user, class_name: "User", optional: true
   belongs_to :approved_by_user, class_name: "User", optional: true
   belongs_to :claimed_by_user, class_name: "User", optional: true
+  belongs_to :target_repository, class_name: "Repository", optional: true
+  belongs_to :pr_repository, class_name: "Repository", optional: true
+  has_many :job_approvals, dependent: :destroy
+  has_many :approving_users, through: :job_approvals, source: :user
   has_many :chat_proposals, dependent: :nullify
   has_many :workflows, -> { order(:created_at) }, dependent: :destroy
   # Runs hang off Steps now (Job → Workflow → Step → Run) — Job's
@@ -76,6 +80,7 @@ class Job < ApplicationRecord
   before_validation :default_agent_provider, on: :create
   before_validation :default_credential_mode, on: :create
   before_validation :default_lifecycle_metadata, on: :create
+  before_validation :set_target_repository_from_epic, on: :create
   before_validation :defer_stale_closed_epic_assignment
   before_validation :sync_epic_title
 
@@ -356,6 +361,14 @@ class Job < ApplicationRecord
     validity == "valid" && !triaging_reason_pending_epic_ref? && !blocked_by_epic_before_execution?
   end
 
+  def effective_target_repository
+    target_repository || repository
+  end
+
+  def effective_pr_repository
+    pr_repository || repository
+  end
+
   def blocked_by_epic_before_execution?
     return false unless epic
     return false if epic.releases_jobs_for_execution?
@@ -388,6 +401,21 @@ class Job < ApplicationRecord
     return if last_feedback_addressed_at && last_feedback_addressed_at >= addressed_at
 
     update!(last_feedback_addressed_at: addressed_at)
+  end
+
+  # Returns true when the repository's review_policy is satisfied by
+  # the existing job_approvals. Used by the approve action and the
+  # landing queue to gate the job's transition to :approved.
+  def approval_satisfied?
+    ReviewPolicies.for(repository.review_policy).new(self).satisfied?
+  end
+
+  # Returns true when +user+ is eligible to add a JobApproval vote.
+  # The creator (user_id) is blocked unless they are also the owner.
+  def can_add_job_approval?(user)
+    return false unless implemented?
+
+    user.id == owner_user_id || user.id != user_id
   end
 
   def approve!(*args, **kwargs)
@@ -1041,7 +1069,8 @@ class Job < ApplicationRecord
   end
 
   def default_agent_provider
-    self.agent_provider ||= repository&.effective_agent_provider || user&.agent_provider
+    effective_user = owner_user || user
+    self.agent_provider ||= repository&.effective_agent_provider(user: effective_user) || effective_user&.agent_provider
   end
 
   def default_credential_mode
@@ -1070,13 +1099,27 @@ class Job < ApplicationRecord
     self.approved_via = nil
     self.approved_by_user = nil
     self.approval_evidence = {}
+    job_approvals.destroy_all
   end
 
   def epic_belongs_to_same_user_and_repository
     return unless epic
 
     errors.add(:epic, "must belong to the same user") if epic.user_id != user_id
-    errors.add(:epic, "must belong to the same repository") if epic.repository_id != repository_id
+    # Allow: direct repo match, OR fork-to-upstream (job's repo is a fork whose
+    # upstream is the epic's repo).
+    same_repo = epic.repository_id == repository_id
+    fork_to_upstream = repository && repository.upstream_repository_id == epic.repository_id
+    errors.add(:epic, "must belong to the same repository or its upstream") unless same_repo || fork_to_upstream
+  end
+
+  def set_target_repository_from_epic
+    return unless epic
+    return unless repository
+
+    if repository.upstream_repository_id == epic.repository_id
+      self.target_repository_id = epic.repository_id
+    end
   end
 
   def sync_epic_title

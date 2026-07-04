@@ -17,6 +17,30 @@ RSpec.describe Repository do
     expect(repo.agent_provider).to eq("codex")
   end
 
+  it "defaults review_policy to 'self' and accepts other valid policies" do
+    repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
+    expect(repo.review_policy).to eq("self")
+
+    repo.update!(review_policy: "two_person")
+    expect(repo.review_policy).to eq("two_person")
+
+    repo.update!(review_policy: "final_say")
+    expect(repo.review_policy).to eq("final_say")
+  end
+
+  it "rejects unknown review policies" do
+    repo = Repository.new(user: owner, owner: "acme", name: "widgets", review_policy: "committee")
+    expect(repo).not_to be_valid
+    expect(repo.errors[:review_policy]).to be_present
+  end
+
+  it "has_many final_approvers through repository_final_approvers" do
+    repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
+    approver = Factories.user
+    RepositoryFinalApprover.create!(repository: repo, user: approver)
+    expect(repo.final_approvers).to contain_exactly(approver)
+  end
+
   it "defaults auto-approval to never and accepts grader-gated modes" do
     repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
     expect(repo.auto_approve_mode).to eq("never")
@@ -36,6 +60,37 @@ RSpec.describe Repository do
     repo = Repository.create!(user: owner, owner: "acme", name: "widgets", agent_provider: "")
     expect(repo.agent_provider).to be_nil
     expect(repo.effective_agent_provider).to eq("codex")
+  end
+
+  describe "#effective_agent_provider with user context" do
+    let(:repo) { Repository.create!(user: owner, owner: "acme", name: "widgets") }
+    let(:member) { Factories.user(agent_provider: "claude") }
+
+    it "returns membership agent_provider when the user has one set" do
+      repo.repository_memberships.create!(user: member, role: "collaborator", agent_provider: "codex")
+      expect(repo.effective_agent_provider(user: member)).to eq("codex")
+    end
+
+    it "falls back to repo-level agent_provider when membership has none" do
+      repo.update!(agent_provider: "codex")
+      repo.repository_memberships.create!(user: member, role: "collaborator")
+      expect(repo.effective_agent_provider(user: member)).to eq("codex")
+    end
+
+    it "falls back to the user's default agent_provider when both membership and repo have none" do
+      repo.repository_memberships.create!(user: member, role: "collaborator")
+      expect(repo.effective_agent_provider(user: member)).to eq("claude")
+    end
+
+    it "returns repo-level provider without a user argument" do
+      repo.update!(agent_provider: "codex")
+      expect(repo.effective_agent_provider).to eq("codex")
+    end
+
+    it "normalizes blank membership agent_provider to nil and falls through" do
+      repo.repository_memberships.create!(user: member, role: "collaborator", agent_provider: "")
+      expect(repo.effective_agent_provider(user: member)).to eq("claude")
+    end
   end
 
   it "rejects unknown repository agent providers" do
@@ -90,18 +145,64 @@ RSpec.describe Repository do
     expect(malformed.errors[:upstream_owner]).to be_present
   end
 
-  it "enforces uniqueness on (user, owner, name)" do
+  it "enforces global uniqueness on (owner, name)" do
     Repository.create!(user: owner, owner: "acme", name: "widgets")
     dup = Repository.new(user: owner, owner: "acme", name: "widgets")
     expect(dup).not_to be_valid
-    expect(dup.errors[:name]).to include("has already been configured for this Syrus user and GitHub owner")
+    expect(dup.errors[:name]).to include("has already been registered for this GitHub owner")
   end
 
-  it "allows the same repo under a different user" do
+  it "rejects the same repo even under a different user — repos are globally unique by [owner, name]" do
     Repository.create!(user: owner, owner: "acme", name: "widgets")
     other = Factories.user
     twin = Repository.new(user: other, owner: "acme", name: "widgets")
-    expect(twin).to be_valid
+    expect(twin).not_to be_valid
+    expect(twin.errors[:name]).to include("has already been registered for this GitHub owner")
+  end
+
+  it "allows the same owner to have different repo names" do
+    Repository.create!(user: owner, owner: "acme", name: "widgets")
+    other = Repository.new(user: owner, owner: "acme", name: "gadgets")
+    expect(other).to be_valid
+  end
+
+  describe "repository_memberships" do
+    it "can have multiple members through memberships" do
+      repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
+      collaborator = Factories.user
+      repo.repository_memberships.create!(user: collaborator, role: "collaborator")
+
+      expect(repo.members).to include(owner, collaborator)
+    end
+
+    it "enforces unique membership per user per repository" do
+      repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
+      dup = repo.repository_memberships.build(user: owner, role: "collaborator")
+      expect(dup).not_to be_valid
+      expect(dup.errors[:user_id]).to be_present
+    end
+
+    it "rejects unknown roles" do
+      repo = Repository.create!(user: owner, owner: "acme", name: "widgets")
+      bad = repo.repository_memberships.build(user: owner, role: "admin")
+      expect(bad).not_to be_valid
+      expect(bad.errors[:role]).to be_present
+    end
+  end
+
+  describe "upstream_repository association" do
+    it "links a fork to its upstream via upstream_repository_id" do
+      upstream = Repository.create!(user: owner, owner: "rails", name: "rails")
+      fork = Repository.create!(user: owner, owner: "acme", name: "rails", upstream_repository: upstream)
+
+      expect(fork.upstream_repository).to eq(upstream)
+      expect(upstream.fork_repositories).to include(fork)
+    end
+
+    it "upstream_repository is optional" do
+      repo = Repository.new(user: owner, owner: "acme", name: "widgets")
+      expect(repo).to be_valid
+    end
   end
 
   it "links to an active GitHub App installation for the owner" do
