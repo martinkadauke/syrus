@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { BRAND_ICON_SRC } from "../lib/brandIcon"
 import { useEffect, useState, type ReactNode } from "react"
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
@@ -217,7 +218,7 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
     return (
       <main aria-label="Syrus first-run welcome" className="flex min-h-[70vh] items-center justify-center px-6">
         <div className="max-w-md text-center">
-          <img alt="" aria-hidden="true" className="mx-auto h-16 w-16 rounded-2xl" src="/icon.png" />
+          <img alt="" aria-hidden="true" className="mx-auto h-16 w-16 rounded-2xl" src={BRAND_ICON_SRC} />
           <h1 className="mt-6 text-3xl font-semibold text-gray-950">Welcome to Syrus!</h1>
           <p className="mt-3 text-sm leading-6 text-gray-600">{cta.description}</p>
           <div className="mt-7">

@@ -220,8 +220,11 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Syrus first-run welcome" })).toBeInTheDocument()
+    const welcome = await screen.findByRole("main", { name: "Syrus first-run welcome" })
     expect(screen.getByRole("heading", { name: "Welcome to Syrus!" })).toBeInTheDocument()
+    // Versioned icon URL: public/ files are cached for a year, so an
+    // unversioned /icon.png would show a previous backend's stale artwork.
+    expect(welcome.querySelector("img")?.getAttribute("src")).toMatch(/^\/icon\.png\?v=\d+$/)
     expect(screen.getByRole("link", { name: "Set up this Syrus instance" })).toHaveAttribute("href", "/users/new")
     expect(screen.getByText("No users exist yet. The first account becomes the administrator for this instance.")).toBeInTheDocument()
     // No "Sign in" when there are no users yet — there's nobody to sign in as.
@@ -1227,7 +1230,7 @@ describe("App", () => {
       expect(mobileTopBar).toHaveClass("w-full")
       expect(anchoredTrigger).not.toHaveClass("fixed")
       expect(within(anchoredTrigger).getByText("Syrus")).toBeInTheDocument()
-      expect(anchoredTrigger.querySelector('img[alt=""][src="/icon.png"]')).not.toBeNull()
+      expect(anchoredTrigger.querySelector('img[alt=""][src^="/icon.png?v="]')).not.toBeNull()
       expect(within(mobileTopBar).getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/app-shell/notifications")
       expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument()
 
@@ -1240,7 +1243,7 @@ describe("App", () => {
       const floatingTrigger = sidebarTriggers.find((button) => button.classList.contains("fixed"))
       expect(floatingTrigger).toBeDefined()
       expect(floatingTrigger).toHaveClass("left-3", "top-3")
-      expect(floatingTrigger?.querySelector('img[alt=""][src="/icon.png"]')).not.toBeNull()
+      expect(floatingTrigger?.querySelector('img[alt=""][src^="/icon.png?v="]')).not.toBeNull()
       const floatingNotification = screen.getAllByRole("link", { name: "Notifications" }).find((link) => link.parentElement?.classList.contains("fixed"))
       expect(floatingNotification).toHaveAttribute("href", "/app-shell/notifications")
       expect(floatingNotification?.parentElement).toHaveClass("right-3", "top-3")
@@ -15748,7 +15751,7 @@ function setScrollMetrics(element: HTMLElement, metrics: { scrollHeight: number;
 function expectSyrusBrandLink(href: string) {
   const brandLink = screen.getByRole("link", { name: "Syrus" })
   expect(brandLink).toHaveAttribute("href", href)
-  expect(brandLink.querySelector('img[alt=""][src="/icon.png"]')).not.toBeNull()
+  expect(brandLink.querySelector('img[alt=""][src^="/icon.png?v="]')).not.toBeNull()
 }
 
 function stubChatStreamSize(metrics: { scrollHeight: number; clientHeight: number }) {

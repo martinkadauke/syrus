@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { BRAND_ICON_SRC } from "../lib/brandIcon"
 import { type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react"
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
@@ -216,7 +217,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
             onClick={() => setDrawerOpen(true)}
             type="button"
           >
-            <img alt="" aria-hidden="true" className="h-6 w-6 rounded" src="/icon.png" />
+            <img alt="" aria-hidden="true" className="h-6 w-6 rounded" src={BRAND_ICON_SRC} />
           </button>
           {user ? (
             <div className="fixed right-3 top-3 z-30 inline-flex h-11 w-11 items-center justify-center rounded border border-gray-200 bg-white shadow-lg dark:border-gray-800 dark:bg-gray-950 lg:hidden">
