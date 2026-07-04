@@ -102,13 +102,60 @@ same GitHub Releases feed). No zip artifact needed on Windows. Unsigned
 builds auto-update fine; SmartScreen friction at first install goes away
 once we sign (below).
 
-### Code signing
+### Code signing (researched July 2026)
 
-Phase-4 item: an OV/EV Authenticode cert (or Azure Trusted Signing),
-wired through electron-builder's `win.certificateSubjectName`/CSC env in
-the release workflow. Until then Windows builds are for testing; the
-docs page will mark the download as beta and explain the SmartScreen
-"More info → Run anyway" step.
+The "Apple Developer Program equivalent" is **Azure Artifact Signing**
+(formerly Trusted Signing): $9.99/month Basic tier, and individual
+developers in the US/Canada ARE eligible for identity validation
+(government photo ID + selfie; the 3-year-organization requirement from
+the 2025 preview lockdown is gone). Strictly, Microsoft says no
+certificate guarantees zero SmartScreen warnings — but indie reports
+(Electron's own docs, Zettlr, melatonin.dev) consistently show Artifact
+Signing reputation attaches to the validated identity and the "Windows
+protected your PC" interstitial disappears immediately or within days,
+persisting across releases. EV certs lost their instant-reputation
+privilege in March 2024, so the EV premium buys nothing here anymore.
+
+Wiring: electron-builder 26 supports it first-class via
+`win.azureSignOptions` (`publisherName` must match the cert profile CN
+byte-for-byte, plus `endpoint`, `codeSigningAccountName`,
+`certificateProfileName`) with `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` /
+`AZURE_CLIENT_SECRET` env — but it drives the Invoke-TrustedSigning
+PowerShell module, so the **Windows release job must run on a
+`windows-latest` runner** (cross-signing from macOS arrives with
+electron-builder v27's signtool-dlib path). Identity validation expires
+every 2 years — calendar it. Setup: a pay-as-you-go Azure subscription
+whose billing name/address exactly match the government ID, an Artifact
+Signing account + identity validation + certificate profile, and a
+service principal for CI.
+
+Fallbacks for non-US/CA individuals: Certum Open Source Code Signing in
+the Cloud (~$58, SimplySign; headless CI is hacky), SSL.com IV +
+eSigner. Both still ride the slower OV-style reputation ramp.
+
+### Field notes: the "Missing Shortcut" failure (July 2026 UTM test)
+
+First real ARM64 guest run ended with Windows' "Missing Shortcut —
+Windows is searching for Syrus.exe" dialog. Root-cause analysis:
+electron-builder's one-click installer launches the app via the freshly
+created Start Menu shortcut (`StdUtils.ExecShellAsUser` on
+`$launchLink`, installSection.nsh) and never re-checks that the target
+executable still exists. Forensics on the exact artifact proved the
+installer payload was complete and correct (valid ARM64 Syrus.exe,
+correct extraction-before-shortcut ordering, sha512 matching
+latest.yml), which leaves post-extraction interference — Windows
+Defender's ML heuristics quarantining the unsigned exe (Wacatac.B!ml is
+the classic false positive against unsigned Electron binaries) — as the
+leading cause. Mitigations shipped: `build/installer.nsh` customInstall
+now verifies `$INSTDIR\Syrus.exe` exists after extraction and fails
+with Defender-specific guidance instead of the shell dialog. The real
+fix is signing (above). Diagnosis checklist for a failing guest: check
+`%LocalAppData%\Programs\Syrus\` — populated-but-no-exe (or a Windows
+Security → Protection history entry) means Defender; only
+`Uninstall Syrus.exe` present means extraction failed (then check the
+guest really is native ARM64 Windows — an arm64-only package on x64
+extracts nothing, silently). For test iteration, add a Defender
+exclusion for that folder before installing.
 
 ## Phases
 

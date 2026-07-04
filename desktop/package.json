@@ -19,15 +19,14 @@
     "stage:cli": "node scripts/stage-cli.mjs"
   },
   "dependencies": {
-    "@tailwindcss/vite": "^4.3.1",
     "@tanstack/react-query": "^5.101.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.8.9",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "tailwindcss": "^4.3.1"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^25.0.3",
     "@types/react": "^18.3.29",
     "@types/react-dom": "^18.3.7",
@@ -35,6 +34,7 @@
     "concurrently": "^9.2.1",
     "electron": "^39.2.7",
     "electron-builder": "^26.0.12",
+    "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.14",
     "wait-on": "^9.0.3"

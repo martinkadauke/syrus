@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "spec_helper"
 
 # Phase 1 of the Windows port (docs/windows-desktop-plan.md): packaging,
@@ -31,6 +32,33 @@ RSpec.describe "desktop Windows scaffold" do
     # electron-updater cannot auto-update MSI installs; NSIS is the canonical
     # Windows artifact (see the plan doc) — no msi target without a decision.
     expect(config).not_to include("msi")
+  end
+
+  it "guards the one-click launch with a post-extraction executable check" do
+    # Without this, a missing exe (Defender quarantining the unsigned
+    # binary right after extraction) surfaces as the shell's baffling
+    # "Missing Shortcut" dialog — the installer must fail with guidance
+    # instead. See docs/windows-desktop-plan.md field notes.
+    config = read("electron-builder.yml")
+    expect(config).to include("include: build/installer.nsh")
+    expect(config).to include("installerHeaderIcon: build/icon.ico")
+    expect(config).to include("installerIcon: build/icon.ico")
+
+    guard = read("build/installer.nsh")
+    expect(guard).to include("!macro customInstall")
+    expect(guard).to include('${ifNot} ${FileExists} "$INSTDIR\\${APP_EXECUTABLE_FILENAME}"')
+    expect(guard).to include("Protection history")
+    expect(guard).to include("SetErrorLevel 2")
+    # Silent installs (/S) must not hang on a MessageBox.
+    expect(guard).to match(/\$\{ifNot\} \$\{Silent\}\s*\n\s*MessageBox/)
+  end
+
+  it "ships no build-only packages in the Windows payload" do
+    # electron-builder packs package.json "dependencies" into the asar;
+    # tailwind (and its darwin native binaries) is build-time only.
+    package = JSON.parse(read("package.json"))
+    expect(package.fetch("dependencies").keys).not_to include("tailwindcss", "@tailwindcss/vite")
+    expect(package.fetch("devDependencies").keys).to include("tailwindcss", "@tailwindcss/vite")
   end
 
   it "keeps the macOS-only titleBarStyle off other platforms" do

@@ -73,6 +73,13 @@ nsis:
   perMachine: false
   deleteAppDataOnUninstall: false
   shortcutName: Syrus
+  # Brand the one-click UI: the setup exe's own icon, and the icon the
+  # progress dialog (SpiderBanner) shows next to "Installing, please wait".
+  installerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  # Post-extraction guard: fail loudly (Defender guidance) instead of the
+  # shell's "Missing Shortcut" dialog when the exe vanishes before launch.
+  include: build/installer.nsh
 linux:
   category: Development
   syncDesktopName: true
