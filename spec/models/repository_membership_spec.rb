@@ -1,8 +1,9 @@
 require "rails_helper"
 
 RSpec.describe RepositoryMembership do
+  let(:repo_owner) { Factories.user }
   let(:user) { Factories.user }
-  let(:repo) { Factories.repository(user: user) }
+  let(:repo) { Factories.repository(user: repo_owner) }
 
   it "accepts a valid role" do
     membership = repo.repository_memberships.build(user: user, role: "owner")

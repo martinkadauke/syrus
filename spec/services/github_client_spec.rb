@@ -67,7 +67,7 @@ RSpec.describe GithubClient do
           cached_token: "member-install-token",
           cached_token_expires_at: 1.hour.from_now
         )
-        repository.repository_memberships.create!(user: user, role: "owner", installation: member_installation)
+        repository.repository_memberships.find_by!(user: user).update!(installation: member_installation)
 
         stub = stub_request(:get, "https://api.github.com/repos/acme/widgets/issues/42")
           .with(headers: { "Authorization" => "token member-install-token" })
@@ -86,7 +86,7 @@ RSpec.describe GithubClient do
           cached_token_expires_at: 1.hour.from_now
         )
         repository.update!(installation: repo_installation)
-        repository.repository_memberships.create!(user: user, role: "owner")
+        # existing membership from seed_owner_membership already has nil installation — no change needed
 
         stub = stub_request(:get, "https://api.github.com/repos/acme/widgets/issues/42")
           .with(headers: { "Authorization" => "token repo-install-token" })
@@ -106,7 +106,7 @@ RSpec.describe GithubClient do
           cached_token_expires_at: 1.hour.from_now,
           removed_at: Time.current
         )
-        repository.repository_memberships.create!(user: user, role: "owner", installation: removed_installation)
+        repository.repository_memberships.find_by!(user: user).update!(installation: removed_installation)
 
         stub = stub_request(:get, "https://api.github.com/repos/acme/widgets/issues/42")
           .with(headers: { "Authorization" => "token ghp_test_token" })
