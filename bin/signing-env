@@ -33,7 +33,45 @@ syrus_load_mac_signing_env() {
     export APPLE_API_KEY="$key_file"
   fi
 
+  syrus_signing_check_mac_cert_type
+
   echo "== Loaded local macOS signing credentials from $env_file =="
+}
+
+# Notarization only accepts a "Developer ID Application" certificate. An
+# "Apple Development" (or "Apple Distribution") cert SIGNS just fine and
+# then fails notarization after the full upload round-trip — so peek at the
+# p12's subject up front and say so immediately. Best-effort: if openssl
+# can't parse the p12 (cipher differences across OpenSSL/LibreSSL), stay
+# quiet rather than block a build on a diagnostic.
+syrus_signing_check_mac_cert_type() {
+  [ -n "${CSC_LINK:-}" ] || return 0
+  command -v openssl >/dev/null 2>&1 || return 0
+
+  local pem subject
+  pem="$(printf '%s' "$CSC_LINK" | base64 -d 2>/dev/null | openssl pkcs12 -nokeys -passin env:CSC_KEY_PASSWORD 2>/dev/null || true)"
+  if [ -z "$pem" ]; then
+    # OpenSSL 3 needs -legacy for Keychain's 3DES p12 exports; LibreSSL
+    # (macOS) parses them on the first attempt and has no -legacy flag.
+    pem="$(printf '%s' "$CSC_LINK" | base64 -d 2>/dev/null | openssl pkcs12 -nokeys -legacy -passin env:CSC_KEY_PASSWORD 2>/dev/null || true)"
+  fi
+  [ -n "$pem" ] || return 0
+
+  subject="$(printf '%s' "$pem" | openssl x509 -noout -subject 2>/dev/null || true)"
+  [ -n "$subject" ] || return 0
+
+  case "$subject" in
+    *"Developer ID Application"*) ;;
+    *)
+      {
+        echo "warning: CSC_LINK is NOT a 'Developer ID Application' certificate:"
+        echo "         $subject"
+        echo "         Apple Development / Apple Distribution certs sign locally but FAIL notarization."
+        echo "         Create the right one: developer.apple.com -> Certificates -> + -> Developer ID Application"
+        echo "         (or Xcode -> Settings -> Accounts -> Manage Certificates), export it as .p12, re-encode CSC_LINK."
+      } >&2
+      ;;
+  esac
 }
 
 # Windows signing (Azure Artifact Signing). electron-builder's

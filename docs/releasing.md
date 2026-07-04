@@ -50,7 +50,7 @@ prerelease flag; electron-updater skips prereleases by default.
 | Item | Where | Notes |
 | --- | --- | --- |
 | Apple Developer Program membership | developer.apple.com | $99/yr; identity verification can take days — start early |
-| Developer ID Application certificate | Xcode → Settings → Accounts, or the developer portal | Export as `.p12` with the private key |
+| Developer ID Application certificate | Xcode → Settings → Accounts → Manage Certificates → + → **Developer ID Application**, or the developer portal | Export as `.p12` with the private key. The type must literally read **"Developer ID Application"** — an "Apple Development" or "Apple Distribution" cert signs locally and then fails notarization on every binary. Only the account holder can create Developer ID certs. `bin/signing-env` warns at build start if the p12 is the wrong type. |
 | `CSC_LINK` | repo secret | base64 of the `.p12` (`base64 -i cert.p12`) |
 | `CSC_KEY_PASSWORD` | repo secret | the `.p12` export password |
 | App Store Connect API key (`.p8`) | appstoreconnect.apple.com → Users and Access → Integrations | Developer role suffices for notarytool |

@@ -108,6 +108,49 @@ RSpec.describe "bin/signing-env" do
     expect(script).to match(/MINGW\*\|MSYS\*\|CYGWIN\*/)
   end
 
+  def write_p12_env(home, common_name)
+    config_dir = File.join(home, ".config", "syrus")
+    FileUtils.mkdir_p(config_dir)
+    _out, err, status = Open3.capture3({ "HOME" => home }, "bash", "-c", <<~BASH)
+      set -euo pipefail
+      cd "#{home}"
+      openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 1 -nodes -subj "/CN=#{common_name}" 2>/dev/null
+      openssl pkcs12 -export -out cert.p12 -inkey key.pem -in cert.pem -passout pass:pw
+      {
+        printf 'CSC_LINK=%s\\n' "$(base64 < cert.p12 | tr -d '\\n')"
+        echo 'CSC_KEY_PASSWORD=pw'
+        echo 'APPLE_API_KEY_ID=KEYID'
+        echo 'APPLE_API_ISSUER=issuer'
+      } > .config/syrus/mac-signing.env
+      chmod 600 .config/syrus/mac-signing.env
+    BASH
+    expect(status.exitstatus).to eq(0), err
+  end
+
+  it "warns up front when CSC_LINK is not a Developer ID Application certificate" do
+    # The failure this catches: an "Apple Development" cert signs the app
+    # locally, then notarization rejects every binary after the full upload
+    # round-trip. The loader must say so before packaging even starts.
+    Dir.mktmpdir do |home|
+      write_p12_env(home, "Apple Development: dev@example.com (ABCDE12345)")
+
+      _out, err, status = run_with_home(home, "syrus_load_mac_signing_env")
+      expect(status.exitstatus).to eq(0), err
+      expect(err).to include("NOT a 'Developer ID Application' certificate")
+      expect(err).to include("FAIL notarization")
+    end
+  end
+
+  it "stays quiet for a proper Developer ID Application certificate" do
+    Dir.mktmpdir do |home|
+      write_p12_env(home, "Developer ID Application: Test Person (ABCDE12345)")
+
+      _out, err, status = run_with_home(home, "syrus_load_mac_signing_env")
+      expect(status.exitstatus).to eq(0), err
+      expect(err).not_to include("NOT a 'Developer ID Application' certificate")
+    end
+  end
+
   it "documents the local env file convention in docs/releasing.md and docs/windows-signing.md" do
     releasing = File.read(File.expand_path("../../docs/releasing.md", __dir__), encoding: "UTF-8")
     expect(releasing).to include("~/.config/syrus/mac-signing.env")
