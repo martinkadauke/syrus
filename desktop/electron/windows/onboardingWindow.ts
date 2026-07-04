@@ -6,15 +6,16 @@ type OnboardingWindowOptions = {
   onClosed: () => void
 }
 
-// The first-run window: fixed-size, hiddenInset traffic lights over the
-// renderer's own draggable header, macOS-dialog proportions.
+// The first-run window: fixed-size, macOS-dialog proportions. hiddenInset
+// (traffic lights floating over the renderer's draggable header) is a
+// macOS-only titleBarStyle — Windows/Linux keep the native frame.
 export const createOnboardingWindow = async ({ preloadPath, loadRenderer, onClosed }: OnboardingWindowOptions) => {
   const window = new BrowserWindow({
     width: 760,
     height: 540,
     resizable: false,
     fullscreenable: false,
-    titleBarStyle: "hiddenInset",
+    ...(process.platform === "darwin" ? { titleBarStyle: "hiddenInset" as const } : {}),
     title: "Welcome to Syrus",
     webPreferences: {
       contextIsolation: true,

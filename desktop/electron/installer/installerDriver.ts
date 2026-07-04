@@ -434,6 +434,21 @@ export class OnboardingDriver {
       return
     }
 
+    // Phase-1 Windows scaffold: install.sh needs bash, and its PowerShell
+    // port hasn't landed yet (docs/windows-desktop-plan.md). The Welcome
+    // screen doesn't offer local install on Windows; this guard keeps any
+    // other path honest instead of dying on a missing /bin/bash.
+    if (process.platform === "win32") {
+      this.setState({
+        phase: "local.failed",
+        code: 1,
+        step: "precheck",
+        message: "Local install isn't available on Windows yet — connect to an existing Syrus instance instead.",
+        logTail: []
+      })
+      return
+    }
+
     const stateDir = localStateDir()
     await fs.mkdir(stateDir, { recursive: true })
 

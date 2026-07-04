@@ -3,6 +3,11 @@ type WelcomeProps = {
 }
 
 export function Welcome({ onChoose }: WelcomeProps) {
+  // Local install ships per-platform: install.sh drives macOS today; the
+  // Windows (PowerShell) installer is planned — docs/windows-desktop-plan.md.
+  const platform = window.syrusDesktop?.platform ?? "darwin"
+  const localAvailable = platform !== "win32"
+
   return (
     <section className="w-full max-w-xl text-center">
       <h1 className="text-2xl font-semibold tracking-tight">Welcome to Syrus</h1>
@@ -11,16 +16,26 @@ export function Welcome({ onChoose }: WelcomeProps) {
       </p>
 
       <div className="mt-8 grid grid-cols-2 gap-4 text-left">
-        <button
-          type="button"
-          onClick={() => onChoose("local")}
-          className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow"
-        >
-          <span className="block text-base font-semibold text-slate-900">Install on this Mac</span>
-          <span className="mt-2 block text-sm leading-relaxed text-slate-600">
-            Runs Syrus locally in Docker. Everything stays on your machine — this app sets it all up.
-          </span>
-        </button>
+        {localAvailable ? (
+          <button
+            type="button"
+            onClick={() => onChoose("local")}
+            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-blue-400 hover:shadow"
+          >
+            <span className="block text-base font-semibold text-slate-900">Install on this Mac</span>
+            <span className="mt-2 block text-sm leading-relaxed text-slate-600">
+              Runs Syrus locally in Docker. Everything stays on your machine — this app sets it all up.
+            </span>
+          </button>
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5">
+            <span className="block text-base font-semibold text-slate-500">Install on this PC</span>
+            <span className="mt-2 block text-sm leading-relaxed text-slate-500">
+              Coming in an upcoming update — it will set up a local backend on Docker Desktop or Podman
+              Desktop. Until then, connect to a Syrus instance running elsewhere.
+            </span>
+          </div>
+        )}
 
         <button
           type="button"

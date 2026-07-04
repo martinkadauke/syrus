@@ -201,6 +201,7 @@ type SyrusConnectRemoteRequest = {
 
 interface Window {
   syrusDesktop: {
+    platform: string
     getCredentials: () => Promise<SyrusCredentials | null>
     saveCredentials: (credentials: SyrusCredentials) => Promise<SyrusCredentials>
     getDesktopSettings: () => Promise<SyrusDesktopSettings>

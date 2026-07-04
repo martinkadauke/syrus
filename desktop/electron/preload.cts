@@ -167,6 +167,9 @@ type ConnectRemoteRequest = {
 }
 
 contextBridge.exposeInMainWorld("syrusDesktop", {
+  // Static, not IPC: lets the renderer adapt copy/affordances per platform
+  // (e.g. the Welcome screen's local-install card on Windows).
+  platform: process.platform,
   getCredentials: () => ipcRenderer.invoke("get-credentials") as Promise<Credentials | null>,
   saveCredentials: (credentials: Credentials) =>
     ipcRenderer.invoke("save-credentials", credentials) as Promise<Credentials>,
