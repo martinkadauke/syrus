@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
-import { PasswordMatchHint, PasswordStrengthMeter } from "../components/PasswordFeedback"
+import { EmailValidityHint, PasswordMatchHint, PasswordStrengthMeter } from "../components/PasswordFeedback"
 import {
   fetchSignup,
   requestPasswordReset,
@@ -135,6 +135,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
           type="email"
           value={emailAddress}
         />
+        <EmailValidityHint email={emailAddress} />
       </Field>
       <Field label="Password">
         <input

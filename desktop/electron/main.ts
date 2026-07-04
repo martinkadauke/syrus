@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog, cl
 import type { MessageBoxOptions, NativeImage, OpenDialogOptions } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs/promises"
+import { constants as fsConstants } from "node:fs"
 import os from "node:os"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
@@ -875,12 +876,30 @@ const commandExists = async (command: string) => {
   }
 }
 
+// GUI apps get a minimal PATH, so a `syrus` in ~/.local/bin (the one-click
+// install target) is invisible to `which` — probe that location directly
+// and prefer its absolute path when executing.
+const localBinSyrus = () => path.join(os.homedir(), ".local", "bin", "syrus")
+
+const syrusCliBinary = async (): Promise<string | null> => {
+  if (await commandExists("syrus")) {
+    return "syrus"
+  }
+
+  try {
+    await fs.access(localBinSyrus(), fsConstants.X_OK)
+    return localBinSyrus()
+  } catch {
+    return null
+  }
+}
+
 const syrusCliAvailable = async () => {
   if (cachedCliAvailable !== null) {
     return cachedCliAvailable
   }
 
-  cachedCliAvailable = await commandExists("syrus")
+  cachedCliAvailable = (await syrusCliBinary()) !== null
   return cachedCliAvailable
 }
 
@@ -918,7 +937,8 @@ const checkoutJob = async ({ jobRef, repoSlug, branchName, extraArgs }: Checkout
   }
 
   try {
-    await execFileAsync("syrus", ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath })
+    const cliBinary = (await syrusCliBinary()) ?? "syrus"
+    await execFileAsync(cliBinary, ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath })
     setLastUsedRepo(repoSlug)
     return { branchName }
   } catch (error) {
@@ -983,7 +1003,8 @@ const localStatus = async (): Promise<LocalStatus | null> => {
         continue
       }
 
-      const { stdout } = await execFileAsync("syrus", ["status", "--json"], { cwd: localPath })
+      const statusBinary = (await syrusCliBinary()) ?? "syrus"
+      const { stdout } = await execFileAsync(statusBinary, ["status", "--json"], { cwd: localPath })
       const status = parseLocalStatus(stdout)
       if (status) {
         return status
@@ -1899,6 +1920,44 @@ ipcMain.handle("choose-local-projects-root", async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 ipcMain.handle("syrus-cli-status", async () => ({ available: await syrusCliAvailable() }))
+// One-click CLI install from the bundled per-arch binary: copy to
+// ~/.local/bin/syrus. No login step — the app already keeps
+// ~/.syrus/credentials in the CLI-shared format, so the CLI is signed in
+// the moment the binary lands. No PATH mutation — the renderer shows the
+// export line when ~/.local/bin isn't reachable as `syrus`.
+ipcMain.handle("install-syrus-cli", async () => {
+  try {
+    const bundledDir = app.isPackaged
+      ? path.join(process.resourcesPath, "cli")
+      : path.join(__dirname, "..", "..", "resources", "cli")
+    const source = path.join(bundledDir, `syrus-darwin-${process.arch === "arm64" ? "arm64" : "x64"}`)
+    await fs.access(source)
+
+    const binDir = path.join(os.homedir(), ".local", "bin")
+    const target = path.join(binDir, "syrus")
+    await fs.mkdir(binDir, { recursive: true })
+    await fs.copyFile(source, target)
+    await fs.chmod(target, 0o755)
+
+    // No login step: the app already keeps ~/.syrus/credentials in the
+    // CLI-shared format (credentialsStore.ts owns that file), so the CLI
+    // is signed in the moment the binary lands.
+    const signedIn = cachedCredentials !== null
+
+    // Fresh PATH probe: the copy may or may not be reachable as `syrus`.
+    cachedCliAvailable = null
+    const onPath = await syrusCliAvailable()
+    return { installed: true, target, onPath, signedIn, error: null }
+  } catch (error) {
+    return {
+      installed: false,
+      target: null,
+      onPath: false,
+      signedIn: false,
+      error: error instanceof Error ? error.message : "Could not install the Syrus CLI."
+    }
+  }
+})
 ipcMain.handle("checkout-availability", async (_event, repoSlug: string) => checkoutAvailability(repoSlug))
 ipcMain.handle("checkout-job", async (_event, request: CheckoutRequest) => checkoutJob(request))
 ipcMain.handle("syrus:local-status", async () => localStatus())

@@ -20,6 +20,11 @@ files:
 extraResources:
   - from: resources/backend
     to: backend
+  # The Syrus CLI (per-arch pure-Go binaries, staged by scripts/stage-cli.mjs).
+  # Preferences installs it to ~/.local/bin with auto-written credentials —
+  # it powers the tray's Checkout and terminal/agent workflows.
+  - from: resources/cli
+    to: cli
 artifactName: ${productName}-${version}-${arch}.${ext}
 mac:
   category: public.app-category.developer-tools

@@ -44,6 +44,14 @@ type SyrusRepositoryItem = {
   slug: string
 }
 
+type SyrusCliInstallResult = {
+  installed: boolean
+  target: string | null
+  onPath: boolean
+  signedIn: boolean
+  error: string | null
+}
+
 type SyrusCheckoutAvailability = {
   cliAvailable: boolean
   localPath: string | null
@@ -199,6 +207,7 @@ interface Window {
     saveGlobalHotkey: (globalHotkey: string) => Promise<{ globalHotkey: string }>
     chooseLocalProjectsRoot: () => Promise<string | null>
     syrusCliStatus: () => Promise<{ available: boolean }>
+    installSyrusCli: () => Promise<SyrusCliInstallResult>
     checkoutAvailability: (repoSlug: string) => Promise<SyrusCheckoutAvailability>
     checkoutJob: (request: SyrusCheckoutRequest) => Promise<{ branchName: string }>
     localStatus: () => Promise<SyrusLocalStatus | null>

@@ -1336,6 +1336,77 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   )
 }
 
+// One-click Syrus CLI install: the app bundles the per-arch binary and
+// installs it to ~/.local/bin with credentials pre-written, so `syrus` in a
+// terminal (and the tray's Checkout button) work without a repo clone or a
+// manual login. PATH is never mutated — when ~/.local/bin isn't on it, the
+// export line is offered for copy-paste.
+export function CliInstallSection() {
+  const [status, setStatus] = useState<"checking" | "installed" | "missing">("checking")
+  const [result, setResult] = useState<SyrusCliInstallResult | null>(null)
+  const [installing, setInstalling] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    window.syrusDesktop
+      .syrusCliStatus()
+      .then(({ available }) => {
+        if (!cancelled) setStatus(available ? "installed" : "missing")
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("missing")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const install = async () => {
+    setInstalling(true)
+    try {
+      const outcome = await window.syrusDesktop.installSyrusCli()
+      setResult(outcome)
+      if (outcome.installed) setStatus("installed")
+    } finally {
+      setInstalling(false)
+    }
+  }
+
+  return (
+    <div className="settings-section settings-section--flush" data-testid="cli-install">
+      <div className="shortcut-row">
+        <div className="shortcut-details">
+          <span className="shortcut-pill">syrus CLI</span>
+          {status === "checking" ? (
+            <span className="status-line">Checking…</span>
+          ) : status === "installed" ? (
+            <span className="form-success">Installed — Checkout and terminal workflows are ready.</span>
+          ) : (
+            <span className="status-line">Not installed. Powers Checkout here, plus terminal and agent workflows.</span>
+          )}
+        </div>
+        {status === "missing" ? (
+          <button className="primary-button" disabled={installing} onClick={() => void install()} type="button">
+            {installing ? "Installing…" : "Install CLI"}
+          </button>
+        ) : null}
+      </div>
+      {result?.error ? <p className="form-error">{result.error}</p> : null}
+      {result?.installed ? (
+        <p className="status-line">
+          Installed to {result.target}
+          {result.signedIn ? " — already signed in via this app's credentials" : ""}.
+          {!result.onPath ? (
+            <>
+              {" "}Add it to your PATH: <code>export PATH="$HOME/.local/bin:$PATH"</code>
+            </>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 // The right-click context menu's essentials, reachable from the left-click
 // popover too: open the app window, Preferences, Quit.
 export function TrayActionsBar() {
@@ -2677,6 +2748,8 @@ export function App() {
                 <div>
                   <h2>Local checkout</h2>
                 </div>
+
+                <CliInstallSection />
 
                 <label>
                   <span>Local projects root</span>

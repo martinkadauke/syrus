@@ -10,6 +10,17 @@ same app and admin JSON APIs as the React UI, but keeps the common
 operator loop close to the checkout: chat with Syrus, review inbox items,
 open PRs, check out Job branches, and print test plans.
 
+## Install from the desktop app (macOS)
+
+If you run the [Syrus desktop app](/docs/desktop), you don't need a
+repository clone or Go: the app bundles the CLI. Open **Preferences →
+Local checkout → Install CLI** — it installs to `~/.local/bin/syrus`,
+and because the app already stores its credentials in the CLI's shared
+`~/.syrus/credentials` file, the CLI is signed in immediately — no
+`syrus login` needed. If `~/.local/bin` isn't on your `PATH`, the
+app shows the one-line export to add. This also enables the tray's
+**Checkout** button, which runs `syrus checkout` under the hood.
+
 ## Build
 
 `bin/setup` builds the CLI automatically as part of the normal dev

@@ -178,6 +178,14 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.invoke("save-global-hotkey", globalHotkey) as Promise<{ globalHotkey: string }>,
   chooseLocalProjectsRoot: () => ipcRenderer.invoke("choose-local-projects-root") as Promise<string | null>,
   syrusCliStatus: () => ipcRenderer.invoke("syrus-cli-status") as Promise<{ available: boolean }>,
+  installSyrusCli: () =>
+    ipcRenderer.invoke("install-syrus-cli") as Promise<{
+      installed: boolean
+      target: string | null
+      onPath: boolean
+      signedIn: boolean
+      error: string | null
+    }>,
   checkoutAvailability: (repoSlug: string) =>
     ipcRenderer.invoke("checkout-availability", repoSlug) as Promise<CheckoutAvailability>,
   checkoutJob: (request: CheckoutRequest) =>
