@@ -133,6 +133,11 @@ Fallbacks for non-US/CA individuals: Certum Open Source Code Signing in
 the Cloud (~$58, SimplySign; headless CI is hacky), SSL.com IV +
 eSigner. Both still ride the slower OV-style reputation ramp.
 
+**Setup runbook and exact repo secrets: [`windows-signing.md`](./windows-signing.md).**
+`.github/workflows/sign-windows-test.yml` validates the whole chain
+(manual dispatch only) before it's wired into the live release pipeline —
+deferred until phase 2 ships something worth signing publicly.
+
 ### Field notes: the "Missing Shortcut" failure (July 2026 UTM test)
 
 First real ARM64 guest run ended with Windows' "Missing Shortcut —
