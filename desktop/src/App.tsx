@@ -35,6 +35,14 @@ const INBOX_COLLAPSED_REPOS_KEY = "syrus.desktop.inbox.collapsed-repos"
 const normalizeInstanceUrl = (url: string) => url.trim().replace(/\/+$/, "")
 const appApiUrl = (baseUrl: string, path: string) => `${normalizeInstanceUrl(baseUrl)}${path}`
 
+// Matches UNAUTHORIZED_MESSAGE in electron/main.ts (IPC only carries the
+// message string, wrapped in "Error invoking remote method ..." noise).
+// A 401 means the stored token went stale — opening the signed-in Syrus
+// window is what re-mints it, so the UI leads there instead of to Retry.
+const UNAUTHORIZED_MARKER = "Syrus rejected the saved sign-in"
+const isUnauthorizedError = (error: unknown) =>
+  error instanceof Error && error.message.includes(UNAUTHORIZED_MARKER)
+
 const jobTitle = (job: SyrusJobItem) => job.title || job.issue_title || `JOB-${job.id}`
 const truncateText = (text: string, maxLength: number) =>
   text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
@@ -288,6 +296,16 @@ function RefreshIcon() {
   )
 }
 
+function EyeIcon({ crossed = false }: { crossed?: boolean }) {
+  return (
+    <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6-10-6-10-6Z" />
+      <circle cx="12" cy="12" r="2.5" />
+      {crossed ? <path d="M4 4l16 16" /> : null}
+    </svg>
+  )
+}
+
 function ExternalIcon() {
   return (
     <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -487,6 +505,7 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   const [feedbackError, setFeedbackError] = useState<string | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const [isMarkingAllNotificationsRead, setIsMarkingAllNotificationsRead] = useState(false)
+  const [installingCliFromBanner, setInstallingCliFromBanner] = useState(false)
   const composeRef = useRef<HTMLElement>(null)
   const composeButtonRef = useRef<HTMLButtonElement>(null)
   const feedbackSubmitButtonRef = useRef<HTMLButtonElement>(null)
@@ -838,6 +857,27 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
     }
   }
 
+  const installCliFromBanner = async () => {
+    setInstallingCliFromBanner(true)
+    clearToast()
+    try {
+      const result = await window.syrusDesktop.installSyrusCli()
+      if (result.installed) {
+        showToast({
+          kind: "success",
+          message: result.onPath
+            ? "Syrus CLI installed — Checkout is ready."
+            : 'Syrus CLI installed. For terminals, add: export PATH="$HOME/.local/bin:$PATH"'
+        }, 7000)
+        void cliStatusQuery.refetch()
+      } else {
+        showToast({ kind: "error", message: result.error ?? "Could not install the Syrus CLI." }, 7000)
+      }
+    } finally {
+      setInstallingCliFromBanner(false)
+    }
+  }
+
   const checkoutJob = async (job: SyrusJobItem) => {
     const command = `syrus checkout JOB-${job.id}`
     clearToast()
@@ -1115,10 +1155,15 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
       </header>
 
       {cliMissing ? (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-5 text-amber-900">
-          <span>Install the Syrus CLI to enable local branch checkout.</span>{" "}
-          <button type="button" className="inline-link" onClick={() => window.syrusDesktop.openTokenDocs()}>
-            Install docs
+        <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-sm leading-5 text-amber-900" data-testid="cli-missing-banner">
+          <span>Install the Syrus CLI to enable local branch checkout.</span>
+          <button
+            type="button"
+            className="shrink-0 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-60"
+            disabled={installingCliFromBanner}
+            onClick={() => void installCliFromBanner()}
+          >
+            {installingCliFromBanner ? "Installing…" : "Install"}
           </button>
         </div>
       ) : null}
@@ -1201,12 +1246,23 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
         ) : inboxQuery.isLoading ? (
           <StatusPanel title="Loading inbox" />
         ) : inboxQuery.isError ? (
-          <StatusPanel
-            title="Could not load inbox"
-            detail={inboxQuery.error instanceof Error ? inboxQuery.error.message : "Try again in a moment."}
-            actionLabel="Retry"
-            onAction={() => void inboxQuery.refetch()}
-          />
+          isUnauthorizedError(inboxQuery.error) ? (
+            <StatusPanel
+              title="Sign-in needs a refresh"
+              detail="This app refreshes its token from the Syrus window. Open Syrus, sign in if asked, then retry."
+              actionLabel="Open Syrus"
+              onAction={() => void window.syrusDesktop.openSyrusWindow()}
+              secondaryActionLabel="Retry"
+              onSecondaryAction={() => void inboxQuery.refetch()}
+            />
+          ) : (
+            <StatusPanel
+              title="Could not load inbox"
+              detail={inboxQuery.error instanceof Error ? inboxQuery.error.message : "Try again in a moment."}
+              actionLabel="Retry"
+              onAction={() => void inboxQuery.refetch()}
+            />
+          )
         ) : jobs.length === 0 ? (
           <StatusPanel title="Nothing in your inbox" detail="Implemented and failed jobs will appear here." />
         ) : (
@@ -1345,6 +1401,7 @@ export function CliInstallSection() {
   const [status, setStatus] = useState<"checking" | "installed" | "missing">("checking")
   const [result, setResult] = useState<SyrusCliInstallResult | null>(null)
   const [installing, setInstalling] = useState(false)
+  const [withSkill, setWithSkill] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -1361,10 +1418,10 @@ export function CliInstallSection() {
     }
   }, [])
 
-  const install = async () => {
+  const install = async (options?: { withSkill?: boolean }) => {
     setInstalling(true)
     try {
-      const outcome = await window.syrusDesktop.installSyrusCli()
+      const outcome = await window.syrusDesktop.installSyrusCli(options)
       setResult(outcome)
       if (outcome.installed) setStatus("installed")
     } finally {
@@ -1386,16 +1443,34 @@ export function CliInstallSection() {
           )}
         </div>
         {status === "missing" ? (
-          <button className="primary-button" disabled={installing} onClick={() => void install()} type="button">
+          <button className="primary-button" disabled={installing} onClick={() => void install({ withSkill })} type="button">
             {installing ? "Installing…" : "Install CLI"}
           </button>
-        ) : null}
+        ) : (
+          <button
+            className="secondary-button"
+            disabled={installing || status === "checking"}
+            onClick={() => void install({ withSkill: true })}
+            title="Writes ~/.claude/skills/syrus so Claude Code sessions on this Mac can drive Syrus through the CLI."
+            type="button"
+          >
+            {installing ? "Installing…" : "Add Claude Code skill"}
+          </button>
+        )}
       </div>
+      {status === "missing" ? (
+        <label className="status-line flex items-center gap-2">
+          <input checked={withSkill} onChange={(event) => setWithSkill(event.target.checked)} type="checkbox" />
+          <span>Also add the Claude Code skill (lets coding agents on this Mac drive Syrus)</span>
+        </label>
+      ) : null}
       {result?.error ? <p className="form-error">{result.error}</p> : null}
       {result?.installed ? (
         <p className="status-line">
           Installed to {result.target}
           {result.signedIn ? " — already signed in via this app's credentials" : ""}.
+          {result.skillInstalled ? " Claude Code skill added." : null}
+          {result.skillError ? ` Claude Code skill failed: ${result.skillError}` : null}
           {!result.onPath ? (
             <>
               {" "}Add it to your PATH: <code>export PATH="$HOME/.local/bin:$PATH"</code>
@@ -1955,12 +2030,16 @@ function StatusPanel({
   title,
   detail,
   actionLabel,
-  onAction
+  onAction,
+  secondaryActionLabel,
+  onSecondaryAction
 }: {
   title: string
   detail?: string
   actionLabel?: string
   onAction?: () => void
+  secondaryActionLabel?: string
+  onSecondaryAction?: () => void
 }) {
   return (
     <div className="grid min-h-[360px] place-items-center px-6 text-center">
@@ -1968,9 +2047,16 @@ function StatusPanel({
         <p className="text-sm font-semibold text-slate-800">{title}</p>
         {detail ? <p className="mt-2 text-sm leading-5 text-slate-500">{detail}</p> : null}
         {actionLabel && onAction ? (
-          <button type="button" className="mt-4 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-white" onClick={onAction}>
-            {actionLabel}
-          </button>
+          <div className="mt-4 flex items-center justify-center gap-2">
+            <button type="button" className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-white" onClick={onAction}>
+              {actionLabel}
+            </button>
+            {secondaryActionLabel && onSecondaryAction ? (
+              <button type="button" className="rounded-md px-3 py-1.5 text-sm font-medium text-slate-500 hover:text-slate-700" onClick={onSecondaryAction}>
+                {secondaryActionLabel}
+              </button>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>
@@ -2398,6 +2484,7 @@ export function App() {
   const [authState, setAuthState] = useState<AuthState>("loading")
   const [url, setUrl] = useState("")
   const [token, setToken] = useState("")
+  const [tokenVisible, setTokenVisible] = useState(false)
   const [error, setError] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [preferencesTab, setPreferencesTab] = useState<PreferencesTab>("account")
@@ -2667,20 +2754,33 @@ export function App() {
 
               <label>
                 <span>API token</span>
-                <input
-                  required
-                  type="password"
-                  value={token}
-                  autoComplete="off"
-                  onChange={(event) => setToken(event.target.value)}
-                />
+                <div className="relative">
+                  <input
+                    required
+                    className="w-full pr-9"
+                    type={tokenVisible ? "text" : "password"}
+                    value={token}
+                    autoComplete="off"
+                    onChange={(event) => setToken(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-slate-600"
+                    aria-label={tokenVisible ? "Hide API token" : "Show API token"}
+                    aria-pressed={tokenVisible}
+                    onClick={() => setTokenVisible((visible) => !visible)}
+                  >
+                    <EyeIcon crossed={tokenVisible} />
+                  </button>
+                </div>
               </label>
 
               {error ? <p className="form-error">{error}</p> : null}
 
               <div className="form-actions">
+                {/* Opens the instance's own account-settings page (generate/rotate/revoke) in the app window. */}
                 <button type="button" className="link-button" onClick={() => window.syrusDesktop.openTokenDocs()}>
-                  Generate a token
+                  Get a token from Syrus
                 </button>
                 <button type="submit" className="primary-button" disabled={isSaving}>
                   {isSaving ? "Saving..." : "Save"}

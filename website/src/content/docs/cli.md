@@ -13,13 +13,16 @@ open PRs, check out Job branches, and print test plans.
 ## Install from the desktop app (macOS)
 
 If you run the [Syrus desktop app](/docs/desktop), you don't need a
-repository clone or Go: the app bundles the CLI. Open **Preferences →
-Local checkout → Install CLI** — it installs to `~/.local/bin/syrus`,
-and because the app already stores its credentials in the CLI's shared
-`~/.syrus/credentials` file, the CLI is signed in immediately — no
-`syrus login` needed. If `~/.local/bin` isn't on your `PATH`, the
-app shows the one-line export to add. This also enables the tray's
-**Checkout** button, which runs `syrus checkout` under the hood.
+repository clone or Go: the app bundles the CLI. After setup completes,
+the app offers the install as a one-time step (with an opt-in for the
+[Claude Code skill](#claude-code-skill)); you can also install any time
+from **Preferences → Local checkout → Install CLI**, or from the tray's
+install banner when the CLI is missing. It installs to
+`~/.local/bin/syrus`, and because the app already stores its credentials
+in the CLI's shared `~/.syrus/credentials` file, the CLI is signed in
+immediately — no `syrus login` needed. If `~/.local/bin` isn't on your
+`PATH`, the app shows the one-line export to add. This also enables the
+tray's **Checkout** button, which runs `syrus checkout` under the hood.
 
 ## Build
 
@@ -63,6 +66,20 @@ url=https://syrus.example.com
 token=your-api-token
 ```
 
+When credentials already exist (for example, the desktop app wrote
+them), `syrus login` prefills the saved URL and offers to keep the
+current token — refreshing a stale token is just Enter, then paste the
+new token. For scripting, `--url` and `--token` skip the prompts:
+
+```bash
+syrus login --url https://syrus.example.com --token your-api-token
+```
+
+If any command answers `401 Unauthorized`, the saved token is stale
+(most commonly the instance's database was rebuilt); the error suggests
+`syrus login`, and the desktop app heals its own copy automatically the
+next time its window is open and signed in.
+
 Syrus Desktop reads and writes the same credentials file. If you have
 already run `syrus login`, the desktop app starts authenticated. If the
 file is missing or incomplete, the desktop app prompts for the same URL
@@ -97,9 +114,10 @@ inbox row stay visible below the tabs. Implemented rows
 can be approved for landing from the popover after a native confirmation
 prompt, and implemented or failed Jobs can send follow-up feedback from
 the detail view. Failed rows can be queued for retry directly from the row.
-Local checkout actions require the `syrus` CLI binary on `PATH`; when the
-app cannot find it, the popover shows an install banner and disables
-checkout buttons. Configure a local projects root in Preferences to
+Local checkout actions require the `syrus` CLI (the app finds a
+`~/.local/bin/syrus` install even though GUI apps get a minimal `PATH`);
+when it's missing, the popover shows a banner with a one-click Install
+button and disables checkout buttons until it lands. Configure a local projects root in Preferences to
 derive `<root>/<repo-name>` paths, or add per-repository absolute path
 overrides for repositories that live elsewhere. Desktop delegates
 checkout to `syrus checkout JOB-<id>` from the resolved local path, so the
@@ -355,6 +373,24 @@ syrus schedule run 42
 otherwise shows all schedules. `schedule create` must run from a
 configured repository checkout because scheduled tasks are
 repository-owned.
+
+## Claude Code skill
+
+The CLI can teach Claude Code how to drive Syrus:
+
+```bash
+syrus skill install                       # writes ~/.claude/skills/syrus/SKILL.md
+syrus skill install --dir /path/to/skills # custom skills directory
+```
+
+The skill describes the command surface (inbox, job view, test plans,
+checkout, approve, chat) and its guardrails — approve only on explicit
+user instruction, never check out over a dirty working tree, prefer
+read commands when the user is reviewing. With it installed, a local
+Claude Code session can triage your Syrus inbox, read a test plan,
+check the branch out, and run it — all through the same CLI you use.
+New agent sessions pick the skill up automatically; the desktop app's
+CLI install step offers it as a checkbox.
 
 ## Troubleshooting
 

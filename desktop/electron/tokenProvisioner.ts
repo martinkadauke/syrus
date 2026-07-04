@@ -47,6 +47,11 @@ type ProvisionDeps = {
   // main.ts's saveCredentials: validates against the server, writes
   // ~/.syrus/credentials, and starts the notification cable.
   saveCredentials: (credentials: Credentials) => Promise<unknown>
+  // True when the stored token has been rejected (401) by its own instance —
+  // e.g. the local backend's database was rebuilt and the token on disk
+  // predates it. Suspect same-instance credentials must NOT block
+  // re-provisioning, or the app can never heal itself.
+  credentialsSuspect?: (credentials: Credentials) => boolean
 }
 
 const normalizeUrl = (url: string) => url.trim().replace(/\/+$/, "")
@@ -75,7 +80,16 @@ export const maybeProvisionDesktopToken = async (
     // ~/.syrus/credentials is shared with the syrus CLI. Credentials
     // configured for a DIFFERENT instance must never be overwritten by
     // auto-provisioning — that would silently retarget the user's CLI.
-    return normalizeUrl(cached.url) === normalized ? "already-configured" : "different-instance"
+    if (normalizeUrl(cached.url) !== normalized) {
+      return "different-instance"
+    }
+
+    // Same instance: healthy credentials stay untouched, but a token the
+    // instance itself has rejected (backend DB rebuilt, token revoked) falls
+    // through and gets re-minted from the signed-in web session.
+    if (!deps.credentialsSuspect?.(cached)) {
+      return "already-configured"
+    }
   }
 
   if (normalized === forbiddenInstanceUrl) {

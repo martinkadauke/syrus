@@ -31,9 +31,18 @@ other artifacts on the [releases page](https://github.com/tkadauke/syrus/release
   badge counts, approve/retry/feedback actions, and a compose shortcut —
   one keyboard shortcut away. For admins — which includes the first (and
   usually only) user of a local install — signing in inside the app window
-  wires the menu bar up automatically; there is no token to copy.
+  wires the menu bar up automatically; there is no token to copy. If the
+  saved token ever goes stale (say, after a full reinstall rebuilt the
+  database), the app detects the rejection and re-mints the token the
+  next time its window is open and signed in.
   Non-admin users on a shared remote instance paste an API token into
   Preferences instead.
+- **The Syrus CLI, one click away.** After setup, the app offers to
+  install the bundled `syrus` CLI to `~/.local/bin` — already signed in
+  through the shared credentials file — with an optional Claude Code
+  skill so coding agents on your Mac can drive Syrus from the terminal.
+  Also available any time from Preferences, or from the menu-bar banner
+  when the CLI is missing.
 - **Lifecycle management.** The app starts your local Syrus when it
   launches and leaves it running when you quit, so GitHub polling and
   agent runs continue in the background. Start, stop, and restart live

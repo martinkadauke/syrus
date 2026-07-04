@@ -1,7 +1,8 @@
 # Syrus CLI × desktop app — why, how, and what ships when
 
-Status: phase 1 (bundle + one-click install + auto-login) implemented on
-`desktop-app/11-e2e-polish`; phases 2–3 planned.
+Status: phases 1 (bundle + one-click install + auto-login) and 2 (the
+Claude Code skill, plus the one-time post-setup install step) implemented
+on `desktop-app/11-e2e-polish`; phase 3 planned.
 
 ## Why a desktop user wants the CLI at all
 
@@ -36,22 +37,30 @@ Status: phase 1 (bundle + one-click install + auto-login) implemented on
   doesn't care: its availability probe and checkout exec know the
   install location directly.
 
-## Phase 2 (planned): the Claude skill
+## Phase 2 (shipped): the Claude skill + the setup step
 
-Yes, this should exist — as a **CLI subcommand**, not a desktop feature,
-so clone-based users get it too:
+A **CLI subcommand**, not a desktop feature, so clone-based users get it
+too (`cli/cmd/skill.go`):
 
     syrus skill install [--dir ~/.claude/skills]
 
 writes `~/.claude/skills/syrus/SKILL.md` teaching a local Claude Code
 session what Syrus is and how to drive it: auth model
 (`~/.syrus/credentials`), the command surface (`inbox`, `job view`,
-`job approve`, `job feedback`, `checkout`, `test-plan`, `chat`), repo
-detection (commands scope to `origin` by default), and guardrails
-(approve requires explicit user intent; never checkout over dirty
-trees). The desktop's post-install panel gains a one-liner offer once
-the subcommand exists. Skill content versioning rides the CLI binary —
-reinstalling the CLI refreshes the skill.
+`checkout`, `test-plan`, `approve`, `chat`), and guardrails (approve
+requires explicit user intent; never checkout over dirty trees; prefer
+read commands while reviewing). Skill content versioning rides the CLI
+binary — reinstalling the CLI refreshes the skill.
+
+Desktop integration: the web app window carries no IPC bridge (remote
+content), so the "install as part of setup" step is main-process-owned —
+once the user is signed in and lands on the home surface (post-
+onboarding), a one-time native dialog offers the CLI install with an
+"also add the Claude Code skill" checkbox (default on). The same combo
+lives in Preferences, and the tray shows a one-click Install button when
+the CLI is missing. The desktop runs the skill write through
+`<installed binary> skill install`, keeping one code path with clone
+users.
 
 ## Phase 3 (planned): Windows
 

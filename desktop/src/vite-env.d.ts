@@ -49,6 +49,8 @@ type SyrusCliInstallResult = {
   target: string | null
   onPath: boolean
   signedIn: boolean
+  skillInstalled: boolean
+  skillError: string | null
   error: string | null
 }
 
@@ -207,7 +209,7 @@ interface Window {
     saveGlobalHotkey: (globalHotkey: string) => Promise<{ globalHotkey: string }>
     chooseLocalProjectsRoot: () => Promise<string | null>
     syrusCliStatus: () => Promise<{ available: boolean }>
-    installSyrusCli: () => Promise<SyrusCliInstallResult>
+    installSyrusCli: (options?: { withSkill?: boolean }) => Promise<SyrusCliInstallResult>
     checkoutAvailability: (repoSlug: string) => Promise<SyrusCheckoutAvailability>
     checkoutJob: (request: SyrusCheckoutRequest) => Promise<{ branchName: string }>
     localStatus: () => Promise<SyrusLocalStatus | null>

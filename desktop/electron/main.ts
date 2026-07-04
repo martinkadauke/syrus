@@ -213,6 +213,25 @@ const APP_USER_CABLE_MAX_RECONNECT_MS = 30_000
 let appUserCableReconnectMs = APP_USER_CABLE_INITIAL_RECONNECT_MS
 let registeredGlobalHotkey = ""
 
+// Set when the stored token gets a 401 from its own instance (backend DB
+// rebuilt, token revoked). Keyed via credentialsKey (shared with the cable
+// code below). The token provisioner treats suspect same-instance
+// credentials as absent, so the next signed-in web session re-mints the
+// token instead of the app staying wedged on a dead one.
+let suspectTokenKey: string | null = null
+
+// The tray renderer matches on this text to swap "Retry" for "Open Syrus"
+// (the signed-in web window is what re-mints the token). Keep in sync with
+// UNAUTHORIZED_MARKER in desktop/src/App.tsx.
+const UNAUTHORIZED_MESSAGE = "Syrus rejected the saved sign-in. Open Syrus to refresh it automatically."
+
+const throwIfUnauthorized = (credentials: Credentials, response: Response) => {
+  if (response.status === 401) {
+    suspectTokenKey = credentialsKey(credentials)
+    throw new Error(UNAUTHORIZED_MESSAGE)
+  }
+}
+
 const loadCredentials = async (): Promise<Credentials | null> => {
   let contents: string | null
 
@@ -524,6 +543,7 @@ const fetchBootstrap = async () => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error("Could not load account details.")
   }
@@ -550,6 +570,7 @@ const syncUnreadCount = async () => {
     return
   }
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error("Could not load notifications.")
   }
@@ -578,6 +599,7 @@ const fetchNotifications = async () => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, "Could not load notifications."))
   }
@@ -603,6 +625,7 @@ const markNotificationRead = async (id: number) => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, "Could not mark notification read."))
   }
@@ -628,6 +651,7 @@ const markAllNotificationsRead = async () => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, "Could not mark notifications read."))
   }
@@ -653,6 +677,7 @@ const fetchJobList = async (credentials: Credentials, state: string) => {
     }
   )
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(`Could not fetch ${state} jobs.`)
   }
@@ -688,6 +713,7 @@ const fetchJobDetail = async (jobID: number) => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, `Could not load JOB-${jobID}.`))
   }
@@ -722,6 +748,7 @@ const createDirectJob = async ({ repositoryId, prompt }: CreateJobRequest) => {
     })
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, "Could not create job."))
   }
@@ -741,6 +768,7 @@ const fetchRepositories = async () => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error("Could not load repositories.")
   }
@@ -778,6 +806,7 @@ const approveJob = async (jobID: number) => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, `Could not approve JOB-${jobID}.`))
   }
@@ -796,6 +825,7 @@ const retryJob = async (jobID: number) => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, `Could not retry JOB-${jobID}.`))
   }
@@ -816,6 +846,7 @@ const submitJobFeedback = async (jobID: number, body: string) => {
     body: JSON.stringify({ body })
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(await responseErrorMessage(response, `Could not submit feedback for JOB-${jobID}.`))
   }
@@ -901,6 +932,156 @@ const syrusCliAvailable = async () => {
 
   cachedCliAvailable = (await syrusCliBinary()) !== null
   return cachedCliAvailable
+}
+
+type CliInstallOptions = { withSkill?: boolean }
+
+type CliInstallResult = {
+  installed: boolean
+  target: string | null
+  onPath: boolean
+  signedIn: boolean
+  skillInstalled: boolean
+  skillError: string | null
+  error: string | null
+}
+
+// One-click CLI install from the bundled per-arch binary: copy to
+// ~/.local/bin/syrus. No login step — the app already keeps
+// ~/.syrus/credentials in the CLI-shared format (credentialsStore.ts owns
+// that file), so the CLI is signed in the moment the binary lands. No PATH
+// mutation — callers show the export line when ~/.local/bin isn't reachable
+// as `syrus`. The optional Claude Code skill goes through the CLI's own
+// `skill install` so clone-based users share the exact same path.
+const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}): Promise<CliInstallResult> => {
+  try {
+    const bundledDir = app.isPackaged
+      ? path.join(process.resourcesPath, "cli")
+      : path.join(__dirname, "..", "..", "resources", "cli")
+    const source = path.join(bundledDir, `syrus-darwin-${process.arch === "arm64" ? "arm64" : "x64"}`)
+    await fs.access(source)
+
+    const binDir = path.join(os.homedir(), ".local", "bin")
+    const target = path.join(binDir, "syrus")
+    await fs.mkdir(binDir, { recursive: true })
+    await fs.copyFile(source, target)
+    await fs.chmod(target, 0o755)
+
+    const signedIn = cachedCredentials !== null
+
+    let skillInstalled = false
+    let skillError: string | null = null
+    if (withSkill) {
+      try {
+        await execFileAsync(target, ["skill", "install"])
+        skillInstalled = true
+      } catch (error) {
+        // The binary landed; a failed skill write must not report the whole
+        // install as broken.
+        skillError = error instanceof Error ? error.message : "Could not install the Claude Code skill."
+      }
+    }
+
+    // Fresh PATH probe: the copy may or may not be reachable as `syrus`.
+    cachedCliAvailable = null
+    const onPath = await syrusCliAvailable()
+    return { installed: true, target, onPath, signedIn, skillInstalled, skillError, error: null }
+  } catch (error) {
+    return {
+      installed: false,
+      target: null,
+      onPath: false,
+      signedIn: false,
+      skillInstalled: false,
+      skillError: null,
+      error: error instanceof Error ? error.message : "Could not install the Syrus CLI."
+    }
+  }
+}
+
+// The web app window carries no IPC bridge (remote content), so the
+// CLI-install setup step is the main process watching for the moment the
+// user is signed in and settled on the home surface — i.e. onboarding,
+// sign-in, and GitHub/agent connect flows are behind them.
+let cliOfferInFlight = false
+
+const offerCliSetupIfReady = async (window: BrowserWindow) => {
+  if (cliOfferInFlight || store.get("cliInstallOffered", false)) {
+    return
+  }
+
+  if (!cachedCredentials) {
+    return
+  }
+
+  let pathname: string
+  try {
+    pathname = new URL(window.webContents.getURL()).pathname
+  } catch {
+    return
+  }
+
+  // Only the settled home surface — never interrupt onboarding, auth, or a
+  // deep-linked page the user is actually working in.
+  if (pathname !== "/" && pathname !== "/dashboard") {
+    return
+  }
+
+  if (await syrusCliAvailable()) {
+    store.set("cliInstallOffered", true)
+    return
+  }
+
+  cliOfferInFlight = true
+  try {
+    const { response, checkboxChecked } = await dialog.showMessageBox(window, {
+      type: "question",
+      buttons: ["Install", "Not now"],
+      defaultId: 0,
+      cancelId: 1,
+      message: "Install the Syrus CLI?",
+      detail:
+        "One last setup step: the menu bar's Checkout button and terminal workflows use the syrus CLI. " +
+        "It installs to ~/.local/bin and signs in automatically with this app's credentials. " +
+        "You can do this later from Preferences.",
+      checkboxLabel: "Also add the Claude Code skill, so coding agents on this Mac can drive Syrus",
+      checkboxChecked: true
+    })
+
+    // Asked and answered — either way, don't nag on every navigation.
+    store.set("cliInstallOffered", true)
+
+    if (response !== 0) {
+      return
+    }
+
+    const result = await performCliInstall({ withSkill: checkboxChecked })
+    if (!result.installed) {
+      await dialog.showMessageBox(window, {
+        type: "warning",
+        message: "The Syrus CLI could not be installed.",
+        detail: `${result.error ?? "Unknown error."} You can retry from Preferences → Projects.`
+      })
+      return
+    }
+
+    const detailLines = [`Installed to ${result.target}.`]
+    if (result.skillInstalled) {
+      detailLines.push("Claude Code skill added — new agent sessions can drive Syrus via the CLI.")
+    } else if (result.skillError) {
+      detailLines.push(`Claude Code skill failed: ${result.skillError}`)
+    }
+    if (!result.onPath) {
+      detailLines.push('To use it from a terminal, add: export PATH="$HOME/.local/bin:$PATH"')
+    }
+    await dialog.showMessageBox(window, {
+      type: "info",
+      message: "Syrus CLI installed",
+      detail: detailLines.join("\n")
+    })
+  } finally {
+    cliOfferInFlight = false
+  }
 }
 
 const repoNameFromSlug = (repoSlug: string) => repoSlug.split("/").filter(Boolean).at(-1) ?? repoSlug
@@ -1029,6 +1210,7 @@ const fetchAdminControls = async () => {
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error("Could not load admin controls.")
   }
@@ -1082,6 +1264,7 @@ const toggleAdminControl = async (sender: Electron.WebContents, control: AdminCo
     }
   })
 
+  throwIfUnauthorized(credentials, response)
   if (!response.ok) {
     throw new Error(`Could not ${action} ${label}.`)
   }
@@ -1106,6 +1289,7 @@ const saveCredentials = async (credentials: Credentials) => {
   await writeCredentialsFile(normalizedCredentials)
 
   cachedCredentials = normalizedCredentials
+  suspectTokenKey = null
   startAppUserCable(normalizedCredentials)
 
   // In remote mode the tray URL and the app window must stay in lockstep:
@@ -1434,11 +1618,24 @@ const showWebAppWindow = async () => {
 
     void maybeProvisionDesktopToken(handle.window.webContents, serverUrl, {
       getCachedCredentials: () => cachedCredentials,
-      saveCredentials
+      saveCredentials,
+      // A token this instance already rejected (backend DB rebuilt) must
+      // not block re-provisioning — see suspectTokenKey.
+      credentialsSuspect: (credentials) => suspectTokenKey === credentialsKey(credentials)
     })
   }
   handle.window.webContents.on("did-finish-load", attemptTokenProvisioning)
   handle.window.webContents.on("did-navigate-in-page", attemptTokenProvisioning)
+
+  // One-time post-setup step: once the user is signed in and lands on the
+  // home surface (never mid-onboarding), offer to install the bundled CLI
+  // and the Claude Code skill. Native dialog because the remote web app
+  // deliberately has no IPC bridge.
+  const attemptCliOffer = () => {
+    void offerCliSetupIfReady(handle.window)
+  }
+  handle.window.webContents.on("did-finish-load", attemptCliOffer)
+  handle.window.webContents.on("did-navigate-in-page", attemptCliOffer)
 
   try {
     await webAppWindow.loadServerUrl()
@@ -1920,44 +2117,7 @@ ipcMain.handle("choose-local-projects-root", async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 ipcMain.handle("syrus-cli-status", async () => ({ available: await syrusCliAvailable() }))
-// One-click CLI install from the bundled per-arch binary: copy to
-// ~/.local/bin/syrus. No login step — the app already keeps
-// ~/.syrus/credentials in the CLI-shared format, so the CLI is signed in
-// the moment the binary lands. No PATH mutation — the renderer shows the
-// export line when ~/.local/bin isn't reachable as `syrus`.
-ipcMain.handle("install-syrus-cli", async () => {
-  try {
-    const bundledDir = app.isPackaged
-      ? path.join(process.resourcesPath, "cli")
-      : path.join(__dirname, "..", "..", "resources", "cli")
-    const source = path.join(bundledDir, `syrus-darwin-${process.arch === "arm64" ? "arm64" : "x64"}`)
-    await fs.access(source)
-
-    const binDir = path.join(os.homedir(), ".local", "bin")
-    const target = path.join(binDir, "syrus")
-    await fs.mkdir(binDir, { recursive: true })
-    await fs.copyFile(source, target)
-    await fs.chmod(target, 0o755)
-
-    // No login step: the app already keeps ~/.syrus/credentials in the
-    // CLI-shared format (credentialsStore.ts owns that file), so the CLI
-    // is signed in the moment the binary lands.
-    const signedIn = cachedCredentials !== null
-
-    // Fresh PATH probe: the copy may or may not be reachable as `syrus`.
-    cachedCliAvailable = null
-    const onPath = await syrusCliAvailable()
-    return { installed: true, target, onPath, signedIn, error: null }
-  } catch (error) {
-    return {
-      installed: false,
-      target: null,
-      onPath: false,
-      signedIn: false,
-      error: error instanceof Error ? error.message : "Could not install the Syrus CLI."
-    }
-  }
-})
+ipcMain.handle("install-syrus-cli", async (_event, options?: CliInstallOptions) => performCliInstall(options))
 ipcMain.handle("checkout-availability", async (_event, repoSlug: string) => checkoutAvailability(repoSlug))
 ipcMain.handle("checkout-job", async (_event, request: CheckoutRequest) => checkoutJob(request))
 ipcMain.handle("syrus:local-status", async () => localStatus())
@@ -1997,7 +2157,18 @@ ipcMain.handle("toggle-admin-control", async (event, control: AdminControl, paus
   toggleAdminControl(event.sender, control, pause)
 )
 ipcMain.handle("create-direct-job", async (_event, request: CreateJobRequest) => createDirectJob(request))
+// "Generate a token" in Preferences: API tokens live on the instance's own
+// account-settings page (generate/rotate/revoke), so open that in the
+// signed-in app window. The public docs site is only the fallback when no
+// instance is configured yet.
 ipcMain.handle("open-token-docs", async () => {
+  const serverUrl = getServerUrl().replace(/\/+$/, "")
+  if (serverUrl !== "") {
+    await showWebAppWindow()
+    await webAppWindow?.window.loadURL(`${serverUrl}/settings`)
+    return
+  }
+
   await shell.openExternal(TOKEN_DOCS_URL)
 })
 ipcMain.handle("fetch-inbox-jobs", async () => fetchInboxJobs())

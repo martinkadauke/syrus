@@ -38,6 +38,9 @@ export type DesktopStore = DesktopSettings & {
   webAppWindowBounds: WindowBounds | null
   onboardingCompletedAt: string
   backendConfigMigratedAt: string
+  // The one-time post-setup "Install the Syrus CLI?" dialog was shown (or
+  // the CLI was already present). Asked-and-answered — never re-prompt.
+  cliInstallOffered: boolean
 }
 
 export const store = new Store<DesktopStore>({
@@ -51,7 +54,8 @@ export const store = new Store<DesktopStore>({
     localInstall: null,
     webAppWindowBounds: null,
     onboardingCompletedAt: "",
-    backendConfigMigratedAt: ""
+    backendConfigMigratedAt: "",
+    cliInstallOffered: false
   }
 })
 
