@@ -22,6 +22,7 @@ import * as appUpdates from "./appUpdates.js"
 import * as backendLifecycle from "./installer/backendLifecycle.js"
 import { readBackendManifest } from "./installer/installPaths.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
+import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
@@ -2006,26 +2007,23 @@ app.whenReady().then(async () => {
     app.dock?.hide()
   }
 
-  // The classic DMG mistake: running from the mounted image. Offer the move
-  // before anything else; on success macOS relaunches us from /Applications.
-  if (app.isPackaged && process.platform === "darwin" && !app.isInApplicationsFolder()) {
-    const choice = await dialog.showMessageBox({
-      type: "question",
-      buttons: ["Move to Applications", "Not Now"],
-      defaultId: 0,
-      cancelId: 1,
-      message: "Move Syrus to your Applications folder?",
-      detail: "Syrus works best when it runs from Applications. It will reopen automatically after moving."
-    })
-
-    if (choice.response === 0) {
-      try {
-        if (app.moveToApplicationsFolder()) {
-          return
-        }
-      } catch {
-        // Keep running from the current location.
-      }
+  // Running from the mounted DMG (or Downloads, or anywhere that isn't an
+  // Applications folder): install ourselves into ~/Applications and relaunch
+  // from there. This is the DMG's double-click install contract — no drag
+  // target, no dialog. ~/Applications keeps it admin-free.
+  const bundlePath = bundlePathFromExecPath(process.execPath)
+  if (shouldSelfInstall({ isPackaged: app.isPackaged, platform: process.platform, bundlePath, homeDir: os.homedir() })) {
+    try {
+      const installed = await installBundle(bundlePath, os.homedir())
+      // Give up the single-instance lock BEFORE the copy starts, or it would
+      // lose the lock race against this dying instance and quit itself.
+      app.releaseSingleInstanceLock()
+      await launchInstalledCopy(installed)
+      app.quit()
+      return
+    } catch {
+      // Keep running from the current location — a read-only mount still
+      // works for evaluating the app; the next launch retries the install.
     }
   }
 

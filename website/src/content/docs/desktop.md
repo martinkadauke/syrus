@@ -6,8 +6,9 @@ description: Download Syrus.app — a guided local install, the full web UI in a
 # Desktop App (macOS)
 
 The Syrus desktop app is the easiest way to run Syrus: download a DMG,
-drag it into Applications, and let the app set everything up. No
-terminal, no clone, no manual configuration.
+double-click Syrus inside it (the app installs itself into
+`~/Applications` and relaunches from there), and let it set everything
+up. No dragging, no terminal, no clone, no manual configuration.
 
 **[Download Syrus for Mac](https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg)**
 (Apple Silicon; Intel and other artifacts are on the

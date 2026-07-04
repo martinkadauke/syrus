@@ -209,6 +209,25 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
   const signupPath = invitationToken
     ? `${withRoutePrefix(payload.public.signup_path, prefix)}?token=${encodeURIComponent(invitationToken)}`
     : withRoutePrefix(payload.public.signup_path, prefix)
+
+  // First run (no users yet) gets a minimal welcome, not the marketing pitch:
+  // whoever sees this screen has already installed the instance — most often
+  // inside the desktop app — and just needs the one next step.
+  if (cta.kind === "first") {
+    return (
+      <main aria-label="Syrus first-run welcome" className="flex min-h-[70vh] items-center justify-center px-6">
+        <div className="max-w-md text-center">
+          <img alt="" aria-hidden="true" className="mx-auto h-16 w-16 rounded-2xl" src="/icon.png" />
+          <h1 className="mt-6 text-3xl font-semibold text-gray-950">Welcome to Syrus!</h1>
+          <p className="mt-3 text-sm leading-6 text-gray-600">{cta.description}</p>
+          <div className="mt-7">
+            <Link className={landingPrimaryButtonClass()} to={cta.href}>{cta.label}</Link>
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   const workflowSteps = [
     ["Issue", "A GitHub issue, PR comment, schedule, retry, or rebase enters the queue."],
     ["Job", "Syrus creates the thread, workspace, branch, prompt, logs, and state machine records."],

@@ -271,7 +271,6 @@ function AuthShell({ title, subtitle, children }: { title: string; subtitle?: st
   return (
     <main aria-label={title} className="mx-auto max-w-xl space-y-6 p-6">
       <header>
-        <Link className="text-sm font-medium text-blue-700 dark:text-blue-300 underline hover:no-underline" to="/">Syrus overview</Link>
         <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-100">{title}</h1>
         {subtitle ? <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{subtitle}</p> : null}
       </header>

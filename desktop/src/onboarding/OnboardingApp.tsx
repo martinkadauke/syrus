@@ -189,8 +189,13 @@ export function OnboardingApp() {
       <header className="flex h-12 shrink-0 items-center justify-center" style={dragRegion}>
         <img src={syrusIconUrl} alt="" className="h-5 w-5 opacity-60" />
       </header>
-      <main className="flex min-h-0 flex-1 items-start justify-center overflow-y-auto px-10 pb-10 pt-2">
-        {content}
+      <main className="flex min-h-0 flex-1 overflow-y-auto px-10 py-6">
+        {/* my-auto (not items-center on the parent): centers short content
+            vertically, but lets tall content scroll from the top instead of
+            clipping it above the viewport. */}
+        <div className="my-auto flex w-full justify-center pb-4" data-testid="onboarding-content">
+          {content}
+        </div>
       </main>
     </div>
   )

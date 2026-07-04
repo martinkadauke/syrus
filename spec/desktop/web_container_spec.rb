@@ -28,20 +28,26 @@ RSpec.describe "desktop web-container window" do
   it "keeps same-origin navigation in-window and opens everything else externally" do
     expect(web_app_window).to include('window.webContents.on("will-navigate"')
     expect(web_app_window).to include("window.webContents.setWindowOpenHandler")
-    expect(web_app_window).to include("target.origin !== serverOrigin")
+    expect(web_app_window).to include("decideWindowOpen")
     expect(web_app_window).to include("shell.openExternal")
   end
 
-  it "keeps POST-carrying popups in a locked-down child window so form payloads survive" do
-    # Externally-opened URLs are GETs; a form submitted with target=_blank
-    # (e.g. the GitHub App registration manifest) would arrive empty in the
-    # browser. Keyed on the POST body, not a hardcoded origin.
-    expect(web_app_window).to match(/if \(postBody && \["http:", "https:"\]\.includes\(target\.protocol\)\)[\s\S]{0,400}action: "allow"/)
-    expect(web_app_window).to match(/overrideBrowserWindowOptions[\s\S]{0,200}sandbox: true/)
-    # The child is remote content too: non-web protocols blocked, its own
-    # popups go to the external browser.
-    expect(web_app_window).to match(/did-create-window[\s\S]*?will-navigate/)
-    expect(web_app_window).to match(/did-create-window[\s\S]*?setWindowOpenHandler/)
+  it "never allows popups — flows that need a real browser use the syrus_external marker" do
+    # POST-carrying popups (form target=_blank) are not special-cased any
+    # more: a POST body cannot survive the hand-off to the external browser,
+    # so such flows (the GitHub App manifest) run through a same-origin GET
+    # bounce page marked syrus_external=1, which the policy routes to the
+    # default browser where the user has real logins.
+    window_open_policy = read("electron/windows/windowOpenPolicy.ts")
+    expect(window_open_policy).to include('searchParams.get("syrus_external") === "1"')
+    expect(web_app_window).not_to include('action: "allow"')
+    expect(web_app_window).not_to include("postBody")
+    expect(web_app_window).not_to include("did-create-window")
+  end
+
+  it "marks the web container's user agent so the web app can detect the shell" do
+    expect(web_app_window).to include("SyrusDesktop/")
+    expect(web_app_window).to include("setUserAgent")
   end
 
   it "falls back to the status page only for real main-frame failures of the server URL" do
@@ -52,9 +58,11 @@ RSpec.describe "desktop web-container window" do
   end
 
   it "denies renderer-initiated file: navigations" do
-    # The old guard carried a file: exemption; the condition must not.
+    # The old guard carried a file: exemption; the policy must deny all
+    # non-web protocols.
+    window_open_policy = read("electron/windows/windowOpenPolicy.ts")
     expect(web_app_window).not_to include('target.protocol !== "file:"')
-    expect(web_app_window).to include("if (target.origin !== serverOrigin) {")
+    expect(window_open_policy).to match(/if \(!\["http:", "https:"\]\.includes\(target\.protocol\)\) \{\s*return "deny"/)
   end
 
   it "gates startup on the single-instance lock so the losing instance runs nothing" do
@@ -79,11 +87,20 @@ RSpec.describe "desktop web-container window" do
     expect(main_process).to include('app.on("second-instance"')
   end
 
-  it "offers the move to /Applications before opening any window" do
+  it "self-installs into ~/Applications before opening any window" do
+    # The DMG's double-click contract: running from the mounted image (or
+    # Downloads) copies the bundle into ~/Applications, launches the copy,
+    # and quits — no dialog, no drag target. The lock is released first so
+    # the copy doesn't lose the single-instance race against this instance.
     when_ready = main_process[/app\.whenReady\(\)\.then\(async \(\) => \{[\s\S]*/]
-    expect(when_ready).to include("app.isInApplicationsFolder()")
-    expect(when_ready).to include("app.moveToApplicationsFolder()")
-    expect(when_ready.index("moveToApplicationsFolder")).to be < when_ready.index("createMenu()")
+    expect(when_ready).to include("shouldSelfInstall(")
+    expect(when_ready).to include("installBundle(")
+    expect(when_ready.index("app.releaseSingleInstanceLock()")).to be < when_ready.index("launchInstalledCopy(")
+    expect(when_ready.index("launchInstalledCopy(")).to be < when_ready.index("createMenu()")
+
+    self_install = read("electron/selfInstall.ts")
+    expect(self_install).to include("/usr/bin/ditto")
+    expect(self_install).to match(%r{path\.join\(homeDir, "Applications"\)})
   end
 
   it "shows the dock icon only while a real window is open" do
