@@ -365,8 +365,9 @@ across web/worker processes.
   app. It uses Tailwind too, but it does not share the Rails web app's compiled
   CSS or components at runtime. Keep the desktop UI visually aligned with the
   web app's primitives: compact rows, restrained icon buttons, bordered white
-  panels, blue primary actions, emerald success pills, red failure/error pills,
-  and slate/gray neutral text. Avoid broad element styling in
+  panels, terracotta primary actions (the brand accent, `#b6492e` at 600 —
+  see the palette note below), emerald success pills, red failure/error
+  pills, and slate/gray neutral text. Avoid broad element styling in
   `desktop/src/styles.css` (especially global `button` rules) because the tray
   surface relies on small, explicit controls. Prefer explicit local primitives
   such as `primary-button`, `secondary-button`, `icon-button`, and status pills.
@@ -374,6 +375,16 @@ across web/worker processes.
   `npm --prefix desktop run build:renderer`, and
   `npm --prefix desktop run build:main`; run the desktop RSpec startup spec when
   Electron main/preload code changes.
+- **Brand palette (terracotta).** The product accent is the terracotta of the
+  winged-stylus brand mark (`#b6492e` at 600). `config/tailwind.config.js`
+  defines the `terracotta` scale and remaps Tailwind's `blue` scale onto the
+  same values, so legacy `*-blue-*` utilities render the brand accent without
+  a repo-wide rename; prefer `terracotta-*` in new code. The desktop app
+  mirrors the identical values in the `@theme` block at the top of
+  `desktop/src/styles.css` — keep the two in sync (guarded by
+  `spec/desktop/brand_palette_spec.rb`). Don't reintroduce raw blue hexes for
+  accents; semantically-blue user choices (annotation pen colors, tag label
+  colors) are the exception and stay blue.
 - **Spending insights** live at `/insights/spending` and roll up `Run#cost_usd`
   plus `ChatSession#cumulative_cost_usd` by date window, Epic, user,
   repository, trigger kind, agent provider, trend, and top Runs. Non-admins

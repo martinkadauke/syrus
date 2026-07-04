@@ -1,5 +1,34 @@
 @import "tailwindcss";
 
+/* Brand terracotta (the winged-stylus mark, #b6492e at 600) remapped over
+   the default blue scale — same values as config/tailwind.config.js in the
+   web app, so both surfaces share one accent. terracotta-* is the preferred
+   name for new code. */
+@theme {
+  --color-terracotta-50: #faf3ef;
+  --color-terracotta-100: #f4e2d9;
+  --color-terracotta-200: #e8c3b3;
+  --color-terracotta-300: #dba28b;
+  --color-terracotta-400: #cd7a5c;
+  --color-terracotta-500: #c05c3f;
+  --color-terracotta-600: #b6492e;
+  --color-terracotta-700: #973b25;
+  --color-terracotta-800: #7a2f1e;
+  --color-terracotta-900: #632718;
+  --color-terracotta-950: #361208;
+  --color-blue-50: #faf3ef;
+  --color-blue-100: #f4e2d9;
+  --color-blue-200: #e8c3b3;
+  --color-blue-300: #dba28b;
+  --color-blue-400: #cd7a5c;
+  --color-blue-500: #c05c3f;
+  --color-blue-600: #b6492e;
+  --color-blue-700: #973b25;
+  --color-blue-800: #7a2f1e;
+  --color-blue-900: #632718;
+  --color-blue-950: #361208;
+}
+
 :root {
   color: #15171a;
   background: #f4f6f8;
@@ -148,8 +177,8 @@ input {
 }
 
 input:focus {
-  border-color: #2663eb;
-  box-shadow: 0 0 0 3px rgb(38 99 235 / 16%);
+  border-color: #b6492e;
+  box-shadow: 0 0 0 3px rgb(182 73 46 / 16%);
   outline: none;
 }
 
@@ -183,7 +212,7 @@ input:focus {
 .link-button {
   border: 0;
   background: transparent;
-  color: #1d4ed8;
+  color: #973b25;
   padding: 0;
   font-size: 0.8rem;
   font-weight: 650;
@@ -250,16 +279,16 @@ input:focus {
   display: grid;
   min-width: min(100%, 190px);
   gap: 3px;
-  border: 1px solid #93b4f7;
+  border: 1px solid #dba28b;
   border-radius: 6px;
-  background: #eff6ff;
-  color: #1f3b6d;
+  background: #faf3ef;
+  color: #632718;
   padding: 8px 10px;
   outline: none;
 }
 
 .shortcut-recorder:focus {
-  box-shadow: 0 0 0 3px rgb(38 99 235 / 16%);
+  box-shadow: 0 0 0 3px rgb(182 73 46 / 16%);
 }
 
 .shortcut-recorder span {
@@ -354,9 +383,9 @@ input:focus {
 }
 
 .primary-button {
-  border: 1px solid #2563eb;
+  border: 1px solid #b6492e;
   border-radius: 6px;
-  background: #2563eb;
+  background: #b6492e;
   color: #ffffff;
   padding: 6px 14px;
   font-size: 0.85rem;
@@ -365,12 +394,12 @@ input:focus {
 }
 
 .primary-button:hover {
-  background: #1d4ed8;
+  background: #973b25;
 }
 
 .primary-button:disabled {
-  border-color: #93c5fd;
-  background: #93c5fd;
+  border-color: #dba28b;
+  background: #dba28b;
 }
 
 .compose-panel {
@@ -405,8 +434,8 @@ input:focus {
 }
 
 .compose-prompt:focus {
-  border-color: #2663eb;
-  box-shadow: 0 0 0 3px rgb(38 99 235 / 16%);
+  border-color: #b6492e;
+  box-shadow: 0 0 0 3px rgb(182 73 46 / 16%);
   outline: none;
 }
 
@@ -437,8 +466,8 @@ input:focus {
 }
 
 .repo-picker__trigger:focus {
-  border-color: #2663eb;
-  box-shadow: 0 0 0 3px rgb(38 99 235 / 16%);
+  border-color: #b6492e;
+  box-shadow: 0 0 0 3px rgb(182 73 46 / 16%);
   outline: none;
 }
 
@@ -512,8 +541,8 @@ input:focus {
 
 .repo-picker__option:hover,
 .repo-picker__option[aria-selected="true"] {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: #faf3ef;
+  color: #973b25;
 }
 
 .overflow-wrap-anywhere {
@@ -590,7 +619,7 @@ input:focus {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #1d4ed8;
+  color: #973b25;
   padding: 0 0.375rem;
   font-size: 0.75rem;
   font-weight: 750;
@@ -599,7 +628,7 @@ input:focus {
 }
 
 .notification-header-action:hover {
-  background: #eff6ff;
+  background: #faf3ef;
 }
 
 .notification-header-action:disabled {
@@ -637,7 +666,7 @@ input:focus {
 }
 
 .notification-row--unread:hover {
-  background: #eff6ff;
+  background: #faf3ef;
 }
 
 .notification-kind {
@@ -757,7 +786,7 @@ input:focus {
 }
 
 .job-group__repository:hover {
-  color: #1d4ed8;
+  color: #973b25;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -798,9 +827,9 @@ input:focus {
 }
 
 .job-row--local {
-  border-left: 3px solid #2563eb;
+  border-left: 3px solid #b6492e;
   padding-left: calc(1rem - 3px);
-  background: #eff6ff;
+  background: #faf3ef;
 }
 
 .job-row:hover {
@@ -868,12 +897,12 @@ input:focus {
 }
 
 .job-row__title:hover {
-  color: #1d4ed8;
+  color: #973b25;
 }
 
 .job-row__title:focus-visible {
   border-radius: 6px;
-  outline: 2px solid #2563eb;
+  outline: 2px solid #b6492e;
   outline-offset: 3px;
 }
 
@@ -971,7 +1000,7 @@ input:focus {
 }
 
 .job-row__meta-link:hover {
-  color: #2563eb;
+  color: #b6492e;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -986,8 +1015,8 @@ input:focus {
   flex-shrink: 0;
   align-items: center;
   border-radius: 999px;
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: #f4e2d9;
+  color: #973b25;
   padding: 0 0.375rem;
   font-size: 0.6875rem;
   font-weight: 750;
@@ -1169,7 +1198,7 @@ input:focus {
 }
 
 .job-detail__tab--active {
-  border-bottom-color: #2563eb;
+  border-bottom-color: #b6492e;
   color: #0f172a;
 }
 
@@ -1342,9 +1371,9 @@ input:focus {
 
 .feedback-submit-button {
   min-height: 2rem;
-  border: 1px solid #2563eb;
+  border: 1px solid #b6492e;
   border-radius: 6px;
-  background: #2563eb;
+  background: #b6492e;
   color: #ffffff;
   padding: 0 0.75rem;
   font-size: 0.8125rem;
@@ -1353,7 +1382,7 @@ input:focus {
 }
 
 .feedback-submit-button:hover {
-  background: #1d4ed8;
+  background: #973b25;
 }
 
 .feedback-submit-button:disabled {
@@ -1385,8 +1414,8 @@ input:focus {
 }
 
 .feedback-textarea:focus {
-  border-color: #2663eb;
-  box-shadow: 0 0 0 3px rgb(38 99 235 / 16%);
+  border-color: #b6492e;
+  box-shadow: 0 0 0 3px rgb(182 73 46 / 16%);
   outline: none;
 }
 

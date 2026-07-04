@@ -140,7 +140,7 @@ function TrendChart({ points }: { points: SpendingPayload["trend"] }) {
           const barHeight = max > 0 ? Math.max(2, (point.total_usd / max) * 145) : 0
           return (
             <rect
-              fill="#2563eb"
+              fill="#b6492e"
               height={barHeight}
               key={point.date}
               rx="1"

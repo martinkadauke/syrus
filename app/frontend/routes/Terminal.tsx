@@ -217,7 +217,7 @@ export function TerminalPane({ session }: { session: TerminalSessionRecord }) {
       theme: {
         background: "#111827",
         foreground: "#e5e7eb",
-        cursor: "#bfdbfe",
+        cursor: "#e8c3b3",
         selectionBackground: "#374151"
       }
     })
