@@ -8,7 +8,7 @@
 !macro customInstall
   ${ifNot} ${FileExists} "$INSTDIR\${APP_EXECUTABLE_FILENAME}"
     ${ifNot} ${Silent}
-      MessageBox MB_ICONSTOP "Syrus installed, but its main program is missing from:$\r$\n$INSTDIR$\r$\n$\r$\nThis usually means Windows Defender quarantined the app right after install (Syrus for Windows is not code-signed yet). Open Windows Security > Protection history, restore or allow Syrus — or add an exclusion for the folder above — then run this installer again."
+      MessageBox MB_ICONSTOP "Syrus installed, but its main program is missing from:$\r$\n$INSTDIR$\r$\n$\r$\nSomething removed the app right after install — Syrus for Windows is not code-signed yet, so antivirus tools quarantine it. Check Windows Security > Protection history and restore or allow Syrus. If Protection history is empty, an organization-managed antivirus (CrowdStrike, SentinelOne, ...) likely removed it silently. Either way: add an exclusion for the folder above, then run this installer again."
     ${endIf}
     SetErrorLevel 2
     Quit
