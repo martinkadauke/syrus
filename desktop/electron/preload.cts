@@ -178,12 +178,24 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.invoke("save-global-hotkey", globalHotkey) as Promise<{ globalHotkey: string }>,
   chooseLocalProjectsRoot: () => ipcRenderer.invoke("choose-local-projects-root") as Promise<string | null>,
   syrusCliStatus: () => ipcRenderer.invoke("syrus-cli-status") as Promise<{ available: boolean }>,
+  installSyrusCli: (options?: { withSkill?: boolean }) =>
+    ipcRenderer.invoke("install-syrus-cli", options) as Promise<{
+      installed: boolean
+      target: string | null
+      onPath: boolean
+      signedIn: boolean
+      skillInstalled: boolean
+      skillError: string | null
+      error: string | null
+    }>,
   checkoutAvailability: (repoSlug: string) =>
     ipcRenderer.invoke("checkout-availability", repoSlug) as Promise<CheckoutAvailability>,
   checkoutJob: (request: CheckoutRequest) =>
     ipcRenderer.invoke("checkout-job", request) as Promise<{ branchName: string }>,
   localStatus: () => ipcRenderer.invoke("syrus:local-status") as Promise<LocalStatus | null>,
   showPreferences: () => ipcRenderer.invoke("show-preferences") as Promise<void>,
+  openSyrusWindow: () => ipcRenderer.invoke("open-syrus") as Promise<void>,
+  quitApp: () => ipcRenderer.invoke("quit-app") as Promise<void>,
   copyText: (text: string) => ipcRenderer.invoke("copy-text", text) as Promise<void>,
   showNotification: (opts: DesktopNotificationOptions) =>
     ipcRenderer.invoke("syrusDesktop:showNotification", opts) as Promise<void>,
@@ -213,6 +225,7 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
   openExternal: (url: string) => ipcRenderer.invoke("open-external", url) as Promise<void>,
   openTokenDocs: () => ipcRenderer.invoke("open-token-docs") as Promise<void>,
   getAppVersion: () => ipcRenderer.invoke("get-app-version") as Promise<string>,
+  getServerUrl: () => ipcRenderer.invoke("get-server-url") as Promise<string>,
   getOnboardingState: () => ipcRenderer.invoke("onboarding:get-state") as Promise<OnboardingState>,
   chooseOnboardingMode: (mode: "local" | "remote") =>
     ipcRenderer.invoke("onboarding:choose-mode", mode) as Promise<void>,

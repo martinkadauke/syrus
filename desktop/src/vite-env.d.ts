@@ -44,6 +44,16 @@ type SyrusRepositoryItem = {
   slug: string
 }
 
+type SyrusCliInstallResult = {
+  installed: boolean
+  target: string | null
+  onPath: boolean
+  signedIn: boolean
+  skillInstalled: boolean
+  skillError: string | null
+  error: string | null
+}
+
 type SyrusCheckoutAvailability = {
   cliAvailable: boolean
   localPath: string | null
@@ -199,10 +209,13 @@ interface Window {
     saveGlobalHotkey: (globalHotkey: string) => Promise<{ globalHotkey: string }>
     chooseLocalProjectsRoot: () => Promise<string | null>
     syrusCliStatus: () => Promise<{ available: boolean }>
+    installSyrusCli: (options?: { withSkill?: boolean }) => Promise<SyrusCliInstallResult>
     checkoutAvailability: (repoSlug: string) => Promise<SyrusCheckoutAvailability>
     checkoutJob: (request: SyrusCheckoutRequest) => Promise<{ branchName: string }>
     localStatus: () => Promise<SyrusLocalStatus | null>
     showPreferences: () => Promise<void>
+    openSyrusWindow: () => Promise<void>
+    quitApp: () => Promise<void>
     copyText: (text: string) => Promise<void>
     showNotification: (opts: SyrusDesktopNotificationOptions) => Promise<void>
     fetchBootstrap: () => Promise<SyrusBootstrapPayload>
@@ -225,6 +238,7 @@ interface Window {
     openExternal: (url: string) => Promise<void>
     openTokenDocs: () => Promise<void>
     getAppVersion: () => Promise<string>
+    getServerUrl: () => Promise<string>
     getOnboardingState: () => Promise<SyrusOnboardingState>
     chooseOnboardingMode: (mode: "local" | "remote") => Promise<void>
     connectRemote: (request: SyrusConnectRemoteRequest) => Promise<void>

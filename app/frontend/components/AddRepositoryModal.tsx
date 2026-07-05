@@ -4,12 +4,16 @@ import {
   createRepository,
   fetchNewRepositoryForm,
   fetchRepositoryBranches,
+  fetchRepositoryDetail,
   fetchRepositoryOptions,
   fetchRepositoryOwners,
   type GitHubRepositoryOption,
-  type RepositoryInput
+  type RepositoryInput,
+  type RepositorySavedPayload
 } from "../api/repositories"
+import { syncAdminGithubAppInstallations } from "../api/adminGithubApp"
 import { ApiError } from "../api/client"
+import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
 
 type OwnerOption = { login: string; type: "user" | "org" }
@@ -136,9 +140,17 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
 
   const save = useMutation({
     mutationFn: () => createRepository(values as RepositoryInput),
-    onSuccess: async () => {
+    onSuccess: async (payload) => {
       await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
       await queryClient.invalidateQueries({ queryKey: ["repositories"] })
+      // The App install link is offered exactly when it's actionable: the
+      // repo was added, the App is registered, but the owner has no active
+      // installation yet. Everything else closes as before — an owner
+      // already covered by an installation needs no extra step.
+      if (payload.credential_status?.mode === "pat" && payload.credential_status.install_url) {
+        setSaved(payload)
+        return
+      }
       onSaved?.()
       onClose()
     },
@@ -146,6 +158,29 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
       setError(err instanceof ApiError ? err.message : "Could not add the repository. Try again.")
     }
   })
+
+  const [saved, setSaved] = useState<RepositorySavedPayload | null>(null)
+  const [awaitingInstall, setAwaitingInstall] = useState(false)
+
+  // While the user is on GitHub's install page, watch for the installation
+  // to land (SyncInstallationsJob links it) and flip the panel to a green
+  // check the moment the App covers the repo.
+  const installWatch = useQuery({
+    queryKey: ["repositories", "install-watch", saved?.repository.id],
+    queryFn: () => fetchRepositoryDetail(String(saved!.repository.id)),
+    enabled: awaitingInstall && !!saved,
+    refetchInterval: awaitingInstall ? 3000 : false
+  })
+  const installedNow = installWatch.data?.credential_status.mode === "app"
+
+  // Syrus discovers installations by polling GitHub (no webhooks) — nudge
+  // the server to sync while we wait so this takes seconds, not the
+  // 5-minute recurring sweep. Server-side throttled; 403s for non-admins
+  // are fine to ignore (the recurring sync still covers them).
+  useEffect(() => {
+    if (!awaitingInstall || installedNow) return
+    syncAdminGithubAppInstallations().catch(() => {})
+  }, [awaitingInstall, installedNow, installWatch.dataUpdatedAt])
 
   function chooseOwner(owner: string) {
     setRepoOptions([])
@@ -186,6 +221,82 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
         role="dialog"
         onClick={(event) => event.stopPropagation()}
       >
+        {saved ? (
+          <div className="space-y-5 p-5 sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100" id="add-repository-title">
+                Repository added
+              </h2>
+              <button
+                aria-label="Close"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onClick={() => { onSaved?.(); onClose() }}
+                type="button"
+              >
+                <CloseIcon className="h-7 w-7" />
+              </button>
+            </div>
+
+            <Box tone="ok">{saved.repository.slug} is ready.</Box>
+
+            {installedNow ? (
+              <Box tone="ok">
+                Syrus App connected — actions on {saved.repository.owner} now come from the Syrus bot.
+              </Box>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Optional: install the Syrus GitHub App on{" "}
+                  <span className="font-medium text-gray-900 dark:text-gray-100">{saved.repository.owner}</span> so Syrus acts
+                  through its own bot identity there. Until then it works through your personal access token.
+                </p>
+                {awaitingInstall ? (
+                  <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" role="status">
+                    <Spinner /> Waiting for GitHub — this updates by itself once the App is installed…
+                  </p>
+                ) : null}
+                {!awaitingInstall && saved.credential_status.generic_install_url ? (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Recommended:{" "}
+                    <button
+                      className="font-medium text-blue-700 dark:text-blue-300 underline hover:no-underline"
+                      type="button"
+                      onClick={() => {
+                        openInNewTab(saved.credential_status.generic_install_url as string)
+                        setAwaitingInstall(true)
+                      }}
+                    >
+                      install for all repositories
+                    </button>{" "}
+                    instead — every repo you add later connects automatically.
+                  </p>
+                ) : null}
+              </>
+            )}
+
+            <div className="flex items-center justify-end gap-3">
+              {!installedNow && saved.credential_status.install_url ? (
+                <button
+                  className="inline-flex items-center gap-1 rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white"
+                  type="button"
+                  onClick={() => {
+                    openInNewTab(saved.credential_status.install_url as string)
+                    setAwaitingInstall(true)
+                  }}
+                >
+                  Install on GitHub <span aria-hidden="true">↗</span>
+                </button>
+              ) : null}
+              <button
+                className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                onClick={() => { onSaved?.(); onClose() }}
+                type="button"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        ) : (
         <form className="space-y-5 p-5 sm:p-6" onSubmit={submit}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -272,6 +383,7 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
             </>
           )}
         </form>
+        )}
       </section>
     </div>
   )
@@ -301,11 +413,14 @@ function Loading({ children }: { children: React.ReactNode }) {
   )
 }
 
-function Box({ tone, children }: { tone: "muted" | "error"; children: React.ReactNode }) {
+function Box({ tone, children }: { tone: "muted" | "error" | "ok"; children: React.ReactNode }) {
   const toneClass = tone === "error"
     ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-    : "border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-400"
-  return <p className={`rounded border px-3 py-2 text-sm ${toneClass}`} role={tone === "error" ? "alert" : undefined}>{children}</p>
+    : tone === "ok"
+      ? "border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300"
+      : "border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-400"
+  const role = tone === "error" ? "alert" : tone === "ok" ? "status" : undefined
+  return <p className={`rounded border px-3 py-2 text-sm ${toneClass}`} role={role}>{children}</p>
 }
 
 function Spinner({ light }: { light?: boolean }) {

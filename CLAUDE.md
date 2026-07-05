@@ -407,6 +407,19 @@ across web/worker processes.
   `bin/deploy`, `bin/publish-image`, and `bin/compose-up`.
   `SYRUS_DOCKER_REGISTRY_CACHE=1` opts local compose/publish builds into the
   registry BuildKit cache, and `SYRUS_DOCKER_CACHE_REF` overrides the cache tag.
+  For desktop-app iteration against unpublished backend changes, `bin/build-local-image`
+  builds `syrus-local:dev-<sha>` from the working tree; stage it into the DMG
+  with `SYRUS_BACKEND_IMAGE=<ref> npm --prefix desktop run build`. The
+  registry is selected by data, not code: manifest.json carries the
+  fully-qualified ref, install.sh pulls it verbatim, release builds pin
+  `ghcr.io/tkadauke/...`. Local-only tags survive only until Docker is wiped;
+  for wipe-everything install testing use `GHCR_USER=<you> bin/build-local-image
+  --push`, which pushes `ghcr.io/<you>/syrus-local:dev-<sha>` to the fork's
+  GHCR (needs `write:packages` in `GHCR_TOKEN` or `~/.config/syrus/ghcr-token`;
+  make that package public once so installs need no docker login). Never
+  stage a published ref you don't control — a successful pull would clobber
+  what you meant to test. install.sh classifies pull failures: exit 30
+  network/other, 31 access denied, 32 tag not found.
 - **AASM events on Run** — call `start!`, `succeed!`, `fail!`, `cancel!`,
   always followed by `save!` (callbacks set timestamps but don't persist).
   See `Run` model.

@@ -258,7 +258,11 @@ module Api
           {
             message: message,
             redirect_to: repositories_path,
-            repository: repository_json(repository)
+            repository: repository_json(repository),
+            # Lets the add-repository flow offer the pre-scoped App install
+            # link right when it is actionable (and skip it when the owner's
+            # installation already covers the repo).
+            credential_status: credential_status_json(repository)
           }
         end
 
@@ -548,6 +552,7 @@ module Api
               installation_account: repository.installation.account_login,
               github_app_registered: AppSetting.github_app_registered?,
               install_url: nil,
+              generic_install_url: nil,
               register_path: nil,
               previous_installation_removed: false,
               missing_github_ids: false
@@ -561,6 +566,10 @@ module Api
             installation_account: nil,
             github_app_registered: AppSetting.github_app_registered?,
             install_url: install_url,
+            # Account-level page (GitHub defaults it to "All repositories") —
+            # offered alongside the pre-scoped link so operators can cover
+            # every current and future repo in one go.
+            generic_install_url: AppSetting.github_app_registered? ? ::App::Presentation.github_app_generic_install_url : nil,
             register_path: Current.user.admin? && !AppSetting.github_app_registered? ? admin_github_app_register_path : nil,
             previous_installation_removed: repository.installation&.removed_at.present?,
             missing_github_ids: AppSetting.github_app_registered? && install_url.blank?

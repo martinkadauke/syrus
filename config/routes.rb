@@ -212,6 +212,7 @@ Rails.application.routes.draw do
           get "stuck", to: "stuck#index"
           get "github_app/register", to: "github_app#register"
           get "github_app/confirm", to: "github_app#confirm"
+          post "github_app/sync_installations", to: "github_app#sync_installations"
           resources :processes, only: %i[ index show ], controller: "spawned_processes" do
             member do
               post :kill
@@ -420,6 +421,9 @@ Rails.application.routes.draw do
     get "runs/:run_id/transcript/download", to: "transcripts#download", as: :run_transcript_download
 
     get "github_app/callback", to: "github_app#callback", as: :github_app_callback
+    # Session-free bounce page: re-submits the App manifest as a POST to
+    # GitHub from the user's default browser (state token is the credential).
+    get "github_app/manifest", to: "github_app#manifest", as: :github_app_manifest
   end
 
 

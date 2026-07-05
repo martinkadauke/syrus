@@ -1,6 +1,7 @@
 {
   "name": "syrus-desktop",
-  "version": "0.1.0",
+  "productName": "Syrus",
+  "version": "0.2.0",
   "description": "Syrus desktop shell",
   "author": "Syrus",
   "private": true,
@@ -8,13 +9,14 @@
   "desktopName": "SyrusDesktop",
   "main": "dist-electron/main.js",
   "scripts": {
-    "build": "npm run build:renderer && npm run build:main && npm run stage:backend && npm run ensure:electron && electron-builder",
+    "build": "npm run build:renderer && npm run build:main && npm run stage:backend && npm run stage:cli && npm run ensure:electron && electron-builder",
     "build:main": "tsc -p tsconfig.electron.json",
     "build:renderer": "vite build",
     "dev": "concurrently -k -n renderer,electron -c cyan,yellow \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && npm run build:main && npm run ensure:electron && electron .\"",
     "ensure:electron": "node scripts/ensure-electron.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.electron.json --noEmit",
-    "stage:backend": "node scripts/stage-backend-assets.mjs"
+    "stage:backend": "node scripts/stage-backend-assets.mjs",
+    "stage:cli": "node scripts/stage-cli.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.1",

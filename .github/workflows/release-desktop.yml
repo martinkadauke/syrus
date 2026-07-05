@@ -110,13 +110,15 @@ jobs:
             xcrun stapler validate "$dmg"
           done
 
-      # A second, unversioned copy of the arm64 DMG so the website can
-      # permalink https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg
-      - name: Upload stable-named DMG alias
+      # Unversioned copies of both DMGs so the website can permalink
+      # https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg
+      # (Apple Silicon) and .../Syrus-Intel.dmg (Intel Macs).
+      - name: Upload stable-named DMG aliases
         if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           cp "desktop/out/Syrus-$VERSION-arm64.dmg" "$RUNNER_TEMP/Syrus.dmg"
-          gh release upload "v$VERSION" "$RUNNER_TEMP/Syrus.dmg" --clobber
+          cp "desktop/out/Syrus-$VERSION-x64.dmg" "$RUNNER_TEMP/Syrus-Intel.dmg"
+          gh release upload "v$VERSION" "$RUNNER_TEMP/Syrus.dmg" "$RUNNER_TEMP/Syrus-Intel.dmg" --clobber

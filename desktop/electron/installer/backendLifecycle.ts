@@ -10,9 +10,11 @@ import {
   execEnv,
   installedRuntimeApp,
   startRuntimeApp,
-  syrusHealthy
+  syrusHealthy,
+  volumeExists
 } from "./dockerRuntime.js"
 import { installerScriptPath } from "./installPaths.js"
+import { DATA_VOLUME_NAME } from "./installerDriver.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -22,7 +24,9 @@ const WATCHDOG_INTERVAL_MS = 30_000
 const DAEMON_WAIT_DEADLINE_MS = 180_000
 const HEALTH_WAIT_POLLS = 60 // × 2s = 120s
 
-export type BackendDiagnosis = "daemon-down" | "containers-down" | "stopped"
+// "data-gone" means Docker is healthy but the Syrus data volume no longer
+// exists (wiped containers/volumes) — the stack can never recover on its own.
+export type BackendDiagnosis = "daemon-down" | "containers-down" | "stopped" | "data-gone"
 
 const stateDir = () => getLocalInstall()?.stateDir ?? localStateDir()
 const port = () => getLocalInstall()?.port ?? 3000
@@ -248,7 +252,13 @@ export const startWatchdog = (deps: WatchdogDeps) => {
         lastHealthy = healthy
         let diagnosis: BackendDiagnosis | null = null
         if (!healthy) {
-          diagnosis = (await daemonUp()) ? "containers-down" : "daemon-down"
+          if (!(await daemonUp())) {
+            diagnosis = "daemon-down"
+          } else if (!(await volumeExists(DATA_VOLUME_NAME))) {
+            diagnosis = "data-gone"
+          } else {
+            diagnosis = "containers-down"
+          }
         }
 
         deps.onHealthyChanged(healthy, diagnosis)

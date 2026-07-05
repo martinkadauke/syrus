@@ -7,6 +7,7 @@
 //
 // Everything staged here ends up sealed by the code signature — install.sh
 // writes its mutable state to --target-dir, never next to itself.
+import { execSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -36,9 +37,20 @@ const image =
   process.env.SYRUS_BACKEND_IMAGE ??
   (isReleaseBuild ? `ghcr.io/tkadauke/syrus-local:${version}` : "ghcr.io/tkadauke/syrus-local:latest")
 
+// The app's own build sha (distinct from appVersion, which stays put across
+// dev builds). The shell announces it via a User-Agent token so the web UI's
+// BuildBadge can show exactly which app build is hosting it.
+const appBuild = (() => {
+  try {
+    return execSync("git rev-parse --short HEAD", { cwd: repoRoot, encoding: "utf8" }).trim()
+  } catch {
+    return "dev"
+  }
+})()
+
 fs.writeFileSync(
   path.join(stagingDir, "manifest.json"),
-  `${JSON.stringify({ image, appVersion: version }, null, 2)}\n`
+  `${JSON.stringify({ image, appVersion: version, appBuild }, null, 2)}\n`
 )
 
-console.log(`Staged backend assets into ${stagingDir} (image: ${image})`)
+console.log(`Staged backend assets into ${stagingDir} (image: ${image}, appBuild: ${appBuild})`)

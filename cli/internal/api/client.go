@@ -109,9 +109,17 @@ func responseError(resp *http.Response) error {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
+	message := resp.Status
 	if err := json.NewDecoder(resp.Body).Decode(&payload); err == nil && payload.Error.Message != "" {
-		return &Error{StatusCode: resp.StatusCode, Message: payload.Error.Message}
+		message = payload.Error.Message
 	}
 
-	return &Error{StatusCode: resp.StatusCode, Message: resp.Status}
+	// The server's bare "Sign in to use the app API." gives no path forward;
+	// a stale token (e.g. the instance's database was rebuilt) is by far the
+	// most common cause.
+	if resp.StatusCode == http.StatusUnauthorized {
+		message += " Your saved token may be stale — run 'syrus login' to refresh it."
+	}
+
+	return &Error{StatusCode: resp.StatusCode, Message: message}
 }

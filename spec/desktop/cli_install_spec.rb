@@ -1,0 +1,99 @@
+# frozen_string_literal: true
+
+require "json"
+require "spec_helper"
+
+# The desktop app is the CLI's distribution channel for users without a
+# repo clone (docs/cli-desktop-plan.md): per-arch pure-Go binaries staged
+# into the bundle, one-click install to ~/.local/bin, credentials shared
+# through ~/.syrus/credentials so the CLI is signed in on first run, and an
+# optional Claude Code skill installed through the CLI's own
+# `skill install` subcommand.
+RSpec.describe "desktop CLI install" do
+  let(:repo_root) { File.expand_path("../..", __dir__) }
+  let(:desktop_root) { File.join(repo_root, "desktop") }
+
+  def read(relative_path)
+    File.read(File.join(desktop_root, relative_path), encoding: "UTF-8")
+  end
+
+  it "stages per-arch CLI binaries and bundles them as extraResources" do
+    stage = read("scripts/stage-cli.mjs")
+    expect(stage).to include('CGO_ENABLED: "0"')
+    expect(stage).to match(/for \(const arch of \["arm64", "amd64"\]\)/)
+    # Missing Go must degrade to a notice, not break packaging.
+    expect(stage).to include("skipping CLI bundling")
+
+    config = read("electron-builder.yml")
+    expect(config).to match(%r{- from: resources/cli\s+to: cli})
+
+    package = JSON.parse(read("package.json"))
+    expect(package.dig("scripts", "build")).to include("stage:cli")
+  end
+
+  it "installs to ~/.local/bin and needs no login step" do
+    main = read("electron/main.ts")
+    install = main[/const performCliInstall[\s\S]{0,2600}/]
+    expect(install).to include('path.join(os.homedir(), ".local", "bin")')
+    # No credentials writing here: credentialsStore.ts owns
+    # ~/.syrus/credentials, and the app already keeps it in the CLI-shared
+    # format — the CLI is signed in the moment the binary lands.
+    expect(install).not_to include("writeFile")
+    expect(install).to include("const signedIn = cachedCredentials !== null")
+    # The availability cache must be re-probed after install.
+    expect(install).to include("cachedCliAvailable = null")
+    # The IPC handler delegates so the tray banner, Preferences, and the
+    # post-setup dialog share one install path.
+    expect(main).to match(/ipcMain\.handle\("install-syrus-cli", async \(_event, options\?: CliInstallOptions\) => performCliInstall\(options\)\)/)
+  end
+
+  it "installs the Claude Code skill through the CLI itself" do
+    main = read("electron/main.ts")
+    install = main[/const performCliInstall[\s\S]{0,2600}/]
+    # CLI-level (`syrus skill install`), not a desktop-side file write — so
+    # clone-based users share the exact same skill path (cli/cmd/skill.go).
+    expect(install).to match(/execFileAsync\(target, \["skill", "install"\]\)/)
+    # A failed skill write must not report the whole install as broken.
+    expect(install).to include("skillError")
+  end
+
+  it "offers CLI setup once after onboarding, from the main process" do
+    main = read("electron/main.ts")
+    # The web app window has no IPC bridge (remote content), so the setup
+    # step is the main process watching navigation events.
+    expect(main).to include("const offerCliSetupIfReady")
+    offer = main[/const offerCliSetupIfReady[\s\S]{0,3400}/]
+    # Never interrupt onboarding/auth — only the settled home surface.
+    expect(offer).to match(%r{pathname !== "/" && pathname !== "/dashboard"})
+    # Asked-and-answered: one offer, ever.
+    expect(offer).to include('store.set("cliInstallOffered", true)')
+    expect(offer).to include("checkboxLabel")
+    expect(main).to match(/did-navigate-in-page", attemptCliOffer/)
+
+    settings = read("electron/settings.ts")
+    expect(settings).to include("cliInstallOffered: boolean")
+    expect(settings).to include("cliInstallOffered: false")
+  end
+
+  it "finds and executes the installed CLI even though GUI PATH lacks ~/.local/bin" do
+    main = read("electron/main.ts")
+    expect(main).to include("const localBinSyrus = ()")
+    expect(main).to match(/syrusCliBinary[\s\S]{0,400}localBinSyrus\(\)/)
+    # Exec sites must prefer the resolved binary over a bare PATH lookup.
+    expect(main).to match(/const cliBinary = \(await syrusCliBinary\(\)\) \?\? "syrus"/)
+  end
+
+  it "exposes the install through the bridge with the skill option" do
+    expect(read("electron/preload.cts")).to include('ipcRenderer.invoke("install-syrus-cli", options)')
+    expect(read("src/vite-env.d.ts")).to include("installSyrusCli: (options?: { withSkill?: boolean }) => Promise<SyrusCliInstallResult>")
+  end
+
+  it "gives the tray a real install button when the CLI is missing" do
+    app = read("src/App.tsx")
+    banner = app[/data-testid="cli-missing-banner"[\s\S]{0,900}/]
+    expect(banner).to include("installCliFromBanner")
+    # The old escape hatch pointed at public docs that don't exist for
+    # desktop users; the banner installs directly now.
+    expect(banner).not_to include("openTokenDocs")
+  end
+end

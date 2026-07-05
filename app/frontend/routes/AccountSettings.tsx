@@ -4,6 +4,7 @@ import type { FormEvent, ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router-dom"
 import { ApiError } from "../api/client"
+import { openInNewTab } from "../lib/desktopShell"
 import { NoticeToast } from "../components/NoticeToast"
 import { OnboardingEmptyState, useSetupStatus } from "../components/OnboardingEmptyState"
 import {
@@ -156,8 +157,7 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
   const startCodex = useMutation({
     mutationFn: startCodexOauth,
     onSuccess: (started) => {
-      const tab = window.open(started.authorize_url, "_blank", "noopener,noreferrer")
-      setCodexOauthPopupBlocked(tab ? null : started.authorize_url)
+      setCodexOauthPopupBlocked(openInNewTab(started.authorize_url) ? null : started.authorize_url)
       setCodexOauthStarted(true)
       onNotice(null)
     }
@@ -470,8 +470,7 @@ function ClaudeOauthConnector({ onConnected }: { onConnected: (result: Credentia
     setStarting(true)
     try {
       const { authorize_url } = await startClaudeOauth()
-      const tab = window.open(authorize_url, "_blank", "noopener,noreferrer")
-      if (!tab) setPopupBlocked(authorize_url)
+      if (!openInNewTab(authorize_url)) setPopupBlocked(authorize_url)
       setAuthStarted(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start Claude authorization.")

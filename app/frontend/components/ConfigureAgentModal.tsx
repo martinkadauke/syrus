@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTestResult } from "../api/credentials"
+import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
 
 type AgentTab = "claude" | "codex"
@@ -49,8 +50,7 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
     setPopupBlocked(null)
     try {
       const { authorize_url } = await startClaudeOauth()
-      const tab = window.open(authorize_url, "_blank", "noopener,noreferrer")
-      if (!tab) setPopupBlocked(authorize_url)
+      if (!openInNewTab(authorize_url)) setPopupBlocked(authorize_url)
       setAuthStarted(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not start authorization.")
@@ -143,6 +143,18 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
               type="button"
             >
               Codex
+              <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">Soon</span>
+            </button>
+            <button
+              aria-disabled="true"
+              aria-selected={false}
+              className="cursor-not-allowed px-4 py-2 text-sm font-medium text-gray-400 dark:text-gray-600"
+              disabled
+              role="tab"
+              title="Gemini support is planned"
+              type="button"
+            >
+              Gemini
               <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">Soon</span>
             </button>
           </div>

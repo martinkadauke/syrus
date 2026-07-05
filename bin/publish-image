@@ -19,11 +19,18 @@
 #
 # Reads the GHCR token from $GHCR_TOKEN or ~/.config/syrus/ghcr-token (chmod 600),
 # the same place bin/deploy looks. Needs write:packages.
+#
+# Fork iteration: override the target repository and login user to publish
+# test images from a fork instead of the upstream package, e.g.
+#   SYRUS_IMAGE_REPO=ghcr.io/skadauke/syrus-local GHCR_USER=skadauke \
+#     bin/publish-image stack
+# Consumers then point at it with install.sh --image / SYRUS_IMAGE /
+# the desktop build's SYRUS_BACKEND_IMAGE.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 . ./bin/docker-image-lib
 
-IMAGE="ghcr.io/tkadauke/syrus-local"
+IMAGE="${SYRUS_IMAGE_REPO:-ghcr.io/tkadauke/syrus-local}"
 GHCR_USER="${GHCR_USER:-tkadauke}"
 VERSION=""
 MULTI=0

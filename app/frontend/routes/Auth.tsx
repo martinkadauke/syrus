@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
+import { EmailValidityHint, PasswordMatchHint, PasswordStrengthMeter } from "../components/PasswordFeedback"
 import {
   fetchSignup,
   requestPasswordReset,
@@ -134,6 +135,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
           type="email"
           value={emailAddress}
         />
+        <EmailValidityHint email={emailAddress} />
       </Field>
       <Field label="Password">
         <input
@@ -145,6 +147,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
           type="password"
           value={password}
         />
+        <PasswordStrengthMeter password={password} />
       </Field>
       <Field label="Confirm password">
         <input
@@ -156,6 +159,7 @@ function SignUpForm({ payload, prefix }: { payload: SignupPayload; prefix: strin
           type="password"
           value={passwordConfirmation}
         />
+        <PasswordMatchHint confirmation={passwordConfirmation} password={password} />
       </Field>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <button className={primaryButtonClass()} disabled={submit.isPending} type="submit">
@@ -247,6 +251,7 @@ export function PasswordResetRoute() {
             type="password"
             value={password}
           />
+          <PasswordStrengthMeter password={password} />
         </Field>
         <Field label="Confirm password">
           <input
@@ -258,6 +263,7 @@ export function PasswordResetRoute() {
             type="password"
             value={passwordConfirmation}
           />
+          <PasswordMatchHint confirmation={passwordConfirmation} password={password} />
         </Field>
         <button className={primaryButtonClass()} disabled={submit.isPending} type="submit">
           {submit.isPending ? "Saving..." : "Save"}
@@ -271,7 +277,6 @@ function AuthShell({ title, subtitle, children }: { title: string; subtitle?: st
   return (
     <main aria-label={title} className="mx-auto max-w-xl space-y-6 p-6">
       <header>
-        <Link className="text-sm font-medium text-blue-700 dark:text-blue-300 underline hover:no-underline" to="/">Syrus overview</Link>
         <h1 className="text-3xl font-semibold text-gray-900 dark:text-gray-100">{title}</h1>
         {subtitle ? <p className="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-400">{subtitle}</p> : null}
       </header>

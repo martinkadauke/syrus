@@ -6,12 +6,14 @@ description: Download Syrus.app — a guided local install, the full web UI in a
 # Desktop App (macOS)
 
 The Syrus desktop app is the easiest way to run Syrus: download a DMG,
-drag it into Applications, and let the app set everything up. No
-terminal, no clone, no manual configuration.
+double-click Syrus inside it (the app installs itself into
+`~/Applications` and relaunches from there), and let it set everything
+up. No dragging, no terminal, no clone, no manual configuration.
 
 **[Download Syrus for Mac](https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg)**
-(Apple Silicon; Intel and other artifacts are on the
-[releases page](https://github.com/tkadauke/syrus/releases)).
+(Apple Silicon) ·
+**[Intel Macs](https://github.com/tkadauke/syrus/releases/latest/download/Syrus-Intel.dmg)** ·
+other artifacts on the [releases page](https://github.com/tkadauke/syrus/releases).
 
 ## What you get
 
@@ -29,9 +31,18 @@ terminal, no clone, no manual configuration.
   badge counts, approve/retry/feedback actions, and a compose shortcut —
   one keyboard shortcut away. For admins — which includes the first (and
   usually only) user of a local install — signing in inside the app window
-  wires the menu bar up automatically; there is no token to copy.
+  wires the menu bar up automatically; there is no token to copy. If the
+  saved token ever goes stale (say, after a full reinstall rebuilt the
+  database), the app detects the rejection and re-mints the token the
+  next time its window is open and signed in.
   Non-admin users on a shared remote instance paste an API token into
   Preferences instead.
+- **The Syrus CLI, one click away.** After setup, the app offers to
+  install the bundled `syrus` CLI to `~/.local/bin` — already signed in
+  through the shared credentials file — with an optional Claude Code
+  skill so coding agents on your Mac can drive Syrus from the terminal.
+  Also available any time from Preferences, or from the menu-bar banner
+  when the CLI is missing.
 - **Lifecycle management.** The app starts your local Syrus when it
   launches and leaves it running when you quit, so GitHub polling and
   agent runs continue in the background. Start, stop, and restart live
@@ -75,6 +86,14 @@ existing data volume during setup and offers to adopt it — point it at
 your original `.env` (it copies the file, never moves it). See the
 [Docker Compose](/docs/deployment/docker-compose#driving-the-installer-from-automation)
 page for the underlying installer contract.
+
+## Starting over
+
+**Syrus → Run Setup Again…** forgets the app's backend configuration and
+reopens the first-run setup — useful after moving your instance, wiping
+Docker, or pointing the app at the wrong URL. It never deletes your
+credentials or your Syrus data. If the app detects that Docker is healthy
+but the Syrus data volume is gone entirely, it offers this itself.
 
 ## Uninstall
 

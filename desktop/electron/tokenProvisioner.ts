@@ -47,9 +47,27 @@ type ProvisionDeps = {
   // main.ts's saveCredentials: validates against the server, writes
   // ~/.syrus/credentials, and starts the notification cable.
   saveCredentials: (credentials: Credentials) => Promise<unknown>
+  // True when the stored token has been rejected (401) by its own instance —
+  // e.g. the local backend's database was rebuilt and the token on disk
+  // predates it. Suspect same-instance credentials must NOT block
+  // re-provisioning, or the app can never heal itself.
+  credentialsSuspect?: (credentials: Credentials) => boolean
 }
 
 const normalizeUrl = (url: string) => url.trim().replace(/\/+$/, "")
+
+// In-page navigations can fire in bursts; one attempt at a time is plenty.
+let attemptInFlight = false
+
+// A 403 is terminal for this instance (non-admin user): without the latch
+// every SPA route change would re-POST and 403 again for the whole session.
+let forbiddenInstanceUrl: string | null = null
+
+// executeJavaScript's promise can simply never settle when the frame is torn
+// down mid-flight (navigation, window close). Unbounded, that would wedge
+// attemptInFlight and silently disable provisioning for the rest of the run.
+const EXECUTE_TIMEOUT_MS = 15_000
+const EXECUTE_TIMED_OUT = Symbol("execute-timed-out")
 
 export const maybeProvisionDesktopToken = async (
   webContents: WebContents,
@@ -62,14 +80,50 @@ export const maybeProvisionDesktopToken = async (
     // ~/.syrus/credentials is shared with the syrus CLI. Credentials
     // configured for a DIFFERENT instance must never be overwritten by
     // auto-provisioning — that would silently retarget the user's CLI.
-    return normalizeUrl(cached.url) === normalized ? "already-configured" : "different-instance"
+    if (normalizeUrl(cached.url) !== normalized) {
+      return "different-instance"
+    }
+
+    // Same instance: healthy credentials stay untouched, but a token the
+    // instance itself has rejected (backend DB rebuilt, token revoked) falls
+    // through and gets re-minted from the signed-in web session.
+    if (!deps.credentialsSuspect?.(cached)) {
+      return "already-configured"
+    }
   }
 
+  if (normalized === forbiddenInstanceUrl) {
+    return "forbidden"
+  }
+
+  if (attemptInFlight) {
+    return "error"
+  }
+
+  attemptInFlight = true
   let result: { state?: string; apiToken?: unknown }
   try {
-    result = (await webContents.executeJavaScript(PROVISION_SCRIPT, true)) as { state?: string; apiToken?: unknown }
+    const execution = webContents.executeJavaScript(PROVISION_SCRIPT, true)
+    // The race may abandon the execution promise; a later rejection must not
+    // surface as an unhandled rejection.
+    execution.catch(() => {})
+    let timeoutTimer: NodeJS.Timeout | undefined
+    const raced = await Promise.race([
+      execution,
+      new Promise((resolve) => {
+        timeoutTimer = setTimeout(() => resolve(EXECUTE_TIMED_OUT), EXECUTE_TIMEOUT_MS)
+      })
+    ]).finally(() => clearTimeout(timeoutTimer))
+
+    if (raced === EXECUTE_TIMED_OUT) {
+      return "error"
+    }
+
+    result = raced as { state?: string; apiToken?: unknown }
   } catch {
     return "error"
+  } finally {
+    attemptInFlight = false
   }
 
   if (result?.state === "ok" && typeof result.apiToken === "string" && result.apiToken !== "") {
@@ -82,7 +136,12 @@ export const maybeProvisionDesktopToken = async (
   }
 
   const state = result?.state
-  if (state === "signed_out" || state === "no_csrf" || state === "forbidden") {
+  if (state === "forbidden") {
+    forbiddenInstanceUrl = normalized
+    return state
+  }
+
+  if (state === "signed_out" || state === "no_csrf") {
     return state
   }
 

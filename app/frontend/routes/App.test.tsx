@@ -204,7 +204,7 @@ describe("App", () => {
     expect(within(alerts).getByRole("link", { name: "Open admin overview" })).toHaveAttribute("href", "/app-shell/admin")
   })
 
-  it("renders first-run landing CTA for a new instance", async () => {
+  it("renders a minimal first-run welcome for a new instance", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(JSON.stringify(publicBootstrapPayload({ first_signup: true })), {
         status: 200,
@@ -220,16 +220,18 @@ describe("App", () => {
       </QueryClientProvider>
     )
 
-    expect(await screen.findByRole("main", { name: "Syrus public landing" })).toBeInTheDocument()
-    expect(screen.getByRole("heading", { name: "Syrus turns GitHub issues into reviewed pull requests." })).toBeInTheDocument()
-    expect(screen.getAllByRole("link", { name: "Set up this Syrus instance" })[0]).toHaveAttribute("href", "/users/new")
-    expect(screen.getAllByText("No users exist yet. The first account becomes the administrator for this instance.").length).toBeGreaterThan(0)
+    const welcome = await screen.findByRole("main", { name: "Syrus first-run welcome" })
+    expect(screen.getByRole("heading", { name: "Welcome to Syrus!" })).toBeInTheDocument()
+    // Versioned icon URL: public/ files are cached for a year, so an
+    // unversioned /icon.png would show a previous backend's stale artwork.
+    expect(welcome.querySelector("img")?.getAttribute("src")).toMatch(/^\/icon\.png\?v=\d+$/)
+    expect(screen.getByRole("link", { name: "Set up this Syrus instance" })).toHaveAttribute("href", "/users/new")
+    expect(screen.getByText("No users exist yet. The first account becomes the administrator for this instance.")).toBeInTheDocument()
     // No "Sign in" when there are no users yet — there's nobody to sign in as.
     expect(screen.queryByRole("link", { name: "Sign in" })).not.toBeInTheDocument()
-    expect(screen.getByRole("region", { name: "Workflow" })).toBeInTheDocument()
-    expect(screen.getByRole("region", { name: "Why self-host Syrus" })).toBeInTheDocument()
-    expect(screen.getByText("The agent writes code; Syrus owns the run.")).toBeInTheDocument()
-    expect(screen.getByText("Keep automation close to the repositories it changes.")).toBeInTheDocument()
+    // The marketing pitch stays off the first-run screen.
+    expect(screen.queryByRole("region", { name: "Workflow" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Syrus turns GitHub issues into reviewed pull requests.")).not.toBeInTheDocument()
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/bootstrap",
       expect.objectContaining({ credentials: "same-origin" })
@@ -1228,7 +1230,7 @@ describe("App", () => {
       expect(mobileTopBar).toHaveClass("w-full")
       expect(anchoredTrigger).not.toHaveClass("fixed")
       expect(within(anchoredTrigger).getByText("Syrus")).toBeInTheDocument()
-      expect(anchoredTrigger.querySelector('img[alt=""][src="/icon.png"]')).not.toBeNull()
+      expect(anchoredTrigger.querySelector('img[alt=""][src^="/icon.png?v="]')).not.toBeNull()
       expect(within(mobileTopBar).getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/app-shell/notifications")
       expect(screen.queryByRole("button", { name: "Open settings" })).not.toBeInTheDocument()
 
@@ -1241,7 +1243,7 @@ describe("App", () => {
       const floatingTrigger = sidebarTriggers.find((button) => button.classList.contains("fixed"))
       expect(floatingTrigger).toBeDefined()
       expect(floatingTrigger).toHaveClass("left-3", "top-3")
-      expect(floatingTrigger?.querySelector('img[alt=""][src="/icon.png"]')).not.toBeNull()
+      expect(floatingTrigger?.querySelector('img[alt=""][src^="/icon.png?v="]')).not.toBeNull()
       const floatingNotification = screen.getAllByRole("link", { name: "Notifications" }).find((link) => link.parentElement?.classList.contains("fixed"))
       expect(floatingNotification).toHaveAttribute("href", "/app-shell/notifications")
       expect(floatingNotification?.parentElement).toHaveClass("right-3", "top-3")
@@ -6651,14 +6653,7 @@ describe("App", () => {
   })
 
   it("renders the GitHub App registration route from the app admin API", async () => {
-    const manifest = JSON.stringify({
-      name: "operator-syrus",
-      default_permissions: {
-        issues: "write",
-        pull_requests: "write",
-        metadata: "read"
-      }
-    })
+    const bounceUrl = "http://localhost:3000/admin/github_app/manifest?state=abc123&syrus_external=1"
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
       new Response(
         JSON.stringify({
@@ -6668,8 +6663,7 @@ describe("App", () => {
             slug: "operator-syrus",
             registered_at: "2026-05-30T12:00:00Z"
           },
-          github_manifest_url: "https://github.com/settings/apps/new?state=abc123",
-          manifest,
+          bounce_url: bounceUrl,
           submit_label: "Re-register GitHub App"
         }),
         { status: 200, headers: { "Content-Type": "application/json" } }
@@ -6689,12 +6683,9 @@ describe("App", () => {
     expect(within(registration).getByText("Register the singleton Syrus GitHub App. Repositories use App credentials only after the App is installed on their GitHub account or repository.")).toBeInTheDocument()
     expect(await within(registration).findByText("operator-syrus")).toBeInTheDocument()
     expect(within(registration).getByText("GitHub will create the App from the manifest, then redirect back here with temporary credentials. Registration alone does not grant repository access; install the App after registration.")).toBeInTheDocument()
-    const form = within(registration).getByRole("form", { name: "GitHub manifest registration" })
-    expect(form).toHaveAttribute("action", "https://github.com/settings/apps/new?state=abc123")
-    expect(form).toHaveAttribute("method", "post")
-    expect(form).toHaveAttribute("target", "_blank")
-    expect(form.querySelector("input[name='manifest']")).toHaveAttribute("value", manifest)
-    expect(within(form).getByRole("button", { name: "Re-register GitHub App" })).toHaveAttribute("formtarget", "_blank")
+    const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window)
+    fireEvent.click(within(registration).getByRole("button", { name: "Re-register GitHub App" }))
+    expect(openSpy).toHaveBeenCalledWith(bounceUrl, "_blank")
     expect(fetchSpy).toHaveBeenCalledWith(
       "/api/v1/app/admin/github_app/register",
       expect.objectContaining({
@@ -7344,7 +7335,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Anthropic authentication docs" })).toHaveAttribute("href", "https://code.claude.com/docs/en/authentication#generate-a-long-lived-token")
     expect(screen.getByLabelText("Authorization code from Claude")).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Authorize with Claude" }))
-    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://claude.ai/oauth/authorize?state=abc", "_blank", expect.any(String)))
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://claude.ai/oauth/authorize?state=abc", "_blank"))
     await waitFor(() => expect(screen.getByLabelText("Authorization code from Claude")).toBeEnabled())
     fireEvent.change(screen.getByLabelText("Authorization code from Claude"), { target: { value: "auth-code#state" } })
     fireEvent.click(screen.getAllByRole("button", { name: "Connect" }).at(-1) as HTMLButtonElement)
@@ -7538,7 +7529,7 @@ describe("App", () => {
         expect.objectContaining({ method: "POST", credentials: "same-origin" })
       )
     })
-    expect(openSpy).toHaveBeenCalledWith("https://auth.openai.com/oauth/authorize?state=abc", "_blank", "noopener,noreferrer")
+    expect(openSpy).toHaveBeenCalledWith("https://auth.openai.com/oauth/authorize?state=abc", "_blank")
 
     fireEvent.change(screen.getByLabelText("ChatGPT authorization code"), { target: { value: "code#abc" } })
     fireEvent.click(screen.getAllByRole("button", { name: "Connect" }).at(-1) as HTMLButtonElement)
@@ -7595,7 +7586,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Authorize with ChatGPT" }))
 
     await waitFor(() => {
-      expect(openSpy).toHaveBeenCalledWith("https://auth.openai.com/oauth/authorize?state=abc", "_blank", "noopener,noreferrer")
+      expect(openSpy).toHaveBeenCalledWith("https://auth.openai.com/oauth/authorize?state=abc", "_blank")
       expect(actionCable.createSubscription.mock.calls.length).toBeGreaterThan(1)
     })
 
@@ -15760,7 +15751,7 @@ function setScrollMetrics(element: HTMLElement, metrics: { scrollHeight: number;
 function expectSyrusBrandLink(href: string) {
   const brandLink = screen.getByRole("link", { name: "Syrus" })
   expect(brandLink).toHaveAttribute("href", href)
-  expect(brandLink.querySelector('img[alt=""][src="/icon.png"]')).not.toBeNull()
+  expect(brandLink.querySelector('img[alt=""][src^="/icon.png?v="]')).not.toBeNull()
 }
 
 function stubChatStreamSize(metrics: { scrollHeight: number; clientHeight: number }) {

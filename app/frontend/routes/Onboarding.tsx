@@ -135,7 +135,7 @@ function checklistSteps(setup: SetupStatus, user: NonNullable<BootstrapPayload["
     },
     {
       key: "github",
-      title: "GitHub credentials",
+      title: "GitHub integration",
       detail: githubStepDetail(setup),
       complete: setup.credential_status.github,
       ctaLabel: "Configure GitHub",

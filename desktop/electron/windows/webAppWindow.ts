@@ -1,8 +1,12 @@
-import { BrowserWindow, shell } from "electron"
+import { app, BrowserWindow, shell } from "electron"
 import type { WindowBounds } from "../settings.js"
+import { decideWindowOpen } from "./windowOpenPolicy.js"
 
 type WebAppWindowOptions = {
   serverUrl: string
+  // Git short sha of this app build (from the staged manifest) — appended to
+  // the user agent so the web UI's BuildBadge can display it.
+  buildSha?: string | null
   savedBounds: WindowBounds | null
   // Loads the packaged renderer's backend-status view. That page is purely
   // informational — this window carries NO preload (the remote web app must
@@ -21,6 +25,7 @@ export type WebAppWindowHandle = {
 
 export const createWebAppWindow = ({
   serverUrl,
+  buildSha,
   savedBounds,
   loadFallback,
   onBoundsChanged,
@@ -45,38 +50,40 @@ export const createWebAppWindow = ({
     }
   })
 
+  // The web app detects the shell by this marker (see
+  // app/frontend/lib/desktopShell.ts) — e.g. to not report an intercepted
+  // window.open as a blocked popup. The build token feeds the BuildBadge.
+  const buildToken = buildSha ? ` SyrusDesktopBuild/${buildSha}` : ""
+  window.webContents.setUserAgent(`${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}${buildToken}`)
+
   // Same-origin navigation stays in the window; everything else (GitHub PRs,
-  // issue links, docs) opens in the user's default browser. No file:
-  // exemption: will-navigate never fires for the main process's own
-  // loadFile/loadURL calls, so any file: navigation seen here is remote
-  // content trying to reach local files — deny it.
+  // issue links, docs) opens in the user's default browser — see
+  // windowOpenPolicy.ts for the full routing rules. No file: exemption:
+  // will-navigate never fires for the main process's own loadFile/loadURL
+  // calls, so any file: navigation seen here is remote content trying to
+  // reach local files — deny it.
   window.webContents.on("will-navigate", (event, targetUrl) => {
-    let target: URL
-    try {
-      target = new URL(targetUrl)
-    } catch {
-      event.preventDefault()
+    const action = decideWindowOpen(targetUrl, serverOrigin)
+    if (action === "main") {
       return
     }
 
-    if (target.origin !== serverOrigin) {
-      event.preventDefault()
-      if (["http:", "https:"].includes(target.protocol)) {
-        void shell.openExternal(target.toString())
-      }
+    event.preventDefault()
+    if (action === "external") {
+      void shell.openExternal(targetUrl)
     }
   })
 
+  // No popup is ever allowed: same-origin popups load in this window,
+  // everything else web-y goes to the default browser. Flows that need a
+  // real logged-in browser (GitHub App registration) mark their same-origin
+  // URLs with syrus_external=1 and get handed off too.
   window.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const target = new URL(url)
-      if (target.origin === serverOrigin) {
-        void window.loadURL(target.toString())
-      } else if (["http:", "https:"].includes(target.protocol)) {
-        void shell.openExternal(target.toString())
-      }
-    } catch {
-      // Ignore unparseable URLs.
+    const action = decideWindowOpen(url, serverOrigin)
+    if (action === "main") {
+      void window.loadURL(url)
+    } else if (action === "external") {
+      void shell.openExternal(url)
     }
 
     return { action: "deny" }

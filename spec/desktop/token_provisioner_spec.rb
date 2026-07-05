@@ -49,7 +49,36 @@ RSpec.describe "desktop token provisioning" do
   it "persists through main.ts's saveCredentials (validation + cable + 0600 file)" do
     expect(provisioner).not_to include("writeCredentialsFile")
     expect(main_process).to include("maybeProvisionDesktopToken")
-    expect(main_process).to match(/did-finish-load[\s\S]*?maybeProvisionDesktopToken/)
+  end
+
+  it "triggers on full loads AND in-page navigations — SPA sign-in fires no did-finish-load" do
+    expect(main_process).to include('.on("did-finish-load", attemptTokenProvisioning)')
+    expect(main_process).to include('.on("did-navigate-in-page", attemptTokenProvisioning)')
+    expect(provisioner).to include("attemptInFlight")
+  end
+
+  it "bounds the in-page script so a torn-down frame cannot wedge provisioning" do
+    # executeJavaScript's promise never settles when its frame is destroyed
+    # mid-flight; unbounded, the attemptInFlight latch would stick for the
+    # rest of the app run.
+    expect(provisioner).to include("EXECUTE_TIMEOUT_MS")
+    expect(provisioner).to match(/Promise\.race\(\[\s*\n\s*execution/)
+    # The abandoned execution promise must not surface as an unhandled
+    # rejection after the race moves on.
+    expect(provisioner).to include("execution.catch(() => {})")
+  end
+
+  it "latches a 403 per instance so SPA route changes stop re-POSTing" do
+    expect(provisioner).to include("forbiddenInstanceUrl = normalized")
+    expect(provisioner).to match(/normalized === forbiddenInstanceUrl/)
+  end
+
+  it "prefills the tray setup form with the configured instance URL" do
+    preload = read("electron/preload.cts")
+    app_tsx = read("src/App.tsx")
+    expect(main_process).to include('ipcMain.handle("get-server-url"')
+    expect(preload).to include('getServerUrl: () => ipcRenderer.invoke("get-server-url")')
+    expect(app_tsx).to include('window.syrusDesktop.getServerUrl().catch(() => "")')
   end
 
   it "only runs against same-origin pages, never the fallback surface" do

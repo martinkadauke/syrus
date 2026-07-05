@@ -3,28 +3,37 @@ module Api
     module App
       module Admin
         class GithubAppController < BaseController
-          GITHUB_MANIFEST_URL = "https://github.com/settings/apps/new".freeze
-
           def register
-            state = SecureRandom.urlsafe_base64(24)
-            session[:github_app_manifest_state] = state
-            # Remember where registration was started so the GitHub callback can
-            # land on a minimal "you can close this" page during onboarding
-            # instead of the full admin confirmation page.
-            session[:github_app_manifest_origin] = params[:origin].to_s.presence
+            state = GithubAppManifestState.generate(user: Current.user, origin: params[:origin].to_s.presence)
 
+            # The registration itself happens in the user's default browser via
+            # the tokenized bounce page — never in an embedded window, where the
+            # user typically has no GitHub login. `syrus_external=1` tells the
+            # desktop shell to hand the URL to the OS browser.
             render json: status_payload.merge(
-              github_manifest_url: "#{GITHUB_MANIFEST_URL}?state=#{CGI.escape(state)}",
-              manifest: GithubAppManifest.new(
-                user: Current.user,
-                callback_url: admin_github_app_callback_url
-              ).to_json,
+              bounce_url: admin_github_app_manifest_url(state: state, syrus_external: 1),
               submit_label: AppSetting.github_app_registered? ? "Re-register GitHub App" : "Register GitHub App"
             )
           end
 
           def confirm
             render json: status_payload
+          end
+
+          # Syrus is poll-based (no webhooks), so a fresh App installation is
+          # normally only discovered by the recurring 5-minute sync. The setup
+          # UIs call this while the operator is on GitHub's install page so
+          # detection takes seconds instead. Cache-throttled: hammering it
+          # from a 3s poll enqueues at most one sync per window. 5s is far
+          # from GitHub's app-auth rate limits (one installations-list call
+          # per sync) — the throttle exists to keep the queue tidy, and it is
+          # the detection-latency floor, so keep it short.
+          SYNC_THROTTLE = 5.seconds
+
+          def sync_installations
+            enqueued = Rails.cache.write("github_app_sync_installations_throttle", 1, unless_exist: true, expires_in: SYNC_THROTTLE)
+            SyncInstallationsJob.perform_later(Current.user.id) if enqueued
+            render json: { enqueued: !!enqueued }
           end
 
           private
@@ -38,7 +47,12 @@ module Api
                 id: setting.github_app_id,
                 slug: setting.github_app_slug,
                 registered_at: setting.github_app_registered_at&.iso8601,
-                install_url: ::App::Presentation.github_app_generic_install_url
+                install_url: ::App::Presentation.github_app_generic_install_url,
+                # Lets the setup UI flip to "installed on <account>" the
+                # moment a sync links the installation.
+                installations: Installation.active.order(:account_login).map do |installation|
+                  { account_login: installation.account_login, account_type: installation.account_type }
+                end
               }
             }
           end

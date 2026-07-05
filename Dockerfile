@@ -153,8 +153,15 @@ RUN apt-get update -qq && \
       zlib1g-dev libreadline-dev && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
+# Pinned: unpinned installs broke when mise v2026.7.0 moved to a glibc 2.39
+# baseline — newer than bookworm's 2.36 — so every cold rebuild of this stage
+# started failing with `GLIBC_2.39 not found`. v2026.6.14 is the last release
+# built against a bookworm-compatible glibc; bump deliberately (test with
+# `docker run --rm debian:bookworm-slim` + this install line) rather than
+# floating to latest.
+ARG MISE_VERSION="v2026.6.14"
 RUN curl -fsSL https://mise.jdx.dev/install.sh | \
-      MISE_INSTALL_PATH=/usr/local/bin/mise sh
+      MISE_VERSION="$MISE_VERSION" MISE_INSTALL_PATH=/usr/local/bin/mise sh
 
 FROM runtime-base AS runtime-ruby-cache
 

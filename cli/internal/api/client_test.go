@@ -54,7 +54,33 @@ func TestAPIErrorUsesJSONMessage(t *testing.T) {
 	if !errors.As(err, &apiErr) {
 		t.Fatalf("expected *Error, got %T: %v", err, err)
 	}
-	if apiErr.Message != "Provide a valid API token." {
+	if !strings.HasPrefix(apiErr.Message, "Provide a valid API token.") {
+		t.Fatalf("message = %q", apiErr.Message)
+	}
+	// A 401 must point at the fix, not just restate the server's rejection.
+	if !strings.Contains(apiErr.Message, "syrus login") {
+		t.Fatalf("expected 401 message to suggest 'syrus login', got %q", apiErr.Message)
+	}
+}
+
+func TestAPIErrorNon401DoesNotSuggestLogin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		w.Write([]byte(`{"error":{"code":"invalid","message":"Job is not approvable."}}`))
+	}))
+	defer server.Close()
+
+	client, err := NewClient(server.URL, "good-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = client.GetJob(context.Background(), "123")
+	var apiErr *Error
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("expected *Error, got %T: %v", err, err)
+	}
+	if apiErr.Message != "Job is not approvable." {
 		t.Fatalf("message = %q", apiErr.Message)
 	}
 }

@@ -21,13 +21,17 @@ RSpec.describe "Docker image scripts" do
   end
 
   it "lets local compose builds opt into the shared registry cache" do
+    # The base build (with its registry-cache branches) lives in the shared
+    # lib now — compose-up calls it and keeps its historical cache-write
+    # default; bin/build-local-image reuses the same helper read-only.
     expect(compose_up).to include(". ./bin/docker-image-lib")
-    expect(compose_up).to include("if syrus_registry_cache_enabled; then")
-    expect(compose_up).to include('CACHE_REF="$(syrus_docker_cache_ref)"')
-    expect(compose_up).to include('syrus_docker_buildx_image worker-dev dev')
-    expect(compose_up).to include("--cache-from \"type=registry,ref=${CACHE_REF}\"")
-    expect(compose_up).to include("--cache-to \"type=registry,ref=${CACHE_REF},mode=max\"")
-    expect(compose_up).to include("syrus_docker_build_image worker-dev dev")
+    expect(compose_up).to include('SYRUS_DOCKER_CACHE_PUSH="${SYRUS_DOCKER_CACHE_PUSH:-1}"')
+    expect(compose_up).to include("syrus_build_local_base_image dev")
+    expect(helper).to include("if syrus_registry_cache_enabled; then")
+    expect(helper).to include('cache_ref="$(syrus_docker_cache_ref)"')
+    expect(helper).to include("--cache-from \"type=registry,ref=${cache_ref}\"")
+    expect(helper).to include("--cache-to \"type=registry,ref=${cache_ref},mode=max\"")
+    expect(helper).to include("syrus_docker_build_image worker-dev \"$git_sha\"")
   end
 
   it "uses the same cache helper for publishing and deploying images" do

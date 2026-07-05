@@ -6,9 +6,19 @@ RSpec.describe "Admin GitHub App registration", type: :request do
 
   before { sign_in_as(admin) }
 
-  def register_manifest
-    get "/api/v1/app/admin/github_app/register"
-    JSON.parse(response.body)
+  def register_state(origin: nil)
+    get "/api/v1/app/admin/github_app/register", params: origin ? { origin: origin } : {}
+    bounce = JSON.parse(response.body).fetch("bounce_url")
+    Rack::Utils.parse_query(URI.parse(bounce).query).fetch("state")
+  end
+
+  def stub_conversion(id: 12345)
+    stub_request(:post, "https://api.github.com/app-manifests/temp-code/conversions")
+      .to_return(
+        status: 201,
+        headers: { "Content-Type" => "application/json" },
+        body: { id: id, slug: "operator-syrus", pem: pem }.to_json
+      )
   end
 
   it "serves GitHub App pages through the React shell" do
@@ -24,19 +34,36 @@ RSpec.describe "Admin GitHub App registration", type: :request do
     expect(response.body).to include('id="syrus-spa-root"')
   end
 
-  it "exchanges the manifest code and persists encrypted credentials" do
-    state = register_manifest.fetch("github_manifest_url").match(%r{settings/apps/new\?state=([^"]+)})[1]
-    stub_request(:post, "https://api.github.com/app-manifests/temp-code/conversions")
-      .to_return(
-        status: 201,
-        headers: { "Content-Type" => "application/json" },
-        body: {
-          id: 12345,
-          slug: "operator-syrus",
-          pem: pem
-        }.to_json
-      )
+  it "serves the manifest bounce page without a session" do
+    state = register_state
 
+    reset!
+    get "/admin/github_app/manifest", params: { state: state }
+
+    expect(response).to have_http_status(:ok)
+    expect(response.body).to include(%(action="https://github.com/settings/apps/new?state=#{CGI.escape(state)}"))
+    expect(response.body).to include('name="manifest"')
+    expect(response.body).to include("document.forms[0].submit()")
+    expect(response.body).not_to include('id="syrus-spa-root"')
+  end
+
+  it "rejects the bounce page for forged or expired states" do
+    get "/admin/github_app/manifest", params: { state: "forged" }
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response.body).to include("invalid or has expired")
+
+    state = register_state
+    travel (GithubAppManifestState::TTL + 1.minute) do
+      get "/admin/github_app/manifest", params: { state: state }
+      expect(response).to have_http_status(:unprocessable_entity)
+    end
+  end
+
+  it "exchanges the manifest code and persists encrypted credentials without a session" do
+    state = register_state
+    stub_conversion
+
+    reset!
     expect {
       get "/admin/github_app/callback", params: { code: "temp-code", state: state }
     }.to have_enqueued_job(SyncInstallationsJob).with(admin.id)
@@ -50,11 +77,10 @@ RSpec.describe "Admin GitHub App registration", type: :request do
   end
 
   it "renders a minimal close-me page (not the admin redirect) for the onboarding origin" do
-    get "/api/v1/app/admin/github_app/register", params: { origin: "onboarding" }
-    state = JSON.parse(response.body).fetch("github_manifest_url").match(%r{settings/apps/new\?state=([^"]+)})[1]
-    stub_request(:post, "https://api.github.com/app-manifests/temp-code/conversions")
-      .to_return(status: 201, headers: { "Content-Type" => "application/json" }, body: { id: 99, slug: "operator-syrus", pem: pem }.to_json)
+    state = register_state(origin: "onboarding")
+    stub_conversion(id: 99)
 
+    reset!
     get "/admin/github_app/callback", params: { code: "temp-code", state: state }
 
     expect(response).to have_http_status(:ok)
@@ -66,12 +92,37 @@ RSpec.describe "Admin GitHub App registration", type: :request do
   end
 
   it "rejects callbacks with a mismatched state" do
-    register_manifest
+    register_state
 
     expect {
       get "/admin/github_app/callback", params: { code: "temp-code", state: "wrong" }
     }.not_to change { AppSetting.current.reload.github_app_id }
-    expect(response).to redirect_to(admin_github_app_register_path)
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response.body).to include("invalid or has expired")
+  end
+
+  it "rejects a replayed state (single-use nonce)" do
+    memory_cache = ActiveSupport::Cache::MemoryStore.new
+    allow(Rails).to receive(:cache).and_return(memory_cache)
+
+    state = register_state
+    stub_conversion
+
+    get "/admin/github_app/callback", params: { code: "temp-code", state: state }
+    expect(response).to redirect_to(admin_github_app_confirm_path)
+
+    get "/admin/github_app/callback", params: { code: "temp-code", state: state }
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response.body).to include("invalid or has expired")
+  end
+
+  it "renders the failure page when GitHub returns no manifest code" do
+    state = register_state
+
+    get "/admin/github_app/callback", params: { state: state }
+
+    expect(response).to have_http_status(:unprocessable_entity)
+    expect(response.body).to include("GitHub did not return a manifest code.")
   end
 
   it "does not expose a GitHub App webhook route" do

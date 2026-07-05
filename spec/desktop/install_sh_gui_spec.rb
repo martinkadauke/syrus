@@ -18,23 +18,28 @@ RSpec.describe "install.sh GUI interface" do
 
   def run_install(*args, stub_dir: nil)
     path = [stub_dir, "/usr/bin", "/bin"].compact.join(":")
-    Open3.capture3({ "PATH" => path }, "bash", script, *args)
+    # Zero retry delay and a single health poll keep failure examples fast.
+    env = { "PATH" => path, "SYRUS_PULL_RETRY_DELAY" => "0", "SYRUS_HEALTH_POLLS" => "1" }
+    Open3.capture3(env, "bash", script, *args)
   end
 
   # A fake `docker` that answers the exact calls the docker path makes.
   # volume_exists controls the encryption-key guard; `compose pull` fails by
-  # default so most examples halt before anything needing a real daemon.
-  def write_docker_stub(dir, volume_exists:, pull_ok: false)
+  # default so most examples halt before anything needing a real daemon —
+  # unless pull_ok succeeds it, or local_image makes the pull-fallback adopt
+  # a "local" copy.
+  def write_docker_stub(dir, volume_exists:, pull_ok: false, local_image: false, pull_error: "stub: pull refused")
     stub = File.join(dir, "docker")
     File.write(stub, <<~SH)
       #!/bin/bash
       case "$1" in
         info) exit 0 ;;
         volume) exit #{volume_exists ? 0 : 1} ;;
+        image) exit #{local_image ? 0 : 1} ;;
         compose)
           case "$2" in
             version) exit 0 ;;
-            pull) #{pull_ok ? "exit 0" : 'echo "stub: pull refused"; exit 1'} ;;
+            pull) #{pull_ok ? "exit 0" : "echo \"#{pull_error}\"; exit 1"} ;;
             *) exit 0 ;;
           esac ;;
       esac
@@ -129,6 +134,70 @@ RSpec.describe "install.sh GUI interface" do
     end
   end
 
+  it "continues with a locally built image when the registry pull fails" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        write_docker_stub(stub_dir, volume_exists: false, local_image: true)
+        out, _err, status = run_install(
+          "--docker", "--json", "--non-interactive", "--skip-runtime-install",
+          "--target-dir", target, "--port", "3999",
+          "--image", "syrus-local:built-here", stub_dir: stub_dir
+        )
+
+        # Pull fails, the local copy is adopted, the stack "starts", and the
+        # run dies at the health poll (nothing actually listens on the port) —
+        # proving the install proceeded past image_pull.
+        expect(status.exitstatus).to eq(41)
+        events = parse_events(out)
+        expect(events).to include(
+          hash_including("event" => "log", "stream" => "pull", "line" => "pull failed; using the local image copy")
+        )
+        expect(events).to include(
+          hash_including("event" => "step", "id" => "stack_up", "status" => "ok")
+        )
+        expect(events.last).to include("event" => "error", "code" => 41, "step" => "health")
+      end
+    end
+  end
+
+  it "classifies an access-denied pull as exit 31 (private package / unpublished tag)" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        # GHCR's anonymous-denied message mentions both "denied" and "does not
+        # exist" — denied must win the classification, because on GHCR an
+        # unauthorized pull is indistinguishable from a missing private repo.
+        write_docker_stub(stub_dir, volume_exists: false,
+          pull_error: "Error response from daemon: pull access denied for syrus-local, repository does not exist or may require authentication")
+        out, _err, status = run_install(
+          "--docker", "--json", "--non-interactive", "--skip-runtime-install",
+          "--target-dir", target, "--image", "ghcr.io/example/syrus-local:dev-abc", stub_dir: stub_dir
+        )
+
+        expect(status.exitstatus).to eq(31)
+        events = parse_events(out)
+        expect(events.last).to include("event" => "error", "code" => 31, "step" => "image_pull")
+        expect(events.last["message"]).to include("denied")
+      end
+    end
+  end
+
+  it "classifies a missing tag on a readable package as exit 32" do
+    Dir.mktmpdir do |stub_dir|
+      Dir.mktmpdir do |target|
+        write_docker_stub(stub_dir, volume_exists: false, pull_error: "stub: manifest unknown")
+        out, _err, status = run_install(
+          "--docker", "--json", "--non-interactive", "--skip-runtime-install",
+          "--target-dir", target, "--image", "ghcr.io/example/syrus-local:dev-gone", stub_dir: stub_dir
+        )
+
+        expect(status.exitstatus).to eq(32)
+        events = parse_events(out)
+        expect(events.last).to include("event" => "error", "code" => 32, "step" => "image_pull")
+        expect(events.last["message"]).to include("does not exist")
+      end
+    end
+  end
+
   it "generates .env with substituted secrets, pinned image, and chosen port, idempotently" do
     Dir.mktmpdir do |stub_dir|
       Dir.mktmpdir do |target|
@@ -141,7 +210,8 @@ RSpec.describe "install.sh GUI interface" do
         out, _err, status = run_install(*args, stub_dir: stub_dir)
 
         # The stub fails `compose pull`, halting the script right after the
-        # .env work we want to assert on — classified as exit 30.
+        # .env work we want to assert on — classified as exit 30 after the
+        # transient-failure retries are exhausted.
         expect(status.exitstatus).to eq(30)
         events = parse_events(out)
         expect(events).to include(
@@ -150,6 +220,8 @@ RSpec.describe "install.sh GUI interface" do
         expect(events).to include(
           hash_including("event" => "log", "stream" => "pull", "line" => "stub: pull refused")
         )
+        retry_logs = events.select { |e| e["event"] == "log" && e["line"].to_s.include?("retrying") }
+        expect(retry_logs.length).to eq(2)
         expect(events.last).to include("event" => "error", "code" => 30, "step" => "image_pull")
 
         env = File.read(File.join(target, ".env"), encoding: "UTF-8")

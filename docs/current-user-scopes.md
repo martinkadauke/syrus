@@ -57,7 +57,6 @@ public/session:
   - app/controllers/api/v1/app/auth_controller.rb
 admin-only:
   - app/controllers/admin/base_controller.rb
-  - app/controllers/admin/github_app_controller.rb
   - app/controllers/application_controller.rb
   - app/controllers/api/v1/app/auth_controller.rb
   - app/controllers/api/v1/app/admin/console_controller.rb
@@ -161,7 +160,6 @@ behind `require_admin` unless a replacement admin authorization layer is added.
 | File | Classification | Reason |
 | --- | --- | --- |
 | `app/controllers/admin/base_controller.rb` | admin-only | Documents that legacy `/admin/*` controllers use `require_admin`. |
-| `app/controllers/admin/github_app_controller.rb` | admin-only | Legacy GitHub App manifest callback queues installation sync for the current admin after `Admin::BaseController` gates access. |
 | `app/controllers/api/v1/app/auth_controller.rb` | admin-only | Public auth status uses `Current.user` only to report whether the current session is authenticated. |
 | `app/controllers/api/v1/app/base_controller.rb` | admin-only guard | Defines the JSON `require_admin` guard used by SPA admin controllers and local admin-only actions. |
 | `app/controllers/api/v1/app/admin/console_controller.rb` | admin-only | Builds console payloads with the current admin as actor. |

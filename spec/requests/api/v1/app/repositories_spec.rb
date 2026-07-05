@@ -467,6 +467,29 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(parse_body).to include("message" => "Repository acme/widgets added.", "redirect_to" => repositories_path)
   end
 
+  it "includes the credential status (with a pre-scoped install link) in the create response" do
+    sign_in_as(user)
+    AppSetting.current.update!(github_app_id: 123, github_app_slug: "operator-syrus")
+
+    post "/api/v1/app/repositories", params: {
+      repository: {
+        owner: "acme", name: "widgets", default_branch: "main", trigger_label: "syrus",
+        github_owner_id: "123", github_repository_id: "456"
+      }
+    }
+
+    expect(response).to have_http_status(:created)
+    # The add-repository flow offers the App install exactly here, where the
+    # repo just became known — so the payload must carry mode + install_url.
+    expect(parse_body["credential_status"]).to include(
+      "mode" => "pat",
+      "github_app_registered" => true,
+      "install_url" => "https://github.com/apps/operator-syrus/installations/new/permissions?target_id=123&repository_ids[]=456",
+      # Account-level page for the all-repositories re-offer.
+      "generic_install_url" => "https://github.com/apps/operator-syrus/installations/new"
+    )
+  end
+
   it "returns validation errors when create fails" do
     sign_in_as(user)
 
