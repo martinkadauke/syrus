@@ -3,13 +3,32 @@
 > *Bis dat qui cito dat.*
 > He gives twice who gives quickly. — Publilius Syrus
 
-Syrus turns labeled GitHub issues into reviewed pull requests. A coding
-agent does the implementation; Syrus owns all the plumbing around it —
-clones, branches, pushes, PR creation, retries, rebases, scheduled tasks,
-and the landing queue — so the agent only has to write code, and you only
-have to review the result.
+**Syrus lets a team put coding agents to work on a shared codebase —
+conversationally, concurrently, and under one reviewed workflow.**
 
-It's a self-hosted Rails app you run on your own infrastructure, pointed at
+You describe what you want in a Syrus chat — a feature, a refactor, a whole
+initiative — and Syrus turns the conversation into work. It breaks large
+changes into **Epics** (a stack of smaller, ordered pieces), runs coding
+agents (Claude or Codex) to implement each one, and lands the result as
+reviewed pull requests. You do the reviewing; Syrus does everything between
+the idea and the merge.
+
+**Why not just run Claude or Codex yourself?** A single agent can't safely
+work a repository the way a team needs to. Syrus runs **many changes at once
+on the same codebase** — even changes that touch the same files — without
+corrupting it: every change gets an isolated workspace, Syrus rebases them
+against each other automatically, and it ships them as **stacked pull
+requests** that review and land cleanly in order.
+
+And it imposes the **same production-grade workflow on every change** —
+branch, prepare, implement, run your graders, write a test plan, open a PR,
+rebase, land — so the process is deterministic instead of whatever the agent
+improvises on a given run. That means consistent results, fewer tokens burned
+on the agent re-deriving what to do next, and a hard guardrail: **nothing
+reaches your main branch without a human review.**
+
+Syrus is multi-user and self-hosted. It tracks who asked for what, what every
+agent did, and what it cost — running on your own infrastructure, pointed at
 your own repositories, using your own GitHub and Claude/Codex credentials.
 
 ---
@@ -93,22 +112,32 @@ work. Full reference: [CLI docs](website/src/content/docs/cli.md).
 
 ## What you get
 
-- **Issue → PR, automatically.** Label a GitHub issue and Syrus opens a
-  branch, runs the agent, and files a pull request. Review feedback and
-  failing CI checks feed back to the agent, which amends the same PR.
-- **A landing queue.** Approve a PR and Syrus rebases, re-runs required
-  checks, and merges it — serialized so stacked and dependent work lands in
-  order.
-- **Scheduled and direct work.** Attach recurring cron prompts to a
-  repository, or create a one-off Job from a prompt with no GitHub issue at
-  all.
-- **Epics.** Group related Jobs; land them together via an all-or-nothing
-  merge train.
-- **Multi-user.** Per-user encrypted credentials, an admin API, and a
-  spending dashboard.
+- **Chat that ships code.** Describe what you want in a Syrus chat and it
+  proposes the work — Jobs and Epics — for you to confirm. Chat reads the
+  repo to plan; implementation always runs in isolated workspaces, never in
+  chat.
+- **Epics for big changes.** A feature or initiative becomes an Epic: a
+  dependency-ordered stack of smaller Jobs that Syrus implements, rebases
+  against each other, and lands in order (optionally all-or-nothing through a
+  merge train). This is the path from a customer ticket to a merged solution.
+- **A deterministic pipeline.** Every change runs the same steps — prepare,
+  implement, run your graders, summarize, write a reviewer test plan, open a
+  PR — and PR feedback, failing CI checks, and transient errors feed back to
+  the agent automatically.
+- **A landing queue with a human gate.** Approve a PR and Syrus rebases it,
+  re-runs required checks, and merges it — serialized so dependent work lands
+  in order. Nothing merges to your main branch without approval.
+- **Concurrency without corruption.** Every Job gets its own workspace and
+  Syrus rebases branches automatically (force-push with lease), so many
+  changes can be in flight on one repository at once.
+- **Team-aware.** Multi-user with per-user encrypted credentials, Job
+  ownership and claims, an admin API, and a spending dashboard that breaks
+  cost down by person, Epic, and repository.
 
-Everything is driven by **polling** — Syrus reaches out to GitHub on a
-schedule; there are no inbound webhooks to configure.
+Work can also enter other ways: label a GitHub issue, attach a recurring cron
+prompt to a repository, or create a one-off Job from a prompt. Everything runs
+on polling — Syrus reaches out to GitHub on a schedule, with no inbound
+webhooks to configure.
 
 ---
 
