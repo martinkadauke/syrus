@@ -31,6 +31,11 @@ Rails.application.routes.draw do
         get "search", to: "search#index"
         post "filters/usage", to: "filters#usage"
         resources :tags, only: %i[ index create update destroy ]
+        resources :platform_identities, only: %i[ index destroy ] do
+          collection do
+            post :linking_token
+          end
+        end
         resources :memories, only: %i[ index create update destroy ] do
           member do
             post :publish
@@ -473,6 +478,7 @@ Rails.application.routes.draw do
   get "profile", to: "spa#show", as: :account_profile
   get "settings/agent", to: "spa#show", as: :agent_settings
   get "settings/preferences", to: "spa#show", as: :account_preferences
+  get "settings/connected_platforms", to: "spa#show", as: :connected_platforms
   get "jobs/new", to: "spa#show", as: :new_job
   get "jobs/:id/source", to: "spa#show", as: :source_job, constraints: { id: /[a-zA-Z0-9_-]+/ }
   get "jobs/:id", to: "spa#show", as: :job, constraints: { id: /[a-zA-Z0-9_-]+/ }

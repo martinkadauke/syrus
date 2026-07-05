@@ -26,6 +26,7 @@ class User < ApplicationRecord
   has_many :chat_pending_actions, dependent: :destroy
   has_many :cron_templates, dependent: :destroy
   has_many :invitations, foreign_key: :invited_by_id, dependent: :nullify
+  has_many :platform_identities, dependent: :destroy
 
   AGENT_PROVIDERS = %w[ claude codex ].freeze
   CHAT_PROVIDERS = %w[ claude codex ].freeze

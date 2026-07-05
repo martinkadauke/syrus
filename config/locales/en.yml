@@ -211,3 +211,8 @@ en:
 
     admin_transcripts:
       no_session: "No agent session captured for Run #%{id}."
+
+    platform_identities:
+      unlinked: "Platform account disconnected."
+      unsupported_platform: "Unsupported platform."
+      not_configured: "%{platform} integration is not yet configured on this instance."

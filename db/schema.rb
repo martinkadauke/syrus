@@ -77,6 +77,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_180000) do
     t.string "report_issue_repo_slug", default: "tkadauke/syrus", null: false
     t.boolean "runs_paused", default: false, null: false
     t.boolean "signups_open", default: false, null: false
+    t.string "telegram_bot_handle"
     t.datetime "updated_at", null: false
     t.integer "video_retention_days", default: 7, null: false
     t.integer "video_storage_budget_mb", default: 2048, null: false
@@ -1106,6 +1107,18 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_180000) do
     t.index ["user_id"], name: "index_notifications_on_user_id"
   end
 
+  create_table "platform_identities", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.string "external_handle"
+    t.string "external_id", null: false
+    t.datetime "linked_at", null: false
+    t.string "platform", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["platform", "external_id"], name: "index_platform_identities_on_platform_and_external_id", unique: true
+    t.index ["user_id"], name: "index_platform_identities_on_user_id"
+  end
+
   create_table "pr_review_comments", force: :cascade do |t|
     t.boolean "actionable"
     t.datetime "actioned_at"
@@ -1770,6 +1783,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_180000) do
   add_foreign_key "merge_trains", "repositories"
   add_foreign_key "notifications", "jobs"
   add_foreign_key "notifications", "users"
+  add_foreign_key "platform_identities", "users"
   add_foreign_key "pr_review_comments", "jobs"
   add_foreign_key "pr_review_comments", "workflows", column: "handling_workflow_id"
   add_foreign_key "repositories", "installations"

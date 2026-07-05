@@ -166,6 +166,14 @@ class AppSetting < ApplicationRecord
     mb.to_i.positive? ? mb * 1024 * 1024 : 0
   end
 
+  def self.telegram_bot_handle
+    current.telegram_bot_handle.presence
+  end
+
+  def self.telegram_configured?
+    telegram_bot_handle.present?
+  end
+
   def self.report_issue_repo_slug
     current.report_issue_repo_slug.presence || DEFAULT_REPORT_ISSUE_REPO_SLUG
   end

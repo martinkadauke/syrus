@@ -124,6 +124,16 @@ module Factories
     }.merge(attrs))
   end
 
+  def platform_identity(**attrs)
+    PlatformIdentity.create!({
+      user: attrs[:user] || user,
+      platform: "telegram",
+      external_id: SecureRandom.random_number(1_000_000_000).to_s,
+      external_handle: "@testuser",
+      linked_at: Time.current
+    }.merge(attrs))
+  end
+
   # Returns the auto-created initial Run on a fresh Job, or builds an
   # extra Run on an existing Job (use `job:` and pass a different
   # trigger_kind, e.g. trigger_kind: "pr_comment").
