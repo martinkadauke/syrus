@@ -708,7 +708,6 @@ POST /api/v1/app/admin/platform_polling/start
 
 This enqueues any registered platform polling job that is not already running.
 
-
 Credentials are stored with Active Record Encryption in the Syrus database,
 so every web, worker, console, and migration context that reads users needs
 the same stable `ACTIVE_RECORD_ENCRYPTION_*` keys, or `RAILS_MASTER_KEY`
