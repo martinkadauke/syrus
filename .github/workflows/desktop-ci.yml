@@ -99,19 +99,22 @@ jobs:
       - name: Smoke-test the machine interface (usage error speaks NDJSON)
         shell: powershell
         run: |
-          # The runner prepends $ErrorActionPreference='Stop', and PS 5.1
-          # turns redirected native stderr into a terminating
-          # NativeCommandError — the exact trap install.ps1's
-          # Invoke-NativeQuiet documents. Relax EAP around the invocation.
-          $ErrorActionPreference = 'Continue'
-          $out = powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install.ps1 --json --non-interactive 2>$null
+          # The child's stderr must never touch this shell's error stream:
+          # PS 5.1 turns redirected native stderr into ErrorRecords, which
+          # either terminate (runner-prepended EAP=Stop → NativeCommandError)
+          # or silently flip -Command mode's HadErrors → exit 1 AFTER every
+          # assertion passed. cmd owns the redirection instead — no
+          # ErrorRecords can exist. Same trap install.ps1's Invoke-NativeQuiet
+          # documents.
+          $out = cmd /c "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install.ps1 --json --non-interactive 2>nul"
           $code = $LASTEXITCODE
-          $ErrorActionPreference = 'Stop'
           if ($code -ne 2) { Write-Host "::error::expected exit 2, got $code"; exit 1 }
           $lines = @($out | Where-Object { $_ -ne "" })
           if ($lines.Count -ne 1) { Write-Host "::error::expected exactly one NDJSON line, got $($lines.Count)"; exit 1 }
           $event = $lines[0] | ConvertFrom-Json
           if ($event.event -ne "error" -or $event.code -ne 2) { Write-Host "::error::unexpected event: $($lines[0])"; exit 1 }
+          Write-Host "usage error spoke NDJSON with exit 2"
+          exit 0
 
       # Dynamic docker-flow case, mirroring spec/desktop/install_sh_gui_spec.rb's
       # stubbed-docker runs on the bash side: a healthy stub runtime plus an
@@ -128,13 +131,14 @@ jobs:
           Set-Content -Path (Join-Path $stub "docker.bat") -Value "@echo off", "exit /b 0" -Encoding ASCII
           $env:PATH = "$stub;$env:PATH"
           $target = Join-Path $env:RUNNER_TEMP "syrus-guard-test"
-          $ErrorActionPreference = 'Continue'
-          $out = powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install.ps1 --docker --json --non-interactive --skip-runtime-install --target-dir $target 2>$null
+          # cmd owns the stderr redirection — see the smoke-test step.
+          $out = cmd /c "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install.ps1 --docker --json --non-interactive --skip-runtime-install --target-dir ""$target"" 2>nul"
           $code = $LASTEXITCODE
-          $ErrorActionPreference = 'Stop'
           if ($code -ne 20) { Write-Host "::error::expected exit 20 (volume guard), got $code"; Write-Host ($out -join "`n"); exit 1 }
           $last = @($out | Where-Object { $_ -ne "" })[-1] | ConvertFrom-Json
           if ($last.event -ne "error" -or $last.code -ne 20) { Write-Host "::error::unexpected final event: $last"; exit 1 }
+          Write-Host "volume guard fired with exit 20 over NDJSON"
+          exit 0
 
       - name: Help lists the GUI flags and exit codes
         shell: powershell
