@@ -84,8 +84,6 @@ class ChatMessage < ApplicationRecord
     IndexChatMessageJob.perform_later(id) if ChatMessageSearchIndex.indexable?(self)
   end
 
-  # A stored next-step suggestion is only valid until the operator speaks
-  # again — clear it the moment a user message lands.
   def clear_suggested_next_step
     chat_session&.clear_suggested_next_step!
   end
