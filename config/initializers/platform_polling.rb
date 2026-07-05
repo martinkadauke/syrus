@@ -1,0 +1,15 @@
+# Start registered platform polling jobs on application boot when running
+# as a server process (worker or web pod with SYRUS_ROLE set). Each
+# subclass of PlatformPollingJob re-enqueues itself after every poll cycle,
+# so this initializer only needs to prime the pump on a fresh start.
+unless Rails.env.test?
+  Rails.application.config.after_initialize do
+    next unless SyrusVersion.server_process?
+
+    begin
+      PlatformPollingJob.start_all!
+    rescue StandardError => e
+      Rails.logger.warn("[PlatformPollingJob] boot start failed: #{e.class}: #{e.message}")
+    end
+  end
+end

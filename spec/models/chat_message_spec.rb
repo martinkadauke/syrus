@@ -242,4 +242,51 @@ RSpec.describe ChatMessage do
     expect(AppEvents).to have_received(:broadcast).with(hash_including(user: session.user))
     expect(AppEvents).to have_received(:broadcast).with(hash_including(user: other_user))
   end
+
+  describe "after_create_commit :deliver_to_platform" do
+    let(:platform_session) do
+      ChatSession.create!(user: repo.user, origin_platform: "telegram", trigger_policy: "speak_when_spoken_to")
+    end
+
+    it "is a no-op for non-platform sessions" do
+      expect(PlatformDelivery::Registry).not_to receive(:for)
+
+      allow(AppEvents).to receive(:broadcast)
+      described_class.create!(chat_session: session, role: "assistant", content: { "text" => "Hi" })
+    end
+
+    it "is a no-op for user-role messages even in platform sessions" do
+      expect(PlatformDelivery::Registry).not_to receive(:for)
+
+      allow(AppEvents).to receive(:broadcast)
+      described_class.create!(chat_session: platform_session, role: "user", content: { "text" => "Hi" })
+    end
+
+    it "calls deliver on the adapter for each participant with a matching identity" do
+      other_user = Factories.user
+      platform_session.chat_participants.create!(user: other_user, role: "member")
+
+      identity = Factories.platform_identity(user: repo.user, platform: "telegram")
+      adapter = instance_double(PlatformDelivery::WebAdapter, deliver: nil)
+      allow(PlatformDelivery::Registry).to receive(:for).with("telegram").and_return(adapter)
+      allow(AppEvents).to receive(:broadcast)
+
+      msg = described_class.create!(chat_session: platform_session, role: "assistant", content: { "text" => "Hello" })
+
+      expect(adapter).to have_received(:deliver).with(message: msg, platform_identity: identity)
+    end
+
+    it "skips participants without a matching PlatformIdentity" do
+      participant_without_identity = Factories.user
+      platform_session.chat_participants.create!(user: participant_without_identity, role: "member")
+
+      adapter = instance_double(PlatformDelivery::BaseAdapter, deliver: nil)
+      allow(PlatformDelivery::Registry).to receive(:for).with("telegram").and_return(adapter)
+      allow(AppEvents).to receive(:broadcast)
+
+      described_class.create!(chat_session: platform_session, role: "assistant", content: { "text" => "Hello" })
+
+      expect(adapter).not_to have_received(:deliver)
+    end
+  end
 end
