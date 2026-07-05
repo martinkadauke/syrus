@@ -219,8 +219,11 @@ class Epic < ApplicationRecord
   def refresh_auto_state!
     if backlog? && may_auto_ready?
       auto_ready!
-    elsif in_progress? && may_auto_complete?
-      auto_complete!
+    elsif in_progress?
+      released = release_child_jobs_if_ready!
+      return auto_complete! if may_auto_complete?
+
+      released
     else
       false
     end
@@ -302,6 +305,15 @@ class Epic < ApplicationRecord
   end
 
   private
+
+  def release_child_jobs_if_ready!
+    return false unless dependencies_done?
+    return false if @releasing_jobs_for_execution
+    return false unless jobs.where(state: "blocked_by_epic").exists?
+
+    unblock_child_jobs!
+    true
+  end
 
   def broadcast_app_epic_created
     broadcast_app_epic_event("created")

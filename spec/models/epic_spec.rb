@@ -329,6 +329,34 @@ RSpec.describe Epic do
     }.to change { epic.reload.state }.from("backlog").to("ready")
   end
 
+  it "releases blocked child Jobs for in-progress dependents when their Epic dependency becomes done" do
+    prerequisite = described_class.create!(user: user, repository: repository, title: "Prerequisite")
+    epic = described_class.create!(user: user, repository: repository, title: "Dependent", state: "in_progress")
+    EpicDependency.create!(epic: epic, depends_on_epic: prerequisite, derived: false)
+    job = Factories.job_record(
+      user: user,
+      repository: repository,
+      epic: epic,
+      kind: "direct",
+      issue_number: nil,
+      issue_title: "Downstream work",
+      issue_body: "Do the downstream work",
+      state: "blocked_by_epic"
+    )
+
+    expect(job.workflows).to be_empty
+    expect(epic.reload).not_to be_releases_jobs_for_execution
+
+    expect {
+      prerequisite.override_state!("done")
+    }.to change { job.reload.state }.from("blocked_by_epic").to("queued")
+      .and change { job.workflows.count }.by(1)
+      .and change { job.runs.count }.by(1)
+
+    expect(epic.reload).to be_in_progress
+    expect(job.workflows.first.trigger_kind).to eq("initial")
+  end
+
   context "with Depends-on refs in description" do
     it "creates an EpicDependency for a same-repository GitHub issue reference" do
       prerequisite = described_class.create!(
