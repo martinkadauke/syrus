@@ -120,6 +120,8 @@ export function OnboardingApp() {
           <RuntimeSetup
             mode="missing"
             polling={state.polling}
+            wslMissing={state.wslMissing}
+            onInstallWsl={() => void window.syrusDesktop.installWsl()}
             onDownload={() => void window.syrusDesktop.openOrbStackDownload()}
             onRetry={() => void window.syrusDesktop.retryOnboarding()}
             onBack={back}

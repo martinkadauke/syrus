@@ -3,16 +3,20 @@ import { FooterRow, OnboardingScreen, Spinner } from "./primitives"
 type RuntimeSetupProps = {
   mode: "missing" | "starting"
   polling: boolean
+  // Windows only: WSL 2 itself is absent, so Docker Desktop can't run yet.
+  wslMissing?: boolean
+  onInstallWsl?: () => void
   onDownload: () => void
   onRetry: () => void
   onBack: () => void
 }
 
-// Guided Docker-runtime acquisition: no Homebrew, no terminal. We point the
-// user at the recommended runtime's installer and poll until the daemon
-// answers. The recommendation is per-platform: OrbStack on macOS, Docker
-// Desktop on Windows.
-export function RuntimeSetup({ mode, polling, onDownload, onRetry, onBack }: RuntimeSetupProps) {
+// Guided Docker-runtime acquisition: no Homebrew, no PowerShell, no
+// terminal. We point the user at the recommended runtime's installer and
+// poll until the daemon answers. Per-platform: OrbStack on macOS; Docker
+// Desktop on Windows, with a one-click WSL 2 install first when WSL is
+// missing (Docker Desktop's own installer punts that to a manual step).
+export function RuntimeSetup({ mode, polling, wslMissing = false, onInstallWsl, onDownload, onRetry, onBack }: RuntimeSetupProps) {
   const isWindows = (window.syrusDesktop?.platform ?? "darwin") === "win32"
   const runtimeName = isWindows ? "Docker Desktop" : "OrbStack"
 
@@ -43,8 +47,8 @@ export function RuntimeSetup({ mode, polling, onDownload, onRetry, onBack }: Run
       <p className="mt-4 text-sm leading-relaxed text-slate-600">
         {isWindows ? (
           <>
-            We recommend <span className="font-medium text-slate-900">Docker Desktop</span> — its installer
-            sets up WSL 2 for you. Podman Desktop works too.
+            We recommend <span className="font-medium text-slate-900">Docker Desktop</span>, which runs on
+            WSL&nbsp;2.
           </>
         ) : (
           <>
@@ -54,10 +58,24 @@ export function RuntimeSetup({ mode, polling, onDownload, onRetry, onBack }: Run
         )}
       </p>
 
+      {isWindows && wslMissing ? (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="wsl-step">
+          <p className="text-sm font-medium text-slate-900">First: install WSL 2</p>
+          <p className="mt-1 text-sm leading-relaxed text-slate-600">
+            This PC doesn&apos;t have WSL&nbsp;2 yet. Click below and accept the Windows permission prompt —
+            no terminal needed. Windows may ask to restart afterwards; after the restart, reopen Syrus and it
+            picks up right here.
+          </p>
+          <button type="button" className="primary-button mt-3" onClick={onInstallWsl}>
+            Install WSL 2
+          </button>
+        </div>
+      ) : null}
+
       <ol className="mt-5 list-decimal space-y-2 pl-5 text-sm leading-relaxed text-slate-600">
         <li>
           {isWindows
-            ? `Download ${runtimeName} and run its installer.`
+            ? `Download ${runtimeName} and run its installer. If it asks to restart Windows, restart — then reopen Syrus and it picks up right here.`
             : `Download ${runtimeName} and drag it into Applications.`}
         </li>
         <li>Open it once and finish its short setup.</li>

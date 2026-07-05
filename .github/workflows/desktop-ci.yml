@@ -1,4 +1,4 @@
-# Fast checks for changes touching the desktop app or its bundled installer.
+# Fast checks for changes touching the desktop app or its bundled installers.
 name: Desktop CI
 
 on:
@@ -6,12 +6,14 @@ on:
     paths:
       - "desktop/**"
       - "install.sh"
+      - "install.ps1"
       - ".github/workflows/desktop-ci.yml"
   push:
     branches: [main]
     paths:
       - "desktop/**"
       - "install.sh"
+      - "install.ps1"
       - ".github/workflows/desktop-ci.yml"
 
 permissions:
@@ -62,3 +64,44 @@ jobs:
           set -e
           [[ "$CODE" == "2" ]] || { echo "::error::expected exit 2, got $CODE"; exit 1; }
           echo "$OUT" | jq -e '.event == "error" and .code == 2' >/dev/null
+
+  # install.ps1 targets Windows PowerShell 5.1 — the inbox shell nothing off
+  # Windows can run (the parity spec covers the shared contract strings;
+  # this covers actual 5.1 parsing and the NDJSON protocol on a real
+  # windows-latest runner via powershell.exe, which IS 5.1).
+  installer-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PowerShell 5.1 parse check
+        shell: powershell
+        run: |
+          $tokens = $null; $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\install.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Host "::error::$($_.Message) at line $($_.Extent.StartLineNumber)" }
+            exit 1
+          }
+          Write-Host "AST parse clean under $($PSVersionTable.PSVersion)"
+
+      - name: Smoke-test the machine interface (usage error speaks NDJSON)
+        shell: powershell
+        run: |
+          $out = powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install.ps1 --json --non-interactive 2>$null
+          $code = $LASTEXITCODE
+          if ($code -ne 2) { Write-Host "::error::expected exit 2, got $code"; exit 1 }
+          $lines = @($out | Where-Object { $_ -ne "" })
+          if ($lines.Count -ne 1) { Write-Host "::error::expected exactly one NDJSON line, got $($lines.Count)"; exit 1 }
+          $event = $lines[0] | ConvertFrom-Json
+          if ($event.event -ne "error" -or $event.code -ne 2) { Write-Host "::error::unexpected event: $($lines[0])"; exit 1 }
+
+      - name: Help lists the GUI flags and exit codes
+        shell: powershell
+        run: |
+          $help = powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File install.ps1 --help
+          if ($LASTEXITCODE -ne 0) { Write-Host "::error::--help exited $LASTEXITCODE"; exit 1 }
+          $text = $help -join "`n"
+          foreach ($needle in @("--non-interactive", "--json", "--target-dir", "--skip-runtime-install", "--image", "--port", "Exit codes:")) {
+            if ($text -notlike "*$needle*") { Write-Host "::error::--help output is missing '$needle'"; exit 1 }
+          }

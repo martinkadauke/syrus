@@ -2297,6 +2297,12 @@ ipcMain.handle("onboarding:choose-mode", async (_event, mode: "local" | "remote"
 ipcMain.handle("onboarding:connect-remote", async (_event, request: { url: string }) =>
   ensureOnboardingDriver().connectRemote(request)
 )
+// Advisory: powers the connect form's live "Syrus found here" check.
+ipcMain.handle("onboarding:probe-instance", async (_event, request: { url: string }) =>
+  ensureOnboardingDriver().probeInstance(request)
+)
+// One-click WSL 2 install (Windows; elevates via UAC).
+ipcMain.handle("onboarding:install-wsl", async () => ensureOnboardingDriver().installWsl())
 ipcMain.handle("onboarding:start-install", async (_event, port?: number) =>
   ensureOnboardingDriver().startInstall(port)
 )

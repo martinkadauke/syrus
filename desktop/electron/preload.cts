@@ -235,6 +235,13 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.invoke("onboarding:choose-mode", mode) as Promise<void>,
   connectRemote: (request: ConnectRemoteRequest) =>
     ipcRenderer.invoke("onboarding:connect-remote", request) as Promise<void>,
+  probeInstance: (request: ConnectRemoteRequest) =>
+    ipcRenderer.invoke("onboarding:probe-instance", request) as Promise<{
+      ok: boolean
+      url: string | null
+      message: string
+    }>,
+  installWsl: () => ipcRenderer.invoke("onboarding:install-wsl") as Promise<void>,
   startInstall: (port?: number) => ipcRenderer.invoke("onboarding:start-install", port) as Promise<void>,
   cancelInstall: () => ipcRenderer.invoke("onboarding:cancel-install") as Promise<void>,
   retryOnboarding: () => ipcRenderer.invoke("onboarding:retry") as Promise<void>,

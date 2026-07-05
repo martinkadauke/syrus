@@ -2766,7 +2766,7 @@ export function App() {
                   required
                   type="url"
                   value={url}
-                  placeholder="https://syrus.your-company.dev"
+                  placeholder="https://syrus.your-company.com"
                   onChange={(event) => setUrl(event.target.value)}
                 />
               </label>

@@ -63,10 +63,37 @@ RSpec.describe "desktop connect flow" do
   it "classifies probe failures into actionable messages" do
     driver = read("electron/installer/installerDriver.ts")
     expect(driver).to include("Nothing answered at")
-    expect(driver).to include("Syrus usually listens on :3000")
+    # The :3000 suggestion appears only in the forgot-the-port failure case,
+    # never as a lecture on healthy input (production is https, no port).
+    expect(driver).to include("local installs use :3000")
+    expect(driver).to match(/const portless = !\/:\\d\+\$\/\.test\(url\)/)
     # Rails host authorization is a server-side fix; the error must say so.
     expect(driver).to include("SYRUS_ALLOWED_HOSTS")
     expect(driver).to include("doesn't look like a Syrus instance")
+  end
+
+  it "backs the live check with a stateless probe — green means a Syrus answered" do
+    driver = read("electron/installer/installerDriver.ts")
+    probe = driver[/async probeInstance[\s\S]*?(?=\n  \/\/ URL-only by design)/]
+    # Stateless: a stale probe result must not be able to race wizard state.
+    expect(probe).not_to include("setState")
+    expect(probe).to include("fingerprintSyrus")
+    expect(read("electron/main.ts")).to include('ipcMain.handle("onboarding:probe-instance"')
+
+    form = read("src/onboarding/ConnectRemote.tsx")
+    expect(form).to include("probeInstance")
+    # Debounced, and stale results are discarded by sequence number.
+    expect(form).to include("PROBE_DEBOUNCE_MS")
+    expect(form).to include("probeSeq")
+    expect(form).to include("Syrus found at")
+  end
+
+  it "rejects partial numeric hosts instead of previewing a mangled address" do
+    # new URL("http://192.168.") normalizes to host 192.0.0.168 — the
+    # analyzer must consult the typed host before the parser rewrites it.
+    analyzer = read("src/onboarding/instanceUrl.ts")
+    expect(analyzer).to include("looksLikePartialIpv4")
+    expect(analyzer).to include("Doesn't look like a server address yet.")
   end
 
   it "bounds the Preferences credential validation so the form can't hang forever" do

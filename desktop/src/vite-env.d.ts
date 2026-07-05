@@ -187,7 +187,7 @@ type SyrusOnboardingState =
   | { phase: "local.precheck" }
   | { phase: "local.adoptRunning"; url: string }
   | { phase: "local.adoptExisting"; error: string | null }
-  | { phase: "local.runtimeMissing"; polling: boolean }
+  | { phase: "local.runtimeMissing"; polling: boolean; wslMissing: boolean }
   | { phase: "local.runtimeStarting" }
   | { phase: "local.portConflict"; port: number }
   | { phase: "local.installing"; steps: SyrusInstallStep[]; currentStep: SyrusInstallStepId | null }
@@ -198,6 +198,14 @@ type SyrusOnboardingState =
 // the manual-token path for non-admin accounts lives in Preferences.
 type SyrusConnectRemoteRequest = {
   url: string
+}
+
+// Advisory result of the connect form's live probe — the green check only
+// fires when a Syrus actually answered at the normalized address.
+type SyrusInstanceProbeResult = {
+  ok: boolean
+  url: string | null
+  message: string
 }
 
 interface Window {
@@ -244,6 +252,7 @@ interface Window {
     getOnboardingState: () => Promise<SyrusOnboardingState>
     chooseOnboardingMode: (mode: "local" | "remote") => Promise<void>
     connectRemote: (request: SyrusConnectRemoteRequest) => Promise<void>
+    probeInstance: (request: SyrusConnectRemoteRequest) => Promise<SyrusInstanceProbeResult>
     startInstall: (port?: number) => Promise<void>
     cancelInstall: () => Promise<void>
     retryOnboarding: () => Promise<void>
@@ -251,6 +260,7 @@ interface Window {
     locateEnvFile: () => Promise<void>
     wipeLocalData: () => Promise<void>
     openOrbStackDownload: () => Promise<void>
+    installWsl: () => Promise<void>
     adoptRunningInstance: () => Promise<void>
     finishOnboarding: () => Promise<void>
     onOnboardingState: (callback: (state: SyrusOnboardingState) => void) => () => void

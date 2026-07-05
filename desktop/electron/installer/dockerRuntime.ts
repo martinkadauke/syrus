@@ -83,6 +83,40 @@ export const daemonUp = async (timeoutMs = 10_000): Promise<boolean> => {
   }
 }
 
+// Docker Desktop on Windows runs on WSL 2. When WSL itself is missing, its
+// installer punts to a manual "run wsl --install in PowerShell" step — the
+// exact clunk the guided setup exists to remove, so the app preflights it
+// and offers the elevated install itself (installWsl below).
+export const wslReady = async (): Promise<boolean> => {
+  if (process.platform !== "win32") {
+    return true
+  }
+
+  try {
+    await execFileAsync("wsl.exe", ["--status"], { timeout: 10_000, windowsHide: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// One-click WSL 2 install: elevates via UAC (unavoidable — feature install
+// needs admin) and skips the default distro (Docker Desktop brings its own).
+// Fire-and-forget by design: the caller polls wslReady()/daemonUp() and the
+// UI warns that Windows may require a restart afterwards.
+export const installWsl = async (): Promise<void> => {
+  await execFileAsync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Start-Process wsl.exe -ArgumentList '--install','--no-distribution' -Verb RunAs"
+    ],
+    { timeout: 30_000, windowsHide: true }
+  )
+}
+
 export type RuntimeApp = "OrbStack" | "Docker Desktop" | "Colima" | "Podman Desktop"
 
 // Per-platform runtime recommendation for the "no Docker runtime" screen.

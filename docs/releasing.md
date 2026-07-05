@@ -45,6 +45,19 @@ That keeps electron-updater's invariant intact: the newest release always
 carries `latest-mac.yml`. Pre-releases use `X.Y.Z-beta.N` plus GitHub's
 prerelease flag; electron-updater skips prereleases by default.
 
+## When the release run goes red
+
+Go straight to [`release-troubleshooting.md`](./release-troubleshooting.md)
+— a symptom-indexed runbook for red `release-desktop.yml` (and
+`sign-windows-test.yml`) runs. Start at its 60-second triage table: grep
+the run log for the error string, and the table maps it to a cause and a
+fix section (macOS cert/keychain/notarization/stapling, Windows Azure
+signing, electron-builder's silent-skip and publish traps). It also covers
+reproducing the exact signing path locally via `bin/release-desktop` to
+bisect credential problems from CI problems. Note the first three guard
+steps fail on purpose with self-explanatory `::error` messages — those are
+release-ordering mistakes, not pipeline bugs.
+
 ## One-time setup checklist
 
 | Item | Where | Notes |

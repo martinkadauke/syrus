@@ -133,5 +133,27 @@ RSpec.describe "desktop Windows scaffold" do
     expect(welcome).to include("Install on this PC")
     runtime_setup = read("src/onboarding/RuntimeSetup.tsx")
     expect(runtime_setup).to include("Docker Desktop")
+    # Podman compose isn't supported — the guided setup must not claim it.
+    expect(runtime_setup).not_to include("Podman")
+  end
+
+  it "preflights WSL 2 with a one-click elevated install and reboot guidance" do
+    runtime = read("electron/installer/dockerRuntime.ts")
+    expect(runtime).to include("export const wslReady")
+    expect(runtime).to match(/wsl\.exe.*--status|"wsl\.exe", \["--status"\]/)
+    # Elevation is unavoidable (UAC); the default distro is skipped because
+    # Docker Desktop brings its own.
+    expect(runtime).to include("'--install','--no-distribution'")
+    expect(runtime).to include("-Verb RunAs")
+
+    driver = read("electron/installer/installerDriver.ts")
+    expect(driver).to include("wslMissing: !(await wslReady())")
+    expect(read("electron/main.ts")).to include('ipcMain.handle("onboarding:install-wsl"')
+
+    runtime_setup = read("src/onboarding/RuntimeSetup.tsx")
+    expect(runtime_setup).to include("Install WSL 2")
+    # Docker Desktop and WSL installs can both require a Windows restart;
+    # the copy must say the flow picks up again afterwards.
+    expect(runtime_setup.scan("picks up right here").length).to be >= 2
   end
 end

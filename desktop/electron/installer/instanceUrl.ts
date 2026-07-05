@@ -1,8 +1,9 @@
 // How "Connect to your Syrus" understands what the user typed: bare IPs and
-// hostnames are fine (we assume http:// and Syrus's default port 3000),
-// full URLs pass through, and everything else gets a specific, human hint.
-// Guidance-only — the hint never blocks submission; the driver re-normalizes
-// authoritatively before probing.
+// hostnames are fine (we assume http:// and Syrus's default port 3000 for
+// the connectivity probe), full URLs pass through, and everything else gets
+// a specific, human hint. Shape analysis only — the green "found it" check
+// comes from actually probing the instance (ConnectRemote + the driver's
+// probeInstance), never from the string looking plausible.
 //
 // TWO BYTE-IDENTICAL COPIES of this file exist — desktop/src/onboarding/
 // instanceUrl.ts (renderer live preview) and desktop/electron/installer/
@@ -14,10 +15,30 @@ export const DEFAULT_SYRUS_PORT = 3000
 
 export type InstanceUrlAnalysis = {
   // empty: show nothing · invalid: amber guidance · assumed: we filled in
-  // scheme/port, show the resulting address · ready: parses as given
+  // scheme/port for the probe · ready: parses as given
   state: "empty" | "invalid" | "assumed" | "ready"
   normalized: string | null
   hint: string
+}
+
+const INCOMPLETE_HINT = "Doesn't look like a server address yet."
+
+// The WHATWG parser "helpfully" normalizes partial or shorthand numeric
+// hosts (new URL("http://192.168.") yields host 192.0.0.168), so a
+// mid-typing IP would otherwise preview a confidently wrong address. A
+// host made only of digits and dots must be a complete dotted-quad IPv4
+// before we treat the input as parseable.
+const looksLikePartialIpv4 = (host: string): boolean => {
+  if (!/^[\d.]+$/.test(host)) {
+    return false
+  }
+
+  const octets = host.split(".")
+  if (octets.length !== 4) {
+    return true
+  }
+
+  return !octets.every((octet) => /^\d{1,3}$/.test(octet) && Number(octet) <= 255)
 }
 
 export function analyzeInstanceUrl(raw: string): InstanceUrlAnalysis {
@@ -35,15 +56,24 @@ export function analyzeInstanceUrl(raw: string): InstanceUrlAnalysis {
     return { state: "invalid", normalized: null, hint: "Use http:// or https://." }
   }
 
+  // Check the numeric-host completeness against what the user actually
+  // typed, before URL normalization can rewrite it.
+  const typedHost = input
+    .replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "")
+    .replace(/[/:?#].*$/, "")
+  if (looksLikePartialIpv4(typedHost)) {
+    return { state: "invalid", normalized: null, hint: INCOMPLETE_HINT }
+  }
+
   let url: URL
   try {
     url = new URL(hasScheme ? input : `http://${input}`)
   } catch {
-    return { state: "invalid", normalized: null, hint: "Doesn't look like a server address yet." }
+    return { state: "invalid", normalized: null, hint: INCOMPLETE_HINT }
   }
 
   if (url.hostname === "") {
-    return { state: "invalid", normalized: null, hint: "Doesn't look like a server address yet." }
+    return { state: "invalid", normalized: null, hint: INCOMPLETE_HINT }
   }
 
   if (url.username !== "" || url.password !== "") {
@@ -59,26 +89,20 @@ export function analyzeInstanceUrl(raw: string): InstanceUrlAnalysis {
   // input — an explicit :80 is a choice, not a missing port.
   const typedPort = /:\d+$/.test(input)
 
-  // Bare host or IP with no port at all: Syrus's local installs listen on
-  // :3000, so assume it rather than silently probing :80.
+  // Bare host or IP with no port at all: probe Syrus's default :3000
+  // rather than silently probing :80. The preview shows exactly what will
+  // be tried; port guidance beyond that lives in probe-failure messages,
+  // not here (production instances are https with no port at all).
   if (!hasScheme && !typedPort && url.port === "") {
     url.port = String(DEFAULT_SYRUS_PORT)
-    return {
-      state: "assumed",
-      normalized: url.origin,
-      hint: `Will connect to ${url.origin} — Syrus usually listens on port 3000.`
-    }
+    return { state: "assumed", normalized: url.origin, hint: `Will connect to ${url.origin}.` }
   }
 
-  // Explicit http:// with no port: honored as typed (port 80), but flagged
-  // as a caveat — "assumed" renders in the neutral note tone, not the green
-  // looks-good check, because this is the classic forgot-the-port case.
+  // Explicit http:// with no port: honored as typed (port 80). "assumed"
+  // keeps the neutral note tone — this is the classic forgot-the-port
+  // case, and the probe failure will say so if nothing answers.
   if (hasScheme && url.protocol === "http:" && !typedPort && url.port === "") {
-    return {
-      state: "assumed",
-      normalized: url.origin,
-      hint: `Will connect to ${url.origin} — if nothing answers, the port may be missing (usually :3000).`
-    }
+    return { state: "assumed", normalized: url.origin, hint: `Will connect to ${url.origin}.` }
   }
 
   return { state: "ready", normalized: url.origin, hint: `Will connect to ${url.origin}.` }

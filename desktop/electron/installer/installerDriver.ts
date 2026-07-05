@@ -13,11 +13,13 @@ import {
   daemonUp,
   execEnv,
   findDockerBinary,
+  installWsl as launchWslInstall,
   installedRuntimeApp,
   portInUse,
   startRuntimeApp,
   syrusHealthy,
-  volumeExists
+  volumeExists,
+  wslReady
 } from "./dockerRuntime.js"
 
 const execFileAsync = promisify(execFile)
@@ -61,7 +63,7 @@ export type OnboardingState =
   | { phase: "local.precheck" }
   | { phase: "local.adoptRunning"; url: string }
   | { phase: "local.adoptExisting"; error: string | null }
-  | { phase: "local.runtimeMissing"; polling: boolean }
+  | { phase: "local.runtimeMissing"; polling: boolean; wslMissing: boolean }
   | { phase: "local.runtimeStarting" }
   | { phase: "local.portConflict"; port: number }
   | { phase: "local.installing"; steps: InstallStep[]; currentStep: InstallStepId | null }
@@ -98,8 +100,13 @@ const fingerprintSyrus = async (url: string) => {
   try {
     response = await fetch(`${url}/api/v1/app/auth/status`, { signal: AbortSignal.timeout(5_000) })
   } catch {
+    // Suggest the default port only when none was given — the classic
+    // forgot-the-port case. When the user typed a port (or the address
+    // carries the assumed :3000 already), lecturing about :3000 is noise.
+    const portless = !/:\d+$/.test(url)
     throw new Error(
-      `Nothing answered at ${url}. Check that Syrus is running there and the address and port are right — Syrus usually listens on :3000.`
+      `Nothing answered at ${url}. Check that Syrus is running there and the address is right.` +
+        (portless ? " If your instance serves on a specific port, include it — local installs use :3000." : "")
     )
   }
 
@@ -198,6 +205,25 @@ export class OnboardingDriver {
     void this.precheck()
   }
 
+  // Advisory connectivity probe for the connect form's live feedback: the
+  // green check must mean "a Syrus answered here", not "the string parses".
+  // Stateless on purpose — never touches wizard state, so a stale result
+  // can't race navigation; the renderer discards out-of-date responses.
+  async probeInstance(request: { url: string }): Promise<{ ok: boolean; url: string | null; message: string }> {
+    const analysis = analyzeInstanceUrl(request.url)
+    if (analysis.state === "empty" || analysis.state === "invalid" || analysis.normalized === null) {
+      return { ok: false, url: null, message: analysis.hint }
+    }
+
+    const serverUrl = normalizeUrl(analysis.normalized)
+    try {
+      await fingerprintSyrus(serverUrl)
+      return { ok: true, url: serverUrl, message: "" }
+    } catch (error) {
+      return { ok: false, url: serverUrl, message: errorMessage(error, "Could not connect to that address.") }
+    }
+  }
+
   // URL-only by design: sign-in happens in the app window afterwards, and
   // the tray token is minted from that session (tokenProvisioner). Bare
   // hosts/IPs are accepted — analyzeInstanceUrl assumes http:// and Syrus's
@@ -275,7 +301,7 @@ export class OnboardingDriver {
         return
       }
 
-      this.setState({ phase: "local.runtimeMissing", polling: false })
+      await this.showRuntimeMissing(false)
       return
     }
 
@@ -307,7 +333,7 @@ export class OnboardingDriver {
   private async startRuntime() {
     const runtimeApp = installedRuntimeApp()
     if (!runtimeApp) {
-      this.setState({ phase: "local.runtimeMissing", polling: false })
+      await this.showRuntimeMissing(false)
       return
     }
 
@@ -336,12 +362,50 @@ export class OnboardingDriver {
     }
   }
 
+  // Every path into the runtime-missing screen goes through here so the
+  // WSL preflight rides along: on Windows the screen leads with a one-click
+  // WSL 2 install when WSL itself is absent (Docker Desktop needs it, and
+  // its own installer punts that to a manual PowerShell step).
+  private async showRuntimeMissing(polling: boolean) {
+    this.setState({ phase: "local.runtimeMissing", polling, wslMissing: !(await wslReady()) })
+  }
+
+  // One-click WSL 2 install (elevates via UAC), then watch for WSL to
+  // appear so the screen's guidance advances on its own. Windows may still
+  // require a restart — the copy says so, and precheck picks the flow back
+  // up on relaunch.
+  async installWsl() {
+    if (process.platform !== "win32") {
+      return
+    }
+
+    try {
+      await launchWslInstall()
+    } catch {
+      // UAC declined or spawn failed: the screen simply keeps offering it.
+    }
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      if (this.state.phase !== "local.runtimeMissing") {
+        return
+      }
+
+      if (await wslReady()) {
+        await this.showRuntimeMissing(this.state.polling)
+        return
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 3_000))
+    }
+  }
+
   // Named for the IPC channel it serves; the URL is per-platform (OrbStack
   // on macOS, Docker Desktop on Windows).
   openOrbStackDownload() {
     void shell.openExternal(runtimeDownloadUrl())
     if (this.state.phase === "local.runtimeMissing" && !this.state.polling) {
-      this.setState({ phase: "local.runtimeMissing", polling: true })
+      const wslMissing = this.state.wslMissing
+      this.setState({ phase: "local.runtimeMissing", polling: true, wslMissing })
       void this.pollForDaemon(RUNTIME_DOWNLOAD_POLLS).then((ready) => {
         if (this.state.phase !== "local.runtimeMissing") {
           return
@@ -350,7 +414,7 @@ export class OnboardingDriver {
         if (ready) {
           void this.precheck()
         } else {
-          this.setState({ phase: "local.runtimeMissing", polling: false })
+          void this.showRuntimeMissing(false)
         }
       })
     }
@@ -681,7 +745,7 @@ export class OnboardingDriver {
     }
 
     if (code === 10) {
-      this.setState({ phase: "local.runtimeMissing", polling: false })
+      void this.showRuntimeMissing(false)
       return
     }
 
