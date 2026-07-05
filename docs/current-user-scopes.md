@@ -54,6 +54,7 @@ per-user/private:
   - app/controllers/api/v1/app/notification_preferences_controller.rb
   - app/controllers/api/v1/app/notifications_controller.rb
   - app/controllers/api/v1/app/pending_feedback_controller.rb
+  - app/controllers/api/v1/app/platform_identities_controller.rb
   - app/controllers/api/v1/app/repositories_controller.rb
   - app/controllers/api/v1/app/repository_documents_controller.rb
   - app/controllers/api/v1/app/repository_flaky_tests_controller.rb
@@ -152,6 +153,7 @@ instead of broader model scopes.
 | `app/controllers/api/v1/app/notification_preferences_controller.rb` | per-user/private | Reads and updates only `Current.user.notification_preferences`. |
 | `app/controllers/api/v1/app/pending_feedback_controller.rb` | per-user/private | Pending feedback actions (apply/ignore/replace) find the parent job through `Current.user.jobs` and serialize a full `App::JobDetailPayload` for that user. |
 | `app/controllers/api/v1/app/notifications_controller.rb` | per-user/private | Notification listing and mark-read commands operate only on `Current.user.notifications`. |
+| `app/controllers/api/v1/app/platform_identities_controller.rb` | per-user/private | Platform identity listing, unlinking, and linking-token generation are scoped to `Current.user.platform_identities`. |
 | `app/controllers/api/v1/app/profiles_controller.rb` | team-visible with current-user context | Team profiles include credential-safe user summaries visible to signed-in users; `Current.user` decides whether owner labels and current-user-specific details should be shown. |
 | `app/controllers/api/v1/app/profiles_controller.rb` | per-user/private | Reads and updates the signed-in user's profile fields and public profile settings, and compares requested profiles to `Current.user` before exposing current-user-specific details. |
 | `app/controllers/api/v1/app/repositories_controller.rb` | per-user/private and admin affordance | Repository CRUD and GitHub issue actions use `Current.user.repositories` and the current user's GitHub credential. The GitHub App register path is only exposed to admins. |
