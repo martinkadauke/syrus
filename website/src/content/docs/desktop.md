@@ -20,10 +20,12 @@ Desktop (or connects to an existing instance), with the same tray inbox
 and bundled CLI. Installers aren't published to the releases page yet —
 they ship there once code signing goes live. Setup differences worth
 knowing: the local backend needs [Docker
-Desktop](https://www.docker.com/products/docker-desktop/) (its installer
-sets up WSL 2), state lives under `%USERPROFILE%\.syrus\`, and the
-one-click CLI install lands in `%LocalAppData%\Syrus\bin` and joins your
-user PATH automatically (open a new terminal to pick it up).
+Desktop](https://www.docker.com/products/docker-desktop/) on WSL 2 — if
+WSL 2 is missing, the app offers a one-click elevated install (Windows
+may restart; reopening Syrus resumes setup right where it left off) —
+state lives under `%USERPROFILE%\.syrus\`, and the
+automatically installed CLI lands in `%LocalAppData%\Syrus\bin` and joins
+your user PATH (open a new terminal to pick it up).
 
 ## Signing in — no API keys
 
@@ -56,13 +58,14 @@ instances.)
   next time its window is open and signed in.
   Non-admin users on a shared remote instance paste an API token into
   Preferences instead.
-- **The Syrus CLI, one click away.** After setup, the app offers to
-  install the bundled `syrus` CLI (`~/.local/bin` on macOS,
+- **The Syrus CLI, batteries included.** The app installs the bundled
+  `syrus` CLI automatically at launch (`~/.local/bin` on macOS,
   `%LocalAppData%\Syrus\bin` on Windows — see the [CLI docs](/docs/cli))
-  — already signed in through the shared credentials file — with an
-  optional Claude Code skill so coding agents on your machine can drive
-  Syrus from the terminal. Also available any time from Preferences, or
-  from the menu-bar/tray banner when the CLI is missing.
+  and keeps it current with every app update, already signed in through
+  the shared credentials file. When Claude Code or Codex is detected on
+  the machine, the app offers (once) to add the Claude Code skill so
+  coding agents can drive Syrus from the terminal — also available any
+  time from Preferences.
 - **Lifecycle management.** The app starts your local Syrus when it
   launches and leaves it running when you quit, so GitHub polling and
   agent runs continue in the background. Start, stop, and restart live

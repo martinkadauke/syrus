@@ -3,8 +3,8 @@
 Background and the decision rationale live in
 [`windows-desktop-plan.md`](./windows-desktop-plan.md#code-signing-researched-july-2026).
 This doc is the concrete setup runbook: portal steps once, then the repo
-secrets that make `.github/workflows/sign-windows-test.yml` (and later
-`release-desktop.yml`) sign real installers.
+secrets that make `release-desktop.yml`'s `release-windows` job (and the
+`sign-windows-test.yml` manual-dispatch harness) sign real installers.
 
 Azure Artifact Signing (formerly "Trusted Signing") is Microsoft's
 low-friction alternative to a traditional Authenticode certificate: $9.99/mo,
@@ -183,11 +183,14 @@ no-op on Darwin/Linux so it can't produce a false sense of "signed" here.
 `bin/release-desktop` doesn't cross-build a Windows target at all today
 (no `--win` wiring), so this only matters once that lands.
 
-## 9. Going live
+## 9. Going live (done — July 2026)
 
-Merging this into `release-desktop.yml` (so every `vX.Y.Z` tag ships a
-signed Windows build alongside the mac one) is deliberately deferred until
-Windows has something worth shipping publicly — phase 2 of
-`windows-desktop-plan.md` (the local-install PowerShell path). Until then,
-`sign-windows-test.yml` is the safe place to validate signing without
-touching the live release cadence.
+`release-desktop.yml` now carries a `release-windows` job: on every
+`vX.Y.Z` tag it builds, Azure-signs, and publishes the Windows NSIS
+installers alongside the mac DMGs (sequenced after the mac job so both
+publish into one GitHub release). The Azure configuration from §6 is
+required — the job's guard refuses to publish an unsigned Windows
+release, and a token-acquisition preflight fails in seconds instead of
+after a full build. `sign-windows-test.yml` remains the manual-dispatch
+workflow for validating the Azure setup without touching the live
+release cadence.

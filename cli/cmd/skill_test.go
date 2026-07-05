@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestSkillInstallWritesTheClaudeSkill(t *testing.T) {
@@ -45,6 +48,43 @@ func TestSkillInstallWritesTheClaudeSkill(t *testing.T) {
 
 	if !strings.Contains(output.String(), target) {
 		t.Fatalf("output should name the target path, got %q", output.String())
+	}
+}
+
+// Every `syrus <verb> [<subverb>]` the skill documents must resolve in the
+// real command tree. The skill once taught `syrus job view` while the
+// actual verb was `job show` — an agent following it ran a nonexistent
+// command, which is the exact failure mode a skill exists to prevent.
+func TestSkillDocumentsOnlyRealCommands(t *testing.T) {
+	registered := map[string]bool{}
+	hasChildren := map[string]bool{}
+	var walk func(prefix string, c *cobra.Command)
+	walk = func(prefix string, c *cobra.Command) {
+		for _, sub := range c.Commands() {
+			name := strings.Fields(sub.Use)[0]
+			full := strings.TrimSpace(prefix + " " + name)
+			registered[full] = true
+			hasChildren[full] = len(sub.Commands()) > 0
+			walk(full, sub)
+		}
+	}
+	walk("", NewRootCommand())
+
+	// `syrus verb` or `syrus verb subverb` mentions; ALL-CAPS and
+	// bracketed/placeholder tokens are arguments, not subcommands.
+	mention := regexp.MustCompile("`syrus ([a-z][a-z-]*)( [a-z][a-z-]*)?")
+	for _, match := range mention.FindAllStringSubmatch(skillContents, -1) {
+		full := match[1] + match[2]
+		if registered[full] {
+			continue
+		}
+		// A trailing lowercase word after a LEAF command is an argument
+		// (`syrus chat my-chat ...`). After a PARENT command it must be a
+		// real subcommand — that's exactly how `job view` slipped in.
+		if match[2] != "" && registered[match[1]] && !hasChildren[match[1]] {
+			continue
+		}
+		t.Errorf("skill documents `syrus %s`, which is not a registered command", full)
 	}
 }
 

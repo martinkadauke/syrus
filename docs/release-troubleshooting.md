@@ -4,9 +4,10 @@
 red X to a cause in minutes: find your error string in the triage table,
 jump to the section, run the Check, apply the Fix. It covers the macOS
 signing/notarization path (`CSC_LINK` + notarytool) and the Windows Azure
-Artifact Signing path (currently exercised by
-`.github/workflows/sign-windows-test.yml`; the same sections apply once it
-merges into `release-desktop.yml`). Setup docs live in
+Artifact Signing path (live in `release-desktop.yml`'s `release-windows`
+job on every `v*` tag; `.github/workflows/sign-windows-test.yml` is the
+manual-dispatch harness for proving the Azure setup without cutting a
+release). Setup docs live in
 [`releasing.md`](./releasing.md) and [`windows-signing.md`](./windows-signing.md);
 this doc assumes setup was once working.
 
@@ -239,15 +240,18 @@ These are the workflow working as designed, not bugs:
 
 ## 5. Windows (Azure Artifact Signing)
 
-Windows signing currently runs in `sign-windows-test.yml` (manual
-dispatch; the workflow file must be on the default branch for the button
-to exist — the fork workaround is in
-[windows-signing.md §7](./windows-signing.md#7-test-it)). Its guard step
-fails with `Missing secrets/variables: <names>` — add the listed ones per
-the [secrets table](./windows-signing.md#6-repo-secrets). Note
-`azureSignOptions` is injected via CLI dot-paths, never committed to
-`electron-builder.yml` — its mere presence would force signing on every
-unsigned dev build.
+Windows signing runs live in `release-desktop.yml`'s `release-windows`
+job on every `v*` tag; its guard fails the run when any of the four
+`AZURE_SIGN_*` identifiers (or the client credentials) are absent — add
+the listed ones per the
+[secrets table](./windows-signing.md#6-repo-secrets).
+`sign-windows-test.yml` exercises the same chain by manual dispatch
+without cutting a release (the workflow file must be on the default
+branch for the button to exist — the fork workaround is in
+[windows-signing.md §7](./windows-signing.md#7-test-it)); its guard says
+`Missing secrets/variables: <names>`. Note `azureSignOptions` is
+injected via CLI dot-paths, never committed to `electron-builder.yml` —
+its mere presence would force signing on every unsigned dev build.
 
 ### 5.1 Module install failures
 

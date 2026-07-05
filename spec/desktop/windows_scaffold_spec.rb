@@ -78,12 +78,15 @@ RSpec.describe "desktop Windows scaffold" do
     expect(onboarding_window).to match(/process\.platform === "darwin" \? \{ titleBarStyle: "hiddenInset"/)
   end
 
-  it "detects Windows Docker runtimes and recommends Docker Desktop with Podman Desktop as the alternative" do
+  it "detects Windows Docker runtimes; installing Podman is never recommended" do
     runtime = read("electron/installer/dockerRuntime.ts")
     expect(runtime).to include('process.platform === "win32"')
     expect(runtime).to include("docker.exe")
-    expect(runtime).to include("Podman Desktop")
-    expect(runtime).to include("https://podman-desktop.io/downloads")
+    # An already-installed Podman Desktop is detected and startable (its
+    # Docker socket works), but the guided setup's download recommendation
+    # is Docker-Desktop-only — no install suggestion, no download URL.
+    expect(runtime).to include("Podman Desktop.exe")
+    expect(runtime).not_to include("podman-desktop.io")
     expect(runtime).to include("path.delimiter")
   end
 
@@ -109,11 +112,18 @@ RSpec.describe "desktop Windows scaffold" do
   end
 
   it "positions the tray popover inside the work area (bottom taskbars open upward)" do
+    # The main.ts wrapper gathers tray/window/screen state; the arithmetic is
+    # a pure module so vitest covers the open-above flip and the clamps
+    # behaviorally (desktop/src/popoverPosition.test.ts).
     main = read("electron/main.ts")
     position = main[/const popoverPosition[\s\S]{0,1600}/]
     expect(position).to include("getDisplayNearestPoint")
     expect(position).to include("workArea")
-    expect(position).to match(/trayBounds\.y - windowBounds\.height/)
+    expect(position).to include("computePopoverPosition")
+
+    math = read("electron/windows/popoverPosition.ts")
+    expect(math).to include("workArea")
+    expect(math).to match(/trayBounds\.y - windowBounds\.height/)
   end
 
   it "uses the full-color tray icon with a bitmap badge on Windows" do
@@ -123,6 +133,12 @@ RSpec.describe "desktop Windows scaffold" do
     # the unread dot is drawn into the BGRA bitmap directly.
     expect(main).to include("createFromBitmap")
     expect(main).not_to include("image/svg+xml")
+    # The pixel writes live in an Electron-free module so vitest can pin the
+    # BGRA bytes (desktop/src/trayBadge.test.ts); createFromBitmap stays here.
+    expect(main).to include("paintUnreadDot")
+    badge = read("electron/trayBadge.ts")
+    expect(badge).to include("0xdc")
+    expect(badge).not_to include("image/svg+xml")
   end
 
   it "exposes the platform to the renderer so onboarding can adapt" do

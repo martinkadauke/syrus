@@ -61,15 +61,20 @@ RSpec.describe "desktop connect flow" do
   end
 
   it "classifies probe failures into actionable messages" do
-    driver = read("electron/installer/installerDriver.ts")
-    expect(driver).to include("Nothing answered at")
+    fingerprint = read("electron/installer/fingerprint.ts")
+    expect(fingerprint).to include("Nothing answered at")
     # The :3000 suggestion appears only in the forgot-the-port failure case,
     # never as a lecture on healthy input (production is https, no port).
-    expect(driver).to include("local installs use :3000")
-    expect(driver).to match(/const portless = !\/:\\d\+\$\/\.test\(url\)/)
+    expect(fingerprint).to include("local installs use :3000")
+    expect(fingerprint).to match(/const portless = !\/:\\d\+\$\/\.test\(url\)/)
     # Rails host authorization is a server-side fix; the error must say so.
-    expect(driver).to include("SYRUS_ALLOWED_HOSTS")
-    expect(driver).to include("doesn't look like a Syrus instance")
+    expect(fingerprint).to include("SYRUS_ALLOWED_HOSTS")
+    expect(fingerprint).to include("doesn't look like a Syrus instance")
+    # The classifier stays Electron-free so vitest can exercise the branches
+    # behaviorally (desktop/src/fingerprint.test.ts); the driver imports it.
+    expect(fingerprint).not_to include('from "electron"')
+    driver = read("electron/installer/installerDriver.ts")
+    expect(driver).to include('import { fingerprintSyrus } from "./fingerprint.js"')
   end
 
   it "backs the live check with a stateless probe — green means a Syrus answered" do

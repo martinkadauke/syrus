@@ -54,6 +54,17 @@ RSpec.describe "install.ps1 parity with install.sh" do
     expect(ps1).to include('Emit-Step "env_generate" "skipped"')
   end
 
+  it "recommends only Docker Desktop when no runtime exists (Podman compose is unsupported)" do
+    # The guided onboarding decided Docker-Desktop-only for Windows
+    # (windows_scaffold_spec pins RuntimeSetup); the installer's exit-10
+    # copy must not contradict it. Detecting/starting an ALREADY-installed
+    # Podman Desktop with the Docker socket is still fine — this pins only
+    # the recommendation.
+    exit10 = ps1[/Fail "No container runtime found[^"]*"/]
+    expect(exit10).to include("docker.com/products/docker-desktop")
+    expect(exit10).not_to include("Podman")
+  end
+
   it "carries the image ref as the image_pull start detail" do
     expect(sh).to include('emit_step image_pull start "$IMAGE"')
     expect(ps1).to include('Emit-Step "image_pull" "start" $image')

@@ -1,0 +1,45 @@
+# frozen_string_literal: true
+
+require "spec_helper"
+
+# The desktop bridge is stringly typed: preload.cts invokes IPC channels by
+# name and main.ts registers handlers by name, with no compile-time link
+# between the two files. Renaming a channel string on one side produces no
+# TypeScript error — just a button that dies at runtime with "No handler
+# registered for '<channel>'". This static scan pins the two channel sets to
+# each other so a one-sided rename fails CI instead of shipping a dead
+# control.
+RSpec.describe "desktop IPC channel parity" do
+  let(:repo_root) { File.expand_path("../..", __dir__) }
+  let(:preload) { File.read(File.join(repo_root, "desktop", "electron", "preload.cts"), encoding: "UTF-8") }
+  let(:main) { File.read(File.join(repo_root, "desktop", "electron", "main.ts"), encoding: "UTF-8") }
+
+  let(:invoked_channels) { preload.scan(/ipcRenderer\.invoke\("([^"]+)"/).flatten.uniq.sort }
+  let(:handled_channels) { main.scan(/ipcMain\.handle\("([^"]+)"/).flatten.uniq.sort }
+
+  it "registers a main-process handler for every channel the preload bridge invokes" do
+    orphans = invoked_channels - handled_channels
+    expect(orphans).to be_empty,
+      "preload.cts invokes channels with no ipcMain.handle in main.ts " \
+      "(each one is a dead button at runtime): #{orphans.join(', ')}"
+  end
+
+  it "invokes every registered handler from the preload bridge (no dead handlers)" do
+    # Currently every handler is renderer-facing. If a genuinely
+    # main-process-only channel ever appears, add it to an explicit allowlist
+    # here instead of weakening the scan.
+    unused = handled_channels - invoked_channels
+    expect(unused).to be_empty,
+      "main.ts handles channels never invoked from preload.cts " \
+      "(dead handler or a rename that missed preload): #{unused.join(', ')}"
+  end
+
+  it "scanned a plausible number of channels on both sides" do
+    # If either regex drifts from the source style (quote change, helper
+    # wrapper, renamed import), both sets could silently collapse to empty
+    # and the parity checks above would pass vacuously. 52 channels exist at
+    # the time of writing; >= 50 leaves headroom without tracking the count.
+    expect(invoked_channels.size).to be >= 50
+    expect(handled_channels.size).to be >= 50
+  end
+end

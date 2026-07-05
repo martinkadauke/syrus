@@ -1,7 +1,11 @@
 # Windows desktop app — design & delivery plan
 
-Status: phase 1 (foundation) implemented on `desktop-app/13-windows`;
-phases 2–4 planned. Owner-facing summary of every deliberate decision, so
+Status: phases 1–2 (foundation, local install) shipped on
+`desktop-app/13-windows`; phase 3 (parity polish) planned; phase 4
+partially in place — the `release-windows` publishing job and Azure
+Trusted Signing wiring exist (`release-desktop.yml`,
+`sign-windows-test.yml`), pending SmartScreen reputation and website
+download buttons. Owner-facing summary of every deliberate decision, so
 later phases don't re-litigate them.
 
 ## Product contract
@@ -139,9 +143,11 @@ the Cloud (~$58, SimplySign; headless CI is hacky), SSL.com IV +
 eSigner. Both still ride the slower OV-style reputation ramp.
 
 **Setup runbook and exact repo secrets: [`windows-signing.md`](./windows-signing.md).**
-`.github/workflows/sign-windows-test.yml` validates the whole chain
-(manual dispatch only) before it's wired into the live release pipeline —
-deferred until phase 2 ships something worth signing publicly.
+`.github/workflows/sign-windows-test.yml` is the manual-dispatch proving
+ground for the Azure chain — it validates certificate profile, identity,
+and signing without cutting a release. The live `release-windows` job in
+`release-desktop.yml` depends on the same configuration and refuses to
+publish unsigned artifacts.
 
 ### Field notes: the "Missing Shortcut" failure (July 2026 UTM test)
 
@@ -198,7 +204,10 @@ staged in `$PLUGINSDIR\7z-out` under TEMP before being copied.
    POSIX process groups on Windows); the image-update path
    (backendLifecycle.updateBackend) shares the seam; Welcome's local card
    is a real choice on Windows; RuntimeSetup recommends Docker Desktop
-   (its installer owns WSL 2 setup) with the download CTA per-platform.
+   with the download CTA per-platform, preceded by a WSL 2 preflight —
+   when WSL is absent, a one-click elevated `wsl --install
+   --no-distribution` runs first, with restart-resume copy (reopening
+   Syrus picks the flow back up after the reboot).
    The bundled CLI ships as `syrus-win32-{x64,arm64}.exe`, installs to
    `%LocalAppData%\Syrus\bin` (outside the NSIS `$INSTDIR`, which
    auto-updates replace wholesale) and joins the per-user PATH via the
@@ -208,11 +217,11 @@ staged in `$PLUGINSDIR\7z-out` under TEMP before being copied.
    popover placement (bottom taskbars open upward), full-color tray icon
    with a bitmap-drawn unread dot (nativeImage can't rasterize SVG), and
    instance-takeover on win32.
+   The `release-windows` publishing job also exists now
+   (release-desktop.yml; hard-requires the Azure signing config — it
+   never publishes unsigned artifacts).
    Still open from this phase: `podman machine start`/`podman compose`
-   support (Docker Desktop-only for now — exit 12/10 copy says so), a
-   dedicated WSL2 preflight (Docker Desktop's own installer handles it),
-   and the `release-windows` publishing job (deliberately blocked on
-   signing going live — never publish unsigned artifacts).
+   support (Docker Desktop-only for now — exit 12/10 copy says so).
 3. **Parity polish.** Windows toast actions, Start-with-Windows login
    item (`setLoginItemSettings`), first-run "pin the tray icon" hint,
    per-monitor DPI QA on a real multi-monitor machine.
@@ -232,8 +241,11 @@ virtualization). The test plan splits what runs where:
   the gateway alias `10.0.2.2`.
 - **Windows app in the guest** (arm64 NSIS build): exercise install →
   tray → first-run → **Connect to existing Syrus** → `http://<mac-ip>:3000`
-  + desktop token → web container, inbox, notifications, hotkey,
-  auto-update (point SYRUS_UPDATE_FEED at a draft release).
+  (URL-only; sign in inside the app window and the tray token mints
+  itself — see docs/desktop-auth-plan.md; non-admin accounts would use
+  the manual URL+token form in Preferences instead) → web container,
+  inbox, notifications, hotkey, auto-update (point SYRUS_UPDATE_FEED at
+  a draft release).
 - **What this covers:** everything except the local-Docker install path —
   installer UX, tray paradigm, web container, token provisioning,
   update loop, ARM64 build health.

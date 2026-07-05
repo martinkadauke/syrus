@@ -1394,16 +1394,16 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   )
 }
 
-// One-click Syrus CLI install: the app bundles the per-arch binary and
-// installs it to ~/.local/bin with credentials pre-written, so `syrus` in a
-// terminal (and the tray's Checkout button) work without a repo clone or a
-// manual login. PATH is never mutated — when ~/.local/bin isn't on it, the
-// export line is offered for copy-paste.
+// The syrus CLI is batteries-included: the app installs it silently at
+// launch and re-installs whenever an app update ships a newer binary
+// (docs/install-experience-spec.md I1/I2), signed in via this app's
+// credentials. This section is the status readout plus two escape
+// hatches: Reinstall (the rare case the silent install failed) and the
+// Claude Code skill (the one opt-in piece — it writes into ~/.claude).
 export function CliInstallSection() {
   const [status, setStatus] = useState<"checking" | "installed" | "missing">("checking")
   const [result, setResult] = useState<SyrusCliInstallResult | null>(null)
   const [installing, setInstalling] = useState(false)
-  const [withSkill, setWithSkill] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -1439,14 +1439,16 @@ export function CliInstallSection() {
           {status === "checking" ? (
             <span className="status-line">Checking…</span>
           ) : status === "installed" ? (
-            <span className="form-success">Installed — Checkout and terminal workflows are ready.</span>
+            <span className="form-success">Installed — kept current automatically with app updates.</span>
           ) : (
-            <span className="status-line">Not installed. Powers Checkout here, plus terminal and agent workflows.</span>
+            <span className="status-line">
+              Not installed — it normally installs itself when the app starts, so something went wrong.
+            </span>
           )}
         </div>
         {status === "missing" ? (
-          <button className="primary-button" disabled={installing} onClick={() => void install({ withSkill })} type="button">
-            {installing ? "Installing…" : "Install CLI"}
+          <button className="primary-button" disabled={installing} onClick={() => void install()} type="button">
+            {installing ? "Installing…" : "Reinstall CLI"}
           </button>
         ) : (
           <button
@@ -1460,15 +1462,6 @@ export function CliInstallSection() {
           </button>
         )}
       </div>
-      {status === "missing" ? (
-        <label className="status-line flex items-center gap-2">
-          <input checked={withSkill} onChange={(event) => setWithSkill(event.target.checked)} type="checkbox" />
-          <span>
-            Also add the Claude Code skill (lets coding agents on this{" "}
-            {window.syrusDesktop?.platform === "win32" ? "PC" : "Mac"} drive Syrus)
-          </span>
-        </label>
-      ) : null}
       {result?.error ? <p className="form-error">{result.error}</p> : null}
       {result?.installed ? (
         <p className="status-line">

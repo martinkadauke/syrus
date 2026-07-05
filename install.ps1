@@ -229,7 +229,7 @@ function Ensure-DockerRuntime {
     if (-not $script:SkipRuntimeInstall) {
       Write-Info "Unattended runtime install is not supported on Windows; install one manually."
     }
-    Fail "No container runtime found. Install Docker Desktop (https://www.docker.com/products/docker-desktop/) or Podman Desktop, then retry." 10
+    Fail "No container runtime found. Install Docker Desktop (https://www.docker.com/products/docker-desktop/), then retry." 10
   }
 
   if ($hasDesktop) {

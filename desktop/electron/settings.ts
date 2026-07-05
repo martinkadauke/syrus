@@ -38,9 +38,15 @@ export type DesktopStore = DesktopSettings & {
   webAppWindowBounds: WindowBounds | null
   onboardingCompletedAt: string
   backendConfigMigratedAt: string
-  // The one-time post-setup "Install the Syrus CLI?" dialog was shown (or
-  // the CLI was already present). Asked-and-answered — never re-prompt.
+  // Legacy: the retired post-setup "Install the Syrus CLI?" dialog was
+  // shown. Kept (and still honored) so upgraded installs that answered it
+  // aren't re-asked about the skill.
   cliInstallOffered: boolean
+  // The one-time "coding agent detected — add the Syrus skill?" dialog was
+  // shown (or the skill was already present). Asked-and-answered — never
+  // re-prompt. The CLI itself is no longer offered: it installs silently
+  // at launch (docs/install-experience-spec.md I1).
+  skillInstallOffered: boolean
 }
 
 export const store = new Store<DesktopStore>({
@@ -55,7 +61,8 @@ export const store = new Store<DesktopStore>({
     webAppWindowBounds: null,
     onboardingCompletedAt: "",
     backendConfigMigratedAt: "",
-    cliInstallOffered: false
+    cliInstallOffered: false,
+    skillInstallOffered: false
   }
 })
 

@@ -211,7 +211,10 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          ID=$(grep -oE 'id: [0-9a-f-]{36}' "$RUNNER_TEMP/build.log" | tail -1 | awk '{print $2}') || true
+          # @electron/notarize submits with --output-format json, so the
+          # failure message it embeds in the build log carries `"id":"<uuid>"`
+          # — never the unquoted `id: <uuid>` (that's a DEBUG-only line).
+          ID=$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[0-9a-f-]{36}"' "$RUNNER_TEMP/build.log" | tail -1 | grep -oE '[0-9a-f-]{36}') || true
           if [[ -n "${ID:-}" ]]; then
             xcrun notarytool log "$ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" "$RUNNER_TEMP/notary_developer_log.json" || true
           fi

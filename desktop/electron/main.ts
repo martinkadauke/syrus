@@ -26,7 +26,9 @@ import { OnboardingDriver } from "./installer/installerDriver.js"
 import { decideOnSecondInstance, takeoverPrompt, type InstanceIdentity } from "./instanceTakeover.js"
 import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
+import { paintUnreadDot } from "./trayBadge.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
+import { computePopoverPosition } from "./windows/popoverPosition.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
 
 const __filename = fileURLToPath(import.meta.url)
@@ -347,24 +349,7 @@ const badgedTrayIcon = () => {
   const size = baseIcon.getSize()
   const bitmap = Buffer.from(baseIcon.toBitmap())
 
-  const radius = Math.max(3, Math.round(size.width * 0.22))
-  const centerX = size.width - radius - 1
-  const centerY = radius + 1
-
-  for (let y = 0; y < size.height; y += 1) {
-    for (let x = 0; x < size.width; x += 1) {
-      const dx = x - centerX
-      const dy = y - centerY
-      if (dx * dx + dy * dy <= radius * radius) {
-        const offset = (y * size.width + x) * 4
-        // BGRA byte order, premultiplied alpha.
-        bitmap[offset] = 0x26
-        bitmap[offset + 1] = 0x26
-        bitmap[offset + 2] = 0xdc
-        bitmap[offset + 3] = 0xff
-      }
-    }
-  }
+  paintUnreadDot(bitmap, size.width, size.height)
 
   return nativeImage.createFromBitmap(bitmap, { width: size.width, height: size.height })
 }
@@ -1012,6 +997,68 @@ const addToWindowsUserPath = async (dir: string) => {
   })
 }
 
+const bundledCliPath = () => {
+  const bundledDir = app.isPackaged
+    ? path.join(process.resourcesPath, "cli")
+    : path.join(__dirname, "..", "..", "resources", "cli")
+  const suffix = process.platform === "win32" ? ".exe" : ""
+  return path.join(bundledDir, `syrus-${process.platform}-${process.arch === "arm64" ? "arm64" : "x64"}${suffix}`)
+}
+
+const claudeSkillPath = () => path.join(os.homedir(), ".claude", "skills", "syrus", "SKILL.md")
+
+// Where local coding agents keep their config; presence gates the skill
+// offer (docs/install-experience-spec.md I4). Directory-based on purpose:
+// GUI apps see a minimal PATH on macOS, and the config dir is what the
+// skill actually integrates with.
+const agentToolPresent = async (): Promise<boolean> => {
+  for (const dir of [path.join(os.homedir(), ".claude"), path.join(os.homedir(), ".codex")]) {
+    try {
+      await fs.access(dir)
+      return true
+    } catch {
+      // keep looking
+    }
+  }
+  return false
+}
+
+const fileSha256 = async (filePath: string): Promise<string | null> => {
+  try {
+    const { createHash } = await import("node:crypto")
+    const contents = await fs.readFile(filePath)
+    return createHash("sha256").update(contents).digest("hex")
+  } catch {
+    return null
+  }
+}
+
+// Batteries included (docs/install-experience-spec.md I1/I2): the CLI is
+// product plumbing — installed silently on first launch and re-installed
+// whenever the bundled binary differs from what's on disk (content hash;
+// the binary carries no version command), which is exactly what happens
+// after every app auto-update. A previously installed Claude Code skill
+// rides along so its content tracks the binary. Failures are non-fatal:
+// the next launch retries, and the tray banner covers a truly absent CLI.
+const ensureCliCurrent = async () => {
+  const bundledHash = await fileSha256(bundledCliPath())
+  if (bundledHash === null) {
+    return // dev build without staged binaries — nothing to install from
+  }
+
+  const installedHash = await fileSha256(localBinSyrus())
+  if (installedHash === bundledHash) {
+    return
+  }
+
+  const skillPresent = await fs
+    .access(claudeSkillPath())
+    .then(() => true)
+    .catch(() => false)
+
+  await performCliInstall({ withSkill: skillPresent })
+}
+
 // One-click CLI install from the bundled per-arch binary. No login step —
 // the app already keeps ~/.syrus/credentials in the CLI-shared format
 // (credentialsStore.ts owns that file), so the CLI is signed in the moment
@@ -1022,14 +1069,7 @@ const addToWindowsUserPath = async (dir: string) => {
 // `skill install` so clone-based users share the exact same path.
 const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}): Promise<CliInstallResult> => {
   try {
-    const bundledDir = app.isPackaged
-      ? path.join(process.resourcesPath, "cli")
-      : path.join(__dirname, "..", "..", "resources", "cli")
-    const suffix = process.platform === "win32" ? ".exe" : ""
-    const source = path.join(
-      bundledDir,
-      `syrus-${process.platform}-${process.arch === "arm64" ? "arm64" : "x64"}${suffix}`
-    )
+    const source = bundledCliPath()
     await fs.access(source)
 
     const target = localBinSyrus()
@@ -1085,13 +1125,19 @@ const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}):
 }
 
 // The web app window carries no IPC bridge (remote content), so the
-// CLI-install setup step is the main process watching for the moment the
+// skill-offer setup step is the main process watching for the moment the
 // user is signed in and settled on the home surface — i.e. onboarding,
-// sign-in, and GitHub/agent connect flows are behind them.
-let cliOfferInFlight = false
+// sign-in, and GitHub/agent connect flows are behind them. The CLI itself
+// is never offered — ensureCliCurrent installs it silently (spec I1); the
+// skill writes into another tool's config directory, so it gets the one
+// explicit ask (spec I4), and only when such a tool is actually present.
+let skillOfferInFlight = false
 
-const offerCliSetupIfReady = async (window: BrowserWindow) => {
-  if (cliOfferInFlight || store.get("cliInstallOffered", false)) {
+const offerSkillIfAgentDetected = async (window: BrowserWindow) => {
+  // cliInstallOffered is the legacy key from when this dialog offered the
+  // CLI with a skill checkbox — an install that already answered it was
+  // already asked about the skill.
+  if (skillOfferInFlight || store.get("skillInstallOffered", false) || store.get("cliInstallOffered", false)) {
     return
   }
 
@@ -1112,66 +1158,73 @@ const offerCliSetupIfReady = async (window: BrowserWindow) => {
     return
   }
 
-  if (await syrusCliAvailable()) {
-    store.set("cliInstallOffered", true)
+  if (!(await agentToolPresent())) {
+    // No marker: don't ask, and don't burn the once-only flag — the offer
+    // stays live for the launch after Claude Code or Codex shows up.
     return
   }
 
-  cliOfferInFlight = true
+  const alreadyInstalled = await fs
+    .access(claudeSkillPath())
+    .then(() => true)
+    .catch(() => false)
+  if (alreadyInstalled) {
+    store.set("skillInstallOffered", true)
+    return
+  }
+
+  skillOfferInFlight = true
   try {
     const isWindows = process.platform === "win32"
-    const { response, checkboxChecked } = await dialog.showMessageBox(window, {
+    const { response } = await dialog.showMessageBox(window, {
       type: "question",
-      buttons: ["Install", "Not now"],
+      buttons: ["Add skill", "Not now"],
       defaultId: 0,
       cancelId: 1,
-      message: "Install the Syrus CLI?",
+      message: "Coding agent detected — teach it Syrus?",
       detail:
-        `One last setup step: the ${isWindows ? "tray" : "menu bar"}'s Checkout button and terminal workflows use the syrus CLI. ` +
-        `It installs to ${isWindows ? "%LocalAppData%\\Syrus\\bin" : "~/.local/bin"} and signs in automatically with this app's credentials. ` +
-        "You can do this later from Preferences.",
-      checkboxLabel: `Also add the Claude Code skill, so coding agents on this ${isWindows ? "PC" : "Mac"} can drive Syrus`,
-      checkboxChecked: true
+        `Claude Code (or Codex) is set up on this ${isWindows ? "PC" : "Mac"}. ` +
+        "Adding the Syrus skill lets agent sessions file work, check job status, and drive reviews through the syrus CLI. " +
+        "It writes one file under ~/.claude/skills and keeps itself current with app updates. " +
+        "You can add or remove it any time from Preferences.",
     })
 
     // Asked and answered — either way, don't nag on every navigation.
-    store.set("cliInstallOffered", true)
+    store.set("skillInstallOffered", true)
 
     if (response !== 0) {
       return
     }
 
-    const result = await performCliInstall({ withSkill: checkboxChecked })
-    if (!result.installed) {
+    // The CLI is normally already present (ensureCliCurrent at launch); a
+    // missing binary here just means that install failed, so retry it with
+    // the skill in one go.
+    let skillError: string | null = null
+    try {
+      await execFileAsync(localBinSyrus(), ["skill", "install"], { windowsHide: true })
+    } catch {
+      const result = await performCliInstall({ withSkill: true })
+      if (!result.skillInstalled) {
+        skillError = result.skillError ?? result.error ?? "Could not install the skill."
+      }
+    }
+
+    if (skillError) {
       await dialog.showMessageBox(window, {
         type: "warning",
-        message: "The Syrus CLI could not be installed.",
-        detail: `${result.error ?? "Unknown error."} You can retry from Preferences → Projects.`
+        message: "The Syrus skill could not be added.",
+        detail: `${skillError} You can retry from Preferences → Projects.`
       })
       return
     }
 
-    const detailLines = [`Installed to ${result.target}.`]
-    if (result.skillInstalled) {
-      detailLines.push("Claude Code skill added — new agent sessions can drive Syrus via the CLI.")
-    }
-    if (result.skillError) {
-      detailLines.push(`Claude Code skill failed: ${result.skillError}`)
-    }
-    if (!result.onPath) {
-      detailLines.push(
-        isWindows
-          ? "Open a NEW terminal to use `syrus` — already-open ones keep the old PATH."
-          : 'To use it from a terminal, add: export PATH="$HOME/.local/bin:$PATH"'
-      )
-    }
     await dialog.showMessageBox(window, {
       type: "info",
-      message: "Syrus CLI installed",
-      detail: detailLines.join("\n")
+      message: "Syrus skill added",
+      detail: "New Claude Code sessions can now drive Syrus through the syrus CLI."
     })
   } finally {
-    cliOfferInFlight = false
+    skillOfferInFlight = false
   }
 }
 
@@ -1471,20 +1524,12 @@ const popoverPosition = () => {
     y: Math.round(trayBounds.y + trayBounds.height / 2)
   }).workArea
 
-  let x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2)
-
-  // Mac menu bar sits at the top → popover opens below the tray icon. The
-  // Windows taskbar usually sits at the bottom → opening "below" would put
-  // the popover off-screen, so open ABOVE when the tray is in the lower
-  // half of the display.
-  const trayInLowerHalf = trayBounds.y > workArea.y + workArea.height / 2
-  let y = trayInLowerHalf
-    ? Math.round(trayBounds.y - windowBounds.height - 4)
-    : Math.round(trayBounds.y + trayBounds.height + (process.platform === "darwin" ? 0 : 4))
-
-  // Clamp into the work area (multi-monitor edges, vertical taskbars).
-  x = Math.min(Math.max(x, workArea.x), workArea.x + workArea.width - windowBounds.width)
-  y = Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - windowBounds.height)
+  const { x, y } = computePopoverPosition({
+    trayBounds,
+    windowBounds,
+    workArea,
+    platform: process.platform
+  })
 
   mainWindow.setPosition(x, y, false)
 }
@@ -1732,14 +1777,14 @@ const showWebAppWindow = async () => {
   handle.window.webContents.on("did-navigate-in-page", attemptTokenProvisioning)
 
   // One-time post-setup step: once the user is signed in and lands on the
-  // home surface (never mid-onboarding), offer to install the bundled CLI
-  // and the Claude Code skill. Native dialog because the remote web app
-  // deliberately has no IPC bridge.
-  const attemptCliOffer = () => {
-    void offerCliSetupIfReady(handle.window)
+  // home surface (never mid-onboarding), offer the Claude Code skill if a
+  // coding agent is set up on this machine. Native dialog because the
+  // remote web app deliberately has no IPC bridge.
+  const attemptSkillOffer = () => {
+    void offerSkillIfAgentDetected(handle.window)
   }
-  handle.window.webContents.on("did-finish-load", attemptCliOffer)
-  handle.window.webContents.on("did-navigate-in-page", attemptCliOffer)
+  handle.window.webContents.on("did-finish-load", attemptSkillOffer)
+  handle.window.webContents.on("did-navigate-in-page", attemptSkillOffer)
 
   try {
     await webAppWindow.loadServerUrl()
@@ -2437,6 +2482,10 @@ app.whenReady().then(async () => {
 
   createMenu()
   await loadCredentials()
+  // Batteries included: keep the CLI matching this app version. Fire and
+  // forget — a failure self-heals next launch, and nothing downstream
+  // blocks on it (tray Checkout re-probes availability per click).
+  void ensureCliCurrent().catch(() => {})
   await migrateBackendConfig(cachedCredentials?.url ?? null)
   startAppUserCable(cachedCredentials)
   createTray()

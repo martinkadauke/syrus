@@ -117,24 +117,11 @@ export const installWsl = async (): Promise<void> => {
   )
 }
 
+// Detecting and starting an ALREADY-INSTALLED Podman Desktop (Docker
+// socket enabled) is supported below; the guided setup's download
+// recommendation is Docker-Desktop-only — Podman compose isn't supported,
+// so the UI never suggests installing it (windows_scaffold_spec pins this).
 export type RuntimeApp = "OrbStack" | "Docker Desktop" | "Colima" | "Podman Desktop"
-
-// Per-platform runtime recommendation for the "no Docker runtime" screen.
-// macOS: OrbStack (fast, free for personal use). Windows: Docker Desktop as
-// the default happy path, Podman Desktop as the open-source alternative —
-// see docs/windows-desktop-plan.md for the reasoning.
-export const runtimeRecommendation = () =>
-  process.platform === "win32"
-    ? {
-        name: "Docker Desktop" as const,
-        downloadUrl: "https://www.docker.com/products/docker-desktop/",
-        alternative: { name: "Podman Desktop" as const, downloadUrl: "https://podman-desktop.io/downloads" }
-      }
-    : {
-        name: "OrbStack" as const,
-        downloadUrl: "https://orbstack.dev/download",
-        alternative: null
-      }
 
 const colimaBinary = (): string | null => {
   for (const dir of ["/opt/homebrew/bin", "/usr/local/bin"]) {

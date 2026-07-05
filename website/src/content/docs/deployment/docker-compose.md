@@ -94,14 +94,17 @@ parsing text:
 | `11` | A runtime exists but its daemon never became ready. |
 | `12` | Docker Compose is not available. |
 | `20` | The `syrus_syrus-data` volume exists but `.env` is missing — the encryption-key guard. Restore the original `.env` or wipe with `docker compose down -v`. |
-| `30` | Image pull failed (network, tag, or package visibility) and no local copy of the image exists. |
+| `30` | Image pull failed for a network or other unclassified reason, and no local copy of the image exists. |
+| `31` | The registry denied the pull (private package, unpublished tag, or not logged in) and no local copy exists. |
+| `32` | The image tag does not exist in the registry and no local copy exists. |
 | `40` | `docker compose up` failed. |
 | `41` | The stack started but never became healthy. |
 
 The pull is retried twice before failing. If the pull still fails but the
 image already exists in the local Docker image store — a previous install,
 or a copy you built yourself — the installer continues with that local copy
-instead of exiting 30. That makes fork development and offline reinstalls
+instead of exiting with a pull-failure code (30/31/32). That makes fork
+development and offline reinstalls
 work without registry access: `docker build`/`bin/compose-up` the image
 under the pinned name, then run the installer normally.
 

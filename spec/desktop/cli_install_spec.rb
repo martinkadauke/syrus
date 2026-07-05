@@ -4,10 +4,12 @@ require "json"
 require "spec_helper"
 
 # The desktop app is the CLI's distribution channel for users without a
-# repo clone (docs/cli-desktop-plan.md): per-arch pure-Go binaries staged
-# into the bundle, one-click install to ~/.local/bin, credentials shared
-# through ~/.syrus/credentials so the CLI is signed in on first run, and an
-# optional Claude Code skill installed through the CLI's own
+# repo clone (docs/install-experience-spec.md): per-arch pure-Go binaries
+# staged into the bundle, installed silently at launch and kept current by
+# a per-launch content-hash check (the binary has no version command),
+# credentials shared through ~/.syrus/credentials so the CLI is signed in
+# on first run, and an optional Claude Code skill — the one piece that IS
+# offered rather than imposed — installed through the CLI's own
 # `skill install` subcommand.
 RSpec.describe "desktop CLI install" do
   let(:repo_root) { File.expand_path("../..", __dir__) }
@@ -48,7 +50,10 @@ RSpec.describe "desktop CLI install" do
     expect(probe).to include('"Syrus", "bin", "syrus.exe"')
 
     install = main[/const performCliInstall[\s\S]{0,3600}/]
-    expect(install).to match(/syrus-\$\{process\.platform\}-/)
+    # The bundled-source path derivation lives in bundledCliPath so the
+    # launch-time freshness check and the installer share it.
+    expect(main[/const bundledCliPath[\s\S]{0,500}/]).to match(/syrus-\$\{process\.platform\}-/)
+    expect(install).to include("const source = bundledCliPath()")
     # No credentials writing here: credentialsStore.ts owns
     # ~/.syrus/credentials, and the app already keeps it in the CLI-shared
     # format — the CLI is signed in the moment the binary lands.
@@ -85,22 +90,61 @@ RSpec.describe "desktop CLI install" do
     expect(install).to include("skillError")
   end
 
-  it "offers CLI setup once after onboarding, from the main process" do
+  it "installs the CLI silently at launch and refreshes it on every app update" do
+    main = read("electron/main.ts")
+    # Batteries included (spec I1/I2): no dialog, no opt-out — the launch
+    # path compares the bundled binary's content hash against the installed
+    # one (the Go binary ships no version command) and reinstalls on drift,
+    # which is exactly the post-auto-update state.
+    ensure_current = main[/const ensureCliCurrent[\s\S]{0,1400}/]
+    expect(ensure_current).to include("fileSha256(bundledCliPath())")
+    expect(ensure_current).to include("fileSha256(localBinSyrus())")
+    expect(ensure_current).to match(/installedHash === bundledHash/)
+    # A previously installed skill rides along so its content tracks the CLI.
+    expect(ensure_current).to match(/performCliInstall\(\{ withSkill: skillPresent \}\)/)
+    # Wired into app.whenReady, non-blocking, failure self-heals next launch.
+    expect(main).to match(/void ensureCliCurrent\(\)\.catch/)
+    # Dev builds without staged binaries must skip, not error.
+    expect(ensure_current).to match(/if \(bundledHash === null\)/)
+  end
+
+  it "offers the Claude Code skill once, only when a coding agent is present" do
     main = read("electron/main.ts")
     # The web app window has no IPC bridge (remote content), so the setup
-    # step is the main process watching navigation events.
-    expect(main).to include("const offerCliSetupIfReady")
-    offer = main[/const offerCliSetupIfReady[\s\S]{0,3400}/]
+    # step is the main process watching navigation events. The skill is the
+    # ONE offered piece — it writes into another tool's config dir (spec I4).
+    expect(main).to include("const offerSkillIfAgentDetected")
+    offer = main[/const offerSkillIfAgentDetected[\s\S]{0,4200}/]
     # Never interrupt onboarding/auth — only the settled home surface.
     expect(offer).to match(%r{pathname !== "/" && pathname !== "/dashboard"})
-    # Asked-and-answered: one offer, ever.
-    expect(offer).to include('store.set("cliInstallOffered", true)')
-    expect(offer).to include("checkboxLabel")
-    expect(main).to match(/did-navigate-in-page", attemptCliOffer/)
+    # Gated on agent presence (~/.claude or ~/.codex), and the once-only
+    # flag must NOT burn while no agent is detected — the offer stays live
+    # for the launch after Claude Code shows up.
+    expect(offer).to match(/if \(!\(await agentToolPresent\(\)\)\)/)
+    detection = main[/const agentToolPresent[\s\S]{0,600}/]
+    expect(detection).to include('".claude"')
+    expect(detection).to include('".codex"')
+    # Asked-and-answered: one offer, ever; the legacy CLI-offer flag counts
+    # (that dialog included the skill checkbox).
+    expect(offer).to include('store.set("skillInstallOffered", true)')
+    expect(offer).to include('store.get("cliInstallOffered", false)')
+    expect(main).to match(/did-navigate-in-page", attemptSkillOffer/)
 
     settings = read("electron/settings.ts")
-    expect(settings).to include("cliInstallOffered: boolean")
-    expect(settings).to include("cliInstallOffered: false")
+    expect(settings).to include("skillInstallOffered: boolean")
+    expect(settings).to include("skillInstallOffered: false")
+  end
+
+  it "documents the install experience and keeps Preferences as the fallback surface" do
+    spec_doc = File.read(File.join(repo_root, "docs/install-experience-spec.md"), encoding: "UTF-8")
+    expect(spec_doc).to include("I1. The CLI is always installed.")
+    expect(spec_doc).to include("content hash")
+    expect(spec_doc).to include("~/.codex")
+
+    app = read("src/App.tsx")
+    section = app[/export function CliInstallSection[\s\S]{0,3200}/]
+    expect(section).to include("kept current automatically")
+    expect(section).to include("Reinstall CLI")
   end
 
   it "finds and executes the installed CLI even though GUI PATH lacks ~/.local/bin" do
