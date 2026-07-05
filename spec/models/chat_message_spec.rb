@@ -194,4 +194,52 @@ RSpec.describe ChatMessage do
       expect(session.reload.suggested_next_step).to eq("Create an Epic from these findings")
     end
   end
+
+  describe "#sender" do
+    let(:sender) { Factories.user }
+
+    it "returns the sender_user for user-role messages" do
+      message = described_class.create!(
+        chat_session: session,
+        role: "user",
+        content: { "text" => "Hello" },
+        sender_user: sender
+      )
+
+      expect(message.sender).to eq(sender)
+    end
+
+    it "returns nil for non-user-role messages even if sender_user is set" do
+      message = described_class.create!(
+        chat_session: session,
+        role: "assistant",
+        content: { "text" => "Hello" },
+        sender_user: sender
+      )
+
+      expect(message.sender).to be_nil
+    end
+
+    it "returns nil for user-role messages without a sender_user" do
+      message = described_class.create!(
+        chat_session: session,
+        role: "user",
+        content: { "text" => "Hello" }
+      )
+
+      expect(message.sender).to be_nil
+    end
+  end
+
+  it "fans out broadcast_app_event to all session participants" do
+    other_user = Factories.user
+    session.chat_participants.create!(user: other_user, role: "member")
+
+    allow(AppEvents).to receive(:broadcast)
+
+    described_class.create!(chat_session: session, role: "user", content: { "text" => "Hello" })
+
+    expect(AppEvents).to have_received(:broadcast).with(hash_including(user: session.user))
+    expect(AppEvents).to have_received(:broadcast).with(hash_including(user: other_user))
+  end
 end

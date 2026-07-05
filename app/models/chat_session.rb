@@ -7,7 +7,12 @@ class ChatSession < ApplicationRecord
   DAEMON_STATES = %w[connected disconnected].freeze
   EFFORT_LEVELS = %w[none medium high].freeze
 
+  TRIGGER_POLICIES = %w[speak_when_spoken_to].freeze
+
   belongs_to :user
+
+  has_many :chat_participants, dependent: :destroy
+  has_many :participants, through: :chat_participants, source: :user
 
   has_many :chat_attachments, dependent: :destroy
   has_many :repository_attachments,
@@ -67,6 +72,7 @@ class ChatSession < ApplicationRecord
   after_update_commit :broadcast_header, if: :header_previously_changed?
   before_validation :seed_chat_provider, on: :create
   after_create :attach_initial_repository
+  after_create :add_owner_participant
   # prepend: dependent-association callbacks (declared above) also run
   # as before_destroy; the pending JobDependency placeholders must be
   # released BEFORE `dependent: :destroy` deletes the proposals they
@@ -97,6 +103,7 @@ class ChatSession < ApplicationRecord
   validates :share_token, uniqueness: true, allow_nil: true
   validates :system_kind, uniqueness: { scope: :user_id }, allow_nil: true
   validate :enabled_supervisor_affordance_is_preserved, if: :enabled_supervisor_chat?
+  validates :trigger_policy, inclusion: { in: TRIGGER_POLICIES }
 
   normalizes :chat_provider, with: ->(value) { value.to_s.strip.presence }
   normalizes :chat_model, with: ->(value) { value.to_s.strip.presence }
@@ -115,6 +122,22 @@ class ChatSession < ApplicationRecord
     return unless repository
 
     repository.try(:name).presence || repository.try(:slug).presence
+  end
+
+  def self.for_platform(user:, platform:)
+    existing = joins(:chat_participants)
+      .where(origin_platform: platform, chat_participants: { user_id: user.id })
+      .first
+    return existing if existing
+
+    transaction do
+      session = create!(
+        user: user,
+        trigger_policy: "speak_when_spoken_to",
+        origin_platform: platform
+      )
+      session
+    end
   end
 
   def title_pending?
@@ -287,8 +310,7 @@ class ChatSession < ApplicationRecord
   def broadcast_app_header_update
     repository = self.repository
     effective_provider = effective_chat_provider
-    AppEvents.broadcast(
-      user: user,
+    broadcast_to_participants(
       type: "updated",
       resource: "chat",
       id: id,
@@ -376,8 +398,7 @@ class ChatSession < ApplicationRecord
   end
 
   def broadcast_app_controls_update(switching_provider: false)
-    AppEvents.broadcast(
-      user: user,
+    broadcast_to_participants(
       type: "updated",
       resource: "chat",
       id: id,
@@ -399,6 +420,16 @@ class ChatSession < ApplicationRecord
   end
 
   private
+
+  def broadcast_to_participants(**event_args)
+    (participants.to_a.presence || [ user ]).each do |p|
+      AppEvents.broadcast(user: p, **event_args)
+    end
+  end
+
+  def add_owner_participant
+    chat_participants.create!(user: user, role: "owner", joined_at: created_at)
+  end
 
   def header_previously_changed?
     saved_change_to_title? ||

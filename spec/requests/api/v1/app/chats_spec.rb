@@ -4013,6 +4013,71 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(chat.reload.chat_model).to be_nil
   end
 
+  describe "participant-based access" do
+    let(:owner) { Factories.user(claude_oauth_token: "oat-owner") }
+    let(:participant) { Factories.user(claude_oauth_token: "oat-participant") }
+    let(:stranger) { Factories.user }
+    let(:owner_chat) { ChatSession.create!(user: owner, title: "Multi-party planning") }
+
+    before { owner_chat.chat_participants.create!(user: participant, role: "member") }
+
+    it "lets a participant (non-owner) read the chat via show" do
+      sign_in_as(participant)
+
+      get "/api/v1/app/chats/#{owner_chat.id}"
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body.dig("chat", "id")).to eq(owner_chat.id)
+    end
+
+    it "lets a participant post a message" do
+      allow(ChatTurnJob).to receive(:perform_later)
+
+      sign_in_as(participant)
+
+      post "/api/v1/app/chats/#{owner_chat.id}/message", params: { content: "What is the plan?" }
+
+      expect(response).to have_http_status(:ok)
+      message = owner_chat.messages.where(role: "user").last
+      expect(message.sender_user_id).to eq(participant.id)
+    end
+
+    it "returns 404 for a user who is not a participant" do
+      sign_in_as(stranger)
+
+      get "/api/v1/app/chats/#{owner_chat.id}"
+
+      expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "sender_user_id tracking" do
+    let(:chat) { ChatSession.create!(user: user, title: "Tracking test") }
+
+    it "records sender_user_id on user messages posted via the message action" do
+      allow(ChatTurnJob).to receive(:perform_later)
+      sign_in_as(user)
+
+      post "/api/v1/app/chats/#{chat.id}/message", params: { content: "Hello" }
+
+      expect(response).to have_http_status(:ok)
+      message = chat.messages.where(role: "user").last
+      expect(message.sender_user_id).to eq(user.id)
+    end
+
+    it "records sender_user_id on user messages when creating a chat with an initial message" do
+      allow(ChatTurnJob).to receive(:perform_later)
+      sign_in_as(user)
+
+      post "/api/v1/app/chats", params: { content: "Create and send" }
+
+      expect(response).to have_http_status(:created)
+      new_chat = ChatSession.find(parse_body.dig("chat", "id"))
+      message = new_chat.messages.where(role: "user").last
+      expect(message.sender_user_id).to eq(user.id)
+    end
+  end
+
   def create_indexed_message(chat_session, text:, role: "assistant")
     message = chat_session.messages.create!(role: role, content: { "text" => text })
     ChatMessageSearchIndex.insert(message)

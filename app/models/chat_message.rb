@@ -5,6 +5,7 @@ class ChatMessage < ApplicationRecord
   belongs_to :chat_session
   belongs_to :proposal, class_name: "ChatProposal", optional: true
   belongs_to :pending_action, class_name: "ChatPendingAction", optional: true
+  belongs_to :sender_user, class_name: "User", optional: true
 
   has_many :bookmarks, class_name: "ChatBookmark", dependent: :destroy, inverse_of: :chat_message
   has_many :scoped_events, class_name: "ChatScopedEvent", dependent: :nullify
@@ -19,6 +20,10 @@ class ChatMessage < ApplicationRecord
 
   def bookmarkable?
     role.in?(%w[user assistant])
+  end
+
+  def sender
+    role == "user" ? sender_user : nil
   end
 
   # Returns true when the content column uses the Anthropic messages API
@@ -51,8 +56,7 @@ class ChatMessage < ApplicationRecord
                .to_a
                .reverse
 
-    AppEvents.broadcast(
-      user: chat.user,
+    event_args = {
       type: "updated",
       resource: "chat",
       id: chat_session_id,
@@ -66,7 +70,11 @@ class ChatMessage < ApplicationRecord
         stop_requested_at: chat.stop_requested_at&.iso8601,
         queued_messages: chat.queued_messages_payload
       }
-    )
+    }
+
+    (chat.participants.to_a.presence || [ chat.user ]).each do |p|
+      AppEvents.broadcast(user: p, **event_args)
+    end
   end
 
   def record_chat_turn_state
