@@ -26,6 +26,10 @@ class Installation < ApplicationRecord
     refresh_token!
   end
 
+  def invalidate_cached_token!
+    update!(cached_token: nil, cached_token_expires_at: nil)
+  end
+
   private
 
   def refresh_token!

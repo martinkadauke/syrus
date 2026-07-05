@@ -20,14 +20,21 @@ class GithubClient
 
   attr_reader :access_token
 
-  def self.for(repository:, user: nil)
+  def self.active_installation_for(repository:, user: nil)
     raise ArgumentError, "repository is required" unless repository
 
     membership_installation = user && repository.repository_memberships.find_by(user_id: user.id)&.installation
     installation = membership_installation || repository.installation
+    installation if installation&.active?
+  end
+
+  def self.for(repository:, user: nil)
+    raise ArgumentError, "repository is required" unless repository
+
+    installation = active_installation_for(repository: repository, user: user)
     actor = user || repository.user
 
-    if installation&.active?
+    if installation
       begin
         return new(repository: repository, user: actor, installation: installation, access_token: installation.fresh_token, auth_source: :installation)
       rescue Octokit::Unauthorized, Octokit::NotFound => e

@@ -102,6 +102,77 @@ RSpec.describe "Steps::MergeTrain*" do
       expect(handler.workflow.artifact("merge_train_base_sha")).to eq("basesha123")
     end
 
+    it "refreshes the installation token and retries when GitHub rejects an authenticated fetch" do
+      installation = Factories.installation(
+        user: user,
+        cached_token: "ghs_expired",
+        cached_token_expires_at: 30.minutes.from_now
+      )
+      repository.update!(installation: installation)
+      expired_client = instance_double(GithubClient, access_token: "ghs_expired")
+      fresh_client = instance_double(GithubClient, access_token: "ghs_fresh")
+      expired_url = "https://x-access-token:expired@github.com/acme/widgets.git"
+      fresh_url = "https://x-access-token:fresh@github.com/acme/widgets.git"
+      allow(GithubClient).to receive(:for).and_return(expired_client, fresh_client, fresh_client)
+      allow(GithubClient).to receive(:active_installation_for)
+        .with(repository: repository, user: user)
+        .and_return(installation)
+      allow_any_instance_of(Repository).to receive(:authenticated_push_url)
+        .with("ghs_expired")
+        .and_return(expired_url)
+      allow_any_instance_of(Repository).to receive(:authenticated_push_url)
+        .with("ghs_fresh")
+        .and_return(fresh_url)
+
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      handler = step_handler(described_class, "merge_train_build", train, a)
+      git = stub_git(handler)
+      allow(handler).to receive(:run_agent)
+      auth_error = GitRunner::GitError.new(
+        [ "fetch", expired_url, "refs/heads/master" ],
+        128,
+        "remote: Invalid username or token.\nfatal: Authentication failed for 'https://github.com/acme/widgets.git/'"
+      )
+      allow(git).to receive(:run)
+        .with("fetch", expired_url, "refs/heads/master", chdir: "/tmp/ws")
+        .and_raise(auth_error)
+
+      handler.call
+
+      expect(installation.reload.cached_token).to be_nil
+      expect(git).to have_received(:run).with("fetch", expired_url, "refs/heads/master", chdir: "/tmp/ws").once
+      expect(git).to have_received(:run).with("fetch", fresh_url, "refs/heads/master", chdir: "/tmp/ws").once
+      expect(git).to have_received(:run).with("fetch", fresh_url, "refs/heads/syrus/issue-1", chdir: "/tmp/ws").once
+      expect(train.reload.state).to eq("grading")
+    end
+
+    it "does not refresh the installation token for non-authenticated fetch failures" do
+      stale_client = instance_double(GithubClient, access_token: "ghs_stale")
+      stale_url = "https://x-access-token:stale@github.com/acme/widgets.git"
+      allow(GithubClient).to receive(:for).and_return(stale_client)
+      allow(GithubClient).to receive(:active_installation_for)
+      allow_any_instance_of(Repository).to receive(:authenticated_push_url)
+        .with("ghs_stale")
+        .and_return(stale_url)
+
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      handler = step_handler(described_class, "merge_train_build", train, a)
+      git = stub_git(handler)
+      fetch_error = GitRunner::GitError.new(
+        [ "fetch", stale_url, "refs/heads/master" ],
+        128,
+        "fatal: couldn't find remote ref refs/heads/master"
+      )
+      allow(git).to receive(:run)
+        .with("fetch", stale_url, "refs/heads/master", chdir: "/tmp/ws")
+        .and_raise(fetch_error)
+
+      expect { handler.call }.to raise_error(GitRunner::GitError, /couldn't find remote ref/)
+      expect(GithubClient).not_to have_received(:active_installation_for)
+    end
+
     it "skips prepare and graders when the built integration SHA already passed grading" do
       a = member_job(issue_number: 1)
       b = member_job(issue_number: 2)
