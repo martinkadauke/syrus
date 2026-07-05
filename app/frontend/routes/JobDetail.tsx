@@ -6,12 +6,14 @@ import { ApiError } from "../api/client"
 import { createTerminalSession } from "../api/terminal"
 import { AnsiText } from "../components/AnsiText"
 import { CloseIcon } from "../components/CloseIcon"
+import { KeyValue } from "../components/KeyValue"
 import { CopyableSlug } from "../components/CopyableSlug"
 import { NoticeToast } from "../components/NoticeToast"
 import { StatusPill } from "../components/StatusPill"
 import { Markdown } from "../lib/Markdown"
 import { workflowSlug } from "../lib/slugs"
 import { highlightCode, type SyntaxLanguage } from "../lib/syntaxHighlight"
+import { buttonClass, type ButtonTone } from "../lib/buttonClasses"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import {
   createJobAttachments,
@@ -44,7 +46,6 @@ type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
   | { method: "patch"; path: string; body?: unknown; confirm?: string }
   | { method: "delete"; path: string; confirm?: string }
-type ButtonTone = "primary" | "secondary" | "success" | "danger" | "danger-outline"
 type HeaderAction = {
   key: string
   label: string
@@ -313,7 +314,7 @@ function JobFeedbackPanel({ error, isPending, onCancel, onSubmit }: { error: Err
       <form className="space-y-3" onSubmit={submit}>
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100" id="job-feedback-title">Give feedback</h2>
         <textarea
-          className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+          className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-blue-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
           disabled={isPending}
           onChange={(event) => setBody(event.target.value)}
           placeholder="What should be changed?"
@@ -464,7 +465,7 @@ function RetryFeedbackDialog({ command, path, onClose }: { command: ReturnType<t
           </label>
           <textarea
             autoFocus
-            className="min-h-36 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
+            className="min-h-36 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-blue-600 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100"
             id="retry-feedback-text"
             onChange={(event) => setFeedback(event.target.value)}
             required
@@ -509,12 +510,12 @@ function TagsPanel({ payload, command, embedded = false, canManageTags }: { payl
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Tags</h2>
         {payload.tags.map((tag) => (
-          <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-200" key={tag.id}>
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-200" key={tag.id}>
             {tag.name}
             {canManageTags ? (
               <button
                 aria-label={`Remove ${tag.name}`}
-                className="inline-flex h-4 w-4 items-center justify-center rounded text-gray-400 hover:bg-gray-200 hover:text-red-600 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-red-300"
+                className="inline-flex h-4 w-4 items-center justify-center rounded text-red-500 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
                 disabled={command.isPending}
                 onClick={() => command.mutate({ method: "delete", path: `${payload.paths.app_tags_path}/${tag.id}` })}
                 title={`Remove ${tag.name}`}
@@ -2211,14 +2212,6 @@ function withRoutePrefix(path: string, prefix: string) {
   return `${prefix}${path}`
 }
 
-function KeyValue({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <div className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{label}</div>
-      <div className="mt-1 text-gray-800 dark:text-gray-200">{children}</div>
-    </div>
-  )
-}
 
 function MergeablePill({ value }: { value: boolean | null }) {
   if (value === true) return <StatusPill state="mergeable" />
@@ -2267,18 +2260,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
     muted: "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
   }
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
-}
-
-function buttonClass(tone: ButtonTone) {
-  const base = "inline-flex items-center rounded px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
-  const tones = {
-    primary: "bg-blue-600 text-white hover:bg-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400",
-    secondary: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800",
-    success: "bg-emerald-600 text-white hover:bg-emerald-500 dark:bg-emerald-500 dark:hover:bg-emerald-400",
-    danger: "bg-red-600 text-white hover:bg-red-500 dark:bg-red-500 dark:hover:bg-red-400",
-    "danger-outline": "border border-red-300 bg-white text-red-700 hover:bg-red-50 dark:border-red-800 dark:bg-gray-900 dark:text-red-400 dark:hover:bg-red-950/30"
-  }
-  return `${base} ${tones[tone]}`
 }
 
 function menuButtonClass(tone: ButtonTone) {

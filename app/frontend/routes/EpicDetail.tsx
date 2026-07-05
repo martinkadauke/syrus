@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@
 import { type FormEvent, type ReactNode } from "react"
 import { useEffect, useRef, useState } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
+import { buttonClass } from "../lib/buttonClasses"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
@@ -26,6 +27,7 @@ import {
 } from "../api/epics"
 import { Markdown } from "../lib/Markdown"
 import { CopyableSlug } from "../components/CopyableSlug"
+import { KeyValue } from "../components/KeyValue"
 
 let mermaidInitialized = false
 let mermaidInitializedTheme: "base" | "dark" | null = null
@@ -95,7 +97,7 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
     <>
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="break-words text-2xl font-bold text-gray-900 dark:text-gray-100">
+          <h1 className="break-words text-3xl font-semibold text-gray-900 dark:text-gray-100">
             <CopyableSlug slug={payload.epic.display_number} />
             <span className="px-2 text-gray-400 dark:text-gray-500">·</span>
             {payload.epic.title}
@@ -114,7 +116,7 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
           <div className="flex flex-wrap items-center gap-2">
             {payload.epic.claimable && payload.epic.owner_status === "unclaimed" ? (
               <button
-                className={secondaryButton()}
+                className={buttonClass("secondary")}
                 disabled={command.isPending}
                 onClick={() => command.mutate({ kind: "claim" })}
                 type="button"
@@ -124,7 +126,7 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
             ) : null}
             {payload.epic.claimable && payload.epic.owned_by_current_user ? (
               <button
-                className={secondaryButton()}
+                className={buttonClass("secondary")}
                 disabled={command.isPending}
                 onClick={() => command.mutate({ kind: "unclaim" })}
                 type="button"
@@ -133,7 +135,7 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
               </button>
             ) : null}
             {!payload.epic.archived ? (
-              <Link className={primaryButton()} to={withRoutePrefix(payload.paths.edit_epic_path, prefix)}>Edit</Link>
+              <Link className={buttonClass("primary")} to={withRoutePrefix(payload.paths.edit_epic_path, prefix)}>Edit</Link>
             ) : null}
             {payload.state_transitions.length > 0 ? (
               <EpicActionsMenu disabled={command.isPending} onTransition={runTransition} transitions={payload.state_transitions} />
@@ -161,7 +163,7 @@ function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; prefix: s
       <div className="grid gap-6 lg:grid-cols-[62%_38%]">
         <div className="space-y-6">
           {payload.epic.description.trim() ? (
-            <section className="rounded border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+            <section className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
               <h2 className="font-semibold text-gray-900 dark:text-gray-100">Description</h2>
               <Markdown className="chat-prose mt-2 text-sm text-gray-700 dark:text-gray-300" text={payload.epic.description} />
             </section>
@@ -206,32 +208,38 @@ function DependenciesSection({
   return (
     <section className="space-y-4">
       <div className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100">Dependencies</h2>
-        <h3 className="mt-3 text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Depends on</h3>
-        {dependencies.length > 0 ? (
-          <ul className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
-            {dependencies.map((dependency) => (
-              <li className="flex min-h-10 items-center justify-between gap-3 py-2" key={dependency.epic_id}>
-                <span className="flex min-w-0 flex-wrap items-center gap-2">
-                  <Link className="min-w-0 break-words text-blue-600 hover:underline dark:text-blue-300" to={withRoutePrefix(dependency.url, prefix)}>{dependency.title}</Link>
-                  <StatePill state={dependency.state} />
-                </span>
-                <button
-                  aria-label={`Remove dependency on ${dependency.title}`}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/40"
-                  disabled={command.isPending}
-                  onClick={() => command.mutate({ kind: "remove", dependsOnEpicId: dependency.epic_id })}
-                  title={`Remove dependency on ${dependency.title}`}
-                  type="button"
-                >
-                  <CloseIcon className="h-4 w-4" />
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-2 text-gray-400 dark:text-gray-500">None</p>
-        )}
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Dependencies</h2>
+        <dl className="mt-3">
+          <div>
+            <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Depends on</dt>
+            <dd className="mt-2">
+              {dependencies.length > 0 ? (
+                <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {dependencies.map((dependency) => (
+                    <li className="flex min-h-10 items-center justify-between gap-3 py-2" key={dependency.epic_id}>
+                      <span className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Link className="min-w-0 break-words text-blue-600 hover:underline dark:text-blue-300" to={withRoutePrefix(dependency.url, prefix)}>{dependency.title}</Link>
+                        <StatePill state={dependency.state} />
+                      </span>
+                      <button
+                        aria-label={`Remove dependency on ${dependency.title}`}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-red-200 text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/40"
+                        disabled={command.isPending}
+                        onClick={() => command.mutate({ kind: "remove", dependsOnEpicId: dependency.epic_id })}
+                        title={`Remove dependency on ${dependency.title}`}
+                        type="button"
+                      >
+                        <CloseIcon className="h-4 w-4" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-gray-400 dark:text-gray-500">None</p>
+              )}
+            </dd>
+          </div>
+        </dl>
         <form className="mt-4 flex flex-wrap items-end gap-2 border-t border-gray-100 pt-3 dark:border-gray-800" onSubmit={submit}>
           <EpicDependencyTypeahead
             currentEpicId={currentEpicId}
@@ -239,12 +247,12 @@ function DependenciesSection({
             onChange={setSelectedDependency}
             selected={selectedDependency}
           />
-          <button className={secondaryButton()} disabled={command.isPending || !selectedDependency} type="submit">Add</button>
+          <button className={buttonClass("secondary")} disabled={command.isPending || !selectedDependency} type="submit">Add</button>
         </form>
         {command.isError ? <p className="mt-2 text-sm text-red-700 dark:text-red-300" role="alert">{errorMessage(command.error, "Unable to update dependencies.")}</p> : null}
       </div>
       <div className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100">Depended on by</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Depended on by</h2>
         {dependents.length > 0 ? (
           <ul className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
             {dependents.map((dependent) => (
@@ -480,7 +488,7 @@ export function JobsSection({ epicRepositorySlug, jobs, newJobPath, prefix }: { 
   return (
     <section className="rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
       <div className="flex items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
-        <h2 className="font-semibold text-gray-900 dark:text-gray-100">Jobs</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Jobs</h2>
         <Link className="text-xs text-blue-600 hover:underline dark:text-blue-400" to={withRoutePrefix(newJobPath, prefix)}>+ Add Job</Link>
       </div>
       {jobs.length > 0 ? (
@@ -596,34 +604,26 @@ function DetailsPanel({ epic, jobs, prefix }: { epic: EpicDetailPayload["epic"];
   return (
     <section className="rounded border border-gray-200 bg-white p-4 text-sm dark:border-gray-700 dark:bg-gray-900">
       <h2 className="font-semibold text-gray-900 dark:text-gray-100">Details</h2>
-      <dl className="mt-3 space-y-3">
-        <div>
-          <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Owner</dt>
-          <dd className="mt-0.5 text-gray-700 dark:text-gray-200">{owner ? owner.email_address : "Unclaimed"}</dd>
-        </div>
+      <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3">
+        <KeyValue label="Owner">{owner ? owner.email_address : "Unclaimed"}</KeyValue>
         {activeMembers.length > 0 ? (
-          <div>
-            <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Active members</dt>
-            <dd className="mt-0.5 space-y-0.5">
+          <KeyValue label="Active members">
+            <div className="space-y-0.5">
               {activeMembers.map((member) => (
-                <div className="text-gray-700 dark:text-gray-200" key={member.id}>{member.email_address}</div>
+                <div key={member.id}>{member.email_address}</div>
               ))}
-            </dd>
-          </div>
+            </div>
+          </KeyValue>
         ) : null}
-        <div>
-          <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Repository</dt>
-          <dd className="mt-0.5">
-            <Link className="font-mono text-blue-600 hover:underline dark:text-blue-300" to={withRoutePrefix(epic.repository.repository_path, prefix)}>
-              {epic.repository.slug}
-            </Link>
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Updated</dt>
-          <dd className="mt-0.5 text-gray-700 dark:text-gray-200" title={formatDateTime(epic.updated_at)}>{formatRelative(epic.updated_at)}</dd>
-        </div>
-      </dl>
+        <KeyValue label="Repository">
+          <Link className="font-mono text-blue-600 hover:underline dark:text-blue-300" to={withRoutePrefix(epic.repository.repository_path, prefix)}>
+            {epic.repository.slug}
+          </Link>
+        </KeyValue>
+        <KeyValue label="Updated">
+          <span title={formatDateTime(epic.updated_at)}>{formatRelative(epic.updated_at)}</span>
+        </KeyValue>
+      </div>
     </section>
   )
 }
@@ -702,14 +702,6 @@ function PanelMessage({ children, tone = "success" }: { children: ReactNode; ton
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
-function primaryButton() {
-  return "rounded bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-500 dark:hover:bg-blue-500"
-}
-
-function secondaryButton() {
-  return "rounded border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-600"
-}
-
 function EpicActionsMenu({
   disabled,
   onTransition,
@@ -728,7 +720,7 @@ function EpicActionsMenu({
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="More actions"
-        className={secondaryButton()}
+        className={buttonClass("secondary")}
         disabled={disabled}
         onClick={() => setOpen((prev) => !prev)}
         type="button"
