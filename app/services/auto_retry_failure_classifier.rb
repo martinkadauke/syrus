@@ -39,7 +39,10 @@ class AutoRetryFailureClassifier
     /required graders? failed/i,
     /required grader failed/i,
     /rebase cap reached/i,
-    /This branch can't be rebased/i
+    /This branch can't be rebased/i,
+    /merge_train: base moved .* rebuild required/i,
+    /merge_train: missing built base SHA; rebuild required/i,
+    /merge_train: integration PR has merge conflicts .*operator intervention required/i
   ].freeze
 
   RETRYABLE_MESSAGE_PATTERNS = [

@@ -72,4 +72,36 @@ RSpec.describe LandingFailureHandler do
     expect(user.reload.landing_paused).to eq(false)
     expect(run.job_logs.pluck(:chunk)).to include(include("landing_queue: deferred landing because the rebase cap was reached"))
   end
+
+  it "preserves approval for stale merge-train builds so the train can rebuild" do
+    job = landing_job
+    run = auto_merge_run(job)
+    approved_at = job.approved_at
+
+    described_class.call(
+      job: job,
+      run: run,
+      reason: "merge_train: missing built base SHA; rebuild required"
+    )
+
+    expect(job.reload).to be_approved
+    expect(job.approved_at).to eq(approved_at)
+    expect(job.landing_failure_reason).to include("missing built base SHA")
+    expect(user.reload.landing_paused).to eq(false)
+    expect(run.job_logs.pluck(:chunk)).to include(include("merge-train validation is stale or incomplete"))
+  end
+
+  it "requires re-approval for genuine merge-train integration conflicts" do
+    job = landing_job
+
+    described_class.call(
+      job: job,
+      reason: "merge_train: integration PR has merge conflicts for PR #123: Pull Request has merge conflicts; operator intervention required"
+    )
+
+    expect(job.reload).to be_implemented
+    expect(job.approved_at).to be_nil
+    expect(job.landing_failure_reason).to include("integration PR has merge conflicts")
+    expect(user.reload.landing_paused).to eq(false)
+  end
 end

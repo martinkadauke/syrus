@@ -11,6 +11,8 @@ module Steps
     STALE_BASE_ARTIFACT = "merge_train_stale_base"
     INTEGRATION_PR_ARTIFACT = "merge_train_pr_number"
     STALE_BASE_FAILURE_PREFIX = "merge_train: base moved"
+    MISSING_BASE_FAILURE_PREFIX = "merge_train: missing built base SHA"
+    INTEGRATION_CONFLICT_FAILURE_PREFIX = "merge_train: integration PR has merge conflicts"
 
     def call
       train = merge_train
@@ -37,11 +39,24 @@ module Steps
 
     def ensure_base_unchanged!(train, client)
       built_base_sha = workflow.artifact(BASE_SHA_ARTIFACT).to_s.presence
-      return if built_base_sha.blank?
-
       current_base_sha = fetch_current_base_sha(train, client)
+
+      if built_base_sha.blank?
+        close_open_integration_pr!(
+          train,
+          client,
+          "Superseded by a rebuilt Syrus merge-train because this workflow predates base tracking."
+        )
+        raise_missing_base!(train, current_base_sha)
+      end
+
       return if current_base_sha == built_base_sha
 
+      close_open_integration_pr!(
+        train,
+        client,
+        "Superseded by a rebuilt Syrus merge-train because #{train.base_branch} moved while this train was landing."
+      )
       raise_stale_base!(train, built_base_sha, current_base_sha)
     end
 
@@ -60,11 +75,25 @@ module Steps
         {
           "base_branch" => train.base_branch,
           "built_base_sha" => built_base_sha,
-          "current_base_sha" => current_base_sha
+          "current_base_sha" => current_base_sha,
+          "reason" => "base_moved"
         }
       )
       raise StepFailed,
             "#{STALE_BASE_FAILURE_PREFIX} from #{built_base_sha.first(12)} to #{current_base_sha.first(12)}; rebuild required"
+    end
+
+    def raise_missing_base!(train, current_base_sha)
+      workflow.set_artifact!(
+        STALE_BASE_ARTIFACT,
+        {
+          "base_branch" => train.base_branch,
+          "built_base_sha" => nil,
+          "current_base_sha" => current_base_sha,
+          "reason" => "missing_built_base_sha"
+        }
+      )
+      raise StepFailed, "#{MISSING_BASE_FAILURE_PREFIX}; rebuild required"
     end
 
     def push_integration_branch(train, client)
@@ -128,12 +157,51 @@ module Steps
         commit_title: "Merge Epic ##{epic.id} via Syrus merge-train",
         merge_method: "merge"
       )
-    rescue Octokit::MethodNotAllowed
+    rescue Octokit::MethodNotAllowed => e
       built_base_sha = workflow.artifact(BASE_SHA_ARTIFACT).to_s.presence
-      current_base_sha = built_base_sha.present? ? fetch_current_base_sha(train, client) : nil
-      raise_stale_base!(train, built_base_sha, current_base_sha) if current_base_sha.present? && current_base_sha != built_base_sha
+      current_base_sha = fetch_current_base_sha(train, client)
 
-      raise
+      if built_base_sha.blank?
+        close_integration_pr!(
+          client,
+          pr,
+          "Superseded by a rebuilt Syrus merge-train because this workflow predates base tracking."
+        )
+        raise_missing_base!(train, current_base_sha)
+      end
+
+      if current_base_sha != built_base_sha
+        close_integration_pr!(
+          client,
+          pr,
+          "Superseded by a rebuilt Syrus merge-train because #{train.base_branch} moved while this train was landing."
+        )
+        raise_stale_base!(train, built_base_sha, current_base_sha)
+      end
+
+      close_integration_pr!(
+        client,
+        pr,
+        "Closed by Syrus because the merge-train integration PR could not be merged cleanly. Re-approve the Epic jobs after resolving the conflict."
+      )
+      message = e.message.to_s.presence || "GitHub refused the integration merge"
+      raise StepFailed, "#{INTEGRATION_CONFLICT_FAILURE_PREFIX} for PR ##{pr.number}: #{message.truncate(180)}; operator intervention required"
+    end
+
+    def close_open_integration_pr!(train, client, reason)
+      pr = stored_integration_pr(client) || open_integration_pr(train, client)
+      close_integration_pr!(client, pr, reason) if pr
+    end
+
+    def close_integration_pr!(client, pr, reason)
+      return unless pr
+
+      pr_number = pr.respond_to?(:number) ? pr.number : pr[:number]
+      client.add_issue_comment(repository.slug, pr_number, reason)
+      client.close_pull_request(repository.slug, pr_number)
+      log("merge_train: closed superseded integration PR ##{pr_number}")
+    rescue Octokit::NotFound
+      nil
     end
 
     def reconcile_members!(train, client, integration_pr)

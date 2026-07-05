@@ -21,6 +21,7 @@ class RetryFailedStepEnqueuer
 
     failed_step = self.class.failed_step_for(workflow)
     return failure("No failed step to retry.") unless failed_step
+    return rebuild_merge_train if failed_step.kind == "merge_train_land"
 
     workflow.reopen!
     workflow.save!
@@ -41,6 +42,20 @@ class RetryFailedStepEnqueuer
   private
 
   attr_reader :workflow, :parent_session_id, :prompt, :agent_provider
+
+  def rebuild_merge_train
+    train_id = workflow.artifact("merge_train_id")
+    train = MergeTrain.find_by(id: train_id)
+    return failure("Merge train not found; use Start over.") unless train
+
+    rebuilt_workflow = MergeTrainDispatcher.try_dispatch!(train.epic)
+    return failure("Epic is not ready for a merge-train rebuild.") unless rebuilt_workflow
+
+    run = rebuilt_workflow.runs.order(:created_at).last
+    return failure("Merge-train rebuild did not enqueue a run.") unless run
+
+    Result.new(run: run, workflow: rebuilt_workflow, step: run.step, error: nil)
+  end
 
   def failure(message)
     Result.new(run: nil, workflow: workflow, step: nil, error: message)

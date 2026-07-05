@@ -22,4 +22,52 @@ RSpec.describe RetryFailedStepEnqueuer do
     expect(old_failure.reload).to be_failed
     expect(old_failure.runs).to be_empty
   end
+
+  it "rebuilds a failed merge-train instead of retrying the old land step in place" do
+    user = Factories.user(github_token: "ghp_test")
+    repository = Factories.repository(user: user, auto_merge_enabled: true)
+    epic = Factories.epic(user: user, repository: repository)
+    job = Factories.job_record(
+      user: user,
+      repository: repository,
+      epic: epic,
+      state: "approved",
+      pr_number: 321,
+      branch_name: "syrus/issue-321"
+    )
+    train = MergeTrain.create!(
+      epic: epic,
+      repository: repository,
+      base_branch: "master",
+      state: "failed",
+      failure_reason: "merge_train: missing built base SHA; rebuild required",
+      finished_at: 1.minute.ago
+    )
+    MergeTrainMember.create!(merge_train: train, job: job, position: 0, state: "failed")
+    workflow = Workflow.create!(job: job, trigger_kind: "merge_train", artifacts: { "merge_train_id" => train.id })
+    workflow.update_columns(state: "failed", started_at: 10.minutes.ago, finished_at: 1.minute.ago)
+    land_step = Step.create!(workflow: workflow, kind: "merge_train_land", position: 5)
+    land_step.update_columns(state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+
+    AppSetting.current.update!(merge_train_enabled: true)
+    allow(StepDispatcher).to receive(:start_workflow) do |new_workflow|
+      new_workflow.first_step.runs.create!(
+        job: new_workflow.job,
+        trigger_kind: new_workflow.trigger_kind,
+        agent_provider: new_workflow.agent_provider
+      )
+    end
+
+    result = described_class.call(workflow: workflow)
+
+    expect(result).to be_success
+    expect(result.workflow).not_to eq(workflow)
+    expect(result.workflow.trigger_kind).to eq("merge_train")
+    expect(result.step.kind).to eq("merge_train_assemble")
+    expect(result.run.step).to eq(result.step)
+    expect(workflow.reload).to be_failed
+    expect(land_step.reload).to be_failed
+    expect(land_step.runs).to be_empty
+    expect(job.reload).to be_landing
+  end
 end

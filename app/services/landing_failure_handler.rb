@@ -28,7 +28,7 @@ class LandingFailureHandler
     if infrastructure_blocker?
       pause_landing!
       job.defer_landing! if job.may_defer_landing?
-    elsif rebase_cap_blocker? || stale_merge_train_base?
+    elsif rebase_cap_blocker? || merge_train_rebuild_required?
       log_deferral!
       job.defer_landing! if job.may_defer_landing?
     else
@@ -49,12 +49,18 @@ class LandingFailureHandler
     reason.match?(/rebase cap reached/i)
   end
 
-  def stale_merge_train_base?
-    self.class.stale_merge_train_base?(reason)
+  def merge_train_rebuild_required?
+    self.class.merge_train_rebuild_required?(reason)
   end
 
   def self.stale_merge_train_base?(reason)
-    reason.to_s.match?(/\Amerge_train: base moved .* rebuild required/i)
+    merge_train_rebuild_required?(reason)
+  end
+
+  def self.merge_train_rebuild_required?(reason)
+    text = reason.to_s
+    text.match?(/\Amerge_train: base moved .* rebuild required/i) ||
+      text.match?(/\Amerge_train: missing built base SHA; rebuild required/i)
   end
 
   def pause_landing!
@@ -81,8 +87,8 @@ class LandingFailureHandler
     log_run = run || job.current_run
     return unless log_run
 
-    message = if stale_merge_train_base?
-      "landing_queue: deferred landing because the merge-train base moved during validation; Syrus will rebuild the train"
+    message = if merge_train_rebuild_required?
+      "landing_queue: deferred landing because the merge-train validation is stale or incomplete; Syrus will rebuild the train"
     else
       "landing_queue: deferred landing because the rebase cap was reached; run a manual rebase or wait for the PR head/base to change before retrying"
     end
