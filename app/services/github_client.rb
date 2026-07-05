@@ -1,5 +1,6 @@
 class GithubClient
   USER_AGENT = "Syrus/0.1 (+https://github.com/tkadauke/syrus)".freeze
+  DELETE_BRANCH_TRANSIENT_RETRY_DELAYS = [ 0.5, 1.5 ].freeze
 
   # Faraday connection timeouts. Octokit (and Faraday underneath) has
   # NO default timeouts — a slow or stalled socket against GitHub will
@@ -185,15 +186,34 @@ class GithubClient
   # delete_branch uses boolean_from_response, which catches 404
   # internally and returns false; 422 raises Octokit::UnprocessableEntity.
   def delete_branch(repo_slug, branch_name)
-    deleted = @client.delete_branch(repo_slug, branch_name)
-    unless deleted
-      Rails.logger.warn("[GithubClient] #{@user&.email_address} could not delete #{repo_slug}@#{branch_name} (branch not found or already deleted)")
+    attempts = 0
+
+    begin
+      deleted = @client.delete_branch(repo_slug, branch_name)
+      unless deleted
+        Rails.logger.warn("[GithubClient] #{@user&.email_address} could not delete #{repo_slug}@#{branch_name} (branch not found or already deleted)")
+        return false
+      end
+
+      true
+    rescue Octokit::UnprocessableEntity => e
+      Rails.logger.warn("[GithubClient] #{@user&.email_address} could not delete #{repo_slug}@#{branch_name} (suppressed): #{e.message}")
+      false
+    rescue Octokit::TooManyRequests => e
+      Rails.logger.warn("[GithubClient] #{@user&.email_address} rate-limited deleting #{repo_slug}@#{branch_name} (suppressed): #{e.message}")
+      false
+    rescue Octokit::ServerError => e
+      if attempts < DELETE_BRANCH_TRANSIENT_RETRY_DELAYS.length
+        delay = DELETE_BRANCH_TRANSIENT_RETRY_DELAYS[attempts]
+        attempts += 1
+        Rails.logger.warn("[GithubClient] #{@user&.email_address} transient failure deleting #{repo_slug}@#{branch_name}: #{e.message}; retrying")
+        sleep(delay) unless Rails.env.test?
+        retry
+      end
+
+      Rails.logger.warn("[GithubClient] #{@user&.email_address} could not delete #{repo_slug}@#{branch_name} after transient GitHub failures (suppressed): #{e.message}")
+      false
     end
-  rescue Octokit::UnprocessableEntity => e
-    Rails.logger.warn("[GithubClient] #{@user&.email_address} could not delete #{repo_slug}@#{branch_name} (suppressed): #{e.message}")
-  rescue Octokit::TooManyRequests => e
-    Rails.logger.warn("[GithubClient] #{@user&.email_address} rate-limited deleting #{repo_slug}@#{branch_name}: #{e.message}")
-    raise
   end
 
   def merge_pull_request(repo_slug, pr_number, commit_title:, merge_method:)

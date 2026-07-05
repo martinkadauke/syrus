@@ -179,7 +179,7 @@ RSpec.describe WorkflowWorkspacePruneJob do
     job, _wf = make_failed_workflow_with_branch
     client = instance_double(GithubClient)
     allow(GithubClient).to receive(:for).and_return(client)
-    allow(client).to receive(:delete_branch)
+    allow(client).to receive(:delete_branch).and_return(true)
 
     described_class.perform_now
 
@@ -191,7 +191,7 @@ RSpec.describe WorkflowWorkspacePruneJob do
     job, _wf = make_failed_workflow_with_branch(job_state: "running")
     client = instance_double(GithubClient)
     allow(GithubClient).to receive(:for).and_return(client)
-    allow(client).to receive(:delete_branch)
+    allow(client).to receive(:delete_branch).and_return(true)
 
     described_class.perform_now
 
@@ -202,7 +202,7 @@ RSpec.describe WorkflowWorkspacePruneJob do
     job, _wf = make_failed_workflow_with_branch(branch_deleted_at: 1.hour.ago)
     client = instance_double(GithubClient)
     allow(GithubClient).to receive(:for).and_return(client)
-    allow(client).to receive(:delete_branch)
+    allow(client).to receive(:delete_branch).and_return(true)
 
     described_class.perform_now
 
@@ -213,7 +213,7 @@ RSpec.describe WorkflowWorkspacePruneJob do
     job, _wf = make_failed_workflow_with_branch(branch_name: nil)
     client = instance_double(GithubClient)
     allow(GithubClient).to receive(:for).and_return(client)
-    allow(client).to receive(:delete_branch)
+    allow(client).to receive(:delete_branch).and_return(true)
 
     described_class.perform_now
 

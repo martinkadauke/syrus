@@ -620,7 +620,7 @@ RSpec.describe GithubClient do
 
     it "calls the GitHub delete ref API for the branch" do
       stub = stub_request(:delete, delete_url).to_return(status: 204, body: "")
-      client.delete_branch("acme/widgets", "syrus/issue-42-1")
+      expect(client.delete_branch("acme/widgets", "syrus/issue-42-1")).to be(true)
       expect(stub).to have_been_requested
     end
 
@@ -631,7 +631,7 @@ RSpec.describe GithubClient do
         body: { message: "Reference cannot be deleted" }.to_json
       )
       expect(Rails.logger).to receive(:warn).with(/could not delete/)
-      expect { client.delete_branch("acme/widgets", "syrus/issue-42-1") }.not_to raise_error
+      expect(client.delete_branch("acme/widgets", "syrus/issue-42-1")).to be(false)
     end
 
     it "suppresses 404 NotFound and logs a warning" do
@@ -641,18 +641,44 @@ RSpec.describe GithubClient do
         body: { message: "Not Found" }.to_json
       )
       allow(Rails.logger).to receive(:warn)
-      expect { client.delete_branch("acme/widgets", "syrus/issue-42-1") }.not_to raise_error
+      expect(client.delete_branch("acme/widgets", "syrus/issue-42-1")).to be(false)
       expect(Rails.logger).to have_received(:warn).with(/could not delete/)
     end
 
-    it "re-raises TooManyRequests and logs a warning" do
+    it "retries transient GitHub server errors and succeeds when a later delete works" do
+      stub = stub_request(:delete, delete_url)
+             .to_return(
+               { status: 504, headers: { "Content-Type" => "application/json" }, body: { message: "Gateway Timeout" }.to_json },
+               { status: 204, body: "" }
+             )
+      allow(Rails.logger).to receive(:warn)
+
+      expect(client.delete_branch("acme/widgets", "syrus/issue-42-1")).to be(true)
+      expect(stub).to have_been_requested.twice
+      expect(Rails.logger).to have_received(:warn).with(/transient failure deleting/)
+    end
+
+    it "suppresses transient GitHub server errors after bounded retries" do
+      stub = stub_request(:delete, delete_url).to_return(
+        status: 504,
+        headers: { "Content-Type" => "application/json" },
+        body: { message: "Gateway Timeout" }.to_json
+      )
+      allow(Rails.logger).to receive(:warn)
+
+      expect(client.delete_branch("acme/widgets", "syrus/issue-42-1")).to be(false)
+      expect(stub).to have_been_requested.times(3)
+      expect(Rails.logger).to have_received(:warn).with(/after transient GitHub failures/)
+    end
+
+    it "suppresses TooManyRequests and logs a warning" do
       stub_request(:delete, delete_url).to_return(
         status: 403,
         headers: { "Content-Type" => "application/json", "x-ratelimit-remaining" => "0" },
         body: { message: "API rate limit exceeded" }.to_json
       )
       expect(Rails.logger).to receive(:warn).with(/rate-limited deleting/)
-      expect { client.delete_branch("acme/widgets", "syrus/issue-42-1") }.to raise_error(Octokit::TooManyRequests)
+      expect(client.delete_branch("acme/widgets", "syrus/issue-42-1")).to be(false)
     end
   end
 end

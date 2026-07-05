@@ -13,8 +13,7 @@ class ReapStaleBranchesJob < ApplicationJob
 
     scope.includes(:repository).find_each do |job|
       client = GithubClient.for(repository: job.repository, user: job.user)
-      client.delete_branch(job.repository.slug, job.branch_name)
-      job.update_column(:branch_deleted_at, Time.current)
+      job.update_column(:branch_deleted_at, Time.current) if client.delete_branch(job.repository.slug, job.branch_name)
     rescue => e
       Rails.logger.warn("[ReapStaleBranchesJob] failed to delete #{job.repository.slug}@#{job.branch_name}: #{e.message}")
     end

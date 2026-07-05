@@ -67,8 +67,7 @@ class PollPullRequestJob < ApplicationJob
     if reason == "pr_merged" && @job.branch_name.present?
       # Branch lives on the fork (repository), not the upstream (effective_pr_repository)
       fork_client = GithubClient.for(repository: @job.repository, user: @job.user)
-      fork_client.delete_branch(@job.repository.slug, @job.branch_name)
-      @job.update_column(:branch_deleted_at, Time.current)
+      @job.update_column(:branch_deleted_at, Time.current) if fork_client.delete_branch(@job.repository.slug, @job.branch_name)
     end
   end
 

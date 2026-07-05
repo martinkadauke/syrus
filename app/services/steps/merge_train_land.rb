@@ -28,7 +28,7 @@ module Steps
       merged = merge.respond_to?(:merged) ? merge.merged : merge[:merged]
       raise StepFailed, "merge_train: GitHub did not report the integration PR as merged" unless merged
 
-      client.delete_branch(repository.slug, train.integration_branch)
+      delete_branch_after_landing(client, train.integration_branch)
       reconcile_members!(train, client, pr)
 
       train.update!(state: "succeeded", finished_at: Time.current)
@@ -207,21 +207,43 @@ module Steps
     def reconcile_members!(train, client, integration_pr)
       train.members.includes(:job).each do |member|
         member_job = member.job
-        if member_job.pr_number.present?
-          client.add_issue_comment(
-            repository.slug,
-            member_job.pr_number,
-            "Landed via Epic merge-train (integration PR ##{integration_pr.number}). #{member_job.slug}."
-          )
-          client.close_pull_request(repository.slug, member_job.pr_number)
-        end
+        reconcile_member_pull_request_after_landing(client, member_job, integration_pr)
         member_job.close_with_reason!("pr_merged") if member_job.open?
         if member_job.branch_name.present?
-          client.delete_branch(repository.slug, member_job.branch_name)
-          member_job.update_column(:branch_deleted_at, Time.current)
+          member_job.update_column(:branch_deleted_at, Time.current) if delete_branch_after_landing(client, member_job.branch_name)
         end
         member.update!(state: "merged")
       end
+    end
+
+    def reconcile_member_pull_request_after_landing(client, member_job, integration_pr)
+      return if member_job.pr_number.blank?
+
+      cleanup_after_landing("comment on PR ##{member_job.pr_number}") do
+        client.add_issue_comment(
+          repository.slug,
+          member_job.pr_number,
+          "Landed via Epic merge-train (integration PR ##{integration_pr.number}). #{member_job.slug}."
+        )
+      end
+      cleanup_after_landing("close PR ##{member_job.pr_number}") do
+        client.close_pull_request(repository.slug, member_job.pr_number)
+      end
+    end
+
+    def delete_branch_after_landing(client, branch_name)
+      deleted = cleanup_after_landing("delete branch #{branch_name}") do
+        client.delete_branch(repository.slug, branch_name)
+      end
+      log("merge_train: cleanup left #{branch_name} for a later retry", kind: "system") unless deleted
+      deleted
+    end
+
+    def cleanup_after_landing(description)
+      yield
+    rescue Octokit::TooManyRequests, Octokit::Error => e
+      log("merge_train: cleanup could not #{description}: #{e.class}: #{e.message}", kind: "system")
+      false
     end
 
     def integration_pr_title(train)

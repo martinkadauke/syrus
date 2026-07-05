@@ -38,7 +38,7 @@ RSpec.describe Steps::AutoMerge do
     allow(client).to receive(:pr_issue_comments).and_return([])
     allow(client).to receive(:pr_commits).and_return([])
     allow(client).to receive(:branch_head_sha).and_return("base")
-    allow(client).to receive(:delete_branch)
+    allow(client).to receive(:delete_branch).and_return(true)
   end
 
   def octokit_error(error_class, status:, message:)
@@ -393,7 +393,7 @@ RSpec.describe Steps::AutoMerge do
       job.save!
       allow(client).to receive(:merge_pull_request).and_return(OpenStruct.new(merged: true))
       allow(client).to receive(:add_issue_comment)
-      allow(client).to receive(:delete_branch)
+      allow(client).to receive(:delete_branch).and_return(true)
     end
 
     it "deletes the branch and stamps branch_deleted_at after a successful merge" do
@@ -401,6 +401,25 @@ RSpec.describe Steps::AutoMerge do
 
       expect(client).to have_received(:delete_branch).with("acme/widgets", "syrus/issue-42-1")
       expect(job.reload.branch_deleted_at).to be_present
+    end
+
+    it "does not stamp branch_deleted_at when branch cleanup is left for later" do
+      allow(client).to receive(:delete_branch).and_return(false)
+
+      described_class.new(run).call
+
+      expect(job.reload).to be_closed
+      expect(job.branch_deleted_at).to be_nil
+    end
+
+    it "does not fail the landed job when the merge comment cleanup fails" do
+      allow(client).to receive(:add_issue_comment)
+        .and_raise(octokit_error(Octokit::ServerError, status: 504, message: "Gateway Timeout"))
+
+      expect { described_class.new(run).call }.not_to raise_error
+
+      expect(job.reload).to be_closed
+      expect(job.closure_reason).to eq("pr_merged")
     end
 
     it "skips delete_branch when branch_name is absent" do

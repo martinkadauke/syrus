@@ -72,11 +72,10 @@ module Steps
       raise StepFailed, "auto_merge: GitHub did not report the PR as merged" unless merge.respond_to?(:merged) ? merge.merged : merge[:merged]
 
       comment = "Merged automatically by Syrus after approval and green checks. #{job.slug}: #{job_url}"
-      client.add_issue_comment(repository.slug, job.pr_number, comment)
+      add_merge_comment(client, comment)
       job.close_with_reason!("pr_merged") if job.open?
       if job.branch_name.present?
-        client.delete_branch(repository.slug, job.branch_name)
-        job.update_column(:branch_deleted_at, Time.current)
+        job.update_column(:branch_deleted_at, Time.current) if client.delete_branch(repository.slug, job.branch_name)
       end
       log("auto_merge: merged PR ##{job.pr_number}")
     end
@@ -173,6 +172,12 @@ module Steps
 
     def transient_error_message(error)
       error.message.to_s[0, 121]
+    end
+
+    def add_merge_comment(client, comment)
+      client.add_issue_comment(repository.slug, job.pr_number, comment)
+    rescue Octokit::TooManyRequests, Octokit::Error => e
+      log("auto_merge: cleanup could not comment on PR ##{job.pr_number}: #{e.class}: #{e.message}", kind: "system")
     end
 
     def waiting_for_parent_merge?

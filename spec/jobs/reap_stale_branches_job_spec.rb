@@ -7,7 +7,7 @@ RSpec.describe ReapStaleBranchesJob do
 
   before do
     allow(GithubClient).to receive(:for).and_return(client)
-    allow(client).to receive(:delete_branch)
+    allow(client).to receive(:delete_branch).and_return(true)
   end
 
   def closed_job(branch_name:, finished_at:, branch_deleted_at: nil)
@@ -75,6 +75,7 @@ RSpec.describe ReapStaleBranchesJob do
       allow(client).to receive(:delete_branch) do |_repo, branch|
         call_count += 1
         raise "network error" if branch == a.branch_name
+        true
       end
 
       expect { described_class.perform_now }.not_to raise_error
@@ -82,6 +83,15 @@ RSpec.describe ReapStaleBranchesJob do
       expect(call_count).to eq(2)
       expect(a.reload.branch_deleted_at).to be_nil
       expect(b.reload.branch_deleted_at).to be_present
+    end
+
+    it "leaves branch_deleted_at unset when branch cleanup is suppressed" do
+      job = closed_job(branch_name: "syrus/issue-8", finished_at: 24.hours.ago)
+      allow(client).to receive(:delete_branch).and_return(false)
+
+      described_class.perform_now
+
+      expect(job.reload.branch_deleted_at).to be_nil
     end
   end
 end

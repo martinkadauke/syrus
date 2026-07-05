@@ -277,7 +277,7 @@ RSpec.describe "Steps::MergeTrain*" do
       allow(client).to receive(:merge_pull_request).and_return(OpenStruct.new(merged: true))
       allow(client).to receive(:add_issue_comment)
       allow(client).to receive(:close_pull_request)
-      allow(client).to receive(:delete_branch)
+      allow(client).to receive(:delete_branch).and_return(true)
     end
 
     it "opens + merges an integration PR atomically, closes member PRs, and marks Jobs merged" do
@@ -331,6 +331,50 @@ RSpec.describe "Steps::MergeTrain*" do
 
       expect(client).not_to have_received(:delete_branch).with("acme/widgets", nil)
       expect(a.reload.branch_deleted_at).to be_nil
+    end
+
+    it "does not fail a landed train when branch cleanup is left for later" do
+      a = member_job(issue_number: 1)
+      b = member_job(issue_number: 2)
+      train = build_train([ a, b ])
+      handler = step_handler(described_class, "merge_train_land", train, b)
+      allow(handler).to receive(:repository).and_return(repository)
+      stub_git(handler)
+      allow(client).to receive(:delete_branch)
+        .with("acme/widgets", train.integration_branch)
+        .and_return(false)
+      allow(client).to receive(:delete_branch)
+        .with("acme/widgets", a.branch_name)
+        .and_return(false)
+
+      handler.call
+
+      expect(train.reload.state).to eq("succeeded")
+      expect(a.reload).to be_closed
+      expect(a.branch_deleted_at).to be_nil
+      expect(b.reload.branch_deleted_at).to be_present
+    end
+
+    it "does not fail a landed train when member PR cleanup fails" do
+      a = member_job(issue_number: 1)
+      b = member_job(issue_number: 2)
+      train = build_train([ a, b ])
+      handler = step_handler(described_class, "merge_train_land", train, b)
+      allow(handler).to receive(:repository).and_return(repository)
+      stub_git(handler)
+      allow(client).to receive(:add_issue_comment)
+        .with("acme/widgets", a.pr_number, anything)
+        .and_raise(octokit_error(Octokit::ServerError, status: 504, message: "Gateway Timeout"))
+      allow(client).to receive(:close_pull_request)
+        .with("acme/widgets", b.pr_number)
+        .and_raise(octokit_error(Octokit::ServerError, status: 504, message: "Gateway Timeout"))
+
+      expect { handler.call }.not_to raise_error
+
+      expect(train.reload.state).to eq("succeeded")
+      expect(train.members.pluck(:state).uniq).to eq([ "merged" ])
+      expect(a.reload).to be_closed
+      expect(b.reload).to be_closed
     end
 
     it "fails landing when GitHub does not report the integration PR merged" do
