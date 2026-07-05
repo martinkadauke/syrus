@@ -260,7 +260,17 @@
     "mode_simple": "Simple (non-technical)",
     "mode_confirm_to_advanced": "Advanced mode restores the full developer experience, including manual approvals, Coding Mode, Local Mode, scheduled tasks, and all operator controls. Syrus will save the change and reload this page.",
     "mode_confirm_to_simple": "Simple mode hides developer-only surfaces, disables Coding Mode, Local Mode, and scheduled tasks, and uses simpler feature-level review flows. Syrus will save the change and reload this page.",
-    "settings_updated": "Settings updated."
+    "settings_updated": "Settings updated.",
+    "telegram_heading": "Telegram",
+    "telegram_token_label": "Bot token",
+    "telegram_token_placeholder": "Enter bot token…",
+    "telegram_token_clear_confirm": "Clear the Telegram bot token?",
+    "telegram_save_token": "Save token",
+    "telegram_start_polling": "Start polling",
+    "telegram_polling_starting": "Starting…",
+    "telegram_polling_started": "Telegram polling started.",
+    "telegram_polling_already_running": "Telegram polling is already running.",
+    "telegram_polling_error": "Unable to start Telegram polling."
   },
   "github_app": {
     "register_title": "GitHub App registration",

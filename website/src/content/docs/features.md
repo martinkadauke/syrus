@@ -680,9 +680,11 @@ any time.
 
 Platform buttons show as **Not yet available** when the instance administrator
 has not yet configured that platform integration. For Telegram, administrators
-set the bot handle in the admin settings page; the platform polling handler
-configuration (bot token and polling) is controlled via environment
-configuration for that platform's background worker.
+set the bot handle and bot token in the admin settings page. The bot token is
+stored encrypted in the database and is used by the `PollTelegramUpdatesJob`
+long-polling worker. The polling worker can be started from the same settings
+page via the **Start polling** button, or it starts automatically on application
+boot when `SYRUS_ROLE` is set.
 
 **Inbound message routing** — When a platform polling handler receives a
 message from an external user, `InboundMessageRouter` looks up the sender's

@@ -19,13 +19,18 @@ export type AdminSettingsPayload = {
   message?: string
 }
 
-export type AdminSettingsUpdate = {
-  signups_open?: boolean
-  video_retention_days?: number
-  video_storage_budget_mb?: number
-  max_concurrent_agent_runs?: number
-  proactive_rebase_commit_threshold?: number
-  mode?: "advanced" | "simple"
+export type AdminSettingsUpdate = Partial<{
+  signups_open: boolean
+  video_retention_days: number
+  video_storage_budget_mb: number
+  max_concurrent_agent_runs: number
+  proactive_rebase_commit_threshold: number
+  mode: "advanced" | "simple"
+  telegram_bot_token: string
+}>
+
+export type PlatformPollingStartResult = {
+  started: string[]
 }
 
 export function fetchAdminSettings() {
@@ -40,4 +45,8 @@ export function updateAdminSettings(values: AdminSettingsUpdate) {
 
 export function clearAdminSettingSecret(secret: string) {
   return postJson<AdminSettingsPayload>("/api/v1/app/admin/settings/clear_secret", { secret })
+}
+
+export function startPlatformPolling() {
+  return postJson<PlatformPollingStartResult>("/api/v1/app/admin/platform_polling/start")
 }

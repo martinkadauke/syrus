@@ -270,4 +270,44 @@ RSpec.describe AppSetting do
       expect(AppSetting.mode_configured?).to be true
     end
   end
+
+  describe "telegram settings" do
+    it ".telegram_bot_token returns nil when not set" do
+      expect(AppSetting.telegram_bot_token).to be_nil
+    end
+
+    it ".telegram_bot_token returns the stored value" do
+      AppSetting.current.update!(telegram_bot_token: "secret-token-123")
+      expect(AppSetting.telegram_bot_token).to eq("secret-token-123")
+    end
+
+    it "encrypts telegram_bot_token at rest" do
+      AppSetting.current.update!(telegram_bot_token: "my-secret-token")
+
+      row = AppSetting.connection.select_one(
+        "SELECT telegram_bot_token FROM app_settings WHERE id = #{AppSetting.current.id}"
+      )
+      expect(row["telegram_bot_token"]).not_to include("my-secret-token")
+      expect(AppSetting.current.reload.telegram_bot_token).to eq("my-secret-token")
+    end
+
+    it ".telegram_update_offset defaults to 0" do
+      expect(AppSetting.telegram_update_offset).to eq(0)
+    end
+
+    it ".telegram_update_offset reflects the stored value" do
+      AppSetting.current.update!(telegram_update_offset: 99)
+      expect(AppSetting.telegram_update_offset).to eq(99)
+    end
+
+    it "telegram_bot_token is a clearable secret" do
+      expect(AppSetting.clearable_secrets).to include("telegram_bot_token")
+    end
+
+    it "clears telegram_bot_token via clear_secret!" do
+      AppSetting.current.update!(telegram_bot_token: "some-token")
+      AppSetting.current.clear_secret!("telegram_bot_token")
+      expect(AppSetting.telegram_bot_token).to be_nil
+    end
+  end
 end

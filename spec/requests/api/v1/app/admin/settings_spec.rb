@@ -24,7 +24,7 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
     expect(parse_body.dig("error", "code")).to eq("forbidden")
   end
 
-  it "returns editable settings and an empty clearable secrets list" do
+  it "returns editable settings including clearable secrets" do
     sign_in_as(admin)
     AppSetting.current.update!(signups_open: true)
 
@@ -33,7 +33,30 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
     expect(response).to have_http_status(:ok)
     body = parse_body
     expect(body.dig("settings", "signups_open")).to be true
-    expect(body.dig("settings", "clearable_secrets")).to eq([])
+    secrets = body.dig("settings", "clearable_secrets")
+    telegram = secrets.find { |s| s["key"] == "telegram_bot_token" }
+    expect(telegram).to include("key" => "telegram_bot_token", "label" => "Telegram bot token", "set" => false)
+  end
+
+  it "clears telegram_bot_token via the clear_secret endpoint" do
+    sign_in_as(admin)
+    AppSetting.current.update!(telegram_bot_token: "abc123")
+
+    post "/api/v1/app/admin/settings/clear_secret", params: { secret: "telegram_bot_token" }
+
+    expect(response).to have_http_status(:ok)
+    expect(AppSetting.current.reload.telegram_bot_token).to be_nil
+  end
+
+  it "updates telegram_bot_token via the update endpoint" do
+    sign_in_as(admin)
+
+    patch "/api/v1/app/admin/settings", params: {
+      app_setting: { telegram_bot_token: "new-bot-token" }
+    }
+
+    expect(response).to have_http_status(:ok)
+    expect(AppSetting.current.reload.telegram_bot_token).to eq("new-bot-token")
   end
 
   it "updates signups_open" do

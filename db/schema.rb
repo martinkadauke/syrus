@@ -78,6 +78,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_08_02_180000) do
     t.boolean "runs_paused", default: false, null: false
     t.boolean "signups_open", default: false, null: false
     t.string "telegram_bot_handle"
+    t.text "telegram_bot_token"
+    t.integer "telegram_update_offset", default: 0
     t.datetime "updated_at", null: false
     t.integer "video_retention_days", default: 7, null: false
     t.integer "video_storage_budget_mb", default: 2048, null: false

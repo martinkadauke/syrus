@@ -260,7 +260,17 @@
     "mode_simple": "Simplex (non technicus)",
     "mode_confirm_to_advanced": "Modus provectus plenam experientiam programmatoris reddit, cum approbationibus manualibus, modo scribendi, modo locali, officiis temporatis, et omnibus moderamentis. Syrus mutationem servabit et hanc paginam iterum onerabit.",
     "mode_confirm_to_simple": "Modus simplex superficies programmatoribus destinatas celat, modum scribendi, modum localem, et officia temporata exstinguit, atque simpliciores cursus recognitionis per proprietates adhibet. Syrus mutationem servabit et hanc paginam iterum onerabit.",
-    "settings_updated": "Optiones renovatae."
+    "settings_updated": "Optiones renovatae.",
+    "telegram_heading": "Telegram",
+    "telegram_token_label": "Tessera automati",
+    "telegram_token_placeholder": "Tesseram automati inserere…",
+    "telegram_token_clear_confirm": "Tesseram automati Telegram delere?",
+    "telegram_save_token": "Tesseram servare",
+    "telegram_start_polling": "Scrutationem incipere",
+    "telegram_polling_starting": "Incipiens…",
+    "telegram_polling_started": "Scrutatio Telegram incoepta.",
+    "telegram_polling_already_running": "Scrutatio Telegram iam currit.",
+    "telegram_polling_error": "Scrutatio Telegram incipere non potuit."
   },
   "github_app": {
     "register_title": "Inscriptio Applicamenti GitHub",

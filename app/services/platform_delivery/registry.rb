@@ -1,8 +1,8 @@
 module PlatformDelivery
   class Registry
     ADAPTERS = {
-      "web" => WebAdapter
-      # "telegram" => TelegramAdapter  # registered when TelegramPollingJob loads
+      "web" => WebAdapter,
+      "telegram" => TelegramAdapter
     }.freeze
 
     @runtime_adapters = {}

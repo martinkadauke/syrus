@@ -1,7 +1,9 @@
 class AppSetting < ApplicationRecord
   DEFAULT_REPORT_ISSUE_REPO_SLUG = "tkadauke/syrus".freeze
 
-  CLEARABLE_SECRETS = {}.freeze
+  CLEARABLE_SECRETS = {
+    "telegram_bot_token" => "Telegram bot token"
+  }.freeze
 
   MODES = %w[advanced simple].freeze
 
@@ -57,6 +59,7 @@ class AppSetting < ApplicationRecord
   validates :mode, inclusion: { in: MODES }
 
   encrypts :github_app_private_key_pem
+  encrypts :telegram_bot_token
 
   # Singleton row. .current returns the only record, creating it if missing.
   # On the very first create (fresh database), SYRUS_BOOT_POLLING_PAUSED seeds
@@ -164,6 +167,14 @@ class AppSetting < ApplicationRecord
   def self.chat_coding_workspace_budget_bytes
     mb = current.chat_coding_workspace_budget_mb
     mb.to_i.positive? ? mb * 1024 * 1024 : 0
+  end
+
+  def self.telegram_bot_token
+    current.telegram_bot_token.presence
+  end
+
+  def self.telegram_update_offset
+    current.telegram_update_offset || 0
   end
 
   def self.telegram_bot_handle
