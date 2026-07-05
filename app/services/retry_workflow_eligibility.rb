@@ -13,6 +13,9 @@ class RetryWorkflowEligibility
   def call
     return failure("closed", "Thread is closed - use Start over to begin a new one.") if job.closed?
     return failure("approved", "Job is already approved for landing - unapprove it before retrying.") if job.approved? || job.landing?
+    if job.landing_failure_reason.present?
+      return failure("landing_failed", "Landing failed - reapprove the Job or retry the failed landing workflow instead of retrying implementation.")
+    end
     return failure("active_run", "A Run is already in progress - wait for it to finish.") if other_active_run?
     return failure("initial_not_run", "The initial workflow has not run yet - start or wait for it before retrying.") unless initial_workflow_ran?
 

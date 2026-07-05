@@ -109,7 +109,7 @@ module Api
             return
           end
 
-          failed_step = workflow.steps.where(state: "failed").order(:position).first
+          failed_step = RetryFailedStepEnqueuer.failed_step_for(workflow)
           unless failed_step
             render_error("validation_failed", "No failed step to retry.", status: :unprocessable_content)
             return

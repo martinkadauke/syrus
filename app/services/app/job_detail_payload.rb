@@ -668,14 +668,16 @@ module App
     end
 
     def actions_json
-      latest_workflow = @job.latest_workflow
+      retry_actions = ::App::JobRetryActions.for(@job)
       {
         can_start: @job.direct? && @job.open? && @job.runs.empty?,
         can_poll_feedback: @job.open? && @job.pr_number.present?,
         can_rebase: (@job.pr_number.present? || @job.external_pr_number.present?) && !RebaseWorkflowSelector.active_for_stack?(@job),
         can_check_mergeability: @job.pr_number.present? || @job.external_pr_number.present?,
-        can_retry: @job.open? && !@job.any_active_run?,
-        can_retry_from_failed_step: latest_workflow&.retry_available? || false,
+        can_retry: retry_actions[:implementation].present?,
+        can_retry_from_failed_step: retry_actions[:failed_step].present?,
+        retry_failed_step_action: retry_actions[:failed_step],
+        retry_implementation_action: retry_actions[:implementation],
         can_restart: !@job.any_active_run? && !@job.cron?,
         can_cancel: @job.open?,
         can_approve: @job.can_add_job_approval?(@user),

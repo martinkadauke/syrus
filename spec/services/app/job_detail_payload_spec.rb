@@ -372,4 +372,81 @@ RSpec.describe App::JobDetailPayload do
       expect(payload_for(job).dig(:actions, :can_restart)).to be(true)
     end
   end
+
+  describe "#actions_json retry actions" do
+    def create_failed_workflow(job, trigger_kind:, failed_step_kind:)
+      workflow = Workflow.create!(
+        job: job,
+        trigger_kind: trigger_kind,
+        agent_provider: job.agent_provider,
+        state: "failed",
+        started_at: 2.minutes.ago,
+        finished_at: 1.minute.ago
+      )
+      workflow.steps.create!(
+        kind: failed_step_kind,
+        position: 1,
+        state: "failed",
+        started_at: 2.minutes.ago,
+        finished_at: 1.minute.ago
+      )
+      workflow
+    end
+
+    it "offers failed-step retry and implementation retry for implementation-shaped failures" do
+      job = Factories.job_record(user: user, repository: repo, state: "failed")
+      workflow = create_failed_workflow(job, trigger_kind: "initial", failed_step_kind: "implement")
+
+      actions = payload_for(job).fetch(:actions)
+
+      expect(actions[:can_retry]).to be(true)
+      expect(actions[:retry_implementation_action]).to include(
+        key: "retry_implementation",
+        label: "Retry implementation",
+        path: "/api/v1/app/jobs/#{job.id}/run_again"
+      )
+      expect(actions[:can_retry_from_failed_step]).to be(true)
+      expect(actions[:retry_failed_step_action]).to include(
+        key: "retry_failed_step",
+        label: "Retry failed step",
+        workflow_id: workflow.id,
+        step_kind: "implement"
+      )
+    end
+
+    it "does not offer implementation retry for post-implementation workflow failures" do
+      job = Factories.job_record(user: user, repository: repo, state: "failed")
+      workflow = create_failed_workflow(job, trigger_kind: "initial", failed_step_kind: "pr_open")
+
+      actions = payload_for(job).fetch(:actions)
+
+      expect(actions[:can_retry]).to be(false)
+      expect(actions[:retry_implementation_action]).to be_nil
+      expect(actions[:retry_failed_step_action]).to include(
+        label: "Retry failed step",
+        workflow_id: workflow.id,
+        step_kind: "pr_open"
+      )
+    end
+
+    it "labels landing workflow retries separately from implementation retries" do
+      job = Factories.job_record(
+        user: user,
+        repository: repo,
+        state: "implemented",
+        landing_failure_reason: "auto_merge: required grader failed"
+      )
+      workflow = create_failed_workflow(job, trigger_kind: "auto_merge", failed_step_kind: "auto_merge")
+
+      actions = payload_for(job).fetch(:actions)
+
+      expect(actions[:can_retry]).to be(false)
+      expect(actions[:retry_implementation_action]).to be_nil
+      expect(actions[:retry_failed_step_action]).to include(
+        label: "Retry landing step",
+        workflow_id: workflow.id,
+        step_kind: "auto_merge"
+      )
+    end
+  end
 end

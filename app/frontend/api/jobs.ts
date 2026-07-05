@@ -334,6 +334,8 @@ export type JobActions = {
   can_check_mergeability: boolean
   can_retry: boolean
   can_retry_from_failed_step: boolean
+  retry_failed_step_action?: JobRetryAction | null
+  retry_implementation_action?: JobRetryAction | null
   can_restart: boolean
   can_cancel: boolean
   can_approve: boolean
@@ -348,6 +350,16 @@ export type JobActions = {
   feedback_agent_options: string[]
   rebase_agent_options: string[]
   retry_agent_options: string[]
+}
+
+export type JobRetryAction = {
+  key: string
+  label: string
+  path: string
+  workflow_id?: number
+  step_id?: number
+  step_kind?: string
+  step_label?: string
 }
 
 export type JobPaths = {

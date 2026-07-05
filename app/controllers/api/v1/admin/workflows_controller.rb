@@ -45,7 +45,7 @@ module Api
             return
           end
 
-          failed_step = workflow.steps.where(state: "failed").order(:position).first
+          failed_step = RetryFailedStepEnqueuer.failed_step_for(workflow)
           unless failed_step
             render_error("no_failed_step", "No failed step found on #{workflow.slug}.", status: :unprocessable_content)
             return

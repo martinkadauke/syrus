@@ -291,7 +291,7 @@ function HeaderActions({ payload, command, feedbackPanelOpen, onToggleFeedbackPa
         <RetryFeedbackDialog
           command={command}
           onClose={() => setRetryFeedbackOpen(false)}
-          path={payload.paths.app_run_again_path}
+          path={payload.actions.retry_implementation_action?.path || payload.paths.app_run_again_path}
         />
       ) : null}
     </>
@@ -342,8 +342,9 @@ function headerActions(payload: JobDetailPayload): HeaderAction[] {
   if (actions.can_poll_feedback) available.push({ key: "poll_feedback", label: "Check feedback", input: { method: "post", path: paths.app_poll_feedback_path }, tone: "secondary" })
   if (actions.can_rebase) available.push({ key: "rebase", label: "Rebase now", input: { method: "post", path: paths.app_rebase_path }, tone: "secondary" })
   if (actions.can_check_mergeability) available.push({ key: "check_mergeability", label: "Check mergeability", input: { method: "post", path: paths.app_check_mergeability_path }, tone: "secondary" })
-  if (actions.can_retry) available.push({ key: "retry", label: "Retry", input: { method: "post", path: paths.app_run_again_path }, tone: "primary" })
-  if (actions.can_retry) available.push({ key: "retry_feedback", label: "Retry with feedback", input: { method: "post", path: paths.app_run_again_path }, tone: "secondary" })
+  if (actions.retry_failed_step_action) available.push({ key: "retry_failed_step", label: actions.retry_failed_step_action.label, input: { method: "post", path: actions.retry_failed_step_action.path }, tone: "primary" })
+  if (actions.retry_implementation_action) available.push({ key: "retry_implementation", label: actions.retry_implementation_action.label, input: { method: "post", path: actions.retry_implementation_action.path }, tone: "primary" })
+  if (actions.retry_implementation_action) available.push({ key: "retry_feedback", label: "Retry implementation with feedback", input: { method: "post", path: actions.retry_implementation_action.path }, tone: "secondary" })
   if (actions.can_restart) available.push({ key: "restart", label: "Start over", input: { method: "post", path: paths.app_restart_path, confirm: "Start over with a new Job and abandon this branch?" }, tone: "secondary" })
   if (actions.can_approve) available.push({ key: "approve", label: payload.job.landing_failure_reason ? "Reapprove" : "Approve", input: { method: "post", path: paths.app_approve_path }, tone: "success" })
   if (actions.can_unapprove) available.push({ key: "unapprove", label: "Unapprove", input: { method: "post", path: paths.app_unapprove_path, confirm: "Move this Job back to implemented?" }, tone: "secondary" })
@@ -368,14 +369,17 @@ function primaryHeaderActionKeys(payload: JobDetailPayload, actions: HeaderActio
     add("cancel")
   } else if (availableKeys.has("approve")) {
     add("approve")
-    add("retry")
+    add("retry_failed_step")
   } else if (jobState === "failed") {
-    add("retry")
+    add("retry_failed_step")
+    add("retry_implementation")
     add("restart")
   } else if (availableKeys.has("reopen")) {
     add("reopen")
-  } else if (availableKeys.has("retry")) {
-    add("retry")
+  } else if (availableKeys.has("retry_failed_step")) {
+    add("retry_failed_step")
+  } else if (availableKeys.has("retry_implementation")) {
+    add("retry_implementation")
   } else {
     add("start")
     add("mark_valid")
@@ -446,11 +450,11 @@ function RetryFeedbackDialog({ command, path, onClose }: { command: ReturnType<t
       <section aria-labelledby="retry-feedback-title" className="w-full max-w-lg rounded border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900" role="dialog" aria-modal="true">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100" id="retry-feedback-title">Retry with feedback</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100" id="retry-feedback-title">Retry implementation with feedback</h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">This feedback will be added to the retry prompt.</p>
           </div>
           <button
-            aria-label="Close retry with feedback"
+            aria-label="Close retry implementation with feedback"
             className="inline-flex h-8 w-8 items-center justify-center rounded text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             disabled={command.isPending}
             onClick={onClose}

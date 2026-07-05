@@ -98,6 +98,17 @@ RSpec.describe RetryWorkflowEnqueuer do
     }.not_to change { job.workflows.where(trigger_kind: "retry").count }
   end
 
+  it "rejects landing failures that need landing retry or reapproval" do
+    finish_current_run!
+    job.update!(state: "implemented", landing_failure_reason: "auto_merge: required grader failed")
+
+    expect {
+      result = described_class.call(job: job)
+      expect(result).not_to be_success
+      expect(result.error).to eq("Landing failed - reapprove the Job or retry the failed landing workflow instead of retrying implementation.")
+    }.not_to change { job.workflows.where(trigger_kind: "retry").count }
+  end
+
   it "cancels queued retry workflows when the job is approved" do
     finish_current_run!
     retry_workflow = Workflows::Retry.instantiate(job: job, agent_provider: job.agent_provider)
