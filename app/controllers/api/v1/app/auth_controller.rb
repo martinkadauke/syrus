@@ -3,6 +3,12 @@ module Api
     module App
       class AuthController < BaseController
         skip_before_action :require_authentication
+        # Mirrors the HTML fallback controllers' limits (SessionsController /
+        # PasswordsController); these JSON endpoints are the ones the React
+        # forms actually hit, so they need the same brute-force brake.
+        rate_limit to: 10, within: 3.minutes,
+                   only: %i[create_session create_password update_password],
+                   with: -> { render_error("rate_limited", "Try again later.", status: :too_many_requests) }
 
         def status
           resume_session

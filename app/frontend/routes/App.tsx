@@ -3,6 +3,8 @@ import { BRAND_ICON_SRC } from "../lib/brandIcon"
 import { useEffect, useState, type ReactNode } from "react"
 import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
+import { authPrimaryButtonClass } from "../lib/buttonStyles"
+import { isDesktopShell } from "../lib/desktopShell"
 import { NoticeToast } from "../components/NoticeToast"
 import { NotificationsRoute } from "../components/Notifications"
 import { useAppEvents } from "../lib/useAppEvents"
@@ -155,6 +157,7 @@ function AppShell({ initialBootstrap }: { initialBootstrap: BootstrapPayload | n
   const routes = (
     <Routes>
       <Route path="/" element={<RootRoute initialBootstrap={initialBootstrap} />} />
+      <Route path="/app-shell" element={<RootRoute initialBootstrap={initialBootstrap} />} />
       {renderAppRoutes(initialBootstrap)}
       <Route path="*" element={<BootstrapShell initialBootstrap={initialBootstrap} />} />
     </Routes>
@@ -211,6 +214,14 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
     ? `${withRoutePrefix(payload.public.signup_path, prefix)}?token=${encodeURIComponent(invitationToken)}`
     : withRoutePrefix(payload.public.signup_path, prefix)
 
+  // Inside the desktop shell the app is already installed and pointed at an
+  // instance, so a merely signed-out user should land on sign-in (or the
+  // invite acceptance page), not the self-hosting marketing pitch. First run
+  // keeps the welcome below — it doubles as the desktop first-run screen.
+  if (isDesktopShell() && cta.kind !== "first") {
+    return <Navigate replace to={cta.kind === "invite" ? cta.href : signInPath} />
+  }
+
   // First run (no users yet) gets a minimal welcome, not the marketing pitch:
   // whoever sees this screen has already installed the instance — most often
   // inside the desktop app — and just needs the one next step.
@@ -219,10 +230,10 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
       <main aria-label="Syrus first-run welcome" className="flex min-h-[70vh] items-center justify-center px-6">
         <div className="max-w-md text-center">
           <img alt="" aria-hidden="true" className="mx-auto h-16 w-16 rounded-2xl" src={BRAND_ICON_SRC} />
-          <h1 className="mt-6 text-3xl font-semibold text-gray-950">Welcome to Syrus!</h1>
-          <p className="mt-3 text-sm leading-6 text-gray-600">{cta.description}</p>
+          <h1 className="mt-6 text-3xl font-semibold text-gray-950 dark:text-gray-100">Welcome to Syrus!</h1>
+          <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-400">{cta.description}</p>
           <div className="mt-7">
-            <Link className={landingPrimaryButtonClass()} to={cta.href}>{cta.label}</Link>
+            <Link className={authPrimaryButtonClass} to={cta.href}>{cta.label}</Link>
           </div>
         </div>
       </main>
@@ -254,7 +265,7 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
             Delegate work from GitHub and keep the deterministic parts in your hands: repository setup, credentials, queues, retries, rebases, summaries, and the PR that lands back in review.
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link className={landingPrimaryButtonClass()} to={cta.href}>{cta.label}</Link>
+            <Link className={authPrimaryButtonClass} to={cta.href}>{cta.label}</Link>
             {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link> : null}
           </div>
           <p className="mt-3 max-w-xl text-sm text-gray-600">{cta.description}</p>
@@ -345,7 +356,7 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
               </p>
             ) : null}
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link aria-label={`${cta.label} from instance access`} className={landingPrimaryButtonClass()} to={cta.href}>{cta.label}</Link>
+              <Link aria-label={`${cta.label} from instance access`} className={authPrimaryButtonClass} to={cta.href}>{cta.label}</Link>
               {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link> : null}
             </div>
           </div>
@@ -537,12 +548,8 @@ function BootstrapShell({ initialBootstrap }: { initialBootstrap: BootstrapPaylo
   )
 }
 
-function landingPrimaryButtonClass() {
-  return "inline-flex items-center justify-center rounded bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600"
-}
-
 function landingSecondaryButtonClass() {
-  return "inline-flex items-center justify-center rounded border border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+  return "inline-flex items-center justify-center rounded border border-gray-300 bg-white px-3.5 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50"
 }
 
 function settingsSideNavLinkClass(active: boolean) {
