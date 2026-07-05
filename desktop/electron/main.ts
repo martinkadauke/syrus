@@ -16,8 +16,10 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { DEFAULT_GLOBAL_HOTKEY, migrateBackendConfig, store } from "./settings.js"
+import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
+import { OnboardingDriver } from "./installer/installerDriver.js"
+import { createOnboardingWindow } from "./windows/onboardingWindow.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -182,6 +184,8 @@ type AdminControl = "polling" | "runs"
 
 let mainWindow: BrowserWindow | null = null
 let preferencesWindow: BrowserWindow | null = null
+let onboardingWindow: BrowserWindow | null = null
+let onboardingDriver: OnboardingDriver | null = null
 let tray: Tray | null = null
 let cachedCredentials: Credentials | null = null
 let isQuitting = false
@@ -1216,6 +1220,71 @@ const showSetupWindow = async () => {
   preferencesWindow?.webContents.send("credentials-cleared")
 }
 
+const ensureOnboardingDriver = () => {
+  onboardingDriver ??= new OnboardingDriver({
+    saveRemoteCredentials: (credentials) => saveCredentials(credentials),
+    onState: (state) => {
+      onboardingWindow?.webContents.send("onboarding:state-changed", state)
+    },
+    onLogLine: (line) => {
+      onboardingWindow?.webContents.send("onboarding:log-line", line)
+    }
+  })
+  return onboardingDriver
+}
+
+// In-flight guard: the window variable is only assigned after the renderer
+// finishes loading, and a second call during that gap (tray "Open Syrus",
+// activate, second-instance) would otherwise create a duplicate window that
+// stops receiving driver state pushes.
+let onboardingWindowOpening: Promise<void> | null = null
+
+const showOnboardingWindow = async () => {
+  if (onboardingWindow) {
+    onboardingWindow.show()
+    onboardingWindow.focus()
+    return
+  }
+
+  if (onboardingWindowOpening) {
+    return onboardingWindowOpening
+  }
+
+  onboardingWindowOpening = (async () => {
+    ensureOnboardingDriver()
+    if (process.platform === "darwin") {
+      app.dock?.show()
+    }
+
+    onboardingWindow = await createOnboardingWindow({
+      preloadPath: path.join(__dirname, "preload.cjs"),
+      loadRenderer,
+      onClosed: () => {
+        onboardingWindow = null
+        if (process.platform === "darwin") {
+          app.dock?.hide()
+        }
+      }
+    })
+  })()
+
+  try {
+    await onboardingWindowOpening
+  } finally {
+    onboardingWindowOpening = null
+  }
+}
+
+// After onboarding completes: close the window and open the instance.
+// (An in-app web-container window replaces the external browser next.)
+const finishOnboarding = async () => {
+  const serverUrl = getServerUrl()
+  onboardingWindow?.close()
+  if (serverUrl !== "") {
+    await shell.openExternal(serverUrl)
+  }
+}
+
 const openSyrusInBrowser = async () => {
   const credentials = cachedCredentials ?? (await loadCredentials())
   if (credentials) {
@@ -1423,6 +1492,36 @@ ipcMain.handle("confirm-approve-job", async (event, jobID: number) => confirmApp
 ipcMain.handle("approve-job", async (_event, jobID: number) => approveJob(jobID))
 ipcMain.handle("retry-job", async (_event, jobID: number) => retryJob(jobID))
 ipcMain.handle("submit-job-feedback", async (_event, jobID: number, body: string) => submitJobFeedback(jobID, body))
+ipcMain.handle("onboarding:get-state", async () => ensureOnboardingDriver().getState())
+ipcMain.handle("onboarding:choose-mode", async (_event, mode: "local" | "remote") => {
+  ensureOnboardingDriver().chooseMode(mode)
+})
+ipcMain.handle("onboarding:connect-remote", async (_event, request: { url: string; token?: string }) =>
+  ensureOnboardingDriver().connectRemote(request)
+)
+ipcMain.handle("onboarding:start-install", async (_event, port?: number) =>
+  ensureOnboardingDriver().startInstall(port)
+)
+ipcMain.handle("onboarding:cancel-install", async () => {
+  ensureOnboardingDriver().cancelInstall()
+})
+ipcMain.handle("onboarding:retry", async () => ensureOnboardingDriver().precheck())
+ipcMain.handle("onboarding:back", async () => {
+  ensureOnboardingDriver().backToWelcome()
+})
+ipcMain.handle("onboarding:locate-env", async (event) =>
+  ensureOnboardingDriver().locateEnv(BrowserWindow.fromWebContents(event.sender))
+)
+ipcMain.handle("onboarding:wipe-data", async (event) =>
+  ensureOnboardingDriver().wipeData(BrowserWindow.fromWebContents(event.sender))
+)
+ipcMain.handle("onboarding:open-orbstack-download", async () => {
+  ensureOnboardingDriver().openOrbStackDownload()
+})
+ipcMain.handle("onboarding:adopt-running", async () => {
+  ensureOnboardingDriver().adoptRunning()
+})
+ipcMain.handle("onboarding:finish", async () => finishOnboarding())
 ipcMain.handle("open-external", async (_event, url: string) => {
   if (!URL.canParse(url)) {
     throw new Error("Invalid URL.")
@@ -1455,7 +1554,9 @@ app.whenReady().then(async () => {
   }
   registerGlobalHotkey()
 
-  if (!app.isPackaged) {
+  if (getBackendMode() === "") {
+    await showOnboardingWindow()
+  } else if (!app.isPackaged) {
     await showPopoverWindow()
   }
 
