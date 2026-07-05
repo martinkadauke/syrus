@@ -28,13 +28,14 @@ RSpec.describe "Steps::MergeTrain*" do
     klass.new(run)
   end
 
-  def stub_git(handler, head: "intsha999")
+  def stub_git(handler, head: "intsha999", base: "basesha123")
     workspace = instance_double(WorkflowWorkspace, setup: nil, path: Pathname.new("/tmp/ws"), branch_name: "x")
     git = instance_double(GitRunner)
     allow(handler).to receive(:workspace).and_return(workspace)
     allow(handler).to receive(:streaming_git).and_return(git)
     allow(git).to receive(:run)
     allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: "/tmp/ws").and_return("#{head}\n")
+    allow(git).to receive(:run).with("rev-parse", "FETCH_HEAD", chdir: "/tmp/ws").and_return("#{base}\n")
     git
   end
 
@@ -92,6 +93,7 @@ RSpec.describe "Steps::MergeTrain*" do
       expect(handler).not_to have_received(:run_agent)
       expect(train.reload.state).to eq("grading")
       expect(train.integration_sha).to eq("intsha999")
+      expect(handler.workflow.artifact("merge_train_base_sha")).to eq("basesha123")
     end
 
     it "skips prepare and graders when the built integration SHA already passed grading" do
@@ -193,6 +195,7 @@ RSpec.describe "Steps::MergeTrain*" do
     before do
       allow(GithubClient).to receive(:for).and_return(client)
       allow(repository).to receive(:authenticated_push_url).and_return("https://push.example/repo.git")
+      allow(client).to receive(:open_pull_request_for_head).and_return(nil)
       allow(client).to receive(:create_pull_request).and_return(OpenStruct.new(number: 777))
       allow(client).to receive(:merge_pull_request).and_return(OpenStruct.new(merged: true))
       allow(client).to receive(:add_issue_comment)
@@ -264,6 +267,40 @@ RSpec.describe "Steps::MergeTrain*" do
       expect { handler.call }.to raise_error(Steps::Base::StepFailed, /did not report/)
       expect(a.reload).not_to be_closed
     end
+
+    it "reuses an already-open integration PR on retry" do
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      handler = step_handler(described_class, "merge_train_land", train, a)
+      allow(handler).to receive(:repository).and_return(repository)
+      stub_git(handler)
+      existing_pr = OpenStruct.new(number: 888, state: "open")
+      allow(client).to receive(:open_pull_request_for_head).and_return(existing_pr)
+
+      handler.call
+
+      expect(client).not_to have_received(:create_pull_request)
+      expect(client).to have_received(:merge_pull_request).with("acme/widgets", 888, hash_including(merge_method: "merge"))
+      expect(handler.workflow.artifact("merge_train_pr_number")).to eq(888)
+    end
+
+    it "fails before pushing when the base branch moved after the train was built" do
+      a = member_job(issue_number: 1)
+      train = build_train([ a ])
+      handler = step_handler(described_class, "merge_train_land", train, a)
+      handler.workflow.set_artifact!("merge_train_base_sha", "oldbase111")
+      allow(handler).to receive(:repository).and_return(repository)
+      git = stub_git(handler, base: "newbase222")
+
+      expect { handler.call }.to raise_error(Steps::Base::StepFailed, /base moved .* rebuild required/)
+      expect(git).to have_received(:run).with("fetch", "https://push.example/repo.git", "refs/heads/master", chdir: "/tmp/ws")
+      expect(git).not_to have_received(:run).with("push", anything, any_args)
+      expect(client).not_to have_received(:create_pull_request)
+      expect(handler.workflow.artifact("merge_train_stale_base")).to include(
+        "built_base_sha" => "oldbase111",
+        "current_base_sha" => "newbase222"
+      )
+    end
   end
 
   describe MergeTrainFailureHandler do
@@ -291,6 +328,16 @@ RSpec.describe "Steps::MergeTrain*" do
     it "defer_lands members (auto-retry) on a transient infrastructure blocker" do
       a = member_job(issue_number: 1)
       train, workflow = train_with_workflow([ a ], reason: "No space left on device")
+
+      described_class.call(workflow: workflow)
+
+      expect(a.reload.state).to eq("approved")
+      expect(train.reload.state).to eq("failed")
+    end
+
+    it "defer_lands members when the merge-train base moved and needs rebuilding" do
+      a = member_job(issue_number: 1)
+      train, workflow = train_with_workflow([ a ], reason: "merge_train: base moved from oldbase to newbase; rebuild required")
 
       described_class.call(workflow: workflow)
 

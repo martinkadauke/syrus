@@ -88,6 +88,20 @@ RSpec.describe MergeTrainDispatcher do
     expect(MergeTrain.where(state: "building").count).to eq(0)
   end
 
+  it "re-dispatches immediately after a stale-base train failure" do
+    approved_child(1)
+    MergeTrain.create!(
+      epic: epic,
+      repository: repository,
+      base_branch: "master",
+      state: "failed",
+      failure_reason: "merge_train: base moved from oldbase to newbase; rebuild required",
+      finished_at: 5.minutes.ago
+    )
+
+    expect(described_class.try_dispatch!(epic)).to be_present
+  end
+
   it "re-dispatches once the cooldown has elapsed" do
     approved_child(1)
     MergeTrain.create!(epic: epic, repository: repository, base_branch: "master",

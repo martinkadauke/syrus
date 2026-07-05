@@ -72,7 +72,10 @@ class MergeTrainDispatcher
   end
 
   def cooling_down?
-    last_failure = MergeTrain.where(epic_id: @epic.id, state: "failed").maximum(:finished_at)
+    last_failure = MergeTrain
+      .where(epic_id: @epic.id, state: "failed")
+      .where("failure_reason IS NULL OR failure_reason NOT LIKE ?", "merge_train: base moved%")
+      .maximum(:finished_at)
     last_failure.present? && last_failure > RETRY_COOLDOWN.ago
   end
 end

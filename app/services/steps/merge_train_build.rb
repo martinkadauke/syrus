@@ -30,8 +30,10 @@ module Steps
       @integration = train.integration_branch.presence || "syrus/merge-train-epic-#{train.epic_id}-#{train.id}"
 
       fetch_branch!(train.base_branch)
+      base_sha = @git.run("rev-parse", "FETCH_HEAD", chdir: @chdir).strip
+      workflow.set_artifact!("merge_train_base_sha", base_sha)
       @git.run("checkout", "-B", @integration, "FETCH_HEAD", chdir: @chdir)
-      log("merge_train: integration branch #{@integration} started at #{train.base_branch}")
+      log("merge_train: integration branch #{@integration} started at #{train.base_branch}@#{base_sha.first(9)}")
 
       members.each do |member|
         branch = member.branch_name

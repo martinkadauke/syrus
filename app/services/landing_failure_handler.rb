@@ -28,8 +28,8 @@ class LandingFailureHandler
     if infrastructure_blocker?
       pause_landing!
       job.defer_landing! if job.may_defer_landing?
-    elsif rebase_cap_blocker?
-      log_rebase_cap!
+    elsif rebase_cap_blocker? || stale_merge_train_base?
+      log_deferral!
       job.defer_landing! if job.may_defer_landing?
     else
       job.fail_landing! if job.may_fail_landing?
@@ -47,6 +47,14 @@ class LandingFailureHandler
 
   def rebase_cap_blocker?
     reason.match?(/rebase cap reached/i)
+  end
+
+  def stale_merge_train_base?
+    self.class.stale_merge_train_base?(reason)
+  end
+
+  def self.stale_merge_train_base?(reason)
+    reason.to_s.match?(/\Amerge_train: base moved .* rebuild required/i)
   end
 
   def pause_landing!
@@ -69,16 +77,22 @@ class LandingFailureHandler
     Rails.logger.warn("[LandingFailureHandler] failed to log landing pause for #{job.slug}: #{e.class}: #{e.message}")
   end
 
-  def log_rebase_cap!
+  def log_deferral!
     log_run = run || job.current_run
     return unless log_run
+
+    message = if stale_merge_train_base?
+      "landing_queue: deferred landing because the merge-train base moved during validation; Syrus will rebuild the train"
+    else
+      "landing_queue: deferred landing because the rebase cap was reached; run a manual rebase or wait for the PR head/base to change before retrying"
+    end
 
     JobLog.append!(
       run: log_run,
       kind: "system",
-      chunk: "landing_queue: deferred landing because the rebase cap was reached; run a manual rebase or wait for the PR head/base to change before retrying"
+      chunk: message
     )
   rescue StandardError => e
-    Rails.logger.warn("[LandingFailureHandler] failed to log rebase-cap blocker for #{job.slug}: #{e.class}: #{e.message}")
+    Rails.logger.warn("[LandingFailureHandler] failed to log landing deferral for #{job.slug}: #{e.class}: #{e.message}")
   end
 end

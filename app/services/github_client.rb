@@ -141,6 +141,13 @@ class GithubClient
     raise
   end
 
+  def open_pull_request_for_head(repo_slug, base:, head:)
+    track_rate_limits { @client.pull_requests(repo_slug, state: "open", base: base, head: head).first }
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited looking up #{repo_slug} PR #{head} -> #{base}: #{e.message}")
+    raise
+  end
+
   def create_issue(repo_slug, title:, body:, labels: [])
     track_rate_limits { @client.create_issue(repo_slug, title, body, labels: labels) }
   rescue Octokit::TooManyRequests => e
