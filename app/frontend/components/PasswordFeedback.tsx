@@ -33,6 +33,28 @@ export function EmailValidityHint({ email }: { email: string }) {
   )
 }
 
+// Sign-in has no use for a strength meter (the password already exists);
+// the useful live signal there is Caps Lock, the classic "why is my correct
+// password wrong" trap. Same fade-in language as the other hints.
+export function CapsLockHint({ active }: { active: boolean }) {
+  return (
+    <p
+      aria-live="polite"
+      className={`mt-1 flex items-center gap-1.5 text-xs transition-opacity duration-300 ${
+        active ? "text-amber-600 dark:text-amber-400 opacity-100" : "opacity-0"
+      }`}
+      data-testid="caps-lock"
+    >
+      {active ? (
+        <svg aria-hidden="true" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+          <path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : null}
+      {active ? "Caps Lock is on" : " "}
+    </p>
+  )
+}
+
 const BAR_COLORS: Record<number, string> = {
   1: "bg-red-400",
   2: "bg-amber-400",

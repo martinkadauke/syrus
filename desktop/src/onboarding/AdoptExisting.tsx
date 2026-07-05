@@ -1,6 +1,8 @@
 import { useState } from "react"
+import { FooterRow, FormError, OnboardingScreen } from "./primitives"
 
 type AdoptExistingProps = {
+  error?: string | null
   onLocateEnv: () => void
   onWipe: () => void
   onBack: () => void
@@ -9,16 +11,17 @@ type AdoptExistingProps = {
 // The encryption-key guard, in plain language. A previous install's data
 // volume exists, but its .env (which holds the keys that can decrypt that
 // data) isn't where this app keeps it. Never regenerate keys silently.
-export function AdoptExisting({ onLocateEnv, onWipe, onBack }: AdoptExistingProps) {
+export function AdoptExisting({ error = null, onLocateEnv, onWipe, onBack }: AdoptExistingProps) {
   const [confirmation, setConfirmation] = useState("")
   const wipeArmed = confirmation.trim().toLowerCase() === "delete"
+  const installScript =
+    (window.syrusDesktop?.platform ?? "darwin") === "win32" ? "install.ps1" : "install.sh"
 
   return (
-    <section className="w-full max-w-md">
-      <h1 className="text-center text-xl font-semibold">Found an existing Syrus installation</h1>
+    <OnboardingScreen title="Found an existing Syrus installation">
       <p className="mt-3 text-sm leading-relaxed text-slate-600">
-        This Mac already has Syrus data from a previous install (for example from running{" "}
-        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">install.sh</code> in a checkout). That
+        This machine already has Syrus data from a previous install (for example from running{" "}
+        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{installScript}</code> in a checkout). That
         data is encrypted with keys stored in that install&apos;s{" "}
         <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">.env</code> file. To keep your existing
         Jobs, repositories, and credentials, point us at it.
@@ -48,24 +51,25 @@ export function AdoptExisting({ onLocateEnv, onWipe, onBack }: AdoptExistingProp
             placeholder="delete"
             aria-label="Type delete to confirm"
             onChange={(event) => setConfirmation(event.target.value)}
-            className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-red-500 focus:outline-none"
+            className="danger-confirm-input w-32"
           />
-          <button
-            type="button"
-            disabled={!wipeArmed}
-            onClick={onWipe}
-            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-700 shadow-sm transition enabled:hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-          >
+          <button type="button" className="danger-button" disabled={!wipeArmed} onClick={onWipe}>
             Delete all Syrus data
           </button>
         </div>
       </div>
 
-      <div className="mt-6 text-center">
+      {error ? (
+        <div className="mt-4">
+          <FormError>{error}</FormError>
+        </div>
+      ) : null}
+
+      <FooterRow>
         <button type="button" className="secondary-button" onClick={onBack}>
           Back
         </button>
-      </div>
-    </section>
+      </FooterRow>
+    </OnboardingScreen>
   )
 }

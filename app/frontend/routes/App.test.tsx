@@ -139,7 +139,9 @@ describe("App", () => {
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-        <MemoryRouter initialEntries={["/app-shell"]}>
+        {/* Bare /app-shell now routes to the dashboard like "/"; the debug
+            shell only serves unregistered paths. */}
+        <MemoryRouter initialEntries={["/app-shell/debug"]}>
           <App />
         </MemoryRouter>
       </QueryClientProvider>
@@ -167,6 +169,46 @@ describe("App", () => {
       { channel: "AppUserChannel" },
       expect.objectContaining({ received: expect.any(Function) })
     )
+  })
+
+  it("routes bare /app-shell to the dashboard for signed-in users", async () => {
+    // Before RootRoute covered /app-shell, the bare desktop entry path fell
+    // through to the debug catch-all instead of behaving like "/".
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify(bootstrapPayload())
+    document.body.appendChild(script)
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(async (input) => {
+      const path = String(input)
+      if (path.startsWith("/api/v1/app/dashboard")) {
+        return new Response(
+          JSON.stringify(dashboardPayload({ subject: "job", view: "list", items: [dashboardJobItem()] })),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      }
+
+      return new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } })
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/app-shell"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Dashboard" })).toBeInTheDocument()
+      expect(screen.queryByRole("main", { name: "Syrus SPA" })).not.toBeInTheDocument()
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/dashboard",
+        expect.objectContaining({ credentials: "same-origin" })
+      )
+    } finally {
+      script.remove()
+    }
   })
 
   it("renders system alert banners from bootstrap data", async () => {
@@ -300,6 +342,105 @@ describe("App", () => {
     expect(await screen.findByRole("main", { name: "Syrus public landing" })).toBeInTheDocument()
     expect(screen.getAllByRole("link", { name: "Create account from invitation" })[0]).toHaveAttribute("href", "/users/new?token=invite-123")
     expect(screen.getByText("Detected")).toBeInTheDocument()
+  })
+
+  it("skips the marketing landing inside the desktop shell and lands on sign-in", async () => {
+    // Desktop users who are merely signed out already installed the app —
+    // they need the sign-in form, not the self-hosting pitch.
+    const restoreUserAgent = stubDesktopUserAgent()
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(publicBootstrapPayload({ first_signup: false, signups_open: false })), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Sign in" })).toBeInTheDocument()
+      expect(screen.queryByRole("main", { name: "Syrus public landing" })).not.toBeInTheDocument()
+    } finally {
+      restoreUserAgent()
+    }
+  })
+
+  it("routes desktop-shell invitation links straight to the invite signup", async () => {
+    const restoreUserAgent = stubDesktopUserAgent()
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(async (input) => {
+      const path = String(input)
+      if (path.startsWith("/api/v1/app/auth/signup")) {
+        return new Response(
+          JSON.stringify({
+            allowed: true,
+            first_signup: false,
+            signups_open: false,
+            invitation: { token: "invite-123", email_address: "guest@example.com", invited_by_email: "admin@example.com" }
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      }
+
+      return new Response(JSON.stringify(publicBootstrapPayload({ first_signup: false, signups_open: false })), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    })
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/?token=invite-123"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Create account" })).toBeInTheDocument()
+      expect(await screen.findByText("Accepting an invitation from admin@example.com.")).toBeInTheDocument()
+      expect(screen.queryByRole("main", { name: "Syrus public landing" })).not.toBeInTheDocument()
+      // The token must survive the desktop redirect — the signup page's state
+      // fetch carries it as the query string.
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/v1/app/auth/signup?token=invite-123",
+        expect.objectContaining({ credentials: "same-origin" })
+      )
+    } finally {
+      restoreUserAgent()
+    }
+  })
+
+  it("keeps the first-run welcome inside the desktop shell", async () => {
+    // First run IS the desktop first-run screen — no redirect to sign-in
+    // (there is nobody to sign in as yet).
+    const restoreUserAgent = stubDesktopUserAgent()
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify(publicBootstrapPayload({ first_signup: true })), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      })
+    )
+
+    try {
+      render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+          <MemoryRouter initialEntries={["/"]}>
+            <App />
+          </MemoryRouter>
+        </QueryClientProvider>
+      )
+
+      expect(await screen.findByRole("main", { name: "Syrus first-run welcome" })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: "Set up this Syrus instance" })).toHaveAttribute("href", "/users/new")
+    } finally {
+      restoreUserAgent()
+    }
   })
 
   it("renders the sign-in route and submits credentials through the auth API", async () => {
@@ -605,9 +746,22 @@ describe("App", () => {
       }
     }))
     document.body.appendChild(script)
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ theme: "light" }), { status: 200, headers: { "Content-Type": "application/json" } })
-    )
+    // Bare /app-shell renders the dashboard now, so each endpoint needs its
+    // own response (a single shared Response body can only be read once).
+    const fetchSpy = vi.spyOn(window, "fetch").mockImplementation(async (input) => {
+      const path = String(input)
+      if (path === "/api/v1/app/theme") {
+        return new Response(JSON.stringify({ theme: "light" }), { status: 200, headers: { "Content-Type": "application/json" } })
+      }
+      if (path.startsWith("/api/v1/app/dashboard")) {
+        return new Response(
+          JSON.stringify(dashboardPayload({ subject: "job", view: "list", items: [] })),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      }
+
+      return new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } })
+    })
 
     try {
       render(
@@ -13872,6 +14026,19 @@ function setupStatusPayload(overrides: Record<string, unknown> = {}) {
       dashboard_jobs_path: "/dashboard/jobs"
     },
     ...overrides
+  }
+}
+
+// Marks the jsdom navigator as the desktop shell (isDesktopShell matches the
+// SyrusDesktop/ UA token). Returns a restore function — call it in finally.
+function stubDesktopUserAgent() {
+  const original = window.navigator.userAgent
+  Object.defineProperty(window.navigator, "userAgent", {
+    value: `${original} SyrusDesktop/1.0`,
+    configurable: true
+  })
+  return () => {
+    Object.defineProperty(window.navigator, "userAgent", { value: original, configurable: true })
   }
 }
 

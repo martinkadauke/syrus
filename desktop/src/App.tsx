@@ -867,7 +867,9 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
           kind: "success",
           message: result.onPath
             ? "Syrus CLI installed — Checkout is ready."
-            : 'Syrus CLI installed. For terminals, add: export PATH="$HOME/.local/bin:$PATH"'
+            : window.syrusDesktop.platform === "win32"
+              ? "Syrus CLI installed — open a NEW terminal to use `syrus`."
+              : 'Syrus CLI installed. For terminals, add: export PATH="$HOME/.local/bin:$PATH"'
         }, 7000)
         void cliStatusQuery.refetch()
       } else {
@@ -1392,16 +1394,16 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
   )
 }
 
-// One-click Syrus CLI install: the app bundles the per-arch binary and
-// installs it to ~/.local/bin with credentials pre-written, so `syrus` in a
-// terminal (and the tray's Checkout button) work without a repo clone or a
-// manual login. PATH is never mutated — when ~/.local/bin isn't on it, the
-// export line is offered for copy-paste.
+// The syrus CLI is batteries-included: the app installs it silently at
+// launch and re-installs whenever an app update ships a newer binary
+// (docs/install-experience-spec.md I1/I2), signed in via this app's
+// credentials. This section is the status readout plus two escape
+// hatches: Reinstall (the rare case the silent install failed) and the
+// Claude Code skill (the one opt-in piece — it writes into ~/.claude).
 export function CliInstallSection() {
   const [status, setStatus] = useState<"checking" | "installed" | "missing">("checking")
   const [result, setResult] = useState<SyrusCliInstallResult | null>(null)
   const [installing, setInstalling] = useState(false)
-  const [withSkill, setWithSkill] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -1437,33 +1439,29 @@ export function CliInstallSection() {
           {status === "checking" ? (
             <span className="status-line">Checking…</span>
           ) : status === "installed" ? (
-            <span className="form-success">Installed — Checkout and terminal workflows are ready.</span>
+            <span className="form-success">Installed — kept current automatically with app updates.</span>
           ) : (
-            <span className="status-line">Not installed. Powers Checkout here, plus terminal and agent workflows.</span>
+            <span className="status-line">
+              Not installed — it normally installs itself when the app starts, so something went wrong.
+            </span>
           )}
         </div>
         {status === "missing" ? (
-          <button className="primary-button" disabled={installing} onClick={() => void install({ withSkill })} type="button">
-            {installing ? "Installing…" : "Install CLI"}
+          <button className="primary-button" disabled={installing} onClick={() => void install()} type="button">
+            {installing ? "Installing…" : "Reinstall CLI"}
           </button>
         ) : (
           <button
             className="secondary-button"
             disabled={installing || status === "checking"}
             onClick={() => void install({ withSkill: true })}
-            title="Writes ~/.claude/skills/syrus so Claude Code sessions on this Mac can drive Syrus through the CLI."
+            title="Writes .claude/skills/syrus under your home directory so Claude Code sessions on this machine can drive Syrus through the CLI."
             type="button"
           >
             {installing ? "Installing…" : "Add Claude Code skill"}
           </button>
         )}
       </div>
-      {status === "missing" ? (
-        <label className="status-line flex items-center gap-2">
-          <input checked={withSkill} onChange={(event) => setWithSkill(event.target.checked)} type="checkbox" />
-          <span>Also add the Claude Code skill (lets coding agents on this Mac drive Syrus)</span>
-        </label>
-      ) : null}
       {result?.error ? <p className="form-error">{result.error}</p> : null}
       {result?.installed ? (
         <p className="status-line">
@@ -1472,9 +1470,13 @@ export function CliInstallSection() {
           {result.skillInstalled ? " Claude Code skill added." : null}
           {result.skillError ? ` Claude Code skill failed: ${result.skillError}` : null}
           {!result.onPath ? (
-            <>
-              {" "}Add it to your PATH: <code>export PATH="$HOME/.local/bin:$PATH"</code>
-            </>
+            window.syrusDesktop?.platform === "win32" ? (
+              <> Open a NEW terminal to use <code>syrus</code>.</>
+            ) : (
+              <>
+                {" "}Add it to your PATH: <code>export PATH="$HOME/.local/bin:$PATH"</code>
+              </>
+            )
           ) : null}
         </p>
       ) : null}
@@ -2740,6 +2742,16 @@ export function App() {
               aria-labelledby="preferences-account-tab"
               onSubmit={saveCredentials}
             >
+              {/* Most users never touch this: signing in inside the Syrus
+                  window mints the token automatically. This manual form is
+                  the fallback for non-admin accounts on shared instances
+                  and scripted setups. */}
+              <p className="status-line" style={{ margin: 0 }}>
+                Signing in inside the Syrus window connects this{" "}
+                {window.syrusDesktop?.platform === "win32" ? "tray" : "menu-bar"} app automatically. Use this
+                form only if that didn&apos;t happen — for example with a non-admin account.
+              </p>
+
               <label>
                 <span>Syrus instance URL</span>
                 <input
@@ -2747,7 +2759,7 @@ export function App() {
                   required
                   type="url"
                   value={url}
-                  placeholder="https://your-syrus-instance.com"
+                  placeholder="https://syrus.your-company.com"
                   onChange={(event) => setUrl(event.target.value)}
                 />
               </label>
@@ -2857,7 +2869,7 @@ export function App() {
                     <input
                       type="text"
                       value={localProjectsRoot}
-                      placeholder="/Users/you/src"
+                      placeholder={window.syrusDesktop?.platform === "win32" ? "C:\\Users\\you\\src" : "/Users/you/src"}
                       onChange={(event) => {
                         setLocalProjectsRoot(event.target.value)
                         setSettingsSaved(false)
@@ -2890,7 +2902,11 @@ export function App() {
                         <input
                           type="text"
                           value={draft.localPath}
-                          placeholder="/absolute/path/to/repo"
+                          placeholder={
+                            window.syrusDesktop?.platform === "win32"
+                              ? "C:\\absolute\\path\\to\\repo"
+                              : "/absolute/path/to/repo"
+                          }
                           aria-label="Repository local path"
                           onChange={(event) => updateRepoPathDraft(draft.id, "localPath", event.target.value)}
                         />

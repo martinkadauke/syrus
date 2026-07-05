@@ -1,19 +1,40 @@
 ---
-title: Desktop App (macOS)
-description: Download Syrus.app — a guided local install, the full web UI in a native window, and a menu-bar inbox.
+title: Desktop App
+description: Download the Syrus desktop app — a guided local install, the full web UI in a native window, and a menu-bar inbox. macOS today; Windows in beta.
 ---
 
-# Desktop App (macOS)
+# Desktop App
 
-The Syrus desktop app is the easiest way to run Syrus: download a DMG,
-double-click Syrus inside it (the app installs itself into
-`~/Applications` and relaunches from there), and let it set everything
-up. No dragging, no terminal, no clone, no manual configuration.
+The Syrus desktop app is the easiest way to run Syrus: download it, open
+it, and let it set everything up. No terminal, no clone, no manual
+configuration. On macOS, double-click Syrus inside the DMG (the app
+installs itself into `~/Applications` and relaunches from there).
 
 **[Download Syrus for Mac](https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg)**
 (Apple Silicon) ·
 **[Intel Macs](https://github.com/tkadauke/syrus/releases/latest/download/Syrus-Intel.dmg)** ·
 other artifacts on the [releases page](https://github.com/tkadauke/syrus/releases).
+
+**Windows** is in beta: the app installs and runs Syrus locally on Docker
+Desktop (or connects to an existing instance), with the same tray inbox
+and bundled CLI. Installers aren't published to the releases page yet —
+they ship there once code signing goes live. Setup differences worth
+knowing: the local backend needs [Docker
+Desktop](https://www.docker.com/products/docker-desktop/) on WSL 2 — if
+WSL 2 is missing, the app offers a one-click elevated install (Windows
+may restart; reopening Syrus resumes setup right where it left off) —
+state lives under `%USERPROFILE%\.syrus\`, and the
+automatically installed CLI lands in `%LocalAppData%\Syrus\bin` and joins
+your user PATH (open a new terminal to pick it up).
+
+## Signing in — no API keys
+
+Connecting the app to a Syrus instance takes only the instance address;
+you then sign in with your email and password in the app window, exactly
+like the browser. The menu-bar/tray inbox authenticates itself from that
+session automatically — you never copy an API token during setup. (The
+manual token form remains in Preferences for non-admin accounts on shared
+instances.)
 
 ## What you get
 
@@ -37,12 +58,14 @@ other artifacts on the [releases page](https://github.com/tkadauke/syrus/release
   next time its window is open and signed in.
   Non-admin users on a shared remote instance paste an API token into
   Preferences instead.
-- **The Syrus CLI, one click away.** After setup, the app offers to
-  install the bundled `syrus` CLI to `~/.local/bin` — already signed in
-  through the shared credentials file — with an optional Claude Code
-  skill so coding agents on your Mac can drive Syrus from the terminal.
-  Also available any time from Preferences, or from the menu-bar banner
-  when the CLI is missing.
+- **The Syrus CLI, batteries included.** The app installs the bundled
+  `syrus` CLI automatically at launch (`~/.local/bin` on macOS,
+  `%LocalAppData%\Syrus\bin` on Windows — see the [CLI docs](/docs/cli))
+  and keeps it current with every app update, already signed in through
+  the shared credentials file. When Claude Code or Codex is detected on
+  the machine, the app offers (once) to add the Claude Code skill so
+  coding agents can drive Syrus from the terminal — also available any
+  time from Preferences.
 - **Lifecycle management.** The app starts your local Syrus when it
   launches and leaves it running when you quit, so GitHub polling and
   agent runs continue in the background. Start, stop, and restart live

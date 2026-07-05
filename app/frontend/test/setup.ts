@@ -6,7 +6,11 @@ function ensureLocalStorage() {
   if (typeof window === "undefined") return
 
   try {
-    if (window.localStorage) return
+    // Present AND functional: Node >= 23 ships a global localStorage that,
+    // without --localstorage-file, is an object whose methods are all
+    // undefined — and it shadows jsdom's working Storage in the vitest
+    // global. Presence alone is not enough; probe a method.
+    if (window.localStorage && typeof window.localStorage.setItem === "function") return
   } catch {
     // Fall through and install a test double for environments with disabled storage.
   }

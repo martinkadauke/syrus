@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { FooterRow, OnboardingScreen, ValidationHint } from "./primitives"
 
 type PortConflictProps = {
   port: number
@@ -12,15 +13,12 @@ export function PortConflict({ port, onContinue, onBack }: PortConflictProps) {
   const valid = Number.isFinite(parsed) && parsed > 1023 && parsed < 65536
 
   return (
-    <section className="w-full max-w-md text-center">
-      <h1 className="text-xl font-semibold">Port {port} is taken</h1>
-      <p className="mt-3 text-sm leading-relaxed text-slate-600">
-        Something else on this Mac is already using port {port} (often a development server). Pick another
-        port for Syrus.
-      </p>
-
+    <OnboardingScreen
+      title={`Port ${port} is taken`}
+      subtitle={`Something else on this machine is already using port ${port} (often a development server). Pick another port for Syrus.`}
+    >
       <div className="mt-6 flex items-center justify-center gap-2">
-        <label className="text-sm text-slate-700" htmlFor="syrus-port">
+        <label className="text-sm font-normal text-slate-700" htmlFor="syrus-port">
           Serve Syrus on port
         </label>
         <input
@@ -30,18 +28,24 @@ export function PortConflict({ port, onContinue, onBack }: PortConflictProps) {
           max={65535}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-blue-500 focus:outline-none"
+          className="w-24"
         />
       </div>
+      <div className="flex justify-center">
+        {/* Explains WHY Continue is disabled instead of silently gating it. */}
+        <ValidationHint state={draft.trim() === "" ? "empty" : valid ? "valid" : "invalid"}>
+          {valid ? `Syrus will listen on http://localhost:${parsed}.` : "Pick a port between 1024 and 65535."}
+        </ValidationHint>
+      </div>
 
-      <div className="mt-6 flex justify-center gap-2">
+      <FooterRow>
         <button type="button" className="secondary-button" onClick={onBack}>
           Back
         </button>
         <button type="button" className="primary-button" disabled={!valid} onClick={() => onContinue(parsed)}>
           Continue
         </button>
-      </div>
-    </section>
+      </FooterRow>
+    </OnboardingScreen>
   )
 }

@@ -62,7 +62,7 @@ The public website should browse in this order:
 | What is Syrus? | `/docs/what-is-syrus` | Plain product explanation and issue-to-PR flow. |
 | Why use Syrus? | `/docs/why-use-syrus` | Self-host, BYOK, multi-user, and auditability positioning. |
 | Getting started | `/docs/getting-started` | Choose an evaluation or deployment path and learn the first loop. |
-| Desktop app | `/docs/desktop` | macOS DMG download, guided local install, app window + menu bar, updates. |
+| Desktop app | `/docs/desktop` | Desktop download and guided local install (macOS DMG today, Windows in beta), app window + menu bar/tray inbox, updates. |
 | Concepts | `/docs/concepts` | Job, Workflow, Step, Run, states, trigger kinds, and MCP signals. |
 | Feature docs | `/docs/features` | Product-feature map that points to canonical reference pages. |
 | How-tos and recipes | `/docs/recipes` | Task-focused recipes: CI repair, PR feedback, scheduled jobs, custom workflows. |

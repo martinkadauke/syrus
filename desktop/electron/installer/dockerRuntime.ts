@@ -11,23 +11,29 @@ const execFileAsync = promisify(execFile)
 // OrbStack, Homebrew, or Docker Desktop is invisible without help. Every
 // docker/compose invocation in the app must go through execEnv() or an
 // absolute binary path from findDockerBinary().
-const dockerCandidateDirs = () => [
-  path.join(os.homedir(), ".orbstack", "bin"),
-  "/opt/homebrew/bin",
-  "/usr/local/bin",
-  "/Applications/Docker.app/Contents/Resources/bin"
-]
+const dockerCandidateDirs = () =>
+  process.platform === "win32"
+    ? [
+        path.join(process.env["ProgramFiles"] ?? "C:\\Program Files", "Docker", "Docker", "resources", "bin"),
+        path.join(process.env["LOCALAPPDATA"] ?? "", "Programs", "RedHat", "Podman")
+      ].filter((dir) => dir !== "")
+    : [
+        path.join(os.homedir(), ".orbstack", "bin"),
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/Applications/Docker.app/Contents/Resources/bin"
+      ]
 
 export const augmentedPath = () => {
   const extras = dockerCandidateDirs().filter((dir) => fs.existsSync(dir))
-  const current = (process.env.PATH ?? "").split(":").filter(Boolean)
+  const current = (process.env.PATH ?? "").split(path.delimiter).filter(Boolean)
   const merged = [...current]
   for (const dir of extras) {
     if (!merged.includes(dir)) {
       merged.push(dir)
     }
   }
-  return merged.join(":")
+  return merged.join(path.delimiter)
 }
 
 export const execEnv = (): NodeJS.ProcessEnv => ({ ...process.env, PATH: augmentedPath() })
@@ -39,8 +45,9 @@ export const findDockerBinary = async (): Promise<string | null> => {
     return cachedDockerBinary
   }
 
+  const binaryName = process.platform === "win32" ? "docker.exe" : "docker"
   for (const dir of dockerCandidateDirs()) {
-    const candidate = path.join(dir, "docker")
+    const candidate = path.join(dir, binaryName)
     try {
       fs.accessSync(candidate, fs.constants.X_OK)
       cachedDockerBinary = candidate
@@ -51,8 +58,9 @@ export const findDockerBinary = async (): Promise<string | null> => {
   }
 
   try {
-    const { stdout } = await execFileAsync("/usr/bin/which", ["docker"], { env: execEnv() })
-    const found = stdout.trim()
+    const lookup = process.platform === "win32" ? ["where", ["docker"]] as const : ["/usr/bin/which", ["docker"]] as const
+    const { stdout } = await execFileAsync(lookup[0], [...lookup[1]], { env: execEnv() })
+    const found = stdout.split(/\r?\n/)[0]?.trim() ?? ""
     cachedDockerBinary = found === "" ? null : found
   } catch {
     cachedDockerBinary = null
@@ -75,7 +83,45 @@ export const daemonUp = async (timeoutMs = 10_000): Promise<boolean> => {
   }
 }
 
-export type RuntimeApp = "OrbStack" | "Docker Desktop" | "Colima"
+// Docker Desktop on Windows runs on WSL 2. When WSL itself is missing, its
+// installer punts to a manual "run wsl --install in PowerShell" step — the
+// exact clunk the guided setup exists to remove, so the app preflights it
+// and offers the elevated install itself (installWsl below).
+export const wslReady = async (): Promise<boolean> => {
+  if (process.platform !== "win32") {
+    return true
+  }
+
+  try {
+    await execFileAsync("wsl.exe", ["--status"], { timeout: 10_000, windowsHide: true })
+    return true
+  } catch {
+    return false
+  }
+}
+
+// One-click WSL 2 install: elevates via UAC (unavoidable — feature install
+// needs admin) and skips the default distro (Docker Desktop brings its own).
+// Fire-and-forget by design: the caller polls wslReady()/daemonUp() and the
+// UI warns that Windows may require a restart afterwards.
+export const installWsl = async (): Promise<void> => {
+  await execFileAsync(
+    "powershell.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "Start-Process wsl.exe -ArgumentList '--install','--no-distribution' -Verb RunAs"
+    ],
+    { timeout: 30_000, windowsHide: true }
+  )
+}
+
+// Detecting and starting an ALREADY-INSTALLED Podman Desktop (Docker
+// socket enabled) is supported below; the guided setup's download
+// recommendation is Docker-Desktop-only — Podman compose isn't supported,
+// so the UI never suggests installing it (windows_scaffold_spec pins this).
+export type RuntimeApp = "OrbStack" | "Docker Desktop" | "Colima" | "Podman Desktop"
 
 const colimaBinary = (): string | null => {
   for (const dir of ["/opt/homebrew/bin", "/usr/local/bin"]) {
@@ -89,6 +135,17 @@ const colimaBinary = (): string | null => {
 }
 
 export const installedRuntimeApp = (): RuntimeApp | null => {
+  if (process.platform === "win32") {
+    const programFiles = process.env["ProgramFiles"] ?? "C:\\Program Files"
+    if (fs.existsSync(path.join(programFiles, "Docker", "Docker", "Docker Desktop.exe"))) {
+      return "Docker Desktop"
+    }
+    if (fs.existsSync(path.join(process.env["LOCALAPPDATA"] ?? "", "Programs", "podman-desktop", "Podman Desktop.exe"))) {
+      return "Podman Desktop"
+    }
+    return null
+  }
+
   if (fs.existsSync("/Applications/OrbStack.app")) {
     return "OrbStack"
   }
@@ -115,6 +172,15 @@ export const startRuntimeApp = async (runtimeApp: RuntimeApp) => {
     return
   }
 
+  if (process.platform === "win32") {
+    const programFiles = process.env["ProgramFiles"] ?? "C:\\Program Files"
+    const exe = runtimeApp === "Docker Desktop"
+      ? path.join(programFiles, "Docker", "Docker", "Docker Desktop.exe")
+      : path.join(process.env["LOCALAPPDATA"] ?? "", "Programs", "podman-desktop", "Podman Desktop.exe")
+    await execFileAsync("cmd.exe", ["/c", "start", "", exe])
+    return
+  }
+
   const appName = runtimeApp === "OrbStack" ? "OrbStack" : "Docker"
   await execFileAsync("open", ["-a", appName])
 }
@@ -133,7 +199,8 @@ export const composeCommand = async (): Promise<string[] | null> => {
   }
 
   try {
-    await execFileAsync("/usr/bin/which", ["docker-compose"], { env: execEnv() })
+    const lookup = process.platform === "win32" ? ["where", ["docker-compose"]] as const : ["/usr/bin/which", ["docker-compose"]] as const
+    await execFileAsync(lookup[0], [...lookup[1]], { env: execEnv() })
     return ["docker-compose"]
   } catch {
     return null

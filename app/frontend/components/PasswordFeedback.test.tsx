@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
-import { PasswordMatchHint, PasswordStrengthMeter } from "./PasswordFeedback"
+import { CapsLockHint, PasswordMatchHint, PasswordStrengthMeter } from "./PasswordFeedback"
 
 describe("PasswordStrengthMeter", () => {
   it("shows no label for an empty password", () => {
@@ -42,5 +42,23 @@ describe("PasswordMatchHint", () => {
     const hint = screen.getByTestId("password-match")
     expect(hint.textContent).toContain("Doesn't match yet")
     expect(hint.className).toContain("text-amber-600")
+  })
+})
+
+describe("CapsLockHint", () => {
+  it("stays invisible while Caps Lock is off", () => {
+    render(<CapsLockHint active={false} />)
+    const hint = screen.getByTestId("caps-lock")
+    expect(hint.className).toContain("opacity-0")
+    expect(hint.textContent?.trim()).toBe("")
+  })
+
+  it("warns in amber with a glyph while Caps Lock is on", () => {
+    render(<CapsLockHint active />)
+    const hint = screen.getByTestId("caps-lock")
+    expect(hint.textContent).toContain("Caps Lock is on")
+    expect(hint.className).toContain("text-amber-600")
+    expect(hint.className).toContain("opacity-100")
+    expect(hint.querySelector("svg")).not.toBeNull()
   })
 })

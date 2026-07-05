@@ -195,9 +195,19 @@ func (m inboxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err = msg.err.Error()
 			return m, nil
 		}
-		return m, tea.ExecProcess(pagerCommand(msg.text), func(err error) tea.Msg {
+		done := func(err error) tea.Msg {
 			return inboxActionMsg{jobID: msg.jobID, kind: msg.kind, read: msg.kind == "diff", err: err}
-		})
+		}
+		pager := pagerCommand(msg.text)
+		if pager == nil {
+			// No usable pager (stock Windows without $PAGER): print the text
+			// above the TUI instead.
+			return m, tea.Sequence(
+				tea.Println(strings.TrimRight(msg.text, "\n")),
+				func() tea.Msg { return done(nil) },
+			)
+		}
+		return m, tea.ExecProcess(pager, done)
 	case inboxTickMsg:
 		if m.quitting {
 			return m, nil
@@ -590,17 +600,6 @@ var (
 	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
 )
 
-func openURLCommand(target string) *exec.Cmd {
-	switch runtime.GOOS {
-	case "darwin":
-		return exec.Command("open", target)
-	case "windows":
-		return exec.Command("cmd", "/c", "start", target)
-	default:
-		return exec.Command("xdg-open", target)
-	}
-}
-
 func checkoutJobCmd(client inboxAPI, jobID int64) tea.Cmd {
 	return func() tea.Msg {
 		detail, err := client.GetJobDetail(context.Background(), strconv.FormatInt(jobID, 10))
@@ -644,13 +643,30 @@ func pageJobLogCmd(client inboxAPI, jobID int64) tea.Cmd {
 	}
 }
 
-func pagerCommand(text string) *exec.Cmd {
-	pager := strings.TrimSpace(os.Getenv("PAGER"))
+// pagerCommandLine resolves which pager to run given the OS and the raw
+// $PAGER value. A set $PAGER always wins. When it is unset, POSIX platforms
+// fall back to less; stock Windows has no less, so usePager is false and the
+// caller prints the text directly (mirroring inspect.go's page()).
+func pagerCommandLine(goos string, pagerEnv string) (name string, args []string, usePager bool) {
+	pager := strings.TrimSpace(pagerEnv)
 	if pager == "" {
+		if goos == "windows" {
+			return "", nil, false
+		}
 		pager = "less"
 	}
 	parts := strings.Fields(pager)
-	cmd := exec.Command(parts[0], parts[1:]...)
+	return parts[0], parts[1:], true
+}
+
+// pagerCommand returns the pager process for text, or nil when the text
+// should be printed directly instead of paged.
+func pagerCommand(text string) *exec.Cmd {
+	name, args, usePager := pagerCommandLine(runtime.GOOS, os.Getenv("PAGER"))
+	if !usePager {
+		return nil
+	}
+	cmd := exec.Command(name, args...)
 	cmd.Stdin = strings.NewReader(text)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

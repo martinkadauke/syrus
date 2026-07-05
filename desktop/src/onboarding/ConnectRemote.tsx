@@ -1,74 +1,151 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react"
+import { analyzeInstanceUrl } from "./instanceUrl"
+import { FooterRow, FormError, OnboardingScreen, Spinner, ValidationHint } from "./primitives"
 
 type ConnectRemoteProps = {
   error: string | null
   busy: boolean
   checkingUrl?: string
-  onSubmit: (url: string, token?: string) => void
+  onSubmit: (url: string) => void
   onBack: () => void
 }
 
+const PROBE_DEBOUNCE_MS = 600
+
+type ProbeState =
+  | { status: "idle" }
+  | { status: "checking"; url: string }
+  | { status: "ok"; url: string }
+  | { status: "fail"; message: string }
+
+// Connect takes only the instance URL. There is deliberately no API-token
+// field here: signing in inside the app window mints the tray token
+// automatically (tokenProvisioner), and the manual-token path for non-admin
+// accounts lives in Preferences.
+//
+// The live feedback is honest: the green check only appears when a Syrus
+// actually answered at the previewed address (debounced main-process probe),
+// never because the string merely parses. Submitting doesn't wait for the
+// probe — connectRemote re-checks authoritatively.
 export function ConnectRemote({ error, busy, checkingUrl, onSubmit, onBack }: ConnectRemoteProps) {
   const [url, setUrl] = useState(checkingUrl ?? "")
-  const [token, setToken] = useState("")
+  const [probe, setProbe] = useState<ProbeState>({ status: "idle" })
+  const probeSeq = useRef(0)
+  const analysis = useMemo(() => analyzeInstanceUrl(url), [url])
+
+  useEffect(() => {
+    // Every keystroke invalidates any in-flight probe result.
+    probeSeq.current += 1
+    const seq = probeSeq.current
+
+    if (analysis.state === "empty" || analysis.state === "invalid" || analysis.normalized === null) {
+      setProbe({ status: "idle" })
+      return
+    }
+
+    const target = analysis.normalized
+    setProbe({ status: "checking", url: target })
+    const timer = window.setTimeout(() => {
+      window.syrusDesktop
+        .probeInstance({ url })
+        .then((result) => {
+          if (probeSeq.current !== seq) {
+            return
+          }
+          setProbe(result.ok ? { status: "ok", url: result.url ?? target } : { status: "fail", message: result.message })
+        })
+        .catch(() => {
+          if (probeSeq.current === seq) {
+            setProbe({ status: "fail", message: "Could not check that address." })
+          }
+        })
+    }, PROBE_DEBOUNCE_MS)
+
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!busy) {
-      onSubmit(url, token.trim() === "" ? undefined : token)
+      onSubmit(url.trim())
     }
   }
 
-  return (
-    <section className="w-full max-w-md">
-      <h1 className="text-center text-xl font-semibold">Connect to your Syrus</h1>
-      <p className="mt-2 text-center text-sm text-slate-600">
-        Enter the URL of the Syrus instance your team runs.
-      </p>
+  const hintState =
+    analysis.state === "invalid"
+      ? "invalid"
+      : analysis.state === "empty"
+        ? "empty"
+        : probe.status === "ok"
+          ? "valid"
+          : probe.status === "fail"
+            ? "invalid"
+            : "note"
 
+  const hintText =
+    analysis.state === "invalid" ? (
+      analysis.hint
+    ) : analysis.state === "empty" ? (
+      ""
+    ) : probe.status === "ok" ? (
+      `Syrus found at ${probe.url}.`
+    ) : probe.status === "fail" ? (
+      probe.message
+    ) : (
+      <span className="inline-flex items-center gap-1.5">
+        <Spinner />
+        Checking {analysis.normalized}…
+      </span>
+    )
+
+  return (
+    <OnboardingScreen
+      title="Connect to your Syrus"
+      subtitle="Enter the address of the Syrus instance your team runs."
+    >
       <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
         <label className="block">
-          <span className="text-sm font-medium text-slate-700">Instance URL</span>
+          <span>Instance address</span>
           <input
-            type="url"
+            type="text"
+            inputMode="url"
+            autoFocus
             required
             value={url}
             disabled={busy}
-            placeholder="https://syrus.your-company.dev"
+            placeholder="syrus.your-company.com"
             onChange={(event) => setUrl(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none"
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
           />
+          <ValidationHint state={hintState}>{hintText}</ValidationHint>
         </label>
 
-        <details className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-          <summary className="cursor-pointer text-sm text-slate-600">
-            API token (optional — enables menu-bar notifications now)
-          </summary>
-          <input
-            type="password"
-            value={token}
-            disabled={busy}
-            placeholder="syrus_…"
-            onChange={(event) => setToken(event.target.value)}
-            className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none"
-          />
-          <p className="mt-1 text-xs text-slate-500">
-            Without a token you can still sign in in the app window; the menu-bar widget connects once
-            you&apos;re signed in.
-          </p>
-        </details>
+        <FormError>{error}</FormError>
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
-        <div className="flex justify-between pt-2">
-          <button type="button" className="secondary-button" disabled={busy} onClick={onBack}>
+        <FooterRow>
+          {/* Back stays enabled while checking so a black-holed host is never a dead end. */}
+          <button type="button" className="secondary-button" onClick={onBack}>
             Back
           </button>
-          <button type="submit" className="primary-button" disabled={busy}>
-            {busy ? "Connecting…" : "Connect"}
+          <button
+            type="submit"
+            className="primary-button inline-flex items-center gap-2"
+            disabled={busy || analysis.state === "invalid" || analysis.state === "empty"}
+          >
+            {busy ? (
+              <>
+                <Spinner />
+                Connecting…
+              </>
+            ) : (
+              "Connect"
+            )}
           </button>
-        </div>
+        </FooterRow>
       </form>
-    </section>
+    </OnboardingScreen>
   )
 }

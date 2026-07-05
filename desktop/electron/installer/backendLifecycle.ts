@@ -13,7 +13,7 @@ import {
   syrusHealthy,
   volumeExists
 } from "./dockerRuntime.js"
-import { installerScriptPath } from "./installPaths.js"
+import { installerCommand, installerScriptPath } from "./installPaths.js"
 import { DATA_VOLUME_NAME } from "./installerDriver.js"
 
 const execFileAsync = promisify(execFile)
@@ -168,21 +168,20 @@ export const updateBackend = async (image: string): Promise<boolean> => {
     const log = createWriteStream(path.join(stateDir(), "install.log"), { flags: "a" })
     try {
       return await new Promise<boolean>((resolve) => {
-        const child = spawn(
-          "/bin/bash",
-          [
-            installerScriptPath(),
-            "--docker",
-            "--non-interactive",
-            "--json",
-            "--skip-runtime-install",
-            "--target-dir",
-            stateDir(),
-            "--image",
-            image
-          ],
-          { env }
-        )
+        // Same platform-selected interpreter as the onboarding driver — the
+        // image-update path IS the installer (bash install.sh on POSIX,
+        // powershell install.ps1 on Windows).
+        const { command, args } = installerCommand(installerScriptPath(), [
+          "--docker",
+          "--non-interactive",
+          "--json",
+          "--skip-runtime-install",
+          "--target-dir",
+          stateDir(),
+          "--image",
+          image
+        ])
+        const child = spawn(command, args, { env, windowsHide: true })
         child.stdout.pipe(log, { end: false })
         child.stderr.pipe(log, { end: false })
         child.on("error", () => resolve(false))

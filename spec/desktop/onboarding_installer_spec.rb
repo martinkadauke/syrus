@@ -21,8 +21,12 @@ RSpec.describe "desktop onboarding installer" do
   let(:preload) { read("electron/preload.cts") }
   let(:renderer_entry) { read("src/main.tsx") }
 
-  it "spawns the bundled install.sh detached, with the headless flag set and scrubbed env" do
-    expect(driver).to include('spawn("/bin/bash", args, { env, detached: true })')
+  it "spawns the platform-selected installer headlessly with a scrubbed env" do
+    # POSIX keeps the detached process group (cancel signals the whole tree);
+    # Windows spawns hidden and cancels via taskkill /T.
+    expect(driver).to include("installerCommand(installerScriptPath()")
+    expect(driver).to include("spawn(command, spawnArgs, { env, detached: true })")
+    expect(driver).to include("spawn(command, spawnArgs, { env, windowsHide: true })")
     # A stray spec knob in the user's environment must not gate a real install.
     expect(driver).to include("delete env.SYRUS_HEALTH_POLLS")
     expect(driver).to include("delete env.SYRUS_PULL_RETRY_DELAY")

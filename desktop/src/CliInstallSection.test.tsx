@@ -27,21 +27,23 @@ describe("CliInstallSection", () => {
     delete (window as unknown as { syrusDesktop?: unknown }).syrusDesktop
   })
 
-  it("shows installed state with a skill button instead of Install CLI", async () => {
+  it("shows the auto-managed installed state with a skill button, never an install button", async () => {
     stubBridge({ available: true })
     render(<CliInstallSection />)
-    await waitFor(() => expect(screen.queryByText(/Installed — Checkout/)).not.toBeNull())
-    expect(screen.queryByRole("button", { name: /Install CLI/ })).toBeNull()
+    await waitFor(() => expect(screen.queryByText(/kept current automatically/)).not.toBeNull())
+    expect(screen.queryByRole("button", { name: /Reinstall CLI/ })).toBeNull()
     expect(screen.queryByRole("button", { name: "Add Claude Code skill" })).not.toBeNull()
   })
 
-  it("installs on click with the skill opt-in, reports auto-login and the PATH hint", async () => {
+  it("treats a missing CLI as a failed auto-install and offers the reinstall fallback", async () => {
     const bridge = stubBridge({ available: false })
     render(<CliInstallSection />)
 
-    fireEvent.click(await screen.findByRole("button", { name: "Install CLI" }))
-    // The skill checkbox defaults to checked and rides along with the install.
-    expect(bridge.installSyrusCli).toHaveBeenCalledWith({ withSkill: true })
+    await waitFor(() => expect(screen.queryByText(/normally installs itself/)).not.toBeNull())
+    fireEvent.click(await screen.findByRole("button", { name: "Reinstall CLI" }))
+    // The skill is a separate ask (its own button / post-setup dialog) —
+    // the repair path never smuggles it in.
+    expect(bridge.installSyrusCli).toHaveBeenCalledWith(undefined)
 
     await waitFor(() => expect(screen.queryByText(/Installed to \/Users\/op\/.local\/bin\/syrus/)).not.toBeNull())
     expect(screen.queryByText(/already signed in via this app.s credentials/)).not.toBeNull()
@@ -49,18 +51,9 @@ describe("CliInstallSection", () => {
     expect(screen.queryByText(/export PATH=/)).not.toBeNull()
   })
 
-  it("skips the skill when the opt-in is unchecked", async () => {
-    const bridge = stubBridge({ available: false })
-    render(<CliInstallSection />)
-
-    fireEvent.click(await screen.findByRole("checkbox"))
-    fireEvent.click(await screen.findByRole("button", { name: "Install CLI" }))
-    expect(bridge.installSyrusCli).toHaveBeenCalledWith({ withSkill: false })
-  })
-
-  it("reports the skill outcome alongside the install", async () => {
-    stubBridge({
-      available: false,
+  it("requests the skill from the installed state's skill button", async () => {
+    const bridge = stubBridge({
+      available: true,
       install: {
         installed: true,
         target: "/Users/op/.local/bin/syrus",
@@ -73,7 +66,8 @@ describe("CliInstallSection", () => {
     })
     render(<CliInstallSection />)
 
-    fireEvent.click(await screen.findByRole("button", { name: "Install CLI" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Add Claude Code skill" }))
+    expect(bridge.installSyrusCli).toHaveBeenCalledWith({ withSkill: true })
     await waitFor(() => expect(screen.queryByText(/Claude Code skill added/)).not.toBeNull())
   })
 
@@ -92,7 +86,7 @@ describe("CliInstallSection", () => {
     })
     render(<CliInstallSection />)
 
-    fireEvent.click(await screen.findByRole("button", { name: "Install CLI" }))
+    fireEvent.click(await screen.findByRole("button", { name: "Reinstall CLI" }))
     await waitFor(() => expect(screen.queryByText("bundled binary missing")).not.toBeNull())
   })
 })

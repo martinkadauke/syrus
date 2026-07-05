@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog, clipboard, globalShortcut, Notification } from "electron"
+import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell, dialog, clipboard, globalShortcut, Notification } from "electron"
 import type { MessageBoxOptions, NativeImage, OpenDialogOptions } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs/promises"
@@ -26,7 +26,9 @@ import { OnboardingDriver } from "./installer/installerDriver.js"
 import { decideOnSecondInstance, takeoverPrompt, type InstanceIdentity } from "./instanceTakeover.js"
 import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
+import { paintUnreadDot } from "./trayBadge.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
+import { computePopoverPosition } from "./windows/popoverPosition.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
 
 const __filename = fileURLToPath(import.meta.url)
@@ -317,17 +319,19 @@ const normalizeUnreadCount = (value: unknown) => {
 
 const trayBadgeLabel = (count: number) => count > 9 ? "9+" : String(count)
 
-const escapeSvgText = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-
-const trayIconPath = () => path.join(app.getAppPath(), "assets", "syrusMenubarTemplate.png")
+// The mac menu bar wants the monochrome template glyph; the Windows
+// taskbar wants the full-color brand icon (a black template glyph is
+// invisible on Win11's dark taskbar).
+const trayIconPath = () =>
+  path.join(
+    app.getAppPath(),
+    "assets",
+    process.platform === "win32" ? "syrusIcon.png" : "syrusMenubarTemplate.png"
+  )
 
 const createPlainTrayIcon = () => {
-  const image = nativeImage.createFromPath(trayIconPath()).resize({ width: 18, height: 18 })
+  const size = process.platform === "win32" ? 16 : 18
+  const image = nativeImage.createFromPath(trayIconPath()).resize({ width: size, height: size })
 
   if (process.platform === "darwin") {
     image.setTemplateImage(true)
@@ -336,18 +340,18 @@ const createPlainTrayIcon = () => {
   return image
 }
 
-const badgedTrayIcon = (count: number) => {
+// Draw the unread dot straight into the icon's BGRA bitmap. nativeImage
+// cannot rasterize SVG data URLs (they decode to an empty image on Windows,
+// which blanked the tray icon whenever unread > 0), and shipping a canvas
+// just for a red dot is overkill.
+const badgedTrayIcon = () => {
   const baseIcon = plainTrayIcon ?? createPlainTrayIcon()
-  const label = escapeSvgText(trayBadgeLabel(count))
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
-      <image href="${baseIcon.toDataURL()}" x="0" y="0" width="18" height="18"/>
-      <circle cx="13" cy="5" r="5" fill="#dc2626"/>
-      <text x="13" y="6.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="${count > 9 ? 5 : 6}" font-weight="700" fill="#ffffff">${label}</text>
-    </svg>
-  `.trim()
+  const size = baseIcon.getSize()
+  const bitmap = Buffer.from(baseIcon.toBitmap())
 
-  return nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)
+  paintUnreadDot(bitmap, size.width, size.height)
+
+  return nativeImage.createFromBitmap(bitmap, { width: size.width, height: size.height })
 }
 
 const updateTrayBadge = () => {
@@ -361,7 +365,8 @@ const updateTrayBadge = () => {
     return
   }
 
-  tray.setImage(unreadCount > 0 ? badgedTrayIcon(unreadCount) : plainTrayIcon)
+  tray.setImage(unreadCount > 0 ? badgedTrayIcon() : plainTrayIcon)
+  tray.setToolTip(unreadCount > 0 ? `Syrus — ${trayBadgeLabel(unreadCount)} unread` : "Syrus")
 }
 
 const setUnreadCount = (count: number) => {
@@ -517,10 +522,13 @@ const validateCredentialsWithServer = async (credentials: Credentials) => {
 
   let response: Response
   try {
+    // Bounded: a black-holed host must not leave the Preferences form (or
+    // any other caller) disabled forever with no way out.
     response = await fetch(bootstrapUrl(credentials.url), {
       headers: {
         Authorization: `Bearer ${credentials.token.trim()}`
-      }
+      },
+      signal: AbortSignal.timeout(10_000)
     })
   } catch {
     throw new Error("Could not reach the Syrus instance.")
@@ -900,17 +908,26 @@ const commandExists = async (command: string) => {
   const lookupCommand = process.platform === "win32" ? "where" : "which"
 
   try {
-    await execFileAsync(lookupCommand, [command])
+    // windowsHide everywhere a console binary runs from this GUI process —
+    // otherwise conhost windows flash on Windows.
+    await execFileAsync(lookupCommand, [command], { windowsHide: true })
     return true
   } catch {
     return false
   }
 }
 
-// GUI apps get a minimal PATH, so a `syrus` in ~/.local/bin (the one-click
-// install target) is invisible to `which` — probe that location directly
-// and prefer its absolute path when executing.
-const localBinSyrus = () => path.join(os.homedir(), ".local", "bin", "syrus")
+// The one-click install target, probed directly because a PATH lookup can
+// miss it: on macOS GUI apps get a minimal PATH (so ~/.local/bin is
+// invisible to `which`), and on Windows the registry PATH entry we add only
+// reaches processes started after this app. Windows installs OUTSIDE the
+// NSIS $INSTDIR (%LocalAppData%\Programs\syrus-desktop) on purpose — the
+// updater replaces that directory wholesale on every auto-update, which
+// would silently delete the CLI.
+const localBinSyrus = () =>
+  process.platform === "win32"
+    ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Syrus", "bin", "syrus.exe")
+    : path.join(os.homedir(), ".local", "bin", "syrus")
 
 const syrusCliBinary = async (): Promise<string | null> => {
   if (await commandExists("syrus")) {
@@ -946,26 +963,134 @@ type CliInstallResult = {
   error: string | null
 }
 
-// One-click CLI install from the bundled per-arch binary: copy to
-// ~/.local/bin/syrus. No login step — the app already keeps
-// ~/.syrus/credentials in the CLI-shared format (credentialsStore.ts owns
-// that file), so the CLI is signed in the moment the binary lands. No PATH
-// mutation — callers show the export line when ~/.local/bin isn't reachable
-// as `syrus`. The optional Claude Code skill goes through the CLI's own
+// Adds the CLI's install dir to the per-user PATH on Windows — the platform
+// actually sanctions this (HKCU\Environment), unlike POSIX shell rc files.
+// Reads the raw registry value with variable expansion disabled so other
+// entries' %VARS% survive the round-trip, appends idempotently, and
+// broadcasts WM_SETTINGCHANGE so new terminals pick it up without logoff.
+// setx is deliberately avoided: it truncates at 1024 chars and rewrites
+// REG_EXPAND_SZ as REG_SZ — the classic PATH-corruption bug.
+const addToWindowsUserPath = async (dir: string) => {
+  const script = [
+    `$dir = '${dir.replace(/'/g, "''")}'`,
+    "$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)",
+    "$kind = [Microsoft.Win32.RegistryValueKind]::ExpandString",
+    "$current = ''",
+    "if ($key.GetValueNames() -contains 'Path') {",
+    "  $current = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)",
+    "  $kind = $key.GetValueKind('Path')",
+    "}",
+    "$entries = $current -split ';' | Where-Object { $_ -ne '' }",
+    "if (-not ($entries -contains $dir)) {",
+    "  $next = if ($current -eq '') { $dir } else { ($current.TrimEnd(';') + ';' + $dir) }",
+    "  $key.SetValue('Path', $next, $kind)",
+    "  $signature = '[DllImport(\"user32.dll\", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'",
+    "  $type = Add-Type -MemberDefinition $signature -Name Win32SendMessage -Namespace SyrusInstall -PassThru",
+    "  [UIntPtr]$result = [UIntPtr]::Zero",
+    "  $type::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result) | Out-Null",
+    "}",
+    "$key.Close()"
+  ].join("\n")
+
+  await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    windowsHide: true
+  })
+}
+
+const bundledCliPath = () => {
+  const bundledDir = app.isPackaged
+    ? path.join(process.resourcesPath, "cli")
+    : path.join(__dirname, "..", "..", "resources", "cli")
+  const suffix = process.platform === "win32" ? ".exe" : ""
+  return path.join(bundledDir, `syrus-${process.platform}-${process.arch === "arm64" ? "arm64" : "x64"}${suffix}`)
+}
+
+const claudeSkillPath = () => path.join(os.homedir(), ".claude", "skills", "syrus", "SKILL.md")
+
+// Where local coding agents keep their config; presence gates the skill
+// offer (docs/install-experience-spec.md I4). Directory-based on purpose:
+// GUI apps see a minimal PATH on macOS, and the config dir is what the
+// skill actually integrates with.
+const agentToolPresent = async (): Promise<boolean> => {
+  for (const dir of [path.join(os.homedir(), ".claude"), path.join(os.homedir(), ".codex")]) {
+    try {
+      await fs.access(dir)
+      return true
+    } catch {
+      // keep looking
+    }
+  }
+  return false
+}
+
+const fileSha256 = async (filePath: string): Promise<string | null> => {
+  try {
+    const { createHash } = await import("node:crypto")
+    const contents = await fs.readFile(filePath)
+    return createHash("sha256").update(contents).digest("hex")
+  } catch {
+    return null
+  }
+}
+
+// Batteries included (docs/install-experience-spec.md I1/I2): the CLI is
+// product plumbing — installed silently on first launch and re-installed
+// whenever the bundled binary differs from what's on disk (content hash;
+// the binary carries no version command), which is exactly what happens
+// after every app auto-update. A previously installed Claude Code skill
+// rides along so its content tracks the binary. Failures are non-fatal:
+// the next launch retries, and the tray banner covers a truly absent CLI.
+const ensureCliCurrent = async () => {
+  const bundledHash = await fileSha256(bundledCliPath())
+  if (bundledHash === null) {
+    return // dev build without staged binaries — nothing to install from
+  }
+
+  const installedHash = await fileSha256(localBinSyrus())
+  if (installedHash === bundledHash) {
+    return
+  }
+
+  const skillPresent = await fs
+    .access(claudeSkillPath())
+    .then(() => true)
+    .catch(() => false)
+
+  await performCliInstall({ withSkill: skillPresent })
+}
+
+// One-click CLI install from the bundled per-arch binary. No login step —
+// the app already keeps ~/.syrus/credentials in the CLI-shared format
+// (credentialsStore.ts owns that file), so the CLI is signed in the moment
+// the binary lands. macOS: copy to ~/.local/bin, never mutate PATH (shell
+// rc files are personal; callers show the export line). Windows: copy to
+// %LocalAppData%\Syrus\bin and add that dir to the per-user PATH registry
+// value. The optional Claude Code skill goes through the CLI's own
 // `skill install` so clone-based users share the exact same path.
 const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}): Promise<CliInstallResult> => {
   try {
-    const bundledDir = app.isPackaged
-      ? path.join(process.resourcesPath, "cli")
-      : path.join(__dirname, "..", "..", "resources", "cli")
-    const source = path.join(bundledDir, `syrus-darwin-${process.arch === "arm64" ? "arm64" : "x64"}`)
+    const source = bundledCliPath()
     await fs.access(source)
 
-    const binDir = path.join(os.homedir(), ".local", "bin")
-    const target = path.join(binDir, "syrus")
+    const target = localBinSyrus()
+    const binDir = path.dirname(target)
     await fs.mkdir(binDir, { recursive: true })
+
+    if (process.platform === "win32") {
+      // A running syrus.exe can't be overwritten (EBUSY), but it CAN be
+      // renamed — the .old file gets cleaned up on the next install.
+      await fs.unlink(`${target}.old`).catch(() => {})
+      await fs.rename(target, `${target}.old`).catch(() => {})
+    }
+
     await fs.copyFile(source, target)
     await fs.chmod(target, 0o755)
+
+    if (process.platform === "win32") {
+      // Best-effort: a failed PATH write still leaves a working absolute-
+      // path install (the tray execs the absolute path anyway).
+      await addToWindowsUserPath(binDir).catch(() => {})
+    }
 
     const signedIn = cachedCredentials !== null
 
@@ -973,7 +1098,7 @@ const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}):
     let skillError: string | null = null
     if (withSkill) {
       try {
-        await execFileAsync(target, ["skill", "install"])
+        await execFileAsync(target, ["skill", "install"], { windowsHide: true })
         skillInstalled = true
       } catch (error) {
         // The binary landed; a failed skill write must not report the whole
@@ -1000,13 +1125,19 @@ const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}):
 }
 
 // The web app window carries no IPC bridge (remote content), so the
-// CLI-install setup step is the main process watching for the moment the
+// skill-offer setup step is the main process watching for the moment the
 // user is signed in and settled on the home surface — i.e. onboarding,
-// sign-in, and GitHub/agent connect flows are behind them.
-let cliOfferInFlight = false
+// sign-in, and GitHub/agent connect flows are behind them. The CLI itself
+// is never offered — ensureCliCurrent installs it silently (spec I1); the
+// skill writes into another tool's config directory, so it gets the one
+// explicit ask (spec I4), and only when such a tool is actually present.
+let skillOfferInFlight = false
 
-const offerCliSetupIfReady = async (window: BrowserWindow) => {
-  if (cliOfferInFlight || store.get("cliInstallOffered", false)) {
+const offerSkillIfAgentDetected = async (window: BrowserWindow) => {
+  // cliInstallOffered is the legacy key from when this dialog offered the
+  // CLI with a skill checkbox — an install that already answered it was
+  // already asked about the skill.
+  if (skillOfferInFlight || store.get("skillInstallOffered", false) || store.get("cliInstallOffered", false)) {
     return
   }
 
@@ -1027,60 +1158,73 @@ const offerCliSetupIfReady = async (window: BrowserWindow) => {
     return
   }
 
-  if (await syrusCliAvailable()) {
-    store.set("cliInstallOffered", true)
+  if (!(await agentToolPresent())) {
+    // No marker: don't ask, and don't burn the once-only flag — the offer
+    // stays live for the launch after Claude Code or Codex shows up.
     return
   }
 
-  cliOfferInFlight = true
+  const alreadyInstalled = await fs
+    .access(claudeSkillPath())
+    .then(() => true)
+    .catch(() => false)
+  if (alreadyInstalled) {
+    store.set("skillInstallOffered", true)
+    return
+  }
+
+  skillOfferInFlight = true
   try {
-    const { response, checkboxChecked } = await dialog.showMessageBox(window, {
+    const isWindows = process.platform === "win32"
+    const { response } = await dialog.showMessageBox(window, {
       type: "question",
-      buttons: ["Install", "Not now"],
+      buttons: ["Add skill", "Not now"],
       defaultId: 0,
       cancelId: 1,
-      message: "Install the Syrus CLI?",
+      message: "Coding agent detected — teach it Syrus?",
       detail:
-        "One last setup step: the menu bar's Checkout button and terminal workflows use the syrus CLI. " +
-        "It installs to ~/.local/bin and signs in automatically with this app's credentials. " +
-        "You can do this later from Preferences.",
-      checkboxLabel: "Also add the Claude Code skill, so coding agents on this Mac can drive Syrus",
-      checkboxChecked: true
+        `Claude Code (or Codex) is set up on this ${isWindows ? "PC" : "Mac"}. ` +
+        "Adding the Syrus skill lets agent sessions file work, check job status, and drive reviews through the syrus CLI. " +
+        "It writes one file under ~/.claude/skills and keeps itself current with app updates. " +
+        "You can add or remove it any time from Preferences.",
     })
 
     // Asked and answered — either way, don't nag on every navigation.
-    store.set("cliInstallOffered", true)
+    store.set("skillInstallOffered", true)
 
     if (response !== 0) {
       return
     }
 
-    const result = await performCliInstall({ withSkill: checkboxChecked })
-    if (!result.installed) {
+    // The CLI is normally already present (ensureCliCurrent at launch); a
+    // missing binary here just means that install failed, so retry it with
+    // the skill in one go.
+    let skillError: string | null = null
+    try {
+      await execFileAsync(localBinSyrus(), ["skill", "install"], { windowsHide: true })
+    } catch {
+      const result = await performCliInstall({ withSkill: true })
+      if (!result.skillInstalled) {
+        skillError = result.skillError ?? result.error ?? "Could not install the skill."
+      }
+    }
+
+    if (skillError) {
       await dialog.showMessageBox(window, {
         type: "warning",
-        message: "The Syrus CLI could not be installed.",
-        detail: `${result.error ?? "Unknown error."} You can retry from Preferences → Projects.`
+        message: "The Syrus skill could not be added.",
+        detail: `${skillError} You can retry from Preferences → Projects.`
       })
       return
     }
 
-    const detailLines = [`Installed to ${result.target}.`]
-    if (result.skillInstalled) {
-      detailLines.push("Claude Code skill added — new agent sessions can drive Syrus via the CLI.")
-    } else if (result.skillError) {
-      detailLines.push(`Claude Code skill failed: ${result.skillError}`)
-    }
-    if (!result.onPath) {
-      detailLines.push('To use it from a terminal, add: export PATH="$HOME/.local/bin:$PATH"')
-    }
     await dialog.showMessageBox(window, {
       type: "info",
-      message: "Syrus CLI installed",
-      detail: detailLines.join("\n")
+      message: "Syrus skill added",
+      detail: "New Claude Code sessions can now drive Syrus through the syrus CLI."
     })
   } finally {
-    cliOfferInFlight = false
+    skillOfferInFlight = false
   }
 }
 
@@ -1119,7 +1263,7 @@ const checkoutJob = async ({ jobRef, repoSlug, branchName, extraArgs }: Checkout
 
   try {
     const cliBinary = (await syrusCliBinary()) ?? "syrus"
-    await execFileAsync(cliBinary, ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath })
+    await execFileAsync(cliBinary, ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath, windowsHide: true })
     setLastUsedRepo(repoSlug)
     return { branchName }
   } catch (error) {
@@ -1185,7 +1329,7 @@ const localStatus = async (): Promise<LocalStatus | null> => {
       }
 
       const statusBinary = (await syrusCliBinary()) ?? "syrus"
-      const { stdout } = await execFileAsync(statusBinary, ["status", "--json"], { cwd: localPath })
+      const { stdout } = await execFileAsync(statusBinary, ["status", "--json"], { cwd: localPath, windowsHide: true })
       const status = parseLocalStatus(stdout)
       if (status) {
         return status
@@ -1375,11 +1519,17 @@ const popoverPosition = () => {
 
   const trayBounds = tray.getBounds()
   const windowBounds = mainWindow.getBounds()
-  const x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2)
-  const y =
-    process.platform === "darwin"
-      ? Math.round(trayBounds.y + trayBounds.height)
-      : Math.round(trayBounds.y + trayBounds.height + 4)
+  const workArea = screen.getDisplayNearestPoint({
+    x: Math.round(trayBounds.x + trayBounds.width / 2),
+    y: Math.round(trayBounds.y + trayBounds.height / 2)
+  }).workArea
+
+  const { x, y } = computePopoverPosition({
+    trayBounds,
+    windowBounds,
+    workArea,
+    platform: process.platform
+  })
 
   mainWindow.setPosition(x, y, false)
 }
@@ -1461,7 +1611,6 @@ const updateDockVisibility = () => {
 
 const ensureOnboardingDriver = () => {
   onboardingDriver ??= new OnboardingDriver({
-    saveRemoteCredentials: (credentials) => saveCredentials(credentials),
     onState: (state) => {
       onboardingWindow?.webContents.send("onboarding:state-changed", state)
       // Supervision starts the moment a local install completes — not only
@@ -1628,14 +1777,14 @@ const showWebAppWindow = async () => {
   handle.window.webContents.on("did-navigate-in-page", attemptTokenProvisioning)
 
   // One-time post-setup step: once the user is signed in and lands on the
-  // home surface (never mid-onboarding), offer to install the bundled CLI
-  // and the Claude Code skill. Native dialog because the remote web app
-  // deliberately has no IPC bridge.
-  const attemptCliOffer = () => {
-    void offerCliSetupIfReady(handle.window)
+  // home surface (never mid-onboarding), offer the Claude Code skill if a
+  // coding agent is set up on this machine. Native dialog because the
+  // remote web app deliberately has no IPC bridge.
+  const attemptSkillOffer = () => {
+    void offerSkillIfAgentDetected(handle.window)
   }
-  handle.window.webContents.on("did-finish-load", attemptCliOffer)
-  handle.window.webContents.on("did-navigate-in-page", attemptCliOffer)
+  handle.window.webContents.on("did-finish-load", attemptSkillOffer)
+  handle.window.webContents.on("did-navigate-in-page", attemptSkillOffer)
 
   try {
     await webAppWindow.loadServerUrl()
@@ -1860,7 +2009,10 @@ const checkForUpdatesInteractively = async () => {
       await dialog.showMessageBox({
         type: "info",
         message: "Automatic updates are unavailable in this build.",
-        detail: "Updates apply to the packaged, signed app installed from the DMG."
+        detail:
+          process.platform === "win32"
+            ? "Updates apply to the packaged app installed with the Syrus setup program."
+            : "Updates apply to the packaged, signed app installed from the DMG."
       })
       break
     case "downloaded":
@@ -2187,9 +2339,15 @@ ipcMain.handle("onboarding:get-state", async () => ensureOnboardingDriver().getS
 ipcMain.handle("onboarding:choose-mode", async (_event, mode: "local" | "remote") => {
   ensureOnboardingDriver().chooseMode(mode)
 })
-ipcMain.handle("onboarding:connect-remote", async (_event, request: { url: string; token?: string }) =>
+ipcMain.handle("onboarding:connect-remote", async (_event, request: { url: string }) =>
   ensureOnboardingDriver().connectRemote(request)
 )
+// Advisory: powers the connect form's live "Syrus found here" check.
+ipcMain.handle("onboarding:probe-instance", async (_event, request: { url: string }) =>
+  ensureOnboardingDriver().probeInstance(request)
+)
+// One-click WSL 2 install (Windows; elevates via UAC).
+ipcMain.handle("onboarding:install-wsl", async () => ensureOnboardingDriver().installWsl())
 ipcMain.handle("onboarding:start-install", async (_event, port?: number) =>
   ensureOnboardingDriver().startInstall(port)
 )
@@ -2250,7 +2408,13 @@ app.on("second-instance", (_event, _argv, _cwd, additionalData) => {
   const own = ownInstanceIdentity()
   // Takeover launches the incoming bundle via `open`; that path is
   // macOS-only for now, matching selfInstall.ts.
-  if (process.platform === "darwin" && !takeoverPromptOpen && decideOnSecondInstance(own, incoming) === "offer") {
+  // darwin + win32: both platforms can launch the incoming copy directly
+  // (open -n / spawn of the exe path); see selfInstall.launchInstalledCopy.
+  if (
+    (process.platform === "darwin" || process.platform === "win32") &&
+    !takeoverPromptOpen &&
+    decideOnSecondInstance(own, incoming) === "offer"
+  ) {
     takeoverPromptOpen = true
     const prompt = takeoverPrompt(own, incoming as InstanceIdentity)
     void dialog
@@ -2289,6 +2453,13 @@ app.whenReady().then(async () => {
     app.dock?.hide()
   }
 
+  if (process.platform === "win32") {
+    // Must match electron-builder.yml appId — NSIS stamps it into the Start
+    // Menu shortcut, and Windows only shows Notification toasts when the
+    // process AUMID matches the shortcut's.
+    app.setAppUserModelId("app.syrus.desktop")
+  }
+
   // Running from the mounted DMG (or Downloads, or anywhere that isn't an
   // Applications folder): install ourselves into ~/Applications and relaunch
   // from there. This is the DMG's double-click install contract — no drag
@@ -2311,6 +2482,10 @@ app.whenReady().then(async () => {
 
   createMenu()
   await loadCredentials()
+  // Batteries included: keep the CLI matching this app version. Fire and
+  // forget — a failure self-heals next launch, and nothing downstream
+  // blocks on it (tray Checkout re-probes availability per click).
+  void ensureCliCurrent().catch(() => {})
   await migrateBackendConfig(cachedCredentials?.url ?? null)
   startAppUserCable(cachedCredentials)
   createTray()

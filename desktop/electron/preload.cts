@@ -161,12 +161,16 @@ type ToggleAdminControlResult = {
 // main process's installerDriver.ts; the bridge passes it through opaquely.
 type OnboardingState = { phase: string } & Record<string, unknown>
 
+// URL-only: sign-in in the app window mints the tray token automatically;
+// the manual-token path for non-admin accounts lives in Preferences.
 type ConnectRemoteRequest = {
   url: string
-  token?: string
 }
 
 contextBridge.exposeInMainWorld("syrusDesktop", {
+  // Static, not IPC: lets the renderer adapt copy/affordances per platform
+  // (e.g. the Welcome screen's local-install card on Windows).
+  platform: process.platform,
   getCredentials: () => ipcRenderer.invoke("get-credentials") as Promise<Credentials | null>,
   saveCredentials: (credentials: Credentials) =>
     ipcRenderer.invoke("save-credentials", credentials) as Promise<Credentials>,
@@ -231,6 +235,13 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.invoke("onboarding:choose-mode", mode) as Promise<void>,
   connectRemote: (request: ConnectRemoteRequest) =>
     ipcRenderer.invoke("onboarding:connect-remote", request) as Promise<void>,
+  probeInstance: (request: ConnectRemoteRequest) =>
+    ipcRenderer.invoke("onboarding:probe-instance", request) as Promise<{
+      ok: boolean
+      url: string | null
+      message: string
+    }>,
+  installWsl: () => ipcRenderer.invoke("onboarding:install-wsl") as Promise<void>,
   startInstall: (port?: number) => ipcRenderer.invoke("onboarding:start-install", port) as Promise<void>,
   cancelInstall: () => ipcRenderer.invoke("onboarding:cancel-install") as Promise<void>,
   retryOnboarding: () => ipcRenderer.invoke("onboarding:retry") as Promise<void>,

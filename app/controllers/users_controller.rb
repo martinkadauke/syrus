@@ -1,12 +1,11 @@
+# The GET sign-up page is served by the React SPA (SpaController) backed by
+# the /api/v1/app/auth JSON endpoints; this controller remains as the no-JS
+# form-POST fallback.
 class UsersController < ApplicationController
-  allow_unauthenticated_access only: %i[ new create ]
+  allow_unauthenticated_access only: %i[ create ]
 
-  before_action :load_invitation, only: %i[ new create ]
-  before_action :enforce_signup_gate, only: %i[ new create ]
-
-  def new
-    @user = User.new(email_address: @invitation&.email_address)
-  end
+  before_action :load_invitation, only: %i[ create ]
+  before_action :enforce_signup_gate, only: %i[ create ]
 
   def create
     @user = User.new(user_params)

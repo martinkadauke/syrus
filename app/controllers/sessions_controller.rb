@@ -1,9 +1,9 @@
+# The GET sign-in page is served by the React SPA (SpaController) backed by
+# the /api/v1/app/auth JSON endpoints; this controller remains as the no-JS
+# form-POST fallback.
 class SessionsController < ApplicationController
-  allow_unauthenticated_access only: %i[ new create ]
+  allow_unauthenticated_access only: %i[ create ]
   rate_limit to: 10, within: 3.minutes, only: :create, with: -> { redirect_to new_session_path, alert: "Try again later." }
-
-  def new
-  end
 
   def create
     if user = User.authenticate_by(params.permit(:email_address, :password))

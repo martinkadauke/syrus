@@ -23,23 +23,32 @@ description: Drive a Syrus instance (issue→PR automation) through the syrus CL
 
 Syrus turns GitHub issues into pull requests with an agent doing the
 implementation. This machine has the ` + "`syrus`" + ` CLI installed and signed in
-(credentials in ` + "`~/.syrus/credentials`" + `; run ` + "`syrus whoami`" + ` to confirm the
-instance and user).
+(credentials in ` + "`.syrus/credentials`" + ` under your home directory; run
+` + "`syrus whoami`" + ` to confirm the instance and user).
 
-## Commands
+## Reviewing work
 
 - ` + "`syrus inbox`" + ` — implemented and failed jobs awaiting a human.
 - ` + "`syrus jobs [--state <state>] [--repo <owner/name>]`" + ` — list jobs.
-- ` + "`syrus job view JOB-<id>`" + ` — one job's state, PR, workflow history.
-- ` + "`syrus test-plan JOB-<id>`" + ` — the reviewer-facing test plan.
+- ` + "`syrus job show JOB-<id>`" + ` — one job's state, PR, workflow history.
+- ` + "`syrus job diff JOB-<id>`" + ` — the job's full diff (review without a checkout).
+- ` + "`syrus job log JOB-<id>`" + ` / ` + "`syrus job watch JOB-<id>`" + ` — run logs, once or live.
+- ` + "`syrus test-plan [JOB-<id>]`" + ` — the reviewer-facing test plan.
+- ` + "`syrus epic show EPIC-<id>`" + ` / ` + "`syrus epic list`" + ` — epics and their children.
+- ` + "`syrus repo list`" + ` / ` + "`syrus schedule list`" + ` — repositories and recurring tasks.
+
+## Acting
+
 - ` + "`syrus checkout JOB-<id>`" + ` — fetch and check out the job's PR branch in
   the matching local repository.
-- ` + "`syrus status`" + ` — which job's branch this working directory has.
+- ` + "`syrus status [--json]`" + ` — which job's branch this working directory has.
 - ` + "`syrus approve JOB-<id>`" + ` — approve for landing (Syrus merges it).
-- ` + "`syrus epic view EPIC-<id>`" + ` / ` + "`syrus repo list`" + ` — epics and repositories.
-- ` + "`syrus schedule list`" + ` — recurring scheduled tasks.
-- ` + "`syrus chat \"...\"`" + ` — one streaming chat turn with the instance's agent
-  (it can inspect code, queue and propose work).
+- ` + "`syrus job create`" + ` — file new work as a direct job (no GitHub issue needed).
+- ` + "`syrus chat CHAT_ID \"message\"`" + ` — one streaming chat turn with the
+  instance's agent (it can inspect code, queue and propose work).
+
+Output is human-formatted text (only ` + "`status`" + ` speaks ` + "`--json`" + `); prefer the
+narrow read commands above over parsing wide listings.
 
 ## Guardrails
 
@@ -47,7 +56,7 @@ instance and user).
   explicitly asked for that job to be approved.
 - Before ` + "`syrus checkout`" + `, make sure the working tree is clean — never
   discard uncommitted local changes to switch branches.
-- Prefer read commands (inbox, job view, test-plan, status) when the user's
+- Prefer read commands (inbox, job show, test-plan, status) when the user's
   intent is to review; mutating commands only on explicit instruction.
 - If a command answers ` + "`401 Unauthorized`" + `, the saved token is stale — tell
   the user to open the Syrus desktop app (it refreshes credentials

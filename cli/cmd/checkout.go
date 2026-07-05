@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -600,8 +601,26 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	return string(output), nil
 }
 
+// hookShellCommandLine picks the shell that runs a post_checkout hook
+// command. Hooks are written for `sh -c`, so sh is preferred everywhere —
+// including on Windows when Git for Windows put an sh on PATH. Only a
+// Windows box with no sh falls back to cmd.exe (`/d` skips AutoRun,
+// `/s` keeps the quoted command intact).
+func hookShellCommandLine(goos string, shAvailable bool, command string) (string, []string) {
+	if goos == "windows" && !shAvailable {
+		return "cmd", []string{"/d", "/s", "/c", command}
+	}
+	return "sh", []string{"-c", command}
+}
+
 func runHookCommand(ctx context.Context, dir string, command string, stdout io.Writer, stderr io.Writer) error {
-	shell := exec.CommandContext(ctx, "sh", "-c", command)
+	shAvailable := true
+	if runtime.GOOS == "windows" {
+		_, err := exec.LookPath("sh")
+		shAvailable = err == nil
+	}
+	name, args := hookShellCommandLine(runtime.GOOS, shAvailable, command)
+	shell := exec.CommandContext(ctx, name, args...)
 	shell.Dir = dir
 	shell.Stdout = stdout
 	shell.Stderr = stderr

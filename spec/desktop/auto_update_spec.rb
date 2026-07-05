@@ -74,9 +74,27 @@ RSpec.describe "desktop auto-update and release pipeline" do
     workflow = YAML.safe_load(release_workflow)
     expect(workflow.dig("permissions", "contents")).to eq("write")
     expect(release_workflow).to include("Refusing to publish an unsigned release")
+    expect(release_workflow).to include("Refusing to publish an unsigned Windows release")
     expect(release_workflow).to include("--publish always")
-    expect(release_workflow).to match(/if: github\.ref_type == 'tag'\s+env:[\s\S]*?run: npm --prefix desktop run build -- --publish always/)
+    # Publishing paths are tag-gated and CI forces signing (electron-builder
+    # would otherwise silently skip signing on a config problem and ship an
+    # unsigned artifact).
+    expect(release_workflow.scan("-c.forceCodeSigning=true").length).to be >= 2
     expect(release_workflow).to include('CSC_IDENTITY_AUTO_DISCOVERY: "false"')
+    # Both jobs publish into one GitHub release; sequencing avoids the
+    # concurrent create-release 422 race.
+    expect(workflow.dig("jobs", "release-windows", "needs")).to eq("release-mac")
+    # Credential preflights fail in seconds, not after a 15-minute build.
+    expect(release_workflow).to include("Preflight: Apple signing credentials")
+    expect(release_workflow).to include("Preflight: Azure credentials")
+    # Notarization failures surface the developer log, and stapler runs on
+    # the .app — the DMG container carries no ticket (Error 65 by design).
+    expect(release_workflow).to include("Fetch notarytool developer log")
+    expect(release_workflow).to match(/stapler validate "\$APP"/)
+    expect(release_workflow).not_to match(/stapler validate "\$dmg"/)
+    # Runaway notarization must not burn the 6-hour default job timeout.
+    expect(workflow.dig("jobs", "release-mac", "timeout-minutes")).to be_a(Integer)
+    expect(workflow.dig("jobs", "release-windows", "timeout-minutes")).to be_a(Integer)
   end
 
   it "release workflow pins the backend image and never interpolates the tag into shell" do

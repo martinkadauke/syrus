@@ -14,17 +14,13 @@ files:
   - dist/**/*
   - dist-electron/**/*
   - package.json
-# Staged by scripts/stage-backend-assets.mjs: install.sh, docker-compose.yml,
-# compose.env.example, manifest.json (the backend image pin for this app
-# version). Sealed by the code signature — never written to at runtime.
+# Staged by scripts/stage-backend-assets.mjs: install.sh + install.ps1,
+# docker-compose.yml, compose.env.example, manifest.json (the backend image
+# pin for this app version). Sealed by the code signature — never written to
+# at runtime.
 extraResources:
   - from: resources/backend
     to: backend
-  # The Syrus CLI (per-arch pure-Go binaries, staged by scripts/stage-cli.mjs).
-  # Preferences installs it to ~/.local/bin with auto-written credentials —
-  # it powers the tray's Checkout and terminal/agent workflows.
-  - from: resources/cli
-    to: cli
 artifactName: ${productName}-${version}-${arch}.${ext}
 mac:
   category: public.app-category.developer-tools
@@ -35,6 +31,14 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
+  # The Syrus CLI (pure-Go binaries staged by scripts/stage-cli.mjs).
+  # Per-platform filters keep ~40 MB of the other OS's binaries out of each
+  # package; Preferences installs from here — it powers the tray's Checkout
+  # and terminal/agent workflows.
+  extraResources:
+    - from: resources/cli
+      to: cli
+      filter: ["syrus-darwin-*"]
   target:
     # zip is REQUIRED alongside dmg: electron-updater on macOS installs
     # updates from the zip, and latest-mac.yml references it.
@@ -58,9 +62,33 @@ dmg:
     - x: 330
       y: 175
       type: file
+# NSIS one-click, not MSI: electron-updater auto-updates NSIS installs but
+# not MSI, and auto-update is what keeps the pinned backend image current.
+# Per-user install (no admin), silent /S for fleets. Unsigned until the
+# Authenticode cert lands — see docs/windows-desktop-plan.md.
 win:
+  icon: build/icon.ico
+  artifactName: ${productName}-Setup-${version}-${arch}.${ext}
+  # Windows twin of the mac CLI FileSet above.
+  extraResources:
+    - from: resources/cli
+      to: cli
+      filter: ["syrus-win32-*"]
   target:
-    - nsis
+    - target: nsis
+      arch: [x64, arm64]
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  shortcutName: Syrus
+  # Brand the one-click UI: the setup exe's own icon, and the icon the
+  # progress dialog (SpiderBanner) shows next to "Installing, please wait".
+  installerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  # Post-extraction guard: fail loudly (Defender guidance) instead of the
+  # shell's "Missing Shortcut" dialog when the exe vanishes before launch.
+  include: build/installer.nsh
 linux:
   category: Development
   syncDesktopName: true

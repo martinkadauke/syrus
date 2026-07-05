@@ -45,12 +45,25 @@ That keeps electron-updater's invariant intact: the newest release always
 carries `latest-mac.yml`. Pre-releases use `X.Y.Z-beta.N` plus GitHub's
 prerelease flag; electron-updater skips prereleases by default.
 
+## When the release run goes red
+
+Go straight to [`release-troubleshooting.md`](./release-troubleshooting.md)
+— a symptom-indexed runbook for red `release-desktop.yml` (and
+`sign-windows-test.yml`) runs. Start at its 60-second triage table: grep
+the run log for the error string, and the table maps it to a cause and a
+fix section (macOS cert/keychain/notarization/stapling, Windows Azure
+signing, electron-builder's silent-skip and publish traps). It also covers
+reproducing the exact signing path locally via `bin/release-desktop` to
+bisect credential problems from CI problems. Note the first three guard
+steps fail on purpose with self-explanatory `::error` messages — those are
+release-ordering mistakes, not pipeline bugs.
+
 ## One-time setup checklist
 
 | Item | Where | Notes |
 | --- | --- | --- |
 | Apple Developer Program membership | developer.apple.com | $99/yr; identity verification can take days — start early |
-| Developer ID Application certificate | Xcode → Settings → Accounts, or the developer portal | Export as `.p12` with the private key |
+| Developer ID Application certificate | Xcode → Settings → Accounts → Manage Certificates → + → **Developer ID Application**, or the developer portal | Export as `.p12` with the private key. The type must literally read **"Developer ID Application"** — an "Apple Development" or "Apple Distribution" cert signs locally and then fails notarization on every binary. Only the account holder can create Developer ID certs. `bin/signing-env` warns at build start if the p12 is the wrong type. |
 | `CSC_LINK` | repo secret | base64 of the `.p12` (`base64 -i cert.p12`) |
 | `CSC_KEY_PASSWORD` | repo secret | the `.p12` export password |
 | App Store Connect API key (`.p8`) | appstoreconnect.apple.com → Users and Access → Integrations | Developer role suffices for notarytool |
@@ -62,6 +75,36 @@ Secrets live on `tkadauke/syrus` (Settings → Secrets and variables →
 Actions). The auto-update feed (`publish:` in `desktop/electron-builder.yml`)
 is baked into shipped apps — moving Releases to another repo later strands
 installed apps on the old feed.
+
+## Signing locally
+
+`bin/release-desktop` (via `bin/signing-env`) reads the same credentials
+from `~/.config/syrus/` instead of repo secrets, so a signed, notarized
+build works identically on your own machine — useful for verifying
+signing/notarization changes without spending a CI run or a real tag.
+electron-builder reads `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY`,
+`APPLE_API_KEY_ID`, and `APPLE_API_ISSUER` straight from the environment;
+nothing else changes between a local build and CI.
+
+1. `~/.config/syrus/mac-signing.env` (`chmod 600`), dotenv-style:
+
+   ```
+   CSC_LINK=<base64 of the .p12 — base64 -i cert.p12>
+   CSC_KEY_PASSWORD=<the .p12 export password>
+   APPLE_API_KEY_ID=<from the App Store Connect API key>
+   APPLE_API_ISSUER=<from the same page>
+   ```
+
+2. `~/.config/syrus/apple-api-key.p8` (`chmod 600`) — the App Store Connect
+   API key file itself, downloaded once from
+   <https://appstoreconnect.apple.com/access/integrations/api> (App Store
+   Connect only lets you download it once; keep a copy somewhere safe).
+
+With both present, `bin/release-desktop` signs and notarizes exactly like
+`release-desktop.yml` does. Without them, it falls back to today's
+unsigned local build — nothing breaks if you skip this. This file is not
+read by anything else and is never committed; it plays the same role
+locally that repo secrets play in CI.
 
 ## Why unsigned releases are blocked
 

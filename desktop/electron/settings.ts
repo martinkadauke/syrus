@@ -38,9 +38,15 @@ export type DesktopStore = DesktopSettings & {
   webAppWindowBounds: WindowBounds | null
   onboardingCompletedAt: string
   backendConfigMigratedAt: string
-  // The one-time post-setup "Install the Syrus CLI?" dialog was shown (or
-  // the CLI was already present). Asked-and-answered — never re-prompt.
+  // Legacy: the retired post-setup "Install the Syrus CLI?" dialog was
+  // shown. Kept (and still honored) so upgraded installs that answered it
+  // aren't re-asked about the skill.
   cliInstallOffered: boolean
+  // The one-time "coding agent detected — add the Syrus skill?" dialog was
+  // shown (or the skill was already present). Asked-and-answered — never
+  // re-prompt. The CLI itself is no longer offered: it installs silently
+  // at launch (docs/install-experience-spec.md I1).
+  skillInstallOffered: boolean
 }
 
 export const store = new Store<DesktopStore>({
@@ -55,14 +61,19 @@ export const store = new Store<DesktopStore>({
     webAppWindowBounds: null,
     onboardingCompletedAt: "",
     backendConfigMigratedAt: "",
-    cliInstallOffered: false
+    cliInstallOffered: false,
+    skillInstallOffered: false
   }
 })
 
 // Mutable state of a local install (.env, synced docker-compose.yml,
-// install.log). Lives next to ~/.syrus/credentials: shared Syrus home, no
-// spaces in the path for the shell tooling, and users can still drive it
-// manually with `docker compose` from that directory.
+// install.log). Lives next to ~/.syrus/credentials on EVERY platform —
+// including Windows (%USERPROFILE%\.syrus\local), a deliberate decision
+// over %LocalAppData%: it keeps the shared Syrus home in one place, keeps
+// migrateBackendConfig's adopt-a-CLI-install semantics identical, and users
+// can still drive it manually with `docker compose` from that directory.
+// Paths are quoted everywhere they reach a shell, so spaces in profile
+// names (C:\Users\First Last) are fine.
 export const localStateDir = () => path.join(os.homedir(), ".syrus", "local")
 
 export const getBackendMode = (): BackendMode => store.get("backendMode", "")
