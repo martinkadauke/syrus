@@ -548,6 +548,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.integer "fork_review_pr_number"
     t.boolean "github_mergeable"
     t.string "github_mergeable_state"
+    t.datetime "grace_period_expires_at"
     t.json "invalidation_evidence", null: false
     t.text "invalidation_reason"
     t.text "issue_body"
@@ -568,6 +569,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.string "mergeability_base_sha"
     t.datetime "mergeability_checked_at"
     t.string "mergeability_head_sha"
+    t.boolean "needs_attention", default: false, null: false
+    t.string "needs_attention_reason"
+    t.datetime "needs_attention_since"
     t.integer "owner_user_id"
     t.integer "parent_job_id"
     t.json "pending_epic_reference", null: false
@@ -596,6 +600,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.index ["dependencies_overridden_by_user_id"], name: "index_jobs_on_dependencies_overridden_by_user_id"
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
+    t.index ["grace_period_expires_at"], name: "index_jobs_on_grace_period_expires_at"
+    t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
     t.index ["pr_repository_id"], name: "index_jobs_on_pr_repository_id"
@@ -681,6 +687,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
     t.string "feedback_policy", default: "confirm", null: false
+    t.integer "fork_pr_grace_period_hours", default: 24, null: false
     t.bigint "github_owner_id"
     t.bigint "github_repository_id"
     t.integer "installation_id"
@@ -699,6 +706,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.string "upstream_default_branch"
     t.string "upstream_name"
     t.string "upstream_owner"
+    t.integer "upstream_pr_grace_period_days", default: 7, null: false
     t.bigint "upstream_repository_id"
     t.integer "user_id"
     t.index ["archived_at"], name: "index_repositories_on_archived_at"

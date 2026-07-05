@@ -15,6 +15,8 @@ class Repository < ApplicationRecord
   # logical-conflict risk for landing throughput. See Steps::ForcePush.
   attribute :trust_clean_rebase_grade, :boolean, default: false
   attribute :feedback_policy, :string, default: "confirm"
+  attribute :fork_pr_grace_period_hours, :integer, default: 24
+  attribute :upstream_pr_grace_period_days, :integer, default: 7
 
   belongs_to :user, optional: true
   belongs_to :installation, optional: true
