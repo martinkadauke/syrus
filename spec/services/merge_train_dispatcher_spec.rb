@@ -88,6 +88,14 @@ RSpec.describe MergeTrainDispatcher do
     expect(MergeTrain.where(state: "building").count).to eq(0)
   end
 
+  it "allows explicit rebuilds to bypass the failed-train cooldown" do
+    approved_child(1)
+    MergeTrain.create!(epic: epic, repository: repository, base_branch: "master",
+                       state: "failed", failure_reason: "merge_train failed", finished_at: 5.minutes.ago)
+
+    expect(described_class.try_dispatch!(epic, bypass_cooldown: true)).to be_present
+  end
+
   it "re-dispatches immediately after a stale-base train failure" do
     approved_child(1)
     MergeTrain.create!(

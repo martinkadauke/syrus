@@ -13,11 +13,12 @@ class MergeTrainDispatcher
   # churning.
   RETRY_COOLDOWN = 30.minutes
 
-  def self.try_dispatch!(epic) = new(epic).try_dispatch!
-  def self.blocker_reason(epic) = new(epic).blocker_reason
+  def self.try_dispatch!(epic, bypass_cooldown: false) = new(epic, bypass_cooldown: bypass_cooldown).try_dispatch!
+  def self.blocker_reason(epic, bypass_cooldown: false) = new(epic, bypass_cooldown: bypass_cooldown).blocker_reason
 
-  def initialize(epic)
+  def initialize(epic, bypass_cooldown: false)
     @epic = epic
+    @bypass_cooldown = bypass_cooldown
   end
 
   def try_dispatch!
@@ -66,7 +67,7 @@ class MergeTrainDispatcher
       return "#{landing_job.slug} is already landing for #{@epic.repository.slug}"
     end
 
-    if (failed_train = cooling_down_failure)
+    if !@bypass_cooldown && (failed_train = cooling_down_failure)
       return cooldown_reason(failed_train)
     end
 

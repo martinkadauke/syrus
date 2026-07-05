@@ -48,9 +48,10 @@ class RetryFailedStepEnqueuer
     train = MergeTrain.find_by(id: train_id)
     return failure("Merge train not found; use Start over.") unless train
 
-    rebuilt_workflow = MergeTrainDispatcher.try_dispatch!(train.epic)
+    rebuild = EpicLandingRetrier.rebuild_merge_train!(train.epic, source_train: train)
+    rebuilt_workflow = rebuild.workflow
     unless rebuilt_workflow
-      reason = MergeTrainDispatcher.blocker_reason(train.epic).presence ||
+      reason = MergeTrainDispatcher.blocker_reason(train.epic, bypass_cooldown: true).presence ||
         "merge-train dispatch was blocked by a concurrent state change"
       return failure("Epic is not ready for a merge-train rebuild: #{reason}.")
     end

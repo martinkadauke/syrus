@@ -280,7 +280,7 @@ class Job < ApplicationRecord
 
     event :fail_landing do
       transitions from: :landing, to: :implemented, after: -> {
-        self.approved_at = nil
+        clear_approval_metadata
       }
     end
 
