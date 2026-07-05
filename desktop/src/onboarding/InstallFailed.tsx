@@ -1,3 +1,5 @@
+import { FooterRow, LogTail, OnboardingScreen } from "./primitives"
+
 type InstallFailedProps = {
   code: number
   step: string | null
@@ -20,29 +22,25 @@ export function InstallFailed({ code, step, message, logTail, onRetry, onBack }:
   const friendly = FRIENDLY_MESSAGES[code]
 
   return (
-    <section className="w-full max-w-md">
-      <h1 className="text-center text-xl font-semibold text-red-700">Install didn&apos;t finish</h1>
+    <OnboardingScreen title="Install didn't finish" titleTone="danger">
       <p className="mt-3 text-sm leading-relaxed text-slate-700">{friendly ?? message}</p>
       {friendly ? <p className="mt-2 text-xs text-slate-500">{message}</p> : null}
-      {step ? <p className="mt-1 text-xs text-slate-400">Failed during: {step} (exit {code})</p> : null}
-
-      {logTail.length > 0 ? (
-        <details className="mt-4">
-          <summary className="cursor-pointer text-sm text-slate-500">Show the last log lines</summary>
-          <pre className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-200">
-            {logTail.join("\n")}
-          </pre>
-        </details>
+      {step ? (
+        <p className="mt-1 text-xs text-slate-400">
+          Failed during: {step} (exit {code})
+        </p>
       ) : null}
 
-      <div className="mt-6 flex justify-between">
+      <LogTail lines={logTail} label="Show the last log lines" />
+
+      <FooterRow>
         <button type="button" className="secondary-button" onClick={onBack}>
           Back
         </button>
         <button type="button" className="primary-button" onClick={onRetry}>
           Try again
         </button>
-      </div>
-    </section>
+      </FooterRow>
+    </OnboardingScreen>
   )
 }

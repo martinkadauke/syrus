@@ -6,6 +6,7 @@ import { AdoptExisting } from "./AdoptExisting"
 import { InstallProgress } from "./InstallProgress"
 import { InstallFailed } from "./InstallFailed"
 import { PortConflict } from "./PortConflict"
+import { FooterRow, OnboardingScreen } from "./primitives"
 import syrusIconUrl from "../../assets/syrusIcon.png"
 
 // The window uses titleBarStyle hiddenInset: the traffic lights float over
@@ -67,7 +68,7 @@ export function OnboardingApp() {
           <ConnectRemote
             error={state.error}
             busy={false}
-            onSubmit={(url, token) => void window.syrusDesktop.connectRemote({ url, token })}
+            onSubmit={(url) => void window.syrusDesktop.connectRemote({ url })}
             onBack={back}
           />
         )
@@ -78,20 +79,18 @@ export function OnboardingApp() {
       case "local.precheck":
         content = (
           <p className="text-sm text-slate-500" role="status">
-            Checking this Mac…
+            {window.syrusDesktop?.platform === "win32" ? "Checking this PC…" : "Checking this Mac…"}
           </p>
         )
         break
       case "local.adoptRunning":
         content = (
-          <section className="w-full max-w-md text-center">
-            <h1 className="text-xl font-semibold">Syrus is already running here</h1>
-            <p className="mt-3 text-sm leading-relaxed text-slate-600">
-              Something is already serving Syrus at{" "}
-              <span className="font-medium text-slate-900">{state.url}</span>, but this app didn&apos;t install
-              it, so it can&apos;t manage starting or stopping it. You can still connect to it.
+          <OnboardingScreen title="Syrus is already running here" subtitle={`Something is already serving Syrus at ${state.url}.`}>
+            <p className="mt-4 text-sm leading-relaxed text-slate-600">
+              This app didn&apos;t install it, so it can&apos;t manage starting or stopping it — but you can
+              still connect to it and use everything else.
             </p>
-            <div className="mt-6 flex justify-center gap-2">
+            <FooterRow>
               <button type="button" className="secondary-button" onClick={back}>
                 Back
               </button>
@@ -102,13 +101,14 @@ export function OnboardingApp() {
               >
                 Connect to it
               </button>
-            </div>
-          </section>
+            </FooterRow>
+          </OnboardingScreen>
         )
         break
       case "local.adoptExisting":
         content = (
           <AdoptExisting
+            error={state.error}
             onLocateEnv={() => void window.syrusDesktop.locateEnvFile()}
             onWipe={() => void window.syrusDesktop.wipeLocalData()}
             onBack={back}

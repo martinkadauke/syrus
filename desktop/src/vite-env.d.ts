@@ -194,9 +194,10 @@ type SyrusOnboardingState =
   | { phase: "local.failed"; code: number; step: string | null; message: string; logTail: string[] }
   | { phase: "done"; mode: "local" | "remote"; url: string }
 
+// URL-only: sign-in in the app window mints the tray token automatically;
+// the manual-token path for non-admin accounts lives in Preferences.
 type SyrusConnectRemoteRequest = {
   url: string
-  token?: string
 }
 
 interface Window {

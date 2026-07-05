@@ -161,9 +161,10 @@ type ToggleAdminControlResult = {
 // main process's installerDriver.ts; the bridge passes it through opaquely.
 type OnboardingState = { phase: string } & Record<string, unknown>
 
+// URL-only: sign-in in the app window mints the tray token automatically;
+// the manual-token path for non-admin accounts lives in Preferences.
 type ConnectRemoteRequest = {
   url: string
-  token?: string
 }
 
 contextBridge.exposeInMainWorld("syrusDesktop", {

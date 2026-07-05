@@ -867,7 +867,9 @@ function InboxView({ instanceUrl }: { instanceUrl: string }) {
           kind: "success",
           message: result.onPath
             ? "Syrus CLI installed — Checkout is ready."
-            : 'Syrus CLI installed. For terminals, add: export PATH="$HOME/.local/bin:$PATH"'
+            : window.syrusDesktop.platform === "win32"
+              ? "Syrus CLI installed — open a NEW terminal to use `syrus`."
+              : 'Syrus CLI installed. For terminals, add: export PATH="$HOME/.local/bin:$PATH"'
         }, 7000)
         void cliStatusQuery.refetch()
       } else {
@@ -1451,7 +1453,7 @@ export function CliInstallSection() {
             className="secondary-button"
             disabled={installing || status === "checking"}
             onClick={() => void install({ withSkill: true })}
-            title="Writes ~/.claude/skills/syrus so Claude Code sessions on this Mac can drive Syrus through the CLI."
+            title="Writes ~/.claude/skills/syrus so Claude Code sessions on this machine can drive Syrus through the CLI."
             type="button"
           >
             {installing ? "Installing…" : "Add Claude Code skill"}
@@ -1461,7 +1463,10 @@ export function CliInstallSection() {
       {status === "missing" ? (
         <label className="status-line flex items-center gap-2">
           <input checked={withSkill} onChange={(event) => setWithSkill(event.target.checked)} type="checkbox" />
-          <span>Also add the Claude Code skill (lets coding agents on this Mac drive Syrus)</span>
+          <span>
+            Also add the Claude Code skill (lets coding agents on this{" "}
+            {window.syrusDesktop?.platform === "win32" ? "PC" : "Mac"} drive Syrus)
+          </span>
         </label>
       ) : null}
       {result?.error ? <p className="form-error">{result.error}</p> : null}
@@ -1472,9 +1477,13 @@ export function CliInstallSection() {
           {result.skillInstalled ? " Claude Code skill added." : null}
           {result.skillError ? ` Claude Code skill failed: ${result.skillError}` : null}
           {!result.onPath ? (
-            <>
-              {" "}Add it to your PATH: <code>export PATH="$HOME/.local/bin:$PATH"</code>
-            </>
+            window.syrusDesktop?.platform === "win32" ? (
+              <> Open a NEW terminal to use <code>syrus</code>.</>
+            ) : (
+              <>
+                {" "}Add it to your PATH: <code>export PATH="$HOME/.local/bin:$PATH"</code>
+              </>
+            )
           ) : null}
         </p>
       ) : null}
@@ -2740,6 +2749,15 @@ export function App() {
               aria-labelledby="preferences-account-tab"
               onSubmit={saveCredentials}
             >
+              {/* Most users never touch this: signing in inside the Syrus
+                  window mints the token automatically. This manual form is
+                  the fallback for non-admin accounts on shared instances
+                  and scripted setups. */}
+              <p className="status-line" style={{ margin: 0 }}>
+                Signing in inside the Syrus window connects this menu-bar app automatically. Use this form
+                only if that didn&apos;t happen — for example with a non-admin account.
+              </p>
+
               <label>
                 <span>Syrus instance URL</span>
                 <input
@@ -2747,7 +2765,7 @@ export function App() {
                   required
                   type="url"
                   value={url}
-                  placeholder="https://your-syrus-instance.com"
+                  placeholder="https://syrus.your-company.dev"
                   onChange={(event) => setUrl(event.target.value)}
                 />
               </label>

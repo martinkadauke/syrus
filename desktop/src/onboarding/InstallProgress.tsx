@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react"
+import { FooterRow, OnboardingScreen, Spinner } from "./primitives"
 
 const STEP_LABELS: Record<SyrusInstallStepId, string> = {
   runtime_check: "Check the Docker runtime",
@@ -27,12 +28,7 @@ const StepGlyph = ({ status }: { status: SyrusInstallStep["status"] }) => {
   }
 
   if (status === "running") {
-    return (
-      <span
-        aria-hidden
-        className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"
-      />
-    )
+    return <Spinner />
   }
 
   return <span aria-hidden className="inline-block h-2 w-2 rounded-full bg-slate-300" />
@@ -46,13 +42,11 @@ export function InstallProgress({ steps, logLines, onCancel }: InstallProgressPr
   }, [logLines])
 
   return (
-    <section className="w-full max-w-md">
-      <h1 className="text-center text-xl font-semibold">Installing Syrus…</h1>
-      <p className="mt-2 text-center text-sm text-slate-600">
-        This usually takes a few minutes; downloading the image is the long part.
-      </p>
-
-      <ul className="mt-6 space-y-2">
+    <OnboardingScreen
+      title="Installing Syrus…"
+      subtitle="This usually takes a few minutes; downloading the image is the long part."
+    >
+      <ul className="mt-6 space-y-2" aria-live="polite">
         {steps.map((step) => (
           <li
             key={step.id}
@@ -69,20 +63,20 @@ export function InstallProgress({ steps, logLines, onCancel }: InstallProgressPr
       </ul>
 
       <details className="mt-4">
-        <summary className="cursor-pointer text-sm text-slate-500">Show details</summary>
+        <summary className="cursor-pointer text-xs text-slate-500">Show details</summary>
         <pre
           ref={logRef}
-          className="mt-2 max-h-32 overflow-y-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-200"
+          className="mt-2 max-h-40 overflow-y-auto rounded-lg bg-slate-900 p-3 text-xs leading-relaxed text-slate-200"
         >
           {logLines.join("\n")}
         </pre>
       </details>
 
-      <div className="mt-5 text-center">
+      <FooterRow>
         <button type="button" className="secondary-button" onClick={onCancel}>
           Cancel
         </button>
-      </div>
-    </section>
+      </FooterRow>
+    </OnboardingScreen>
   )
 }
