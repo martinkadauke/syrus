@@ -1,0 +1,18 @@
+{
+  "app_name": "Syrus",
+  "loading": "Laden...",
+  "show_more": "Mehr anzeigen",
+  "show_less": "Weniger anzeigen",
+  "workflows": "Workflows",
+  "errors": {
+    "not_found_heading": "Hier ist nichts.",
+    "not_found_description": "Diese Adresse führt nirgendwohin. Möglicherweise haben Sie einem defekten Link gefolgt, oder die Seite wurde verschoben.",
+    "server_error_heading": "Etwas ist schiefgelaufen.",
+    "server_error_description": "Auf dem Server ist ein Fehler aufgetreten. Der Anwendungsbesitzer sollte die Protokolle bei Gelegenheit prüfen.",
+    "unprocessable_heading": "Diese Anfrage wurde abgelehnt.",
+    "unprocessable_description": "Der Server hat diese Eingabe in der vorliegenden Form als unzulässig befunden. Überprüfen Sie Ihre Eingabe und versuchen Sie es erneut. Falls Sie der Anwendungsbesitzer sind, prüfen Sie die Protokolle.",
+    "bad_request_heading": "Der Server konnte die Anfrage nicht lesen.",
+    "bad_request_description": "Diese Anfrage war fehlerhaft oder konnte nicht verarbeitet werden. Bitte prüfen Sie die Adresse und versuchen Sie es erneut.",
+    "return_to_dashboard": "Zurück zum Dashboard"
+  }
+}

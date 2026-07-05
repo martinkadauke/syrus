@@ -9789,7 +9789,7 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "⋯" }))
     expect(screen.getByRole("menu")).toBeInTheDocument()
-    expect(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Retry implementation with feedback" })).toBeInTheDocument()
+    expect(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Retry with feedback" })).toBeInTheDocument()
     fireEvent.keyDown(window, { key: "Escape" })
     await waitFor(() => {
       expect(screen.queryByRole("menu")).not.toBeInTheDocument()
@@ -9881,9 +9881,9 @@ describe("App", () => {
 
     expect(await screen.findByRole("button", { name: "Retry implementation" })).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "⋯" }))
-    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Retry implementation with feedback" }))
+    fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name: "Retry with feedback" }))
 
-    const dialog = screen.getByRole("dialog", { name: "Retry implementation with feedback" })
+    const dialog = screen.getByRole("dialog", { name: "Retry with feedback" })
     fireEvent.change(within(dialog).getByLabelText("Feedback"), { target: { value: "Please use the marble route this time." } })
     fireEvent.click(within(dialog).getByRole("button", { name: "Retry" }))
 
@@ -9898,7 +9898,7 @@ describe("App", () => {
     })
     expect(await screen.findByText("Retry workflow enqueued.")).toBeInTheDocument()
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Retry implementation with feedback" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("dialog", { name: "Retry with feedback" })).not.toBeInTheDocument()
     })
   })
 

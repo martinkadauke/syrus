@@ -4,6 +4,7 @@ class ApplicationController < ActionController::Base
   allow_browser versions: :modern
 
   before_action :compute_system_alerts
+  around_action :switch_locale
   helper_method :current_user, :default_chat_path
 
   private
@@ -16,9 +17,14 @@ class ApplicationController < ActionController::Base
     @system_alerts = SystemAlerts.active_for(user: Current.user)
   end
 
+  def switch_locale(&action)
+    locale = Current.user&.locale.presence || I18n.default_locale
+    I18n.with_locale(locale, &action)
+  end
+
   def require_admin
     return if Current.user&.admin?
-    redirect_to root_path, alert: "Admin access required."
+    redirect_to root_path, alert: t("application.admin_required")
   end
 
   def current_user
