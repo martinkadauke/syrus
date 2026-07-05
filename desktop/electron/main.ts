@@ -16,9 +16,10 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConfig, store } from "./settings.js"
+import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
+import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
 
@@ -1080,6 +1081,17 @@ const saveCredentials = async (credentials: Credentials) => {
 
   cachedCredentials = normalizedCredentials
   startAppUserCable(normalizedCredentials)
+
+  // In remote mode the tray URL and the app window must stay in lockstep:
+  // a manual URL change in Preferences retargets the web container too
+  // (local mode's URL is owned by its .env, never by credentials). The open
+  // window closes so its next open uses the new instance.
+  const normalizedServerUrl = normalizedCredentials.url.replace(/\/+$/, "")
+  if (getBackendMode() === "remote" && getServerUrl() !== normalizedServerUrl) {
+    saveBackendConfig({ mode: "remote", serverUrl: normalizedServerUrl })
+    webAppWindow?.window.close()
+  }
+
   await fetchBootstrap()
   mainWindow?.webContents.send("credentials-saved", normalizedCredentials)
   preferencesWindow?.webContents.send("credentials-saved", normalizedCredentials)
@@ -1365,6 +1377,28 @@ const showWebAppWindow = async () => {
     }
   })
   updateDockVisibility()
+
+  // Whenever a same-origin page finishes loading and the tray isn't
+  // configured for this instance yet, try to mint its token from the
+  // signed-in web session. Cheap no-op once credentials match.
+  const handle = webAppWindow
+  handle.window.webContents.on("did-finish-load", () => {
+    let sameOrigin = false
+    try {
+      sameOrigin = new URL(handle.window.webContents.getURL()).origin === new URL(serverUrl).origin
+    } catch {
+      sameOrigin = false
+    }
+
+    if (!sameOrigin) {
+      return
+    }
+
+    void maybeProvisionDesktopToken(handle.window.webContents, serverUrl, {
+      getCachedCredentials: () => cachedCredentials,
+      saveCredentials
+    })
+  })
 
   try {
     await webAppWindow.loadServerUrl()
