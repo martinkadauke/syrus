@@ -195,7 +195,6 @@ RSpec.describe ChatMessage do
     end
   end
 
-
   describe "#sender" do
     let(:sender) { Factories.user }
 
