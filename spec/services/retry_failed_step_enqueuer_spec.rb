@@ -70,4 +70,38 @@ RSpec.describe RetryFailedStepEnqueuer do
     expect(land_step.runs).to be_empty
     expect(job.reload).to be_landing
   end
+
+  it "explains why a failed merge-train cannot be rebuilt" do
+    user = Factories.user(github_token: "ghp_test")
+    repository = Factories.repository(user: user, auto_merge_enabled: true)
+    epic = Factories.epic(user: user, repository: repository)
+    job = Factories.job_record(
+      user: user,
+      repository: repository,
+      epic: epic,
+      state: "implemented",
+      pr_number: 321,
+      branch_name: "syrus/issue-321"
+    )
+    train = MergeTrain.create!(
+      epic: epic,
+      repository: repository,
+      base_branch: "master",
+      state: "failed",
+      failure_reason: "merge_train: missing built base SHA; rebuild required",
+      finished_at: 1.minute.ago
+    )
+    MergeTrainMember.create!(merge_train: train, job: job, position: 0, state: "failed")
+    workflow = Workflow.create!(job: job, trigger_kind: "merge_train", artifacts: { "merge_train_id" => train.id })
+    workflow.update_columns(state: "failed", started_at: 10.minutes.ago, finished_at: 1.minute.ago)
+    land_step = Step.create!(workflow: workflow, kind: "merge_train_land", position: 5)
+    land_step.update_columns(state: "failed", started_at: 2.minutes.ago, finished_at: 1.minute.ago)
+
+    AppSetting.current.update!(merge_train_enabled: true)
+
+    result = described_class.call(workflow: workflow)
+
+    expect(result).not_to be_success
+    expect(result.error).to eq("Epic is not ready for a merge-train rebuild: child Jobs not yet approved: #{job.slug}.")
+  end
 end

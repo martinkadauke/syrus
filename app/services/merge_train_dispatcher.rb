@@ -14,16 +14,14 @@ class MergeTrainDispatcher
   RETRY_COOLDOWN = 30.minutes
 
   def self.try_dispatch!(epic) = new(epic).try_dispatch!
+  def self.blocker_reason(epic) = new(epic).blocker_reason
 
   def initialize(epic)
     @epic = epic
   end
 
   def try_dispatch!
-    return unless AppSetting.merge_train_enabled?
-    return if active_train_in_progress?
-    return if landing_in_progress?
-    return if cooling_down?
+    return if blocker_reason
 
     result = MergeTrainAssembler.call(@epic)
     return unless result.ready?
@@ -60,6 +58,24 @@ class MergeTrainDispatcher
     workflow
   end
 
+  def blocker_reason
+    return "merge trains are disabled" unless AppSetting.merge_train_enabled?
+    return "#{@epic.slug} already has an active merge train" if active_train_in_progress?
+
+    if (landing_job = landing_job_in_progress)
+      return "#{landing_job.slug} is already landing for #{@epic.repository.slug}"
+    end
+
+    if (failed_train = cooling_down_failure)
+      return cooldown_reason(failed_train)
+    end
+
+    readiness = MergeTrainAssembler.call(@epic)
+    return readiness.reason unless readiness.ready?
+
+    nil
+  end
+
   private
 
   def active_train_in_progress?
@@ -68,18 +84,34 @@ class MergeTrainDispatcher
   end
 
   def landing_in_progress?
-    Job.landing.where(repository_id: @epic.repository_id).exists?
+    landing_job_in_progress.present?
+  end
+
+  def landing_job_in_progress
+    Job.landing.where(repository_id: @epic.repository_id).order(:id).first
   end
 
   def cooling_down?
-    last_failure = MergeTrain
+    cooling_down_failure.present?
+  end
+
+  def cooling_down_failure
+    MergeTrain
       .where(epic_id: @epic.id, state: "failed")
       .where(
         "failure_reason IS NULL OR (failure_reason NOT LIKE ? AND failure_reason NOT LIKE ?)",
         "merge_train: base moved%",
         "merge_train: missing built base SHA%"
       )
-      .maximum(:finished_at)
-    last_failure.present? && last_failure > RETRY_COOLDOWN.ago
+      .where("finished_at > ?", RETRY_COOLDOWN.ago)
+      .order(finished_at: :desc)
+      .first
+  end
+
+  def cooldown_reason(failed_train)
+    remaining_seconds = [ failed_train.finished_at + RETRY_COOLDOWN - Time.current, 0 ].max
+    remaining_minutes = (remaining_seconds / 60.0).ceil
+    reason = failed_train.failure_reason.to_s.presence || "unclassified failure"
+    "recent failed merge train is cooling down for #{remaining_minutes}m: #{reason}"
   end
 end

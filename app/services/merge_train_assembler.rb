@@ -46,6 +46,6 @@ class MergeTrainAssembler
   end
 
   def label(jobs)
-    jobs.map { |job| "##{job.issue_number || job.id}" }.join(", ")
+    jobs.map(&:slug).join(", ")
   end
 end

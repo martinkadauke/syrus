@@ -49,7 +49,11 @@ class RetryFailedStepEnqueuer
     return failure("Merge train not found; use Start over.") unless train
 
     rebuilt_workflow = MergeTrainDispatcher.try_dispatch!(train.epic)
-    return failure("Epic is not ready for a merge-train rebuild.") unless rebuilt_workflow
+    unless rebuilt_workflow
+      reason = MergeTrainDispatcher.blocker_reason(train.epic).presence ||
+        "merge-train dispatch was blocked by a concurrent state change"
+      return failure("Epic is not ready for a merge-train rebuild: #{reason}.")
+    end
 
     run = rebuilt_workflow.runs.order(:created_at).last
     return failure("Merge-train rebuild did not enqueue a run.") unless run
