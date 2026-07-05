@@ -1,0 +1,64 @@
+# Fast checks for changes touching the desktop app or its bundled installer.
+name: Desktop CI
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "install.sh"
+      - ".github/workflows/desktop-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "desktop/**"
+      - "install.sh"
+      - ".github/workflows/desktop-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix desktop
+
+      - name: Typecheck
+        run: npm --prefix desktop run typecheck
+
+      - name: Build renderer
+        run: npm --prefix desktop run build:renderer
+
+      - name: Build main process
+        run: npm --prefix desktop run build:main
+
+      - name: Stage backend assets
+        run: npm --prefix desktop run stage:backend
+
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bash syntax check
+        run: bash -n install.sh
+
+      # The GUI drives install.sh over its NDJSON protocol; make sure a usage
+      # error still speaks it (one parseable JSON event, exit code 2).
+      - name: Smoke-test the machine interface
+        run: |
+          set +e
+          OUT=$(./install.sh --json --non-interactive 2>/dev/null)
+          CODE=$?
+          set -e
+          [[ "$CODE" == "2" ]] || { echo "::error::expected exit 2, got $CODE"; exit 1; }
+          echo "$OUT" | jq -e '.event == "error" and .code == 2' >/dev/null

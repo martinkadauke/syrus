@@ -18,7 +18,9 @@ import {
 import type { Credentials } from "./credentialsStore.js"
 import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
+import * as appUpdates from "./appUpdates.js"
 import * as backendLifecycle from "./installer/backendLifecycle.js"
+import { readBackendManifest } from "./installer/installPaths.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
@@ -1436,12 +1438,58 @@ const showBackendUnavailable = (detail: string) => {
   startBackendRecoveryPolling()
 }
 
+// Each app release pins its tested backend image (manifest.json, staged at
+// build time). After an app auto-update the running stack is still on the
+// previous pin — offer the upgrade instead of silently mutating a running
+// backend. Dev builds have no manifest, so this is a no-op there.
+let offeredBackendImage: string | null = null
+
+const offerBackendUpdateIfPinned = async () => {
+  if (getBackendMode() !== "local") {
+    return
+  }
+
+  const image = (await readBackendManifest())?.image
+  if (!image || image === offeredBackendImage) {
+    return
+  }
+
+  const current = await backendLifecycle.currentImagePin()
+  if (current === image) {
+    return
+  }
+
+  offeredBackendImage = image
+  const choice = await dialog.showMessageBox({
+    type: "question",
+    buttons: ["Update Backend", "Not Now"],
+    defaultId: 0,
+    cancelId: 1,
+    message: "Update the Syrus backend?",
+    detail:
+      `This version of Syrus was tested with ${image}` +
+      `${current ? `, but the local backend is pinned to ${current}` : ""}. ` +
+      "Updating pulls the new image and restarts the backend — agent runs pause for a minute or two."
+  })
+
+  if (choice.response !== 0) {
+    return
+  }
+
+  if (await backendLifecycle.updateBackend(image)) {
+    new Notification({ title: "Syrus backend updated", body: image }).show()
+    void webAppWindow?.loadServerUrl()
+  } else {
+    await reportBackendActionFailure("update the Syrus backend")
+  }
+}
+
 const startLocalBackendSupervision = () => {
   if (getBackendMode() !== "local") {
     return
   }
 
-  void backendLifecycle.ensureRunning()
+  void backendLifecycle.ensureRunning().then(() => offerBackendUpdateIfPinned())
   backendLifecycle.startWatchdog({
     onHealthyChanged: (healthy, diagnosis) => {
       if (!healthy) {
@@ -1499,8 +1547,70 @@ const finishOnboarding = async () => {
   await showWebAppWindow()
 }
 
+// Shared "Restart to update" entry: appears in the app menu and the tray
+// context menu once electron-updater has an update staged.
+const updateMenuItems = (): Electron.MenuItemConstructorOptions[] => {
+  const version = appUpdates.downloadedUpdateVersion()
+  if (!version) {
+    return []
+  }
+
+  return [
+    {
+      label: `Restart to update Syrus (v${version})`,
+      click: () => {
+        // quitAndInstall closes windows BEFORE any quit event fires, so the
+        // hide-on-close handler would preventDefault and abort the update
+        // unless the quit flag is already set.
+        isQuitting = true
+        appUpdates.quitAndInstallUpdate()
+      }
+    },
+    { type: "separator" }
+  ]
+}
+
+const checkForUpdatesInteractively = async () => {
+  const result = await appUpdates.checkForUpdatesInteractive()
+  switch (result.outcome) {
+    case "disabled":
+      await dialog.showMessageBox({
+        type: "info",
+        message: "Automatic updates are unavailable in this build.",
+        detail: "Updates apply to the packaged, signed app installed from the DMG."
+      })
+      break
+    case "downloaded":
+    case "downloading":
+      await dialog.showMessageBox({
+        type: "info",
+        message: `Syrus ${result.version} is on its way.`,
+        detail:
+          result.outcome === "downloaded"
+            ? "The update is ready — restart Syrus from the menu to apply it."
+            : "The update is downloading in the background; you'll be offered a restart when it's ready."
+      })
+      break
+    case "up-to-date":
+      await dialog.showMessageBox({
+        type: "info",
+        message: `You're up to date.`,
+        detail: `Syrus ${result.version} is the latest version.`
+      })
+      break
+    case "error":
+      await dialog.showMessageBox({
+        type: "warning",
+        message: "Couldn't check for updates.",
+        detail: "Check your network connection and try again later."
+      })
+      break
+  }
+}
+
 const trayContextMenu = () =>
   Menu.buildFromTemplate([
+    ...updateMenuItems(),
     {
       label: "Open Syrus",
       click: () => {
@@ -1605,6 +1715,14 @@ const createMenu = () => {
     {
       label: app.name,
       submenu: [
+        ...updateMenuItems(),
+        {
+          label: "Check for Updates…",
+          click: () => {
+            void checkForUpdatesInteractively()
+          }
+        },
+        { type: "separator" },
         {
           label: "Sign Out",
           click: async () => {
@@ -1754,6 +1872,7 @@ ipcMain.handle("confirm-approve-job", async (event, jobID: number) => confirmApp
 ipcMain.handle("approve-job", async (_event, jobID: number) => approveJob(jobID))
 ipcMain.handle("retry-job", async (_event, jobID: number) => retryJob(jobID))
 ipcMain.handle("submit-job-feedback", async (_event, jobID: number, body: string) => submitJobFeedback(jobID, body))
+ipcMain.handle("get-app-version", async () => app.getVersion())
 ipcMain.handle("onboarding:get-state", async () => ensureOnboardingDriver().getState())
 ipcMain.handle("onboarding:choose-mode", async (_event, mode: "local" | "remote") => {
   ensureOnboardingDriver().chooseMode(mode)
@@ -1855,6 +1974,14 @@ app.whenReady().then(async () => {
     }
   }
   registerGlobalHotkey()
+  appUpdates.initAutoUpdates({
+    onUpdateDownloaded: () => {
+      createMenu() // tray menu rebuilds per click; the app menu needs a refresh
+    },
+    onBeforeQuitForUpdate: () => {
+      isQuitting = true
+    }
+  })
 
   if (getBackendMode() === "") {
     await showOnboardingWindow()
