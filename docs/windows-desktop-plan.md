@@ -145,22 +145,38 @@ Windows is searching for Syrus.exe" dialog. Root-cause analysis:
 electron-builder's one-click installer launches the app via the freshly
 created Start Menu shortcut (`StdUtils.ExecShellAsUser` on
 `$launchLink`, installSection.nsh) and never re-checks that the target
-executable still exists. Forensics on the exact artifact proved the
-installer payload was complete and correct (valid ARM64 Syrus.exe,
-correct extraction-before-shortcut ordering, sha512 matching
-latest.yml), which leaves post-extraction interference — Windows
-Defender's ML heuristics quarantining the unsigned exe (Wacatac.B!ml is
-the classic false positive against unsigned Electron binaries) — as the
-leading cause. Mitigations shipped: `build/installer.nsh` customInstall
-now verifies `$INSTDIR\Syrus.exe` exists after extraction and fails
-with Defender-specific guidance instead of the shell dialog. The real
-fix is signing (above). Diagnosis checklist for a failing guest: check
-`%LocalAppData%\Programs\Syrus\` — populated-but-no-exe (or a Windows
-Security → Protection history entry) means Defender; only
-`Uninstall Syrus.exe` present means extraction failed (then check the
-guest really is native ARM64 Windows — an arm64-only package on x64
-extracts nothing, silently). For test iteration, add a Defender
-exclusion for that folder before installing.
+executable still exists. Mitigation shipped at the time:
+`build/installer.nsh` customInstall verifies `$INSTDIR\Syrus.exe`
+exists after extraction and fails with actionable guidance instead of
+the shell dialog.
+
+**Actual root cause (confirmed July 2026, after a second field round
+falsely implicated Defender):** electron-builder 26.15.0–26.15.5
+packed arm64 NSIS payloads with 7-Zip 24.09's ARM64 branch-converter
+filter on PE entries. The install-time Nsis7z decoder cannot decode
+that coder and **silently skips every `.exe`/`.dll`** (the plugin
+discards its own error status; the NSIS error flag never sets), while
+plain-LZMA2 data files extract normally. Signature: install dir has
+all `.pak`/`.bin`/`.json` files plus `Uninstall Syrus.exe`, zero other
+PE files; Defender Protection history, `Get-MpThreatDetection`, and
+event log 1116/1117 all empty; hash-verified installer; 100%
+reproducible. electron-userland/electron-builder#9983, fixed in
+26.15.6 (pins the payload filter to BCJ, which the decoder handles) —
+`windows_scaffold_spec.rb` pins our floor there. Confirm a payload is
+decodable with `7zz l -slt app-arm64.7z`: PE entries must NOT show
+`ARM64` in their Method field.
+
+Diagnosis checklist for a failing guest, in order: (1) data-files-only
+install dir + empty Protection history → the #9983 class (verify the
+builder version and payload Method fields); (2) populated-but-no-exe
+WITH a Protection history / `Get-MpThreatDetection` entry → Defender
+quarantine of the unsigned exe (Wacatac.B!ml is the classic false
+positive; the real fix is signing, above); (3) only
+`Uninstall Syrus.exe` present → extraction never ran (check the guest
+really is native ARM64 Windows — an arm64-only package on x64 extracts
+nothing, silently). Note antivirus exclusions must cover
+`%LocalAppData%\Temp` too, not just the install dir — the payload is
+staged in `$PLUGINSDIR\7z-out` under TEMP before being copied.
 
 ## Phases
 

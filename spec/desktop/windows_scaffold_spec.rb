@@ -22,6 +22,18 @@ RSpec.describe "desktop Windows scaffold" do
     expect(plan).to include("UTM")
   end
 
+  it "pins electron-builder past the arm64 PE-skip bug" do
+    # electron-builder 26.15.0–26.15.5 packed arm64 NSIS payloads with a
+    # 7-Zip ARM64 branch filter the install-time Nsis7z decoder can't
+    # decode — every .exe/.dll was silently skipped (exit 0, no error)
+    # while data files extracted, i.e. an installed app with no binaries.
+    # electron-userland/electron-builder#9983, fixed in 26.15.6. Cost us a
+    # full field-debugging round that blamed Defender; never regress it.
+    lock = JSON.parse(read("package-lock.json"))
+    version = lock.dig("packages", "node_modules/electron-builder", "version")
+    expect(Gem::Version.new(version)).to be >= Gem::Version.new("26.15.6")
+  end
+
   it "packages a per-user NSIS one-click installer with the brand .ico for x64 and arm64" do
     config = read("electron-builder.yml")
     expect(config).to include("icon: build/icon.ico")
