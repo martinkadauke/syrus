@@ -343,3 +343,39 @@ func TestDetailPanelTextPrefersTestPlanArtifact(t *testing.T) {
 		t.Fatalf("detailPanelText = %q, want %q", got, want)
 	}
 }
+
+func TestPagerCommandLine(t *testing.T) {
+	tests := []struct {
+		name      string
+		goos      string
+		pagerEnv  string
+		wantName  string
+		wantArgs  []string
+		wantPager bool
+	}{
+		{name: "unset PAGER defaults to less on linux", goos: "linux", pagerEnv: "", wantName: "less", wantArgs: []string{}, wantPager: true},
+		{name: "unset PAGER defaults to less on darwin", goos: "darwin", pagerEnv: "", wantName: "less", wantArgs: []string{}, wantPager: true},
+		{name: "unset PAGER prints directly on windows", goos: "windows", pagerEnv: "", wantPager: false},
+		{name: "blank PAGER prints directly on windows", goos: "windows", pagerEnv: "   ", wantPager: false},
+		{name: "set PAGER honored on windows", goos: "windows", pagerEnv: "more.com", wantName: "more.com", wantArgs: []string{}, wantPager: true},
+		{name: "PAGER with args split into fields", goos: "linux", pagerEnv: "less -RFX", wantName: "less", wantArgs: []string{"-RFX"}, wantPager: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, args, usePager := pagerCommandLine(tt.goos, tt.pagerEnv)
+			if usePager != tt.wantPager {
+				t.Fatalf("usePager = %v, want %v", usePager, tt.wantPager)
+			}
+			if !usePager {
+				return
+			}
+			if name != tt.wantName {
+				t.Errorf("name = %q, want %q", name, tt.wantName)
+			}
+			if !reflect.DeepEqual(args, tt.wantArgs) {
+				t.Errorf("args = %v, want %v", args, tt.wantArgs)
+			}
+		})
+	}
+}

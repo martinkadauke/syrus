@@ -64,8 +64,13 @@ Two options were considered:
 2. **Port the installer to PowerShell** (`install.ps1`) implementing the
    same machine interface (`--json` progress events, exit codes, `--image`,
    `--target-dir`, `--port`) so `installerDriver.ts` stays engine-agnostic.
-   State lives at `%LocalAppData%\Syrus\local\` (compose file, `.env`,
-   install log) — the direct analog of `~/.syrus/local/`.
+   State lives at `%USERPROFILE%\.syrus\local\` — the SAME path expression
+   as every other platform (settings.ts localStateDir is unbranched on
+   purpose): it keeps the shared Syrus home next to `.syrus\credentials`
+   and preserves migrateBackendConfig's adopt-a-CLI-install semantics.
+   (`%LocalAppData%\Syrus\` is instead reserved for the CLI binary at
+   `%LocalAppData%\Syrus\bin\`, which must live OUTSIDE the NSIS `$INSTDIR`
+   so app auto-updates can't delete it.)
 
 Option 2 is the plan. The compose file and image are identical; only the
 bootstrap script differs. The driver contract (JSON events over stdout)
@@ -180,23 +185,40 @@ staged in `$PLUGINSDIR\7z-out` under TEMP before being copied.
 
 ## Phases
 
-1. **Foundation (this branch).** `icon.ico` + generator script; NSIS
-   config in electron-builder.yml; platform seams (`titleBarStyle`,
-   bash spawns gated); Windows runtime detection returning
-   download recommendations (Docker Desktop, Podman Desktop); Welcome
-   screen offers connect-mode on Windows and labels local install as
-   arriving next; CI builds an unsigned NSIS installer per arch.
-2. **Local install.** `install.ps1` with the same machine interface,
-   driven by the same installerDriver; WSL2 preflight; engine start
-   (`Start-Process` Docker Desktop / `podman machine start`); adopt
-   existing installs; port-conflict flow. Release workflow gains a
-   `release-windows` job (windows-latest runner) building + publishing
-   both arches with stable aliases.
-3. **Parity polish.** Windows notification behaviors (toast actions),
-   Start-with-Windows login item, per-monitor DPI checks over the tray
-   popover, `.ico` badge rendering QA, first-run "pin the tray icon" hint.
-4. **Signing + GA.** Authenticode signing in CI, SmartScreen reputation,
-   website download buttons out of beta.
+1. **Foundation (shipped).** `icon.ico` + generator script; NSIS config in
+   electron-builder.yml; platform seams (`titleBarStyle`, bash spawns
+   gated); Windows runtime detection returning download recommendations
+   (Docker Desktop, Podman Desktop); Welcome screen offers connect-mode.
+2. **Local install (shipped July 2026).** `install.ps1` implements the
+   identical machine interface (NDJSON events, 8 step ids, exit codes —
+   spec/desktop/install_parity_spec.rb keeps the two scripts' contract
+   strings in lockstep), driven by the same installerDriver through a
+   platform-selected interpreter (installPaths.installerCommand: bash vs
+   `powershell.exe -File`); cancel kills the tree via `taskkill /T` (no
+   POSIX process groups on Windows); the image-update path
+   (backendLifecycle.updateBackend) shares the seam; Welcome's local card
+   is a real choice on Windows; RuntimeSetup recommends Docker Desktop
+   (its installer owns WSL 2 setup) with the download CTA per-platform.
+   The bundled CLI ships as `syrus-win32-{x64,arm64}.exe`, installs to
+   `%LocalAppData%\Syrus\bin` (outside the NSIS `$INSTDIR`, which
+   auto-updates replace wholesale) and joins the per-user PATH via the
+   registry (raw HKCU\Environment write + WM_SETTINGCHANGE broadcast —
+   never setx). Also shipped from the parity pass: AUMID
+   (`app.setAppUserModelId`) so notifications display, work-area-aware
+   popover placement (bottom taskbars open upward), full-color tray icon
+   with a bitmap-drawn unread dot (nativeImage can't rasterize SVG), and
+   instance-takeover on win32.
+   Still open from this phase: `podman machine start`/`podman compose`
+   support (Docker Desktop-only for now — exit 12/10 copy says so), a
+   dedicated WSL2 preflight (Docker Desktop's own installer handles it),
+   and the `release-windows` publishing job (deliberately blocked on
+   signing going live — never publish unsigned artifacts).
+3. **Parity polish.** Windows toast actions, Start-with-Windows login
+   item (`setLoginItemSettings`), first-run "pin the tray icon" hint,
+   per-monitor DPI QA on a real multi-monitor machine.
+4. **Signing + GA.** Authenticode signing in CI (runbook:
+   docs/windows-signing.md), SmartScreen reputation, `release-windows`
+   job with stable aliases, website download buttons out of beta.
 
 ## Testing without nested virtualization (Windows 11 on UTM)
 

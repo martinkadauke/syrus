@@ -17,24 +17,38 @@ RSpec.describe "desktop CLI install" do
     File.read(File.join(desktop_root, relative_path), encoding: "UTF-8")
   end
 
-  it "stages per-arch CLI binaries and bundles them as extraResources" do
+  it "stages darwin AND windows CLI binaries with platform-filtered bundling" do
     stage = read("scripts/stage-cli.mjs")
     expect(stage).to include('CGO_ENABLED: "0"')
     expect(stage).to match(/for \(const arch of \["arm64", "amd64"\]\)/)
+    # Naming mirrors Electron's process.platform/process.arch so main.ts can
+    # derive the bundled source; windows binaries carry .exe.
+    expect(stage).to match(/goos: "darwin", platform: "darwin", suffix: ""/)
+    expect(stage).to match(/goos: "windows", platform: "win32", suffix: "\.exe"/)
     # Missing Go must degrade to a notice, not break packaging.
     expect(stage).to include("skipping CLI bundling")
 
     config = read("electron-builder.yml")
-    expect(config).to match(%r{- from: resources/cli\s+to: cli})
+    # Per-platform filters: mac DMGs must not ship ~40 MB of windows exes and
+    # vice versa.
+    expect(config).to match(%r{mac:[\s\S]{0,900}- from: resources/cli\s+to: cli\s+filter: \["syrus-darwin-\*"\]})
+    expect(config).to match(%r{win:[\s\S]{0,400}- from: resources/cli\s+to: cli\s+filter: \["syrus-win32-\*"\]})
 
     package = JSON.parse(read("package.json"))
     expect(package.dig("scripts", "build")).to include("stage:cli")
   end
 
-  it "installs to ~/.local/bin and needs no login step" do
+  it "installs per-platform with no login step" do
     main = read("electron/main.ts")
-    install = main[/const performCliInstall[\s\S]{0,2600}/]
-    expect(install).to include('path.join(os.homedir(), ".local", "bin")')
+    # The probe/install target: ~/.local/bin on macOS; %LocalAppData%\Syrus\bin
+    # on Windows — deliberately OUTSIDE the NSIS $INSTDIR, which the updater
+    # replaces wholesale on every auto-update.
+    probe = main[/const localBinSyrus =[\s\S]{0,400}/]
+    expect(probe).to include('path.join(os.homedir(), ".local", "bin", "syrus")')
+    expect(probe).to include('"Syrus", "bin", "syrus.exe"')
+
+    install = main[/const performCliInstall[\s\S]{0,3600}/]
+    expect(install).to match(/syrus-\$\{process\.platform\}-/)
     # No credentials writing here: credentialsStore.ts owns
     # ~/.syrus/credentials, and the app already keeps it in the CLI-shared
     # format — the CLI is signed in the moment the binary lands.
@@ -42,17 +56,31 @@ RSpec.describe "desktop CLI install" do
     expect(install).to include("const signedIn = cachedCredentials !== null")
     # The availability cache must be re-probed after install.
     expect(install).to include("cachedCliAvailable = null")
+    # A running syrus.exe can't be overwritten on Windows, but it can be renamed.
+    expect(install).to match(/fs\.rename\(target, `\$\{target\}\.old`\)/)
     # The IPC handler delegates so the tray banner, Preferences, and the
     # post-setup dialog share one install path.
     expect(main).to match(/ipcMain\.handle\("install-syrus-cli", async \(_event, options\?: CliInstallOptions\) => performCliInstall\(options\)\)/)
   end
 
+  it "adds the Windows per-user PATH entry safely (registry, not setx)" do
+    main = read("electron/main.ts")
+    path_helper = main[/const addToWindowsUserPath[\s\S]{0,2200}/]
+    # Raw registry read with expansion disabled preserves other entries'
+    # %VARS%; setx would truncate at 1024 chars and flatten REG_EXPAND_SZ.
+    expect(path_helper).to include("DoNotExpandEnvironmentNames")
+    expect(path_helper).to include("SendMessageTimeout")
+    expect(main).not_to match(/execFileAsync\("setx"/)
+    # A failed PATH write must not fail the install (absolute path still works).
+    expect(read("electron/main.ts")).to match(/addToWindowsUserPath\(binDir\)\.catch/)
+  end
+
   it "installs the Claude Code skill through the CLI itself" do
     main = read("electron/main.ts")
-    install = main[/const performCliInstall[\s\S]{0,2600}/]
+    install = main[/const performCliInstall[\s\S]{0,3600}/]
     # CLI-level (`syrus skill install`), not a desktop-side file write — so
     # clone-based users share the exact same skill path (cli/cmd/skill.go).
-    expect(install).to match(/execFileAsync\(target, \["skill", "install"\]\)/)
+    expect(install).to match(/execFileAsync\(target, \["skill", "install"\]/)
     # A failed skill write must not report the whole install as broken.
     expect(install).to include("skillError")
   end

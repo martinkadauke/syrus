@@ -6,7 +6,8 @@ import readline from "node:readline"
 import { promisify } from "node:util"
 import { dialog, shell, type BrowserWindow } from "electron"
 import { localStateDir, saveBackendConfig } from "../settings.js"
-import { installerScriptPath, readBackendManifest } from "./installPaths.js"
+import { analyzeInstanceUrl } from "./instanceUrl.js"
+import { installerCommand, installerScriptPath, readBackendManifest } from "./installPaths.js"
 import {
   composeCommand,
   daemonUp,
@@ -22,6 +23,13 @@ import {
 const execFileAsync = promisify(execFile)
 
 export const ORBSTACK_DOWNLOAD_URL = "https://orbstack.dev/download"
+export const DOCKER_DESKTOP_DOWNLOAD_URL = "https://www.docker.com/products/docker-desktop/"
+
+// The per-platform runtime recommendation the guided setup points at:
+// OrbStack on macOS, Docker Desktop on Windows (its installer owns the
+// WSL 2 setup). RuntimeSetup.tsx renders the matching copy.
+export const runtimeDownloadUrl = () =>
+  process.platform === "win32" ? DOCKER_DESKTOP_DOWNLOAD_URL : ORBSTACK_DOWNLOAD_URL
 export const DATA_VOLUME_NAME = "syrus_syrus-data"
 const DEFAULT_PORT = 3000
 const RUNTIME_START_POLLS = 90 // × 2s = 180s, matches install.sh's own wait
@@ -73,9 +81,6 @@ type InstallerEvent = {
 }
 
 type DriverDeps = {
-  // main.ts's saveCredentials: validates against the server, writes
-  // ~/.syrus/credentials, and starts the notification cable.
-  saveRemoteCredentials: (credentials: { url: string; token: string }) => Promise<unknown>
   onState: (state: OnboardingState) => void
   onLogLine: (line: string) => void
 }
@@ -86,23 +91,37 @@ const errorMessage = (error: unknown, fallback: string) =>
 const normalizeUrl = (url: string) => url.trim().replace(/\/+$/, "")
 
 // "Is this URL a Syrus instance?" without needing credentials: the auth
-// status endpoint is unauthenticated JSON on every Syrus install.
+// status endpoint is unauthenticated JSON on every Syrus install. Failure
+// messages are classified so the connect form can say what to actually do.
 const fingerprintSyrus = async (url: string) => {
   let response: Response
   try {
     response = await fetch(`${url}/api/v1/app/auth/status`, { signal: AbortSignal.timeout(5_000) })
   } catch {
-    throw new Error("Could not reach that URL.")
+    throw new Error(
+      `Nothing answered at ${url}. Check that Syrus is running there and the address and port are right — Syrus usually listens on :3000.`
+    )
+  }
+
+  // Rails host authorization rejects hostnames it doesn't know — the fix is
+  // on the server, so say so instead of a generic "doesn't look like Syrus".
+  if (response.status === 403) {
+    throw new Error(
+      `The server at ${url} refused this hostname. Add it to SYRUS_ALLOWED_HOSTS in the instance's .env (comma-separated), restart Syrus, and try again.`
+    )
   }
 
   if (!response.ok) {
-    throw new Error("That URL doesn't look like a Syrus instance.")
+    throw new Error(`Something answered at ${url}, but it doesn't look like a Syrus instance.`)
   }
 
   try {
-    await response.json()
+    const payload = (await response.json()) as { authenticated?: unknown }
+    if (typeof payload.authenticated !== "boolean") {
+      throw new Error("shape")
+    }
   } catch {
-    throw new Error("That URL doesn't look like a Syrus instance.")
+    throw new Error(`Something answered at ${url}, but it doesn't look like a Syrus instance.`)
   }
 }
 
@@ -179,27 +198,31 @@ export class OnboardingDriver {
     void this.precheck()
   }
 
-  async connectRemote(request: { url: string; token?: string }) {
-    const serverUrl = normalizeUrl(request.url)
-    if (serverUrl === "") {
-      this.setState({ phase: "connect.form", error: "Enter your Syrus instance URL." })
+  // URL-only by design: sign-in happens in the app window afterwards, and
+  // the tray token is minted from that session (tokenProvisioner). Bare
+  // hosts/IPs are accepted — analyzeInstanceUrl assumes http:// and Syrus's
+  // default :3000 the same way the form's live preview showed the user.
+  async connectRemote(request: { url: string }) {
+    const analysis = analyzeInstanceUrl(request.url)
+    if (analysis.state === "empty") {
+      this.setState({ phase: "connect.form", error: "Enter your Syrus instance address." })
       return
     }
 
+    if (analysis.state === "invalid" || analysis.normalized === null) {
+      this.setState({ phase: "connect.form", error: analysis.hint || "That doesn't look like a server address." })
+      return
+    }
+
+    const serverUrl = normalizeUrl(analysis.normalized)
     this.setState({ phase: "connect.checking", url: serverUrl })
 
     try {
-      const token = request.token?.trim() ?? ""
-      if (token !== "") {
-        await this.deps.saveRemoteCredentials({ url: serverUrl, token })
-      } else {
-        await fingerprintSyrus(serverUrl)
-      }
-
+      await fingerprintSyrus(serverUrl)
       saveBackendConfig({ mode: "remote", serverUrl })
       this.setState({ phase: "done", mode: "remote", url: serverUrl })
     } catch (error) {
-      this.setState({ phase: "connect.form", error: errorMessage(error, "Could not connect to that URL.") })
+      this.setState({ phase: "connect.form", error: errorMessage(error, "Could not connect to that address.") })
     }
   }
 
@@ -299,8 +322,10 @@ export class OnboardingDriver {
     }
   }
 
+  // Named for the IPC channel it serves; the URL is per-platform (OrbStack
+  // on macOS, Docker Desktop on Windows).
   openOrbStackDownload() {
-    void shell.openExternal(ORBSTACK_DOWNLOAD_URL)
+    void shell.openExternal(runtimeDownloadUrl())
     if (this.state.phase === "local.runtimeMissing" && !this.state.polling) {
       this.setState({ phase: "local.runtimeMissing", polling: true })
       void this.pollForDaemon(RUNTIME_DOWNLOAD_POLLS).then((ready) => {
@@ -376,9 +401,20 @@ export class OnboardingDriver {
       return
     }
 
-    const stateDir = localStateDir()
-    await fs.mkdir(stateDir, { recursive: true })
-    await fs.copyFile(result.filePaths[0], path.join(stateDir, ".env"))
+    try {
+      const stateDir = localStateDir()
+      await fs.mkdir(stateDir, { recursive: true })
+      await fs.copyFile(result.filePaths[0], path.join(stateDir, ".env"))
+    } catch (error) {
+      // Surface the copy failure on the screen instead of silently
+      // re-prechecking into the same state with no explanation.
+      this.setState({
+        phase: "local.adoptExisting",
+        error: errorMessage(error, "Couldn't copy that .env file.")
+      })
+      return
+    }
+
     await this.precheck()
   }
 
@@ -434,21 +470,6 @@ export class OnboardingDriver {
       return
     }
 
-    // Phase-1 Windows scaffold: install.sh needs bash, and its PowerShell
-    // port hasn't landed yet (docs/windows-desktop-plan.md). The Welcome
-    // screen doesn't offer local install on Windows; this guard keeps any
-    // other path honest instead of dying on a missing /bin/bash.
-    if (process.platform === "win32") {
-      this.setState({
-        phase: "local.failed",
-        code: 1,
-        step: "precheck",
-        message: "Local install isn't available on Windows yet — connect to an existing Syrus instance instead.",
-        logTail: []
-      })
-      return
-    }
-
     const stateDir = localStateDir()
     await fs.mkdir(stateDir, { recursive: true })
 
@@ -457,20 +478,12 @@ export class OnboardingDriver {
     }
 
     const manifest = await readBackendManifest()
-    const args = [
-      installerScriptPath(),
-      "--docker",
-      "--non-interactive",
-      "--json",
-      "--skip-runtime-install",
-      "--target-dir",
-      stateDir
-    ]
+    const flags = ["--docker", "--non-interactive", "--json", "--skip-runtime-install", "--target-dir", stateDir]
     if (manifest?.image) {
-      args.push("--image", manifest.image)
+      flags.push("--image", manifest.image)
     }
     if (this.port !== DEFAULT_PORT) {
-      args.push("--port", String(this.port))
+      flags.push("--port", String(this.port))
     }
 
     const steps: InstallStep[] = INSTALL_STEP_IDS.map((id) => ({ id, status: "pending" }))
@@ -483,15 +496,20 @@ export class OnboardingDriver {
     const logStream = createWriteStream(path.join(stateDir, "install.log"), { flags: "a" })
     logStream.write(`\n--- install started ${new Date().toISOString()} ---\n`)
 
-    // detached: the script's docker/compose grandchildren live in the same
+    // POSIX: detached puts the script's docker/compose grandchildren in one
     // process group, so cancel can signal the whole group instead of
-    // orphaning an in-flight multi-GB pull. The spec knobs are scrubbed so a
-    // stray value in the user's environment can't silently gate a real
-    // install.
+    // orphaning an in-flight multi-GB pull. Windows has no process groups —
+    // cancel uses taskkill /T there instead (killInstallChild), and detached
+    // would pop a new console. The spec knobs are scrubbed so a stray value
+    // in the user's environment can't silently gate a real install.
     const env = execEnv()
     delete env.SYRUS_HEALTH_POLLS
     delete env.SYRUS_PULL_RETRY_DELAY
-    const child = spawn("/bin/bash", args, { env, detached: true })
+    const { command, args: spawnArgs } = installerCommand(installerScriptPath(), flags)
+    const child =
+      process.platform === "win32"
+        ? spawn(command, spawnArgs, { env, windowsHide: true })
+        : spawn(command, spawnArgs, { env, detached: true })
     this.child = child
 
     readline.createInterface({ input: child.stdout }).on("line", (line) => {
@@ -518,10 +536,16 @@ export class OnboardingDriver {
     })
   }
 
-  // Signal the whole detached process group so docker/compose grandchildren
-  // die with the script instead of racing a retried install.
+  // Kill the whole tree so docker/compose grandchildren die with the script
+  // instead of racing a retried install: POSIX signals the detached process
+  // group; Windows (no process groups) walks the tree with taskkill /T.
   private killInstallChild() {
     if (!this.child?.pid) {
+      return
+    }
+
+    if (process.platform === "win32") {
+      execFile("taskkill", ["/pid", String(this.child.pid), "/T", "/F"], { windowsHide: true }, () => {})
       return
     }
 

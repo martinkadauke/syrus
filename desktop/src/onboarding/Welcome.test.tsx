@@ -21,17 +21,15 @@ describe("Welcome", () => {
     expect(onChoose).toHaveBeenCalledWith("local")
   })
 
-  it("labels local install as upcoming on Windows and only offers connect", () => {
+  it("offers the local install on Windows via Docker Desktop", () => {
     stubPlatform("win32")
     const onChoose = vi.fn()
     render(<Welcome onChoose={onChoose} />)
 
-    // Phase 1 of docs/windows-desktop-plan.md: no PowerShell installer yet,
-    // so the local card is informational (Docker Desktop / Podman Desktop
-    // guidance), not clickable.
-    expect(screen.queryByText("Install on this PC")).not.toBeNull()
-    expect(screen.queryByText(/Docker Desktop or Podman/)).not.toBeNull()
-    expect(screen.queryByRole("button", { name: /Install on this PC/ })).toBeNull()
+    // Phase 2 of docs/windows-desktop-plan.md: install.ps1 drives the local
+    // path on Windows, so the card is a real choice now.
+    fireEvent.click(screen.getByRole("button", { name: /Install on this PC/ }))
+    expect(onChoose).toHaveBeenCalledWith("local")
 
     fireEvent.click(screen.getByRole("button", { name: /Connect to existing Syrus/ }))
     expect(onChoose).toHaveBeenCalledWith("remote")

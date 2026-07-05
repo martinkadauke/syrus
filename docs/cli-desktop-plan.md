@@ -62,15 +62,26 @@ the CLI is missing. The desktop runs the skill write through
 `<installed binary> skill install`, keeping one code path with clone
 users.
 
-## Phase 3 (planned): Windows
+## Phase 3 (shipped July 2026): Windows
 
-The CLI is Go and already branches on `runtime.GOOS` (URL-opening uses
-`cmd /c start`); `git` comes from Git for Windows. Cross-compile
-windows/amd64+arm64 in `stage-cli.mjs`, bundle in the NSIS payload,
-install to `%LocalAppData%\Programs\Syrus\bin\syrus.exe` and offer the
-PATH addition (per-user `Path` registry value — unlike POSIX shell rc
-files, this one has a sanctioned API). Needs a real Windows smoke pass
-over `checkout` path handling before it's advertised.
+`stage-cli.mjs` cross-compiles `syrus-win32-{x64,arm64}.exe` alongside the
+darwin binaries (naming mirrors Electron's process.platform/process.arch);
+electron-builder bundles them with per-platform filters so each package
+carries only its own OS's binaries. Install target is
+`%LocalAppData%\Syrus\bin\syrus.exe` — deliberately NOT the plan's earlier
+`Programs\Syrus\bin` suggestion, because that sits inside the NSIS
+`$INSTDIR`, which electron-updater replaces wholesale on every auto-update
+(the CLI would silently vanish). The per-user PATH entry is written via
+the sanctioned registry API (raw HKCU\Environment read with
+DoNotExpandEnvironmentNames + WM_SETTINGCHANGE broadcast; never setx,
+which truncates at 1024 chars). Reinstall-while-running works through the
+rename-to-.old dance (a running exe can't be overwritten but can be
+renamed). Go-side Windows fixes: one shared URL-opener (rundll32, immune
+to cmd metacharacters), pager falls back to direct printing when $PAGER
+is unset, and .syrus.yml post_checkout hooks prefer `sh` (Git for
+Windows) with a `cmd /c` fallback. `git` comes from Git for Windows.
+Still wanted before advertising: a real Windows smoke pass over
+`checkout` path handling (the brother test).
 
 ## Non-goals
 

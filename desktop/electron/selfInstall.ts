@@ -62,6 +62,16 @@ export const installBundle = async (bundlePath: string, homeDir: string): Promis
   return target
 }
 
+// macOS launches .app bundles through open(1); Windows identities carry the
+// exe path itself (ownInstanceIdentity sends process.execPath there), which
+// can be spawned directly — used by the instance-takeover "Switch" path.
 export const launchInstalledCopy = async (target: string): Promise<void> => {
+  if (process.platform === "win32") {
+    const { spawn } = await import("node:child_process")
+    const child = spawn(target, [], { detached: true, stdio: "ignore" })
+    child.unref()
+    return
+  }
+
   await execFileAsync("/usr/bin/open", ["-n", target])
 }

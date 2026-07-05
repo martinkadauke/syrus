@@ -21,7 +21,10 @@ const pkg = JSON.parse(fs.readFileSync(path.join(desktopRoot, "package.json"), "
 fs.rmSync(stagingDir, { recursive: true, force: true })
 fs.mkdirSync(stagingDir, { recursive: true })
 
-for (const name of ["install.sh", "docker-compose.yml", "compose.env.example"]) {
+// Both installer scripts stage unconditionally — one staging run feeds the
+// mac and the Windows packaging jobs (electron-builder bundles the whole
+// backend dir for every platform; the scripts are a few KB).
+for (const name of ["install.sh", "install.ps1", "docker-compose.yml", "compose.env.example"]) {
   fs.copyFileSync(path.join(repoRoot, name), path.join(stagingDir, name))
 }
 fs.chmodSync(path.join(stagingDir, "install.sh"), 0o755)

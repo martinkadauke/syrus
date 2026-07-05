@@ -911,3 +911,35 @@ func checkoutGitBranchCalls(branch string) [][]string {
 func checkoutGitCalls(branch string) [][]string {
 	return append(checkoutGitBranchCalls(branch), []string{"rev-parse", "--show-toplevel"})
 }
+
+func TestHookShellCommandLine(t *testing.T) {
+	hook := "bundle install && npm ci"
+
+	tests := []struct {
+		name        string
+		goos        string
+		shAvailable bool
+		wantName    string
+		wantArgs    []string
+	}{
+		{name: "linux uses sh", goos: "linux", shAvailable: true, wantName: "sh", wantArgs: []string{"-c", hook}},
+		{name: "darwin uses sh", goos: "darwin", shAvailable: true, wantName: "sh", wantArgs: []string{"-c", hook}},
+		{name: "windows with Git for Windows sh prefers sh", goos: "windows", shAvailable: true, wantName: "sh", wantArgs: []string{"-c", hook}},
+		{name: "windows without sh falls back to cmd", goos: "windows", shAvailable: false, wantName: "cmd", wantArgs: []string{"/d", "/s", "/c", hook}},
+		// shAvailable is only probed on windows; a POSIX host without sh on
+		// PATH still gets sh -c (and the resulting exec error surfaces).
+		{name: "linux ignores shAvailable=false", goos: "linux", shAvailable: false, wantName: "sh", wantArgs: []string{"-c", hook}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			name, args := hookShellCommandLine(tt.goos, tt.shAvailable, hook)
+			if name != tt.wantName {
+				t.Errorf("name = %q, want %q", name, tt.wantName)
+			}
+			if !reflect.DeepEqual(args, tt.wantArgs) {
+				t.Errorf("args = %v, want %v", args, tt.wantArgs)
+			}
+		})
+	}
+}

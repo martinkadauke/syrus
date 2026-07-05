@@ -60,9 +60,13 @@ export const store = new Store<DesktopStore>({
 })
 
 // Mutable state of a local install (.env, synced docker-compose.yml,
-// install.log). Lives next to ~/.syrus/credentials: shared Syrus home, no
-// spaces in the path for the shell tooling, and users can still drive it
-// manually with `docker compose` from that directory.
+// install.log). Lives next to ~/.syrus/credentials on EVERY platform —
+// including Windows (%USERPROFILE%\.syrus\local), a deliberate decision
+// over %LocalAppData%: it keeps the shared Syrus home in one place, keeps
+// migrateBackendConfig's adopt-a-CLI-install semantics identical, and users
+// can still drive it manually with `docker compose` from that directory.
+// Paths are quoted everywhere they reach a shell, so spaces in profile
+// names (C:\Users\First Last) are fine.
 export const localStateDir = () => path.join(os.homedir(), ".syrus", "local")
 
 export const getBackendMode = (): BackendMode => store.get("backendMode", "")

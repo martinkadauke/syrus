@@ -19,7 +19,21 @@ export const installerAssetsDir = () => {
   return path.resolve(__dirname, "../../..")
 }
 
-export const installerScriptPath = () => path.join(installerAssetsDir(), "install.sh")
+// The installer script and its interpreter, per platform. install.ps1
+// implements the identical --docker machine interface (NDJSON events, step
+// ids, exit codes) — spec/desktop/install_parity_spec.rb keeps the two
+// scripts' contract strings in lockstep.
+export const installerScriptPath = () =>
+  path.join(installerAssetsDir(), process.platform === "win32" ? "install.ps1" : "install.sh")
+
+export const installerCommand = (scriptPath: string, flags: string[]): { command: string; args: string[] } =>
+  process.platform === "win32"
+    ? {
+        command: "powershell.exe",
+        // -File (not -Command) so the script's exit code propagates.
+        args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath, ...flags]
+      }
+    : { command: "/bin/bash", args: [scriptPath, ...flags] }
 
 // Written by desktop/scripts/stage-backend-assets.mjs at build time: pins the
 // backend image tag to this app release. Absent in dev — install.sh then

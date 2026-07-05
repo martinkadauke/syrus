@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell, dialog, clipboard, globalShortcut, Notification } from "electron"
+import { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell, dialog, clipboard, globalShortcut, Notification } from "electron"
 import type { MessageBoxOptions, NativeImage, OpenDialogOptions } from "electron"
 import { execFile } from "node:child_process"
 import fs from "node:fs/promises"
@@ -317,17 +317,19 @@ const normalizeUnreadCount = (value: unknown) => {
 
 const trayBadgeLabel = (count: number) => count > 9 ? "9+" : String(count)
 
-const escapeSvgText = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-
-const trayIconPath = () => path.join(app.getAppPath(), "assets", "syrusMenubarTemplate.png")
+// The mac menu bar wants the monochrome template glyph; the Windows
+// taskbar wants the full-color brand icon (a black template glyph is
+// invisible on Win11's dark taskbar).
+const trayIconPath = () =>
+  path.join(
+    app.getAppPath(),
+    "assets",
+    process.platform === "win32" ? "syrusIcon.png" : "syrusMenubarTemplate.png"
+  )
 
 const createPlainTrayIcon = () => {
-  const image = nativeImage.createFromPath(trayIconPath()).resize({ width: 18, height: 18 })
+  const size = process.platform === "win32" ? 16 : 18
+  const image = nativeImage.createFromPath(trayIconPath()).resize({ width: size, height: size })
 
   if (process.platform === "darwin") {
     image.setTemplateImage(true)
@@ -336,18 +338,35 @@ const createPlainTrayIcon = () => {
   return image
 }
 
-const badgedTrayIcon = (count: number) => {
+// Draw the unread dot straight into the icon's BGRA bitmap. nativeImage
+// cannot rasterize SVG data URLs (they decode to an empty image on Windows,
+// which blanked the tray icon whenever unread > 0), and shipping a canvas
+// just for a red dot is overkill.
+const badgedTrayIcon = () => {
   const baseIcon = plainTrayIcon ?? createPlainTrayIcon()
-  const label = escapeSvgText(trayBadgeLabel(count))
-  const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18">
-      <image href="${baseIcon.toDataURL()}" x="0" y="0" width="18" height="18"/>
-      <circle cx="13" cy="5" r="5" fill="#dc2626"/>
-      <text x="13" y="6.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="${count > 9 ? 5 : 6}" font-weight="700" fill="#ffffff">${label}</text>
-    </svg>
-  `.trim()
+  const size = baseIcon.getSize()
+  const bitmap = Buffer.from(baseIcon.toBitmap())
 
-  return nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`)
+  const radius = Math.max(3, Math.round(size.width * 0.22))
+  const centerX = size.width - radius - 1
+  const centerY = radius + 1
+
+  for (let y = 0; y < size.height; y += 1) {
+    for (let x = 0; x < size.width; x += 1) {
+      const dx = x - centerX
+      const dy = y - centerY
+      if (dx * dx + dy * dy <= radius * radius) {
+        const offset = (y * size.width + x) * 4
+        // BGRA byte order, premultiplied alpha.
+        bitmap[offset] = 0x26
+        bitmap[offset + 1] = 0x26
+        bitmap[offset + 2] = 0xdc
+        bitmap[offset + 3] = 0xff
+      }
+    }
+  }
+
+  return nativeImage.createFromBitmap(bitmap, { width: size.width, height: size.height })
 }
 
 const updateTrayBadge = () => {
@@ -361,7 +380,8 @@ const updateTrayBadge = () => {
     return
   }
 
-  tray.setImage(unreadCount > 0 ? badgedTrayIcon(unreadCount) : plainTrayIcon)
+  tray.setImage(unreadCount > 0 ? badgedTrayIcon() : plainTrayIcon)
+  tray.setToolTip(unreadCount > 0 ? `Syrus — ${trayBadgeLabel(unreadCount)} unread` : "Syrus")
 }
 
 const setUnreadCount = (count: number) => {
@@ -517,10 +537,13 @@ const validateCredentialsWithServer = async (credentials: Credentials) => {
 
   let response: Response
   try {
+    // Bounded: a black-holed host must not leave the Preferences form (or
+    // any other caller) disabled forever with no way out.
     response = await fetch(bootstrapUrl(credentials.url), {
       headers: {
         Authorization: `Bearer ${credentials.token.trim()}`
-      }
+      },
+      signal: AbortSignal.timeout(10_000)
     })
   } catch {
     throw new Error("Could not reach the Syrus instance.")
@@ -900,17 +923,26 @@ const commandExists = async (command: string) => {
   const lookupCommand = process.platform === "win32" ? "where" : "which"
 
   try {
-    await execFileAsync(lookupCommand, [command])
+    // windowsHide everywhere a console binary runs from this GUI process —
+    // otherwise conhost windows flash on Windows.
+    await execFileAsync(lookupCommand, [command], { windowsHide: true })
     return true
   } catch {
     return false
   }
 }
 
-// GUI apps get a minimal PATH, so a `syrus` in ~/.local/bin (the one-click
-// install target) is invisible to `which` — probe that location directly
-// and prefer its absolute path when executing.
-const localBinSyrus = () => path.join(os.homedir(), ".local", "bin", "syrus")
+// The one-click install target, probed directly because a PATH lookup can
+// miss it: on macOS GUI apps get a minimal PATH (so ~/.local/bin is
+// invisible to `which`), and on Windows the registry PATH entry we add only
+// reaches processes started after this app. Windows installs OUTSIDE the
+// NSIS $INSTDIR (%LocalAppData%\Programs\syrus-desktop) on purpose — the
+// updater replaces that directory wholesale on every auto-update, which
+// would silently delete the CLI.
+const localBinSyrus = () =>
+  process.platform === "win32"
+    ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Syrus", "bin", "syrus.exe")
+    : path.join(os.homedir(), ".local", "bin", "syrus")
 
 const syrusCliBinary = async (): Promise<string | null> => {
   if (await commandExists("syrus")) {
@@ -946,26 +978,79 @@ type CliInstallResult = {
   error: string | null
 }
 
-// One-click CLI install from the bundled per-arch binary: copy to
-// ~/.local/bin/syrus. No login step — the app already keeps
-// ~/.syrus/credentials in the CLI-shared format (credentialsStore.ts owns
-// that file), so the CLI is signed in the moment the binary lands. No PATH
-// mutation — callers show the export line when ~/.local/bin isn't reachable
-// as `syrus`. The optional Claude Code skill goes through the CLI's own
+// Adds the CLI's install dir to the per-user PATH on Windows — the platform
+// actually sanctions this (HKCU\Environment), unlike POSIX shell rc files.
+// Reads the raw registry value with variable expansion disabled so other
+// entries' %VARS% survive the round-trip, appends idempotently, and
+// broadcasts WM_SETTINGCHANGE so new terminals pick it up without logoff.
+// setx is deliberately avoided: it truncates at 1024 chars and rewrites
+// REG_EXPAND_SZ as REG_SZ — the classic PATH-corruption bug.
+const addToWindowsUserPath = async (dir: string) => {
+  const script = [
+    `$dir = '${dir.replace(/'/g, "''")}'`,
+    "$key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey('Environment', $true)",
+    "$kind = [Microsoft.Win32.RegistryValueKind]::ExpandString",
+    "$current = ''",
+    "if ($key.GetValueNames() -contains 'Path') {",
+    "  $current = [string]$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)",
+    "  $kind = $key.GetValueKind('Path')",
+    "}",
+    "$entries = $current -split ';' | Where-Object { $_ -ne '' }",
+    "if (-not ($entries -contains $dir)) {",
+    "  $next = if ($current -eq '') { $dir } else { ($current.TrimEnd(';') + ';' + $dir) }",
+    "  $key.SetValue('Path', $next, $kind)",
+    "  $signature = '[DllImport(\"user32.dll\", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'",
+    "  $type = Add-Type -MemberDefinition $signature -Name Win32SendMessage -Namespace SyrusInstall -PassThru",
+    "  [UIntPtr]$result = [UIntPtr]::Zero",
+    "  $type::SendMessageTimeout([IntPtr]0xffff, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 5000, [ref]$result) | Out-Null",
+    "}",
+    "$key.Close()"
+  ].join("\n")
+
+  await execFileAsync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+    windowsHide: true
+  })
+}
+
+// One-click CLI install from the bundled per-arch binary. No login step —
+// the app already keeps ~/.syrus/credentials in the CLI-shared format
+// (credentialsStore.ts owns that file), so the CLI is signed in the moment
+// the binary lands. macOS: copy to ~/.local/bin, never mutate PATH (shell
+// rc files are personal; callers show the export line). Windows: copy to
+// %LocalAppData%\Syrus\bin and add that dir to the per-user PATH registry
+// value. The optional Claude Code skill goes through the CLI's own
 // `skill install` so clone-based users share the exact same path.
 const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}): Promise<CliInstallResult> => {
   try {
     const bundledDir = app.isPackaged
       ? path.join(process.resourcesPath, "cli")
       : path.join(__dirname, "..", "..", "resources", "cli")
-    const source = path.join(bundledDir, `syrus-darwin-${process.arch === "arm64" ? "arm64" : "x64"}`)
+    const suffix = process.platform === "win32" ? ".exe" : ""
+    const source = path.join(
+      bundledDir,
+      `syrus-${process.platform}-${process.arch === "arm64" ? "arm64" : "x64"}${suffix}`
+    )
     await fs.access(source)
 
-    const binDir = path.join(os.homedir(), ".local", "bin")
-    const target = path.join(binDir, "syrus")
+    const target = localBinSyrus()
+    const binDir = path.dirname(target)
     await fs.mkdir(binDir, { recursive: true })
+
+    if (process.platform === "win32") {
+      // A running syrus.exe can't be overwritten (EBUSY), but it CAN be
+      // renamed — the .old file gets cleaned up on the next install.
+      await fs.unlink(`${target}.old`).catch(() => {})
+      await fs.rename(target, `${target}.old`).catch(() => {})
+    }
+
     await fs.copyFile(source, target)
     await fs.chmod(target, 0o755)
+
+    if (process.platform === "win32") {
+      // Best-effort: a failed PATH write still leaves a working absolute-
+      // path install (the tray execs the absolute path anyway).
+      await addToWindowsUserPath(binDir).catch(() => {})
+    }
 
     const signedIn = cachedCredentials !== null
 
@@ -973,7 +1058,7 @@ const performCliInstall = async ({ withSkill = false }: CliInstallOptions = {}):
     let skillError: string | null = null
     if (withSkill) {
       try {
-        await execFileAsync(target, ["skill", "install"])
+        await execFileAsync(target, ["skill", "install"], { windowsHide: true })
         skillInstalled = true
       } catch (error) {
         // The binary landed; a failed skill write must not report the whole
@@ -1034,6 +1119,7 @@ const offerCliSetupIfReady = async (window: BrowserWindow) => {
 
   cliOfferInFlight = true
   try {
+    const isWindows = process.platform === "win32"
     const { response, checkboxChecked } = await dialog.showMessageBox(window, {
       type: "question",
       buttons: ["Install", "Not now"],
@@ -1041,10 +1127,10 @@ const offerCliSetupIfReady = async (window: BrowserWindow) => {
       cancelId: 1,
       message: "Install the Syrus CLI?",
       detail:
-        "One last setup step: the menu bar's Checkout button and terminal workflows use the syrus CLI. " +
-        "It installs to ~/.local/bin and signs in automatically with this app's credentials. " +
+        `One last setup step: the ${isWindows ? "tray" : "menu bar"}'s Checkout button and terminal workflows use the syrus CLI. ` +
+        `It installs to ${isWindows ? "%LocalAppData%\\Syrus\\bin" : "~/.local/bin"} and signs in automatically with this app's credentials. ` +
         "You can do this later from Preferences.",
-      checkboxLabel: "Also add the Claude Code skill, so coding agents on this Mac can drive Syrus",
+      checkboxLabel: `Also add the Claude Code skill, so coding agents on this ${isWindows ? "PC" : "Mac"} can drive Syrus`,
       checkboxChecked: true
     })
 
@@ -1068,11 +1154,16 @@ const offerCliSetupIfReady = async (window: BrowserWindow) => {
     const detailLines = [`Installed to ${result.target}.`]
     if (result.skillInstalled) {
       detailLines.push("Claude Code skill added — new agent sessions can drive Syrus via the CLI.")
-    } else if (result.skillError) {
+    }
+    if (result.skillError) {
       detailLines.push(`Claude Code skill failed: ${result.skillError}`)
     }
     if (!result.onPath) {
-      detailLines.push('To use it from a terminal, add: export PATH="$HOME/.local/bin:$PATH"')
+      detailLines.push(
+        isWindows
+          ? "Open a NEW terminal to use `syrus` — already-open ones keep the old PATH."
+          : 'To use it from a terminal, add: export PATH="$HOME/.local/bin:$PATH"'
+      )
     }
     await dialog.showMessageBox(window, {
       type: "info",
@@ -1119,7 +1210,7 @@ const checkoutJob = async ({ jobRef, repoSlug, branchName, extraArgs }: Checkout
 
   try {
     const cliBinary = (await syrusCliBinary()) ?? "syrus"
-    await execFileAsync(cliBinary, ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath })
+    await execFileAsync(cliBinary, ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath, windowsHide: true })
     setLastUsedRepo(repoSlug)
     return { branchName }
   } catch (error) {
@@ -1185,7 +1276,7 @@ const localStatus = async (): Promise<LocalStatus | null> => {
       }
 
       const statusBinary = (await syrusCliBinary()) ?? "syrus"
-      const { stdout } = await execFileAsync(statusBinary, ["status", "--json"], { cwd: localPath })
+      const { stdout } = await execFileAsync(statusBinary, ["status", "--json"], { cwd: localPath, windowsHide: true })
       const status = parseLocalStatus(stdout)
       if (status) {
         return status
@@ -1375,11 +1466,25 @@ const popoverPosition = () => {
 
   const trayBounds = tray.getBounds()
   const windowBounds = mainWindow.getBounds()
-  const x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2)
-  const y =
-    process.platform === "darwin"
-      ? Math.round(trayBounds.y + trayBounds.height)
-      : Math.round(trayBounds.y + trayBounds.height + 4)
+  const workArea = screen.getDisplayNearestPoint({
+    x: Math.round(trayBounds.x + trayBounds.width / 2),
+    y: Math.round(trayBounds.y + trayBounds.height / 2)
+  }).workArea
+
+  let x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2)
+
+  // Mac menu bar sits at the top → popover opens below the tray icon. The
+  // Windows taskbar usually sits at the bottom → opening "below" would put
+  // the popover off-screen, so open ABOVE when the tray is in the lower
+  // half of the display.
+  const trayInLowerHalf = trayBounds.y > workArea.y + workArea.height / 2
+  let y = trayInLowerHalf
+    ? Math.round(trayBounds.y - windowBounds.height - 4)
+    : Math.round(trayBounds.y + trayBounds.height + (process.platform === "darwin" ? 0 : 4))
+
+  // Clamp into the work area (multi-monitor edges, vertical taskbars).
+  x = Math.min(Math.max(x, workArea.x), workArea.x + workArea.width - windowBounds.width)
+  y = Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - windowBounds.height)
 
   mainWindow.setPosition(x, y, false)
 }
@@ -1461,7 +1566,6 @@ const updateDockVisibility = () => {
 
 const ensureOnboardingDriver = () => {
   onboardingDriver ??= new OnboardingDriver({
-    saveRemoteCredentials: (credentials) => saveCredentials(credentials),
     onState: (state) => {
       onboardingWindow?.webContents.send("onboarding:state-changed", state)
       // Supervision starts the moment a local install completes — not only
@@ -1860,7 +1964,10 @@ const checkForUpdatesInteractively = async () => {
       await dialog.showMessageBox({
         type: "info",
         message: "Automatic updates are unavailable in this build.",
-        detail: "Updates apply to the packaged, signed app installed from the DMG."
+        detail:
+          process.platform === "win32"
+            ? "Updates apply to the packaged app installed with the Syrus setup program."
+            : "Updates apply to the packaged, signed app installed from the DMG."
       })
       break
     case "downloaded":
@@ -2187,7 +2294,7 @@ ipcMain.handle("onboarding:get-state", async () => ensureOnboardingDriver().getS
 ipcMain.handle("onboarding:choose-mode", async (_event, mode: "local" | "remote") => {
   ensureOnboardingDriver().chooseMode(mode)
 })
-ipcMain.handle("onboarding:connect-remote", async (_event, request: { url: string; token?: string }) =>
+ipcMain.handle("onboarding:connect-remote", async (_event, request: { url: string }) =>
   ensureOnboardingDriver().connectRemote(request)
 )
 ipcMain.handle("onboarding:start-install", async (_event, port?: number) =>
@@ -2250,7 +2357,13 @@ app.on("second-instance", (_event, _argv, _cwd, additionalData) => {
   const own = ownInstanceIdentity()
   // Takeover launches the incoming bundle via `open`; that path is
   // macOS-only for now, matching selfInstall.ts.
-  if (process.platform === "darwin" && !takeoverPromptOpen && decideOnSecondInstance(own, incoming) === "offer") {
+  // darwin + win32: both platforms can launch the incoming copy directly
+  // (open -n / spawn of the exe path); see selfInstall.launchInstalledCopy.
+  if (
+    (process.platform === "darwin" || process.platform === "win32") &&
+    !takeoverPromptOpen &&
+    decideOnSecondInstance(own, incoming) === "offer"
+  ) {
     takeoverPromptOpen = true
     const prompt = takeoverPrompt(own, incoming as InstanceIdentity)
     void dialog
@@ -2287,6 +2400,13 @@ app.whenReady().then(async () => {
 
   if (process.platform === "darwin") {
     app.dock?.hide()
+  }
+
+  if (process.platform === "win32") {
+    // Must match electron-builder.yml appId — NSIS stamps it into the Start
+    // Menu shortcut, and Windows only shows Notification toasts when the
+    // process AUMID matches the shortcut's.
+    app.setAppUserModelId("app.syrus.desktop")
   }
 
   // Running from the mounted DMG (or Downloads, or anywhere that isn't an

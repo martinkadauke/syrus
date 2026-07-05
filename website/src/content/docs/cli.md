@@ -10,19 +10,24 @@ same app and admin JSON APIs as the React UI, but keeps the common
 operator loop close to the checkout: chat with Syrus, review inbox items,
 open PRs, check out Job branches, and print test plans.
 
-## Install from the desktop app (macOS)
+## Install from the desktop app
 
 If you run the [Syrus desktop app](/docs/desktop), you don't need a
-repository clone or Go: the app bundles the CLI. After setup completes,
-the app offers the install as a one-time step (with an opt-in for the
-[Claude Code skill](#claude-code-skill)); you can also install any time
-from **Preferences → Local checkout → Install CLI**, or from the tray's
-install banner when the CLI is missing. It installs to
-`~/.local/bin/syrus`, and because the app already stores its credentials
-in the CLI's shared `~/.syrus/credentials` file, the CLI is signed in
-immediately — no `syrus login` needed. If `~/.local/bin` isn't on your
-`PATH`, the app shows the one-line export to add. This also enables the
-tray's **Checkout** button, which runs `syrus checkout` under the hood.
+repository clone or Go: the app bundles the CLI for its platform. After
+setup completes, the app offers the install as a one-time step (with an
+opt-in for the [Claude Code skill](#claude-code-skill)); you can also
+install any time from **Preferences → Local checkout → Install CLI**, or
+from the tray's install banner when the CLI is missing. Because the app
+already stores its credentials in the CLI's shared `~/.syrus/credentials`
+file, the CLI is signed in immediately — no `syrus login` needed. This
+also enables the tray's **Checkout** button, which runs `syrus checkout`
+under the hood.
+
+- **macOS** installs to `~/.local/bin/syrus`; if that isn't on your
+  `PATH`, the app shows the one-line export to add.
+- **Windows** installs to `%LocalAppData%\Syrus\bin\syrus.exe` and adds
+  that directory to your user `PATH` automatically — open a **new**
+  terminal to pick it up.
 
 ## Build
 

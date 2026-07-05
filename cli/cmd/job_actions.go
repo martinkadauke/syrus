@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
-	"runtime"
 	"sort"
 	"strings"
 
@@ -320,21 +318,4 @@ func firstString(values map[string]any, keys ...string) string {
 		}
 	}
 	return ""
-}
-
-func defaultOpenBrowser(target string) error {
-	var command *exec.Cmd
-	switch runtime.GOOS {
-	case "darwin":
-		command = exec.Command("open", target)
-	case "windows":
-		command = exec.Command("cmd", "/c", "start", "", target)
-	default:
-		command = exec.Command("xdg-open", target)
-	}
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("open browser failed: %s", strings.TrimSpace(string(output)))
-	}
-	return nil
 }

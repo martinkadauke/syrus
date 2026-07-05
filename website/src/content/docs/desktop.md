@@ -1,19 +1,38 @@
 ---
-title: Desktop App (macOS)
-description: Download Syrus.app — a guided local install, the full web UI in a native window, and a menu-bar inbox.
+title: Desktop App
+description: Download the Syrus desktop app — a guided local install, the full web UI in a native window, and a menu-bar inbox. macOS today; Windows in beta.
 ---
 
-# Desktop App (macOS)
+# Desktop App
 
-The Syrus desktop app is the easiest way to run Syrus: download a DMG,
-double-click Syrus inside it (the app installs itself into
-`~/Applications` and relaunches from there), and let it set everything
-up. No dragging, no terminal, no clone, no manual configuration.
+The Syrus desktop app is the easiest way to run Syrus: download it, open
+it, and let it set everything up. No terminal, no clone, no manual
+configuration. On macOS, double-click Syrus inside the DMG (the app
+installs itself into `~/Applications` and relaunches from there).
 
 **[Download Syrus for Mac](https://github.com/tkadauke/syrus/releases/latest/download/Syrus.dmg)**
 (Apple Silicon) ·
 **[Intel Macs](https://github.com/tkadauke/syrus/releases/latest/download/Syrus-Intel.dmg)** ·
 other artifacts on the [releases page](https://github.com/tkadauke/syrus/releases).
+
+**Windows** is in beta: the app installs and runs Syrus locally on Docker
+Desktop (or connects to an existing instance), with the same tray inbox
+and bundled CLI. Installers aren't published to the releases page yet —
+they ship there once code signing goes live. Setup differences worth
+knowing: the local backend needs [Docker
+Desktop](https://www.docker.com/products/docker-desktop/) (its installer
+sets up WSL 2), state lives under `%USERPROFILE%\.syrus\`, and the
+one-click CLI install lands in `%LocalAppData%\Syrus\bin` and joins your
+user PATH automatically (open a new terminal to pick it up).
+
+## Signing in — no API keys
+
+Connecting the app to a Syrus instance takes only the instance address;
+you then sign in with your email and password in the app window, exactly
+like the browser. The menu-bar/tray inbox authenticates itself from that
+session automatically — you never copy an API token during setup. (The
+manual token form remains in Preferences for non-admin accounts on shared
+instances.)
 
 ## What you get
 

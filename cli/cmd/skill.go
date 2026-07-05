@@ -23,8 +23,8 @@ description: Drive a Syrus instance (issue→PR automation) through the syrus CL
 
 Syrus turns GitHub issues into pull requests with an agent doing the
 implementation. This machine has the ` + "`syrus`" + ` CLI installed and signed in
-(credentials in ` + "`~/.syrus/credentials`" + `; run ` + "`syrus whoami`" + ` to confirm the
-instance and user).
+(credentials in ` + "`.syrus/credentials`" + ` under your home directory; run
+` + "`syrus whoami`" + ` to confirm the instance and user).
 
 ## Commands
 

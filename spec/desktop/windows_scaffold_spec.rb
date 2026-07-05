@@ -87,17 +87,51 @@ RSpec.describe "desktop Windows scaffold" do
     expect(runtime).to include("path.delimiter")
   end
 
-  it "guards the bash-driven local install on Windows instead of dying on /bin/bash" do
+  it "drives the local install through the platform-selected installer script" do
+    paths = read("electron/installer/installPaths.ts")
+    expect(paths).to match(/process\.platform === "win32" \? "install\.ps1" : "install\.sh"/)
+    # -File (not -Command) so the script's exit code propagates.
+    expect(paths).to match(/"-ExecutionPolicy", "Bypass", "-File"/)
+
     driver = read("electron/installer/installerDriver.ts")
-    guard = driver[/async startInstall\(portOverride\?: number\) \{[\s\S]{0,900}/]
-    expect(guard).to include('process.platform === "win32"')
-    expect(guard).to include("connect to an existing Syrus instance")
+    expect(driver).to include("installerCommand(installerScriptPath()")
+    # Cancel must kill the whole tree: POSIX process groups don't exist on
+    # Windows, so taskkill /T walks it there.
+    expect(driver).to include('["/pid", String(this.child.pid), "/T", "/F"]')
+    # The image-update path IS the installer and must share the seam.
+    expect(read("electron/installer/backendLifecycle.ts")).to include("installerCommand(installerScriptPath()")
+  end
+
+  it "notifies reliably on Windows (AUMID matches the NSIS shortcut identity)" do
+    main = read("electron/main.ts")
+    expect(main).to include('app.setAppUserModelId("app.syrus.desktop")')
+    expect(read("electron-builder.yml")).to include("appId: app.syrus.desktop")
+  end
+
+  it "positions the tray popover inside the work area (bottom taskbars open upward)" do
+    main = read("electron/main.ts")
+    position = main[/const popoverPosition[\s\S]{0,1600}/]
+    expect(position).to include("getDisplayNearestPoint")
+    expect(position).to include("workArea")
+    expect(position).to match(/trayBounds\.y - windowBounds\.height/)
+  end
+
+  it "uses the full-color tray icon with a bitmap badge on Windows" do
+    main = read("electron/main.ts")
+    expect(main).to match(/process\.platform === "win32" \? "syrusIcon\.png" : "syrusMenubarTemplate\.png"/)
+    # nativeImage cannot rasterize SVG data URLs (blank icon on Windows);
+    # the unread dot is drawn into the BGRA bitmap directly.
+    expect(main).to include("createFromBitmap")
+    expect(main).not_to include("image/svg+xml")
   end
 
   it "exposes the platform to the renderer so onboarding can adapt" do
     expect(read("electron/preload.cts")).to include("platform: process.platform")
     expect(read("src/vite-env.d.ts")).to include("platform: string")
     welcome = read("src/onboarding/Welcome.tsx")
-    expect(welcome).to include('platform !== "win32"')
+    # Both install paths are real choices on Windows now (install.ps1).
+    expect(welcome).to include("Install on this PC")
+    runtime_setup = read("src/onboarding/RuntimeSetup.tsx")
+    expect(runtime_setup).to include("Docker Desktop")
   end
 end
