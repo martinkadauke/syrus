@@ -1453,7 +1453,7 @@ export function CliInstallSection() {
             className="secondary-button"
             disabled={installing || status === "checking"}
             onClick={() => void install({ withSkill: true })}
-            title="Writes ~/.claude/skills/syrus so Claude Code sessions on this machine can drive Syrus through the CLI."
+            title="Writes .claude/skills/syrus under your home directory so Claude Code sessions on this machine can drive Syrus through the CLI."
             type="button"
           >
             {installing ? "Installing…" : "Add Claude Code skill"}
@@ -2754,8 +2754,9 @@ export function App() {
                   the fallback for non-admin accounts on shared instances
                   and scripted setups. */}
               <p className="status-line" style={{ margin: 0 }}>
-                Signing in inside the Syrus window connects this menu-bar app automatically. Use this form
-                only if that didn&apos;t happen — for example with a non-admin account.
+                Signing in inside the Syrus window connects this{" "}
+                {window.syrusDesktop?.platform === "win32" ? "tray" : "menu-bar"} app automatically. Use this
+                form only if that didn&apos;t happen — for example with a non-admin account.
               </p>
 
               <label>
@@ -2875,7 +2876,7 @@ export function App() {
                     <input
                       type="text"
                       value={localProjectsRoot}
-                      placeholder="/Users/you/src"
+                      placeholder={window.syrusDesktop?.platform === "win32" ? "C:\\Users\\you\\src" : "/Users/you/src"}
                       onChange={(event) => {
                         setLocalProjectsRoot(event.target.value)
                         setSettingsSaved(false)
@@ -2908,7 +2909,11 @@ export function App() {
                         <input
                           type="text"
                           value={draft.localPath}
-                          placeholder="/absolute/path/to/repo"
+                          placeholder={
+                            window.syrusDesktop?.platform === "win32"
+                              ? "C:\\absolute\\path\\to\\repo"
+                              : "/absolute/path/to/repo"
+                          }
                           aria-label="Repository local path"
                           onChange={(event) => updateRepoPathDraft(draft.id, "localPath", event.target.value)}
                         />

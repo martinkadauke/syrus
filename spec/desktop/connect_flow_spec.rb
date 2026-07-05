@@ -40,6 +40,26 @@ RSpec.describe "desktop connect flow" do
     expect(driver).to match(/const analysis = analyzeInstanceUrl\(request\.url\)/)
   end
 
+  it "guards the async probe against Back-navigation races" do
+    # Back stays enabled while checking (by design), so the fingerprint can
+    # lose a race against the user navigating away. A stale success must not
+    # persist a backend choice the user abandoned; a stale failure must not
+    # yank the wizard out of wherever they went. Mirrors the file's existing
+    # convention in startRuntime/openOrbStackDownload.
+    driver = read("electron/installer/installerDriver.ts")
+    connect = driver[/async connectRemote[\s\S]{0,2200}/]
+    expect(connect).to include('this.state.phase === "connect.checking" && this.state.url === serverUrl')
+    expect(connect.scan(/if \(!stillChecking\(\)\) \{/).length).to eq(2)
+  end
+
+  it "honors an explicitly typed :80 instead of assuming :3000" do
+    # The WHATWG parser drops scheme-default ports, so the analyzer must
+    # consult the raw input before assuming Syrus's default.
+    analyzer = read("src/onboarding/instanceUrl.ts")
+    expect(analyzer).to include('const typedPort = /:\d+$/.test(input)')
+    expect(analyzer).to match(/!hasScheme && !typedPort && url\.port === ""/)
+  end
+
   it "classifies probe failures into actionable messages" do
     driver = read("electron/installer/installerDriver.ts")
     expect(driver).to include("Nothing answered at")

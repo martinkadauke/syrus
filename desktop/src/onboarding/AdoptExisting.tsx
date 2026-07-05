@@ -14,12 +14,14 @@ type AdoptExistingProps = {
 export function AdoptExisting({ error = null, onLocateEnv, onWipe, onBack }: AdoptExistingProps) {
   const [confirmation, setConfirmation] = useState("")
   const wipeArmed = confirmation.trim().toLowerCase() === "delete"
+  const installScript =
+    (window.syrusDesktop?.platform ?? "darwin") === "win32" ? "install.ps1" : "install.sh"
 
   return (
     <OnboardingScreen title="Found an existing Syrus installation">
       <p className="mt-3 text-sm leading-relaxed text-slate-600">
         This machine already has Syrus data from a previous install (for example from running{" "}
-        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">install.sh</code> in a checkout). That
+        <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">{installScript}</code> in a checkout). That
         data is encrypted with keys stored in that install&apos;s{" "}
         <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">.env</code> file. To keep your existing
         Jobs, repositories, and credentials, point us at it.

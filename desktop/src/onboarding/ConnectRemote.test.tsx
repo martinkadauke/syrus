@@ -24,11 +24,22 @@ describe("analyzeInstanceUrl", () => {
     expect(analysis.hint).not.toContain("3000")
   })
 
-  it("suggests the port may be missing on explicit http without one", () => {
+  it("suggests the port may be missing on explicit http without one, as a caveat not a success", () => {
     const analysis = analyzeInstanceUrl("http://192.168.64.1")
-    expect(analysis.state).toBe("ready")
+    // "assumed" renders in the neutral note tone — a maybe-forgot-the-port
+    // caveat must not get the green looks-good check.
+    expect(analysis.state).toBe("assumed")
     expect(analysis.normalized).toBe("http://192.168.64.1")
     expect(analysis.hint).toContain(":3000")
+  })
+
+  it("honors an explicitly typed :80 instead of rewriting it to :3000", () => {
+    // The URL parser drops scheme-default ports, so this needs the raw-input
+    // check: host:80 is a choice (nginx-fronted Syrus), not a missing port.
+    const analysis = analyzeInstanceUrl("syrus.internal:80")
+    expect(analysis.state).toBe("ready")
+    expect(analysis.normalized).toBe("http://syrus.internal")
+    expect(analysis.hint).not.toContain("3000")
   })
 
   it("rejects paths, spaces, credentials, and non-http schemes with specific hints", () => {

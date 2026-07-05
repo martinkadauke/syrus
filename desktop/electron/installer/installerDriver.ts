@@ -217,11 +217,25 @@ export class OnboardingDriver {
     const serverUrl = normalizeUrl(analysis.normalized)
     this.setState({ phase: "connect.checking", url: serverUrl })
 
+    // Back stays enabled while checking (deliberately — a black-holed host
+    // must not be a dead end), so this probe can lose a race against the
+    // user navigating away. Re-check the phase AND the url after the await,
+    // like startRuntime/openOrbStackDownload do: a stale success must not
+    // persist a backend choice the user abandoned, and a stale failure must
+    // not yank the wizard out of wherever they went.
+    const stillChecking = () => this.state.phase === "connect.checking" && this.state.url === serverUrl
+
     try {
       await fingerprintSyrus(serverUrl)
+      if (!stillChecking()) {
+        return
+      }
       saveBackendConfig({ mode: "remote", serverUrl })
       this.setState({ phase: "done", mode: "remote", url: serverUrl })
     } catch (error) {
+      if (!stillChecking()) {
+        return
+      }
       this.setState({ phase: "connect.form", error: errorMessage(error, "Could not connect to that address.") })
     }
   }

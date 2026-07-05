@@ -54,9 +54,14 @@ export function analyzeInstanceUrl(raw: string): InstanceUrlAnalysis {
     return { state: "invalid", normalized: null, hint: "Enter just the server address — no path after the host." }
   }
 
-  // Bare host or IP with no port: Syrus's local installs listen on :3000,
-  // so assume it rather than silently probing :80.
-  if (!hasScheme && url.port === "") {
+  // The WHATWG parser drops a scheme-default port (host:80 parses with
+  // port === ""), so "did the user type a port?" must come from the raw
+  // input — an explicit :80 is a choice, not a missing port.
+  const typedPort = /:\d+$/.test(input)
+
+  // Bare host or IP with no port at all: Syrus's local installs listen on
+  // :3000, so assume it rather than silently probing :80.
+  if (!hasScheme && !typedPort && url.port === "") {
     url.port = String(DEFAULT_SYRUS_PORT)
     return {
       state: "assumed",
@@ -65,9 +70,12 @@ export function analyzeInstanceUrl(raw: string): InstanceUrlAnalysis {
     }
   }
 
-  if (hasScheme && url.protocol === "http:" && url.port === "") {
+  // Explicit http:// with no port: honored as typed (port 80), but flagged
+  // as a caveat — "assumed" renders in the neutral note tone, not the green
+  // looks-good check, because this is the classic forgot-the-port case.
+  if (hasScheme && url.protocol === "http:" && !typedPort && url.port === "") {
     return {
-      state: "ready",
+      state: "assumed",
       normalized: url.origin,
       hint: `Will connect to ${url.origin} — if nothing answers, the port may be missing (usually :3000).`
     }

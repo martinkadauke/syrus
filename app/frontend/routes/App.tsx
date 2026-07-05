@@ -216,10 +216,12 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
 
   // Inside the desktop shell the app is already installed and pointed at an
   // instance, so a merely signed-out user should land on sign-in (or the
-  // invite acceptance page), not the self-hosting marketing pitch. First run
-  // keeps the welcome below — it doubles as the desktop first-run screen.
+  // invite/open signup page — on open-signup instances the landing was the
+  // only path to signup, and SignUp links back to sign-in), never the
+  // self-hosting marketing pitch. First run keeps the welcome below — it
+  // doubles as the desktop first-run screen.
   if (isDesktopShell() && cta.kind !== "first") {
-    return <Navigate replace to={cta.kind === "invite" ? cta.href : signInPath} />
+    return <Navigate replace to={cta.kind === "invite" || cta.kind === "open" ? cta.href : signInPath} />
   }
 
   // First run (no users yet) gets a minimal welcome, not the marketing pitch:
