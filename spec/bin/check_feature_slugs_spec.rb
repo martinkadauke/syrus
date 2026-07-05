@@ -23,7 +23,9 @@ RSpec.describe "bin/check_feature_slugs" do
   end
 
   def run_check
-    Open3.capture3(script, chdir: @dir)
+    # [script, script] (argv0 form) — a bare string gets word-split by
+    # spawn, which breaks on checkout paths containing spaces.
+    Open3.capture3([script, script], chdir: @dir)
   end
 
   it "passes when all referenced feature slugs are declared" do
