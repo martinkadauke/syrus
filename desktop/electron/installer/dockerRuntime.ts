@@ -61,14 +61,14 @@ export const findDockerBinary = async (): Promise<string | null> => {
   return cachedDockerBinary
 }
 
-export const daemonUp = async (): Promise<boolean> => {
+export const daemonUp = async (timeoutMs = 10_000): Promise<boolean> => {
   const binary = await findDockerBinary()
   if (!binary) {
     return false
   }
 
   try {
-    await execFileAsync(binary, ["info"], { env: execEnv(), timeout: 10_000 })
+    await execFileAsync(binary, ["info"], { env: execEnv(), timeout: timeoutMs })
     return true
   } catch {
     return false

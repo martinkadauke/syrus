@@ -16,8 +16,9 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
+import { DEFAULT_GLOBAL_HOTKEY, getBackendMode, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
+import * as backendLifecycle from "./installer/backendLifecycle.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
@@ -1254,6 +1255,14 @@ const ensureOnboardingDriver = () => {
     saveRemoteCredentials: (credentials) => saveCredentials(credentials),
     onState: (state) => {
       onboardingWindow?.webContents.send("onboarding:state-changed", state)
+      // Supervision starts the moment a local install completes — not only
+      // when the user clicks "Open Syrus". Closing the wizard via the
+      // traffic light must not leave the session without the watchdog and
+      // Backend menu.
+      if (state.phase === "done" && state.mode === "local") {
+        createMenu()
+        startLocalBackendSupervision()
+      }
     },
     onLogLine: (line) => {
       onboardingWindow?.webContents.send("onboarding:log-line", line)
@@ -1416,9 +1425,77 @@ const openSyrus = async () => {
   await showWebAppWindow()
 }
 
-// After onboarding completes: close the wizard and open the app window.
+// Swap the web window onto the status page and let recovery polling bring
+// the app back once /up answers. Used by the watchdog and explicit stops.
+const showBackendUnavailable = (detail: string) => {
+  if (!webAppWindow) {
+    return
+  }
+
+  void loadBackendStatus(webAppWindow.window, detail)
+  startBackendRecoveryPolling()
+}
+
+const startLocalBackendSupervision = () => {
+  if (getBackendMode() !== "local") {
+    return
+  }
+
+  void backendLifecycle.ensureRunning()
+  backendLifecycle.startWatchdog({
+    onHealthyChanged: (healthy, diagnosis) => {
+      if (!healthy) {
+        showBackendUnavailable(diagnosis ?? "local")
+      }
+      // Recovery polling reloads the app when it becomes healthy again.
+    }
+  })
+}
+
+const confirmStopBackend = async () => {
+  const confirmation = await dialog.showMessageBox({
+    type: "warning",
+    buttons: ["Stop Syrus", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+    message: "Stop Syrus?",
+    detail: "GitHub polling and agent runs stop until you start it again from the Backend menu."
+  })
+
+  if (confirmation.response !== 0) {
+    return
+  }
+
+  if (await backendLifecycle.stopBackend()) {
+    showBackendUnavailable("stopped")
+  } else {
+    await reportBackendActionFailure("stop Syrus")
+  }
+}
+
+// Backend-menu actions return false when refused (busy) or failed; silent
+// no-ops made the menu look dead.
+const reportBackendActionFailure = async (label: string) => {
+  await dialog.showMessageBox({
+    type: "warning",
+    message: `Couldn't ${label}.`,
+    detail:
+      "Another backend operation may still be in progress, or Docker isn't ready. Check Backend → Open Install Log for details."
+  })
+}
+
+const runBackendAction = async (label: string, action: () => Promise<boolean>) => {
+  if (!(await action())) {
+    await reportBackendActionFailure(label)
+  }
+}
+
+// After onboarding completes: close the wizard, open the app window, and
+// (for a fresh local install) pick up lifecycle duties + the Backend menu.
 const finishOnboarding = async () => {
   onboardingWindow?.close()
+  createMenu()
+  startLocalBackendSupervision()
   await showWebAppWindow()
 }
 
@@ -1524,7 +1601,7 @@ const saveGlobalHotkey = (globalHotkey: string) => {
 }
 
 const createMenu = () => {
-  const applicationMenu = Menu.buildFromTemplate([
+  const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: app.name,
       submenu: [
@@ -1568,9 +1645,50 @@ const createMenu = () => {
         { role: "togglefullscreen" }
       ]
     }
-  ])
+  ]
 
-  Menu.setApplicationMenu(applicationMenu)
+  // Lifecycle controls only make sense for a stack this app installed;
+  // remote mode has nothing to start or stop.
+  if (getBackendMode() === "local") {
+    template.push({
+      label: "Backend",
+      submenu: [
+        {
+          label: "Start Syrus",
+          click: () => {
+            void runBackendAction("start Syrus", backendLifecycle.startBackend)
+          }
+        },
+        {
+          label: "Stop Syrus…",
+          click: () => {
+            void confirmStopBackend()
+          }
+        },
+        {
+          label: "Restart Syrus",
+          click: () => {
+            void runBackendAction("restart Syrus", backendLifecycle.restartBackend)
+          }
+        },
+        { type: "separator" },
+        {
+          label: "Open Install Log",
+          click: () => {
+            void shell.openPath(path.join(localStateDir(), "install.log"))
+          }
+        },
+        {
+          label: "Open Data Folder",
+          click: () => {
+            void shell.openPath(localStateDir())
+          }
+        }
+      ]
+    })
+  }
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
 
 ipcMain.handle("get-credentials", async () => cachedCredentials ?? (await loadCredentials()))
@@ -1741,6 +1859,7 @@ app.whenReady().then(async () => {
   if (getBackendMode() === "") {
     await showOnboardingWindow()
   } else {
+    startLocalBackendSupervision()
     await showWebAppWindow()
   }
 
