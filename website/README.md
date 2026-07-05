@@ -62,6 +62,7 @@ The public website should browse in this order:
 | What is Syrus? | `/docs/what-is-syrus` | Plain product explanation and issue-to-PR flow. |
 | Why use Syrus? | `/docs/why-use-syrus` | Self-host, BYOK, multi-user, and auditability positioning. |
 | Getting started | `/docs/getting-started` | Choose an evaluation or deployment path and learn the first loop. |
+| Desktop app | `/docs/desktop` | macOS DMG download, guided local install, app window + menu bar, updates. |
 | Concepts | `/docs/concepts` | Job, Workflow, Step, Run, states, trigger kinds, and MCP signals. |
 | Feature docs | `/docs/features` | Product-feature map that points to canonical reference pages. |
 | How-tos and recipes | `/docs/recipes` | Task-focused recipes: CI repair, PR feedback, scheduled jobs, custom workflows. |
@@ -80,26 +81,27 @@ source:
 | --- | --- |
 | What is Syrus? | `src/pages/index.md`, `src/content/docs/what-is-syrus.md`, `src/content/docs/concepts.md` |
 | Why would I use it? | `src/content/docs/why-use-syrus.md`, `src/content/docs/faq.md` |
-| How do I try it? | `src/content/docs/getting-started.md`, `src/content/docs/deployment/docker-compose.md` |
+| How do I try it? | `src/content/docs/getting-started.md`, `src/content/docs/desktop.md`, `src/content/docs/deployment/docker-compose.md` |
 | What does operating it involve? | `src/content/docs/deployment/`, `src/content/docs/configuration.md`, `src/content/docs/recipes.md`, `src/content/docs/troubleshooting.md` |
 
 Recommended sidebar order once Starlight lands:
 
 1. Docs index
 2. Getting Started
-3. What is Syrus?
-4. Why use Syrus?
-5. Concepts
-6. Features
-7. Workflows
-8. Configuration
-9. Deployment
-10. Recipes
-11. Troubleshooting
-12. Architecture
-13. Syrus CLI
-14. API
-15. FAQ
+3. Desktop app
+4. What is Syrus?
+5. Why use Syrus?
+6. Concepts
+7. Features
+8. Workflows
+9. Configuration
+10. Deployment
+11. Recipes
+12. Troubleshooting
+13. Architecture
+14. Syrus CLI
+15. API
+16. FAQ
 
 ## Contributing
 
