@@ -894,19 +894,21 @@ RSpec.describe PollPullRequestJob do
       expect(fork_job.reload.branch_deleted_at).to be_present
     end
 
-    it "deletes the fork branch when the upstream PR is closed without merge (pr_closed)" do
+    it "sets needs_attention and starts a grace period when the upstream PR is closed without merge (pr_closed)" do
       allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
       stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
         status: 200, headers: { "Content-Type" => "application/json" },
         body: { number: 20, state: "closed", merged: false, labels: [],
                 head: { sha: "abc123", ref: "syrus/issue-55-#{fork_job.id}" } }.to_json
       )
-      fork_delete_stub = stub_request(:delete, fork_delete_ref_url).to_return(status: 204, body: "")
 
       described_class.perform_now(fork_job.id)
 
-      expect(fork_delete_stub).to have_been_requested
-      expect(fork_job.reload.branch_deleted_at).to be_present
+      fork_job.reload
+      expect(fork_job.needs_attention).to be(true)
+      expect(fork_job.needs_attention_reason).to eq("upstream_pr_closed")
+      expect(fork_job.grace_period_expires_at).to be_present
+      expect(fork_job.branch_deleted_at).to be_nil
     end
 
     it "deletes the fork branch when the upstream PR closes with no_changes" do
@@ -924,22 +926,21 @@ RSpec.describe PollPullRequestJob do
       expect(fork_job.reload.branch_deleted_at).to be_present
     end
 
-    it "sends an upstream_pr_closed notification when the upstream PR closes without merge" do
+    it "does not immediately send upstream_pr_closed notification when the upstream PR closes without merge" do
       allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
       stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
         status: 200, headers: { "Content-Type" => "application/json" },
         body: { number: 20, state: "closed", merged: false, labels: [],
                 head: { sha: "abc123", ref: "syrus/issue-55-#{fork_job.id}" } }.to_json
       )
-      stub_request(:delete, fork_delete_ref_url).to_return(status: 204, body: "")
 
       expect {
         described_class.perform_now(fork_job.id)
-      }.to change { user.notifications.where(kind: "upstream_pr_closed").count }.by(1)
+      }.not_to change { user.notifications.where(kind: "upstream_pr_closed").count }
 
-      notification = user.notifications.where(kind: "upstream_pr_closed").last
-      expect(notification.job).to eq(fork_job)
-      expect(notification.body).to include("Upstream PR #20")
+      fork_job.reload
+      expect(fork_job.needs_attention).to be(true)
+      expect(fork_job.needs_attention_reason).to eq("upstream_pr_closed")
     end
 
     it "does not send upstream_pr_closed notification for a normal non-fork job pr_closed" do
