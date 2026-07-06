@@ -545,8 +545,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.integer "external_pr_number"
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
+    t.integer "fork_review_pr_number"
     t.boolean "github_mergeable"
     t.string "github_mergeable_state"
+    t.datetime "grace_period_expires_at"
     t.json "invalidation_evidence", null: false
     t.text "invalidation_reason"
     t.text "issue_body"
@@ -557,6 +559,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.string "last_ci_handled_sha"
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
+    t.datetime "last_seen_fork_review_comment_at"
     t.string "local_mergeability_base_sha"
     t.datetime "local_mergeability_checked_at"
     t.string "local_mergeability_head_sha"
@@ -566,6 +569,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.string "mergeability_base_sha"
     t.datetime "mergeability_checked_at"
     t.string "mergeability_head_sha"
+    t.boolean "needs_attention", default: false, null: false
+    t.string "needs_attention_reason"
+    t.datetime "needs_attention_since"
     t.integer "owner_user_id"
     t.integer "parent_job_id"
     t.json "pending_epic_reference", null: false
@@ -594,6 +600,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.index ["dependencies_overridden_by_user_id"], name: "index_jobs_on_dependencies_overridden_by_user_id"
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
+    t.index ["grace_period_expires_at"], name: "index_jobs_on_grace_period_expires_at"
+    t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
     t.index ["pr_repository_id"], name: "index_jobs_on_pr_repository_id"
@@ -651,6 +659,25 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.index ["user_id"], name: "index_notifications_on_user_id"
   end
 
+  create_table "pr_review_comments", force: :cascade do |t|
+    t.boolean "actionable"
+    t.datetime "actioned_at"
+    t.string "actioned_by"
+    t.string "attributed_to"
+    t.text "body"
+    t.datetime "comment_created_at"
+    t.string "comment_kind", null: false
+    t.datetime "created_at", null: false
+    t.bigint "github_comment_id", null: false
+    t.string "github_handle"
+    t.integer "job_id", null: false
+    t.string "pr_type", null: false
+    t.datetime "updated_at", null: false
+    t.index ["actioned_at"], name: "index_pr_review_comments_on_actioned_at"
+    t.index ["job_id", "pr_type", "comment_kind", "github_comment_id"], name: "index_pr_review_comments_uniqueness", unique: true
+    t.index ["job_id"], name: "index_pr_review_comments_on_job_id"
+  end
+
   create_table "repositories", force: :cascade do |t|
     t.string "agent_provider"
     t.boolean "approval_propagates_to_github", default: true
@@ -659,6 +686,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.boolean "auto_merge_enabled", default: false, null: false
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
+    t.string "feedback_policy", default: "confirm", null: false
+    t.integer "fork_pr_grace_period_hours", default: 24, null: false
     t.bigint "github_owner_id"
     t.bigint "github_repository_id"
     t.integer "installation_id"
@@ -677,6 +706,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
     t.string "upstream_default_branch"
     t.string "upstream_name"
     t.string "upstream_owner"
+    t.integer "upstream_pr_grace_period_days", default: 7, null: false
     t.bigint "upstream_repository_id"
     t.integer "user_id"
     t.index ["archived_at"], name: "index_repositories_on_archived_at"
@@ -1115,6 +1145,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_05_182922) do
   add_foreign_key "merge_trains", "repositories"
   add_foreign_key "notifications", "jobs"
   add_foreign_key "notifications", "users"
+  add_foreign_key "pr_review_comments", "jobs"
   add_foreign_key "repositories", "installations"
   add_foreign_key "repositories", "repositories", column: "upstream_repository_id"
   add_foreign_key "repositories", "users"

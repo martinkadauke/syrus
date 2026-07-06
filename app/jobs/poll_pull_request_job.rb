@@ -40,7 +40,13 @@ class PollPullRequestJob < ApplicationJob
     @job.user.clear_gh_api_blocked!
 
     return close_with("pr_merged") if @pr.merged
-    return close_with(closed_pull_request_reason) if @pr.state == "closed"
+    return handle_upstream_pr_reopened if upstream_pr_was_reopened?
+
+    if @pr.state == "closed"
+      handle_upstream_pr_closed
+      return
+    end
+
     return close_with("syrus_stop") if has_label?(@pr, "syrus-stop")
 
     react_to_pr_reviews
@@ -56,19 +62,155 @@ class PollPullRequestJob < ApplicationJob
 
   private
 
+  # ----- upstream PR closed / grace period -----------------------------------
+
+  def upstream_pr_was_reopened?
+    @pr.state == "open" && @job.needs_attention_reason == "upstream_pr_closed"
+  end
+
+  def handle_upstream_pr_reopened
+    Rails.logger.info("[PollPullRequestJob] #{@job.slug}: upstream PR reopened; clearing grace period")
+    @job.clear_needs_attention!
+    @job.cancel_grace_period!
+    # Resume normal polling for this cycle.
+    react_to_pr_reviews
+    react_to_pr_comments
+    react_to_ci_failures
+  end
+
+  def handle_upstream_pr_closed
+    if @job.in_grace_period? && @job.needs_attention_reason == "upstream_pr_closed"
+      # Still in grace period, still closed — do nothing until expiry or reopen.
+      return
+    end
+
+    reason = closed_pull_request_reason
+    if reason == "pr_merged"
+      # Shouldn't reach here (we guard on @pr.merged above), but handle defensively.
+      close_with("pr_merged")
+      return
+    end
+
+    if reason == "no_changes"
+      close_with("no_changes")
+      return
+    end
+
+    # Closed without merge: set needs_attention + start grace period.
+    @job.set_needs_attention!(reason: "upstream_pr_closed")
+    return if @job.grace_period_expires_at.present?
+
+    duration = @job.repository.upstream_pr_grace_period_days.days
+    @job.start_grace_period!(duration: duration)
+    Rails.logger.info("[PollPullRequestJob] #{@job.slug}: upstream PR closed; grace period #{duration / 86400}d started")
+
+    StackRebaseCoordinator.parent_closed(@job)
+  end
+
+  # ----- upstream PR review state --------------------------------------------
+
+  def react_to_pr_reviews
+    reviews = @client.pr_reviews(@slug, @job.pr_number)
+    react_to_review_state(reviews)
+
+    approvals = reviews.select { |review| review.state == "APPROVED" }
+    return if approvals.empty?
+
+    if fork_review_upstream_job? && multi_person_review_policy?
+      react_to_upstream_pr_reviews_multi(approvals)
+    else
+      react_to_pr_reviews_single(approvals)
+    end
+  end
+
+  def react_to_review_state(reviews)
+    if changes_requested?(reviews)
+      @job.set_needs_attention!(reason: "upstream_pr_changes_requested")
+    elsif @job.needs_attention_reason == "upstream_pr_changes_requested"
+      # All CHANGES_REQUESTED reviews are now APPROVED or DISMISSED.
+      @job.clear_needs_attention!
+    end
+  end
+
+  def react_to_approval(reviews)
+    latest_approval = reviews
+                       .select { |review| review.state == "APPROVED" }
+                       .max_by { |review| review_submitted_at(review) || Time.at(0) }
+    return unless latest_approval
+
+    submitted_at = review_submitted_at(latest_approval) || Time.current
+    return if @job.approved_at && @job.approved_at >= submitted_at
+
+    @job.record_github_review_approval!(
+      approved_at: submitted_at,
+      review_url: latest_approval.respond_to?(:html_url) ? latest_approval.html_url : nil
+    )
+  end
+
+  # Returns true if any reviewer's *latest* review is CHANGES_REQUESTED.
+  def changes_requested?(reviews)
+    latest_per_reviewer(reviews).any? { |review| review.state == "CHANGES_REQUESTED" }
+  end
+
+  def latest_per_reviewer(reviews)
+    reviews
+      .group_by { |review| review.respond_to?(:user) ? review.user&.login : nil }
+      .values
+      .map { |reviewer_reviews| reviewer_reviews.max_by { |r| review_submitted_at(r) || Time.at(0) } }
+      .compact
+  end
+
+  # ----- close ---------------------------------------------------------------
+
   def close_with(reason)
     Rails.logger.info("[PollPullRequestJob] closing #{@job.slug}: #{reason}")
     @job.runs.active.find_each do |r|
       r.cancel! if r.may_cancel?
       r.save!
     end
+    @job.update!(grace_period_expires_at: nil)
     @job.close_with_reason!(reason)
     StackRebaseCoordinator.parent_closed(@job) if reason == "pr_closed"
-    if reason == "pr_merged" && @job.branch_name.present?
-      # Branch lives on the fork (repository), not the upstream (effective_pr_repository)
-      fork_client = GithubClient.for(repository: @job.repository, user: @job.user)
-      @job.update_column(:branch_deleted_at, Time.current) if fork_client.delete_branch(@job.repository.slug, @job.branch_name)
+
+    if @job.branch_name.present? && @job.branch_deleted_at.nil?
+      if reason == "pr_merged"
+        # Branch lives on the fork (repository), not the upstream (effective_pr_repository)
+        delete_fork_branch
+      elsif fork_review_upstream_job?
+        # For fork-review jobs, the upstream PR being closed (without merge) also means we
+        # should clean up the feature branch on the fork and notify the job owner.
+        delete_fork_branch
+        notify_upstream_pr_closed(reason)
+      end
     end
+  end
+
+  def delete_fork_branch
+    fork_client = GithubClient.for(repository: @job.repository, user: @job.user)
+    fork_client.delete_branch(@job.repository.slug, @job.branch_name)
+    @job.update_column(:branch_deleted_at, Time.current)
+  rescue => e
+    Rails.logger.warn("[PollPullRequestJob] #{@job.slug}: could not delete fork branch — #{e.message}")
+  end
+
+  def fork_review_upstream_job?
+    @job.pr_repository_id.present? && @job.pr_repository_id != @job.repository_id
+  end
+
+  def notify_upstream_pr_closed(reason)
+    recipient = @job.owner_user || @job.user
+    body = "Upstream PR ##{@job.pr_number} for #{@job.slug} was closed without merge: #{@job.title.truncate(80)}"
+    body = "Upstream PR ##{@job.pr_number} for #{@job.slug} closed (no changes): #{@job.title.truncate(80)}" if reason == "no_changes"
+
+    NotificationService.create_for(
+      user: recipient,
+      kind: "upstream_pr_closed",
+      job: @job,
+      pr_url: App::Presentation.job_pr_url(@job),
+      body: body
+    )
+  rescue => e
+    Rails.logger.warn("[PollPullRequestJob] #{@job.slug}: could not send upstream_pr_closed notification — #{e.message}")
   end
 
   def closed_pull_request_reason
@@ -79,12 +221,11 @@ class PollPullRequestJob < ApplicationJob
     Array(pr.labels).any? { |l| l.name == name }
   end
 
-  def react_to_pr_reviews
-    reviews = @client.pr_reviews(@slug, @job.pr_number)
-    approved_reviews = reviews.select { |review| review.state == "APPROVED" }
-    return if approved_reviews.empty?
+  def react_to_pr_reviews_single(approvals)
+    latest_approval = approvals.max_by { |review| review_submitted_at(review) || Time.at(0) }
+    return unless latest_approval
 
-    sorted = approved_reviews.sort_by { |r| review_submitted_at(r) || Time.at(0) }
+    sorted = approvals.sort_by { |r| review_submitted_at(r) || Time.at(0) }
     sorted.each do |review|
       submitted_at = review_submitted_at(review) || Time.current
       github_login = review.user&.respond_to?(:login) ? review.user.login : nil
@@ -98,14 +239,37 @@ class PollPullRequestJob < ApplicationJob
     end
   end
 
-  def review_submitted_at(review)
-    value = review.respond_to?(:submitted_at) ? review.submitted_at : nil
-    return value if value.respond_to?(:to_time) && !value.is_a?(String)
-    return if value.blank?
+  # For fork-review mode with two_person or final_say policy, we need multiple
+  # GitHub approvers on the upstream PR. Each approving reviewer is matched to
+  # a Syrus user by github_handle and recorded as a JobApproval. Once the
+  # policy's satisfaction condition is met, the job is approved for landing.
+  def react_to_upstream_pr_reviews_multi(approvals)
+    newly_recorded = false
 
-    Time.zone.parse(value.to_s)
-  rescue ArgumentError
-    nil
+    approvals.each do |review|
+      github_handle = review.user&.login.to_s.presence
+      next unless github_handle
+
+      reviewer = User.where("LOWER(github_handle) = ?", github_handle.downcase).first
+      next unless reviewer
+
+      approval = @job.job_approvals.find_or_initialize_by(user: reviewer)
+      next if approval.persisted?
+
+      approval.save!
+      newly_recorded = true
+      Rails.logger.info("[PollPullRequestJob] #{@job.slug}: recorded upstream PR approval from @#{github_handle} (user #{reviewer.id})")
+    end
+
+    return unless newly_recorded || @job.reload.job_approvals.exists?
+    return unless @job.approval_satisfied?
+    return unless @job.may_approve?
+
+    @job.approve!(via: "github_review")
+  end
+
+  def multi_person_review_policy?
+    @job.repository.review_policy.in?(%w[ two_person final_say ])
   end
 
   # ----- pr_comment branch ------------------------------------------------
@@ -128,7 +292,18 @@ class PollPullRequestJob < ApplicationJob
     end
     return if new_comments.empty?
 
-    enqueue_followup_run(all_comments: all_comments, new_comments: new_comments, cutoff: cutoff)
+    # Attribute and classify each new comment; only trigger a workflow
+    # when at least one qualifies (job-owner actionable, or any actionable
+    # when feedback_policy == 'auto').
+    ingestion = ingest_new_comments(new_comments)
+    return unless ingestion.any_qualifying?
+
+    enqueue_followup_run(
+      all_comments: all_comments,
+      new_comments: new_comments,
+      cutoff: cutoff,
+      qualifying_records: ingestion.qualifying_records
+    )
   end
 
   def pending_followup?
@@ -155,7 +330,7 @@ class PollPullRequestJob < ApplicationJob
     (issue_comments + review_comments).sort_by(&:created_at)
   end
 
-  def enqueue_followup_run(all_comments:, new_comments:, cutoff:)
+  def enqueue_followup_run(all_comments:, new_comments:, cutoff:, qualifying_records: [])
     ingest_comment_images(new_comments)
     clear_stale_approval!
 
@@ -163,15 +338,27 @@ class PollPullRequestJob < ApplicationJob
     # workflow as a structured artifact; Steps::Respond reads it at
     # run time and composes the Prompts::PrFeedback prompt itself.
     # Polling job stays ignorant of prompt internals.
+    iteration = feedback_iteration_number
+    source_handle = qualifying_records.first&.github_handle
+
     artifacts = {
       "pr_comments" => all_comments.map { |c| serialize_comment(c) },
-      "feedback_cutoff" => cutoff&.iso8601
+      "feedback_cutoff" => cutoff&.iso8601,
+      "pr_feedback_iteration" => iteration,
+      "pr_feedback_auto" => true,
+      "pr_feedback_source_handle" => source_handle
     }
     workflow = Workflows::PrFeedback.instantiate(job: @job, artifacts: artifacts, agent_provider: @agent_provider)
     StepDispatcher.start_workflow(workflow)
 
+    qualifying_records.each { |r| r.mark_actioned!(by: "auto_poll") }
+
     latest = new_comments.map(&:created_at).compact.max
     @job.update!(last_seen_comment_at: latest) if latest && (@job.last_seen_comment_at.nil? || latest > @job.last_seen_comment_at)
+  end
+
+  def feedback_iteration_number
+    @job.workflows.where(trigger_kind: %w[ pr_comment chat_feedback ]).count + 1
   end
 
   def clear_stale_approval!
@@ -190,6 +377,35 @@ class PollPullRequestJob < ApplicationJob
     return @job.last_feedback_addressed_at if @manual
 
     [ @job.last_seen_comment_at, @job.last_feedback_addressed_at ].compact.max
+  end
+
+  def ingest_new_comments(new_comments)
+    issue_new = new_comments.reject { |c| c.respond_to?(:path) && c.path.present? }
+    review_new = new_comments.select { |c| c.respond_to?(:path) && c.path.present? }
+
+    user = @job.owner_user || @job.user
+    provider = @agent_provider.presence || @job.agent_provider
+    pr_type = pr_type_for_job
+
+    issue_result = PrCommentIngester.call(
+      job: @job, comments: issue_new, pr_type: pr_type,
+      comment_kind: "issue", user: user, agent_provider: provider
+    )
+    review_result = PrCommentIngester.call(
+      job: @job, comments: review_new, pr_type: pr_type,
+      comment_kind: "review", user: user, agent_provider: provider
+    )
+
+    PrCommentIngester::Result.new(
+      qualifying_records: issue_result.qualifying_records + review_result.qualifying_records,
+      non_qualifying_records: issue_result.non_qualifying_records + review_result.non_qualifying_records
+    )
+  end
+
+  def pr_type_for_job
+    return "upstream" if @job.pr_repository_id.present? && @job.pr_repository_id != @job.repository_id
+
+    "direct"
   end
 
   # Octokit returns Sawyer::Resource objects; serialize to a plain
@@ -299,5 +515,15 @@ class PollPullRequestJob < ApplicationJob
         full_log_url: full_log_url
       ).parse
     )
+  end
+
+  def review_submitted_at(review)
+    value = review.respond_to?(:submitted_at) ? review.submitted_at : nil
+    return value if value.respond_to?(:to_time) && !value.is_a?(String)
+    return if value.blank?
+
+    Time.zone.parse(value.to_s)
+  rescue ArgumentError
+    nil
   end
 end

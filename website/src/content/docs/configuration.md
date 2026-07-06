@@ -275,6 +275,47 @@ current implementation, issue ingestion always starts the `initial`
 workflow; scheduled tasks, PR feedback, CI failures, rebases, retries, and
 manual actions choose their own trigger-specific templates.
 
+## Feedback Policies
+
+The `feedback_policy` setting on each repository controls whether PR comments
+from team members and external reviewers are acted on automatically or require
+confirmation.
+
+| Policy | Behavior |
+| --- | --- |
+| `confirm` (default) | Only the job owner's actionable comments trigger automatic implementation; team member and external actionable comments are recorded but do not queue a workflow until confirmed by the operator |
+| `auto` | Actionable comments from all commenter categories queue an implementation workflow automatically |
+
+### Comment attribution
+
+Syrus classifies each new PR comment by commenter:
+
+- **Job owner** — the GitHub handle matches the job's owner user. Owner comments always queue automatically regardless of `feedback_policy`.
+- **Team member** — the handle matches a repository membership. Member comments respect `feedback_policy`.
+- **External** — the handle is not found in memberships and is not the owner. External comments respect `feedback_policy`.
+
+Syrus also passes each comment through an LLM classifier to determine whether it contains actionable feedback (requests a code change, correction, or improvement) or is a discussion remark, question, or acknowledgement. Non-actionable comments are stored in the `pr_review_comments` audit log but never trigger a workflow.
+
+### Which PRs are polled for comments
+
+Syrus polls all PR surfaces associated with a Job:
+
+- **Direct PR** — the PR Syrus opened against the shared repository (modes 1 and 2a)
+- **Upstream PR** — the PR opened against the upstream repository after fork review approval (modes 2b and 3)
+- **Fork review PR** — the internal PR from the feature branch to the fork's default branch, polled until the upstream PR is created
+
+All three surfaces use the same attribution and classification pipeline.
+
+### Pending feedback (confirm policy)
+
+When `feedback_policy` is `confirm`, actionable comments from team members and external reviewers appear in a **Pending feedback** section on the job detail page. The job owner can choose one of three actions for each comment:
+
+- **Apply** — use the comment body as-is as the feedback prompt for a new iteration.
+- **Ignore** — dismiss the comment without taking action; it is recorded in the audit trail.
+- **Replace** — write a custom feedback prompt; the original comment is marked handled and the operator's text drives the next iteration.
+
+All three actions are recorded via the `actioned_by` field on the `pr_review_comments` audit row. The resulting `chat_feedback` workflow artifacts include a `feedback_source` field with the original commenter attribution and the action taken (`apply` or `replace`), visible in the feedback history panel.
+
 ## Worker Environment
 
 The web and worker processes share the Rails environment. The worker also

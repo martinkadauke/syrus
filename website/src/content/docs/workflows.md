@@ -175,7 +175,7 @@ rolling cap prevents endless CI-failure loops on the same Job.
 | `summarize` | Yes | Collect PR title/body/summary through MCP |
 | `summarize_amend` | Yes | Produce follow-up commit copy for PR feedback and CI-failure workflows |
 | `test_plan` | Yes | Collect reviewer-facing test steps for Initial PR bodies |
-| `pr_open` | No | Push the branch and open the pull request if one does not already exist |
+| `pr_open` | No | Push the branch and open the pull request. For cross-fork Jobs (target repository differs from the working repository), opens a **fork review PR** (feature branch → fork default branch) as a staging artifact instead of the upstream PR directly. The upstream PR is created after the fork review PR is approved or merged. |
 | `push` | No | Push commits to an existing PR branch, update the cost footer, and clean-rebase once if the remote branch advanced |
 | `push_agent_rebase` | Yes | Resolve a conflicting follow-up push rebase onto the current remote PR branch |
 | `push_after_rebase` | No | Push a branch after the agentic follow-up rebase and grade loop |
@@ -215,6 +215,37 @@ Syrus chooses the template from the trigger kind:
 The template creates a Workflow row, creates each Step row in order, and
 wires `next_step_id` from each Step to its successor. The dispatcher starts
 the first Run, then advances the chain as Steps succeed.
+
+## Fork Review Flow
+
+When a Job's `target_repository` differs from its working `repository` (cross-fork
+mode), the `pr_open` step creates a **fork review PR** on the fork rather than
+opening the upstream PR directly. This PR — feature branch against the fork's
+default branch — acts as a staging review artifact that the operator or
+a repository member must approve before the change reaches the upstream.
+
+**Approval signals** (polling only — no webhooks):
+
+| Signal | How detected |
+| --- | --- |
+| GitHub review approval on the fork PR | `PollForkReviewPrJob` reads `/reviews` and finds an `APPROVED` state |
+| GitHub merge of the fork PR | `PollForkReviewPrJob` finds `merged: true` (accidental merge, treated as implicit approval) |
+
+All signals are equivalent. On detection, `ForkReviewApprover`:
+
+1. Closes the fork review PR (skipped when already merged).
+2. Opens the upstream PR from the feature branch against `target_repository`'s default branch.
+3. Updates the Job's `pr_number` and `pr_repository_id` so normal PR polling takes over.
+4. Records approval based on the repository's review policy:
+   - **`self`** — records a GitHub review approval immediately; the Job becomes eligible for auto-merge.
+   - **`two_person` / `final_say`** — creates a `JobApproval` for the fork PR approver (matched by GitHub handle to a Syrus user; falls back to job owner). Additional approvals on the upstream PR are also polled — `PollPullRequestJob` reads `/reviews` on the upstream PR and creates a `JobApproval` for each `APPROVED` reviewer it can match to a Syrus user. When `approval_satisfied?` becomes true, the Job is auto-approved for landing.
+
+**Feature branch lifetime** — the feature branch is never deleted while the upstream PR is open. When the upstream PR is later closed or merged, `PollPullRequestJob` handles cleanup:
+
+- **Merged** — closes the Job as `pr_merged`; the fork branch is deleted.
+- **Closed without merge** — closes the Job as `pr_closed` or `no_changes`; the fork branch is deleted and an `upstream_pr_closed` notification is sent to the job owner so they know the upstream PR was rejected.
+
+**PR feedback iteration history** — each round of review feedback (a `pr_comment` or `chat_feedback` workflow) is stamped with a sequential iteration number in workflow artifacts (`pr_feedback_iteration`, `pr_feedback_auto`, `pr_feedback_source_handle`). The Job timeline (`Jobs::Timeline`) surfaces these as labeled "Feedback iteration N" events, showing whether each iteration was triggered automatically or confirmed by an operator, and who sent the triggering comment.
 
 ## Next: DAG Workflows
 

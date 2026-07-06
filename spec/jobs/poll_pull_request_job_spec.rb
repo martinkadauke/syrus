@@ -2,7 +2,7 @@ require "rails_helper"
 
 RSpec.describe PollPullRequestJob do
   let(:user) { Factories.user(github_token: "ghp_test_token") }
-  let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets") }
+  let(:repository) { Factories.repository(user: user, owner: "acme", name: "widgets", feedback_policy: "auto") }
   let(:job) do
     j = Factories.job(repository: repository, issue_number: 42)
     j.update!(branch_name: "syrus/issue-42-#{j.id}", pr_number: 7)
@@ -92,11 +92,15 @@ RSpec.describe PollPullRequestJob do
       expect(job.closure_reason).to eq("pr_merged")
     end
 
-    it "closes the Job with reason=pr_closed when the PR is closed but not merged" do
+    it "starts a grace period and sets needs_attention when the upstream PR is closed but not merged" do
       allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
       stub_pr(state: "closed", merged: false)
       described_class.perform_now(job.id)
-      expect(job.reload.closure_reason).to eq("pr_closed")
+      reloaded = job.reload
+      expect(reloaded.state).not_to eq("closed")
+      expect(reloaded.needs_attention?).to be true
+      expect(reloaded.needs_attention_reason).to eq("upstream_pr_closed")
+      expect(reloaded.grace_period_expires_at).to be_present
     end
 
     it "closes the Job with reason=no_changes when a closed PR has no unique patches left" do
@@ -236,6 +240,11 @@ RSpec.describe PollPullRequestJob do
       # CI branch fires too on every poll; default to "no checks" so
       # only the pr_comment branch can do anything in these tests.
       stub_check_runs("deadbeef0000000000000000000000000000beef", [])
+      # Stub classifier to return actionable by default; individual tests
+      # override when they need to exercise non-actionable classification.
+      allow(PrCommentClassifier).to receive(:call).and_return(
+        PrCommentClassifier::Result.new(actionable: true, reason: "requests a change", error: nil)
+      )
     end
 
     it "instantiates a PrFeedback workflow and stashes comments as artifacts" do
@@ -330,6 +339,45 @@ RSpec.describe PollPullRequestJob do
       expect(wf.artifact("feedback_cutoff")).to eq(t2.iso8601)
     end
 
+    it "stamps pr_feedback_iteration = 1 on the first pr_comment workflow" do
+      stub_issue_comments([
+        { id: 1, body: "Please fix this", user: { login: "reviewer" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      described_class.perform_now(job.id)
+
+      wf = job.workflows.where(trigger_kind: "pr_comment").last
+      expect(wf.artifact("pr_feedback_iteration")).to eq(1)
+      expect(wf.artifact("pr_feedback_auto")).to be true
+    end
+
+    it "increments pr_feedback_iteration for each subsequent pr_comment workflow" do
+      Workflow.create!(job: job, trigger_kind: "pr_comment", state: "succeeded")
+      stub_issue_comments([
+        { id: 1, body: "Another fix", user: { login: "reviewer" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      described_class.perform_now(job.id)
+
+      wf = job.workflows.where(trigger_kind: "pr_comment").last
+      expect(wf.artifact("pr_feedback_iteration")).to eq(2)
+    end
+
+    it "stores pr_feedback_source_handle from the first qualifying comment's github_handle" do
+      user.update!(github_handle: "op-dev")
+      stub_issue_comments([
+        { id: 1, body: "Change the algorithm", user: { login: "op-dev" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      described_class.perform_now(job.id)
+
+      wf = job.workflows.where(trigger_kind: "pr_comment").last
+      expect(wf.artifact("pr_feedback_source_handle")).to eq("op-dev")
+    end
+
     it "manual polls retry feedback that was seen but not successfully addressed" do
       job.update!(last_seen_comment_at: t1)
       stub_issue_comments([
@@ -407,6 +455,131 @@ RSpec.describe PollPullRequestJob do
       expect {
         described_class.perform_now(job.id)
       }.not_to change { job.workflows.count }
+    end
+
+    it "does not enqueue a workflow when the classifier returns non-actionable for all new comments" do
+      allow(PrCommentClassifier).to receive(:call).and_return(
+        PrCommentClassifier::Result.new(actionable: false, reason: "just praise", error: nil)
+      )
+      stub_issue_comments([
+        { id: 1, body: "LGTM!", user: { login: "reviewer" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "pr_comment").count }
+    end
+
+    it "still stores a PrReviewComment record for non-actionable comments" do
+      allow(PrCommentClassifier).to receive(:call).and_return(
+        PrCommentClassifier::Result.new(actionable: false, reason: "praise", error: nil)
+      )
+      stub_issue_comments([
+        { id: 1, body: "LGTM!", user: { login: "reviewer" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { PrReviewComment.count }.by(1)
+
+      record = PrReviewComment.last
+      expect(record.actionable).to be false
+      expect(record.attributed_to).to eq("external")
+      expect(record.actioned_at).to be_nil
+    end
+
+    it "creates PrReviewComment records and marks qualifying ones as actioned when workflow is triggered" do
+      stub_issue_comments([
+        { id: 1, body: "Please fix the typo", user: { login: "reviewer" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { PrReviewComment.count }.by(1)
+        .and change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
+
+      record = PrReviewComment.last
+      expect(record.actioned_at).to be_present
+      expect(record.actioned_by).to eq("auto_poll")
+    end
+
+    it "does not enqueue workflow for external actionable comments when feedback_policy is confirm" do
+      repository.update!(feedback_policy: "confirm")
+      stub_issue_comments([
+        { id: 1, body: "Please add more tests", user: { login: "outsider" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { job.workflows.where(trigger_kind: "pr_comment").count }
+
+      record = PrReviewComment.last
+      expect(record.attributed_to).to eq("external")
+      expect(record.actionable).to be true
+      expect(record.actioned_at).to be_nil
+    end
+
+    it "always enqueues workflow for job owner's actionable comments regardless of feedback_policy" do
+      repository.update!(feedback_policy: "confirm")
+      user.update!(github_handle: "op-dev")
+      stub_issue_comments([
+        { id: 1, body: "Change the algorithm", user: { login: "op-dev" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      expect {
+        described_class.perform_now(job.id)
+      }.to change { job.workflows.where(trigger_kind: "pr_comment").count }.by(1)
+    end
+
+    it "sets pr_type to direct for a standard PR on the repository" do
+      stub_issue_comments([
+        { id: 1, body: "Refactor this", user: { login: "reviewer" }, created_at: t1.iso8601 }
+      ])
+      stub_review_comments([])
+
+      described_class.perform_now(job.id)
+
+      record = PrReviewComment.last
+      expect(record.pr_type).to eq("direct")
+    end
+
+    it "sets pr_type to upstream when pr_repository_id differs from repository_id" do
+      other_repo = Factories.repository(user: user, owner: "upstream-org", name: "upstream-widgets")
+      job.update!(pr_repository_id: other_repo.id)
+
+      stub_request(:get, "https://api.github.com/repos/upstream-org/#{other_repo.name}/pulls/7")
+        .with(query: hash_including({}))
+        .to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: { number: 7, state: "open", merged: false, labels: [],
+                  head: { sha: "deadbeef0000000000000000000000000000beef", ref: "syrus/branch" } }.to_json
+        )
+      stub_request(:get, "https://api.github.com/repos/upstream-org/#{other_repo.name}/pulls/7/reviews")
+        .with(query: hash_including({}))
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json)
+      stub_request(:get, "https://api.github.com/repos/upstream-org/#{other_repo.name}/issues/7/comments")
+        .with(query: hash_including({}))
+        .to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: [ { id: 1, body: "Fix this", user: { login: "reviewer" }, created_at: t1.iso8601 } ].to_json
+        )
+      stub_request(:get, "https://api.github.com/repos/upstream-org/#{other_repo.name}/pulls/7/comments")
+        .with(query: hash_including({}))
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json)
+      stub_request(:get, %r{api\.github\.com/repos/upstream-org/#{other_repo.name}/commits/.*/check-runs})
+        .with(query: hash_including({}))
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: { total_count: 0, check_runs: [] }.to_json)
+
+      described_class.perform_now(job.id)
+
+      record = PrReviewComment.last
+      expect(record&.pr_type).to eq("upstream")
     end
   end
 
@@ -720,6 +893,166 @@ RSpec.describe PollPullRequestJob do
       expect(upstream_delete_stub).not_to have_been_requested
       expect(fork_job.reload.branch_deleted_at).to be_present
     end
+
+    it "sets needs_attention and starts a grace period when the upstream PR is closed without merge (pr_closed)" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
+      stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
+        status: 200, headers: { "Content-Type" => "application/json" },
+        body: { number: 20, state: "closed", merged: false, labels: [],
+                head: { sha: "abc123", ref: "syrus/issue-55-#{fork_job.id}" } }.to_json
+      )
+
+      described_class.perform_now(fork_job.id)
+
+      fork_job.reload
+      expect(fork_job.needs_attention).to be(true)
+      expect(fork_job.needs_attention_reason).to eq("upstream_pr_closed")
+      expect(fork_job.grace_period_expires_at).to be_present
+      expect(fork_job.branch_deleted_at).to be_nil
+    end
+
+    it "deletes the fork branch when the upstream PR closes with no_changes" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("no_changes")
+      stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
+        status: 200, headers: { "Content-Type" => "application/json" },
+        body: { number: 20, state: "closed", merged: false, labels: [],
+                head: { sha: "abc123", ref: "syrus/issue-55-#{fork_job.id}" } }.to_json
+      )
+      fork_delete_stub = stub_request(:delete, fork_delete_ref_url).to_return(status: 204, body: "")
+
+      described_class.perform_now(fork_job.id)
+
+      expect(fork_delete_stub).to have_been_requested
+      expect(fork_job.reload.branch_deleted_at).to be_present
+    end
+
+    it "does not immediately send upstream_pr_closed notification when the upstream PR closes without merge" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
+      stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
+        status: 200, headers: { "Content-Type" => "application/json" },
+        body: { number: 20, state: "closed", merged: false, labels: [],
+                head: { sha: "abc123", ref: "syrus/issue-55-#{fork_job.id}" } }.to_json
+      )
+
+      expect {
+        described_class.perform_now(fork_job.id)
+      }.not_to change { user.notifications.where(kind: "upstream_pr_closed").count }
+
+      fork_job.reload
+      expect(fork_job.needs_attention).to be(true)
+      expect(fork_job.needs_attention_reason).to eq("upstream_pr_closed")
+    end
+
+    it "does not send upstream_pr_closed notification for a normal non-fork job pr_closed" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
+      stub_pr(state: "closed", merged: false)
+
+      expect {
+        described_class.perform_now(job.id)
+      }.not_to change { user.notifications.where(kind: "upstream_pr_closed").count }
+    end
+
+    context "with two_person review policy and matching Syrus users" do
+      let(:reviewer_user) { Factories.user(github_handle: "alice-dev") }
+
+      before do
+        repository.update!(review_policy: "two_person")
+        fork_job.update!(owner_user: user)
+        # Give job owner a JobApproval to simulate fork PR approval already recorded
+        fork_job.job_approvals.find_or_create_by!(user: user)
+      end
+
+      it "creates a JobApproval for the matching Syrus user when an upstream PR review arrives" do
+        reviewer_user  # trigger creation
+        stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: { number: 20, state: "open", merged: false, labels: [],
+                  head: { sha: "abc123" } }.to_json
+        )
+        stub_request(:get, upstream_reviews_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: [ { id: 1, state: "APPROVED", submitted_at: 1.hour.ago.iso8601,
+                    user: { login: "alice-dev" } } ].to_json
+        )
+        stub_request(:get, upstream_issue_comments_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json
+        )
+        stub_request(:get, upstream_review_comments_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json
+        )
+        stub_request(:get, "https://api.github.com/repos/upstream-org/widgets/commits/abc123/check-runs")
+          .with(query: hash_including({})).to_return(
+            status: 200, headers: { "Content-Type" => "application/json" },
+            body: { total_count: 0, check_runs: [] }.to_json
+          )
+
+        expect {
+          described_class.perform_now(fork_job.id)
+        }.to change { fork_job.job_approvals.count }.by(1)
+
+        expect(fork_job.job_approvals.pluck(:user_id)).to include(reviewer_user.id)
+      end
+
+      it "approves the job when two_person policy is satisfied by GitHub reviews" do
+        reviewer_user  # trigger creation
+        fork_job.mark_implemented! if fork_job.may_mark_implemented?
+        fork_job.update!(state: "implemented")
+
+        stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: { number: 20, state: "open", merged: false, labels: [],
+                  head: { sha: "abc123" } }.to_json
+        )
+        stub_request(:get, upstream_reviews_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: [ { id: 1, state: "APPROVED", submitted_at: 1.hour.ago.iso8601,
+                    user: { login: "alice-dev" } } ].to_json
+        )
+        stub_request(:get, upstream_issue_comments_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json
+        )
+        stub_request(:get, upstream_review_comments_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json
+        )
+        stub_request(:get, "https://api.github.com/repos/upstream-org/widgets/commits/abc123/check-runs")
+          .with(query: hash_including({})).to_return(
+            status: 200, headers: { "Content-Type" => "application/json" },
+            body: { total_count: 0, check_runs: [] }.to_json
+          )
+
+        described_class.perform_now(fork_job.id)
+
+        expect(fork_job.reload.state).to eq("approved")
+      end
+
+      it "skips unrecognized GitHub reviewers (no matching Syrus user by github_handle)" do
+        stub_request(:get, upstream_pr_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: { number: 20, state: "open", merged: false, labels: [],
+                  head: { sha: "abc123" } }.to_json
+        )
+        stub_request(:get, upstream_reviews_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" },
+          body: [ { id: 1, state: "APPROVED", submitted_at: 1.hour.ago.iso8601,
+                    user: { login: "unknown-ghuser" } } ].to_json
+        )
+        stub_request(:get, upstream_issue_comments_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json
+        )
+        stub_request(:get, upstream_review_comments_url).with(query: hash_including({})).to_return(
+          status: 200, headers: { "Content-Type" => "application/json" }, body: [].to_json
+        )
+        stub_request(:get, "https://api.github.com/repos/upstream-org/widgets/commits/abc123/check-runs")
+          .with(query: hash_including({})).to_return(
+            status: 200, headers: { "Content-Type" => "application/json" },
+            body: { total_count: 0, check_runs: [] }.to_json
+          )
+
+        expect {
+          described_class.perform_now(fork_job.id)
+        }.not_to change { fork_job.job_approvals.count }
+      end
+    end
   end
 
   describe "review approval sync" do
@@ -840,6 +1173,123 @@ RSpec.describe PollPullRequestJob do
       described_class.perform_now(job.id)
 
       expect(delete_stub).not_to have_been_requested
+    end
+  end
+
+  describe "upstream PR closed grace period" do
+    it "does not close immediately when upstream PR is closed without merge" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
+      stub_pr(state: "closed", merged: false)
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.state).not_to eq("closed")
+    end
+
+    it "sets needs_attention with upstream_pr_closed reason" do
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
+      stub_pr(state: "closed", merged: false)
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.needs_attention?).to be true
+      expect(job.reload.needs_attention_reason).to eq("upstream_pr_closed")
+    end
+
+    it "sets grace_period_expires_at based on the repository setting" do
+      repository.update!(upstream_pr_grace_period_days: 3)
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
+      stub_pr(state: "closed", merged: false)
+
+      described_class.perform_now(job.id)
+
+      expires = job.reload.grace_period_expires_at
+      expect(expires).to be_present
+      expect(expires).to be_within(5.minutes).of(3.days.from_now)
+    end
+
+    it "does not start a second grace period when already in one" do
+      original_expires_at = 5.days.from_now
+      job.update!(
+        needs_attention: true,
+        needs_attention_reason: "upstream_pr_closed",
+        needs_attention_since: 2.days.ago,
+        grace_period_expires_at: original_expires_at
+      )
+      allow(ClosedPullRequestResolution).to receive(:reason).and_return("pr_closed")
+      stub_pr(state: "closed", merged: false)
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.grace_period_expires_at.to_i).to eq(original_expires_at.to_i)
+    end
+
+    it "clears needs_attention and grace period when the upstream PR is reopened" do
+      job.update!(
+        needs_attention: true,
+        needs_attention_reason: "upstream_pr_closed",
+        needs_attention_since: 2.days.ago,
+        grace_period_expires_at: 5.days.from_now
+      )
+      stub_pr(state: "open")
+      stub_reviews([])
+      stub_issue_comments([])
+      stub_review_comments([])
+      stub_check_runs("deadbeef0000000000000000000000000000beef", [])
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.needs_attention?).to be false
+      expect(job.reload.grace_period_expires_at).to be_nil
+    end
+  end
+
+  describe "CHANGES_REQUESTED reviews" do
+    it "sets needs_attention when reviewer's latest review is CHANGES_REQUESTED" do
+      stub_pr
+      stub_reviews([
+        { state: "CHANGES_REQUESTED", submitted_at: 1.hour.ago.iso8601, html_url: nil, user: { login: "reviewer1" } }
+      ])
+      stub_issue_comments([])
+      stub_review_comments([])
+      stub_check_runs("deadbeef0000000000000000000000000000beef", [])
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.needs_attention?).to be true
+      expect(job.reload.needs_attention_reason).to eq("upstream_pr_changes_requested")
+    end
+
+    it "clears needs_attention when CHANGES_REQUESTED is resolved by APPROVED" do
+      job.update!(
+        needs_attention: true,
+        needs_attention_reason: "upstream_pr_changes_requested",
+        needs_attention_since: 1.hour.ago
+      )
+      stub_pr
+      stub_reviews([
+        { state: "APPROVED", submitted_at: 30.minutes.ago.iso8601, html_url: "https://github.com/acme/widgets/pull/7#pullrequestreview-99", user: { login: "reviewer1" } }
+      ])
+      stub_issue_comments([])
+      stub_review_comments([])
+      stub_check_runs("deadbeef0000000000000000000000000000beef", [])
+
+      described_class.perform_now(job.id)
+
+      expect(job.reload.needs_attention?).to be false
+    end
+
+    it "blocks auto-merge (via landing queue) when CHANGES_REQUESTED is outstanding" do
+      repository.update!(auto_merge_enabled: true)
+      job.update!(needs_attention: true, needs_attention_reason: "upstream_pr_changes_requested")
+      job.mark_implemented! if job.may_mark_implemented?
+      job.save!
+      job.approve!(via: "operator") if job.may_approve?
+      job.save!
+
+      entry = LandingQueueProcessor.entries(Job.where(id: job.id)).first
+      expect(entry).to be_present
+      expect(entry.blocked_reason).to eq("review requested changes")
     end
   end
 end

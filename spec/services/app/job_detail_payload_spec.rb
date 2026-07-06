@@ -248,8 +248,8 @@ RSpec.describe App::JobDetailPayload do
 
       expect(payload_for(job)[:feedback_history]).to eq(
         [
-          { kind: "chat_feedback", body: "Old feedback", created_at: older.created_at.iso8601, state: "succeeded" },
-          { kind: "chat_feedback", body: "New feedback", created_at: newer.created_at.iso8601, state: "running" }
+          { kind: "chat_feedback", body: "Old feedback", created_at: older.created_at.iso8601, state: "succeeded", feedback_source: nil },
+          { kind: "chat_feedback", body: "New feedback", created_at: newer.created_at.iso8601, state: "running", feedback_source: nil }
         ]
       )
     end
@@ -275,7 +275,8 @@ RSpec.describe App::JobDetailPayload do
             kind: "pr_comment",
             body: "@alice: Please cover the blank state.\n\n@bob: This should mention review feedback.",
             created_at: workflow.created_at.iso8601,
-            state: "succeeded"
+            state: "succeeded",
+            feedback_source: nil
           }
         ]
       )
@@ -318,8 +319,8 @@ RSpec.describe App::JobDetailPayload do
 
       expect(payload_for(job)[:feedback_history]).to eq(
         [
-          { kind: "chat_feedback", body: "Chat feedback", created_at: chat_workflow.created_at.iso8601, state: "succeeded" },
-          { kind: "pr_comment", body: "@reviewer: PR feedback", created_at: pr_workflow.created_at.iso8601, state: "running" }
+          { kind: "chat_feedback", body: "Chat feedback", created_at: chat_workflow.created_at.iso8601, state: "succeeded", feedback_source: nil },
+          { kind: "pr_comment", body: "@reviewer: PR feedback", created_at: pr_workflow.created_at.iso8601, state: "running", feedback_source: nil }
         ]
       )
     end

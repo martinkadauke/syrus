@@ -7,7 +7,18 @@ export type JobRepository = {
   name: string
   default_branch: string
   review_policy: "self" | "two_person" | "final_say"
+  feedback_policy: "auto" | "confirm"
   repository_path: string
+}
+
+export type PendingFeedbackComment = {
+  id: number
+  github_handle: string | null
+  attributed_to: "member" | "external"
+  pr_type: string
+  comment_kind: string
+  body: string | null
+  comment_created_at: string | null
 }
 
 export type JobEpic = {
@@ -82,6 +93,10 @@ export type JobRecord = {
   updated_at: string | null
   started_at: string | null
   finished_at: string | null
+  needs_attention: boolean
+  needs_attention_reason: string | null
+  needs_attention_since: string | null
+  grace_period_expires_at: string | null
 }
 
 export type JobOwnerUser = {
@@ -387,6 +402,7 @@ export type JobPaths = {
   app_mark_valid_path: string
   app_attachments_path: string
   app_pin_path: string
+  app_pending_feedback_path?: string
 }
 
 export type JobDetailPayload = {
@@ -405,6 +421,7 @@ export type JobDetailPayload = {
   attachments: JobAttachment[]
   summary: JobSummary | null
   test_plan: JobTestPlan | null
+  pending_feedback?: PendingFeedbackComment[]
   landing_queue_entry: JobLandingQueueEntry | null
   workflows: JobWorkflow[]
   workflows_pagination: JobWorkflowsPagination
@@ -522,6 +539,23 @@ export function deleteJobCommand(path: string) {
 
 export async function submitJobFeedback(jobId: number, body: string): Promise<void> {
   await postJson(`/api/v1/app/jobs/${jobId}/chat_feedback`, { body })
+}
+
+export type PendingFeedbackActionPayload = {
+  message: string
+  workflow?: { id: number; state: string }
+}
+
+export function applyPendingFeedback(jobId: number, commentId: number) {
+  return postJson<PendingFeedbackActionPayload>(`/api/v1/app/jobs/${jobId}/pending_feedback/${commentId}/apply`)
+}
+
+export function ignorePendingFeedback(jobId: number, commentId: number) {
+  return postJson<JobDetailPayload>(`/api/v1/app/jobs/${jobId}/pending_feedback/${commentId}/ignore`)
+}
+
+export function replacePendingFeedback(jobId: number, commentId: number, body: string) {
+  return postJson<PendingFeedbackActionPayload>(`/api/v1/app/jobs/${jobId}/pending_feedback/${commentId}/replace`, { body })
 }
 
 export function createJobAttachments(path: string, values: { files: File[]; googleDocUrl: string }) {
