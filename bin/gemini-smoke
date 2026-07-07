@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Live smoke test for the Gemini video-analysis client — the one seam specs
+# can't cover (they stub the wire). Run with a real AI Studio key to verify
+# key auth, the Files API resumable upload, ACTIVE polling, and a structured
+# generateContent, end to end:
+#
+#   bin/gemini-smoke <API_KEY>                 # key + models.list only
+#   bin/gemini-smoke <API_KEY> recording.webm  # full pipeline with a video
+#
+# Inside a compose install:  docker compose exec web bin/gemini-smoke ...
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+  echo "usage: bin/gemini-smoke <API_KEY> [video-file]" >&2
+  exit 2
+fi
+
+GEMINI_SMOKE_KEY="$1" GEMINI_SMOKE_VIDEO="${2:-}" exec bin/rails runner - <<'RUBY'
+key = ENV.fetch("GEMINI_SMOKE_KEY")
+video = ENV["GEMINI_SMOKE_VIDEO"]
+
+result = CredentialProbe.gemini_key(key: key)
+puts "key check: #{result.ok ? 'OK' : 'FAILED'} — #{result.message}"
+exit(1) unless result.ok
+
+if video.to_s.empty?
+  puts "no video given — key-only smoke complete. Pass a webm/mp4 to test the full pipeline."
+  exit(0)
+end
+
+path = File.expand_path(video)
+abort("no such file: #{path}") unless File.exist?(path)
+mime = path.end_with?(".mp4") ? "video/mp4" : "video/webm"
+
+client = Gemini::Client.new(api_key: key)
+puts "uploading #{File.basename(path)} (#{File.size(path) / 1024 / 1024} MB)..."
+file = File.open(path, "rb") do |io|
+  client.upload_file(io: io, byte_size: File.size(path), content_type: mime, display_name: "syrus smoke test")
+end
+puts "uploaded: #{file['name']} — waiting for ACTIVE..."
+active = client.wait_until_active(file.fetch("name"))
+puts "ACTIVE. analyzing..."
+
+analysis = client.generate_content(
+  file_uri: active.fetch("uri"),
+  mime_type: mime,
+  prompt: Prompts::VideoWalkthroughAnalysis.new.to_s,
+  response_schema: Prompts::VideoWalkthroughAnalysis::RESPONSE_SCHEMA
+)
+puts "summary: #{analysis['summary']}"
+puts "issues (#{Array(analysis['issues']).size}):"
+Array(analysis["issues"]).each { |i| puts "  - [#{i['severity']}] #{i['title']} (#{i['timestamp']})" }
+puts "open questions: #{Array(analysis['open_questions']).size}"
+puts "SMOKE PASSED"
+RUBY
