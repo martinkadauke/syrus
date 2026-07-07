@@ -7,9 +7,14 @@ require "rails_helper"
 class FakeGeminiWalkthroughClient
   attr_reader :upload_calls, :generate_calls, :resolve_calls
 
-  def initialize(analysis: {}, raise_on_upload: nil)
+  # `raise_on_generate` raises the given error(s) on generate_content. Pass a
+  # single error to raise on every call, or an array to raise per-call in order
+  # (nil entries succeed) — this models the analysis job's full-res → low-res
+  # retry ladder, where the first call is RateLimited and the second succeeds.
+  def initialize(analysis: {}, raise_on_upload: nil, raise_on_generate: nil)
     @analysis = analysis
     @raise_on_upload = raise_on_upload
+    @raise_on_generate = raise_on_generate
     @upload_calls = []
     @generate_calls = []
     @resolve_calls = 0
@@ -34,11 +39,19 @@ class FakeGeminiWalkthroughClient
     { "name" => name, "uri" => "https://generativelanguage.googleapis.com/v1beta/files/fake-123", "state" => "ACTIVE" }
   end
 
-  def generate_content(file_uri:, mime_type:, prompt:, response_schema:, duration_seconds: nil)
+  def generate_content(file_uri:, mime_type:, prompt:, response_schema:, media_resolution: :default)
     @generate_calls << {
       file_uri: file_uri, mime_type: mime_type, prompt: prompt,
-      response_schema: response_schema, duration_seconds: duration_seconds
+      response_schema: response_schema, media_resolution: media_resolution
     }
+
+    if @raise_on_generate.is_a?(Array)
+      error = @raise_on_generate[@generate_calls.size - 1]
+      raise error if error
+    elsif @raise_on_generate
+      raise @raise_on_generate
+    end
+
     @analysis
   end
 end
@@ -121,7 +134,7 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect(fake_client.generate_calls.first).to include(
         file_uri: "https://generativelanguage.googleapis.com/v1beta/files/fake-123",
         mime_type: "video/webm",
-        duration_seconds: 95
+        media_resolution: :default
       )
 
       queued = chat.chat_queued_messages.order(:id).last
@@ -353,6 +366,117 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect(queued).to be_present
       expect(queued.text).to include("Save button does nothing")
       expect(queued.content["video_walkthrough_id"]).to eq(walkthrough.id)
+    end
+  end
+
+  # Graceful degradation: a long video at full resolution can blow the
+  # free-tier per-minute token window. The job retries ONCE at low resolution,
+  # but only for videos at/beyond the fallback threshold — a short video that
+  # gets rate-limited is a genuine transient blip and re-fails outright.
+  describe "rate-limit graceful degradation" do
+    context "short video (duration < threshold)" do
+      let(:fake_client) do
+        FakeGeminiWalkthroughClient.new(
+          analysis: analysis,
+          raise_on_generate: Gemini::Client::RateLimited.new("429")
+        )
+      end
+
+      it "fails with the quota message and never retries at low resolution" do
+        short = (Gemini::Client::LOW_RESOLUTION_FALLBACK_SECONDS - 1)
+        walkthrough = create_walkthrough(duration_seconds: short)
+
+        described_class.perform_now(walkthrough.id)
+
+        walkthrough.reload
+        expect(walkthrough).to be_failed
+        expect(walkthrough.error_message).to include("quota")
+        # Exactly one generate attempt — no low-res retry for short videos.
+        expect(fake_client.generate_calls.size).to eq(1)
+        expect(fake_client.generate_calls.first[:media_resolution]).to eq(:default)
+      end
+    end
+
+    context "long video (duration >= threshold)" do
+      let(:fake_client) do
+        FakeGeminiWalkthroughClient.new(
+          analysis: analysis,
+          # First (full-res) call is rate-limited; second (low-res) succeeds.
+          raise_on_generate: [ Gemini::Client::RateLimited.new("429"), nil ]
+        )
+      end
+
+      it "retries at low resolution and succeeds" do
+        long = Gemini::Client::LOW_RESOLUTION_FALLBACK_SECONDS
+        walkthrough = create_walkthrough(duration_seconds: long)
+
+        described_class.perform_now(walkthrough.id)
+
+        walkthrough.reload
+        expect(walkthrough).to be_analyzed
+        expect(walkthrough.analysis).to eq(analysis)
+        # Two attempts: the first at full res, the retry at low res.
+        expect(fake_client.generate_calls.size).to eq(2)
+        expect(fake_client.generate_calls[0][:media_resolution]).to eq(:default)
+        expect(fake_client.generate_calls[1][:media_resolution]).to eq(:low)
+      end
+    end
+  end
+
+  # Best-effort frame extraction: the job grabs one screen frame per flagged
+  # issue (at Gemini's timestamp) via Gemini::FrameExtractor and attaches them
+  # to the injected chat turn. Any extraction failure degrades to text-only.
+  describe "issue frame extraction" do
+    def frame(seconds:, label:, jpeg:)
+      Gemini::FrameExtractor::Frame.new(seconds: seconds, label: label, jpeg: jpeg)
+    end
+
+    it "attaches extracted frames and notes the screenshots in the turn text" do
+      allow(Gemini::FrameExtractor).to receive(:extract).and_return([
+        frame(seconds: 72, label: "Save button does nothing", jpeg: "jpeg-A"),
+        frame(seconds: 6, label: "Second thing", jpeg: "jpeg-B")
+      ])
+      walkthrough = create_walkthrough
+
+      described_class.perform_now(walkthrough.id)
+
+      queued = chat.chat_queued_messages.order(:id).last
+      attachments = queued.content["attachments"]
+      expect(attachments.size).to eq(2)
+      expect(attachments).to all(include("mime_type" => "image/jpeg"))
+      expect(attachments.map { |a| a["data"] }).to eq(
+        [ Base64.strict_encode64("jpeg-A"), Base64.strict_encode64("jpeg-B") ]
+      )
+      # illustrated: true → the screenshots note appears in the text.
+      expect(queued.text).to include("attached a screenshot for each issue")
+    end
+
+    it "ships text-only with no attachments note when extraction returns []" do
+      # e.g. no ffmpeg in dev — FrameExtractor.extract returns [].
+      allow(Gemini::FrameExtractor).to receive(:extract).and_return([])
+      walkthrough = create_walkthrough
+
+      described_class.perform_now(walkthrough.id)
+
+      queued = chat.chat_queued_messages.order(:id).last
+      expect(queued.content).not_to have_key("attachments")
+      expect(queued.text).not_to include("attached a screenshot for each issue")
+    end
+
+    it "still delivers text-only (analyzed, not failed) when extraction raises" do
+      allow(Gemini::FrameExtractor).to receive(:extract).and_raise(RuntimeError.new("ffmpeg exploded"))
+      walkthrough = create_walkthrough
+
+      expect { described_class.perform_now(walkthrough.id) }.not_to raise_error
+
+      walkthrough.reload
+      expect(walkthrough).to be_analyzed
+      expect(walkthrough.error_message).to be_nil
+
+      queued = chat.chat_queued_messages.order(:id).last
+      expect(queued).to be_present
+      expect(queued.content).not_to have_key("attachments")
+      expect(queued.text).to include("Save button does nothing")
     end
   end
 

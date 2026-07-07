@@ -1,3 +1,5 @@
+require "base64"
+
 # The video→Epic pipeline's middle: take an uploaded ChatVideoWalkthrough,
 # run it through Gemini (Files API upload → poll ACTIVE → one structured
 # generateContent), persist the analysis, and inject it into the chat as a
@@ -83,12 +85,30 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
     active = client.wait_until_active(file.fetch("name"))
     walkthrough.update!(gemini_file_uri: active["uri"], gemini_file_active_at: Time.current)
 
+    generate(client, walkthrough, active.fetch("uri"), media_resolution: :default)
+  rescue Gemini::Client::RateLimited
+    # Graceful degradation: a long video at full resolution can blow the
+    # free-tier per-minute token window. Rather than fail outright, retry
+    # once at LOW resolution — worse small-text fidelity, but a working
+    # analysis instead of none. Short videos never hit this, and a genuine
+    # transient quota blip just re-fails (surfaced with the retry message).
+    # Only retry the GENERATE phase at low res — and only when the upload
+    # actually completed (gemini_file_uri persisted). A rate limit during
+    # upload/poll has no file to re-generate against, so it just propagates.
+    raise unless walkthrough.duration_seconds.to_i >= Gemini::Client::LOW_RESOLUTION_FALLBACK_SECONDS
+    raise if walkthrough.gemini_file_uri.blank?
+
+    Rails.logger.info("[VideoWalkthroughAnalysisJob] full-res rate-limited on a #{walkthrough.duration_seconds}s video; retrying at low resolution")
+    generate(client, walkthrough, walkthrough.gemini_file_uri, media_resolution: :low)
+  end
+
+  def generate(client, walkthrough, file_uri, media_resolution:)
     client.generate_content(
-      file_uri: active.fetch("uri"),
+      file_uri: file_uri,
       mime_type: walkthrough.content_type,
       prompt: Prompts::VideoWalkthroughAnalysis.new.to_s,
       response_schema: Prompts::VideoWalkthroughAnalysis::RESPONSE_SCHEMA,
-      duration_seconds: walkthrough.duration_seconds
+      media_resolution: media_resolution
     )
   end
 
@@ -113,8 +133,13 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
   # its turn never reached the chat; retry re-delivers without re-analyzing.
   def deliver_chat_turn(walkthrough)
     chat = walkthrough.chat_session
-    text = Prompts::VideoWalkthroughContext.new(walkthrough: walkthrough, user_note: walkthrough.note).to_s
-    chat.queued_messages.create!(content: { "text" => text, "video_walkthrough_id" => walkthrough.id })
+    attachments = extract_issue_frames(walkthrough)
+    text = Prompts::VideoWalkthroughContext.new(
+      walkthrough: walkthrough, user_note: walkthrough.note, illustrated: attachments.any?
+    ).to_s
+    content = { "text" => text, "video_walkthrough_id" => walkthrough.id }
+    content["attachments"] = attachments if attachments.any?
+    chat.queued_messages.create!(content: content)
     # Delivers immediately when the agent is idle; otherwise ChatTurnJob's
     # turn-end promotion picks it up — either way, no turn collision.
     ChatQueuedMessagePromoter.deliver_one_if_idle!(chat)
@@ -126,6 +151,37 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
       "The analysis succeeded but posting it to the chat failed. Retry to post it (the video won't be re-analyzed)."
     )
     false
+  end
+
+  # Grab one screen frame per flagged issue (at Gemini's timestamp) so the
+  # chat agent SEES each problem and the UI shows it. Best-effort: any failure
+  # (no ffmpeg in dev, pruned blob, bad timestamp) yields no attachments and
+  # the turn ships text-only. Frames become base64 image attachments, the same
+  # shape chat already uses for pasted screenshots.
+  def extract_issue_frames(walkthrough)
+    return [] unless walkthrough.file.attached?
+
+    timestamps = walkthrough.analysis_issues.filter_map do |issue|
+      seconds = Gemini::FrameExtractor.parse_timestamp(issue["timestamp"])
+      next unless seconds
+
+      { seconds: seconds, label: issue["title"].to_s }
+    end
+    return [] if timestamps.empty?
+
+    frames = walkthrough.file.open do |tempfile|
+      Gemini::FrameExtractor.extract(video_path: tempfile.path, timestamps: timestamps)
+    end
+
+    frames.map do |frame|
+      clock = format("%d:%02d", frame.seconds / 60, frame.seconds % 60)
+      { "name" => "walkthrough #{clock} — #{frame.label}".strip, "mime_type" => "image/jpeg",
+        "data" => Base64.strict_encode64(frame.jpeg) }
+    end
+  rescue StandardError => error
+    # Frames are a bonus — never let extraction break delivery of the analysis.
+    Rails.logger.warn("[VideoWalkthroughAnalysisJob] frame extraction failed: #{error.class}: #{error.message}")
+    []
   end
 
   def transition!(walkthrough, state)

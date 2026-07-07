@@ -160,6 +160,10 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
               <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">{t('configure_agent.soon')}</span>
             </button>
           </div>
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Gemini isn&apos;t a coding agent — it turns screen-recording walkthroughs into Epics.
+            It&apos;s optional; set it up under Credentials, or the first time you attach a video to a chat.
+          </p>
 
           {connected ? (
             <>

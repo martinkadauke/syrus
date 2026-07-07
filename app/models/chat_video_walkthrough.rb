@@ -34,7 +34,10 @@ class ChatVideoWalkthrough < ApplicationRecord
   validates :duration_seconds, numericality: {
     only_integer: true, greater_than: 0, less_than_or_equal_to: MAX_DURATION_SECONDS
   }, allow_nil: true
-  validate :file_attached
+  # Only required at creation — the prune job purges the blob from settled
+  # rows after a retention window, and re-delivery retries (analysis already
+  # present) don't need the video, so a later update must not demand it.
+  validate :file_attached, on: :create
 
   scope :newest_first, -> { order(created_at: :desc, id: :desc) }
 

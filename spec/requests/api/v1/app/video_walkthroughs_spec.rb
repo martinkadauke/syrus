@@ -161,6 +161,46 @@ RSpec.describe "API: /api/v1/app video walkthroughs", type: :request do
       expect(response).to have_http_status(:not_found)
       expect(walkthrough.reload.state).to eq("failed")
     end
+
+    # The blob is the only thing enabling re-analysis; once the prune job
+    # purges it AND there's no cached analysis, retry has nothing to work with.
+    it "422s with video_expired when the analysis is blank and the blob is gone" do
+      walkthrough = create_walkthrough(chat: chat, state: "failed", error_message: "quota busy")
+      walkthrough.file.purge
+      expect(walkthrough.reload.file).not_to be_attached
+      expect(walkthrough.analysis).to be_blank
+      sign_in_as(user)
+
+      post "/api/v1/app/video_walkthroughs/#{walkthrough.id}/retry"
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(parse_body.dig("error", "code")).to eq("video_expired")
+      expect(walkthrough.reload.state).to eq("failed")
+      expect(ActiveJob::Base.queue_adapter.enqueued_jobs.map { |j| j[:job] }).not_to include(VideoWalkthroughAnalysisJob)
+    end
+
+    # Re-delivery path: the earlier failure was in chat delivery, so the
+    # analysis is already cached. Retry doesn't need the video and is allowed
+    # even after the blob was pruned (the job skips Gemini and re-delivers).
+    it "allows retry (200) when the analysis is present even though the blob is gone" do
+      walkthrough = create_walkthrough(
+        chat: chat, state: "failed", error_message: "posting failed",
+        analysis: { "summary" => "cached", "issues" => [] }
+      )
+      walkthrough.file.purge
+      expect(walkthrough.reload.file).not_to be_attached
+      expect(walkthrough.analysis).to be_present
+      sign_in_as(user)
+
+      post "/api/v1/app/video_walkthroughs/#{walkthrough.id}/retry"
+
+      expect(response).to have_http_status(:ok)
+      walkthrough.reload
+      expect(walkthrough.state).to eq("uploaded")
+      expect(walkthrough.error_message).to be_nil
+      enqueued = ActiveJob::Base.queue_adapter.enqueued_jobs.select { |j| j[:job] == VideoWalkthroughAnalysisJob }
+      expect(enqueued.size).to eq(1)
+    end
   end
 
   describe "POST /api/v1/app/credentials/test_gemini_key" do

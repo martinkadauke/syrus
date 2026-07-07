@@ -124,7 +124,9 @@ file straight into the composer. Hitting Send uploads the video and sends it
 to **Google Gemini**, the model Syrus uses for video understanding; your
 typed message rides along as a note. Gemini extracts every issue shown or
 narrated — with timestamps, severities, and the app surface involved — and
-the analysis lands in the chat as a structured summary. From there the chat
+the analysis lands in the chat as a structured summary — with a **screenshot
+of each issue**, captured from the video at the moment Gemini flagged it, so
+both you and the chat agent can see exactly what happened. From there the chat
 agent takes over: it asks brief follow-up questions when the video left
 something ambiguous, and otherwise proposes an Epic that groups the issues
 into well-scoped Jobs through the normal proposal flow.
@@ -135,7 +137,9 @@ and stops gracefully at the limit) and uploads at **500 MB**. Both webm
 nothing is transcoded. Analysis requires a **Gemini API key**: free from
 [aistudio.google.com/apikey](https://aistudio.google.com/apikey), no credit
 card. The first time you attach a video, Syrus walks you through the
-one-minute setup; the key also lives under Credentials. On the free tier,
+one-minute setup; the key also lives under Credentials. Uploaded videos are
+kept for seven days (so a failed analysis can be retried) and then removed;
+the analysis and its screenshots stay in the chat. On the free tier,
 Google's per-minute token quotas occasionally push back on rapid-fire
 analyses — Syrus surfaces this with a retry, and enabling billing on the AI
 Studio project removes the friction (a 10-minute video costs on the order

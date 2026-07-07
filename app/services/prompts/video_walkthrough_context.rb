@@ -9,9 +9,10 @@ module Prompts
   class VideoWalkthroughContext
     SEVERITY_ORDER = %w[blocker major minor polish].freeze
 
-    def initialize(walkthrough:, user_note: nil)
+    def initialize(walkthrough:, user_note: nil, illustrated: false)
       @walkthrough = walkthrough
       @user_note = user_note
+      @illustrated = illustrated
     end
 
     def to_s
@@ -20,6 +21,7 @@ module Prompts
       parts << "The user's note with the video: #{@user_note}" if @user_note.present?
       parts << "## Session summary\n#{@walkthrough.analysis_summary}"
       parts << issues_section
+      parts << screenshots_note if @illustrated
       parts << positive_notes_section if positive_notes.any?
       parts << open_questions_section if @walkthrough.analysis_open_questions.any?
       parts << closing_instruction
@@ -50,6 +52,15 @@ module Prompts
         "- **#{issue['title']}** (#{meta})\n  #{issue['detail']}"
       end
       "## Issues found (#{issues.size})\n#{lines.join("\n")}"
+    end
+
+    def screenshots_note
+      <<~TEXT.strip
+        I've attached a screenshot for each issue above, captured from the
+        video at the issue's timestamp (each is named "walkthrough <time> —
+        <issue>"). Use them to see exactly what I saw, and reference the
+        relevant screenshot when you scope the fix.
+      TEXT
     end
 
     def positive_notes

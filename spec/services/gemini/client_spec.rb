@@ -203,13 +203,13 @@ RSpec.describe Gemini::Client do
       )
     end
 
-    def generate(duration_seconds: nil)
+    def generate(media_resolution: :default)
       client.generate_content(
         file_uri: "https://generativelanguage.googleapis.com/v1beta/files/abc",
         mime_type: "video/webm",
         prompt: "Analyze the walkthrough.",
         response_schema: response_schema,
-        duration_seconds: duration_seconds
+        media_resolution: media_resolution
       )
     end
 
@@ -217,7 +217,7 @@ RSpec.describe Gemini::Client do
       analysis = { "summary" => "Checkout works, totals do not." }
       stub_generate(text: analysis.to_json)
 
-      expect(generate(duration_seconds: 60)).to eq(analysis)
+      expect(generate).to eq(analysis)
 
       expect(WebMock).to(have_requested(:post, endpoint).with do |req|
         body = JSON.parse(req.body)
@@ -232,20 +232,39 @@ RSpec.describe Gemini::Client do
       end)
     end
 
-    it "requests low media resolution for videos at or beyond 12 minutes" do
+    # Resolution-quality fix: the caller drives media resolution explicitly
+    # (:low is the graceful-degradation fallback, not a duration-derived
+    # decision inside the client). :low adds MEDIA_RESOLUTION_LOW; :default
+    # (or omitted) leaves it off so full-res reads small on-screen text.
+    it "adds MEDIA_RESOLUTION_LOW when media_resolution is :low" do
       stub_generate(text: { "summary" => "long one" }.to_json)
 
-      generate(duration_seconds: 12 * 60)
+      generate(media_resolution: :low)
 
       expect(WebMock).to(have_requested(:post, endpoint).with do |req|
         JSON.parse(req.body).dig("generationConfig", "mediaResolution") == "MEDIA_RESOLUTION_LOW"
       end)
     end
 
-    it "omits mediaResolution for videos under 12 minutes" do
+    it "omits mediaResolution when media_resolution is :default" do
       stub_generate(text: { "summary" => "short one" }.to_json)
 
-      generate(duration_seconds: (12 * 60) - 1)
+      generate(media_resolution: :default)
+
+      expect(WebMock).to(have_requested(:post, endpoint).with do |req|
+        !JSON.parse(req.body).fetch("generationConfig").key?("mediaResolution")
+      end)
+    end
+
+    it "omits mediaResolution when media_resolution is omitted (defaults to full)" do
+      stub_generate(text: { "summary" => "default one" }.to_json)
+
+      client.generate_content(
+        file_uri: "https://generativelanguage.googleapis.com/v1beta/files/abc",
+        mime_type: "video/webm",
+        prompt: "Analyze the walkthrough.",
+        response_schema: response_schema
+      )
 
       expect(WebMock).to(have_requested(:post, endpoint).with do |req|
         !JSON.parse(req.body).fetch("generationConfig").key?("mediaResolution")

@@ -59,6 +59,16 @@ module Api
             return
           end
 
+          # Re-analysis needs the video; re-delivery (analysis already present)
+          # doesn't. If the blob was pruned and we'd need to re-analyze, say so
+          # cleanly instead of failing mid-job.
+          if walkthrough.analysis.blank? && !walkthrough.file.attached?
+            render_error("video_expired",
+                         "This walkthrough's video has been cleaned up — record a new one to analyze it.",
+                         status: :unprocessable_content)
+            return
+          end
+
           walkthrough.update!(state: "uploaded", error_message: nil)
           VideoWalkthroughAnalysisJob.perform_later(walkthrough.id)
           render json: { video_walkthrough: walkthrough_json(walkthrough) }

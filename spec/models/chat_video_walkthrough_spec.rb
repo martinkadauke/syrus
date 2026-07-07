@@ -59,6 +59,20 @@ RSpec.describe ChatVideoWalkthrough do
     expect(walkthrough.errors[:file]).to include("must be attached")
   end
 
+  # The file_attached validation is `on: :create` only: the prune job purges
+  # the blob from settled rows, and a re-delivery retry (analysis already
+  # present) doesn't need the video — so a later update on a blob-less row
+  # must not be blocked by the attachment requirement.
+  it "allows updating a persisted row after its blob has been purged" do
+    walkthrough = build_walkthrough(state: "analyzed", analysis: { "summary" => "s" })
+    walkthrough.save!
+    walkthrough.file.purge
+    expect(walkthrough.reload.file).not_to be_attached
+
+    expect { walkthrough.update!(state: "uploaded", error_message: nil) }.not_to raise_error
+    expect(walkthrough.reload.state).to eq("uploaded")
+  end
+
   it "rejects states outside the lifecycle" do
     walkthrough = build_walkthrough(state: "bogus")
 

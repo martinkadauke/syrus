@@ -16,11 +16,12 @@ module Gemini
     API_VERSION = "v1beta".freeze
     # Flash tier: free-tier eligible, native video+audio, structured outputs.
     DEFAULT_MODEL = "gemini-3.5-flash".freeze
-    # Videos this long or longer analyze at low media resolution (~100 vs
-    # ~300 tokens/sec) so a 15-minute walkthrough stays inside free-tier
-    # per-minute token windows. Screen content at Gemini's 1 fps sampling
-    # survives low resolution fine.
-    LOW_RESOLUTION_THRESHOLD_SECONDS = 12 * 60
+    # A long video at full resolution can exceed the free-tier per-minute
+    # token window (~300 tok/s × 900s ≈ 270K vs ~250K TPM). Past this length,
+    # the analysis job retries at LOW resolution only if the full-res attempt
+    # is actually rate-limited — full res stays the default because LOW
+    # measurably garbles small on-screen text and numbers.
+    LOW_RESOLUTION_FALLBACK_SECONDS = 12 * 60
 
     Error = Class.new(StandardError)
     # 400/401/403 — key invalid, revoked, or project-restricted.
@@ -127,10 +128,18 @@ module Gemini
     end
 
     # One multimodal call: video (by Files API URI) + instruction, constrained
-    # to a JSON responseSchema. media_resolution drops to LOW for long videos
-    # (free-tier token-window fit + 3x cheaper, negligible quality loss for
-    # 1fps-sampled screen content).
-    def generate_content(file_uri:, mime_type:, prompt:, response_schema:, duration_seconds: nil)
+    # to a JSON responseSchema. `media_resolution` is `:default` (full — the
+    # right choice for reading a screen; LOW measurably garbles small text and
+    # numbers) or `:low` (a graceful-degradation fallback the caller uses only
+    # when a long video actually blows the free-tier token window — see the
+    # analysis job's retry ladder).
+    def generate_content(file_uri:, mime_type:, prompt:, response_schema:, media_resolution: :default)
+      generation_config = {
+        responseMimeType: "application/json",
+        responseSchema: response_schema
+      }
+      generation_config[:mediaResolution] = "MEDIA_RESOLUTION_LOW" if media_resolution == :low
+
       body = {
         contents: [
           {
@@ -141,10 +150,7 @@ module Gemini
             ]
           }
         ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: response_schema
-        }.merge(media_resolution_config(duration_seconds))
+        generationConfig: generation_config
       }
 
       post = Net::HTTP::Post.new(uri_for("/#{API_VERSION}/models/#{@model}:generateContent"))
@@ -170,12 +176,6 @@ module Gemini
     end
 
     private
-
-    def media_resolution_config(duration_seconds)
-      return {} if duration_seconds.nil? || duration_seconds < LOW_RESOLUTION_THRESHOLD_SECONDS
-
-      { mediaResolution: "MEDIA_RESOLUTION_LOW" }
-    end
 
     def uri_for(path)
       URI.parse("#{BASE_URL}#{path}")

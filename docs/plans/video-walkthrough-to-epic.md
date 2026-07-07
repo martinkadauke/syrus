@@ -65,7 +65,8 @@ Progress states surfaced in the chat UI on the attachment card:
   later (not v1).
 - **Desktop**: no display-media handler exists yet; windows use the default
   session. Handler + macOS TCC detection to add in `main.ts`.
-- **No ffmpeg in the backend image** — duration gating happens client-side
+- **ffmpeg IS in the runtime image** (added for frame extraction) — but
+  duration gating still happens client-side
   (`HTMLVideoElement.duration` for dragged files; the recorder's own clock
   while recording). Server re-validates only byte size. Gemini decodes video
   itself.
