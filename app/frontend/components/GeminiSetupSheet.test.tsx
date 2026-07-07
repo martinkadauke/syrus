@@ -133,4 +133,20 @@ describe("GeminiSetupSheet", () => {
     expect(updateCredentials).not.toHaveBeenCalled()
     expect(onConfigured).not.toHaveBeenCalled()
   })
+
+  it("validates immediately on paste, mirroring the Claude connector (no button click)", async () => {
+    vi.mocked(testGeminiKey).mockResolvedValue({
+      credential_test: { credential: "gemini_api_key", ok: true, message: "Gemini key works.", details: { model: "gemini-3.5-flash" } as never }
+    })
+    vi.mocked(updateCredentials).mockResolvedValue({} as never)
+    const onConfigured = vi.fn()
+    renderSheet({ onConfigured })
+
+    // Paste directly, without clicking Validate & save.
+    const input = screen.getByPlaceholderText(labels.keyPlaceholder)
+    fireEvent.paste(input, { clipboardData: { getData: () => VALID_KEY } })
+
+    await waitFor(() => expect(testGeminiKey).toHaveBeenCalledWith(VALID_KEY), STAGE_TIMEOUT)
+    await waitFor(() => expect(onConfigured).toHaveBeenCalledTimes(1), STAGE_TIMEOUT)
+  })
 })

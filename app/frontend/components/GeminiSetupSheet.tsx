@@ -79,8 +79,9 @@ export function GeminiSetupSheet({
     setStages((current) => current.map((stage) => (stage.key === stageKey ? { ...stage, status, detail } : stage)))
   }
 
-  async function validateAndSave() {
+  async function validateAndSave(explicitKey?: string) {
     if (busy) return
+    const candidate = (explicitKey ?? key).trim()
     setError(null)
     setSaved(false)
     setStages(INITIAL_STAGES.map((stage) => ({ ...stage })))
@@ -91,7 +92,7 @@ export function GeminiSetupSheet({
       // pause keeps the cascade legible (each check visibly completes).
       setStage("format", "running")
       await pause(350)
-      if (!looksLikeGeminiKey(key)) {
+      if (!looksLikeGeminiKey(candidate)) {
         setStage("format", "failed")
         setError(labels.keyHelp)
         return
@@ -101,7 +102,7 @@ export function GeminiSetupSheet({
       // Stage 2 + 3 ride the same free models.list probe: reachability/auth,
       // then whether a video-capable flash model is actually available.
       setStage("reach", "running")
-      const payload = await testGeminiKey(key.trim())
+      const payload = await testGeminiKey(candidate)
       const result = payload.credential_test
       if (!result.ok) {
         const videoProblem = /video-capable/i.test(result.message || "")
@@ -121,7 +122,7 @@ export function GeminiSetupSheet({
       const model = (result.details as { model?: string } | undefined)?.model
       setStage("video", "ok", model)
 
-      await updateCredentials({ gemini_api_key: key.trim() } as never)
+      await updateCredentials({ gemini_api_key: candidate } as never)
       await queryClient.invalidateQueries({ queryKey: ["credentials"] })
       await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
       setSaved(true)
@@ -183,6 +184,16 @@ export function GeminiSetupSheet({
             className="w-full rounded border border-gray-300 px-3 py-2 font-mono text-sm focus:border-terracotta-500 focus:ring-terracotta-500 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
             disabled={busy || saved}
             onChange={(event) => setKey(event.target.value)}
+            // Paste-to-validate, mirroring the Claude OAuth connector: pasting
+            // the key kicks off validation immediately so the user doesn't hunt
+            // for a button after switching back from AI Studio.
+            onPaste={(event) => {
+              const pasted = event.clipboardData.getData("text").trim()
+              if (pasted.length === 0 || busy || saved) return
+              event.preventDefault()
+              setKey(pasted)
+              setTimeout(() => void validateAndSave(pasted), 0)
+            }}
             placeholder={labels.keyPlaceholder}
             ref={inputRef}
             spellCheck={false}
