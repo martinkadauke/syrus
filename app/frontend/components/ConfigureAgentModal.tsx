@@ -4,8 +4,27 @@ import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTe
 import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
 import { useT } from "../hooks/useT"
+import { GeminiSetupSheet } from "./GeminiSetupSheet"
 
-type AgentTab = "claude" | "codex"
+type AgentTab = "claude" | "gemini"
+
+// Copied from the Chat.tsx caller so the nested sheet reads identically.
+// ConfigureAgentModal is hardcoded English (no useT), so we inline the same
+// strings the i18n `gemini_setup_*` / `gemini_stage_*` keys resolve to in `en`.
+const GEMINI_SHEET_LABELS = {
+  title: "Set up Gemini for video analysis",
+  intro:
+    "Walkthrough videos are analyzed by Google's Gemini — the model that understands video best today. You'll need a free Gemini API key (no credit card required).",
+  getKey: "Open Google AI Studio → sign in → Create API key",
+  keyPlaceholder: "Paste your Gemini API key here",
+  validateAndSave: "Validate & save",
+  validating: "Validating…",
+  stageFormat: "Key looks well-formed",
+  stageReach: "Google accepts the key",
+  stageVideo: "Video-capable model available",
+  saved: "Gemini is set up — back to your walkthrough.",
+  keyHelp: "That doesn't look like an API key — copy the whole value from aistudio.google.com/apikey."
+}
 
 type Preflight =
   | { status: "checking" }
@@ -23,6 +42,8 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
   const [exchanging, setExchanging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState<string | null>(null)
+  const [geminiSheetOpen, setGeminiSheetOpen] = useState(false)
+  const [geminiConfigured, setGeminiConfigured] = useState(false)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -148,10 +169,9 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
               <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">{t('configure_agent.soon')}</span>
             </button>
             <button
-              aria-disabled="true"
-              aria-selected={false}
-              className="cursor-not-allowed px-4 py-2 text-sm font-medium text-gray-400 dark:text-gray-600"
-              disabled
+              aria-selected={tab === "gemini"}
+              className={tabClass(tab === "gemini")}
+              onClick={() => setTab("gemini")}
               role="tab"
               title={t('configure_agent.gemini_title')}
               type="button"
@@ -160,12 +180,46 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
               <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">{t('configure_agent.soon')}</span>
             </button>
           </div>
-          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            Gemini isn&apos;t a coding agent — it turns screen-recording walkthroughs into Epics.
-            It&apos;s optional; set it up under Credentials, or the first time you attach a video to a chat.
-          </p>
 
-          {connected ? (
+          {tab === "gemini" ? (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Gemini turns screen-recording walkthroughs into Epics — optional, add it now or later.
+                It isn&apos;t the coding agent; your Claude (or Codex) agent still does the work.
+              </p>
+              {geminiConfigured ? (
+                <>
+                  <StatusBox tone="ok">Gemini is set up — walkthrough videos will be analyzed automatically.</StatusBox>
+                  <div className="flex justify-end">
+                    <button
+                      className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      onClick={onClose}
+                      type="button"
+                    >
+                      Done
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    onClick={onClose}
+                    type="button"
+                  >
+                    Skip for now
+                  </button>
+                  <button
+                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    onClick={() => setGeminiSheetOpen(true)}
+                    type="button"
+                  >
+                    Add Gemini API key
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : connected ? (
             <>
               <StatusBox tone="ok">{connected}</StatusBox>
               <div className="flex justify-end">
@@ -265,6 +319,22 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
           )}
         </div>
       </section>
+      {geminiSheetOpen ? (
+        // Stop backdrop clicks in the nested sheet from bubbling to this
+        // modal's own onClose — otherwise dismissing the sheet also closes
+        // the whole Configure-agent modal.
+        <div onClick={(event) => event.stopPropagation()}>
+          <GeminiSetupSheet
+            labels={GEMINI_SHEET_LABELS}
+            onClose={() => setGeminiSheetOpen(false)}
+            onConfigured={() => {
+              setGeminiSheetOpen(false)
+              setGeminiConfigured(true)
+              onSaved?.()
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

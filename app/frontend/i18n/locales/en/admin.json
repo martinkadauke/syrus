@@ -135,6 +135,10 @@
     "saving": "Saving...",
     "signups_open_label": "Open signups",
     "signups_open_help": "When enabled, anyone can create an account at /users/new. When disabled, signup is invitation-only, but invitation links still work either way.",
+    "video_retention_label": "Walkthrough video retention (days)",
+    "video_retention_help": "How long uploaded walkthrough videos are kept before removal. The analysis and its screenshots always stay in the chat.",
+    "video_budget_label": "Walkthrough video storage budget (MB)",
+    "video_budget_help": "Instance-wide cap on total stored walkthrough videos. When exceeded, the oldest videos are removed first. Set 0 for no cap.",
     "settings_updated": "Settings updated."
   },
   "github_app": {

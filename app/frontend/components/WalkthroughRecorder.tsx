@@ -204,6 +204,60 @@ export function useWalkthroughRecorder({ onFinished }: { onFinished: (result: Re
   return { state, elapsed, start, stop }
 }
 
+// Analysis can run for minutes; a single static line ("Gemini is watching…")
+// reads as frozen. This cycles through a handful of reassuring hints so the
+// wait feels alive. Kept pure — callers pass already-translated strings, and
+// the interval is injectable for tests. Honors prefers-reduced-motion by
+// holding on the first message instead of animating.
+export const ANALYZING_HINT_INTERVAL_MS = 4_500
+
+function prefersReducedMotion(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  )
+}
+
+export function useRotatingMessage(
+  messages: string[],
+  intervalMs: number = ANALYZING_HINT_INTERVAL_MS
+): string {
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    // Nothing to rotate through (0 or 1 message), or the user asked for less
+    // motion — hold on the first message.
+    if (messages.length <= 1 || prefersReducedMotion()) return
+    const id = setInterval(() => {
+      setIndex((current) => (current + 1) % messages.length)
+    }, intervalMs)
+    return () => clearInterval(id)
+  }, [messages.length, intervalMs])
+
+  // If the message list shrank between renders, don't index past its end.
+  return messages[index % messages.length] ?? messages[0] ?? ""
+}
+
+// The rotating "analyzing" line shown on the walkthrough chip. Keeps the
+// caller's spinner as a sibling; this renders text only.
+export function AnalyzingHint({
+  messages,
+  intervalMs,
+  className
+}: {
+  messages: string[]
+  intervalMs?: number
+  className?: string
+}) {
+  const message = useRotatingMessage(messages, intervalMs)
+  return (
+    <span aria-live="polite" className={className} data-testid="walkthrough-analyzing-hint">
+      {message}
+    </span>
+  )
+}
+
 // The floating HUD while recording: pulsing dot, elapsed clock, remaining
 // countdown that turns amber in the final minute, stop + discard controls.
 export function WalkthroughRecorderHUD({
@@ -217,7 +271,7 @@ export function WalkthroughRecorderHUD({
   micLive: boolean
   onStop: () => void
   onDiscard: () => void
-  labels: { recording: string; noMic: string; stop: string; discard: string; remaining: (clock: string) => string }
+  labels: { recording: string; noMic: string; stop: string; discard: string; windowHint?: string; remaining: (clock: string) => string }
 }) {
   const remaining = MAX_WALKTHROUGH_DURATION_SECONDS - elapsed
   const finalMinute = elapsed >= RECORDER_WARNING_SECONDS
@@ -244,6 +298,11 @@ export function WalkthroughRecorderHUD({
       {!micLive ? (
         <span className="text-xs text-amber-600 dark:text-amber-400" title={labels.noMic}>
           {labels.noMic}
+        </span>
+      ) : null}
+      {labels.windowHint ? (
+        <span className="hidden text-xs text-gray-400 sm:inline dark:text-gray-500" data-testid="walkthrough-recorder-window-hint">
+          {labels.windowHint}
         </span>
       ) : null}
       <button

@@ -1,10 +1,20 @@
 require "base64"
+require "tempfile"
 
 # The video→Epic pipeline's middle: take an uploaded ChatVideoWalkthrough,
 # run it through Gemini (Files API upload → poll ACTIVE → one structured
 # generateContent), persist the analysis, and inject it into the chat as a
 # queued user-role turn so the chat agent — the thing that already knows how
 # to ask follow-ups and propose Epics — takes over.
+#
+# Media pipeline: the uploaded video is downloaded once to a local file used
+# for the whole flow — Gemini analysis, then CRISP screenshots from that
+# source, then a transcode to a compact 720p mp4 that REPLACES the stored blob.
+# So the durable artifact is small (empirically, Gemini analyzes the 720p mp4
+# as well as the original — the narration carries the context), while the
+# screenshots came from the full-resolution source. Every media step is
+# best-effort: a transcode failure keeps the original; a frame failure ships
+# the turn text-only.
 #
 # Runs on the dedicated low-concurrency `videos` queue (config/queue.yml):
 # a single analysis can pin a thread for many minutes (500MB streamed upload,
@@ -49,7 +59,7 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
       # the same VIDEO_MODELS list validation used, so a key that validated
       # green against a fallback model analyzes with it instead of 404ing.
       client.resolve_video_model!
-      walkthrough.update!(analysis: analyze(client, walkthrough))
+      process_video(client, walkthrough)
     end
 
     # Deliver the chat turn BEFORE broadcasting success. If delivery raises,
@@ -80,8 +90,33 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
 
   private
 
-  def analyze(client, walkthrough)
-    file = upload_to_gemini(client, walkthrough)
+  # Download the video ONCE to a local file and run the whole media flow off
+  # it: Gemini analysis, crisp screenshots from that source, then a transcode
+  # to a compact mp4 that replaces the stored blob. @screenshot_attachments is
+  # captured here (from the full-res source) for deliver_chat_turn.
+  def process_video(client, walkthrough)
+    with_local_video(walkthrough) do |video_path|
+      walkthrough.update!(analysis: analyze(client, walkthrough, video_path))
+      @screenshot_attachments = build_frame_attachments(walkthrough, video_path)
+      compact_for_storage(walkthrough, video_path)
+    end
+  end
+
+  # Yield a local path to the attachment's bytes, cleaned up afterward. The
+  # copy is independent of the Active Storage record, so swapping the stored
+  # blob (transcode) mid-flow is safe.
+  def with_local_video(walkthrough)
+    ext = File.extname(walkthrough.file.filename.to_s).presence || ".webm"
+    tmp = Tempfile.new(["walkthrough", ext], binmode: true)
+    walkthrough.file.download { |chunk| tmp.write(chunk) }
+    tmp.flush
+    yield tmp.path
+  ensure
+    tmp&.close!
+  end
+
+  def analyze(client, walkthrough, video_path)
+    file = upload_to_gemini(client, walkthrough, video_path)
     active = client.wait_until_active(file.fetch("name"))
     walkthrough.update!(gemini_file_uri: active["uri"], gemini_file_active_at: Time.current)
 
@@ -112,18 +147,40 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
     )
   end
 
-  def upload_to_gemini(client, walkthrough)
-    # Stream the blob straight from Active Storage to Gemini without loading
-    # 100-500MB into memory: open a tempfile-backed download and hand the IO
-    # to the resumable upload.
-    walkthrough.file.open do |tempfile|
+  def upload_to_gemini(client, walkthrough, video_path)
+    # Stream the local copy to Gemini's resumable upload — the video is
+    # already compressed (VP9 webm from the recorder, or the user's mp4), and
+    # testing confirmed Gemini analyzes it as well as any transcode, so it
+    # goes as-is with no pre-upload processing delay.
+    File.open(video_path, "rb") do |io|
       client.upload_file(
-        io: tempfile,
-        byte_size: walkthrough.byte_size,
+        io: io,
+        byte_size: File.size(video_path),
         content_type: walkthrough.content_type,
         display_name: walkthrough.display_title
       )
     end
+  end
+
+  # Replace the stored original with a compact 720p mp4 (transcode), so the
+  # durable artifact is small. Best-effort: no ffmpeg / a transcode failure
+  # keeps the original video. Runs AFTER screenshots (which used the crisp
+  # source) so nothing downstream needs the higher resolution.
+  def compact_for_storage(walkthrough, source_path)
+    return unless Gemini::VideoTranscoder.available?
+
+    Dir.mktmpdir("syrus-transcode-") do |dir|
+      mp4 = File.join(dir, "compact.mp4")
+      return unless Gemini::VideoTranscoder.to_compact_mp4(input_path: source_path, output_path: mp4)
+
+      base = File.basename(walkthrough.file.filename.to_s, ".*").presence || "walkthrough"
+      File.open(mp4, "rb") do |io|
+        walkthrough.file.attach(io: io, filename: "#{base}.mp4", content_type: "video/mp4")
+      end
+      walkthrough.update!(content_type: "video/mp4", byte_size: File.size(mp4))
+    end
+  rescue StandardError => error
+    Rails.logger.warn("[VideoWalkthroughAnalysisJob] storage transcode failed (keeping original): #{error.class}: #{error.message}")
   end
 
   # Inject the analysis as a queued chat turn. Returns true once the message
@@ -133,7 +190,10 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
   # its turn never reached the chat; retry re-delivers without re-analyzing.
   def deliver_chat_turn(walkthrough)
     chat = walkthrough.chat_session
-    attachments = extract_issue_frames(walkthrough)
+    # Screenshots captured from the crisp source during process_video. On the
+    # re-delivery path (analysis already present, process_video skipped),
+    # re-extract from whatever video is still stored.
+    attachments = @screenshot_attachments || reextract_frame_attachments(walkthrough)
     text = Prompts::VideoWalkthroughContext.new(
       walkthrough: walkthrough, user_note: walkthrough.note, illustrated: attachments.any?
     ).to_s
@@ -153,14 +213,12 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
     false
   end
 
-  # Grab one screen frame per flagged issue (at Gemini's timestamp) so the
-  # chat agent SEES each problem and the UI shows it. Best-effort: any failure
-  # (no ffmpeg in dev, pruned blob, bad timestamp) yields no attachments and
-  # the turn ships text-only. Frames become base64 image attachments, the same
-  # shape chat already uses for pasted screenshots.
-  def extract_issue_frames(walkthrough)
-    return [] unless walkthrough.file.attached?
-
+  # Grab one screen frame per flagged issue (at Gemini's timestamp) from the
+  # given local video, so the chat agent SEES each problem and the UI shows
+  # it. Best-effort: any failure (no ffmpeg, bad timestamp) yields no
+  # attachments and the turn ships text-only. Frames become base64 image
+  # attachments, the same shape chat already uses for pasted screenshots.
+  def build_frame_attachments(walkthrough, video_path)
     timestamps = walkthrough.analysis_issues.filter_map do |issue|
       seconds = Gemini::FrameExtractor.parse_timestamp(issue["timestamp"])
       next unless seconds
@@ -169,18 +227,24 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
     end
     return [] if timestamps.empty?
 
-    frames = walkthrough.file.open do |tempfile|
-      Gemini::FrameExtractor.extract(video_path: tempfile.path, timestamps: timestamps)
-    end
-
-    frames.map do |frame|
+    Gemini::FrameExtractor.extract(video_path: video_path, timestamps: timestamps).map do |frame|
       clock = format("%d:%02d", frame.seconds / 60, frame.seconds % 60)
       { "name" => "walkthrough #{clock} — #{frame.label}".strip, "mime_type" => "image/jpeg",
         "data" => Base64.strict_encode64(frame.jpeg) }
     end
   rescue StandardError => error
-    # Frames are a bonus — never let extraction break delivery of the analysis.
     Rails.logger.warn("[VideoWalkthroughAnalysisJob] frame extraction failed: #{error.class}: #{error.message}")
+    []
+  end
+
+  # Re-delivery path: the analysis persisted but the chat turn didn't. Pull
+  # frames from whatever video is still stored (the compact mp4 by now, or
+  # nothing if pruned). Text-only if unavailable.
+  def reextract_frame_attachments(walkthrough)
+    return [] unless walkthrough.file.attached?
+
+    with_local_video(walkthrough) { |path| build_frame_attachments(walkthrough, path) }
+  rescue StandardError
     []
   end
 

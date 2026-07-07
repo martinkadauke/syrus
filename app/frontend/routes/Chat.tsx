@@ -8,7 +8,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { GeminiSetupSheet } from "../components/GeminiSetupSheet"
-import { formatClock, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
+import { AnalyzingHint, formatClock, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
 import {
   isWalkthroughVideoFile,
   MAX_WALKTHROUGH_BYTES,
@@ -1800,6 +1800,20 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   // narrates its lifecycle: ready -> uploading(pct) -> analyzing -> failed;
   // an analyzed walkthrough clears the chip (its turn appears in the thread).
   const [walkthrough, setWalkthrough] = useState<WalkthroughDraft | null>(null)
+  // Reassuring lines the chip rotates through while Gemini analyzes — the wait
+  // can run minutes, so a single frozen line reads as stuck. The first entry is
+  // the original static copy so nothing regresses if rotation is suppressed
+  // (single message / prefers-reduced-motion).
+  const walkthroughAnalyzingHints = useMemo(
+    () => [
+      t("walkthrough_analyzing"),
+      t("walkthrough_analyzing_narration"),
+      t("walkthrough_analyzing_issues"),
+      t("walkthrough_analyzing_screenshots"),
+      t("walkthrough_analyzing_finishing")
+    ],
+    [t]
+  )
   const [geminiSheetOpen, setGeminiSheetOpen] = useState(false)
   const pendingVideoRef = useRef<File | null>(null)
   const walkthroughKeyRef = useRef(0)
@@ -2697,6 +2711,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
             noMic: t("walkthrough_no_mic"),
             stop: t("walkthrough_stop"),
             discard: t("walkthrough_discard"),
+            windowHint: t("walkthrough_window_hint"),
             remaining: (clock) => t("walkthrough_remaining", { clock })
           }}
           micLive={recorder.state.micLive}
@@ -2843,7 +2858,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           {walkthrough.status === "analyzing" ? (
             <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-terracotta-500 border-t-transparent" />
-              {t("walkthrough_analyzing")}
+              <AnalyzingHint messages={walkthroughAnalyzingHints} />
             </span>
           ) : null}
           {walkthrough.status === "failed" ? (
@@ -2935,14 +2950,18 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
               {t("upload_file")}
             </button>
             <button
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+              className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
               onClick={startWalkthroughRecording}
+              title={t("record_walkthrough_title")}
               type="button"
             >
-              <span aria-hidden="true" className="flex h-4 w-4 shrink-0 items-center justify-center">
+              <span aria-hidden="true" className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
                 <span className="h-2.5 w-2.5 rounded-full border-2 border-red-500" />
               </span>
-              {t("record_walkthrough")}
+              <span className="min-w-0">
+                <span className="block">{t("record_walkthrough")}</span>
+                <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{t("record_walkthrough_hint")}</span>
+              </span>
             </button>
             <div className="border-t border-gray-100 dark:border-gray-800" />
             <AddAttachment payload={payload} prefix={prefix} queryKey={queryKey} onAttached={() => setAttachmentPopoverOpen(false)} onNotice={onNotice} />

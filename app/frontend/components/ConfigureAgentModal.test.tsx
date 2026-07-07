@@ -112,6 +112,28 @@ describe("ConfigureAgentModal", () => {
     expect(JSON.parse(exchangeCall?.[1]?.body as string)).toEqual({ code: "pasted-code#state" })
   })
 
+  it("makes the Gemini tab selectable and opens the setup sheet from it", async () => {
+    mockRoutes({})
+    renderModal()
+
+    const geminiTab = screen.getByRole("tab", { name: /Gemini/ })
+    expect(geminiTab).not.toBeDisabled()
+    expect(geminiTab).toHaveAttribute("aria-selected", "false")
+
+    fireEvent.click(geminiTab)
+    expect(geminiTab).toHaveAttribute("aria-selected", "true")
+
+    // The tab reveals a key-entry affordance — the trigger for the nested sheet.
+    const addKey = screen.getByRole("button", { name: /Add Gemini API key/ })
+    expect(addKey).toBeInTheDocument()
+
+    // Clicking it opens the GeminiSetupSheet, which surfaces the password
+    // key input (data-testid'd stage list is unique to that sheet).
+    fireEvent.click(addKey)
+    await waitFor(() => expect(screen.getByTestId("gemini-validation-stages")).toBeInTheDocument())
+    expect(screen.getByPlaceholderText("Paste your Gemini API key here")).toBeInTheDocument()
+  })
+
   it("surfaces an exchange error and stays open", async () => {
     vi.spyOn(window, "open").mockReturnValue({} as Window)
     mockRoutes({ exchange: () => jsonResponse({ error: { message: "Code expired." } }, 422) })

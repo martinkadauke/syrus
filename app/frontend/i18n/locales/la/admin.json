@@ -135,6 +135,10 @@
     "saving": "Servans...",
     "signups_open_label": "Inscriptiones apertae",
     "signups_open_help": "Cum activum, quivis apud /users/new rationem creare potest. Cum desactivum, inscriptio per invitationem tantum est, sed nexus invitationis semper valent.",
+    "video_retention_label": "Conservatio videonum perambulationis (dies)",
+    "video_retention_help": "Quamdiu videones perambulationum servantur antequam removeantur. Analysis et imagines eius semper in colloquio manent.",
+    "video_budget_label": "Copia repositionis videonum perambulationis (MB)",
+    "video_budget_help": "Finis totius instantiae pro videonibus servatis. Cum superatur, vetustissima prius removentur. 0 = sine fine.",
     "settings_updated": "Optiones renovatae."
   },
   "github_app": {

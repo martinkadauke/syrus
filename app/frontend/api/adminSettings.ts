@@ -9,6 +9,8 @@ export type ClearableSecret = {
 export type AdminSettingsPayload = {
   settings: {
     signups_open: boolean
+    video_retention_days: number
+    video_storage_budget_mb: number
     clearable_secrets: ClearableSecret[]
   }
   message?: string
@@ -16,6 +18,8 @@ export type AdminSettingsPayload = {
 
 export type AdminSettingsUpdate = {
   signups_open: boolean
+  video_retention_days?: number
+  video_storage_budget_mb?: number
 }
 
 export function fetchAdminSettings() {

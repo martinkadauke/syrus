@@ -51,6 +51,28 @@ RSpec.describe AppSetting do
     expect(setting.errors[:adversarial_review_rounds]).to include("must be greater than or equal to 0")
   end
 
+  it ".video_retention_days returns the column value (default 7)" do
+    expect(AppSetting.video_retention_days).to eq(7)
+
+    AppSetting.current.update!(video_retention_days: 14)
+
+    expect(AppSetting.video_retention_days).to eq(14)
+  end
+
+  it ".video_storage_budget_bytes converts the MB column to bytes (default 2048MB)" do
+    expect(AppSetting.video_storage_budget_bytes).to eq(2048 * 1024 * 1024)
+
+    AppSetting.current.update!(video_storage_budget_mb: 5)
+
+    expect(AppSetting.video_storage_budget_bytes).to eq(5 * 1024 * 1024)
+  end
+
+  it ".video_storage_budget_bytes is 0 (unlimited) when the MB column is 0" do
+    AppSetting.current.update!(video_storage_budget_mb: 0)
+
+    expect(AppSetting.video_storage_budget_bytes).to eq(0)
+  end
+
   it "reports whether a GitHub App has been registered" do
     setting = AppSetting.current
     expect(setting.github_app_registered?).to be false

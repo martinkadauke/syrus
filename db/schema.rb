@@ -66,6 +66,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.boolean "runs_paused", default: false, null: false
     t.boolean "signups_open", default: false, null: false
     t.datetime "updated_at", null: false
+    t.integer "video_retention_days", default: 7, null: false
+    t.integer "video_storage_budget_mb", default: 2048, null: false
     t.index ["github_app_id"], name: "index_app_settings_on_github_app_id", unique: true
   end
 

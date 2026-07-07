@@ -47,6 +47,20 @@ class AppSetting < ApplicationRecord
     current.merge_train_max_size
   end
 
+  # Walkthrough-video media management. The analysis + screenshots persist
+  # forever (they're the value); only the heavy video is time- and
+  # size-bounded by VideoWalkthroughPruneJob.
+  def self.video_retention_days
+    current.video_retention_days
+  end
+
+  # Instance-wide ceiling on total stored walkthrough-video bytes. 0 disables
+  # the size cap (time-based retention still applies).
+  def self.video_storage_budget_bytes
+    mb = current.video_storage_budget_mb
+    mb.to_i.positive? ? mb * 1024 * 1024 : 0
+  end
+
   def self.report_issue_repo_slug
     current.report_issue_repo_slug.presence || DEFAULT_REPORT_ISSUE_REPO_SLUG
   end

@@ -1,36 +1,85 @@
-# Walkthrough videos are 100-500MB each and live in the syrus-data volume
-# (Active Storage: local_volume on SQLite hosts, minio otherwise). Without a
-# sweep they accumulate forever — a handful of users recording daily would
-# fill the PVC. The analysis JSON is what has lasting value; the video is a
-# means to it, useful only for a retry (which re-uploads to Gemini anyway,
-# since Gemini's own copy expires after 48h).
+# Media lifecycle for walkthrough videos. Each is 10s-100s of MB and lives in
+# the syrus-data volume (Active Storage Disk service) or S3/minio — bounded
+# only by the host disk / bucket. On a busy multi-user instance they would
+# accumulate without limit, so this job enforces TWO ceilings on the stored
+# (post-transcode) video blobs:
 #
-# Policy: keep the blob for a short retry window after the row settles, then
-# purge the ATTACHMENT while keeping the row + analysis. A walkthrough older
-# than the window can no longer be retried, which for a week-old recording is
-# the right trade. Runs daily on `default`.
+#   1. Time — purge blobs from settled walkthroughs older than
+#      AppSetting.video_retention_days (default 7). Past that a walkthrough
+#      can't be retried, which for a week-old recording is the right trade.
+#   2. Size — if total stored video bytes exceed
+#      AppSetting.video_storage_budget_bytes (default 2 GB; 0 = unlimited),
+#      purge oldest-first (LRU) until back under budget.
+#
+# In BOTH cases only the heavy video blob is removed. The analysis JSON and
+# the issue screenshots (attached to the chat turn) persist — they're the
+# durable value. "Archive" here means the record survives, the media doesn't.
+# Runs daily on `default`.
 class VideoWalkthroughPruneJob < ApplicationJob
   queue_as :default
 
-  # Long enough that "it failed, let me retry tomorrow" works; short enough
-  # that videos don't pile up. Gemini's 48h file retention already means a
-  # retry past two days re-uploads from our blob, so the blob is the only
-  # thing enabling retry — 7 days is a generous ceiling on that.
-  RETAIN_BLOB = 7.days
-
+  # Only videos from SETTLED walkthroughs are candidates — never purge one
+  # that's mid-analysis (its blob is in use).
   def perform
-    cutoff = RETAIN_BLOB.ago
+    time_sweep
+    size_sweep
+  end
+
+  private
+
+  def time_sweep
+    cutoff = AppSetting.video_retention_days.days.ago
     purged = 0
-
-    ChatVideoWalkthrough.where(state: %w[analyzed failed])
-                        .where("updated_at < ?", cutoff)
-                        .find_each do |walkthrough|
-      next unless walkthrough.file.attached?
-
-      walkthrough.file.purge_later
+    settled_with_blob.where("chat_video_walkthroughs.updated_at < ?", cutoff).find_each do |walkthrough|
+      purge_video!(walkthrough)
       purged += 1
     end
+    log("time sweep purged #{purged} video(s) older than #{AppSetting.video_retention_days}d") if purged.positive?
+  end
 
-    Rails.logger.info("[VideoWalkthroughPruneJob] purged #{purged} walkthrough video blob(s) older than #{RETAIN_BLOB.inspect}") if purged.positive?
+  def size_sweep
+    budget = AppSetting.video_storage_budget_bytes
+    return if budget.zero?
+
+    # Oldest-updated first — LRU that keeps the freshest videos retriable. NOTE:
+    # find_each can't do this — it ignores a non-primary-key .order and forces
+    # batch-by-id, which is NOT updated_at order once a row is re-touched (a
+    # retried walkthrough keeps its id but gets a newer updated_at). So pluck
+    # the ordered (id, byte_size) candidates and pick the eviction set in Ruby.
+    # Columns are table-qualified because the blob join also has id/byte_size;
+    # the pluck is two integers per row, cheap even for thousands of videos.
+    candidates = settled_with_blob
+      .order(Arel.sql("chat_video_walkthroughs.updated_at ASC, chat_video_walkthroughs.id ASC"))
+      .pluck("chat_video_walkthroughs.id", "chat_video_walkthroughs.byte_size")
+    total = candidates.sum { |(_id, bytes)| bytes.to_i }
+    return if total <= budget
+
+    evict = []
+    candidates.each do |(id, bytes)|
+      break if total <= budget
+
+      total -= bytes.to_i
+      evict << id
+    end
+    return if evict.empty?
+
+    ChatVideoWalkthrough.where(id: evict).find_each { |walkthrough| purge_video!(walkthrough) }
+    log("size sweep purged #{evict.size} video(s) to fit the #{budget / 1024 / 1024}MB budget")
+  end
+
+  # Only rows whose blob is still attached can be purged; the join keeps the
+  # sum/scan honest as blobs disappear.
+  def settled_with_blob
+    ChatVideoWalkthrough
+      .where(state: %w[analyzed failed])
+      .joins(file_attachment: :blob)
+  end
+
+  def purge_video!(walkthrough)
+    walkthrough.file.purge_later if walkthrough.file.attached?
+  end
+
+  def log(message)
+    Rails.logger.info("[VideoWalkthroughPruneJob] #{message}")
   end
 end

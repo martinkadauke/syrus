@@ -1,6 +1,8 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import {
+  ANALYZING_HINT_INTERVAL_MS,
+  AnalyzingHint,
   formatClock,
   pickRecorderMimeType,
   RECORDER_MIME_CANDIDATES,
@@ -210,5 +212,77 @@ describe("WalkthroughRecorderHUD", () => {
 
     renderHud({ micLive: true })
     expect(screen.queryByText("No microphone")).not.toBeInTheDocument()
+  })
+
+  it("renders the window-capture hint only when a label is supplied", () => {
+    render(
+      <WalkthroughRecorderHUD
+        elapsed={0}
+        labels={{ ...hudLabels, windowHint: "keep the window small" }}
+        micLive
+        onDiscard={() => {}}
+        onStop={() => {}}
+      />
+    )
+    expect(screen.getByTestId("walkthrough-recorder-window-hint")).toHaveTextContent("keep the window small")
+  })
+
+  it("omits the window-capture hint when no label is supplied", () => {
+    renderHud()
+    expect(screen.queryByTestId("walkthrough-recorder-window-hint")).not.toBeInTheDocument()
+  })
+})
+
+describe("AnalyzingHint", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("renders the first message and cycles to the next on the interval", () => {
+    vi.useFakeTimers()
+    const messages = ["Watching your walkthrough…", "Reading the screen…", "Almost done…"]
+    render(<AnalyzingHint intervalMs={4000} messages={messages} />)
+
+    const hint = screen.getByTestId("walkthrough-analyzing-hint")
+    expect(hint).toHaveTextContent(messages[0])
+
+    act(() => {
+      vi.advanceTimersByTime(4000)
+    })
+    expect(hint).toHaveTextContent(messages[1])
+
+    act(() => {
+      vi.advanceTimersByTime(4000)
+    })
+    expect(hint).toHaveTextContent(messages[2])
+  })
+
+  it("wraps back to the first message after the last", () => {
+    vi.useFakeTimers()
+    const messages = ["one", "two"]
+    render(<AnalyzingHint intervalMs={1000} messages={messages} />)
+
+    const hint = screen.getByTestId("walkthrough-analyzing-hint")
+    expect(hint).toHaveTextContent("one")
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(hint).toHaveTextContent("two")
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
+    expect(hint).toHaveTextContent("one")
+  })
+
+  it("holds a single message without scheduling a timer", () => {
+    vi.useFakeTimers()
+    render(<AnalyzingHint messages={["only one"]} />)
+
+    const hint = screen.getByTestId("walkthrough-analyzing-hint")
+    expect(hint).toHaveTextContent("only one")
+    act(() => {
+      vi.advanceTimersByTime(ANALYZING_HINT_INTERVAL_MS * 3)
+    })
+    expect(hint).toHaveTextContent("only one")
   })
 })

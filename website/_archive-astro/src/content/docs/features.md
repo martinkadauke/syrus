@@ -131,10 +131,13 @@ agent takes over: it asks brief follow-up questions when the video left
 something ambiguous, and otherwise proposes an Epic that groups the issues
 into well-scoped Jobs through the normal proposal flow.
 
-Recordings are capped at **15 minutes** (the recorder shows a live countdown
-and stops gracefully at the limit) and uploads at **500 MB**. Both webm
-(what the recorder produces) and mp4/QuickTime drag-ins are supported —
-nothing is transcoded. Analysis requires a **Gemini API key**: free from
+You can also **drag in a pre-recorded video** (mp4/webm/QuickTime) — it flows
+through the same analysis. Recordings are capped at **15 minutes** (the
+recorder shows a live countdown and stops gracefully at the limit) and uploads
+at **500 MB**. **Tip:** record just the window you're testing and keep it small
+— it uploads faster and, because your narration carries the context, analyzes
+just as well. Uploaded videos are re-encoded to a compact copy for storage
+(the analysis is unaffected). Analysis requires a **Gemini API key**: free from
 [aistudio.google.com/apikey](https://aistudio.google.com/apikey), no credit
 card. The first time you attach a video, Syrus walks you through the
 one-minute setup; the key also lives under Credentials. Uploaded videos are

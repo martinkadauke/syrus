@@ -480,6 +480,87 @@ RSpec.describe VideoWalkthroughAnalysisJob do
     end
   end
 
+  # Storage transcode: after analysis + screenshots, compact_for_storage
+  # transcodes the crisp source to a compact 720p mp4 that REPLACES the stored
+  # blob so the durable artifact is small. Best-effort — no ffmpeg keeps the
+  # original webm; a working transcode swaps in the mp4.
+  describe "storage transcode (compact_for_storage)" do
+    around do |example|
+      original = Gemini::VideoTranscoder.runner
+      begin
+        example.run
+      ensure
+        Gemini::VideoTranscoder.runner = original
+      end
+    end
+
+    it "keeps the original webm blob when ffmpeg is unavailable" do
+      # available? is false in-container (no ffmpeg) — the default. Assert the
+      # stored file is untouched (still webm) and no transcode is attempted.
+      allow(Gemini::VideoTranscoder).to receive(:available?).and_return(false)
+      expect(Gemini::VideoTranscoder).not_to receive(:to_compact_mp4)
+      walkthrough = create_walkthrough
+
+      described_class.perform_now(walkthrough.id)
+
+      walkthrough.reload
+      expect(walkthrough).to be_analyzed
+      expect(walkthrough.content_type).to eq("video/webm")
+      expect(walkthrough.file.content_type).to eq("video/webm")
+      expect(walkthrough.file.filename.to_s).to eq("walkthrough.webm")
+    end
+
+    it "replaces the stored blob with the compact mp4 and updates content_type + byte_size" do
+      # Stub the transcoder available and have to_compact_mp4 actually produce a
+      # (fake) mp4 at output_path so the job's attach + update! path runs.
+      mp4_bytes = "fake-mp4-bytes-that-are-a-bit-longer-than-the-webm"
+      allow(Gemini::VideoTranscoder).to receive(:available?).and_return(true)
+      allow(Gemini::VideoTranscoder).to receive(:to_compact_mp4) do |input_path:, output_path:|
+        expect(File.exist?(input_path)).to be true
+        File.binwrite(output_path, mp4_bytes)
+        true
+      end
+      walkthrough = create_walkthrough
+
+      described_class.perform_now(walkthrough.id)
+
+      walkthrough.reload
+      expect(walkthrough).to be_analyzed
+      # The stored blob was swapped for the compact mp4.
+      expect(walkthrough.content_type).to eq("video/mp4")
+      expect(walkthrough.byte_size).to eq(mp4_bytes.bytesize)
+      expect(walkthrough.file.content_type).to eq("video/mp4")
+      expect(walkthrough.file.filename.to_s).to eq("walkthrough.mp4")
+      expect(walkthrough.file.download).to eq(mp4_bytes)
+    end
+
+    it "keeps the original blob when the transcode fails (returns false)" do
+      allow(Gemini::VideoTranscoder).to receive(:available?).and_return(true)
+      allow(Gemini::VideoTranscoder).to receive(:to_compact_mp4).and_return(false)
+      walkthrough = create_walkthrough
+
+      described_class.perform_now(walkthrough.id)
+
+      walkthrough.reload
+      expect(walkthrough).to be_analyzed
+      expect(walkthrough.content_type).to eq("video/webm")
+      expect(walkthrough.file.content_type).to eq("video/webm")
+    end
+
+    it "still ends analyzed (keeping the original) when the transcode raises" do
+      allow(Gemini::VideoTranscoder).to receive(:available?).and_return(true)
+      allow(Gemini::VideoTranscoder).to receive(:to_compact_mp4).and_raise(RuntimeError.new("ffmpeg blew up"))
+      walkthrough = create_walkthrough
+
+      expect { described_class.perform_now(walkthrough.id) }.not_to raise_error
+
+      walkthrough.reload
+      expect(walkthrough).to be_analyzed
+      expect(walkthrough.error_message).to be_nil
+      expect(walkthrough.content_type).to eq("video/webm")
+    end
+  end
+
   describe "queue" do
     it "runs on the dedicated videos queue" do
       expect(described_class.new.queue_name).to eq("videos")

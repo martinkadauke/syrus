@@ -330,9 +330,15 @@ Files API resumable upload → poll ACTIVE → one `generateContent` with a JSON
 `media_resolution` (LOW measurably garbles small on-screen text; the job
 retries at LOW only if a ≥12-min video's full-res attempt is actually
 rate-limited — graceful degradation, `Gemini::Client::LOW_RESOLUTION_FALLBACK_SECONDS`).
-Then `VideoWalkthroughFrameExtractor` (ffmpeg, in the runtime image) grabs one
-still per flagged issue at Gemini's timestamp; those ride the analysis turn as
-image attachments so the agent SEES each issue. It injects
+The job downloads the video once locally and runs the whole media flow off it:
+Gemini analysis → CRISP screenshots via `Gemini::FrameExtractor` (`ffmpeg`) at
+each flagged issue's timestamp (they ride the analysis turn as image
+attachments so the agent SEES each issue) → `Gemini::VideoTranscoder`
+transcodes the source to a compact 720p mp4 that REPLACES the stored blob
+(empirically Gemini analyzes the compact mp4 as well as the original — the
+narration carries the context — so the durable artifact is small while
+screenshots came from the full-res source; every media step is best-effort and
+keeps the original on failure). It injects
 `Prompts::VideoWalkthroughContext` as a queued user-role turn so the EXISTING
 chat agent asks follow-ups / proposes the Epic. Gemini is the eyes, the chat
 agent stays the brain. Auth is an AI Studio API key only
@@ -340,10 +346,14 @@ agent stays the brain. Auth is an AI Studio API key only
 `CredentialProbe.gemini_key`, model resolved at analysis time by
 `Gemini::Client#resolve_video_model!` against `VIDEO_MODELS`): the gemini-cli
 OAuth path has no Files API and reusing its OAuth client violates Google ToS.
-`VideoWalkthroughPruneJob` (daily) purges the stored video blob after 7 days
-(the analysis persists; retry re-uploads). Test seams:
-`VideoWalkthroughAnalysisJob.client_factory`,
-`CredentialProbe.gemini_client_factory`, `Gemini::FrameExtractor.runner`.
+Videos are Active Storage blobs on Disk/S3 (NOT inlined in SQLite — only the
+metadata row is). `VideoWalkthroughPruneJob` (daily) enforces both a time
+ceiling (`AppSetting.video_retention_days`, default 7) and an instance-wide
+size budget (`AppSetting.video_storage_budget_bytes`, LRU eviction, default
+2 GB, 0 = unlimited) on the stored video blobs — the analysis + screenshots
+always persist. Test seams: `VideoWalkthroughAnalysisJob.client_factory`,
+`CredentialProbe.gemini_client_factory`, `Gemini::FrameExtractor.runner`,
+`Gemini::VideoTranscoder.runner`.
 Progress streams as `video_walkthrough.*` app events. Desktop:
 `screenCapture.ts` registers the display-media handler (macOS system picker;
 primary screen elsewhere).
