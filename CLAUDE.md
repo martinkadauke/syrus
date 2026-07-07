@@ -482,6 +482,8 @@ display-media handler (macOS system picker; primary screen elsewhere).
 - **SolidQueue queues** — `runs` for normal agent workflow Runs; `merges`
   for auto-merge, rebase, and stack-rebase workflow roots; `chat`
   (dedicated low-concurrency worker) for ChatTurnJob and ChatWorkspaceJob;
+  `videos` (low-concurrency) for VideoWalkthroughAnalysisJob, whose
+  multi-minute Gemini uploads/polling would otherwise pin default threads;
   `default` for pollers, app-event broadcasts, and reaper jobs. Splitting
   prevents long RunJobs from starving landing, chat, the reaper, and UI
   broadcasts.

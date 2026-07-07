@@ -89,6 +89,20 @@ RSpec.describe ChatVideoWalkthrough do
     end
   end
 
+  describe "note column" do
+    it "persists and reads back the user's note" do
+      walkthrough = build_walkthrough(note: "Focus on the flaky Save button")
+
+      expect(walkthrough).to be_valid
+      walkthrough.save!
+      expect(walkthrough.reload.note).to eq("Focus on the flaky Save button")
+    end
+
+    it "allows a nil note" do
+      expect(build_walkthrough(note: nil)).to be_valid
+    end
+  end
+
   describe "analysis accessors" do
     it "returns empty values when no analysis has been stored" do
       walkthrough = build_walkthrough(analysis: nil)

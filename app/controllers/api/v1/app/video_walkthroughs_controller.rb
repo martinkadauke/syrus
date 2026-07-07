@@ -27,6 +27,9 @@ module Api
           walkthrough = chat.video_walkthroughs.new(
             user: Current.user,
             title: params[:title].presence,
+            # Persisted (not a transient job kwarg) so retries re-inject the
+            # user's guidance instead of silently dropping it.
+            note: params[:note].presence,
             duration_seconds: duration_param,
             byte_size: file.size,
             content_type: file.content_type.to_s
@@ -35,7 +38,7 @@ module Api
                                   content_type: file.content_type.to_s)
 
           if walkthrough.save
-            VideoWalkthroughAnalysisJob.perform_later(walkthrough.id, user_note: params[:note].presence)
+            VideoWalkthroughAnalysisJob.perform_later(walkthrough.id)
             render json: { video_walkthrough: walkthrough_json(walkthrough) }, status: :created
           else
             render_error("validation_failed", walkthrough.errors.full_messages.to_sentence,
@@ -43,8 +46,10 @@ module Api
           end
         end
 
-        # Re-run a failed analysis (quota blips, transient network). The
-        # video is still in Active Storage, so this is free to offer.
+        # Re-run a failed analysis (quota blips, transient network, or a
+        # chat-delivery failure). The video is still in Active Storage and
+        # the persisted note rides along; if the Gemini analysis already
+        # succeeded, the job skips Gemini and just re-delivers the turn.
         def retry
           walkthrough = ChatVideoWalkthrough.joins(:chat_session)
                                             .where(chat_sessions: { user_id: Current.user.id })
@@ -55,7 +60,7 @@ module Api
           end
 
           walkthrough.update!(state: "uploaded", error_message: nil)
-          VideoWalkthroughAnalysisJob.perform_later(walkthrough.id, user_note: params[:note].presence)
+          VideoWalkthroughAnalysisJob.perform_later(walkthrough.id)
           render json: { video_walkthrough: walkthrough_json(walkthrough) }
         end
 

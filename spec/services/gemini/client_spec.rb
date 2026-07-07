@@ -23,6 +23,78 @@ RSpec.describe Gemini::Client do
     end
   end
 
+  describe "#resolve_video_model!" do
+    def stub_models(names)
+      stub_request(:get, "https://generativelanguage.googleapis.com/v1beta/models?pageSize=50")
+        .to_return(
+          status: 200,
+          headers: json_headers,
+          body: { models: names.map { |n| { name: "models/#{n}" } } }.to_json
+        )
+    end
+
+    it "picks gemini-3.5-flash when the project exposes it" do
+      stub_models(%w[gemini-3.5-flash gemini-2.5-flash gemini-embedding-001])
+
+      expect(client.resolve_video_model!).to eq("gemini-3.5-flash")
+      expect(client.model).to eq("gemini-3.5-flash")
+    end
+
+    it "falls back to gemini-2.5-flash when 3.5 is absent and uses it for the next generateContent" do
+      stub_models(%w[gemini-2.5-flash gemini-embedding-001])
+
+      expect(client.resolve_video_model!).to eq("gemini-2.5-flash")
+      expect(client.model).to eq("gemini-2.5-flash")
+
+      # The resolved fallback model must drive the subsequent request URL —
+      # otherwise a key validated against a fallback 404s on the default.
+      fallback_endpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+      stub_request(:post, fallback_endpoint).to_return(
+        status: 200,
+        headers: json_headers,
+        body: { candidates: [ { content: { parts: [ { text: { "ok" => true }.to_json } ] } } ] }.to_json
+      )
+
+      client.generate_content(
+        file_uri: "https://generativelanguage.googleapis.com/v1beta/files/abc",
+        mime_type: "video/webm",
+        prompt: "Analyze.",
+        response_schema: { type: "OBJECT" }
+      )
+
+      expect(WebMock).to have_requested(:post, fallback_endpoint)
+    end
+
+    it "raises Error when no video-capable model is available to the project" do
+      stub_models(%w[gemini-embedding-001 text-bison])
+
+      expect { client.resolve_video_model! }.to raise_error(Gemini::Client::Error, /no video-capable Gemini model/)
+    end
+  end
+
+  describe "transport failures" do
+    it "wraps a list_models transport failure as ConnectionError, not a raw error" do
+      stub_request(:get, "https://generativelanguage.googleapis.com/v1beta/models?pageSize=50")
+        .to_raise(Errno::ECONNRESET)
+
+      expect { client.list_models }.to raise_error(Gemini::Client::ConnectionError, /could not reach Gemini/)
+    end
+
+    it "wraps a generate_content transport failure as ConnectionError, not a raw error" do
+      stub_request(:post, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent")
+        .to_raise(SocketError)
+
+      expect {
+        client.generate_content(
+          file_uri: "https://generativelanguage.googleapis.com/v1beta/files/abc",
+          mime_type: "video/webm",
+          prompt: "Analyze.",
+          response_schema: { type: "OBJECT" }
+        )
+      }.to raise_error(Gemini::Client::ConnectionError, /could not reach Gemini/)
+    end
+  end
+
   describe "#upload_file" do
     it "runs the two-step resumable upload and returns the file record" do
       stub_request(:post, "https://generativelanguage.googleapis.com/upload/v1beta/files")
@@ -206,6 +278,35 @@ RSpec.describe Gemini::Client do
       stub_generate(text: "not json {")
 
       expect { generate }.to raise_error(Gemini::Client::Error, /malformed JSON/)
+    end
+
+    # Regression: long responses arrive split across multiple text parts (the
+    # official SDKs join them). Reading only parts[0] truncated the JSON
+    # mid-object and misreported a successful analysis as malformed.
+    it "joins multiple text parts before parsing the JSON" do
+      stub_request(:post, endpoint).to_return(
+        status: 200,
+        headers: json_headers,
+        body: {
+          candidates: [ { content: { parts: [ { text: '{"a":' }, { text: "1}" } ] } } ]
+        }.to_json
+      )
+
+      expect(generate).to eq({ "a" => 1 })
+    end
+
+    # Regression: an empty analysis surfaces the finishReason so a SAFETY /
+    # MAX_TOKENS cutoff is diagnosable instead of a bare "empty analysis".
+    it "includes the finish reason when the parts carry no text" do
+      stub_request(:post, endpoint).to_return(
+        status: 200,
+        headers: json_headers,
+        body: {
+          candidates: [ { finishReason: "SAFETY", content: { parts: [ {} ] } } ]
+        }.to_json
+      )
+
+      expect { generate }.to raise_error(Gemini::Client::Error, /empty analysis.*SAFETY/)
     end
   end
 end

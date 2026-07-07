@@ -125,12 +125,11 @@ class CredentialProbe
                message: "Could not reach Google to verify the key. Try again in a moment.", details: {})
   end
 
-  # Flash-tier models that handle video; first available wins. Kept in sync
-  # with Gemini::Client::DEFAULT_MODEL.
-  GEMINI_VIDEO_MODELS = %w[gemini-3.5-flash gemini-3-flash-preview gemini-2.5-flash].freeze
-
+  # Delegates to Gemini::Client::VIDEO_MODELS — the SAME list the analysis
+  # job resolves against (resolve_video_model!), so a key that validates
+  # green against a fallback model also analyzes with that model.
   def self.preferred_gemini_model(models)
-    GEMINI_VIDEO_MODELS.find { |candidate| models.any? { |name| name.start_with?(candidate) } }
+    Gemini::Client::VIDEO_MODELS.find { |candidate| models.any? { |name| name.start_with?(candidate) } }
   end
 
   # Test seam: specs swap the factory instead of stubbing HTTP.

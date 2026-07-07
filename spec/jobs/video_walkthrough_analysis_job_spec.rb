@@ -5,13 +5,22 @@ require "rails_helper"
 # the VideoWalkthroughAnalysisJob.client_factory test seam so no Net::HTTP
 # stubbing is needed.
 class FakeGeminiWalkthroughClient
-  attr_reader :upload_calls, :generate_calls
+  attr_reader :upload_calls, :generate_calls, :resolve_calls
 
   def initialize(analysis: {}, raise_on_upload: nil)
     @analysis = analysis
     @raise_on_upload = raise_on_upload
     @upload_calls = []
     @generate_calls = []
+    @resolve_calls = 0
+  end
+
+  # The job resolves the model against the key's project before analyzing
+  # (Gemini::Client#resolve_video_model!); the fake records the call and
+  # is a no-op otherwise.
+  def resolve_video_model!
+    @resolve_calls += 1
+    "gemini-3.5-flash"
   end
 
   def upload_file(io:, byte_size:, content_type:, display_name:)
@@ -91,9 +100,9 @@ RSpec.describe VideoWalkthroughAnalysisJob do
 
   describe "happy path" do
     it "analyzes the video, persists the analysis, and injects the queued chat turn" do
-      walkthrough = create_walkthrough
+      walkthrough = create_walkthrough(note: "Watch the save button")
 
-      described_class.perform_now(walkthrough.id, user_note: "Watch the save button")
+      described_class.perform_now(walkthrough.id)
 
       walkthrough.reload
       expect(walkthrough).to be_analyzed
@@ -246,6 +255,124 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect { described_class.perform_now(missing_id) }.not_to raise_error
       expect(factory_api_keys).to be_empty
       expect(AppEvents).not_to have_received(:broadcast)
+    end
+  end
+
+  # Regression: a transport failure from Gemini used to escape the rescue
+  # chain (only Net::* / specific Gemini errors were caught), leaving the
+  # walkthrough stranded in "analyzing" with a forever-spinning chip. The
+  # client now wraps transport failures as Gemini::Client::ConnectionError and
+  # the job rescues it into a terminal "failed" state.
+  describe "transient network failure" do
+    let(:fake_client) do
+      FakeGeminiWalkthroughClient.new(raise_on_upload: Gemini::Client::ConnectionError.new("could not reach Gemini"))
+    end
+
+    it "marks the walkthrough failed (never stuck analyzing) and broadcasts the failure" do
+      walkthrough = create_walkthrough
+
+      described_class.perform_now(walkthrough.id)
+
+      walkthrough.reload
+      expect(walkthrough).to be_failed
+      expect(walkthrough.state).not_to eq("analyzing")
+      expect(walkthrough.error_message).to include("Could not reach Gemini")
+      expect(AppEvents).to have_received(:broadcast).with(
+        hash_including(type: "video_walkthrough.failed", id: walkthrough.id)
+      )
+    end
+  end
+
+  # Regression: any unexpected exception class (not just the Gemini hierarchy)
+  # must be caught by the StandardError catch-all so nothing can strand the
+  # walkthrough in "analyzing". A bare RuntimeError used to propagate.
+  describe "unexpected error via the StandardError catch-all" do
+    let(:fake_client) { FakeGeminiWalkthroughClient.new(raise_on_upload: RuntimeError.new("boom")) }
+
+    it "marks the walkthrough failed instead of propagating" do
+      walkthrough = create_walkthrough
+
+      expect { described_class.perform_now(walkthrough.id) }.not_to raise_error
+
+      walkthrough.reload
+      expect(walkthrough).to be_failed
+      expect(walkthrough.state).not_to eq("analyzing")
+      expect(walkthrough.error_message).to include("unexpected error")
+      expect(walkthrough.error_message).to include("RuntimeError")
+    end
+  end
+
+  # Regression: a chat-delivery failure must not masquerade as analysis
+  # success. Delivery runs BEFORE the "analyzed" broadcast/state: if it raises,
+  # deliver_chat_turn marks the row failed with a "succeeded but posting"
+  # message and the job returns without ever broadcasting "analyzed". Ordering
+  # matters — an "analyzed" broadcast first would clear the frontend chip and
+  # make the subsequent "failed" event a no-op, hiding the failure.
+  describe "chat delivery failure" do
+    it "ends failed with the posting message and never broadcasts analyzed, though the analysis persisted" do
+      walkthrough = create_walkthrough
+      allow(ChatQueuedMessagePromoter).to receive(:deliver_one_if_idle!).and_raise(RuntimeError.new("promotion blew up"))
+
+      described_class.perform_now(walkthrough.id)
+
+      walkthrough.reload
+      expect(walkthrough).to be_failed
+      expect(walkthrough.error_message).to include("succeeded but posting")
+      # Analysis is preserved so a retry skips Gemini and just re-delivers.
+      expect(walkthrough.analysis).to eq(analysis)
+      # The frontend only ever sees analyzing → failed, never analyzed-then-failed.
+      expect(AppEvents).to have_received(:broadcast).with(
+        hash_including(type: "video_walkthrough.analyzing", id: walkthrough.id)
+      )
+      expect(AppEvents).to have_received(:broadcast).with(
+        hash_including(type: "video_walkthrough.failed", id: walkthrough.id)
+      )
+      expect(AppEvents).not_to have_received(:broadcast).with(
+        hash_including(type: "video_walkthrough.analyzed")
+      )
+    end
+  end
+
+  # Regression / re-delivery path: a retried walkthrough whose analysis already
+  # succeeded (the earlier failure was in chat delivery) must NOT re-hit Gemini
+  # — the 48h Files-API retention makes re-analysis wasteful — but must still
+  # inject the chat turn.
+  describe "re-delivery path (analysis already present)" do
+    it "skips Gemini entirely but still injects the queued chat turn" do
+      walkthrough = create_walkthrough(analysis: analysis)
+
+      described_class.perform_now(walkthrough.id)
+
+      walkthrough.reload
+      expect(walkthrough).to be_analyzed
+      expect(fake_client.upload_calls).to be_empty
+      expect(fake_client.generate_calls).to be_empty
+      expect(fake_client.resolve_calls).to eq(0)
+
+      queued = chat.chat_queued_messages.order(:id).last
+      expect(queued).to be_present
+      expect(queued.text).to include("Save button does nothing")
+      expect(queued.content["video_walkthrough_id"]).to eq(walkthrough.id)
+    end
+  end
+
+  describe "queue" do
+    it "runs on the dedicated videos queue" do
+      expect(described_class.new.queue_name).to eq("videos")
+    end
+  end
+
+  # Regression: the note is read from the persisted column, not a job kwarg.
+  # Prompts::VideoWalkthroughContext renders it as the user's note, so the
+  # injected queued message must include it.
+  describe "note from the persisted column" do
+    it "renders the persisted note into the injected chat turn" do
+      walkthrough = create_walkthrough(note: "Focus on the flaky Save button")
+
+      described_class.perform_now(walkthrough.id)
+
+      queued = chat.chat_queued_messages.order(:id).last
+      expect(queued.text).to include("The user's note with the video: Focus on the flaky Save button")
     end
   end
 end

@@ -118,6 +118,8 @@
   "walkthrough_discard": "Verwerfen",
   "walkthrough_failed_generic": "Die Analyse ist fehlgeschlagen.",
   "walkthrough_no_mic": "Kein Mikrofon — Kommentar wird nicht aufgenommen",
+  "walkthrough_no_other_attachments": "Sende den Walkthrough allein — entferne Bild- oder Dateianhänge und sende sie in einer separaten Nachricht.",
+  "walkthrough_one_at_a_time": "Ein Walkthrough wird bereits verarbeitet — warte, bis er fertig ist, und füge dann einen weiteren hinzu.",
   "walkthrough_ready": "Bereit — Senden startet die Analyse",
   "walkthrough_recording": "Aufnahme",
   "walkthrough_remaining": "{{clock}} übrig",

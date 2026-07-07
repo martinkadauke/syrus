@@ -33,7 +33,7 @@ RSpec.describe "API: /api/v1/app video walkthroughs", type: :request do
   before { ActiveJob::Base.queue_adapter.enqueued_jobs.clear }
 
   describe "POST /api/v1/app/chats/:chat_id/video_walkthroughs" do
-    it "creates the walkthrough, enqueues analysis, and passes the note through" do
+    it "creates the walkthrough, persists the note on the row, and enqueues analysis with just the id" do
       sign_in_as(user)
 
       post "/api/v1/app/chats/#{chat.id}/video_walkthroughs", params: {
@@ -53,6 +53,10 @@ RSpec.describe "API: /api/v1/app video walkthroughs", type: :request do
       expect(walkthrough.duration_seconds).to eq(95)
       expect(walkthrough.title).to eq("Checkout run")
       expect(walkthrough.file).to be_attached
+      # Regression: the note is PERSISTED on the row (not shipped as a
+      # transient job kwarg) so a retry re-injects the user's guidance
+      # instead of silently dropping it.
+      expect(walkthrough.note).to eq("Watch the save button")
 
       expect(parse_body["video_walkthrough"]).to include(
         "id" => walkthrough.id,
@@ -64,8 +68,8 @@ RSpec.describe "API: /api/v1/app video walkthroughs", type: :request do
 
       enqueued = ActiveJob::Base.queue_adapter.enqueued_jobs.select { |j| j[:job] == VideoWalkthroughAnalysisJob }
       expect(enqueued.size).to eq(1)
-      expect(enqueued.first[:args].first).to eq(walkthrough.id)
-      expect(enqueued.first[:args].last).to include("user_note" => "Watch the save button")
+      # The job now takes only the id; the note comes from the persisted column.
+      expect(enqueued.first[:args]).to eq([ walkthrough.id ])
     end
 
     it "422s with gemini_not_configured when the user has no Gemini key" do
@@ -131,7 +135,9 @@ RSpec.describe "API: /api/v1/app video walkthroughs", type: :request do
 
       enqueued = ActiveJob::Base.queue_adapter.enqueued_jobs.select { |j| j[:job] == VideoWalkthroughAnalysisJob }
       expect(enqueued.size).to eq(1)
-      expect(enqueued.first[:args].first).to eq(walkthrough.id)
+      # Regression: retry re-enqueues with just the id (no user_note kwarg);
+      # the note rides along on the persisted row.
+      expect(enqueued.first[:args]).to eq([ walkthrough.id ])
     end
 
     it "422s with not_retryable for an analyzed walkthrough" do

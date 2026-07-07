@@ -343,6 +343,10 @@ export function chatQueryKey(id: string | number, search: string): ChatQueryKey 
 }
 
 type WalkthroughDraft = {
+  // Monotonic client-side identity: state updates from an upload are keyed to
+  // the draft that started them, so a late resolution can't corrupt a draft
+  // the user has since replaced.
+  key: number
   file: File
   filename: string
   durationSeconds: number | null
@@ -1798,6 +1802,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   const [walkthrough, setWalkthrough] = useState<WalkthroughDraft | null>(null)
   const [geminiSheetOpen, setGeminiSheetOpen] = useState(false)
   const pendingVideoRef = useRef<File | null>(null)
+  const walkthroughKeyRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const attachmentPopoverRef = useRef<HTMLDivElement | null>(null)
@@ -1995,6 +2000,14 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   function submitMessage() {
     if (send.isPending || systemAction.isPending || systemCommandAction.isPending) return
     if (walkthrough?.status === "ready") {
+      // A walkthrough and image/PDF attachments can't share one send: the
+      // video goes to Gemini, the attachments to the chat agent — silently
+      // splitting them (and leaking the images to the next message) is the
+      // review finding. Block explicitly instead.
+      if (attachments.length > 0) {
+        setAttachmentError(t("walkthrough_no_other_attachments"))
+        return
+      }
       // Send commits the walkthrough: the video uploads with the typed text
       // riding along as the user's note; the analysis turn carries both.
       void uploadWalkthrough(text)
@@ -2261,10 +2274,28 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   // Route an incoming video (drag, picker, or a finished recording) into the
   // walkthrough draft: gate on Gemini config, duration, and size — gently,
   // with specific copy, before any bytes move.
-  async function intakeWalkthroughVideo(file: File) {
-    if (!payload.gemini_configured) {
+  //
+  // `knownDuration` comes from the recorder's own clock (measureVideoDuration
+  // returns null for MediaRecorder webm, whose metadata duration is Infinity),
+  // so recorded videos still trip the ≥12-min low-resolution gate.
+  // `assumeConfigured` is set by the post-setup handoff: the calling render's
+  // payload.gemini_configured is still stale (the refetch hasn't landed), but
+  // the key was just saved — re-checking it would loop the setup sheet.
+  async function intakeWalkthroughVideo(
+    file: File,
+    options: { knownDuration?: number | null; assumeConfigured?: boolean } = {}
+  ) {
+    if (!options.assumeConfigured && !payload.gemini_configured) {
       pendingVideoRef.current = file
       setGeminiSheetOpen(true)
+      return
+    }
+
+    // Never clobber an in-flight walkthrough: replacing during upload would
+    // orphan the running XHR, and during analysis would lose the server row.
+    // Only a settled draft (ready/failed) is replaceable.
+    if (walkthrough && (walkthrough.status === "uploading" || walkthrough.status === "analyzing")) {
+      setAttachmentError(t("walkthrough_one_at_a_time"))
       return
     }
 
@@ -2273,21 +2304,24 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       return
     }
 
-    const durationSeconds = await measureVideoDuration(file)
+    const durationSeconds = options.knownDuration ?? (await measureVideoDuration(file))
     if (durationSeconds && durationSeconds > MAX_WALKTHROUGH_DURATION_SECONDS) {
       setAttachmentError(t("walkthrough_too_long", { limit: formatClock(MAX_WALKTHROUGH_DURATION_SECONDS), actual: formatClock(durationSeconds) }))
       return
     }
 
     setAttachmentError(null)
-    setWalkthrough({ file, filename: file.name || "walkthrough.webm", durationSeconds, status: "ready", percent: 0 })
+    walkthroughKeyRef.current += 1
+    setWalkthrough({ key: walkthroughKeyRef.current, file, filename: file.name || "walkthrough.webm", durationSeconds, status: "ready", percent: 0 })
   }
 
   const recorder = useWalkthroughRecorder({
     onFinished: ({ blob, mimeType, durationSeconds }) => {
       const extension = mimeType.includes("mp4") ? "mp4" : "webm"
       const file = new File([blob], `walkthrough-${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.${extension}`, { type: mimeType })
-      void intakeWalkthroughVideo(file)
+      // Pass the recorder's measured duration — the webm blob can't be
+      // re-measured, so this is the only reliable source for the gate.
+      void intakeWalkthroughVideo(file, { knownDuration: durationSeconds })
     }
   })
 
@@ -2307,8 +2341,13 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       const detail = (event as CustomEvent<{ id: number; state: string; error_message: string | null; chat_session_id: number }>).detail
       if (!detail || detail.chat_session_id !== payload.chat.id) return
 
+      // A walkthrough finishing frees the composer — clear any lingering
+      // walkthrough-scoped error (e.g. a one-at-a-time rejection) so it can't
+      // keep the send button disabled for the next ordinary message.
+      if (detail.state === "analyzed") setAttachmentError(null)
+
       setWalkthrough((current) => {
-        if (!current || current.id !== detail.id) return current
+        if (!current || current.id == null || current.id !== detail.id) return current
         if (detail.state === "analyzed") {
           onNotice(t("walkthrough_analyzed"))
           return null // its turn appears in the thread
@@ -2327,7 +2366,24 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   async function uploadWalkthrough(note: string) {
     if (!walkthrough || walkthrough.status !== "ready") return
 
-    setWalkthrough({ ...walkthrough, status: "uploading", percent: 0 })
+    // Every state update from here on is keyed to THIS draft — if the user
+    // replaces the walkthrough (only possible once it's back to a settled
+    // state), a late resolution from the old upload can't corrupt the new one.
+    const activeKey = walkthrough.key
+    const keyed = (updater: (current: WalkthroughDraft) => WalkthroughDraft | null) =>
+      setWalkthrough((current) => (current && current.key === activeKey ? updater(current) : current))
+
+    // Clear the composer at the START of the upload, not after it resolves:
+    // the text has been captured as the note, so leaving it lets a second
+    // Enter double-send it and destroys a draft typed during the upload.
+    setText("")
+    try {
+      window.localStorage.removeItem(CHAT_DRAFT_KEY_PREFIX + chatId)
+    } catch (_error) {
+      // Local storage can be unavailable in hardened browser modes.
+    }
+
+    keyed((current) => ({ ...current, status: "uploading", percent: 0 }))
     try {
       const { video_walkthrough } = await uploadVideoWalkthrough({
         chatSessionId: payload.chat.id,
@@ -2336,14 +2392,13 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
         durationSeconds: walkthrough.durationSeconds,
         note: note.trim() || undefined,
         onProgress: (percent) => {
-          setWalkthrough((current) => (current && current.status === "uploading" ? { ...current, percent } : current))
+          keyed((current) => (current.status === "uploading" ? { ...current, percent } : current))
         }
       })
-      setWalkthrough((current) => (current ? { ...current, status: "analyzing", id: video_walkthrough.id } : current))
-      updateText("")
+      keyed((current) => ({ ...current, status: "analyzing", id: video_walkthrough.id }))
     } catch (error) {
       const message = error instanceof Error ? error.message : t("walkthrough_failed_generic")
-      setWalkthrough((current) => (current ? { ...current, status: "failed", error: message } : current))
+      keyed((current) => ({ ...current, status: "failed", error: message }))
     }
   }
 
@@ -2670,7 +2725,10 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
             void queryClient.invalidateQueries({ queryKey })
             const pending = pendingVideoRef.current
             pendingVideoRef.current = null
-            if (pending) void intakeWalkthroughVideo(pending)
+            // assumeConfigured: the key was just saved, but this render's
+            // payload.gemini_configured is still stale until the refetch
+            // lands — without it, intake would re-open the sheet forever.
+            if (pending) void intakeWalkthroughVideo(pending, { assumeConfigured: true })
           }}
         />
       ) : null}
@@ -2802,7 +2860,13 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
             <button
               aria-label={t("walkthrough_remove")}
               className="rounded-full p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700"
-              onClick={() => setWalkthrough(null)}
+              onClick={() => {
+                setWalkthrough(null)
+                // Clear any walkthrough-scoped error (e.g. one-at-a-time) so
+                // it can't linger and disable the send button for the next
+                // ordinary message.
+                setAttachmentError(null)
+              }}
               type="button"
             >
               <CloseIcon className="h-3.5 w-3.5" />

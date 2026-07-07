@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   formatClock,
   pickRecorderMimeType,
   RECORDER_MIME_CANDIDATES,
   RECORDER_WARNING_SECONDS,
+  useWalkthroughRecorder,
   WalkthroughRecorderHUD
 } from "./WalkthroughRecorder"
 import { MAX_WALKTHROUGH_DURATION_SECONDS } from "../api/videoWalkthroughs"
@@ -56,6 +57,84 @@ describe("pickRecorderMimeType", () => {
       "video/webm",
       "video/mp4"
     ])
+  })
+})
+
+// The recorder derives durationSeconds from its OWN clock (Date.now at start
+// vs stop), never by re-measuring the produced blob — a MediaRecorder webm's
+// metadata duration is Infinity, so the wall-clock is the only reliable
+// source for the ≥12-min gate. This exercises that onFinished contract.
+class FakeMediaRecorder {
+  static isTypeSupported = () => true
+  ondataavailable: ((event: { data: Blob }) => void) | null = null
+  onstop: (() => void) | null = null
+  mimeType = "video/webm"
+  start = vi.fn()
+  stop = vi.fn(() => {
+    this.ondataavailable?.({ data: new Blob(["chunk"], { type: "video/webm" }) })
+    this.onstop?.()
+  })
+}
+
+function fakeTrack() {
+  return { stop: vi.fn(), addEventListener: vi.fn() }
+}
+
+function fakeStream() {
+  const track = fakeTrack()
+  return { getTracks: () => [track], getVideoTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream
+}
+
+describe("useWalkthroughRecorder onFinished", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+
+  it("delivers a numeric durationSeconds derived from the wall clock, not the blob", async () => {
+    const onFinished = vi.fn()
+    let recorder: FakeMediaRecorder | null = null
+
+    vi.stubGlobal("MediaRecorder", class extends FakeMediaRecorder {
+      constructor() {
+        super()
+        recorder = this
+      }
+    })
+    vi.stubGlobal("MediaStream", class {
+      // The hook wraps the picked tracks in a fresh MediaStream — jsdom has none.
+    })
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      mediaDevices: {
+        getDisplayMedia: vi.fn().mockResolvedValue(fakeStream()),
+        getUserMedia: vi.fn().mockResolvedValue(fakeStream())
+      }
+    })
+    const nowSpy = vi.spyOn(Date, "now")
+    nowSpy.mockReturnValue(1_000_000) // start clock
+
+    const { result } = renderHook(() => useWalkthroughRecorder({ onFinished }))
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(recorder).not.toBeNull()
+
+    // 7.4s elapsed on the recorder's clock → rounds to 7.
+    nowSpy.mockReturnValue(1_007_400)
+    act(() => {
+      result.current.stop()
+    })
+
+    await waitFor(() => expect(onFinished).toHaveBeenCalledTimes(1))
+    const result0 = onFinished.mock.calls[0][0]
+    expect(typeof result0.durationSeconds).toBe("number")
+    expect(result0.durationSeconds).toBe(7)
+    expect(result0.blob).toBeInstanceOf(Blob)
+    expect(result0.mimeType).toBe("video/webm")
+
+    vi.unstubAllGlobals()
   })
 })
 

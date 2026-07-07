@@ -118,6 +118,8 @@
   "walkthrough_discard": "Discard",
   "walkthrough_failed_generic": "The analysis failed.",
   "walkthrough_no_mic": "No mic — narration won't be captured",
+  "walkthrough_no_other_attachments": "Send the walkthrough on its own — remove image or file attachments and send them in a separate message.",
+  "walkthrough_one_at_a_time": "A walkthrough is already being processed — wait for it to finish, then add another.",
   "walkthrough_ready": "Ready — Send analyzes it",
   "walkthrough_recording": "Recording",
   "walkthrough_remaining": "{{clock}} left",

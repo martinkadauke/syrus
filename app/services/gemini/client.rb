@@ -29,6 +29,22 @@ module Gemini
     RateLimited = Class.new(Error)
     # Files API upload processed but the file landed in state FAILED.
     FileProcessingFailed = Class.new(Error)
+    # Transport failures (DNS, timeouts, resets, TLS) — wrapped here so
+    # callers rescuing Gemini::Client::Error catch EVERYTHING the client can
+    # raise. Unwrapped Net::* escaping past the analysis job's rescue chain
+    # stranded walkthroughs in "analyzing" forever (review finding).
+    ConnectionError = Class.new(Error)
+
+    TRANSPORT_ERRORS = [
+      SocketError, Timeout::Error, Errno::ECONNREFUSED, Errno::ECONNRESET,
+      Errno::EHOSTUNREACH, Errno::EPIPE, OpenSSL::SSL::SSLError, EOFError, IOError
+    ].freeze
+
+    # Flash-tier models that handle video, in preference order. The single
+    # source of truth — CredentialProbe validates against this list and
+    # resolve_video_model! picks from it at analysis time, so a key that
+    # only exposes a fallback model both validates AND analyzes with it.
+    VIDEO_MODELS = %w[gemini-3.5-flash gemini-3-flash-preview gemini-2.5-flash].freeze
 
     def initialize(api_key:, model: DEFAULT_MODEL)
       raise ArgumentError, "api_key required" if api_key.blank?
@@ -46,6 +62,18 @@ module Gemini
       response = request(Net::HTTP::Get.new(uri_for("/#{API_VERSION}/models?pageSize=50")))
       json = parse!(response)
       Array(json["models"]).map { |m| m["name"].to_s.delete_prefix("models/") }
+    end
+
+    # Pick the best video-capable model this key's project actually exposes
+    # and use it for subsequent calls. Validation-time and analysis-time model
+    # choice go through the same list, so a key that validated green against
+    # a fallback model can't fail analysis with a 404 on the default one.
+    def resolve_video_model!
+      models = list_models
+      resolved = VIDEO_MODELS.find { |candidate| models.any? { |name| name.start_with?(candidate) } }
+      raise Error, "no video-capable Gemini model is available to this project" unless resolved
+
+      @model = resolved
     end
 
     # Files API resumable upload. Returns { "uri" =>, "name" =>, "state" => }.
@@ -124,8 +152,17 @@ module Gemini
       post.body = body.to_json
 
       json = parse!(request(post, read_timeout: 600))
-      text = json.dig("candidates", 0, "content", "parts", 0, "text").to_s
-      raise Error, "Gemini returned an empty analysis" if text.blank?
+      # Long responses can arrive split across multiple text parts (the
+      # official SDKs join them) — reading only parts[0] truncates a large
+      # issues array mid-JSON and misreports a successful analysis as
+      # malformed (review finding).
+      parts = Array(json.dig("candidates", 0, "content", "parts"))
+      text = parts.filter_map { |part| part["text"] }.join
+      if text.blank?
+        finish_reason = json.dig("candidates", 0, "finishReason").to_s
+        detail = finish_reason.present? && finish_reason != "STOP" ? " (finish reason: #{finish_reason})" : ""
+        raise Error, "Gemini returned an empty analysis#{detail}"
+      end
 
       JSON.parse(text)
     rescue JSON::ParserError
@@ -149,6 +186,8 @@ module Gemini
       Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: read_timeout, open_timeout: 15) do |http|
         http.request(req)
       end
+    rescue *TRANSPORT_ERRORS => error
+      raise ConnectionError, "could not reach Gemini: #{error.class}: #{error.message}"
     end
 
     def parse!(response)
