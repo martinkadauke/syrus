@@ -20,16 +20,19 @@ const notReady = { credential: "claude_oauth_token", ok: false, message: "Claude
 const ready = { credential: "claude_oauth_token", ok: true, message: "Claude already works on this machine — no token needed.", details: {} }
 const tokenValid = { credential: "claude_oauth_token", ok: true, message: "Claude OAuth token is valid.", details: {} }
 
-function mockRoutes(routes: { preflight?: () => Response; start?: () => Response; exchange?: () => Response }) {
+function mockRoutes(routes: { preflight?: () => Response; start?: () => Response; exchange?: () => Response; testGemini?: () => Response }) {
   return vi.spyOn(window, "fetch").mockImplementation(async (input) => {
     const url = String(input)
     if (url.endsWith("/test_claude_cli")) return routes.preflight?.() ?? jsonResponse({ credential_test: notReady })
     if (url.endsWith("/claude_oauth_start")) return routes.start?.() ?? jsonResponse({ authorize_url: "https://claude.ai/oauth/authorize?state=abc" })
     if (url.endsWith("/claude_oauth_exchange")) return routes.exchange?.() ?? jsonResponse({ credential_test: tokenValid })
+    if (url.endsWith("/credentials/test_gemini_key")) return routes.testGemini?.() ?? jsonResponse({ credential_test: geminiValid })
     if (url.endsWith("/api/v1/app/credentials")) return jsonResponse({ credential_status: {} })
     throw new Error(`unexpected fetch: ${url}`)
   })
 }
+
+const geminiValid = { credential: "gemini_api_key", ok: true, message: "Gemini key is valid.", details: { model: "gemini-3.5-flash" } }
 
 describe("ConfigureAgentModal", () => {
   afterEach(() => {
@@ -133,6 +136,47 @@ describe("ConfigureAgentModal", () => {
     await waitFor(() => expect(screen.getByTestId("gemini-validation-stages")).toBeInTheDocument())
     expect(screen.getByPlaceholderText("Paste your Gemini API key here")).toBeInTheDocument()
   })
+
+  it("keeps the modal open when Escape dismisses the nested Gemini sheet", async () => {
+    mockRoutes({})
+    const onClose = vi.fn()
+    renderModal({ onClose })
+
+    fireEvent.click(screen.getByRole("tab", { name: /Gemini/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Add Gemini API key/ }))
+    await waitFor(() => expect(screen.getByTestId("gemini-validation-stages")).toBeInTheDocument())
+
+    // Escape must close only the sheet — the outer modal's own Escape handler
+    // is guarded while the sheet is open, so onClose (which unmounts the whole
+    // modal) must NOT fire.
+    fireEvent.keyDown(document, { key: "Escape" })
+
+    await waitFor(() => expect(screen.queryByTestId("gemini-validation-stages")).not.toBeInTheDocument())
+    expect(onClose).not.toHaveBeenCalled()
+    // Back on the Gemini tab, ready to reopen the sheet.
+    expect(screen.getByRole("button", { name: /Add Gemini API key/ })).toBeInTheDocument()
+  })
+
+  it("shows the configured state and calls onSaved after a successful Gemini key validation", async () => {
+    mockRoutes({})
+    const onSaved = vi.fn()
+    renderModal({ onSaved })
+
+    fireEvent.click(screen.getByRole("tab", { name: /Gemini/ }))
+    fireEvent.click(screen.getByRole("button", { name: /Add Gemini API key/ }))
+    const input = await screen.findByPlaceholderText("Paste your Gemini API key here")
+
+    fireEvent.change(input, { target: { value: "AIzaSyA1234567890abcdefghijklmnop" } })
+    fireEvent.click(screen.getByRole("button", { name: "Validate & save" }))
+
+    // onConfigured (which calls onSaved) is the definitive signal the sheet
+    // finished — NOT the "Gemini is set up" substring, which the sheet's own
+    // saved message also contains during its closing pause. Wait on onSaved.
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1), { timeout: 5000 })
+    // The modal now renders its configured state (unique copy) + Done.
+    expect(screen.getByText(/walkthrough videos will be analyzed automatically/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument()
+  }, 10000)
 
   it("surfaces an exchange error and stays open", async () => {
     vi.spyOn(window, "open").mockReturnValue({} as Window)

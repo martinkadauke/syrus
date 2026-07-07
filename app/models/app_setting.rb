@@ -13,6 +13,19 @@ class AppSetting < ApplicationRecord
     greater_than_or_equal_to: 0,
     less_than_or_equal_to: 10
   }
+  # Retention must be >= 1 day: 0 or negative makes the prune cutoff
+  # (`video_retention_days.days.ago`) land at/after now, which would purge
+  # EVERY stored walkthrough video instance-wide. There is no "keep forever"
+  # via 0 — the size budget is the way to relax the cap.
+  validates :video_retention_days, numericality: {
+    only_integer: true,
+    greater_than_or_equal_to: 1
+  }
+  # 0 = unlimited (size cap disabled); negatives are meaningless.
+  validates :video_storage_budget_mb, numericality: {
+    only_integer: true,
+    greater_than_or_equal_to: 0
+  }
 
   encrypts :github_app_private_key_pem
 

@@ -28,13 +28,20 @@ class VideoWalkthroughPruneJob < ApplicationJob
   private
 
   def time_sweep
-    cutoff = AppSetting.video_retention_days.days.ago
+    days = AppSetting.video_retention_days.to_i
+    # Defense in depth against the destructive-cutoff footgun: AppSetting
+    # validates days >= 1, but a direct DB edit (or a future bypass) with 0 or
+    # negative would make `days.days.ago` land at/after now and purge every
+    # settled video. Never time-sweep on a non-positive retention.
+    return unless days.positive?
+
+    cutoff = days.days.ago
     purged = 0
     settled_with_blob.where("chat_video_walkthroughs.updated_at < ?", cutoff).find_each do |walkthrough|
       purge_video!(walkthrough)
       purged += 1
     end
-    log("time sweep purged #{purged} video(s) older than #{AppSetting.video_retention_days}d") if purged.positive?
+    log("time sweep purged #{purged} video(s) older than #{days}d") if purged.positive?
   end
 
   def size_sweep

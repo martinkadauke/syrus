@@ -47,11 +47,14 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose()
+      // When the nested Gemini sheet is open, let ITS Escape handler close the
+      // sheet only — both listeners live on document and fire on one keypress,
+      // so without this guard Escape tears down the whole modal too.
+      if (event.key === "Escape" && !geminiSheetOpen) onClose()
     }
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
-  }, [onClose])
+  }, [onClose, geminiSheetOpen])
 
   // Preflight: is Claude already usable on this machine?
   useEffect(() => {

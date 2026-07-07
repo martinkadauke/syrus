@@ -174,10 +174,29 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
       return unless Gemini::VideoTranscoder.to_compact_mp4(input_path: source_path, output_path: mp4)
 
       base = File.basename(walkthrough.file.filename.to_s, ".*").presence || "walkthrough"
-      File.open(mp4, "rb") do |io|
-        walkthrough.file.attach(io: io, filename: "#{base}.mp4", content_type: "video/mp4")
+      # The blob we're about to replace. has_one_attached is dependent: :purge,
+      # which purges only on record DESTROY, NOT on replace — so without an
+      # explicit purge the original (crisp) blob + its physical file orphan
+      # forever, uncounted by the size budget. Capture it before the swap.
+      previous_blob = walkthrough.file.blob
+
+      # Upload the mp4 to a standalone blob OUTSIDE any transaction: attaching a
+      # raw io inside a transaction defers the physical upload to after_commit,
+      # by which point the tempfile/io is gone (FileNotFoundError). With the
+      # blob already uploaded, the swap is a pure DB association we CAN wrap in a
+      # transaction so a mid-swap failure can't leave the row's content_type/
+      # byte_size describing the old webm while the stored blob is the new mp4.
+      new_blob = File.open(mp4, "rb") do |io|
+        ActiveStorage::Blob.create_and_upload!(io: io, filename: "#{base}.mp4", content_type: "video/mp4")
       end
-      walkthrough.update!(content_type: "video/mp4", byte_size: File.size(mp4))
+
+      ActiveRecord::Base.transaction do
+        walkthrough.file.attach(new_blob)
+        walkthrough.update!(content_type: "video/mp4", byte_size: new_blob.byte_size)
+      end
+
+      # Only after the swap commits, and never the blob the row now points at.
+      previous_blob.purge_later if previous_blob && previous_blob.id != new_blob.id
     end
   rescue StandardError => error
     Rails.logger.warn("[VideoWalkthroughAnalysisJob] storage transcode failed (keeping original): #{error.class}: #{error.message}")

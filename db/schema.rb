@@ -265,6 +265,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.text "pinned_context"
     t.string "share_token"
     t.datetime "stop_requested_at"
+    t.string "suggested_next_step"
     t.string "title"
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false

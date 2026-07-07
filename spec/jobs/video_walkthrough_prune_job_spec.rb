@@ -106,6 +106,19 @@ RSpec.describe VideoWalkthroughPruneJob do
 
       expect(purge_jobs_enqueued).to be_empty
     end
+
+    it "never time-sweeps when retention is non-positive (destructive-cutoff guard)" do
+      # AppSetting validates >= 1, but a direct DB write could set 0/negative;
+      # cutoff = 0.days.ago == now would otherwise purge EVERY settled video.
+      AppSetting.current.update_column(:video_retention_days, 0)
+      recent = walkthrough_with_blob(state: "analyzed", age: 1.day)
+      old = walkthrough_with_blob(state: "analyzed", age: 30.days)
+
+      described_class.perform_now
+
+      expect(purge_jobs_enqueued).to be_empty
+      [ recent, old ].each { |w| expect(w.reload.file).to be_attached }
+    end
   end
 
   describe "size sweep (LRU eviction under budget)" do

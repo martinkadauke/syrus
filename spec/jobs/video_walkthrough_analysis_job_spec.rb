@@ -57,6 +57,8 @@ class FakeGeminiWalkthroughClient
 end
 
 RSpec.describe VideoWalkthroughAnalysisJob do
+  include ActiveJob::TestHelper
+
   let(:user) { Factories.user(gemini_api_key: "gk-test") }
   let(:chat) { ChatSession.create!(user: user) }
 
@@ -558,6 +560,48 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect(walkthrough).to be_analyzed
       expect(walkthrough.error_message).to be_nil
       expect(walkthrough.content_type).to eq("video/webm")
+    end
+
+    it "purges the original blob after the swap so it is not orphaned" do
+      # has_one_attached :file is dependent: :purge, which does NOT purge on
+      # replace — the job must purge the old blob explicitly, or every
+      # transcode leaks the crisp original (uncounted by the size budget).
+      allow(Gemini::VideoTranscoder).to receive(:available?).and_return(true)
+      allow(Gemini::VideoTranscoder).to receive(:to_compact_mp4) do |input_path:, output_path:|
+        File.binwrite(output_path, "compact-mp4-bytes")
+        true
+      end
+      walkthrough = create_walkthrough
+      original_blob = walkthrough.file.blob
+
+      perform_enqueued_jobs(only: ActiveStorage::PurgeJob) do
+        described_class.perform_now(walkthrough.id)
+      end
+
+      walkthrough.reload
+      # Swapped to a new blob, and the original was purged — not left dangling.
+      expect(walkthrough.file.blob.id).not_to eq(original_blob.id)
+      expect(ActiveStorage::Blob.exists?(original_blob.id)).to be false
+    end
+
+    it "extracts screenshots from the crisp source, not the post-transcode mp4" do
+      # Transcode is active; if frames were pulled from the stored blob after
+      # the swap they'd be the compact mp4. Assert extract saw the original.
+      allow(Gemini::VideoTranscoder).to receive(:available?).and_return(true)
+      allow(Gemini::VideoTranscoder).to receive(:to_compact_mp4) do |input_path:, output_path:|
+        File.binwrite(output_path, "compact-mp4-bytes")
+        true
+      end
+      seen_source = nil
+      allow(Gemini::FrameExtractor).to receive(:extract) do |video_path:, timestamps:|
+        seen_source = File.binread(video_path)
+        []
+      end
+      walkthrough = create_walkthrough
+
+      described_class.perform_now(walkthrough.id)
+
+      expect(seen_source).to eq("webm-bytes")
     end
   end
 

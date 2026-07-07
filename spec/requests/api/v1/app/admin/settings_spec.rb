@@ -69,6 +69,20 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
     expect(setting.signups_open).to be false
   end
 
+  it "rejects a destructive video_retention_days of 0 without persisting it" do
+    sign_in_as(admin)
+    AppSetting.current.update!(video_retention_days: 7)
+
+    patch "/api/v1/app/admin/settings", params: {
+      app_setting: { video_retention_days: 0 }
+    }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("validation_failed")
+    # The prior safe value is preserved — 0 would purge every stored video.
+    expect(AppSetting.current.reload.video_retention_days).to eq(7)
+  end
+
   it "rejects unknown app secret names" do
     sign_in_as(admin)
 

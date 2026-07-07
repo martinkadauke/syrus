@@ -73,6 +73,31 @@ RSpec.describe AppSetting do
     expect(AppSetting.video_storage_budget_bytes).to eq(0)
   end
 
+  # Guard against the destructive-cutoff footgun: retention 0/negative would
+  # make the prune cutoff land at/after now and purge every stored video.
+  it "rejects a video_retention_days below 1" do
+    setting = AppSetting.current
+
+    [ 0, -1 ].each do |bad|
+      setting.video_retention_days = bad
+      expect(setting).not_to be_valid
+      expect(setting.errors[:video_retention_days]).to be_present
+    end
+
+    setting.video_retention_days = 1
+    expect(setting).to be_valid
+  end
+
+  it "rejects a negative video_storage_budget_mb but allows 0 (unlimited)" do
+    setting = AppSetting.current
+
+    setting.video_storage_budget_mb = -1
+    expect(setting).not_to be_valid
+
+    setting.video_storage_budget_mb = 0
+    expect(setting).to be_valid
+  end
+
   it "reports whether a GitHub App has been registered" do
     setting = AppSetting.current
     expect(setting.github_app_registered?).to be false
