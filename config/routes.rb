@@ -50,6 +50,7 @@ Rails.application.routes.draw do
           post :clear_credential
           post :test_credential
           post :test_github_token
+          post :test_gemini_key
           post :test_claude_cli
           post :claude_oauth_start
           post :claude_oauth_exchange
@@ -150,6 +151,8 @@ Rails.application.routes.draw do
         patch "chats/:id/whiteboard", to: "chat_whiteboards#update", constraints: { id: /\d+/ }
         get "chats/:chat_id/whiteboard_snapshots", to: "whiteboard_snapshots#index", constraints: { chat_id: /\d+/ }
         post "chats/:chat_id/whiteboard_snapshots", to: "whiteboard_snapshots#create", constraints: { chat_id: /\d+/ }
+        post "chats/:chat_id/video_walkthroughs", to: "video_walkthroughs#create", constraints: { chat_id: /\d+/ }
+        post "video_walkthroughs/:id/retry", to: "video_walkthroughs#retry", constraints: { id: /\d+/ }
         get "chats/:chat_id/whiteboard_snapshots/:id", to: "whiteboard_snapshots#show", constraints: { chat_id: /\d+/, id: /\d+/ }
         patch "chats/:id/mark_read", to: "chats#mark_read", constraints: { id: /\d+/ }
         patch "chats/:id/mark_unread", to: "chats#mark_unread", constraints: { id: /\d+/ }

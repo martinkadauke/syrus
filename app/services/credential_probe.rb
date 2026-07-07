@@ -80,14 +80,79 @@ class CredentialProbe
       probe_claude
     when "codex_api_key", "codex_auth_json"
       probe_codex
+    when "gemini_api_key"
+      probe_gemini
     else
       raise ArgumentError, "Unknown credential: #{credential}"
+    end
+  end
+
+  # Validate a pasted-but-unsaved Gemini API key (the setup sheet's
+  # paste-and-test flow). models.list is free and requires a working key;
+  # the details carry whether a video-capable flash model is actually
+  # available to this key's project — the whole point of configuring Gemini.
+  def self.gemini_key(key:)
+    key = key.to_s.strip
+    if key.blank?
+      return Result.new(credential: "gemini_api_key", ok: false, message: "Paste a key to test it.", details: {})
+    end
+
+    models = gemini_client_factory.call(api_key: key).list_models
+    video_model = preferred_gemini_model(models)
+    if video_model
+      Result.new(
+        credential: "gemini_api_key",
+        ok: true,
+        message: "Gemini key is valid — #{video_model} is available for video analysis.",
+        details: { model: video_model, models_available: models.size }
+      )
+    else
+      Result.new(
+        credential: "gemini_api_key",
+        ok: false,
+        message: "The key works, but no video-capable Gemini flash model is available to this project.",
+        details: { models_available: models.size }
+      )
+    end
+  rescue Gemini::Client::AuthError
+    Result.new(credential: "gemini_api_key", ok: false,
+               message: "Google rejected this key. Check that you copied the whole value from aistudio.google.com/apikey.", details: {})
+  rescue Gemini::Client::RateLimited
+    Result.new(credential: "gemini_api_key", ok: false,
+               message: "The key looks throttled right now (free-tier quota). Try again in a minute.", details: {})
+  rescue Gemini::Client::Error, SocketError, Timeout::Error, Errno::ECONNREFUSED, OpenSSL::SSL::SSLError
+    Result.new(credential: "gemini_api_key", ok: false,
+               message: "Could not reach Google to verify the key. Try again in a moment.", details: {})
+  end
+
+  # Flash-tier models that handle video; first available wins. Kept in sync
+  # with Gemini::Client::DEFAULT_MODEL.
+  GEMINI_VIDEO_MODELS = %w[gemini-3.5-flash gemini-3-flash-preview gemini-2.5-flash].freeze
+
+  def self.preferred_gemini_model(models)
+    GEMINI_VIDEO_MODELS.find { |candidate| models.any? { |name| name.start_with?(candidate) } }
+  end
+
+  # Test seam: specs swap the factory instead of stubbing HTTP.
+  class << self
+    attr_writer :gemini_client_factory
+
+    def gemini_client_factory
+      @gemini_client_factory ||= ->(api_key:) { Gemini::Client.new(api_key: api_key) }
     end
   end
 
   private
 
   attr_reader :user, :credential
+
+  # Saved-credential test (the /credentials "Test" button) — same probe as
+  # the paste-and-test path, against the stored key.
+  def probe_gemini
+    return missing("Gemini API key is not configured.") if user.gemini_api_key.blank?
+
+    self.class.gemini_key(key: user.gemini_api_key)
+  end
 
   def probe_github
     return missing("GitHub token is not configured.") if user.github_token.blank?

@@ -112,7 +112,36 @@ auto-pause a task until an operator fixes and resumes it.
 ## Chats
 
 Chats are operator conversations that can start with or without repository
-context. New chats default to the operator's most recently used repository
+context.
+
+### Walkthrough videos → Epics
+
+Record yourself testing your app — narrating what's broken as you click
+through it — and Syrus turns the recording into an Epic. In any chat, use
+the composer's **+ → Record a walkthrough** (the browser's native screen
+picker, with your microphone narration captured alongside), or drag a video
+file straight into the composer. Hitting Send uploads the video and sends it
+to **Google Gemini**, the model Syrus uses for video understanding; your
+typed message rides along as a note. Gemini extracts every issue shown or
+narrated — with timestamps, severities, and the app surface involved — and
+the analysis lands in the chat as a structured summary. From there the chat
+agent takes over: it asks brief follow-up questions when the video left
+something ambiguous, and otherwise proposes an Epic that groups the issues
+into well-scoped Jobs through the normal proposal flow.
+
+Recordings are capped at **15 minutes** (the recorder shows a live countdown
+and stops gracefully at the limit) and uploads at **500 MB**. Both webm
+(what the recorder produces) and mp4/QuickTime drag-ins are supported —
+nothing is transcoded. Analysis requires a **Gemini API key**: free from
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey), no credit
+card. The first time you attach a video, Syrus walks you through the
+one-minute setup; the key also lives under Credentials. On the free tier,
+Google's per-minute token quotas occasionally push back on rapid-fire
+analyses — Syrus surfaces this with a retry, and enabling billing on the AI
+Studio project removes the friction (a 10-minute video costs on the order
+of a few cents). In the desktop app, macOS uses the native screen-sharing
+picker (which handles the Screen Recording permission itself); on Windows,
+the primary screen is captured. New chats default to the operator's most recently used repository
 when one is available, and operators can still choose no repository or attach
 one later. A chat can attach repositories, Jobs, documents,
 memories, whiteboard state, and message-level image or PDF files. The chat

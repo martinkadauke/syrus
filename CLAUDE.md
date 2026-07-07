@@ -320,6 +320,24 @@ dependencies after Jobs exist.
 Dev and prod use `solid_cable` (NOT `async`) so browser app events work
 across web/worker processes.
 
+**Walkthrough videos (video → Epic)** — chats accept narrated screen
+recordings (composer `+ → Record a walkthrough`, drag-in, or file picker;
+webm/mp4/mov, ≤15 min, ≤500 MB). `ChatVideoWalkthrough` (Active Storage)
+uploads via multipart `POST /api/v1/app/chats/:chat_id/video_walkthroughs`;
+`VideoWalkthroughAnalysisJob` (queue `default`) runs Gemini — Files API
+resumable upload → poll ACTIVE → one `generateContent` with a JSON
+`responseSchema` (`Prompts::VideoWalkthroughAnalysis`; `media_resolution:
+low` ≥12 min) — then injects `Prompts::VideoWalkthroughContext` as a queued
+user-role turn so the EXISTING chat agent asks follow-ups / proposes the
+Epic. Gemini is the eyes, the chat agent stays the brain. Auth is an AI
+Studio API key only (`User#gemini_api_key`, encrypted; validated via free
+`models.list` — `CredentialProbe.gemini_key`): the gemini-cli OAuth path has
+no Files API and reusing its OAuth client violates Google ToS. Test seams:
+`VideoWalkthroughAnalysisJob.client_factory`,
+`CredentialProbe.gemini_client_factory`. Progress streams as
+`video_walkthrough.*` app events. Desktop: `screenCapture.ts` registers the
+display-media handler (macOS system picker; primary screen elsewhere).
+
 ## Conventions
 
 - **Public website/docs stay current.** Product-facing behavior changes

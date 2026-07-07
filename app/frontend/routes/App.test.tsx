@@ -10702,7 +10702,7 @@ describe("App", () => {
     const addAttachment = screen.getByRole("button", { name: "Add attachment" })
     expect(addAttachment).toHaveTextContent("+")
     expect(screen.queryByRole("dialog", { name: "Add attachment" })).not.toBeInTheDocument()
-    expect(screen.getByLabelText("Chat attachments")).toHaveAttribute("accept", "image/*,application/pdf")
+    expect(screen.getByLabelText("Chat attachments")).toHaveAttribute("accept", "image/*,application/pdf,video/webm,video/mp4,video/quicktime")
   })
 
   it("renders a centered landing layout for an empty chat", async () => {

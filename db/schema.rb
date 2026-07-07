@@ -263,7 +263,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.text "pinned_context"
     t.string "share_token"
     t.datetime "stop_requested_at"
-    t.string "suggested_next_step"
     t.string "title"
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
@@ -272,6 +271,26 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.index ["user_id", "hidden_at"], name: "index_chat_sessions_on_user_id_and_hidden_at"
     t.index ["user_id"], name: "index_chat_sessions_on_user_id"
     t.index ["workspace_path"], name: "index_chat_sessions_on_workspace_path"
+  end
+
+  create_table "chat_video_walkthroughs", force: :cascade do |t|
+    t.json "analysis"
+    t.datetime "analyzed_at"
+    t.bigint "byte_size"
+    t.integer "chat_session_id", null: false
+    t.string "content_type"
+    t.datetime "created_at", null: false
+    t.integer "duration_seconds"
+    t.text "error_message"
+    t.datetime "gemini_file_active_at"
+    t.string "gemini_file_uri"
+    t.string "state", default: "uploaded", null: false
+    t.string "title"
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["chat_session_id"], name: "index_chat_video_walkthroughs_on_chat_session_id"
+    t.index ["state"], name: "index_chat_video_walkthroughs_on_state"
+    t.index ["user_id"], name: "index_chat_video_walkthroughs_on_user_id"
   end
 
   create_table "chat_wakeups", force: :cascade do |t|
@@ -1015,6 +1034,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.string "email_address", null: false
     t.integer "epic_reopen_window", default: 30, null: false
     t.string "first_name"
+    t.text "gemini_api_key"
     t.datetime "gh_api_blocked_at"
     t.text "gh_api_blocked_reason"
     t.integer "gh_rate_limit_limit"
@@ -1112,6 +1132,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
   add_foreign_key "chat_queued_messages", "chat_sessions"
   add_foreign_key "chat_scratchpad_items", "chat_sessions"
   add_foreign_key "chat_sessions", "users"
+  add_foreign_key "chat_video_walkthroughs", "chat_sessions"
+  add_foreign_key "chat_video_walkthroughs", "users"
   add_foreign_key "chat_wakeups", "chat_sessions"
   add_foreign_key "chat_wakeups", "users"
   add_foreign_key "chat_whiteboards", "chat_sessions"

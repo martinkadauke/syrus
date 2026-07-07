@@ -24,6 +24,7 @@ import * as backendLifecycle from "./installer/backendLifecycle.js"
 import { readBackendManifest, uninstallScriptPath } from "./installer/installPaths.js"
 import { uninstallCommand } from "./installer/uninstallCommand.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
+import { registerScreenCaptureHandler } from "./screenCapture.js"
 import { decideOnSecondInstance, takeoverPrompt, type InstanceIdentity } from "./instanceTakeover.js"
 import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
@@ -2691,6 +2692,11 @@ app.whenReady().then(async () => {
   if (process.platform === "darwin") {
     app.dock?.hide()
   }
+
+  // getDisplayMedia (the web app's "Record a walkthrough") rejects in
+  // Electron without a display-media handler — macOS gets the native
+  // system picker, Windows/Linux the primary screen. See screenCapture.ts.
+  registerScreenCaptureHandler()
 
   if (process.platform === "win32") {
     // Must match electron-builder.yml appId — NSIS stamps it into the Start

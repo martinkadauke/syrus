@@ -38,6 +38,7 @@ class ChatSession < ApplicationRecord
   has_many :chat_queued_messages, class_name: "ChatQueuedMessage", dependent: :destroy
   has_many :queued_messages, -> { pending.order(:created_at, :id) }, class_name: "ChatQueuedMessage"
   has_many :scratchpad_items, -> { ordered }, class_name: "ChatScratchpadItem", dependent: :destroy
+  has_many :video_walkthroughs, class_name: "ChatVideoWalkthrough", dependent: :destroy
   has_many :wakeups, class_name: "ChatWakeup", dependent: :destroy
   has_many :agent_questions, class_name: "ChatAgentQuestion", dependent: :destroy
   has_many :bookmarks,

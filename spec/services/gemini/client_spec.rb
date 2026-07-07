@@ -1,0 +1,211 @@
+require "rails_helper"
+
+RSpec.describe Gemini::Client do
+  let(:client) { described_class.new(api_key: "AIza-test-key") }
+  let(:json_headers) { { "Content-Type" => "application/json" } }
+
+  describe "#list_models" do
+    it "strips the models/ prefix and authenticates with the x-goog-api-key header" do
+      stub_request(:get, "https://generativelanguage.googleapis.com/v1beta/models?pageSize=50")
+        .with(headers: { "x-goog-api-key" => "AIza-test-key" })
+        .to_return(
+          status: 200,
+          headers: json_headers,
+          body: {
+            models: [
+              { name: "models/gemini-3.5-flash" },
+              { name: "models/gemini-embedding-001" }
+            ]
+          }.to_json
+        )
+
+      expect(client.list_models).to eq(%w[ gemini-3.5-flash gemini-embedding-001 ])
+    end
+  end
+
+  describe "#upload_file" do
+    it "runs the two-step resumable upload and returns the file record" do
+      stub_request(:post, "https://generativelanguage.googleapis.com/upload/v1beta/files")
+        .to_return(
+          status: 200,
+          headers: { "x-goog-upload-url" => "https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=abc123" }
+        )
+      stub_request(:post, "https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=abc123")
+        .to_return(
+          status: 200,
+          headers: json_headers,
+          body: {
+            file: { name: "files/abc", uri: "https://generativelanguage.googleapis.com/v1beta/files/abc", state: "PROCESSING" }
+          }.to_json
+        )
+
+      file = client.upload_file(
+        io: StringIO.new("vidbytes"),
+        byte_size: 8,
+        content_type: "video/webm",
+        display_name: "Walkthrough video"
+      )
+
+      expect(file).to include(
+        "name" => "files/abc",
+        "uri" => "https://generativelanguage.googleapis.com/v1beta/files/abc",
+        "state" => "PROCESSING"
+      )
+
+      expect(WebMock).to have_requested(:post, "https://generativelanguage.googleapis.com/upload/v1beta/files")
+        .with(
+          headers: {
+            "X-Goog-Upload-Protocol" => "resumable",
+            "X-Goog-Upload-Command" => "start",
+            "X-Goog-Upload-Header-Content-Length" => "8",
+            "X-Goog-Upload-Header-Content-Type" => "video/webm",
+            "x-goog-api-key" => "AIza-test-key"
+          },
+          body: { file: { display_name: "Walkthrough video" } }.to_json
+        )
+      expect(WebMock).to have_requested(:post, "https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=abc123")
+        .with(
+          headers: {
+            "X-Goog-Upload-Command" => "upload, finalize",
+            "X-Goog-Upload-Offset" => "0",
+            "Content-Length" => "8"
+          },
+          body: "vidbytes"
+        )
+    end
+
+    it "raises when Gemini does not return a resumable upload URL" do
+      stub_request(:post, "https://generativelanguage.googleapis.com/upload/v1beta/files")
+        .to_return(status: 200, headers: {})
+
+      expect {
+        client.upload_file(io: StringIO.new("x"), byte_size: 1, content_type: "video/webm", display_name: "w")
+      }.to raise_error(Gemini::Client::Error, /did not return a resumable upload URL/)
+    end
+  end
+
+  describe "#wait_until_active" do
+    let(:file_url) { "https://generativelanguage.googleapis.com/v1beta/files/abc" }
+
+    it "polls until the file turns ACTIVE and returns it" do
+      stub_request(:get, file_url)
+        .to_return(
+          { status: 200, headers: json_headers, body: { name: "files/abc", state: "PROCESSING" }.to_json },
+          { status: 200, headers: json_headers, body: { name: "files/abc", state: "ACTIVE" }.to_json }
+        )
+
+      file = client.wait_until_active("files/abc", sleeper: ->(_s) {})
+
+      expect(file).to include("name" => "files/abc", "state" => "ACTIVE")
+      expect(WebMock).to have_requested(:get, file_url).twice
+    end
+
+    it "raises FileProcessingFailed when the file lands in state FAILED" do
+      stub_request(:get, file_url)
+        .to_return(status: 200, headers: json_headers, body: { name: "files/abc", state: "FAILED" }.to_json)
+
+      expect {
+        client.wait_until_active("files/abc", sleeper: ->(_s) {})
+      }.to raise_error(Gemini::Client::FileProcessingFailed, /could not process the video/)
+    end
+
+    it "raises when the file never turns ACTIVE before the deadline" do
+      stub_request(:get, file_url)
+        .to_return(status: 200, headers: json_headers, body: { name: "files/abc", state: "PROCESSING" }.to_json)
+
+      expect {
+        client.wait_until_active("files/abc", timeout: 0, sleeper: ->(_s) {})
+      }.to raise_error(Gemini::Client::Error, /timed out waiting/)
+    end
+  end
+
+  describe "#generate_content" do
+    let(:endpoint) { "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent" }
+    let(:response_schema) { { type: "OBJECT", properties: { summary: { type: "STRING" } } } }
+
+    def stub_generate(text:)
+      stub_request(:post, endpoint).to_return(
+        status: 200,
+        headers: json_headers,
+        body: { candidates: [ { content: { parts: [ { text: text } ] } } ] }.to_json
+      )
+    end
+
+    def generate(duration_seconds: nil)
+      client.generate_content(
+        file_uri: "https://generativelanguage.googleapis.com/v1beta/files/abc",
+        mime_type: "video/webm",
+        prompt: "Analyze the walkthrough.",
+        response_schema: response_schema,
+        duration_seconds: duration_seconds
+      )
+    end
+
+    it "posts a JSON responseSchema and parses the structured reply text" do
+      analysis = { "summary" => "Checkout works, totals do not." }
+      stub_generate(text: analysis.to_json)
+
+      expect(generate(duration_seconds: 60)).to eq(analysis)
+
+      expect(WebMock).to(have_requested(:post, endpoint).with do |req|
+        body = JSON.parse(req.body)
+        config = body.fetch("generationConfig")
+        parts = body.dig("contents", 0, "parts")
+
+        config["responseMimeType"] == "application/json" &&
+          config["responseSchema"] == { "type" => "OBJECT", "properties" => { "summary" => { "type" => "STRING" } } } &&
+          !config.key?("mediaResolution") &&
+          parts[0] == { "file_data" => { "file_uri" => "https://generativelanguage.googleapis.com/v1beta/files/abc", "mime_type" => "video/webm" } } &&
+          parts[1] == { "text" => "Analyze the walkthrough." }
+      end)
+    end
+
+    it "requests low media resolution for videos at or beyond 12 minutes" do
+      stub_generate(text: { "summary" => "long one" }.to_json)
+
+      generate(duration_seconds: 12 * 60)
+
+      expect(WebMock).to(have_requested(:post, endpoint).with do |req|
+        JSON.parse(req.body).dig("generationConfig", "mediaResolution") == "MEDIA_RESOLUTION_LOW"
+      end)
+    end
+
+    it "omits mediaResolution for videos under 12 minutes" do
+      stub_generate(text: { "summary" => "short one" }.to_json)
+
+      generate(duration_seconds: (12 * 60) - 1)
+
+      expect(WebMock).to(have_requested(:post, endpoint).with do |req|
+        !JSON.parse(req.body).fetch("generationConfig").key?("mediaResolution")
+      end)
+    end
+
+    it "raises AuthError when the key is rejected" do
+      [ 401, 403 ].each do |status|
+        stub_request(:post, endpoint).to_return(
+          status: status,
+          headers: json_headers,
+          body: { error: { message: "API key not valid." } }.to_json
+        )
+
+        expect { generate }.to raise_error(Gemini::Client::AuthError, "API key not valid.")
+      end
+    end
+
+    it "raises RateLimited on 429" do
+      stub_request(:post, endpoint).to_return(
+        status: 429,
+        headers: json_headers,
+        body: { error: { message: "Resource has been exhausted." } }.to_json
+      )
+
+      expect { generate }.to raise_error(Gemini::Client::RateLimited, "Resource has been exhausted.")
+    end
+
+    it "raises when the reply text is not valid JSON despite the schema" do
+      stub_generate(text: "not json {")
+
+      expect { generate }.to raise_error(Gemini::Client::Error, /malformed JSON/)
+    end
+  end
+end

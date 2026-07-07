@@ -191,6 +191,7 @@ function bootstrapPayload(overrides: Partial<BootstrapPayload> = {}): BootstrapP
       agent_max_turns: 200,
       theme: "light",
       locale: "en",
+    gemini_configured: false,
     },
     team_user_count: 1,
     app: {

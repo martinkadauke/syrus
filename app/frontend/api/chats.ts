@@ -408,10 +408,12 @@ export type ChatPayload = {
     app_stop_path: string
     app_bookmarks_path: string
     app_attachments_path: string
+    app_video_walkthroughs_path: string
     app_whiteboard_path: string
     app_switch_provider_path: string
     app_scratchpad_reorder_path: string
   }
+  gemini_configured: boolean
 }
 
 export type ChatMessagesPayload = {
