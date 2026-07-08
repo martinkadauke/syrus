@@ -415,7 +415,30 @@ RSpec.describe ReapStaleRunsJob do
           .not_to change { enqueued_run_job_count(run) }
       end
 
-      it "leaves a queued Run alone when its Workflow is not running" do
+      it "re-enqueues an old first Run on a still-queued Workflow" do
+        workflow = Workflow.create!(job: job, trigger_kind: "initial")
+        workflow.update_columns(
+          state: "queued",
+          created_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 1.minute).ago
+        )
+        step = Step.create!(workflow: workflow, kind: "prepare", position: 0)
+        run = step.runs.create!(job: job, trigger_kind: "initial")
+        run.update_columns(
+          state: "queued",
+          started_at: nil,
+          created_at: (ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 1.minute).ago
+        )
+        stub_active_root_run_ids
+        ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+
+        expect { described_class.perform_now }
+          .to change { enqueued_run_job_count(run) }.by(1)
+
+        expect(workflow.reload).to be_queued
+        expect(run.reload).to be_queued
+      end
+
+      it "leaves a queued Run alone when its Workflow is terminal" do
         _workflow, _step, run = queued_orphan
         run.step.workflow.update_columns(state: "succeeded", finished_at: 1.minute.ago)
         stub_active_root_run_ids

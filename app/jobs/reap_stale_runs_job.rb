@@ -110,7 +110,7 @@ class ReapStaleRunsJob < ApplicationJob
     driven_workflow_ids = workflow_ids_with_active_run_jobs
     candidates.each do |run|
       workflow = run.step&.workflow
-      next unless workflow&.running?
+      next unless workflow&.running? || workflow&.queued?
       next if driven_workflow_ids.include?(workflow.id)
 
       Rails.logger.info("[ReapStaleRunsJob] Run ##{run.id} re-enqueued: :queued with no SolidQueue::Job and no active worker driving Workflow ##{workflow.id} (inline-drive orphan)")
