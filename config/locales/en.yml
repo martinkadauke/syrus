@@ -139,6 +139,9 @@ en:
     input_sources:
       saved: "%{source} source saved."
 
+    input_sources:
+      linear_saved: "Linear source saved."
+
     job_pins:
       pinned: "Job pinned."
       unpinned: "Job unpinned."
