@@ -150,7 +150,7 @@ section above is all you need.
 
 The full from-nothing dev setup on a Mac with Homebrew. Every command is
 copy-pasteable, and `bin/setup` is idempotent, so re-running is safe. You'll
-end up with Ruby 3.2.3, Node + npm, Go, libvips, the MySQL client libraries,
+end up with Ruby 3.4.10, Node + npm, Go, libvips, the MySQL client libraries,
 and the Claude Code CLI. Local dev uses **SQLite** — you do not run a MySQL
 server and need no master key; MySQL client libs only appear so the
 production `mysql2` gem can compile.
@@ -203,14 +203,14 @@ npm install -g @anthropic-ai/claude-code
 > `bundle config set --local build.mysql2 "--with-mysql-config=$(brew --prefix mysql)/bin/mysql_config"`
 > and re-run `bin/setup`.
 
-#### 3. Ruby 3.2.3 with rbenv
+#### 3. Ruby 3.4.10 with rbenv
 
 ```bash
 echo 'eval "$(rbenv init - zsh)"' >> ~/.zshrc
 eval "$(rbenv init - zsh)"
-rbenv install 3.2.3 --skip-existing
-rbenv global 3.2.3
-ruby -v   # ruby 3.2.3
+rbenv install 3.4.10 --skip-existing
+rbenv global 3.4.10
+ruby -v   # ruby 3.4.10
 ```
 
 #### 4. Clone

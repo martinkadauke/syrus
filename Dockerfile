@@ -8,7 +8,7 @@
 # For a containerized dev environment, see Dev Containers: https://guides.rubyonrails.org/getting_started_with_devcontainer.html
 
 # Make sure RUBY_VERSION matches the Ruby version in .ruby-version
-ARG RUBY_VERSION=3.2.3
+ARG RUBY_VERSION=3.4.10
 FROM docker.io/library/ruby:$RUBY_VERSION-slim AS base
 
 # Connect published images to the source repo. GHCR reads this label to link a
@@ -178,10 +178,11 @@ RUN curl -fsSL https://mise.jdx.dev/install.sh | \
 FROM runtime-base AS runtime-ruby-cache
 
 # Exact patch pins keep cache keys stable and make cold rebuilds reproducible.
-# 3.2.3 matches Syrus's own .ruby-version; 3.3.11 is the current Ruby 3.3 line.
+# 3.4.10 matches Syrus's own .ruby-version; 3.3.11 remains useful for
+# agent workspaces targeting the previous maintained Ruby line.
 # MISE_RUBY_COMPILE=0 pulls prebuilt binaries instead of compiling (see the
 # stage-header note); bump the mise pin deliberately if a prebuilt is missing.
-ARG MISE_RUBIES="3.2.3 3.3.11"
+ARG MISE_RUBIES="3.4.10 3.3.11"
 RUN MISE_RUBY_COMPILE=0 /usr/local/bin/mise install $(for v in $MISE_RUBIES; do echo ruby@$v; done) && \
     rm -rf /opt/mise/cache /opt/mise/tmp
 

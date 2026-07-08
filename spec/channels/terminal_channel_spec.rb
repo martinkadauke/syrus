@@ -10,7 +10,8 @@ RSpec.describe TerminalChannel, type: :channel do
   end
 
   def enable_terminal
-    Feature.create!(slug: "terminal", category: "labs", name: "Terminal", enabled: true)
+    feature = Feature.find_or_initialize_by(slug: "terminal")
+    feature.update!(category: "labs", name: "Terminal", enabled: true)
   end
 
   def terminal_session(**attrs)

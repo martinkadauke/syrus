@@ -50,7 +50,7 @@ RSpec.describe "Dockerfile" do
     go_stage = stage("runtime-go-cache")
     assembly_stage = stage("runtime-cache", "base AS worker-deps")
 
-    expect(ruby_stage).to include('ARG MISE_RUBIES="3.2.3 3.3.11"')
+    expect(ruby_stage).to include('ARG MISE_RUBIES="3.4.10 3.3.11"')
     expect(ruby_stage).to include("mise install $(for v in $MISE_RUBIES")
     # Prebuilt Ruby binaries (glibc-2.36-compatible), not a ~13-min source
     # compile. The env override must sit on the install RUN itself.

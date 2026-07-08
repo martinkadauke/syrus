@@ -1,23 +1,96 @@
 {
   "ignored_warnings": [
     {
-      "warning_type": "Dynamic Render Path",
-      "warning_code": 15,
-      "fingerprint": "290d58a0414050339086b13a787ece16dace28ed02b922c87aa064ec5a268da3",
-      "check_name": "Render",
-      "message": "Render path contains parameter value",
-      "file": "app/views/admin/queue/show.html.erb",
-      "line": 27,
-      "link": "https://brakemanscanner.org/docs/warning_types/dynamic_render_path/",
-      "code": "render(action => \"tab_#{params[:tab].to_s}\", {})",
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "55e63ac253719f7353aa003c30748384a693694aa320762599aa6c0c5d90e537",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/controllers/api/v1/app/chats_controller.rb",
+      "line": 689,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.joins(\"INNER JOIN chat_attachments #{ApplicationRecord.connection.quote_table_name(\"chat_attachments_#{param_name}_filter\")}\\n  ON #{ApplicationRecord.connection.quote_table_name(\"chat_attachments_#{param_name}_filter\")}.chat_session_id = chat_sessions.id\\n  AND #{ApplicationRecord.connection.quote_table_name(\"chat_attachments_#{param_name}_filter\")}.attachable_type = #{ApplicationRecord.connection.quote(attachable_type)}\\n  AND #{ApplicationRecord.connection.quote_table_name(\"chat_attachments_#{param_name}_filter\")}.attachable_id = #{optional_positive_integer_param(param_name)}\\n\".squish)",
       "render_path": null,
       "location": {
-        "type": "template",
-        "template": "admin/queue/show"
+        "type": "method",
+        "class": "Api::V1::App::ChatsController",
+        "method": "apply_chat_attachment_filter"
       },
-      "user_input": "params[:tab].to_s",
+      "user_input": "optional_positive_integer_param(param_name)",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Dynamic SQL fragments are assembled from fixed server-side expressions, quoted aliases, sanitized positive integer params, or bound values; request text is not interpolated as executable SQL."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "2ad9f49b2afc6785b789ce441fe25607a4b499bdbb8f25b4e1ffb0406d8d2722",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/controllers/api/v1/app/chats_controller.rb",
+      "line": 993,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"chat_sessions.pinned < ? OR (chat_sessions.pinned = ? AND ((#{chat_activity_order_sql}) < ? OR ((#{chat_activity_order_sql}) = ? AND chat_sessions.id < ?)))\", (before_chat.pinned? ? (1) : (0)), (before_chat.pinned? ? (1) : (0)), chat_activity_timestamp(before_chat), chat_activity_timestamp(before_chat), before_chat.id)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Api::V1::App::ChatsController",
+        "method": "chat_index_before"
+      },
+      "user_input": "chat_activity_order_sql",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Dynamic SQL fragments are assembled from fixed server-side expressions, quoted aliases, sanitized positive integer params, or bound values; request text is not interpolated as executable SQL."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "d1d810e2bc8461263ed4869043be6fc1f29df04733516d0e8bcbcfc52cd06858",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/controllers/api/v1/app/chats_controller.rb",
+      "line": 1006,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "Arel.sql(\"chat_sessions.pinned DESC, #{chat_activity_order_sql} DESC, chat_sessions.id DESC\")",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Api::V1::App::ChatsController",
+        "method": "chat_index_group_scope"
+      },
+      "user_input": "chat_activity_order_sql",
       "confidence": "Medium",
-      "note": "Controller validates @tab via case/redirect and returns early for unknown values; only known tab names reach the render."
+      "cwe_id": [
+        89
+      ],
+      "note": "Dynamic SQL fragments are assembled from fixed server-side expressions, quoted aliases, sanitized positive integer params, or bound values; request text is not interpolated as executable SQL."
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "617a2184b1492b1fcb752d13fc4d585fd4be65141d2e2d1155c4487930260f82",
+      "check_name": "FileAccess",
+      "message": "Model attribute used in file name",
+      "file": "app/jobs/switch_chat_provider_job.rb",
+      "line": 71,
+      "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
+      "code": "FileUtils.mkdir_p(File.dirname(ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)))",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "SwitchChatProviderJob",
+        "method": "write_claude_session_to_disk!"
+      },
+      "user_input": "ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)",
+      "confidence": "Weak",
+      "cwe_id": [
+        22
+      ],
+      "note": "Claude session IDs are generated by the provider switch path and resolved through ClaudeSession.canonical_path_for before filesystem access."
     },
     {
       "warning_type": "File Access",
@@ -26,7 +99,7 @@
       "check_name": "FileAccess",
       "message": "Model attribute used in file name",
       "file": "app/services/agent_providers/claude.rb",
-      "line": 41,
+      "line": 26,
       "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
       "code": "File.read(ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace.path, :session_id => normalized_session_id(result.session_id)))",
       "render_path": null,
@@ -37,9 +110,514 @@
       },
       "user_input": "ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace.path, :session_id => normalized_session_id(result.session_id))",
       "confidence": "Medium",
-      "note": "session_id is emitted by the Claude agent process and is rejected unless it matches SESSION_ID_PATTERN before path construction."
+      "cwe_id": [
+        22
+      ],
+      "note": "Claude session IDs are normalized against the session-id pattern and resolved through ClaudeSession.canonical_path_for before filesystem access."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "20bc947890f96ad5271e8bb82d89b2d6260564d1eef61f626f8d67200efa6379",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/app/dashboard_payload.rb",
+      "line": 556,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "Arel.sql(\"COALESCE(jobs.approved_at, jobs.updated_at) #{(:asc or :desc).to_s.upcase}\")",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "App::DashboardPayload",
+        "method": "apply_sort"
+      },
+      "user_input": "(:asc or :desc).to_s.upcase",
+      "confidence": "Medium",
+      "cwe_id": [
+        89
+      ],
+      "note": "Sort direction is normalized to asc/desc and interpolated into a fixed COALESCE expression over known columns."
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "0eaacbcb09b622b07c9d95f6250c707c8782f0bda782b3503973ba4ffa3198de",
+      "check_name": "FileAccess",
+      "message": "Model attribute used in file name",
+      "file": "app/services/chat_providers/claude.rb",
+      "line": 60,
+      "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
+      "code": "File.read(ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => ChatWorkspace.path_for(chat), :session_id => normalized_session_id(result.session_id)))",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "ChatProviders::Claude",
+        "method": "session_capture"
+      },
+      "user_input": "ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => ChatWorkspace.path_for(chat), :session_id => normalized_session_id(result.session_id))",
+      "confidence": "Medium",
+      "cwe_id": [
+        22
+      ],
+      "note": "Claude session IDs are normalized against the session-id pattern and resolved through ClaudeSession.canonical_path_for before filesystem access."
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "a5e77511a4bd74d8e14ba549cfbc37ee4f18ca5cbfe89bc3b393e8e074d3def9",
+      "check_name": "FileAccess",
+      "message": "Model attribute used in file name",
+      "file": "app/services/chat_providers/claude.rb",
+      "line": 93,
+      "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
+      "code": "FileUtils.mkdir_p(File.dirname(ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)))",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "ChatProviders::Claude",
+        "method": "ensure_claude_session_on_disk!"
+      },
+      "user_input": "ClaudeSession.canonical_path_for(:home => ENV.fetch(\"HOME\"), :cwd => workspace_path, :session_id => session_id)",
+      "confidence": "Weak",
+      "cwe_id": [
+        22
+      ],
+      "note": "Claude session IDs are normalized against the session-id pattern and resolved through ClaudeSession.canonical_path_for before filesystem access."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "4015028563e0297126898410b3c19a835c293e06caa2b42b4ad4ed94d5dfafb9",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/admin_queue/job_class.rb",
+      "line": 13,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{job_table}.#{quote(:class_name)} LIKE ? ESCAPE #{like_escape_sql}\", \"%#{escape_like(value)}%\")",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::AdminQueue::JobClass",
+        "method": "apply"
+      },
+      "user_input": "job_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Admin queue table/column names are framework-known and quoted; user input remains a bound value."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "ff86247b87a591923c6f2b214e79e61e05302e81d1db779bd07be6f0d979a657",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/admin_queue/job_class.rb",
+      "line": 15,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{job_table}.#{quote(:class_name)} = ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::AdminQueue::JobClass",
+        "method": "apply"
+      },
+      "user_input": "job_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Admin queue table/column names are framework-known and quoted; user input remains a bound value."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "3ed8137b618d490100123d465b757d49d6f903babbb1cd24b372a12a787a9b2d",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/admin_queue/queue_name.rb",
+      "line": 14,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{job_table}.#{quote(:queue_name)} = ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::AdminQueue::QueueName",
+        "method": "apply"
+      },
+      "user_input": "job_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Admin queue table/column names are framework-known and quoted; user input remains a bound value."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "3c04432068d19bbd4bf6b2a54fa4d21109aced4d9c1adf735d8c975a68a0c0ad",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/admin_queue/queue_name.rb",
+      "line": 16,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{job_table}.#{quote(:queue_name)} IN (?)\", Array(value))",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::AdminQueue::QueueName",
+        "method": "apply"
+      },
+      "user_input": "job_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Admin queue table/column names are framework-known and quoted; user input remains a bound value."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "a2c7c05cf2d08f54c45542ca2453b797699fbd751313fbf5e9ad3b0b5eca793c",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/epics/calculated_number.rb",
+      "line": 12,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{expression} = ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Epics::CalculatedNumber",
+        "method": "apply_expression"
+      },
+      "user_input": "expression",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Expression is supplied by whitelisted chip metadata; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "aea1bbf52b05cdaab9bfec44064e2b80cab118e2ab95b0919bad2017286d6f69",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/epics/calculated_number.rb",
+      "line": 13,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{expression} != ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Epics::CalculatedNumber",
+        "method": "apply_expression"
+      },
+      "user_input": "expression",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Expression is supplied by whitelisted chip metadata; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "58e790137df641e34fd1268aaf2af1a63f465103aac9ed541f9352d65331334d",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/epics/calculated_number.rb",
+      "line": 14,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{expression} > ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Epics::CalculatedNumber",
+        "method": "apply_expression"
+      },
+      "user_input": "expression",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Expression is supplied by whitelisted chip metadata; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "2de8e3b96704abce2165e3724c9f64b922e3755d76f6db14ba19f30c1899dbf5",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/epics/calculated_number.rb",
+      "line": 15,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{expression} < ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Epics::CalculatedNumber",
+        "method": "apply_expression"
+      },
+      "user_input": "expression",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Expression is supplied by whitelisted chip metadata; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "b344b4fde3b48c9fa78a586b252b185db1d8be22cfb05daaf37882af8098e40a",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/epics/calculated_number.rb",
+      "line": 18,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{expression} BETWEEN ? AND ?\", Array(value).first, Array(value).last)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Epics::CalculatedNumber",
+        "method": "apply_expression"
+      },
+      "user_input": "expression",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Expression is supplied by whitelisted chip metadata; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "8f65e740c5c0a28727330aba3dd7de454198b1ae7bca3701a7a63086c46189a8",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/number_column.rb",
+      "line": 23,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{quoted_column(self.class.column)} > ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::NumberColumn",
+        "method": "apply"
+      },
+      "user_input": "quoted_column(self.class.column)",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Column name is supplied by whitelisted chip metadata and quoted; user input remains a bound value."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "f6828dd5040548b7ab83d51ccd40c939a9cc0b967e67e1ef0465df294341d987",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/number_column.rb",
+      "line": 24,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{quoted_column(self.class.column)} < ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::NumberColumn",
+        "method": "apply"
+      },
+      "user_input": "quoted_column(self.class.column)",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Column name is supplied by whitelisted chip metadata and quoted; user input remains a bound value."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "dbb7e42aba43c392979055014aa9cec19206132d128537fec46411118cb6bbf1",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/string_column.rb",
+      "line": 44,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{quoted_column(col)} LIKE ? ESCAPE #{like_escape_sql}\", pattern)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::StringColumn",
+        "method": "like"
+      },
+      "user_input": "quoted_column(col)",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Column name is supplied by whitelisted chip metadata and quoted; user input remains a bound value with an escaped LIKE pattern."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "5820cabbb6b43a9af48eafa2462b033f52c6698ac0af42aec5a9cb7248540d29",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/string_column.rb",
+      "line": 48,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{quoted_column(col)} NOT LIKE ? ESCAPE #{like_escape_sql}\", pattern)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::StringColumn",
+        "method": "not_like"
+      },
+      "user_input": "quoted_column(col)",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Column name is supplied by whitelisted chip metadata and quoted; user input remains a bound value with an escaped LIKE pattern."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "3221970875e42e93c259fbbc17fbe8645f62ebfef8abbc20a35694a91d93a2e7",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/workflows/run_count.rb",
+      "line": 21,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{\"(\\n  SELECT COUNT(*)\\n  FROM runs\\n  INNER JOIN steps ON steps.id = runs.step_id\\n  WHERE steps.workflow_id = #{quoted_workflows_table}.#{quoted_id_column}\\n)\\n\".squish} = ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Workflows::RunCount",
+        "method": "apply"
+      },
+      "user_input": "quoted_workflows_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Run-count subquery is fixed SQL using quoted table/id names; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "2eb086717b6ac9bfb3d0bc75c64e37e4c266212c76f272daa9c462e557d42d2a",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/workflows/run_count.rb",
+      "line": 22,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{\"(\\n  SELECT COUNT(*)\\n  FROM runs\\n  INNER JOIN steps ON steps.id = runs.step_id\\n  WHERE steps.workflow_id = #{quoted_workflows_table}.#{quoted_id_column}\\n)\\n\".squish} != ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Workflows::RunCount",
+        "method": "apply"
+      },
+      "user_input": "quoted_workflows_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Run-count subquery is fixed SQL using quoted table/id names; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "6c2799a9a30db2262ab13fb111934c933c3c3fd503802c99791ad4c7a92dca47",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/workflows/run_count.rb",
+      "line": 23,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{\"(\\n  SELECT COUNT(*)\\n  FROM runs\\n  INNER JOIN steps ON steps.id = runs.step_id\\n  WHERE steps.workflow_id = #{quoted_workflows_table}.#{quoted_id_column}\\n)\\n\".squish} > ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Workflows::RunCount",
+        "method": "apply"
+      },
+      "user_input": "quoted_workflows_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Run-count subquery is fixed SQL using quoted table/id names; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "b9119449dc78e8f675cd4500d1a168cc83374c7bf158a6be464df3adf5bb97d2",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/workflows/run_count.rb",
+      "line": 24,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{\"(\\n  SELECT COUNT(*)\\n  FROM runs\\n  INNER JOIN steps ON steps.id = runs.step_id\\n  WHERE steps.workflow_id = #{quoted_workflows_table}.#{quoted_id_column}\\n)\\n\".squish} < ?\", value)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Workflows::RunCount",
+        "method": "apply"
+      },
+      "user_input": "quoted_workflows_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Run-count subquery is fixed SQL using quoted table/id names; user input remains bound values."
+    },
+    {
+      "warning_type": "SQL Injection",
+      "warning_code": 0,
+      "fingerprint": "a602f1e4dc023a963811565a89dd4daedd3d40fe7898ad4cb0d9d0fe2d4322af",
+      "check_name": "SQL",
+      "message": "Possible SQL injection",
+      "file": "app/services/filters/chips/workflows/run_count.rb",
+      "line": 27,
+      "link": "https://brakemanscanner.org/docs/warning_types/sql_injection/",
+      "code": "scope.where(\"#{\"(\\n  SELECT COUNT(*)\\n  FROM runs\\n  INNER JOIN steps ON steps.id = runs.step_id\\n  WHERE steps.workflow_id = #{quoted_workflows_table}.#{quoted_id_column}\\n)\\n\".squish} BETWEEN ? AND ?\", Array(value).first, Array(value).last)",
+      "render_path": null,
+      "location": {
+        "type": "method",
+        "class": "Filters::Chips::Workflows::RunCount",
+        "method": "apply"
+      },
+      "user_input": "quoted_workflows_table",
+      "confidence": "Weak",
+      "cwe_id": [
+        89
+      ],
+      "note": "Run-count subquery is fixed SQL using quoted table/id names; user input remains bound values."
+    },
+    {
+      "warning_type": "File Access",
+      "warning_code": 16,
+      "fingerprint": "56b61684c5097f4e31f9b8f791b4879f8d8acdc71cb8b7a2d94ed2b0721917e4",
+      "check_name": "FileAccess",
+      "message": "Model attribute used in file name",
+      "file": "config/initializers/search_database.rb",
+      "line": 8,
+      "link": "https://brakemanscanner.org/docs/warning_types/file_access/",
+      "code": "FileUtils.mkdir_p(File.dirname(SearchRecord.connection_db_config.database))",
+      "render_path": null,
+      "location": null,
+      "user_input": "SearchRecord.connection_db_config.database",
+      "confidence": "Weak",
+      "cwe_id": [
+        22
+      ],
+      "note": "Path comes from Rails database configuration during boot, not request input; initializer only ensures the local SQLite search DB directory exists."
     }
   ],
-  "updated": "2026-05-11 20:21:00 +0000",
-  "brakeman_version": "8.0.4"
+  "updated": "2026-07-05 22:39:09 +0000",
+  "brakeman_version": "8.0.5"
 }

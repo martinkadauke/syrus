@@ -22,7 +22,7 @@ module Steps
       { latin: "Iniuriam qui facturus est iam facit.", english: "One who is about to do an injustice already does it." },
       { latin: "Bona opinio hominum tutior pecunia est.", english: "The good opinion of men is safer than money." },
       { latin: "Furor fit laesa saepius patientia.", english: "Patience when too often injured turns to rage." },
-      { latin: "Dum aliquid superest, nihil perisse putandum est.", english: "While something remains, nothing should be thought lost." },
+      { latin: "Dum aliquid superest, nihil perisse putandum est.", english: "While something remains, nothing should be thought lost." }
     ].freeze
 
     class BranchDiverged < StepFailed; end

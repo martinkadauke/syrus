@@ -90,7 +90,7 @@ grade:
     - name: lint
       run: bin/rubocop
     - name: security
-      run: bin/brakeman --no-pager --except EOLRuby
+      run: bin/brakeman --no-pager
     - name: gem-audit
       run: bin/bundler-audit
       required: false      # advisory; failure logged, does NOT trigger another iteration

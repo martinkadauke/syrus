@@ -33,7 +33,7 @@ domain concepts. File paths are repo-relative.
 
 ## Stack
 
-- Rails 8.1.3 · Ruby 3.2.3
+- Rails 8.1.3 · Ruby 3.4.10
 - SQLite (dev/test) · MySQL (production)
 - **Solid Queue** for background jobs · **Solid Cache** · **Solid Cable**
   for browser app events

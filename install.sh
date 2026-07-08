@@ -7,7 +7,7 @@
 #                  present (prefers an existing Docker Desktop/Colima).
 #
 #   --bare-metal   Install the toolchain from source on macOS: Xcode CLT,
-#                  Homebrew, deps, the Claude CLI, rbenv + Ruby 3.2.3, bin/setup,
+#                  Homebrew, deps, the Claude CLI, rbenv + Ruby 3.4.10, bin/setup,
 #                  and the `syrus` CLI on your PATH. Run from inside a clone.
 #                  Add --start to launch the app after.
 #
@@ -509,30 +509,30 @@ run_bare_metal() {
     npm install -g @anthropic-ai/claude-code
   fi
 
-  step "5/7  Ruby 3.2.3 via rbenv"
+  step "5/7  Ruby 3.4.10 via rbenv"
   persist "$HOME/.zshrc" 'eval "$(rbenv init - zsh)"'   # future interactive shells
   eval "$(rbenv init - bash)"                           # this script's shell
-  if rbenv versions --bare | grep -qx 3.2.3; then
-    info "Ruby 3.2.3 already installed."
+  if rbenv versions --bare | grep -qx 3.4.10; then
+    info "Ruby 3.4.10 already installed."
   else
-    info "compiling Ruby 3.2.3 — this takes a few minutes…"
-    rbenv install 3.2.3 --skip-existing
+    info "compiling Ruby 3.4.10 — this takes a few minutes…"
+    rbenv install 3.4.10 --skip-existing
   fi
   rbenv rehash
   # Set a global only if the user has none ("system"), so plain `ruby` works
-  # outside the repo too. The repo's .ruby-version pins 3.2.3 inside the checkout
+  # outside the repo too. The repo's .ruby-version pins 3.4.10 inside the checkout
   # regardless, which is what bin/setup relies on.
-  [ "$(rbenv global)" = "system" ] && rbenv global 3.2.3 || true
+  [ "$(rbenv global)" = "system" ] && rbenv global 3.4.10 || true
 
   step "6/7  Confirming the Syrus checkout & active Ruby"
   [ -f bin/setup ] && [ -f .ruby-version ] || die \
     "Run this from a Syrus clone (git clone git@github.com:tkadauke/syrus.git, then ./install.sh --bare-metal)."
   info "checkout: $(pwd)"
-  # In the checkout, .ruby-version selects 3.2.3 — verify it.
+  # In the checkout, .ruby-version selects 3.4.10 — verify it.
   ruby_v="$(ruby -v 2>/dev/null || true)"
   case "$ruby_v" in
-    *3.2.3*) info "active Ruby: $ruby_v" ;;
-    *) die "expected Ruby 3.2.3 but got: ${ruby_v:-none}. Open a new terminal and re-run." ;;
+    *3.4.10*) info "active Ruby: $ruby_v" ;;
+    *) die "expected Ruby 3.4.10 but got: ${ruby_v:-none}. Open a new terminal and re-run." ;;
   esac
 
   step "7/7  bin/setup  (gems, JS deps, Syrus CLI, SQLite databases)"

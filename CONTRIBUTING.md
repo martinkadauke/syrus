@@ -7,7 +7,7 @@ observable, and easy to run.
 
 ## Development setup
 
-Start from a clean checkout with Ruby 3.2.3 available. Local development uses
+Start from a clean checkout with Ruby 3.4.10 available. Local development uses
 SQLite for dev and test, so MySQL is not required.
 
 ```sh
