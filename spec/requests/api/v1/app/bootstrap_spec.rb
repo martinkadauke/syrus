@@ -88,7 +88,9 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
     expect(body["team_user_count"]).to eq(1)
     expect(body["app"]).to include(
       "revision" => "dev",
-      "revision_url" => nil
+      "revision_url" => nil,
+      "version" => nil,
+      "built_at" => nil
     )
     expect(body["setup_status"]).to include(
       "state" => "first_admin",
@@ -187,6 +189,82 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
     expect(setup.fetch("counts")).to include("repositories" => 0, "jobs" => 0, "successful_jobs" => 0)
     expect(response.body).not_to include("ghp_secret_pat", "claude_secret_token")
     expect(setup.to_json).not_to include("github_token", "claude_oauth_token", "codex_api_key", "codex_auth_json")
+  end
+
+  it "does not warn about missing GitHub App installations when a PAT is configured" do
+    AppSetting.current.update!(
+      github_app_id: 4242,
+      github_app_slug: "operator-syrus",
+      github_app_private_key_pem: "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+      github_app_registered_at: 2.days.ago
+    )
+    user = Factories.user(github_token: "ghp_secret_pat", claude_oauth_token: "claude_secret_token")
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    github_app_check = parse_body.dig("setup_status", "readiness", "checks").find { |check| check["key"] == "github_app" }
+    expect(github_app_check).to include("status" => "ok", "optional" => true)
+    expect(github_app_check["message"]).to match(/fall back to a configured personal access token/i)
+  end
+
+  it "does not warn about missing GitHub App installations right after registration" do
+    AppSetting.current.update!(
+      github_app_id: 4242,
+      github_app_slug: "operator-syrus",
+      github_app_private_key_pem: "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+      github_app_registered_at: Time.current
+    )
+    user = Factories.user(github_token: nil, claude_oauth_token: "claude_secret_token")
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    github_app_check = parse_body.dig("setup_status", "readiness", "checks").find { |check| check["key"] == "github_app" }
+    expect(github_app_check).to include("status" => "ok", "optional" => true)
+    expect(github_app_check["message"]).to match(/installation sync/i)
+  end
+
+  it "still warns about missing GitHub App installations when no PAT exists and the sync grace passed" do
+    AppSetting.current.update!(
+      github_app_id: 4242,
+      github_app_slug: "operator-syrus",
+      github_app_private_key_pem: "-----BEGIN RSA PRIVATE KEY-----\nfake\n-----END RSA PRIVATE KEY-----",
+      github_app_registered_at: 2.days.ago
+    )
+    user = Factories.user(github_token: nil, claude_oauth_token: "claude_secret_token")
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    github_app_check = parse_body.dig("setup_status", "readiness", "checks").find { |check| check["key"] == "github_app" }
+    expect(github_app_check).to include(
+      "status" => "warning",
+      "optional" => true,
+      "message" => "GitHub App credentials exist, but no active installations are linked."
+    )
+  end
+
+  it "keeps setup complete (Setup nav hidden) after the landed first Epic is archived" do
+    user = Factories.user(github_token: "ghp_secret_pat", claude_oauth_token: "claude_secret_token")
+    repository = Factories.repository(user: user)
+    epic = Factories.epic(user: user, repository: repository, state: "in_progress")
+    epic.override_state!("done")
+    epic.override_state!("archived")
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    expect(parse_body.dig("setup", "complete")).to eq(true)
+  end
+
+  it "keeps setup incomplete (Setup nav shown) for a fresh user with no landed Epic" do
+    user = Factories.user
+    sign_in_as(user)
+
+    get api_v1_app_bootstrap_path
+
+    expect(parse_body.dig("setup", "complete")).to eq(false)
   end
 
   it "reports readiness failures with remediation" do
@@ -317,6 +395,39 @@ RSpec.describe "API: /api/v1/app/bootstrap", type: :request do
 
     expect(response).to have_http_status(:ok)
     expect(parse_body.dig("app", "revision_url")).to eq("https://github.com/operator/syrus/commit/9c0f8d15")
+  end
+
+  it "exposes the release version and build time baked into published images" do
+    user = Factories.user
+    sign_in_as(user)
+
+    # bin/publish-image X.Y.Z bakes SYRUS_VERSION and SYRUS_BUILT_AT into the
+    # image; the badge prefers the version over the git SHA so releases read
+    # "backend 0.1.2", and built_at feeds the badge's hover tooltip.
+    with_env("GIT_SHA" => "9c0f8d15", "SYRUS_VERSION" => "0.1.2", "SYRUS_BUILT_AT" => "2026-07-07T14:32:00Z") do
+      get api_v1_app_bootstrap_path
+    end
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("app", "version")).to eq("0.1.2")
+    expect(parse_body.dig("app", "revision")).to eq("9c0f8d15")
+    expect(parse_body.dig("app", "built_at")).to eq("2026-07-07T14:32:00Z")
+  end
+
+  it "returns nil version and built_at on dev/deploy builds (unset or empty env)" do
+    user = Factories.user
+    sign_in_as(user)
+
+    # The Dockerfile defaults are empty strings — presence semantics must
+    # treat "" like unset so dev images fall back to the SHA badge with no
+    # build-time tooltip.
+    with_env("SYRUS_VERSION" => "", "SYRUS_BUILT_AT" => "") do
+      get api_v1_app_bootstrap_path
+    end
+
+    expect(response).to have_http_status(:ok)
+    expect(parse_body.dig("app", "version")).to be_nil
+    expect(parse_body.dig("app", "built_at")).to be_nil
   end
 
   it "omits the revision link instead of 500ing when SYRUS_GITHUB_REPO is unset" do

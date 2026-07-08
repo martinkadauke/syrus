@@ -18,11 +18,16 @@ RSpec.describe "desktop web-container window" do
   let(:renderer_entry) { read("src/main.tsx") }
   let(:backend_status) { read("src/BackendStatus.tsx") }
 
-  it "loads remote content fully isolated, with no preload bridge" do
+  it "loads remote content fully isolated, with only the shell-notice preload" do
     expect(web_app_window).to include("contextIsolation: true")
     expect(web_app_window).to include("nodeIntegration: false")
     expect(web_app_window).to include("sandbox: true")
-    expect(web_app_window).not_to include("preload:")
+    # The ONLY bridge is the minimal shell-notice preload (window.syrusShell,
+    # webAppPreload.cts) — never the tray's preload.cjs, whose credential and
+    # filesystem IPC remote content must not see.
+    expect(web_app_window).to include("preload: preloadPath")
+    expect(main_process).to match(%r{preloadPath: path\.join\(__dirname, "windows", "webAppPreload\.cjs"\)})
+    expect(main_process).not_to match(/createWebAppWindow\(\{[\s\S]{0,1200}"preload\.cjs"/)
   end
 
   it "keeps same-origin navigation in-window and opens everything else externally" do
@@ -30,6 +35,20 @@ RSpec.describe "desktop web-container window" do
     expect(web_app_window).to include("window.webContents.setWindowOpenHandler")
     expect(web_app_window).to include("decideWindowOpen")
     expect(web_app_window).to include("shell.openExternal")
+  end
+
+  it "confines server-side redirects too — will-navigate never fires for a 302" do
+    # A same-origin URL that 302s off-origin would otherwise leave a foreign
+    # page running in this window with the syrusShell preload attached.
+    # will-redirect fires exactly there; preventDefault cancels the whole
+    # navigation and off-origin destinations go to the default browser.
+    # (main.ts's shell:* sender validation stays as the backstop.)
+    redirect_handler = web_app_window[/window\.webContents\.on\("will-redirect"[\s\S]{0,700}/]
+    expect(redirect_handler).not_to be_nil
+    expect(redirect_handler).to include("if (!isMainFrame)")
+    expect(redirect_handler).to include("decideWindowOpen(targetUrl, serverOrigin)")
+    expect(redirect_handler).to include("event.preventDefault()")
+    expect(redirect_handler).to include("shell.openExternal(targetUrl)")
   end
 
   it "never allows popups — flows that need a real browser use the syrus_external marker" do
@@ -48,10 +67,32 @@ RSpec.describe "desktop web-container window" do
   it "marks the web container's user agent so the web app can detect the shell" do
     expect(web_app_window).to include("SyrusDesktop/")
     expect(web_app_window).to include("setUserAgent")
-    # The app build sha rides a second UA token (from the staged manifest's
-    # appBuild) so the web UI's BuildBadge can show which build hosts it.
+    # The app build rides a second UA token (from the staged manifest) so the
+    # web UI's BuildBadge can show which build hosts it. Release builds
+    # announce the release version, dev builds the git sha — one token,
+    # version-or-sha ("0.0.0" is the dev placeholder, never a release).
     expect(web_app_window).to include("SyrusDesktopBuild/")
-    expect(main_process).to include("buildSha: manifest?.appBuild ?? null")
+    expect(main_process).to include(
+      'buildSha: (manifest?.appVersion && manifest.appVersion !== "0.0.0" ? manifest.appVersion : manifest?.appBuild) ?? null'
+    )
+    # A third token carries the app's build time for the badge's hover
+    # tooltip, encoded ISO-8601 BASIC (20260707T143200Z) because colons are
+    # not valid in UA product-version tokens — desktopBuiltAt() decodes it.
+    expect(web_app_window).to include("SyrusDesktopBuiltAt/")
+    expect(web_app_window).to include('.toISOString().slice(0, 19).replace(/[-:]/g, "")')
+    expect(main_process).to include("builtAt: manifest?.builtAt ?? null")
+    # stage-backend-assets stamps the timestamp the token is derived from.
+    # Dev builds stamp the wall clock (staging time IS the build moment);
+    # release builds derive it from HEAD's committer date — the same source
+    # release.yml / bin/publish-image bake into the backend image as
+    # SYRUS_BUILT_AT — normalized to the identical second-precision UTC
+    # ISO-8601 form, so the BuildBadge's app and backend tooltips show the
+    # IDENTICAL instant on a release.
+    stage_script = read("scripts/stage-backend-assets.mjs")
+    expect(stage_script).to include("if (!isReleaseBuild) return new Date().toISOString()")
+    expect(stage_script).to include('execSync("git show -s --format=%ct HEAD"')
+    expect(stage_script).to include('new Date(Number(epochSeconds) * 1000).toISOString().replace(/\.\d{3}Z$/, "Z")')
+    expect(stage_script).to include("appVersion: version, appBuild, builtAt")
   end
 
   it "exposes the context-menu essentials to the left-click popover" do

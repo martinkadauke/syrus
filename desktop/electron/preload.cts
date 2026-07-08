@@ -161,6 +161,11 @@ type ToggleAdminControlResult = {
 // main process's installerDriver.ts; the bridge passes it through opaquely.
 type OnboardingState = { phase: string } & Record<string, unknown>
 
+// Plain string, or a transient rolling status line (the image-pull progress
+// summary) that replaces the previous line when that was also transient.
+// Mirrors installerDriver.ts's OnboardingLogLine; passed through opaquely.
+type OnboardingLogLine = string | { line: string; transient: true }
+
 // URL-only: sign-in in the app window mints the tray token automatically;
 // the manual-token path for non-admin accounts lives in Preferences.
 type ConnectRemoteRequest = {
@@ -181,7 +186,8 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
   saveGlobalHotkey: (globalHotkey: string) =>
     ipcRenderer.invoke("save-global-hotkey", globalHotkey) as Promise<{ globalHotkey: string }>,
   chooseLocalProjectsRoot: () => ipcRenderer.invoke("choose-local-projects-root") as Promise<string | null>,
-  syrusCliStatus: () => ipcRenderer.invoke("syrus-cli-status") as Promise<{ available: boolean }>,
+  syrusCliStatus: () =>
+    ipcRenderer.invoke("syrus-cli-status") as Promise<{ available: boolean; bundledAvailable: boolean }>,
   installSyrusCli: (options?: { withSkill?: boolean }) =>
     ipcRenderer.invoke("install-syrus-cli", options) as Promise<{
       installed: boolean
@@ -199,6 +205,9 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
   localStatus: () => ipcRenderer.invoke("syrus:local-status") as Promise<LocalStatus | null>,
   showPreferences: () => ipcRenderer.invoke("show-preferences") as Promise<void>,
   openSyrusWindow: () => ipcRenderer.invoke("open-syrus") as Promise<void>,
+  // "Open in Syrus" — focus the app window and navigate it to an
+  // instance-relative path (or same-origin URL); never the external browser.
+  openInSyrus: (target?: string) => ipcRenderer.invoke("open-in-syrus", target) as Promise<void>,
   quitApp: () => ipcRenderer.invoke("quit-app") as Promise<void>,
   copyText: (text: string) => ipcRenderer.invoke("copy-text", text) as Promise<void>,
   showNotification: (opts: DesktopNotificationOptions) =>
@@ -258,8 +267,8 @@ contextBridge.exposeInMainWorld("syrusDesktop", {
     ipcRenderer.on("onboarding:state-changed", listener)
     return () => ipcRenderer.removeListener("onboarding:state-changed", listener)
   },
-  onOnboardingLogLine: (callback: (line: string) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, line: string) => callback(line)
+  onOnboardingLogLine: (callback: (line: OnboardingLogLine) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, line: OnboardingLogLine) => callback(line)
     ipcRenderer.on("onboarding:log-line", listener)
     return () => ipcRenderer.removeListener("onboarding:log-line", listener)
   },
