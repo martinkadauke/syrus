@@ -67,12 +67,6 @@ export function Footer() {
         <div className="mt-12 flex flex-col items-center gap-4 border-t border-white/6 pt-6 sm:flex-row sm:justify-between">
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[0.82rem] text-cream-faint">
             <span>© {year} Syrus · {site.domain}</span>
-            <a href="/impressum" className="transition-colors hover:text-cream">
-              Impressum
-            </a>
-            <a href="/privacy" className="transition-colors hover:text-cream">
-              Privacy
-            </a>
           </div>
           <span className="font-mono text-[0.72rem] text-cream-faint">
             build {shortSha}

@@ -99,17 +99,6 @@ export default function DownloadPage() {
           SmartScreen prompt on first run. Prefer the terminal? Syrus also
           ships a CLI for macOS and Linux.
         </p>
-        <p className="mt-4 text-[0.85rem] text-cream-faint">
-          By downloading, you agree to run Syrus on infrastructure you control.
-          See our{" "}
-          <a
-            href="/privacy"
-            className="text-clay underline underline-offset-2 hover:text-clay-bright"
-          >
-            privacy policy
-          </a>
-          .
-        </p>
       </main>
       <Footer />
     </>

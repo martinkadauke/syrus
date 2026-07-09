@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Instrument_Serif, JetBrains_Mono } from "next/font/google";
-import { CookieNotice } from "../components/cookie-notice";
 import { MotionProvider } from "../components/motion-provider";
 import "./globals.css";
 
@@ -110,12 +109,7 @@ export default function RootLayout({
         >
           Skip to content
         </a>
-        <MotionProvider>
-          {/* Notice rendered before the page so keyboard users reach it without
-              tabbing through everything (it's position:fixed — visuals unchanged). */}
-          <CookieNotice />
-          {children}
-        </MotionProvider>
+        <MotionProvider>{children}</MotionProvider>
       </body>
     </html>
   );
