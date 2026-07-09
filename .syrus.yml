@@ -23,6 +23,7 @@ prepare:
 
 hooks:
   post_checkout:
+    - bundle check || bundle install --jobs 4
     - bundle exec rails db:migrate
     - git checkout -- db/schema.rb 2>/dev/null || true
     - git checkout -- db/structure.sql 2>/dev/null || true
