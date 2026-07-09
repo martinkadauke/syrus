@@ -1,4 +1,5 @@
 import { BrowserWindow, globalShortcut, screen } from "electron"
+import { startHoldToDrawHook, type HoldToDrawHook } from "./globalKeyHook.js"
 
 // Red-pen screen annotation during a walkthrough recording. The overlay is a
 // frameless, transparent, always-on-top window spanning EVERY display; the
@@ -7,28 +8,23 @@ import { BrowserWindow, globalShortcut, screen } from "electron"
 // the capture pipeline. See assets/annotationOverlay.html for the canvas + fade
 // renderer.
 //
-// Interaction model — PRESS-TO-ARM, AUTO-RELEASE (not a persistent toggle):
-// tapping the global shortcut ARMS draw mode (the overlay starts capturing
-// pointer input + a red pen cursor). The user draws one or more strokes; the
-// moment they PAUSE — the pointer goes idle for ARM_IDLE_RELEASE_MS with no
-// stroke in progress — draw mode AUTO-RELEASES back to click-through, so the app
-// under test is interactive again without the user having to toggle anything
-// off. Esc and a second tap of the shortcut release immediately; an accidental
-// arm the user never draws on releases on its own after the idle window; and a
-// hard MAX_ARMED_MS cap force-releases no matter what, so the overlay can never
-// get stuck trapping the whole screen. Net effect: the screen is click-through
-// EXCEPT during the brief moments the user is actively annotating.
+// Interaction model — HOLD-TO-DRAW, with a tap-to-arm fallback:
 //
-// Why NOT a true modifier-hold ("draw only while a key is physically held"):
-// that needs a GLOBAL keyboard hook. On macOS that means Accessibility
-// permission (a scary system prompt + a manual System-Settings toggle) plus a
-// native module (uiohook-napi) ABI-matched to Electron and bundled into the
-// universal mac DMG + the Windows installer. This app has been bitten
-// repeatedly by native/packaging fragility, so a native hook is deliberately
-// avoided. The press-to-arm/auto-release model delivers the same click-through
-// benefit with ZERO native code and ZERO permission prompts. True hold-to-draw
-// remains a possible FUTURE OPT-IN (uiohook-napi + Accessibility permission);
-// it is intentionally not implemented here.
+// - HOLD mode (preferred): a global keyboard hook (globalKeyHook.ts /
+//   uiohook-napi) arms draw mode while a Ctrl key is physically DOWN and
+//   releases it the instant the key comes UP. The pen is live only while held —
+//   exactly the model the operator asked for — and needs no auto-release timers.
+//   The global hook needs macOS Accessibility permission; when that (or the
+//   native module) is unavailable, enable() FALLS BACK to:
+//
+// - TAP mode: tapping the global shortcut (CommandOrControl+Shift+A) ARMS draw
+//   mode; it AUTO-RELEASES after the pointer goes idle for ARM_IDLE_RELEASE_MS,
+//   with a hard MAX_ARMED_MS cap so it can never get stuck capturing the screen.
+//   Zero native code, zero permission prompts — always available.
+//
+// enable() reports which mode came up ({ available, hold }) so the recorder HUD
+// shows the right hint ("Hold Ⓒ to draw" vs "tap ⌘⇧A"). Esc releases immediately
+// in either mode.
 //
 // Focus discipline (never steal the narrator's keystrokes): the overlay is
 // created NON-ACTIVATING (focusable:false, shown with showInactive) so arming
@@ -71,17 +67,23 @@ const ARM_IDLE_RELEASE_MS = 1200
 const ARM_POLL_MS = 200
 const MAX_ARMED_MS = 15000
 
+// What enable() reports back: whether an annotation surface came up at all, and
+// if so whether it's HOLD mode (native global-key hook) or the TAP fallback —
+// so the recorder HUD shows the matching hint.
+export type AnnotationEnableResult = { available: boolean; hold: boolean }
+
 export type AnnotationController = {
-  // Creates the overlay + registers the draw-mode shortcut. Returns TRUE only
-  // when the overlay exists AND the shortcut is actually registered; returns
-  // false (after tearing down anything partial) when the overlay can't be
-  // created or the accelerator is already owned, so callers degrade instead of
-  // advertising a dead affordance. Never moves focus, never arms. Idempotent.
-  enable: () => boolean
-  // Stops capturing input INSTANTLY, fades any lingering marks, then destroys
-  // the overlay + unregisters the shortcut once the fade elapses. The instant
-  // input release is the hard guarantee that the overlay can never stay stuck
-  // over the screen. Safe to call when already disabled. Idempotent.
+  // Creates the overlay, then tries the HOLD hook and falls back to the TAP
+  // shortcut. `available` is true only when a working surface came up (overlay
+  // created AND — in tap mode — the accelerator registered); `hold` is true when
+  // the native hold-to-draw hook is driving it. Tears down anything partial and
+  // reports available:false when nothing could run, so callers degrade instead
+  // of advertising a dead affordance. Never moves focus, never arms. Idempotent.
+  enable: () => AnnotationEnableResult
+  // Stops capturing input INSTANTLY, stops the hold hook, fades any lingering
+  // marks, then destroys the overlay + unregisters the shortcut once the fade
+  // elapses. The instant input release is the hard guarantee that the overlay
+  // can never stay stuck over the screen. Safe to call when already disabled.
   disable: () => void
   isActive: () => boolean
   isDrawing: () => boolean
@@ -95,9 +97,12 @@ type Options = {
   // recorder's HUD can reflect the live state
   // (window.syrusShell.annotation.onModeChanged).
   onModeChanged: (drawing: boolean) => void
+  // The global hold-to-draw hook factory — injectable so specs can drive the
+  // hold path without the native module. Defaults to the real uiohook wrapper.
+  holdHookFactory?: typeof startHoldToDrawHook
 }
 
-export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: Options): AnnotationController => {
+export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, holdHookFactory = startHoldToDrawHook }: Options): AnnotationController => {
   let overlay: BrowserWindow | null = null
   // True while draw mode is armed (the overlay is capturing pointer input).
   let armed = false
@@ -116,6 +121,12 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
   // cleared on every release / teardown so no stray timer outlives draw mode.
   let idlePollTimer: ReturnType<typeof setInterval> | null = null
   let maxArmedTimer: ReturnType<typeof setTimeout> | null = null
+  // "hold" once the native global-key hook is driving arm/release; "tap" for the
+  // fallback shortcut. Determines whether setArmed starts the auto-release
+  // watchers (tap only — hold releases deterministically on key-up).
+  let mode: "hold" | "tap" = "tap"
+  // The live global-key hook in hold mode (null in tap mode); stopped on disable.
+  let holdHook: HoldToDrawHook | null = null
 
   const overlayAlive = () => overlay !== null && !overlay.isDestroyed()
 
@@ -151,17 +162,28 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
     }
   }
 
+  // Stop the native global-key hook (hold mode). Idempotent; called on every
+  // teardown path so the OS-level hook never outlives the overlay.
+  const stopHoldHook = () => {
+    if (holdHook) {
+      holdHook.stop()
+      holdHook = null
+    }
+  }
+
   // Immediate, unconditional teardown: destroy the window + drop state. Used by
   // the fade timer, by a re-enable that pre-empts an in-flight fade, and on a
   // failed create.
   const destroyOverlayNow = () => {
     clearTeardownTimer()
     stopArmWatch()
+    stopHoldHook()
     if (overlayAlive()) {
       overlay!.destroy()
     }
     overlay = null
     armed = false
+    mode = "tap"
   }
 
   // The single place draw mode arms/releases. Flips OS-level input capture +
@@ -185,9 +207,11 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
       // place the overlay is allowed to take focus.
       overlay!.setFocusable(true)
       overlay!.focus()
-      // Arm the auto-release watchers: poll the renderer for a pause, and cap
-      // the whole armed session so it can never get stuck capturing input.
-      startArmWatch()
+      // TAP mode only: arm the auto-release watchers (poll the renderer for a
+      // pause, cap the session). HOLD mode releases deterministically on key-up
+      // (and Esc), so it needs no timers — and a MAX_ARMED cap would cut off a
+      // long deliberate hold mid-stroke.
+      if (mode === "tap") startArmWatch()
     } else {
       overlay!.blur()
       overlay!.setFocusable(false)
@@ -239,7 +263,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
   // The global-shortcut handler: tap to arm, tap again to release immediately.
   const toggleArm = () => setArmed(!armed)
 
-  const enable = (): boolean => {
+  const enable = (): AnnotationEnableResult => {
     // A previous disable() may still be fading before its scheduled destroy.
     // Finish that teardown now rather than reusing a window that's about to be
     // destroyed out from under the new recording.
@@ -247,7 +271,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
       destroyOverlayNow()
     }
     if (overlayAlive()) {
-      return true
+      return { available: true, hold: mode === "hold" }
     }
 
     try {
@@ -303,28 +327,44 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
       overlay.on("closed", () => {
         clearTeardownTimer()
         stopArmWatch()
+        stopHoldHook()
         overlay = null
         armed = false
+        mode = "tap"
       })
 
       void overlay.loadFile(overlayHtmlPath)
 
-      // Register the draw-mode shortcut. register() returns false (it does NOT
-      // throw) when the accelerator is already owned by another app; a
-      // registered-but-false shortcut would leave the HUD advertising a dead
-      // ⌘⇧A, so treat that as unavailable — tear down and report failure. (No
-      // fallback accelerator: the recorder HUD's shortcut label is static, so
-      // silently binding a different key would itself be a misleading
-      // affordance.)
+      // Prefer HOLD-to-draw via the native global-key hook (Ctrl held → armed).
+      // Set mode FIRST so the hook's arm/release don't start the tap-mode
+      // auto-release watchers. The hook returns null when the native module or
+      // (on macOS) Accessibility permission is unavailable — then fall through
+      // to the tap shortcut.
+      mode = "hold"
+      holdHook = holdHookFactory({
+        onHold: () => setArmed(true),
+        onRelease: () => setArmed(false)
+      })
+      if (holdHook) {
+        // Show WITHOUT activating — enable() must not move focus.
+        overlay.showInactive()
+        return { available: true, hold: true }
+      }
+
+      // Fall back to TAP mode. register() returns false (it does NOT throw) when
+      // the accelerator is already owned by another app; a registered-but-false
+      // shortcut would leave the HUD advertising a dead ⌘⇧A, so treat that as
+      // unavailable — tear down and report failure.
+      mode = "tap"
       if (!globalShortcut.register(ANNOTATION_SHORTCUT, toggleArm)) {
         destroyOverlayNow()
-        return false
+        return { available: false, hold: false }
       }
 
       // Show WITHOUT activating — enable() must not move focus.
       overlay.showInactive()
 
-      return true
+      return { available: true, hold: false }
     } catch {
       // Transparent always-on-top is compositor-dependent on Linux; on failure
       // tear down whatever partially came up and report unavailable so the
@@ -335,7 +375,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
         // never registered
       }
       destroyOverlayNow()
-      return false
+      return { available: false, hold: false }
     }
   }
 
@@ -350,9 +390,11 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
 
     const wasArmed = armed
     armed = false
-    // Kill the auto-release watchers on every disable path so neither the idle
-    // poll nor the max-armed cap can fire after teardown.
+    // Kill the auto-release watchers AND the native hold hook on every disable
+    // path so neither the idle poll, the max-armed cap, nor a global key hook can
+    // fire after teardown.
     stopArmWatch()
+    stopHoldHook()
 
     if (!overlayAlive()) {
       // Nothing to tear down (already disabled / already destroyed). Still

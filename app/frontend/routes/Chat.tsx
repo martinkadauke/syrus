@@ -8,7 +8,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { GeminiSetupSheet } from "../components/GeminiSetupSheet"
-import { AnalyzingHint, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
+import { AnalyzingHint, annotationHoldLabel, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
 import {
   isWalkthroughVideoFile,
   MAX_WALKTHROUGH_BYTES,
@@ -2365,6 +2365,14 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   // false in a plain browser, where the in-page WalkthroughRecorderHUD is used.
   const recording = recorder.state.phase === "recording"
   const recorderMicLive = recorder.state.phase === "recording" ? recorder.state.micLive : true
+  // Hint text depends on the annotation mode: HOLD (native hook) reads "hold
+  // Control", TAP (fallback) reads "tap ⌘⇧A"; both swap while actively drawing.
+  const annotationHintIdle = recorder.annotationHold
+    ? t("walkthrough_annotate_hold_hint", { key: annotationHoldLabel() })
+    : t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() })
+  const annotationHintDrawing = recorder.annotationHold
+    ? t("walkthrough_annotate_hold_drawing", { key: annotationHoldLabel() })
+    : t("walkthrough_annotate_drawing")
   const nativeRecorderHud = useNativeRecorderHud({
     recording,
     state: {
@@ -2373,7 +2381,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       remainingWarn: recorder.elapsed >= RECORDER_WARNING_SECONDS,
       noMic: recorderMicLive ? undefined : t("walkthrough_no_mic"),
       hint: recorder.annotationAvailable
-        ? (recorder.drawing ? t("walkthrough_annotate_drawing") : t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() }))
+        ? (recorder.drawing ? annotationHintDrawing : annotationHintIdle)
         : undefined,
       drawing: recorder.drawing,
       stopLabel: t("walkthrough_stop"),
@@ -2743,12 +2751,10 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           annotation={
             recorder.annotationAvailable
               ? {
-                  // Idle: tap the shortcut to arm the pen. Armed: the pen
-                  // auto-exits when the user pauses (no persistent toggle), so
-                  // the drawing hint describes the pause-to-exit behavior and
-                  // needs no shortcut glyph.
-                  hint: t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() }),
-                  drawingHint: t("walkthrough_annotate_drawing"),
+                  // Mode-aware: HOLD reads "hold Control", TAP reads "tap ⌘⇧A";
+                  // both swap to the drawing variant while the pen is armed.
+                  hint: annotationHintIdle,
+                  drawingHint: annotationHintDrawing,
                   drawing: recorder.drawing,
                   surfaceNote: shouldShowAnnotationSurfaceNote(recorder.annotationAvailable, recorder.displaySurface)
                     ? t("walkthrough_annotate_surface_note")

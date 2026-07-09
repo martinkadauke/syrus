@@ -31,6 +31,12 @@ export function annotationShortcutLabel(mac: boolean = isMacPlatform()): string 
   return mac ? "⌘⇧A" : "Ctrl+Shift+A"
 }
 
+// The modifier the native HOLD-to-draw hook watches (Ctrl on both platforms;
+// shown as ⌃ Control on macOS where Ctrl is a distinct key from ⌘).
+export function annotationHoldLabel(mac: boolean = isMacPlatform()): string {
+  return mac ? "⌃ Control" : "Ctrl"
+}
+
 // The overlay is only composited into the recording when the user shares a
 // WHOLE screen ("monitor"). The overlay spans every display, so sharing ANY
 // monitor works — no note. Sharing a single window or browser tab excludes the
@@ -122,6 +128,9 @@ export function useWalkthroughRecorder({
   // presence. A shell that reports the overlay/shortcut unavailable (enable →
   // false) must not advertise a dead ⌘⇧A hint, so the HUD gates on this.
   const [annotationReady, setAnnotationReady] = useState(false)
+  // Whether the live annotation surface is the native HOLD-to-draw hook (Ctrl
+  // held → armed) vs the TAP fallback (⌘⇧A), so the HUD shows the right hint.
+  const [annotationHold, setAnnotationHold] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamsRef = useRef<MediaStream[]>([])
   const chunksRef = useRef<Blob[]>([])
@@ -151,6 +160,7 @@ export function useWalkthroughRecorder({
     annotationRef.current?.disable().catch(() => {})
     setDrawing(false)
     setAnnotationReady(false)
+    setAnnotationHold(false)
     setDisplaySurface(null)
   }, [])
 
@@ -217,19 +227,25 @@ export function useWalkthroughRecorder({
 
     // Arm the red-pen overlay (desktop shell only). An overlay failure must
     // never block the recording, so enable() rejections are swallowed and the
-    // recorder proceeds without annotation. enable() RESOLVES whether the
-    // overlay + shortcut actually came up; only then does the HUD advertise the
-    // ⌘⇧A hint (annotationReady). The finishedRef guard drops a late resolution
-    // that lands after the recording already stopped.
+    // recorder proceeds without annotation. enable() RESOLVES { available, hold }
+    // — whether a surface came up, and whether it's the native HOLD hook or the
+    // TAP fallback; only then does the HUD advertise the hint (annotationReady),
+    // with the wording matching the mode (annotationHold). The finishedRef guard
+    // drops a late resolution that lands after the recording already stopped.
     const annotationApi = annotationRef.current
     if (annotationApi) {
       annotationApi
         .enable()
-        .then((ok) => {
-          if (!finishedRef.current) setAnnotationReady(ok === true)
+        .then((result) => {
+          if (finishedRef.current) return
+          setAnnotationReady(result.available === true)
+          setAnnotationHold(result.hold === true)
         })
         .catch(() => {
-          if (!finishedRef.current) setAnnotationReady(false)
+          if (!finishedRef.current) {
+            setAnnotationReady(false)
+            setAnnotationHold(false)
+          }
         })
       annotationUnsubscribeRef.current = annotationApi.onModeChanged((armed) => setDrawing(armed))
     }
@@ -317,6 +333,9 @@ export function useWalkthroughRecorder({
     // an older shell, or when the overlay/shortcut couldn't be created, so the
     // HUD never advertises an affordance that can't work.
     annotationAvailable: annotationReady,
+    // Whether the live annotation surface is the native HOLD-to-draw hook (vs the
+    // tap fallback) — the HUD hint reads "hold Ctrl" vs "tap ⌘⇧A" accordingly.
+    annotationHold,
     // The chosen capture surface, for the "share your whole screen" nudge.
     displaySurface,
     // Live draw-mode flag from the overlay.

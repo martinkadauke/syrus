@@ -64,9 +64,14 @@ export type SyrusShellState = {
 // only when the overlay AND the shortcut actually came up — so the recorder
 // can withhold the ⌘⇧A hint when the overlay couldn't run. See
 // desktop/electron/windows/annotationOverlay.ts.
+// What annotation enable() resolves: whether a surface came up, and if so
+// whether it's the native HOLD-to-draw hook (Ctrl held → armed) or the TAP
+// fallback (⌘⇧A). The recorder shows the matching hint.
+export type AnnotationEnableResult = { available: boolean; hold: boolean }
+
 export type SyrusAnnotationBridge = {
   available: boolean
-  enable(): Promise<boolean>
+  enable(): Promise<AnnotationEnableResult>
   disable(): Promise<void>
   // Fires on every draw-mode transition (true when the pen is armed). Returns
   // an unsubscribe, mirroring onStateChanged.

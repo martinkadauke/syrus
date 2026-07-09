@@ -123,6 +123,8 @@
   "walkthrough_analyzing_screenshots": "Erstellt Screenshots zu jedem Problem…",
   "walkthrough_annotate_drawing": "✏️ Zeichnen — mach deine Markierungen, endet automatisch bei einer Pause · Esc",
   "walkthrough_annotate_hint": "✏️ Auf dem Bildschirm zeichnen — {{shortcut}} tippen",
+  "walkthrough_annotate_hold_drawing": "✏️ Zeichnen — {{key}} loslassen zum Stoppen",
+  "walkthrough_annotate_hold_hint": "✏️ {{key}} halten, um auf dem Bildschirm zu zeichnen",
   "walkthrough_annotate_surface_note": "Bildschirmzeichnungen erscheinen nur, wenn du den ganzen Bildschirm teilst.",
   "walkthrough_discard": "Verwerfen",
   "walkthrough_failed_generic": "Die Analyse ist fehlgeschlagen.",

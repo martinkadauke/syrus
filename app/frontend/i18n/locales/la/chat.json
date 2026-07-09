@@ -123,6 +123,8 @@
   "walkthrough_analyzing_screenshots": "Capit imagines cuiusque quaestionis…",
   "walkthrough_annotate_drawing": "✏️ Pingens — notas fac, cessante te sponte desinit · Esc",
   "walkthrough_annotate_hint": "✏️ In scaena pinge — {{shortcut}} preme",
+  "walkthrough_annotate_hold_drawing": "✏️ Pingens — {{key}} remitte ut desinas",
+  "walkthrough_annotate_hold_hint": "✏️ {{key}} tene ut in scaena pingas",
   "walkthrough_annotate_surface_note": "Notae in scaena tantum apparent cum totam scaenam communicas.",
   "walkthrough_discard": "Abice",
   "walkthrough_failed_generic": "Analysis defecit.",

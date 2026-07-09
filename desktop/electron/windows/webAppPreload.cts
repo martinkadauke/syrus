@@ -55,7 +55,7 @@ contextBridge.exposeInMainWorld("syrusShell", {
   // draw-mode transition so the recording HUD can reflect it.
   annotation: {
     available: true,
-    enable: () => ipcRenderer.invoke("annotation:enable") as Promise<boolean>,
+    enable: () => ipcRenderer.invoke("annotation:enable") as Promise<{ available: boolean; hold: boolean }>,
     disable: () => ipcRenderer.invoke("annotation:disable") as Promise<void>,
     onModeChanged: (callback: (drawing: boolean) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, drawing: boolean) => callback(drawing)

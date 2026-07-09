@@ -184,9 +184,10 @@ describe("useWalkthroughRecorder annotation", () => {
     const unsubscribe = vi.fn()
     const bridge: SyrusAnnotationBridge = {
       available: true,
-      // enable() resolves TRUE when the overlay + shortcut actually came up —
-      // that runtime signal (not mere bridge presence) drives the HUD hint.
-      enable: vi.fn().mockResolvedValue(true),
+      // enable() resolves { available, hold } when a surface came up — that
+      // runtime signal (not mere bridge presence) drives the HUD hint, and
+      // `hold` picks the "hold Ctrl" vs "tap ⌘⇧A" wording.
+      enable: vi.fn().mockResolvedValue({ available: true, hold: false }),
       disable: vi.fn().mockResolvedValue(undefined),
       onModeChanged: vi.fn((cb: (drawing: boolean) => void) => {
         modeCallback = cb
@@ -249,7 +250,7 @@ describe("useWalkthroughRecorder annotation", () => {
     stubMedia()
     // A stolen accelerator or a compositor that can't host the overlay makes
     // the main process report false — the recorder must NOT advertise ⌘⇧A.
-    const { bridge } = fakeAnnotation({ enable: vi.fn().mockResolvedValue(false) })
+    const { bridge } = fakeAnnotation({ enable: vi.fn().mockResolvedValue({ available: false, hold: false }) })
     const { result } = renderHook(() =>
       useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
     )
@@ -258,7 +259,7 @@ describe("useWalkthroughRecorder annotation", () => {
       await result.current.start()
     })
     expect(bridge.enable).toHaveBeenCalledTimes(1)
-    // enable() resolved false → no HUD affordance, recording still proceeds.
+    // enable() resolved unavailable → no HUD affordance, recording still proceeds.
     expect(result.current.annotationAvailable).toBe(false)
     expect(result.current.state.phase).toBe("recording")
 
@@ -272,10 +273,10 @@ describe("useWalkthroughRecorder annotation", () => {
     stubMedia()
     // enable() resolves only when we release it — after stop() — so the guard
     // must drop the stale true and keep the HUD gate closed.
-    let releaseEnable: (ok: boolean) => void = () => {}
+    let releaseEnable: (result: { available: boolean; hold: boolean }) => void = () => {}
     const enable = vi.fn(
       () =>
-        new Promise<boolean>((resolve) => {
+        new Promise<{ available: boolean; hold: boolean }>((resolve) => {
           releaseEnable = resolve
         })
     )
@@ -291,10 +292,29 @@ describe("useWalkthroughRecorder annotation", () => {
       result.current.stop({ discard: true })
     })
     await act(async () => {
-      releaseEnable(true)
+      releaseEnable({ available: true, hold: false })
       await Promise.resolve()
     })
     expect(result.current.annotationAvailable).toBe(false)
+  })
+
+  it("reports hold mode from enable() so the HUD can show the right hint", async () => {
+    stubMedia()
+    const { bridge } = fakeAnnotation({ enable: vi.fn().mockResolvedValue({ available: true, hold: true }) })
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(result.current.annotationAvailable).toBe(true)
+    expect(result.current.annotationHold).toBe(true)
+
+    act(() => {
+      result.current.stop({ discard: true })
+    })
+    expect(result.current.annotationHold).toBe(false)
   })
 
   it("reflects arm + auto-release transitions pushed from the overlay", async () => {

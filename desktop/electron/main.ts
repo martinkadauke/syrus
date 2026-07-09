@@ -2598,14 +2598,14 @@ ipcMain.handle("shell:dismiss-skill-offer", async (event) => {
 // draw-mode shortcut.
 ipcMain.handle("annotation:enable", (event) => {
   if (!shellSenderAllowed(event, "annotation:enable")) {
-    return false
+    return { available: false, hold: false }
   }
 
-  // Propagate whether the overlay AND the draw-mode shortcut actually came up.
-  // enable() swallows creation errors and a stolen accelerator internally and
-  // reports availability as a boolean; the recorder gates its ⌘⇧A hint on this
-  // so it never advertises an affordance that can't work. A failure here never
-  // breaks the recording — the recorder just omits the annotation UI.
+  // Propagate whether an annotation surface came up AND whether it's the native
+  // HOLD hook or the tap fallback ({ available, hold }); the recorder gates its
+  // hint on this so it never advertises an affordance that can't work and shows
+  // "hold Ctrl" vs "tap ⌘⇧A" correctly. A failure here never breaks the
+  // recording — the recorder just omits the annotation UI.
   return ensureAnnotationController().enable()
 })
 ipcMain.handle("annotation:disable", (event) => {

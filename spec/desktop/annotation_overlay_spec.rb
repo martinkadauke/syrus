@@ -8,16 +8,13 @@ require "spec_helper"
 # user draws are burned into the recorded video with no change to the capture
 # pipeline.
 #
-# Interaction model: PRESS-TO-ARM, AUTO-RELEASE (not a persistent toggle).
-# Tapping the global shortcut (CommandOrControl+Shift+A) arms draw mode; the
-# overlay AUTO-RELEASES back to click-through once the pointer pauses
-# (ARM_IDLE_RELEASE_MS idle with no stroke in progress), so the app under test
-# stays interactive except while the user is actively annotating. Esc and a
-# second tap release immediately; a hard MAX_ARMED_MS cap force-releases
-# regardless. No native key hook and no macOS accessibility permission — a true
-# modifier-HOLD would need both (uiohook-napi + Accessibility), which this app
-# deliberately avoids; auto-release delivers the same click-through benefit for
-# free and leaves the native hold as a future opt-in.
+# Interaction model: HOLD-to-draw (native global-key hook via globalKeyHook.ts /
+# uiohook-napi) arms draw mode while Ctrl is physically DOWN and releases on
+# key-up. When the native hook or macOS Accessibility permission is unavailable,
+# enable() FALLS BACK to TAP mode: the global shortcut (CommandOrControl+Shift+A)
+# arms and the overlay AUTO-RELEASES on idle (ARM_IDLE_RELEASE_MS) with a hard
+# MAX_ARMED_MS cap. enable() reports { available, hold } so the recorder HUD shows
+# the matching hint. Esc releases immediately in either mode.
 #
 # The overriding safety rules are: the overlay must NEVER steal keyboard focus
 # when armed, must NEVER stay stuck capturing the screen (idle auto-release +
@@ -70,7 +67,7 @@ RSpec.describe "desktop annotation overlay" do
       # The old bug created a focusable window on enable(); guard the regression.
       expect(overlay).not_to include("focusable: true")
       # enable() itself must not grab focus (focus is a draw-mode-only action).
-      enable = overlay[/const enable[\s\S]{0,3600}/]
+      enable = overlay[/const enable[\s\S]{0,4400}/]
       expect(enable).not_to include("overlay.focus()")
     end
 
@@ -106,10 +103,10 @@ RSpec.describe "desktop annotation overlay" do
     it "is a normal accelerator, registered on enable and unregistered on disable" do
       expect(overlay).to include('export const ANNOTATION_SHORTCUT = "CommandOrControl+Shift+A"')
       # enable() registers the arm/release handler...
-      enable = overlay[/const enable[\s\S]{0,3600}/]
+      enable = overlay[/const enable[\s\S]{0,4400}/]
       expect(enable).to include("globalShortcut.register(ANNOTATION_SHORTCUT, toggleArm)")
       # ...disable() unregisters it.
-      disable = overlay[/const disable[\s\S]{0,1800}/]
+      disable = overlay[/const disable[\s\S]{0,2400}/]
       expect(disable).to include("globalShortcut.unregister(ANNOTATION_SHORTCUT)")
     end
 
@@ -120,33 +117,82 @@ RSpec.describe "desktop annotation overlay" do
       expect(overlay).to include("const toggleArm = () => setArmed(!armed)")
     end
 
-    it "returns false (not true) when the accelerator is already owned" do
+    it "reports unavailable when the tap accelerator is already owned" do
       # register() returns false without throwing when the accelerator is taken.
-      # A registered-but-false shortcut would advertise a dead shortcut, so
-      # enable() must tear the overlay down and report unavailable.
-      enable = overlay[/const enable[\s\S]{0,3600}/]
-      expect(enable).to match(/if \(!globalShortcut\.register\(ANNOTATION_SHORTCUT, toggleArm\)\) \{[\s\S]{0,120}destroyOverlayNow\(\)[\s\S]{0,40}return false/)
+      # In the TAP fallback a registered-but-false shortcut would advertise a dead
+      # shortcut, so enable() tears the overlay down and reports unavailable.
+      enable = overlay[/const enable[\s\S]{0,4200}/]
+      expect(enable).to match(/if \(!globalShortcut\.register\(ANNOTATION_SHORTCUT, toggleArm\)\) \{[\s\S]{0,140}destroyOverlayNow\(\)[\s\S]{0,80}return \{ available: false, hold: false \}/)
     end
 
-    it "never lets overlay creation crash the recording — enable() try/catch returns false" do
-      # Lazy match, length-independent: enable() has a try that returns true and
-      # a catch that returns false (create failure → unavailable, not a crash).
-      expect(overlay).to match(/const enable[\s\S]*?try \{[\s\S]*?return true[\s\S]*?\} catch \{[\s\S]*?return false/)
+    it "never lets overlay creation crash the recording — enable() try/catch returns unavailable" do
+      # enable() has a try that returns an available result and a catch that
+      # returns { available: false } (create failure → unavailable, not a crash).
+      expect(overlay).to match(/const enable[\s\S]*?try \{[\s\S]*?return \{ available: true[\s\S]*?\} catch \{[\s\S]*?return \{ available: false, hold: false \}/)
       # A failed create/registration tears down the partial window + shortcut
       # through the shared destroy helper.
-      expect(overlay).to match(/const destroyOverlayNow[\s\S]{0,220}overlay!\.destroy\(\)/)
+      expect(overlay).to match(/const destroyOverlayNow[\s\S]{0,260}overlay!\.destroy\(\)/)
     end
 
-    it "gives enable() TRUE only when the overlay exists AND the shortcut registered" do
-      # The two failure exits (create throw, register false) both return false;
-      # the single success path returns true only after showInactive().
-      expect(overlay).to match(/showInactive\(\)[\s\S]{0,60}return true/)
+    it "reports available only when the overlay exists AND a mode came up" do
+      # The tap-mode success path returns available:true,hold:false after
+      # showInactive(); the hold path returns hold:true.
+      expect(overlay).to match(/showInactive\(\)[\s\S]{0,80}return \{ available: true, hold: false \}/)
+      expect(overlay).to include("return { available: true, hold: true }")
+    end
+  end
+
+  describe "hold-to-draw (native global-key hook) with a tap fallback" do
+    let(:hook) { read("electron/windows/globalKeyHook.ts") }
+
+    it "tries the HOLD hook first and only falls back to the tap shortcut" do
+      enable = overlay[/const enable[\s\S]{0,4200}/]
+      # Mode is set to hold BEFORE starting the hook so its arm/release don't
+      # start the tap auto-release watchers.
+      expect(enable).to match(/mode = "hold"[\s\S]{0,200}holdHookFactory\(\{/)
+      expect(enable).to include("onHold: () => setArmed(true)")
+      expect(enable).to include("onRelease: () => setArmed(false)")
+      # A live hook short-circuits before the tap shortcut is registered.
+      expect(enable).to match(/if \(holdHook\)[\s\S]{0,120}return \{ available: true, hold: true \}/)
+      # Only after the hook returns null does it register the tap accelerator.
+      expect(enable).to match(/mode = "tap"[\s\S]{0,140}globalShortcut\.register\(ANNOTATION_SHORTCUT/)
+    end
+
+    it "arms the auto-release watchers ONLY in tap mode (hold releases on key-up)" do
+      set_armed = overlay[/const setArmed[\s\S]{0,2200}/]
+      expect(set_armed).to include('if (mode === "tap") startArmWatch()')
+    end
+
+    it "stops the native hook on every teardown path" do
+      expect(overlay).to include("const stopHoldHook")
+      expect(overlay[/const destroyOverlayNow[\s\S]{0,480}/]).to include("stopHoldHook()")
+      expect(overlay[/const disable[\s\S]{0,2400}/]).to include("stopHoldHook()")
+      expect(overlay[/overlay\.on\("closed"[\s\S]{0,200}/]).to include("stopHoldHook()")
+    end
+
+    it "the hook soft-loads uiohook, watches Ctrl, and fails to null (never crashes)" do
+      # Soft require: a load failure returns null, not a throw.
+      expect(hook).to include('require("uiohook-napi")')
+      expect(hook).to match(/catch \{[\s\S]{0,40}cachedModule = null/)
+      # Watches BOTH Ctrl keys; fires onHold on down, onRelease on up.
+      expect(hook).to include("UiohookKey.Ctrl")
+      expect(hook).to include("UiohookKey.CtrlRight")
+      expect(hook).to include("onHold()")
+      expect(hook).to include("onRelease()")
+      # macOS Accessibility gate: prompt at most once, else return null → fallback.
+      expect(hook).to include("isTrustedAccessibilityClient")
+      expect(hook).to match(/return null/)
+    end
+
+    it "bundles the native module unpacked from the asar in the packaged app" do
+      expect(builder_config).to include("node_modules/uiohook-napi/**")
+      expect(File.read(File.join(desktop_root, "package.json"))).to include("uiohook-napi")
     end
   end
 
   describe "disable(): instant input release, graceful fade, real teardown" do
     it "stops capturing input INSTANTLY so it can never stay stuck over the screen" do
-      disable = overlay[/const disable[\s\S]{0,1800}/]
+      disable = overlay[/const disable[\s\S]{0,2400}/]
       # Click-through + non-focusable immediately, before any deferred destroy.
       expect(disable).to include("setIgnoreMouseEvents(true, { forward: true })")
       expect(disable).to match(/blur\(\)[\s\S]{0,80}setFocusable\(false\)/)
@@ -156,7 +202,7 @@ RSpec.describe "desktop annotation overlay" do
     end
 
     it "wires the previously-dead clear() so lingering marks fade on stop" do
-      disable = overlay[/const disable[\s\S]{0,1800}/]
+      disable = overlay[/const disable[\s\S]{0,2400}/]
       # clear() is invoked over the executeJavaScript control surface on stop.
       expect(disable).to include("__syrusAnnotation.clear()")
       # The overlay HTML still defines clear() as that control surface.
@@ -165,19 +211,19 @@ RSpec.describe "desktop annotation overlay" do
 
     it "destroys the overlay so it never outlives a recording, and is idempotent" do
       # The shared teardown helper destroys + nulls the window and kills timers...
-      destroy = overlay[/const destroyOverlayNow[\s\S]{0,320}/]
+      destroy = overlay[/const destroyOverlayNow[\s\S]{0,480}/]
       expect(destroy).to include("overlay!.destroy()")
       expect(destroy).to include("overlay = null")
       expect(destroy).to include("stopArmWatch()")
       # ...and disable() schedules it after the fade window (single timer).
-      disable = overlay[/const disable[\s\S]{0,1800}/]
+      disable = overlay[/const disable[\s\S]{0,2400}/]
       expect(disable).to match(/if \(!teardownTimer\)[\s\S]{0,120}setTimeout\(destroyOverlayNow/)
       # Calling disable() when already down is a safe no-op.
       expect(disable).to include("if (!overlayAlive())")
     end
 
     it "re-enabling before the fade completes finishes the pending teardown first" do
-      enable = overlay[/const enable[\s\S]{0,400}/]
+      enable = overlay[/const enable[\s\S]{0,600}/]
       expect(enable).to match(/if \(teardownTimer\)[\s\S]{0,80}destroyOverlayNow\(\)/)
     end
   end
@@ -290,17 +336,17 @@ RSpec.describe "desktop annotation overlay" do
       expect(disable).to include("annotationController?.disable()")
     end
 
-    it "PROPAGATES enable()'s boolean back through the IPC channel" do
-      # The renderer needs the real availability, not a discarded value: return
-      # enable()'s boolean, and reject a disallowed sender as false (unavailable).
+    it "PROPAGATES enable()'s { available, hold } result back through the IPC channel" do
+      # The renderer needs the real availability + mode, not a discarded value:
+      # return enable()'s result, and reject a disallowed sender as unavailable.
       enable = main[/ipcMain\.handle\("annotation:enable"[\s\S]{0,700}/]
       expect(enable).to include("return ensureAnnotationController().enable()")
-      expect(enable).to match(/shellSenderAllowed[\s\S]{0,60}return false/)
+      expect(enable).to match(/shellSenderAllowed[\s\S]{0,80}return \{ available: false, hold: false \}/)
     end
 
     it "tears the overlay down when the app window closes and when the app quits" do
       # Closing the web window mid-recording can't run the renderer's disable.
-      on_closed = main[/onClosed: \(\) => \{[\s\S]{0,240}webAppWindow = null[\s\S]{0,240}/]
+      on_closed = main[/onClosed: \(\) => \{[\s\S]{0,360}webAppWindow = null[\s\S]{0,360}/]
       expect(on_closed).to include("annotationController?.disable()")
       # And a transparent always-on-top window must never survive quit.
       before_quit = main[/app\.on\("before-quit"[\s\S]{0,500}/]
@@ -326,8 +372,9 @@ RSpec.describe "desktop annotation overlay" do
       annotation = preload[/annotation: \{[\s\S]{0,900}/]
       # available:true is the desktop-only STATIC signal — a plain browser has none.
       expect(annotation).to include("available: true")
-      # enable() now resolves the runtime boolean the recorder gates its HUD on.
-      expect(annotation).to include('enable: () => ipcRenderer.invoke("annotation:enable") as Promise<boolean>')
+      # enable() resolves { available, hold } — the recorder gates its HUD hint
+      # on available and picks the hold-vs-tap wording from hold.
+      expect(annotation).to include('enable: () => ipcRenderer.invoke("annotation:enable") as Promise<{ available: boolean; hold: boolean }>')
       expect(annotation).to include('disable: () => ipcRenderer.invoke("annotation:disable")')
       # onModeChanged subscribes + returns an unsubscribe, mirroring onStateChanged.
       expect(annotation).to include('ipcRenderer.on("annotation:mode-changed", listener)')

@@ -22,6 +22,15 @@ extraResources:
   - from: resources/backend
     to: backend
 artifactName: ${productName}-${version}-${arch}.${ext}
+# uiohook-napi ships a native .node addon (the global keyboard hook that powers
+# hold-to-draw). Native modules can't be require()'d from inside the asar, so
+# unpack it. It's an N-API module with per-platform+arch prebuilds under
+# prebuilds/<platform>-<arch>/, selected at runtime by node-gyp-build — both mac
+# arches ride along in the universal build, so hold-to-draw works on Intel + Apple
+# Silicon. If it ever fails to load, the annotation overlay falls back to
+# tap-to-arm, so this can never break the app.
+asarUnpack:
+  - "**/node_modules/uiohook-napi/**"
 mac:
   category: public.app-category.developer-tools
   # 512px master; a 1024px design asset would sharpen the Retina dock icon.
