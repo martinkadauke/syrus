@@ -234,7 +234,8 @@ module SyrusChatMcp
       FireScheduledTaskNowTool,
       PauseLandingQueueTool,
       ResumeLandingQueueTool,
-      ReadQueueTool
+      ReadQueueTool,
+      AnalyzeWalkthroughSegmentTool
     ].freeze
 
     def self.tool_names(chat_session = nil)

@@ -133,19 +133,29 @@ module Gemini
     # numbers) or `:low` (a graceful-degradation fallback the caller uses only
     # when a long video actually blows the free-tier token window — see the
     # analysis job's retry ladder).
-    def generate_content(file_uri:, mime_type:, prompt:, response_schema:, media_resolution: :default)
+    #
+    # `video_metadata`, when given, clips the analysis to a time window of the
+    # SAME already-uploaded file (Files API retains it ~48h) — no re-upload.
+    # It rides as a sibling of `file_data` on the video part; the wire shape is
+    # `{ start_offset: "12s", end_offset: "30s" }` (Duration strings). We use
+    # the proto snake_case field names to match the existing `file_data` /
+    # `file_uri` fields — the generativelanguage REST endpoint accepts them.
+    def generate_content(file_uri:, mime_type:, prompt:, response_schema:, media_resolution: :default, video_metadata: nil)
       generation_config = {
         responseMimeType: "application/json",
         responseSchema: response_schema
       }
       generation_config[:mediaResolution] = "MEDIA_RESOLUTION_LOW" if media_resolution == :low
 
+      video_part = { file_data: { file_uri: file_uri, mime_type: mime_type } }
+      video_part[:video_metadata] = video_metadata if video_metadata.present?
+
       body = {
         contents: [
           {
             role: "user",
             parts: [
-              { file_data: { file_uri: file_uri, mime_type: mime_type } },
+              video_part,
               { text: prompt }
             ]
           }
@@ -175,7 +185,33 @@ module Gemini
       raise Error, "Gemini returned malformed JSON despite the response schema"
     end
 
+    # Re-analyze one CLIP of an already-uploaded file — the "zoom in" path.
+    # `start_seconds`/`end_seconds` bound the window; they render as Duration
+    # strings ("12s") on the video part's `video_metadata`, so no re-upload is
+    # needed while the file is still retained. Defaults to full resolution,
+    # which is the point of a segment pass: read small text/fast action that a
+    # whole-video pass may have garbled.
+    def analyze_segment(file_uri:, mime_type:, start_seconds:, end_seconds:, prompt:, response_schema:, media_resolution: :default)
+      generate_content(
+        file_uri: file_uri,
+        mime_type: mime_type,
+        prompt: prompt,
+        response_schema: response_schema,
+        media_resolution: media_resolution,
+        video_metadata: {
+          start_offset: offset_string(start_seconds),
+          end_offset: offset_string(end_seconds)
+        }
+      )
+    end
+
     private
+
+    # Gemini's VideoMetadata offsets are protobuf Durations, serialized as a
+    # decimal-seconds string with a trailing "s" (e.g. "12s").
+    def offset_string(seconds)
+      "#{seconds.to_i}s"
+    end
 
     def uri_for(path)
       URI.parse("#{BASE_URL}#{path}")

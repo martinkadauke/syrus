@@ -330,6 +330,22 @@ Files API resumable upload → poll ACTIVE → one `generateContent` with a JSON
 `media_resolution` (LOW measurably garbles small on-screen text; the job
 retries at LOW only if a ≥12-min video's full-res attempt is actually
 rate-limited — graceful degradation, `Gemini::Client::LOW_RESOLUTION_FALLBACK_SECONDS`).
+The schema is engineered for Flash's strengths: a timestamped `transcript`
+FIRST (Flash is excellent at ASR; it anchors the rest and curbs hallucination),
+then `sections` (topical ranges — the handles for later "zoom in"), then
+`issues` grounded in `transcript_evidence` (the user's quoted words),
+`visual_evidence`, `severity` (low/medium/high), `surface`, `user_flagged` (the
+user circled/underlined with a red pen or said "here"/"this"), and
+`needs_closer_look`. **Segment "zoom in"** — the Gemini Files API retains the
+upload ~48h, so `Gemini::Client#analyze_segment` re-analyzes a CLIP of the SAME
+file at full resolution with no re-upload (a `video_metadata` `{ start_offset:
+"12s", end_offset: "30s" }` sibling of `file_data`). The chat MCP tool
+`analyze_walkthrough_segment(walkthrough_id, start, end, focus)`
+(`SyrusChatMcp::AnalyzeWalkthroughSegmentTool`, deferred, `Prompts::VideoWalkthroughSegment`)
+lets the chat agent get finer detail (exact error text, click sequence) on
+`needs_closer_look` moments or on request; it re-uploads the stored blob when
+the file is past retention, and reports "video expired" only when the blob is
+also pruned. Test seam `AnalyzeWalkthroughSegmentTool.client_factory`.
 The job downloads the video once locally and runs the whole media flow off it:
 Gemini analysis → CRISP screenshots via `Gemini::FrameExtractor` (`ffmpeg`) at
 each flagged issue's timestamp (they ride the analysis turn as image
@@ -373,7 +389,9 @@ primary screen elsewhere).
   (`Prompts::Initial`, `Prompts::PrFeedback`, `Prompts::PullRequestSummary`,
   `Prompts::SubmitSummaryInstructions`, `Prompts::TestPlan`,
   `Prompts::Rebase`, `Prompts::PushRebase`,
-  `Prompts::ScheduledTask`, `Prompts::DirectJob`, `Prompts::EpicContext`).
+  `Prompts::ScheduledTask`, `Prompts::DirectJob`, `Prompts::EpicContext`,
+  `Prompts::VideoWalkthroughAnalysis`, `Prompts::VideoWalkthroughContext`,
+  `Prompts::VideoWalkthroughSegment`).
   Each has a `to_s`. Compose by appending; never inline prompt text in
   jobs/services. Epic-aware prompts append `Prompts::EpicContext` as
   orientation only; it must not expand the current Job's implementation scope.

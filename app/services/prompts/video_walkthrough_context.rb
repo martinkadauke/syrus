@@ -7,7 +7,8 @@ module Prompts
   # instruction steers the agent to the existing follow-up-question / Epic
   # proposal behavior rather than inventing a new workflow.
   class VideoWalkthroughContext
-    SEVERITY_ORDER = %w[blocker major minor polish].freeze
+    # High → low. Matches the analysis schema's severity enum.
+    SEVERITY_ORDER = %w[high medium low].freeze
 
     def initialize(walkthrough:, user_note: nil, illustrated: false)
       @walkthrough = walkthrough
@@ -20,9 +21,11 @@ module Prompts
       parts << header
       parts << "The user's note with the video: #{@user_note}" if @user_note.present?
       parts << "## Session summary\n#{@walkthrough.analysis_summary}"
+      parts << sections_section if sections.any?
       parts << issues_section
       parts << screenshots_note if @illustrated
-      parts << positive_notes_section if positive_notes.any?
+      parts << closer_look_note if closer_look_issues.any?
+      parts << transcript_section if transcript.any?
       parts << open_questions_section if @walkthrough.analysis_open_questions.any?
       parts << closing_instruction
       parts.compact.join("\n\n")
@@ -40,18 +43,41 @@ module Prompts
       TEXT
     end
 
+    def sections
+      @sections ||= @walkthrough.analysis_sections
+    end
+
+    def sections_section
+      lines = sections.map do |section|
+        range = [ section["start"].presence, section["end"].presence ].compact.join("–")
+        range = range.present? ? " (#{range})" : ""
+        summary = section["summary"].presence
+        "- **#{section['title']}**#{range}#{summary ? " — #{summary}" : ''}"
+      end
+      "## Sections\n#{lines.join("\n")}"
+    end
+
     def issues_section
       issues = @walkthrough.analysis_issues
       return "## Issues found\n(none — the walkthrough surfaced no problems)" if issues.empty?
 
       sorted = issues.sort_by { |issue| SEVERITY_ORDER.index(issue["severity"].to_s) || SEVERITY_ORDER.length }
-      lines = sorted.map do |issue|
-        timestamp = issue["timestamp"].presence
-        area = issue["area"].presence
-        meta = [ issue["severity"], area, timestamp && "at #{timestamp}" ].compact.join(", ")
-        "- **#{issue['title']}** (#{meta})\n  #{issue['detail']}"
-      end
-      "## Issues found (#{issues.size})\n#{lines.join("\n")}"
+      "## Issues found (#{issues.size})\n#{sorted.map { |issue| render_issue(issue) }.join("\n")}"
+    end
+
+    def render_issue(issue)
+      timestamp = issue["timestamp"].presence
+      surface = issue["surface"].presence
+      flags = []
+      flags << "user-flagged" if issue["user_flagged"]
+      flags << "needs a closer look" if issue["needs_closer_look"]
+      meta = [ issue["severity"], surface, timestamp && "at #{timestamp}", *flags ].compact.join(", ")
+
+      lines = [ "- **#{issue['title']}** (#{meta})" ]
+      lines << "  #{issue['description']}" if issue["description"].present?
+      lines << "  The user said: \"#{issue['transcript_evidence']}\"" if issue["transcript_evidence"].present?
+      lines << "  On screen: #{issue['visual_evidence']}" if issue["visual_evidence"].present?
+      lines.join("\n")
     end
 
     def screenshots_note
@@ -63,12 +89,39 @@ module Prompts
       TEXT
     end
 
-    def positive_notes
-      Array(@walkthrough.analysis&.dig("positive_notes"))
+    def closer_look_issues
+      @closer_look_issues ||= @walkthrough.analysis_issues.select { |issue| issue["needs_closer_look"] }
     end
 
-    def positive_notes_section
-      "## What worked well\n#{positive_notes.map { |note| "- #{note}" }.join("\n")}"
+    # Point the agent at the "zoom in" capability for the moments the analysis
+    # itself flagged as hard to read at first pass (small text, fast action).
+    def closer_look_note
+      titles = closer_look_issues.filter_map { |issue| issue["title"].presence }.first(5)
+      <<~TEXT.strip
+        Some issues are marked "needs a closer look"#{titles.any? ? " (e.g. #{titles.map { |t| "\"#{t}\"" }.join(', ')})" : ''}:
+        the detail matters but small text or fast on-screen action may have been
+        hard to read at first pass. If getting the exact wording, error text, or
+        the precise click sequence would materially sharpen the work, use the
+        `analyze_walkthrough_segment` tool (walkthrough ##{@walkthrough.id}) to
+        re-examine just that time range at full resolution before you scope it.
+      TEXT
+    end
+
+    def transcript
+      @transcript ||= @walkthrough.analysis_transcript
+    end
+
+    def transcript_section
+      lines = transcript.filter_map do |line|
+        text = line["text"].presence
+        next unless text
+
+        stamp = line["timestamp"].presence
+        stamp ? "[#{stamp}] #{text}" : text
+      end
+      return nil if lines.empty?
+
+      "## Narration transcript\n#{lines.join("\n")}"
     end
 
     def open_questions_section

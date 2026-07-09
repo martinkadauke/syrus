@@ -4,70 +4,115 @@ module Prompts
   # in the narration into a faithful, structured account that the chat agent
   # (which never sees the video) can act on. The response is constrained by
   # RESPONSE_SCHEMA — flat on purpose; deeply nested schemas get rejected.
+  #
+  # The schema is ordered the way a distilled multimodal model (Gemini Flash)
+  # reasons best: transcript FIRST (Flash is excellent at timestamped ASR, and
+  # a verbatim transcript anchors everything else and curbs hallucination),
+  # THEN a topical segmentation (`sections` — the handles Syrus later uses to
+  # re-analyze one range in detail), THEN issues grounded in both the
+  # transcript and the visuals.
   class VideoWalkthroughAnalysis
     RESPONSE_SCHEMA = {
       type: "object",
       properties: {
-        summary: {
-          type: "string",
-          description: "2-4 sentence overview: what app was tested, what the user did, overall impression"
-        },
-        issues: {
+        transcript: {
           type: "array",
+          description: "The spoken narration, timestamped and verbatim-ish, in order.",
           items: {
             type: "object",
             properties: {
-              timestamp: { type: "string", description: "mm:ss where the issue appears in the video" },
-              title: { type: "string", description: "short imperative issue title" },
-              detail: {
-                type: "string",
-                description: "what happened on screen, what the user said about it, expected vs actual"
-              },
-              severity: { type: "string", enum: %w[blocker major minor polish] },
-              area: { type: "string", description: "the app surface involved (page, component, flow)" }
+              timestamp: { type: "string", description: "mm:ss where this line of narration begins" },
+              text: { type: "string", description: "what the user said, transcribed faithfully" }
             },
-            required: %w[title detail severity]
+            required: %w[timestamp text]
           }
         },
-        positive_notes: {
+        sections: {
           type: "array",
-          items: { type: "string" },
-          description: "things the user liked or that worked well, if any were mentioned"
+          description: "The session split into coherent topical segments — one screen, problem area, or task per section. These are the ranges a reviewer can zoom into later.",
+          items: {
+            type: "object",
+            properties: {
+              start: { type: "string", description: "mm:ss where the section begins" },
+              end: { type: "string", description: "mm:ss where the section ends" },
+              title: { type: "string", description: "short label for this segment" },
+              summary: { type: "string", description: "1-2 sentences on what happens in this segment" }
+            },
+            required: %w[start end title summary]
+          }
+        },
+        issues: {
+          type: "array",
+          description: "Every distinct problem, confusion, bug, glitch, or friction point, grounded in the transcript and the visuals.",
+          items: {
+            type: "object",
+            properties: {
+              timestamp: { type: "string", description: "mm:ss where the issue is most clearly visible or described" },
+              title: { type: "string", description: "short imperative issue title" },
+              description: { type: "string", description: "what happened, and what the user expected vs. what actually occurred" },
+              severity: { type: "string", enum: %w[low medium high] },
+              surface: { type: "string", description: "the UI area/screen/flow involved, as specifically as the video allows" },
+              transcript_evidence: { type: "string", description: "the user's own words describing this issue, quoted from the narration — leave empty if they never mention it out loud" },
+              visual_evidence: { type: "string", description: "what is visible on screen that shows the issue" },
+              user_flagged: { type: "boolean", description: "true if the user explicitly pointed at this — a red pen mark / circle / underline on screen, or words like \"here\", \"this\", \"look at this\"" },
+              needs_closer_look: { type: "boolean", description: "true when the detail matters but small text or fast on-screen action means a focused, full-resolution re-analysis of this moment would help" }
+            },
+            required: %w[title description severity]
+          }
+        },
+        summary: {
+          type: "string",
+          description: "2-4 sentence plain-language overview: what app was tested, what the user did, overall impression"
         },
         open_questions: {
           type: "array",
           items: { type: "string" },
-          description: "questions for the user where the video/narration was ambiguous or incomplete"
+          description: "ambiguities the chat agent should ask the user about — where the video/narration was unclear or incomplete"
         }
       },
-      required: %w[summary issues open_questions]
+      required: %w[transcript summary issues open_questions]
     }.freeze
 
     def to_s
       <<~PROMPT
         This video is a screen recording of a person testing an application
-        that is under active development, narrating as they go. Your job is to
-        extract a faithful, structured account of the session for the
-        development team. Watch the screen AND listen to the narration — the
-        narration often explains intent ("I expected this to...") that the
-        screen alone doesn't show.
+        under active development, narrating as they go. The AUDIO NARRATION is
+        your primary signal — it explains intent ("I expected this to...") that
+        the screen alone doesn't show. Watch the screen AND listen closely.
 
-        Extract EVERY distinct problem, confusion, bug, visual glitch, or
-        friction point — whether demonstrated on screen, described out loud,
-        or both. For each issue:
-        - Use the video timestamp (mm:ss) where it is most clearly visible.
-        - Describe what actually happened AND what the user expected, when
-          discernible.
-        - Judge severity honestly: `blocker` (cannot proceed / data loss),
-          `major` (feature doesn't work as intended), `minor` (works but
-          wrong/awkward), `polish` (cosmetic, wording, spacing).
-        - Name the app surface involved as specifically as the video allows.
+        Work in this order:
+
+        1. TRANSCRIBE the narration first. Produce `transcript` as timestamped
+           (mm:ss), verbatim-ish lines, in order. This anchors everything else.
+
+        2. SEGMENT the session into `sections` — coherent topical ranges, one
+           screen / problem area / task each, with start and end timestamps
+           (mm:ss), a short title, and a 1-2 sentence summary.
+
+        3. EXTRACT `issues` — every distinct problem, confusion, bug, visual
+           glitch, or friction point, whether shown, described, or both. For
+           each issue:
+           - Give the mm:ss where it is clearest.
+           - Describe what happened and what the user expected.
+           - Set `transcript_evidence` to the user's OWN WORDS about it, quoted
+             from the narration (leave empty if they never say it aloud).
+           - Set `visual_evidence` to what is visible on screen.
+           - Judge `severity`: `high` (blocks the user / data loss / broken
+             feature), `medium` (works but wrong or confusing), `low` (cosmetic,
+             wording, spacing).
+           - Name the `surface` (page, component, flow) as specifically as you can.
+           - The user may MARK problems on screen with a red pen — a circle,
+             underline, or arrow — or point with words like "here", "this",
+             "look at this". Treat any such red mark or verbal pointer as a
+             strong locator: set `user_flagged` to true for that issue.
+           - Set `needs_closer_look` to true when the detail matters but small
+             text or fast action means a focused, full-resolution re-analysis of
+             that moment would read it more reliably.
 
         Do NOT invent issues, merge distinct issues, or editorialize about
-        priorities. If the user says something positive, record it in
-        positive_notes. If anything is ambiguous — you can't tell what the
-        user meant, the screen was unreadable, a step happened off-screen —
-        put a concrete question in open_questions rather than guessing.
+        priorities. If something is ambiguous — you can't tell what the user
+        meant, the screen was unreadable, a step happened off-screen — put a
+        concrete question in `open_questions` rather than guessing.
 
         Respond with JSON only, matching the provided schema.
       PROMPT

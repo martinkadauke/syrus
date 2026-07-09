@@ -391,7 +391,10 @@
     "auth_error": "Autorisierung konnte nicht gestartet werden.",
     "connected_default": "Claude verbunden.",
     "exchange_error": "Das von Claude zurückgegebene Token hat nicht funktioniert. Versuchen Sie es erneut.",
-    "exchange_catch_error": "Code konnte nicht ausgetauscht werden. Versuchen Sie, erneut zu autorisieren."
+    "exchange_catch_error": "Code konnte nicht ausgetauscht werden. Versuchen Sie, erneut zu autorisieren.",
+    "gemini_tab_intro": "Gemini verwandelt Bildschirmaufnahmen von Walkthroughs in Epics — optional, jetzt oder später hinzufügen. Es ist nicht der Coding-Agent; dein Claude- (oder Codex-)Agent erledigt weiterhin die Arbeit.",
+    "gemini_tab_configured": "Gemini ist eingerichtet — Walkthrough-Videos werden automatisch analysiert.",
+    "gemini_tab_add_key": "Gemini-API-Schlüssel hinzufügen"
   },
   "account_settings": {
     "loading_credentials": "Anmeldedaten werden geladen...",

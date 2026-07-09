@@ -65,13 +65,25 @@ RSpec.describe VideoWalkthroughAnalysisJob do
   let(:analysis) do
     {
       "summary" => "The checkout flow mostly works, but saving settings fails silently.",
+      "transcript" => [
+        { "timestamp" => "00:05", "text" => "Adding a widget to the cart." },
+        { "timestamp" => "01:12", "text" => "Clicking save, and nothing happens." }
+      ],
+      "sections" => [
+        { "start" => "00:00", "end" => "01:00", "title" => "Checkout", "summary" => "Buys a widget." },
+        { "start" => "01:00", "end" => "01:35", "title" => "Settings", "summary" => "Tries to save preferences." }
+      ],
       "issues" => [
         {
           "title" => "Save button does nothing",
-          "severity" => "major",
-          "area" => "settings",
+          "severity" => "high",
+          "surface" => "settings",
           "timestamp" => "01:12",
-          "detail" => "Clicking Save shows no feedback and persists nothing."
+          "description" => "Clicking Save shows no feedback and persists nothing.",
+          "transcript_evidence" => "Clicking save, and nothing happens.",
+          "visual_evidence" => "no toast, no spinner appears",
+          "user_flagged" => true,
+          "needs_closer_look" => false
         }
       ],
       "open_questions" => [ "Should drafts autosave?" ]
@@ -124,6 +136,9 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect(walkthrough.analysis).to eq(analysis)
       expect(walkthrough.gemini_file_uri).to eq("https://generativelanguage.googleapis.com/v1beta/files/fake-123")
       expect(walkthrough.gemini_file_active_at).to be_present
+      # The mime of the bytes UPLOADED is recorded so the segment "zoom in" path
+      # can re-reference the retained file with the right mimeType.
+      expect(walkthrough.gemini_file_content_type).to eq("video/webm")
       expect(walkthrough.analyzed_at).to be_present
       expect(walkthrough.error_message).to be_nil
 
@@ -142,6 +157,10 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       queued = chat.chat_queued_messages.order(:id).last
       expect(queued).to be_present
       expect(queued.text).to include("Save button does nothing")
+      # Richer schema flows into the turn: sections + a timestamped transcript.
+      expect(queued.text).to include("## Sections")
+      expect(queued.text).to include("## Narration transcript")
+      expect(queued.text).to include("Clicking save, and nothing happens.")
       expect(queued.text).to include("propose an Epic")
       expect(queued.text).to include("The user's note with the video: Watch the save button")
       expect(queued.content["video_walkthrough_id"]).to eq(walkthrough.id)
@@ -530,6 +549,9 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect(walkthrough).to be_analyzed
       # The stored blob was swapped for the compact mp4.
       expect(walkthrough.content_type).to eq("video/mp4")
+      # ...but the recorded UPLOAD mime stays the pre-transcode webm — that's
+      # what the retained Gemini file actually is, so the segment zoom uses it.
+      expect(walkthrough.gemini_file_content_type).to eq("video/webm")
       expect(walkthrough.byte_size).to eq(mp4_bytes.bytesize)
       expect(walkthrough.file.content_type).to eq("video/mp4")
       expect(walkthrough.file.filename.to_s).to eq("walkthrough.mp4")

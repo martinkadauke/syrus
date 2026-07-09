@@ -286,6 +286,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.integer "duration_seconds"
     t.text "error_message"
     t.datetime "gemini_file_active_at"
+    t.string "gemini_file_content_type"
     t.string "gemini_file_uri"
     t.text "note"
     t.string "state", default: "uploaded", null: false

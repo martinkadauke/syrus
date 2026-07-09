@@ -131,6 +131,16 @@ agent takes over: it asks brief follow-up questions when the video left
 something ambiguous, and otherwise proposes an Epic that groups the issues
 into well-scoped Jobs through the normal proposal flow.
 
+The analysis also gives Syrus a **timestamped transcript** of your narration
+and splits the session into topical **sections**, and it can **zoom in** on any
+moment: when a detail is hard to read at a glance — a tiny error message, a fast
+sequence of clicks — the chat agent re-examines just that slice of the video at
+full resolution to pull the exact wording or the precise steps before scoping
+the work. You can ask for this directly too ("look again at what the error at
+1:12 said"). Re-analysis reuses the already-uploaded video for about two days;
+after that, Syrus re-reads the stored copy if it's still around, and otherwise
+tells you the video has expired.
+
 You can also **drag in a pre-recorded video** (mp4/webm/QuickTime) — it flows
 through the same analysis. Recordings are capped at **15 minutes** (the
 recorder shows a live countdown and stops gracefully at the limit) and uploads
@@ -148,7 +158,20 @@ analyses — Syrus surfaces this with a retry, and enabling billing on the AI
 Studio project removes the friction (a 10-minute video costs on the order
 of a few cents). In the desktop app, macOS uses the native screen-sharing
 picker (which handles the Screen Recording permission itself); on Windows,
-the primary screen is captured. New chats default to the operator's most recently used repository
+the primary screen is captured.
+
+**Draw on your screen while recording (desktop app).** In the Syrus desktop
+app you can circle a broken button, point at a layout glitch, or underline the
+value that's wrong — the red marks appear in the recording so Gemini and the
+chat agent see exactly what you mean. While recording, press **⌘⇧A** (macOS) or
+**Ctrl+Shift+A** (Windows/Linux) to arm the red pen, drag to draw, and press it
+again (or **Esc**) to put the pen away. Each mark fades after a couple of
+seconds, so the screen stays clean and every mark stays tied to the moment you
+described it — strong signal for the timestamped analysis. Because the marks are
+drawn over the whole screen, they're only captured when you share your **entire
+screen**; if you picked a single window the recorder reminds you that on-screen
+drawing won't show. Annotation is a desktop-only convenience — a plain browser
+recording works exactly as before, just without the pen. New chats default to the operator's most recently used repository
 when one is available, and operators can still choose no repository or attach
 one later. A chat can attach repositories, Jobs, documents,
 memories, whiteboard state, and message-level image or PDF files. The chat

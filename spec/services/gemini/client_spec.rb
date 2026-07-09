@@ -328,4 +328,71 @@ RSpec.describe Gemini::Client do
       expect { generate }.to raise_error(Gemini::Client::Error, /empty analysis.*SAFETY/)
     end
   end
+
+  # The "zoom in" path: re-analyze a clip of an ALREADY-uploaded file. The clip
+  # window rides as video_metadata on the same file part — no re-upload — and
+  # the offsets serialize as Duration strings ("Ns").
+  describe "#analyze_segment" do
+    let(:endpoint) { "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent" }
+    let(:file_uri) { "https://generativelanguage.googleapis.com/v1beta/files/abc" }
+    let(:response_schema) { { type: "OBJECT", properties: { findings: { type: "STRING" } } } }
+
+    def stub_generate(text:)
+      stub_request(:post, endpoint).to_return(
+        status: 200, headers: json_headers,
+        body: { candidates: [ { content: { parts: [ { text: text } ] } } ] }.to_json
+      )
+    end
+
+    def analyze_segment(**overrides)
+      client.analyze_segment(
+        **{
+          file_uri: file_uri,
+          mime_type: "video/mp4",
+          start_seconds: 72,
+          end_seconds: 108,
+          prompt: "Read the exact error text.",
+          response_schema: response_schema
+        }.merge(overrides)
+      )
+    end
+
+    it "posts video_metadata offsets on the reused file part and parses the reply" do
+      findings = { "findings" => "The banner reads: Save failed (E_TIMEOUT)." }
+      stub_generate(text: findings.to_json)
+
+      expect(analyze_segment).to eq(findings)
+
+      # No upload request — the segment reuses the retained file by URI.
+      expect(WebMock).not_to have_requested(:post, "https://generativelanguage.googleapis.com/upload/v1beta/files")
+
+      expect(WebMock).to(have_requested(:post, endpoint).with do |req|
+        parts = JSON.parse(req.body).dig("contents", 0, "parts")
+        video_part = parts[0]
+
+        video_part["file_data"] == { "file_uri" => file_uri, "mime_type" => "video/mp4" } &&
+          video_part["video_metadata"] == { "start_offset" => "72s", "end_offset" => "108s" } &&
+          parts[1] == { "text" => "Read the exact error text." }
+      end)
+    end
+
+    it "defaults to full resolution (no mediaResolution) so small text is legible" do
+      stub_generate(text: { "findings" => "ok" }.to_json)
+
+      analyze_segment
+
+      expect(WebMock).to(have_requested(:post, endpoint).with do |req|
+        !JSON.parse(req.body).fetch("generationConfig").key?("mediaResolution")
+      end)
+    end
+
+    it "maps a 429 to RateLimited like the whole-video path" do
+      stub_request(:post, endpoint).to_return(
+        status: 429, headers: json_headers,
+        body: { error: { message: "Resource has been exhausted." } }.to_json
+      )
+
+      expect { analyze_segment }.to raise_error(Gemini::Client::RateLimited)
+    end
+  end
 end

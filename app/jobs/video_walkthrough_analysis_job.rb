@@ -118,7 +118,15 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
   def analyze(client, walkthrough, video_path)
     file = upload_to_gemini(client, walkthrough, video_path)
     active = client.wait_until_active(file.fetch("name"))
-    walkthrough.update!(gemini_file_uri: active["uri"], gemini_file_active_at: Time.current)
+    # Record the mime of what we UPLOADED (content_type here is still the
+    # pre-transcode original — compact_for_storage runs later), so the segment
+    # "zoom in" path re-references the retained file with the right mimeType even
+    # after the stored blob is transcoded to mp4.
+    walkthrough.update!(
+      gemini_file_uri: active["uri"],
+      gemini_file_active_at: Time.current,
+      gemini_file_content_type: walkthrough.content_type
+    )
 
     generate(client, walkthrough, active.fetch("uri"), media_resolution: :default)
   rescue Gemini::Client::RateLimited

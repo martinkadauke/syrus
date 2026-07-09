@@ -8,32 +8,29 @@ import { GeminiSetupSheet } from "./GeminiSetupSheet"
 
 type AgentTab = "claude" | "gemini"
 
-// Copied from the Chat.tsx caller so the nested sheet reads identically.
-// ConfigureAgentModal is hardcoded English (no useT), so we inline the same
-// strings the i18n `gemini_setup_*` / `gemini_stage_*` keys resolve to in `en`.
-const GEMINI_SHEET_LABELS = {
-  title: "Set up Gemini for video analysis",
-  intro:
-    "Walkthrough videos are analyzed by Google's Gemini — the model that understands video best today. You'll need a free Gemini API key (no credit card required).",
-  getKey: "Open Google AI Studio → sign in → Create API key",
-  keyPlaceholder: "Paste your Gemini API key here",
-  validateAndSave: "Validate & save",
-  validating: "Validating…",
-  stageFormat: "Key looks well-formed",
-  stageReach: "Google accepts the key",
-  stageVideo: "Video-capable model available",
-  saved: "Gemini is set up — back to your walkthrough.",
-  keyHelp: "That doesn't look like an API key — copy the whole value from aistudio.google.com/apikey."
-}
-
 type Preflight =
   | { status: "checking" }
   | { status: "done"; result: CredentialTestResult }
   | { status: "error" }
 
 export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
-  const { t } = useT("settings")
+  // settings namespace is the default (bare `configure_agent.*` keys); the
+  // Gemini setup sheet's copy lives in the chat namespace (shared with Chat.tsx).
+  const { t } = useT(["settings", "chat"])
   const queryClient = useQueryClient()
+  const geminiSheetLabels = {
+    title: t("chat:gemini_setup_title"),
+    intro: t("chat:gemini_setup_intro"),
+    getKey: t("chat:gemini_setup_get_key"),
+    keyPlaceholder: t("chat:gemini_setup_placeholder"),
+    validateAndSave: t("chat:gemini_setup_save"),
+    validating: t("chat:gemini_setup_validating"),
+    stageFormat: t("chat:gemini_stage_format"),
+    stageReach: t("chat:gemini_stage_reach"),
+    stageVideo: t("chat:gemini_stage_video"),
+    saved: t("chat:gemini_setup_saved"),
+    keyHelp: t("chat:gemini_setup_key_help")
+  }
   const [tab, setTab] = useState<AgentTab>("claude")
   const [preflight, setPreflight] = useState<Preflight>({ status: "checking" })
   const [authStarted, setAuthStarted] = useState(false)
@@ -187,19 +184,18 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
           {tab === "gemini" ? (
             <div className="space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Gemini turns screen-recording walkthroughs into Epics — optional, add it now or later.
-                It isn&apos;t the coding agent; your Claude (or Codex) agent still does the work.
+                {t('configure_agent.gemini_tab_intro')}
               </p>
               {geminiConfigured ? (
                 <>
-                  <StatusBox tone="ok">Gemini is set up — walkthrough videos will be analyzed automatically.</StatusBox>
+                  <StatusBox tone="ok">{t('configure_agent.gemini_tab_configured')}</StatusBox>
                   <div className="flex justify-end">
                     <button
                       className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
                       onClick={onClose}
                       type="button"
                     >
-                      Done
+                      {t('configure_agent.done')}
                     </button>
                   </div>
                 </>
@@ -210,14 +206,14 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
                     onClick={onClose}
                     type="button"
                   >
-                    Skip for now
+                    {t('configure_agent.skip_for_now')}
                   </button>
                   <button
                     className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
                     onClick={() => setGeminiSheetOpen(true)}
                     type="button"
                   >
-                    Add Gemini API key
+                    {t('configure_agent.gemini_tab_add_key')}
                   </button>
                 </div>
               )}
@@ -328,7 +324,7 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
         // the whole Configure-agent modal.
         <div onClick={(event) => event.stopPropagation()}>
           <GeminiSetupSheet
-            labels={GEMINI_SHEET_LABELS}
+            labels={geminiSheetLabels}
             onClose={() => setGeminiSheetOpen(false)}
             onConfigured={() => {
               setGeminiSheetOpen(false)
