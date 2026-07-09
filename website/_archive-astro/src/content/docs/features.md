@@ -122,14 +122,16 @@ the composer's **+ → Record a walkthrough** (the browser's native screen
 picker, with your microphone narration captured alongside), or drag a video
 file straight into the composer. Hitting Send uploads the video and sends it
 to **Google Gemini**, the model Syrus uses for video understanding; your
-typed message rides along as a note. Gemini extracts every issue shown or
-narrated — with timestamps, severities, and the app surface involved — and
-the analysis lands in the chat as a structured summary — with a **screenshot
-of each issue**, captured from the video at the moment Gemini flagged it, so
-both you and the chat agent can see exactly what happened. From there the chat
-agent takes over: it asks brief follow-up questions when the video left
-something ambiguous, and otherwise proposes an Epic that groups the issues
-into well-scoped Jobs through the normal proposal flow.
+typed message rides along as a note (and a video needs no message — just hit
+Send). Gemini extracts every issue shown or narrated — with timestamps,
+severities, and the app surface involved. Your video appears in the chat
+(and in the workspace's media panel), and Syrus then works the way it does on
+any task: it reviews the analysis, pulls a **screenshot of each issue** from the
+video at the moment it was flagged, asks brief follow-up questions when the video
+left something ambiguous, and otherwise proposes an Epic that groups the issues
+into well-scoped Jobs through the normal proposal flow. It all reads as Syrus
+working — the review, the screenshots, the proposal are ordinary chat activity
+you can follow, not a wall of text.
 
 The analysis also gives Syrus a **timestamped transcript** of your narration
 and splits the session into topical **sections**, and it can **zoom in** on any
