@@ -235,6 +235,7 @@ module SyrusChatMcp
       PauseLandingQueueTool,
       ResumeLandingQueueTool,
       ReadQueueTool,
+      GetWalkthroughAnalysisTool,
       AnalyzeWalkthroughSegmentTool,
       ReadWalkthroughFrameTool
     ].freeze

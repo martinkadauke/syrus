@@ -1,4 +1,3 @@
-require "base64"
 require "tempfile"
 
 # The video→Epic pipeline's middle: take an uploaded ChatVideoWalkthrough,
@@ -90,16 +89,14 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
 
   private
 
-  # Download the video ONCE to a local file and run the whole media flow off
-  # it: Gemini analysis, crisp screenshots from that source, then a transcode
-  # to a compact mp4 that replaces the stored blob. @screenshot_attachments is
-  # captured here (from the full-res source) for deliver_chat_turn.
+  # Download the video ONCE to a local file and run the media flow off it:
+  # Gemini analysis, then a transcode to a compact mp4 that replaces the stored
+  # blob. Screenshots are NOT extracted here anymore — the chat agent pulls them
+  # on demand through get_walkthrough_analysis / read_walkthrough_frame (720p is
+  # enough for Claude to OCR), which keeps the handoff first-class tool activity.
   def process_video(client, walkthrough)
     with_local_video(walkthrough) do |video_path|
       walkthrough.update!(analysis: analyze(client, walkthrough, video_path))
-      # Initial analysis: extract from the crisp pre-transcode source, so flagged
-      # OCR frames get the higher-resolution capture.
-      @screenshot_attachments = build_frame_attachments(walkthrough, video_path, crisp_source: true)
       compact_for_storage(walkthrough, video_path)
     end
   end
@@ -228,26 +225,25 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
     Rails.logger.warn("[VideoWalkthroughAnalysisJob] storage transcode failed (keeping original): #{error.class}: #{error.message}")
   end
 
-  # Inject the analysis as a queued chat turn. Returns true once the message
-  # is queued (whether or not the promoter delivers it immediately — a busy
-  # agent legitimately defers it). Returns false and marks the row failed if
-  # queueing itself raises, so the analysis isn't reported as success when
-  # its turn never reached the chat; retry re-delivers without re-analyzing.
+  # Post the walkthrough as a first-class chat turn. The message is the VIDEO
+  # itself (plus the operator's note) — NOT the analysis, which used to read as a
+  # wall of text the user supposedly typed. `video_walkthrough_id` makes
+  # ChatTurnJob orient the agent to pull the analysis with its tools and work
+  # autonomously toward an Epic (see ChatTurnJob#walkthrough_orientation), and it
+  # surfaces the video in the chat's attached-media sidebar.
+  #
+  # Returns true once the message is queued (whether or not the promoter delivers
+  # it immediately — a busy agent legitimately defers it). Returns false and
+  # marks the row failed if queueing itself raises, so the analysis isn't
+  # reported as success when its turn never reached the chat; retry re-delivers
+  # without re-analyzing.
   def deliver_chat_turn(walkthrough)
     chat = walkthrough.chat_session
-    # Screenshots captured from the crisp source during process_video. On the
-    # re-delivery path (analysis already present, process_video skipped),
-    # re-extract from whatever video is still stored. Both build paths set
-    # @attached_issue_keys to the issues that actually got a frame, so the
-    # context can render per-issue "read the attached screenshot" vs
-    # "fetch it on demand" truthfully.
-    attachments = @screenshot_attachments || reextract_frame_attachments(walkthrough)
-    text = Prompts::VideoWalkthroughContext.new(
-      walkthrough: walkthrough, user_note: walkthrough.note,
-      illustrated: attachments.any?, attached_issue_keys: @attached_issue_keys || []
-    ).to_s
-    content = { "text" => text, "video_walkthrough_id" => walkthrough.id }
-    content["attachments"] = attachments if attachments.any?
+    content = {
+      "text" => walkthrough.note.to_s,
+      "video_walkthrough_id" => walkthrough.id,
+      "source" => "walkthrough"
+    }
     chat.queued_messages.create!(content: content)
     # Delivers immediately when the agent is idle; otherwise ChatTurnJob's
     # turn-end promotion picks it up — either way, no turn collision.
@@ -260,98 +256,6 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
       "The analysis succeeded but posting it to the chat failed. Retry to post it (the video won't be re-analyzed)."
     )
     false
-  end
-
-  # Grab one screen frame per issue (at Gemini's timestamp) from the given local
-  # video, so the chat agent SEES each problem and the UI shows it. Issues the
-  # video model FLAGGED as hard to read (needs_closer_look, or an explicit
-  # unreadable_text note) are the ones the agent will OCR, so they're captured at
-  # HIGHER resolution and top JPEG quality and are prioritized to survive the
-  # per-video frame cap. Best-effort: any failure (no ffmpeg, bad timestamp)
-  # yields no attachments and the turn ships text-only. Frames become base64
-  # image attachments, the same shape chat already uses for pasted screenshots.
-  def build_frame_attachments(walkthrough, video_path, crisp_source: true)
-    @attached_issue_keys = []
-    timestamps = frame_timestamps(walkthrough, crisp_source: crisp_source)
-    return [] if timestamps.empty?
-
-    frames = Gemini::FrameExtractor.extract(video_path: video_path, timestamps: timestamps)
-    # Record which issues actually got a frame so the context renders each
-    # issue's OCR steering ("read the attached screenshot" vs "fetch on demand")
-    # from reality, not from the analysis list.
-    @attached_issue_keys = frames.map do |frame|
-      Prompts::VideoWalkthroughContext.attachment_key(seconds: frame.seconds, title: frame.label)
-    end
-    frames.map do |frame|
-      clock = format("%d:%02d", frame.seconds / 60, frame.seconds % 60)
-      { "name" => "walkthrough #{clock} — #{frame.label}".strip, "mime_type" => "image/jpeg",
-        "data" => Base64.strict_encode64(frame.jpeg) }
-    end
-  rescue StandardError => error
-    Rails.logger.warn("[VideoWalkthroughAnalysisJob] frame extraction failed: #{error.class}: #{error.message}")
-    @attached_issue_keys = []
-    []
-  end
-
-  # Build the extractor timestamp entries — one per issue with a parseable
-  # timestamp — tagging each flagged issue with the higher OCR-grade resolution,
-  # then selecting so every flagged issue gets a frame even if the total exceeds
-  # the frame cap (issue order preserved within the selection).
-  #
-  # The high OCR-grade width only pays off when extracting from the CRISP
-  # pre-transcode source (initial analysis). On the re-delivery path the only
-  # source is the compact ~720p mp4, so requesting 1920 would just upscale
-  # 1280→1920 — a bigger JPEG with zero added legibility. There, flagged issues
-  # stay prioritized (so they survive the cap) but capture at the compact default
-  # width. Flagged frames keep top JPEG quality either way (it's compression, not
-  # upscaling).
-  def frame_timestamps(walkthrough, crisp_source: true)
-    entries = walkthrough.analysis_issues.filter_map do |issue|
-      seconds = Gemini::FrameExtractor.parse_timestamp(issue["timestamp"])
-      next unless seconds
-
-      flagged = flagged_issue?(issue)
-      hi_res = flagged && crisp_source
-      {
-        seconds: seconds,
-        label: issue["title"].to_s,
-        flagged: flagged,
-        scale_width: hi_res ? Gemini::FrameExtractor::HIGH_SCALE_WIDTH : Gemini::FrameExtractor::SCALE_WIDTH,
-        jpeg_quality: flagged ? Gemini::FrameExtractor::HIGH_JPEG_QUALITY : Gemini::FrameExtractor::JPEG_QUALITY
-      }
-    end
-
-    prioritize_flagged(entries)
-  end
-
-  # An issue whose important on-screen text the video model couldn't read: the
-  # explicit unreadable_text handoff, or the broader needs_closer_look signal.
-  def flagged_issue?(issue)
-    issue["needs_closer_look"] || issue["unreadable_text"].to_s.strip.present?
-  end
-
-  # Keep every flagged issue within the frame cap (they're the ones the agent
-  # OCRs), fill the remaining slots with the earliest unflagged issues, then
-  # restore original issue order so screenshots line up with the issue list.
-  def prioritize_flagged(entries)
-    cap = Gemini::FrameExtractor::MAX_FRAMES
-    return entries if entries.size <= cap
-
-    indexed = entries.each_with_index.to_a
-    flagged, plain = indexed.partition { |entry, _index| entry[:flagged] }
-    (flagged + plain).first(cap).sort_by { |_entry, index| index }.map(&:first)
-  end
-
-  # Re-delivery path: the analysis persisted but the chat turn didn't. Pull
-  # frames from whatever video is still stored (the compact ~720p mp4 by now, or
-  # nothing if pruned). crisp_source: false so flagged frames capture at the
-  # compact width instead of upscaling the stored 720p. Text-only if unavailable.
-  def reextract_frame_attachments(walkthrough)
-    return [] unless walkthrough.file.attached?
-
-    with_local_video(walkthrough) { |path| build_frame_attachments(walkthrough, path, crisp_source: false) }
-  rescue StandardError
-    []
   end
 
   def transition!(walkthrough, state)

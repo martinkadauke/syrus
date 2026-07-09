@@ -156,14 +156,14 @@ RSpec.describe VideoWalkthroughAnalysisJob do
 
       queued = chat.chat_queued_messages.order(:id).last
       expect(queued).to be_present
-      expect(queued.text).to include("Save button does nothing")
-      # Richer schema flows into the turn: sections + a timestamped transcript.
-      expect(queued.text).to include("## Sections")
-      expect(queued.text).to include("## Narration transcript")
-      expect(queued.text).to include("Clicking save, and nothing happens.")
-      expect(queued.text).to include("propose an Epic")
-      expect(queued.text).to include("The user's note with the video: Watch the save button")
+      # The message is the VIDEO + the operator's note — NOT the analysis, which
+      # the agent pulls itself via get_walkthrough_analysis. It must never read as
+      # a wall of user-typed text.
+      expect(queued.text).to eq("Watch the save button")
       expect(queued.content["video_walkthrough_id"]).to eq(walkthrough.id)
+      expect(queued.content["source"]).to eq("walkthrough")
+      expect(queued.text).not_to include("## Sections")
+      expect(queued.text).not_to include("## Narration transcript")
     end
 
     it "promotes the queued message into a ChatMessage and enqueues a ChatTurnJob when the chat is idle" do
@@ -385,8 +385,10 @@ RSpec.describe VideoWalkthroughAnalysisJob do
 
       queued = chat.chat_queued_messages.order(:id).last
       expect(queued).to be_present
-      expect(queued.text).to include("Save button does nothing")
       expect(queued.content["video_walkthrough_id"]).to eq(walkthrough.id)
+      expect(queued.content["source"]).to eq("walkthrough")
+      # Re-delivery still posts the video message, not the analysis text.
+      expect(queued.text).not_to include("## Sections")
     end
   end
 
@@ -441,263 +443,6 @@ RSpec.describe VideoWalkthroughAnalysisJob do
         expect(fake_client.generate_calls[0][:media_resolution]).to eq(:default)
         expect(fake_client.generate_calls[1][:media_resolution]).to eq(:low)
       end
-    end
-  end
-
-  # Best-effort frame extraction: the job grabs one screen frame per flagged
-  # issue (at Gemini's timestamp) via Gemini::FrameExtractor and attaches them
-  # to the injected chat turn. Any extraction failure degrades to text-only.
-  describe "issue frame extraction" do
-    def frame(seconds:, label:, jpeg:)
-      Gemini::FrameExtractor::Frame.new(seconds: seconds, label: label, jpeg: jpeg)
-    end
-
-    it "attaches extracted frames and notes the screenshots in the turn text" do
-      allow(Gemini::FrameExtractor).to receive(:extract).and_return([
-        frame(seconds: 72, label: "Save button does nothing", jpeg: "jpeg-A"),
-        frame(seconds: 6, label: "Second thing", jpeg: "jpeg-B")
-      ])
-      walkthrough = create_walkthrough
-
-      described_class.perform_now(walkthrough.id)
-
-      queued = chat.chat_queued_messages.order(:id).last
-      attachments = queued.content["attachments"]
-      expect(attachments.size).to eq(2)
-      expect(attachments).to all(include("mime_type" => "image/jpeg"))
-      expect(attachments.map { |a| a["data"] }).to eq(
-        [ Base64.strict_encode64("jpeg-A"), Base64.strict_encode64("jpeg-B") ]
-      )
-      # illustrated: true → the screenshots note appears in the text.
-      expect(queued.text).to include("attached a screenshot for each issue")
-    end
-
-    it "ships text-only with no attachments note when extraction returns []" do
-      # e.g. no ffmpeg in dev — FrameExtractor.extract returns [].
-      allow(Gemini::FrameExtractor).to receive(:extract).and_return([])
-      walkthrough = create_walkthrough
-
-      described_class.perform_now(walkthrough.id)
-
-      queued = chat.chat_queued_messages.order(:id).last
-      expect(queued.content).not_to have_key("attachments")
-      expect(queued.text).not_to include("attached a screenshot for each issue")
-    end
-
-    it "still delivers text-only (analyzed, not failed) when extraction raises" do
-      allow(Gemini::FrameExtractor).to receive(:extract).and_raise(RuntimeError.new("ffmpeg exploded"))
-      walkthrough = create_walkthrough
-
-      expect { described_class.perform_now(walkthrough.id) }.not_to raise_error
-
-      walkthrough.reload
-      expect(walkthrough).to be_analyzed
-      expect(walkthrough.error_message).to be_nil
-
-      queued = chat.chat_queued_messages.order(:id).last
-      expect(queued).to be_present
-      expect(queued.content).not_to have_key("attachments")
-      expect(queued.text).to include("Save button does nothing")
-    end
-  end
-
-  # OCR handoff: frames at moments the video model flagged as unreadable
-  # (needs_closer_look, or an explicit unreadable_text note) are captured at the
-  # higher OCR-grade resolution and prioritized within the per-video frame cap,
-  # because those are the stills the chat agent (Claude) actually reads text off.
-  describe "flagged-issue frame resolution + prioritization" do
-    # Capture the timestamp entries the job hands to FrameExtractor.extract so we
-    # can assert per-frame resolution and selection without running ffmpeg. This
-    # yields the RE-DELIVERY path when the walkthrough already has an analysis
-    # (perform skips Gemini and re-extracts from the stored blob).
-    def capture_extract_timestamps
-      seen = nil
-      allow(Gemini::FrameExtractor).to receive(:extract) do |video_path:, timestamps:, **|
-        seen = timestamps
-        []
-      end
-      yield
-      seen
-    end
-
-    # INITIAL-path capture: no persisted analysis → perform runs Gemini (faked to
-    # return the given analysis) → build_frame_attachments from the CRISP source,
-    # where the higher OCR-grade width is a genuine higher-fidelity capture.
-    def capture_initial_extract_timestamps(custom_analysis)
-      described_class.client_factory = ->(api_key:) { FakeGeminiWalkthroughClient.new(analysis: custom_analysis) }
-      seen = nil
-      allow(Gemini::FrameExtractor).to receive(:extract) do |video_path:, timestamps:, **|
-        seen = timestamps
-        []
-      end
-      described_class.perform_now(create_walkthrough.id)
-      seen
-    end
-
-    def issue(title, timestamp, **flags)
-      { "title" => title, "severity" => "medium", "timestamp" => timestamp }.merge(flags.transform_keys(&:to_s))
-    end
-
-    context "initial analysis (crisp pre-transcode source)" do
-      it "requests flagged (needs_closer_look) frames at HIGH resolution and unflagged at the compact default" do
-        analysis = {
-          "summary" => "s", "open_questions" => [],
-          "issues" => [
-            issue("Tiny error code", "00:30", needs_closer_look: true),
-            issue("Low contrast header", "00:10", needs_closer_look: false)
-          ]
-        }
-
-        entries = capture_initial_extract_timestamps(analysis)
-
-        flagged = entries.find { |e| e[:label] == "Tiny error code" }
-        plain = entries.find { |e| e[:label] == "Low contrast header" }
-        expect(flagged).to include(
-          seconds: 30, flagged: true,
-          scale_width: Gemini::FrameExtractor::HIGH_SCALE_WIDTH,
-          jpeg_quality: Gemini::FrameExtractor::HIGH_JPEG_QUALITY
-        )
-        expect(plain).to include(
-          seconds: 10, flagged: false,
-          scale_width: Gemini::FrameExtractor::SCALE_WIDTH,
-          jpeg_quality: Gemini::FrameExtractor::JPEG_QUALITY
-        )
-      end
-
-      it "treats an issue with unreadable_text as flagged even without needs_closer_look" do
-        analysis = {
-          "summary" => "s", "open_questions" => [],
-          "issues" => [ issue("Config value", "00:20", unreadable_text: "the value in the Timeout field") ]
-        }
-
-        entries = capture_initial_extract_timestamps(analysis)
-
-        expect(entries.first).to include(
-          flagged: true,
-          scale_width: Gemini::FrameExtractor::HIGH_SCALE_WIDTH,
-          jpeg_quality: Gemini::FrameExtractor::HIGH_JPEG_QUALITY
-        )
-      end
-    end
-
-    context "re-delivery (compact ~720p stored blob)" do
-      it "does NOT upscale flagged frames — requests the compact width, not 1920" do
-        analysis = {
-          "summary" => "s", "open_questions" => [],
-          "issues" => [ issue("Tiny error code", "00:30", needs_closer_look: true) ]
-        }
-        # analysis present → perform skips Gemini and re-extracts from the stored
-        # (post-transcode) blob, whose only source is ~720p — upscaling to 1920
-        # would inflate the JPEG with zero added legibility.
-        walkthrough = create_walkthrough(analysis: analysis)
-
-        entries = capture_extract_timestamps { described_class.perform_now(walkthrough.id) }
-
-        flagged = entries.find { |e| e[:label] == "Tiny error code" }
-        expect(flagged[:flagged]).to be(true) # still prioritized within the cap
-        expect(flagged[:scale_width]).to eq(Gemini::FrameExtractor::SCALE_WIDTH)
-        expect(flagged[:scale_width]).not_to eq(Gemini::FrameExtractor::HIGH_SCALE_WIDTH)
-      end
-    end
-
-    it "keeps every flagged issue within the frame cap, dropping only unflagged overflow, in issue order" do
-      cap = Gemini::FrameExtractor::MAX_FRAMES
-      # cap unflagged issues first, then one flagged issue at the very end — it
-      # would fall outside a naive first(cap), so prioritization must rescue it.
-      unflagged = (1..cap).map { |n| issue("plain #{n}", format("00:%02d", n)) }
-      flagged_last = issue("flagged tail", "01:00", needs_closer_look: true)
-      walkthrough = create_walkthrough(
-        analysis: { "summary" => "s", "open_questions" => [], "issues" => unflagged + [ flagged_last ] }
-      )
-
-      entries = capture_extract_timestamps { described_class.perform_now(walkthrough.id) }
-
-      labels = entries.map { |e| e[:label] }
-      expect(entries.size).to eq(cap)
-      expect(labels).to include("flagged tail")
-      # Exactly one unflagged issue was dropped to make room, order preserved.
-      expect(labels).to eq((unflagged + [ flagged_last ]).map { |i| i["title"] }.reject { |t| t == "plain #{cap}" })
-    end
-  end
-
-  # End-to-end OCR-handoff threading: the turn text's per-issue steering and the
-  # aggregate read/fetch sections are driven by which frames ACTUALLY attached
-  # (@attached_issue_keys), never by the raw analysis list — so we never tell the
-  # agent to read a screenshot that wasn't attached, and the never-invent guard
-  # is always present.
-  describe "OCR-handoff threading (attached vs fetch-on-demand)" do
-    def issue(title, timestamp, **flags)
-      { "title" => title, "severity" => "high", "timestamp" => timestamp, "description" => "d" }
-        .merge(flags.transform_keys(&:to_s))
-    end
-
-    def frame(seconds:, label:, jpeg:)
-      Gemini::FrameExtractor::Frame.new(seconds: seconds, label: label, jpeg: jpeg)
-    end
-
-    it "tells the agent to read the ATTACHED screenshot (with the guard, no fetch section) when the flagged frame was captured" do
-      analysis = {
-        "summary" => "s", "open_questions" => [],
-        "issues" => [ issue("Tiny error code", "00:30", unreadable_text: "the code in the red banner") ]
-      }
-      described_class.client_factory = ->(api_key:) { FakeGeminiWalkthroughClient.new(analysis: analysis) }
-      allow(Gemini::FrameExtractor).to receive(:extract)
-        .and_return([ frame(seconds: 30, label: "Tiny error code", jpeg: "jpg") ])
-
-      described_class.perform_now(create_walkthrough.id)
-      text = chat.chat_queued_messages.order(:id).last.text
-
-      expect(text).to include("## Read the exact text off the screenshots")
-      expect(text).to include("read the exact text off the attached screenshot: the code in the red banner")
-      expect(text).to match(/NEVER invent/)
-      expect(text).not_to include("## Fetch and read these screenshots on demand")
-    end
-
-    it "tells the agent to FETCH the screenshot on demand (with the guard) when no frame was captured" do
-      analysis = {
-        "summary" => "s", "open_questions" => [],
-        "issues" => [ issue("Tiny error code", "00:30", unreadable_text: "the code in the red banner") ]
-      }
-      described_class.client_factory = ->(api_key:) { FakeGeminiWalkthroughClient.new(analysis: analysis) }
-      # No ffmpeg → extraction returns nothing → text-only turn.
-      allow(Gemini::FrameExtractor).to receive(:extract).and_return([])
-
-      walkthrough = create_walkthrough
-      described_class.perform_now(walkthrough.id)
-      text = chat.chat_queued_messages.order(:id).last.text
-
-      expect(text).to include("## Fetch and read these screenshots on demand")
-      expect(text).to include("read_walkthrough_frame(walkthrough_id: #{walkthrough.id}, timestamp: 00:30)")
-      expect(text).to match(/NEVER invent/)
-      expect(text).not_to include("read the exact text off the attached screenshot")
-    end
-
-    it "with more flagged issues than the frame cap, lists captured ones under 'read' and the overflow under fetch-on-demand" do
-      cap = Gemini::FrameExtractor::MAX_FRAMES
-      issues = (1..(cap + 2)).map do |n|
-        issue("flag #{n}", format("00:%02d", n), unreadable_text: "code #{n}", needs_closer_look: true)
-      end
-      analysis = { "summary" => "s", "open_questions" => [], "issues" => issues }
-      described_class.client_factory = ->(api_key:) { FakeGeminiWalkthroughClient.new(analysis: analysis) }
-      # ffmpeg succeeds for every requested timestamp: return a frame per entry the
-      # job actually hands to extract (prioritize_flagged has already capped to
-      # MAX_FRAMES, dropping the last two flagged issues).
-      allow(Gemini::FrameExtractor).to receive(:extract) do |video_path:, timestamps:, **|
-        timestamps.map { |e| frame(seconds: e[:seconds], label: e[:label], jpeg: "j") }
-      end
-
-      described_class.perform_now(create_walkthrough.id)
-      text = chat.chat_queued_messages.order(:id).last.text
-
-      expect(text).to include("## Read the exact text off the screenshots")
-      expect(text).to include("## Fetch and read these screenshots on demand")
-
-      # The two issues dropped past the cap have NO attached screenshot → they
-      # land under fetch-on-demand, each with a read_walkthrough_frame call.
-      fetch_section = text[text.index("## Fetch and read these screenshots on demand")..]
-      expect(fetch_section).to include("code #{cap + 1}")
-      expect(fetch_section).to include("code #{cap + 2}")
-      expect(fetch_section).to include("read_walkthrough_frame")
     end
   end
 
@@ -806,25 +551,6 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect(ActiveStorage::Blob.exists?(original_blob.id)).to be false
     end
 
-    it "extracts screenshots from the crisp source, not the post-transcode mp4" do
-      # Transcode is active; if frames were pulled from the stored blob after
-      # the swap they'd be the compact mp4. Assert extract saw the original.
-      allow(Gemini::VideoTranscoder).to receive(:available?).and_return(true)
-      allow(Gemini::VideoTranscoder).to receive(:to_compact_mp4) do |input_path:, output_path:|
-        File.binwrite(output_path, "compact-mp4-bytes")
-        true
-      end
-      seen_source = nil
-      allow(Gemini::FrameExtractor).to receive(:extract) do |video_path:, timestamps:|
-        seen_source = File.binread(video_path)
-        []
-      end
-      walkthrough = create_walkthrough
-
-      described_class.perform_now(walkthrough.id)
-
-      expect(seen_source).to eq("webm-bytes")
-    end
   end
 
   describe "queue" do
@@ -833,17 +559,18 @@ RSpec.describe VideoWalkthroughAnalysisJob do
     end
   end
 
-  # Regression: the note is read from the persisted column, not a job kwarg.
-  # Prompts::VideoWalkthroughContext renders it as the user's note, so the
-  # injected queued message must include it.
+  # Regression: the note is read from the persisted column, not a job kwarg, and
+  # becomes the video message's text (ChatTurnJob renders it into the agent's
+  # orientation prompt).
   describe "note from the persisted column" do
-    it "renders the persisted note into the injected chat turn" do
+    it "carries the persisted note as the video message's text" do
       walkthrough = create_walkthrough(note: "Focus on the flaky Save button")
 
       described_class.perform_now(walkthrough.id)
 
       queued = chat.chat_queued_messages.order(:id).last
-      expect(queued.text).to include("The user's note with the video: Focus on the flaky Save button")
+      expect(queued.text).to eq("Focus on the flaky Save button")
+      expect(queued.content["video_walkthrough_id"]).to eq(walkthrough.id)
     end
   end
 end
