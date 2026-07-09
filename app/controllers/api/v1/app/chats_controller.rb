@@ -228,7 +228,7 @@ module Api
         def message
           chat_session = find_chat_session
           text = message_text
-          if text.blank?
+          if text.blank? && !message_has_attachments?
             render_error("validation_failed", "Message cannot be blank.", status: :unprocessable_content)
             return
           end
@@ -391,7 +391,7 @@ module Api
         def enqueue_message
           chat_session = find_chat_session
           text = message_text
-          if text.blank?
+          if text.blank? && !message_has_attachments?
             render_error("validation_failed", "Message cannot be blank.", status: :unprocessable_content)
             return
           end
@@ -906,6 +906,25 @@ module Api
           chat_session.title.presence || ChatSession.fallback_title_for(chat_session.repository)
         end
 
+        # Walkthrough videos shared in this chat, for the workspace media panel.
+        # Metadata only — the video itself is far too large to inline (unlike the
+        # base64 image attachments) and is pruned after a retention window, so
+        # `has_video` tells the UI whether it can still be played back / re-analyzed.
+        def video_walkthroughs_json(chat_session)
+          chat_session.video_walkthroughs.newest_first.map do |walkthrough|
+            {
+              id: walkthrough.id,
+              title: walkthrough.display_title,
+              state: walkthrough.state,
+              duration_seconds: walkthrough.duration_seconds,
+              byte_size: walkthrough.byte_size,
+              error_message: walkthrough.error_message,
+              has_video: walkthrough.file.attached?,
+              created_at: walkthrough.created_at.iso8601
+            }
+          end
+        end
+
         def chat_payload(chat_session, message: nil)
           messages, has_more_older = paginated_tail(chat_session)
           repository = chat_session.repository
@@ -928,6 +947,7 @@ module Api
             agent_questions: chat_session.agent_questions_payload,
             queued_messages: chat_session.queued_messages_payload,
             scratchpad_items: chat_session.scratchpad_items_payload,
+            video_walkthroughs: video_walkthroughs_json(chat_session),
             attachment_groups: attachment_groups_json(attachment_groups),
             documents_in_scope: chat_session.attached_documents_in_scope.includes(:attachable).order(:title, :id).map { |document| document_json(document) },
             attachment_results: attachment_search_results(chat_session).map { |record| attachable_result_json(record) },
@@ -1437,6 +1457,12 @@ module Api
 
         def message_text
           (params[:content].presence || params.dig(:chat_message, :text)).to_s.strip
+        end
+
+        # A message may carry media (image/PDF attachments) with no text — the
+        # media is the message. The blank-text guard uses this to allow that.
+        def message_has_attachments?
+          params.dig(:chat_message, :attachments).present?
         end
 
         def message_content(text)

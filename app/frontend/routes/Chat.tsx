@@ -282,6 +282,7 @@ function sharedChatRenderPayload(payload: SharedChatPayload): ChatPayload {
     agent_questions: [],
     queued_messages: [],
     scratchpad_items: [],
+    video_walkthroughs: [],
     attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
     documents_in_scope: [],
     attachment_results: [],
@@ -782,7 +783,15 @@ function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, readOn
         <span className="absolute -top-4" id={`message-${item.id}`} />
         {readOnly ? null : <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />}
         <div className="max-w-[min(42rem,85%)] space-y-2">
-          <PlainText className="whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
+          {item.video_walkthrough_id ? (
+            <div className="flex items-center justify-end gap-2 text-sm text-gray-500 dark:text-gray-400" data-testid="walkthrough-message-chip">
+              <span aria-hidden="true">🎥</span>
+              <span>Shared a walkthrough video</span>
+            </div>
+          ) : null}
+          {item.text.trim().length > 0 ? (
+            <PlainText className="whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
+          ) : null}
           <MessageImageAttachments attachments={item.attachments} align="end" />
         </div>
       </article>
@@ -2027,7 +2036,9 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       void uploadWalkthrough(text)
       return
     }
-    if (text.trim().length === 0) return
+    // Any media makes the message sendable on its own — a bare attachment (or
+    // walkthrough) IS the message, no text required.
+    if (text.trim().length === 0 && attachments.length === 0) return
     const attachmentValidationError = attachmentValidationMessage(attachments)
     if (attachmentValidationError) {
       setAttachmentError(attachmentValidationError)
@@ -3010,7 +3021,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           <span aria-live="polite" className="sr-only">{ghostSuggestion ? t("suggestion_available", { suggestion: ghostSuggestion }) : ""}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button aria-label={agentActive ? t("enqueue_message") : t("send_message")} className={`${primaryButton()} inline-flex items-center justify-center`} disabled={send.isPending || systemAction.isPending || systemCommandAction.isPending || (text.trim().length === 0 && walkthrough?.status !== "ready") || pendingConfirmation != null || attachmentError != null} type="submit">
+          <button aria-label={agentActive ? t("enqueue_message") : t("send_message")} className={`${primaryButton()} inline-flex items-center justify-center`} disabled={send.isPending || systemAction.isPending || systemCommandAction.isPending || (text.trim().length === 0 && walkthrough?.status !== "ready" && attachments.length === 0) || pendingConfirmation != null || attachmentError != null} type="submit">
             {agentActive ? <EnqueueIcon className="h-4 w-4" /> : <SendIcon className="h-4 w-4" />}
           </button>
           {agentActive && text.trim().length > 0 ? (
@@ -4058,6 +4069,7 @@ function ChatWorkspacePanel({
 
 function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: ChatRenderItem[]; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const images = imageAttachments(messages)
+  const walkthroughs = payload.video_walkthroughs || []
   const [lightboxImage, setLightboxImage] = useState<ChatMessageImageAttachment | null>(null)
   const [loadingSnapshotId, setLoadingSnapshotId] = useState<number | null>(null)
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
@@ -4130,7 +4142,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
     }
   }
 
-  if (images.length === 0 && snapshotItems.length === 0 && !snapshots.isPending && !snapshots.isError) {
+  if (images.length === 0 && snapshotItems.length === 0 && walkthroughs.length === 0 && !snapshots.isPending && !snapshots.isError) {
     return <PanelMessage>No media shared yet.</PanelMessage>
   }
 
@@ -4164,6 +4176,35 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
                   >
                     {loadingSnapshotId === snapshot.id ? "Loading..." : "Load"}
                   </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {walkthroughs.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Walkthrough Videos</h2>
+          <div className="space-y-2">
+            {walkthroughs.map((walkthrough) => (
+              <article className="rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950" key={walkthrough.id}>
+                <div className="flex items-start gap-3">
+                  <div aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-gray-100 text-lg dark:bg-gray-800">🎥</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100" title={walkthrough.title}>{walkthrough.title}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      {walkthrough.duration_seconds != null ? <span className="tabular-nums">{formatClock(walkthrough.duration_seconds)}</span> : null}
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">{walkthroughStateLabel(walkthrough.state)}</span>
+                      <span>{formatRelativeTime(walkthrough.created_at)}</span>
+                    </div>
+                    {walkthrough.state === "failed" && walkthrough.error_message ? (
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">{walkthrough.error_message}</p>
+                    ) : null}
+                    {!walkthrough.has_video && walkthrough.state !== "failed" ? (
+                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Video was cleaned up after its retention window — the analysis is kept.</p>
+                    ) : null}
+                  </div>
                 </div>
               </article>
             ))}
@@ -4220,6 +4261,16 @@ function snapshotKindLabel(kind: WhiteboardSnapshot["snapshot_kind"]) {
 
 function truncateSnapshotName(name: string) {
   return name.length > 40 ? `${name.slice(0, 39)}...` : name
+}
+
+function walkthroughStateLabel(state: string): string {
+  switch (state) {
+    case "uploaded": return "Uploaded"
+    case "analyzing": return "Analyzing…"
+    case "analyzed": return "Analyzed"
+    case "failed": return "Failed"
+    default: return state
+  }
 }
 
 function formatRelativeTime(value: string) {

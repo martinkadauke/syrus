@@ -188,6 +188,7 @@ export type ChatMessageItem = {
   bookmarkable: boolean
   created_at?: string
   attachments?: Array<{ name: string; mime_type: string; data: string }>
+  video_walkthrough_id?: number
   proposal?: ChatProposal | null
   pending_action?: ChatPendingActionInline | null
 }
@@ -365,6 +366,17 @@ export type HiddenChatsPayload = {
   total_pages: number
 }
 
+export type ChatWalkthroughMedia = {
+  id: number
+  title: string
+  state: string
+  duration_seconds: number | null
+  byte_size: number | null
+  error_message: string | null
+  has_video: boolean
+  created_at: string
+}
+
 export type ChatPayload = {
   message?: string | null
   chat: ChatRecord
@@ -380,6 +392,7 @@ export type ChatPayload = {
   agent_questions: ChatAgentQuestion[]
   queued_messages: ChatQueuedMessage[]
   scratchpad_items: ChatScratchpadItem[]
+  video_walkthroughs: ChatWalkthroughMedia[]
   attachment_groups: {
     repositories: ChatAttachmentRow[]
     epics: ChatAttachmentRow[]
