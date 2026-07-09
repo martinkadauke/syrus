@@ -44,12 +44,12 @@ module InputSources
       raise "Invalid or rate-limited Linear API key — could not authenticate" if viewer.nil?
 
       team_id = config["team_id"].to_s
-      return if team_id.blank?
-
-      teams = client.teams || []
-      return if teams.any? { |team| team["id"].to_s == team_id }
-
-      raise "Linear team is not accessible with this API key"
+      if team_id.present?
+        available_teams = client.teams
+        unless available_teams.any? { |t| t["id"] == team_id }
+          raise "selected team is not accessible with this API key"
+        end
+      end
     rescue => e
       raise e if e.message.start_with?("Linear API key is required")
       raise "Linear credentials invalid: #{e.message}"
