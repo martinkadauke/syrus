@@ -8,7 +8,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { GeminiSetupSheet } from "../components/GeminiSetupSheet"
-import { AnalyzingHint, formatClock, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
+import { AnalyzingHint, annotationShortcutLabel, formatClock, shouldShowAnnotationSurfaceNote, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
 import {
   isWalkthroughVideoFile,
   MAX_WALKTHROUGH_BYTES,
@@ -2705,6 +2705,18 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       ) : null}
       {recorder.state.phase === "recording" ? (
         <WalkthroughRecorderHUD
+          annotation={
+            recorder.annotationAvailable
+              ? {
+                  hint: t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() }),
+                  drawingHint: t("walkthrough_annotate_drawing", { shortcut: annotationShortcutLabel() }),
+                  drawing: recorder.drawing,
+                  surfaceNote: shouldShowAnnotationSurfaceNote(recorder.annotationAvailable, recorder.displaySurface)
+                    ? t("walkthrough_annotate_surface_note")
+                    : undefined
+                }
+              : undefined
+          }
           elapsed={recorder.elapsed}
           labels={{
             recording: t("walkthrough_recording"),

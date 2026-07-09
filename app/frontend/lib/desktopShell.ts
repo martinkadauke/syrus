@@ -53,12 +53,35 @@ export type SyrusShellState = {
   skillOfferDismissed: boolean
 }
 
+// Red-pen screen annotation for the walkthrough recorder — a desktop-only
+// surface on the shell bridge. In the Electron shell, enable() (called on
+// record start) spins up a transparent always-on-top overlay plus a global
+// draw-mode toggle (⌘/Ctrl+Shift+A); the recorder's full-screen capture picks
+// up the strokes incidentally. disable() (on stop/discard) tears both down.
+// `available` is the STATIC desktop-shell presence gate — true only in the
+// desktop shell; a plain browser has no `annotation` surface at all, so the
+// recorder shows no annotation UI. enable() RESOLVES a runtime boolean — true
+// only when the overlay AND the shortcut actually came up — so the recorder
+// can withhold the ⌘⇧A hint when the overlay couldn't run. See
+// desktop/electron/windows/annotationOverlay.ts.
+export type SyrusAnnotationBridge = {
+  available: boolean
+  enable(): Promise<boolean>
+  disable(): Promise<void>
+  // Fires on every draw-mode transition (true when the pen is armed). Returns
+  // an unsubscribe, mirroring onStateChanged.
+  onModeChanged(callback: (drawing: boolean) => void): () => void
+}
+
 export type SyrusShellBridge = {
   getState(): Promise<SyrusShellState>
   onStateChanged(callback: (state: SyrusShellState) => void): () => void
   relaunchToUpdate(): void
   installSkill(): Promise<{ ok: boolean; message: string }>
   dismissSkillOffer(): void
+  // Absent on older shells and in plain browsers — always feature-detect via
+  // annotationBridge().
+  annotation?: SyrusAnnotationBridge
 }
 
 declare global {
@@ -70,6 +93,14 @@ declare global {
 export function syrusShellBridge(): SyrusShellBridge | null {
   if (typeof window === "undefined") return null
   return window.syrusShell ?? null
+}
+
+// The annotation surface, or null when it's unavailable (plain browser, older
+// shell, or a shell that reported the overlay can't run — `available: false`).
+// Callers gate all annotation UI on a non-null return.
+export function annotationBridge(): SyrusAnnotationBridge | null {
+  const annotation = syrusShellBridge()?.annotation
+  return annotation?.available ? annotation : null
 }
 
 // Opens a URL in a new tab (or, in the desktop shell, wherever the shell

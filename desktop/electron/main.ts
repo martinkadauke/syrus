@@ -33,6 +33,7 @@ import { createOnboardingWindow } from "./windows/onboardingWindow.js"
 import { resolveInstanceOrigin, resolveOpenInSyrusTarget } from "./windows/openInSyrusTarget.js"
 import { computePopoverPosition } from "./windows/popoverPosition.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
+import { createAnnotationController, type AnnotationController } from "./windows/annotationOverlay.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -200,6 +201,11 @@ let preferencesWindow: BrowserWindow | null = null
 let onboardingWindow: BrowserWindow | null = null
 let onboardingDriver: OnboardingDriver | null = null
 let webAppWindow: WebAppWindowHandle | null = null
+// The red-pen annotation overlay controller (labs feature of the walkthrough
+// recorder). Lazily created the first time the web app calls annotation:enable
+// on record start; torn down on record stop/discard, web-window close, and app
+// quit so an overlay + global shortcut never outlive a recording.
+let annotationController: AnnotationController | null = null
 let backendRecoveryTimer: NodeJS.Timeout | null = null
 let tray: Tray | null = null
 let cachedCredentials: Credentials | null = null
@@ -1199,6 +1205,24 @@ const broadcastShellNoticeState = async () => {
   webAppWindow?.window.webContents.send("shell:state-changed", state)
 }
 
+// The annotation overlay controller (labs feature of the walkthrough recorder):
+// a transparent, always-on-top red-pen surface the recorder's full-screen
+// capture picks up incidentally. Lazily created so the overlay module (and its
+// global shortcut) only spin up when a recording actually asks for them. The
+// HTML lives in assets/ (packaged via electron-builder's assets/**/* glob and
+// referenced under app.getAppPath(), which resolves in both dev and asar).
+const ensureAnnotationController = (): AnnotationController => {
+  annotationController ??= createAnnotationController({
+    overlayHtmlPath: path.join(app.getAppPath(), "assets", "annotationOverlay.html"),
+    // Mirror draw-mode transitions to the web recorder's HUD via the shell
+    // bridge (window.syrusShell.annotation.onModeChanged).
+    onModeChanged: (drawing) => {
+      webAppWindow?.window.webContents.send("annotation:mode-changed", drawing)
+    }
+  })
+  return annotationController
+}
+
 // ipcMain.handle answers ANY renderer in the app by default — including the
 // web-app window after it somehow ended up on a foreign page. The shell:*
 // channels act on the host (write a skill into ~/.claude, relaunch the app),
@@ -1824,6 +1848,10 @@ const showWebAppWindow = async () => {
     onLoadFailed: () => startBackendRecoveryPolling(),
     onClosed: () => {
       webAppWindow = null
+      // Closing the app window mid-recording can't run the renderer's
+      // annotation:disable — tear the overlay + shortcut down here so neither
+      // outlives the window that drives them.
+      annotationController?.disable()
       stopBackendRecoveryPolling()
       updateDockVisibility()
     }
@@ -1858,6 +1886,26 @@ const showWebAppWindow = async () => {
   }
   handle.window.webContents.on("did-finish-load", attemptTokenProvisioning)
   handle.window.webContents.on("did-navigate-in-page", attemptTokenProvisioning)
+
+  // The red-pen annotation overlay is armed by the RENDERER (record start) but
+  // lives in the MAIN process. A Cmd+R reload or a render-process crash reuses
+  // this same window/webContents WITHOUT running the React unmount's
+  // annotation:disable, so an overlay left in draw mode would keep capturing
+  // ALL pointer input over the display with no way out. Tear it down on both —
+  // the overlay must never outlive the renderer that armed it. disable() is
+  // idempotent, so these are harmless no-ops when nothing is armed.
+  handle.window.webContents.on("render-process-gone", () => {
+    annotationController?.disable()
+  })
+  handle.window.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    // Only a full main-frame navigation (reload / new document) drops the React
+    // tree that armed the overlay. In-place (same-document) SPA route changes
+    // keep it, and the React unmount handles those, so ignore them (isInPlace
+    // is Electron's isSameDocument).
+    if (isMainFrame && !isInPlace) {
+      annotationController?.disable()
+    }
+  })
 
   try {
     await webAppWindow.loadServerUrl()
@@ -2519,6 +2567,31 @@ ipcMain.handle("shell:dismiss-skill-offer", async (event) => {
   store.set("skillOfferDismissed", true)
   await broadcastShellNoticeState()
 })
+// The annotation overlay bridge (webAppPreload.cts / window.syrusShell.
+// annotation): the walkthrough recorder turns the red-pen overlay on at record
+// start and off at stop/discard. Same strict sender validation as the other
+// shell:* handlers — only the web-app window's top frame on the configured
+// instance origin may create an always-on-top overlay + register the global
+// draw-mode shortcut.
+ipcMain.handle("annotation:enable", (event) => {
+  if (!shellSenderAllowed(event, "annotation:enable")) {
+    return false
+  }
+
+  // Propagate whether the overlay AND the draw-mode shortcut actually came up.
+  // enable() swallows creation errors and a stolen accelerator internally and
+  // reports availability as a boolean; the recorder gates its ⌘⇧A hint on this
+  // so it never advertises an affordance that can't work. A failure here never
+  // breaks the recording — the recorder just omits the annotation UI.
+  return ensureAnnotationController().enable()
+})
+ipcMain.handle("annotation:disable", (event) => {
+  if (!shellSenderAllowed(event, "annotation:disable")) {
+    return
+  }
+
+  annotationController?.disable()
+})
 ipcMain.handle("quit-app", () => {
   app.quit()
 })
@@ -2782,6 +2855,10 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   isQuitting = true
   stopAppUserCable()
+  // Destroy the annotation overlay before teardown so a transparent
+  // always-on-top window never lingers past quit. (will-quit's
+  // unregisterAll also drops the draw-mode shortcut.)
+  annotationController?.disable()
 })
 
 app.on("will-quit", () => {

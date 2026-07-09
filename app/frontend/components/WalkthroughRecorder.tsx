@@ -1,5 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { MAX_WALKTHROUGH_DURATION_SECONDS } from "../api/videoWalkthroughs"
+import { annotationBridge, type SyrusAnnotationBridge } from "../lib/desktopShell"
+
+// --- red-pen annotation helpers (desktop shell only) --------------------
+//
+// The desktop shell exposes window.syrusShell.annotation: a transparent
+// always-on-top overlay the recorder's full-screen capture picks up
+// incidentally, toggled with a global draw-mode shortcut. These pure helpers
+// drive the recording HUD's affordances; the shell owns the overlay itself.
+
+// The draw-mode accelerator, formatted for display. macOS shows the glyphs it
+// uses everywhere (⌘⇧A); every other platform spells it out (Ctrl+Shift+A).
+export function isMacPlatform(
+  ua: string = typeof navigator !== "undefined" ? navigator.userAgent : ""
+): boolean {
+  return /Mac|iPhone|iPad|iPod/.test(ua)
+}
+
+export function annotationShortcutLabel(mac: boolean = isMacPlatform()): string {
+  return mac ? "⌘⇧A" : "Ctrl+Shift+A"
+}
+
+// The overlay is only composited into the recording when the user shares a
+// WHOLE screen ("monitor"). The overlay spans every display, so sharing ANY
+// monitor works — no note. Sharing a single window or browser tab excludes the
+// always-on-top overlay, so the recorder nudges the user with a note. A null /
+// unknown surface (older browsers don't report it) is treated as fine — no note
+// rather than a note that might be wrong.
+export function shouldShowAnnotationSurfaceNote(
+  annotationAvailable: boolean,
+  displaySurface: string | null
+): boolean {
+  if (!annotationAvailable) return false
+  return displaySurface === "window" || displaySurface === "browser"
+}
 
 // In-chat screen recording for walkthrough videos. getDisplayMedia gives the
 // browser's native Meet-style picker; the mic rides along as a separate
@@ -56,15 +90,38 @@ type RecorderState =
   | { phase: "recording"; startedAt: number; micLive: boolean }
   | { phase: "error"; message: string }
 
-export function useWalkthroughRecorder({ onFinished }: { onFinished: (result: RecordingResult) => void }) {
+export function useWalkthroughRecorder({
+  onFinished,
+  // The desktop shell's red-pen surface, injectable for tests. Defaults to the
+  // live bridge (null in a plain browser → no annotation UI, recorder unchanged).
+  annotation
+}: {
+  onFinished: (result: RecordingResult) => void
+  annotation?: SyrusAnnotationBridge | null
+}) {
   const [state, setState] = useState<RecorderState>({ phase: "idle" })
   const [elapsed, setElapsed] = useState(0)
+  // Which surface the user chose to share, read once per recording from the
+  // display track. Drives the "share your whole screen to see marks" note.
+  const [displaySurface, setDisplaySurface] = useState<string | null>(null)
+  // Live draw-mode flag, pushed from the shell over onModeChanged, so the HUD
+  // can reflect whether the pen is currently armed.
+  const [drawing, setDrawing] = useState(false)
+  // Whether the desktop shell's red-pen overlay is actually live for THIS
+  // recording — set from enable()'s resolved boolean, not merely bridge
+  // presence. A shell that reports the overlay/shortcut unavailable (enable →
+  // false) must not advertise a dead ⌘⇧A hint, so the HUD gates on this.
+  const [annotationReady, setAnnotationReady] = useState(false)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamsRef = useRef<MediaStream[]>([])
   const chunksRef = useRef<Blob[]>([])
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const startedAtRef = useRef(0)
   const finishedRef = useRef(false)
+  // Resolve the bridge once — a plain browser has none, and re-reading it per
+  // render would defeat the injectable test seam.
+  const annotationRef = useRef<SyrusAnnotationBridge | null>(annotation ?? annotationBridge())
+  const annotationUnsubscribeRef = useRef<(() => void) | null>(null)
 
   const cleanup = useCallback(() => {
     if (tickRef.current) {
@@ -74,6 +131,17 @@ export function useWalkthroughRecorder({ onFinished }: { onFinished: (result: Re
     streamsRef.current.forEach((stream) => stream.getTracks().forEach((track) => track.stop()))
     streamsRef.current = []
     recorderRef.current = null
+    // Tear the annotation overlay + global shortcut down on EVERY exit path
+    // (stop, discard, natural end, error, unmount) — disable() is idempotent,
+    // so a recording that never enabled it is a harmless no-op.
+    if (annotationUnsubscribeRef.current) {
+      annotationUnsubscribeRef.current()
+      annotationUnsubscribeRef.current = null
+    }
+    annotationRef.current?.disable().catch(() => {})
+    setDrawing(false)
+    setAnnotationReady(false)
+    setDisplaySurface(null)
   }, [])
 
   const stop = useCallback((options: { discard?: boolean } = {}) => {
@@ -126,6 +194,34 @@ export function useWalkthroughRecorder({ onFinished }: { onFinished: (result: Re
       // idle silently; the picker itself was the confirmation surface.
       setState({ phase: "idle" })
       return
+    }
+
+    // What did they choose to share? "monitor" composites the always-on-top
+    // annotation overlay; "window"/"browser" excludes it (the HUD nudges them).
+    // getSettings is optional (older engines, test fakes) — never let reading
+    // it crash the recording.
+    const videoTrack = display.getVideoTracks()[0]
+    const settings = typeof videoTrack?.getSettings === "function" ? videoTrack.getSettings() : undefined
+    const surface = (settings as (MediaTrackSettings & { displaySurface?: string }) | undefined)?.displaySurface
+    setDisplaySurface(typeof surface === "string" ? surface : null)
+
+    // Arm the red-pen overlay (desktop shell only). An overlay failure must
+    // never block the recording, so enable() rejections are swallowed and the
+    // recorder proceeds without annotation. enable() RESOLVES whether the
+    // overlay + shortcut actually came up; only then does the HUD advertise the
+    // ⌘⇧A hint (annotationReady). The finishedRef guard drops a late resolution
+    // that lands after the recording already stopped.
+    const annotationApi = annotationRef.current
+    if (annotationApi) {
+      annotationApi
+        .enable()
+        .then((ok) => {
+          if (!finishedRef.current) setAnnotationReady(ok === true)
+        })
+        .catch(() => {
+          if (!finishedRef.current) setAnnotationReady(false)
+        })
+      annotationUnsubscribeRef.current = annotationApi.onModeChanged((armed) => setDrawing(armed))
     }
 
     // Narration mic — requested AFTER the display picker so a mic denial
@@ -201,7 +297,21 @@ export function useWalkthroughRecorder({ onFinished }: { onFinished: (result: Re
 
   useEffect(() => () => cleanup(), [cleanup])
 
-  return { state, elapsed, start, stop }
+  return {
+    state,
+    elapsed,
+    start,
+    stop,
+    // Whether the desktop shell's red-pen overlay is LIVE for this recording
+    // (enable() resolved true) — drives the HUD hint. False in a plain browser,
+    // an older shell, or when the overlay/shortcut couldn't be created, so the
+    // HUD never advertises an affordance that can't work.
+    annotationAvailable: annotationReady,
+    // The chosen capture surface, for the "share your whole screen" nudge.
+    displaySurface,
+    // Live draw-mode flag from the overlay.
+    drawing
+  }
 }
 
 // Analysis can run for minutes; a single static line ("Gemini is watching…")
@@ -258,67 +368,106 @@ export function AnalyzingHint({
   )
 }
 
+// The red-pen affordance rendered inside the HUD when the desktop shell offers
+// annotation. `hint` is the idle prompt ("✏️ Draw on screen: ⌘⇧A"); while the
+// pen is armed it swaps to `drawingHint` and emphasizes. `surfaceNote`, when
+// present, warns that marks only show when sharing the whole screen.
+export type WalkthroughAnnotationHud = {
+  hint: string
+  drawingHint: string
+  drawing: boolean
+  surfaceNote?: string
+}
+
 // The floating HUD while recording: pulsing dot, elapsed clock, remaining
-// countdown that turns amber in the final minute, stop + discard controls.
+// countdown that turns amber in the final minute, stop + discard controls, and
+// (desktop shell only) the red-pen draw-mode hint + capture-surface note.
 export function WalkthroughRecorderHUD({
   elapsed,
   micLive,
   onStop,
   onDiscard,
-  labels
+  labels,
+  annotation
 }: {
   elapsed: number
   micLive: boolean
   onStop: () => void
   onDiscard: () => void
   labels: { recording: string; noMic: string; stop: string; discard: string; windowHint?: string; remaining: (clock: string) => string }
+  annotation?: WalkthroughAnnotationHud
 }) {
   const remaining = MAX_WALKTHROUGH_DURATION_SECONDS - elapsed
   const finalMinute = elapsed >= RECORDER_WARNING_SECONDS
 
   return (
     <div
-      className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
-      data-testid="walkthrough-recorder-hud"
-      role="status"
+      className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 flex-col items-center gap-2"
+      data-testid="walkthrough-recorder-hud-wrap"
     >
-      <span aria-hidden="true" className="relative flex h-3 w-3">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-        <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
-      </span>
-      <span className="text-sm font-medium tabular-nums text-gray-900 dark:text-gray-100">
-        {labels.recording} {formatClock(elapsed)}
-      </span>
-      <span
-        className={`text-xs tabular-nums ${finalMinute ? "font-semibold text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}
-        data-testid="walkthrough-recorder-remaining"
+      <div
+        className="flex items-center gap-3 rounded-full border border-gray-200 bg-white px-4 py-2 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+        data-testid="walkthrough-recorder-hud"
+        role="status"
       >
-        {labels.remaining(formatClock(remaining))}
-      </span>
-      {!micLive ? (
-        <span className="text-xs text-amber-600 dark:text-amber-400" title={labels.noMic}>
-          {labels.noMic}
+        <span aria-hidden="true" className="relative flex h-3 w-3">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+          <span className="relative inline-flex h-3 w-3 rounded-full bg-red-600" />
+        </span>
+        <span className="text-sm font-medium tabular-nums text-gray-900 dark:text-gray-100">
+          {labels.recording} {formatClock(elapsed)}
+        </span>
+        <span
+          className={`text-xs tabular-nums ${finalMinute ? "font-semibold text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}
+          data-testid="walkthrough-recorder-remaining"
+        >
+          {labels.remaining(formatClock(remaining))}
+        </span>
+        {!micLive ? (
+          <span className="text-xs text-amber-600 dark:text-amber-400" title={labels.noMic}>
+            {labels.noMic}
+          </span>
+        ) : null}
+        {annotation ? (
+          <span
+            className={
+              annotation.drawing
+                ? "text-xs font-semibold text-red-600 dark:text-red-400"
+                : "hidden text-xs text-gray-500 sm:inline dark:text-gray-400"
+            }
+            data-testid="walkthrough-annotate-hint"
+          >
+            {annotation.drawing ? annotation.drawingHint : annotation.hint}
+          </span>
+        ) : null}
+        {labels.windowHint ? (
+          <span className="hidden text-xs text-gray-400 sm:inline dark:text-gray-500" data-testid="walkthrough-recorder-window-hint">
+            {labels.windowHint}
+          </span>
+        ) : null}
+        <button
+          className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700"
+          onClick={onStop}
+          type="button"
+        >
+          {labels.stop}
+        </button>
+        <button
+          className="rounded-full px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+          onClick={onDiscard}
+          type="button"
+        >
+          {labels.discard}
+        </button>
+      </div>
+      {annotation?.surfaceNote ? (
+        <span
+          className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs text-amber-700 shadow-sm dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
+          data-testid="walkthrough-annotate-surface-note"
+        >
+          {annotation.surfaceNote}
         </span>
       ) : null}
-      {labels.windowHint ? (
-        <span className="hidden text-xs text-gray-400 sm:inline dark:text-gray-500" data-testid="walkthrough-recorder-window-hint">
-          {labels.windowHint}
-        </span>
-      ) : null}
-      <button
-        className="rounded-full bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700"
-        onClick={onStop}
-        type="button"
-      >
-        {labels.stop}
-      </button>
-      <button
-        className="rounded-full px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
-        onClick={onDiscard}
-        type="button"
-      >
-        {labels.discard}
-      </button>
     </div>
   )
 }

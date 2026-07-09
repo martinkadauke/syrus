@@ -3,14 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   ANALYZING_HINT_INTERVAL_MS,
   AnalyzingHint,
+  annotationShortcutLabel,
   formatClock,
+  isMacPlatform,
   pickRecorderMimeType,
   RECORDER_MIME_CANDIDATES,
   RECORDER_WARNING_SECONDS,
+  shouldShowAnnotationSurfaceNote,
   useWalkthroughRecorder,
   WalkthroughRecorderHUD
 } from "./WalkthroughRecorder"
 import { MAX_WALKTHROUGH_DURATION_SECONDS } from "../api/videoWalkthroughs"
+import type { SyrusAnnotationBridge } from "../lib/desktopShell"
 
 describe("formatClock", () => {
   it("renders zero as 0:00", () => {
@@ -140,6 +144,209 @@ describe("useWalkthroughRecorder onFinished", () => {
   })
 })
 
+describe("annotation helpers", () => {
+  it("detects macOS from the user agent", () => {
+    expect(isMacPlatform("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")).toBe(true)
+    expect(isMacPlatform("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")).toBe(false)
+    expect(isMacPlatform("Mozilla/5.0 (X11; Linux x86_64)")).toBe(false)
+  })
+
+  it("formats the draw-mode accelerator per platform", () => {
+    expect(annotationShortcutLabel(true)).toBe("⌘⇧A")
+    expect(annotationShortcutLabel(false)).toBe("Ctrl+Shift+A")
+  })
+
+  it("shows the whole-screen note only for window/browser captures when annotation is available", () => {
+    expect(shouldShowAnnotationSurfaceNote(true, "monitor")).toBe(false)
+    expect(shouldShowAnnotationSurfaceNote(true, "window")).toBe(true)
+    expect(shouldShowAnnotationSurfaceNote(true, "browser")).toBe(true)
+    // Unknown surface (older engines) → assume it's fine, no note.
+    expect(shouldShowAnnotationSurfaceNote(true, null)).toBe(false)
+    // No annotation surface → never a note.
+    expect(shouldShowAnnotationSurfaceNote(false, "window")).toBe(false)
+  })
+})
+
+// The recorder arms/tears down the desktop red-pen overlay across the
+// recording lifecycle. These stub the media stack (as above) and inject a fake
+// annotation bridge to pin the enable-on-start / disable-on-stop contract and
+// the draw-mode + capture-surface plumbing.
+describe("useWalkthroughRecorder annotation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  function fakeAnnotation(overrides: Partial<SyrusAnnotationBridge> = {}) {
+    let modeCallback: ((drawing: boolean) => void) | null = null
+    const unsubscribe = vi.fn()
+    const bridge: SyrusAnnotationBridge = {
+      available: true,
+      // enable() resolves TRUE when the overlay + shortcut actually came up —
+      // that runtime signal (not mere bridge presence) drives the HUD hint.
+      enable: vi.fn().mockResolvedValue(true),
+      disable: vi.fn().mockResolvedValue(undefined),
+      onModeChanged: vi.fn((cb: (drawing: boolean) => void) => {
+        modeCallback = cb
+        return unsubscribe
+      }),
+      ...overrides
+    }
+    return { bridge, unsubscribe, emitMode: (drawing: boolean) => modeCallback?.(drawing) }
+  }
+
+  function stubMedia(displaySurface: string | null = "monitor") {
+    const track = {
+      stop: vi.fn(),
+      addEventListener: vi.fn(),
+      getSettings: () => (displaySurface === null ? {} : { displaySurface })
+    }
+    const stream = {
+      getTracks: () => [track],
+      getVideoTracks: () => [track],
+      getAudioTracks: () => [track]
+    } as unknown as MediaStream
+
+    vi.stubGlobal("MediaRecorder", class extends FakeMediaRecorder {})
+    vi.stubGlobal("MediaStream", class {})
+    vi.stubGlobal("navigator", {
+      ...navigator,
+      mediaDevices: {
+        getDisplayMedia: vi.fn().mockResolvedValue(stream),
+        getUserMedia: vi.fn().mockResolvedValue(stream)
+      }
+    })
+  }
+
+  it("enables the overlay on start and disables it on stop", async () => {
+    stubMedia()
+    const { bridge } = fakeAnnotation()
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    // Runtime gate: nothing is advertised until enable() resolves true.
+    expect(result.current.annotationAvailable).toBe(false)
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(bridge.enable).toHaveBeenCalledTimes(1)
+    // enable() resolved true, so the HUD hint is now allowed.
+    expect(result.current.annotationAvailable).toBe(true)
+
+    act(() => {
+      result.current.stop({ discard: true })
+    })
+    expect(bridge.disable).toHaveBeenCalled()
+    // Torn down on stop, so the gate closes again.
+    expect(result.current.annotationAvailable).toBe(false)
+  })
+
+  it("withholds the HUD hint when enable() reports the overlay unavailable", async () => {
+    stubMedia()
+    // A stolen accelerator or a compositor that can't host the overlay makes
+    // the main process report false — the recorder must NOT advertise ⌘⇧A.
+    const { bridge } = fakeAnnotation({ enable: vi.fn().mockResolvedValue(false) })
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(bridge.enable).toHaveBeenCalledTimes(1)
+    // enable() resolved false → no HUD affordance, recording still proceeds.
+    expect(result.current.annotationAvailable).toBe(false)
+    expect(result.current.state.phase).toBe("recording")
+
+    act(() => {
+      result.current.stop({ discard: true })
+    })
+    expect(bridge.disable).toHaveBeenCalled()
+  })
+
+  it("ignores a late enable() resolution that lands after the recording stopped", async () => {
+    stubMedia()
+    // enable() resolves only when we release it — after stop() — so the guard
+    // must drop the stale true and keep the HUD gate closed.
+    let releaseEnable: (ok: boolean) => void = () => {}
+    const enable = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          releaseEnable = resolve
+        })
+    )
+    const { bridge } = fakeAnnotation({ enable })
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    await act(async () => {
+      await result.current.start()
+    })
+    act(() => {
+      result.current.stop({ discard: true })
+    })
+    await act(async () => {
+      releaseEnable(true)
+      await Promise.resolve()
+    })
+    expect(result.current.annotationAvailable).toBe(false)
+  })
+
+  it("reflects draw-mode transitions pushed from the overlay", async () => {
+    stubMedia()
+    const { bridge, emitMode } = fakeAnnotation()
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(result.current.drawing).toBe(false)
+
+    act(() => emitMode(true))
+    expect(result.current.drawing).toBe(true)
+
+    act(() => emitMode(false))
+    expect(result.current.drawing).toBe(false)
+  })
+
+  it("captures the shared display surface for the whole-screen nudge", async () => {
+    stubMedia("window")
+    const { bridge } = fakeAnnotation()
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(result.current.displaySurface).toBe("window")
+  })
+
+  it("reports annotation unavailable and never calls the bridge when there is none", async () => {
+    stubMedia()
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: null })
+    )
+
+    expect(result.current.annotationAvailable).toBe(false)
+
+    await act(async () => {
+      await result.current.start()
+    })
+    // No throw, recording proceeds; nothing to assert beyond a clean start.
+    act(() => {
+      result.current.stop({ discard: true })
+    })
+    expect(result.current.annotationAvailable).toBe(false)
+  })
+})
+
 const hudLabels = {
   recording: "Recording",
   noMic: "No microphone",
@@ -230,6 +437,79 @@ describe("WalkthroughRecorderHUD", () => {
   it("omits the window-capture hint when no label is supplied", () => {
     renderHud()
     expect(screen.queryByTestId("walkthrough-recorder-window-hint")).not.toBeInTheDocument()
+  })
+
+  it("shows no annotation affordance when the annotation prop is absent", () => {
+    renderHud()
+    expect(screen.queryByTestId("walkthrough-annotate-hint")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("walkthrough-annotate-surface-note")).not.toBeInTheDocument()
+  })
+
+  it("shows the draw-on-screen hint when annotation is available and idle", () => {
+    render(
+      <WalkthroughRecorderHUD
+        annotation={{ hint: "Draw on screen: ⌘⇧A", drawingHint: "Drawing — Esc to stop", drawing: false }}
+        elapsed={0}
+        labels={hudLabels}
+        micLive
+        onDiscard={() => {}}
+        onStop={() => {}}
+      />
+    )
+    const hint = screen.getByTestId("walkthrough-annotate-hint")
+    expect(hint).toHaveTextContent("Draw on screen: ⌘⇧A")
+    // Idle hint is de-emphasized (muted, sm:inline only), not the active red.
+    expect(hint.className).not.toContain("text-red-600")
+  })
+
+  it("swaps to the emphasized drawing hint while the pen is armed", () => {
+    render(
+      <WalkthroughRecorderHUD
+        annotation={{ hint: "Draw on screen: ⌘⇧A", drawingHint: "Drawing — Esc to stop", drawing: true }}
+        elapsed={0}
+        labels={hudLabels}
+        micLive
+        onDiscard={() => {}}
+        onStop={() => {}}
+      />
+    )
+    const hint = screen.getByTestId("walkthrough-annotate-hint")
+    expect(hint).toHaveTextContent("Drawing — Esc to stop")
+    expect(hint.className).toContain("text-red-600")
+  })
+
+  it("shows the capture-surface note only when one is supplied", () => {
+    const { unmount } = render(
+      <WalkthroughRecorderHUD
+        annotation={{
+          hint: "Draw on screen: ⌘⇧A",
+          drawingHint: "Drawing — Esc to stop",
+          drawing: false,
+          surfaceNote: "Share your whole screen to see marks"
+        }}
+        elapsed={0}
+        labels={hudLabels}
+        micLive
+        onDiscard={() => {}}
+        onStop={() => {}}
+      />
+    )
+    expect(screen.getByTestId("walkthrough-annotate-surface-note")).toHaveTextContent(
+      "Share your whole screen to see marks"
+    )
+    unmount()
+
+    render(
+      <WalkthroughRecorderHUD
+        annotation={{ hint: "Draw on screen: ⌘⇧A", drawingHint: "Drawing — Esc to stop", drawing: false }}
+        elapsed={0}
+        labels={hudLabels}
+        micLive
+        onDiscard={() => {}}
+        onStop={() => {}}
+      />
+    )
+    expect(screen.queryByTestId("walkthrough-annotate-surface-note")).not.toBeInTheDocument()
   })
 })
 
