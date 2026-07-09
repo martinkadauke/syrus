@@ -58,7 +58,11 @@ mac:
   # builds. Without this, @electron/universal fails the merge ("Detected file
   # ... same in both x64 and arm64 builds and not covered by the x64ArchFiles
   # rule"). This tells it to keep them as-is (both arches' CLI end up bundled).
-  x64ArchFiles: "**/cli/*"
+  # uiohook-napi's prebuilds/<platform>-<arch>/ .node files are likewise present
+  # (identically) in BOTH arch app builds — node-gyp-build selects the right one
+  # at runtime by process.arch — so they need the same treatment or the universal
+  # merge fails. Brace-expanded minimatch covers both.
+  x64ArchFiles: "{**/cli/*,**/uiohook-napi/prebuilds/**}"
   target:
     # ONE universal (arm64 + x64) build — a single Syrus.dmg that runs on both
     # Apple Silicon and Intel, no Intel-vs-Apple-Silicon download split. Both
