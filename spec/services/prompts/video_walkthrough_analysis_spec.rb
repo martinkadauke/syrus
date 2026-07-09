@@ -90,6 +90,30 @@ RSpec.describe Prompts::VideoWalkthroughAnalysis do
       expect(prompt).to match(/error codes/)
       expect(prompt).to match(/HIGH-RESOLUTION screenshot/)
     end
+
+    it "orients Gemini to the repo when repo_context is given, and omits the section otherwise" do
+      oriented = described_class.new(repo_context: "Repository: acme/widgets").to_s
+      expect(oriented).to include("What you're looking at")
+      expect(oriented).to include("acme/widgets")
+      # nil / blank context adds no orientation section.
+      expect(described_class.new(repo_context: nil).to_s).not_to include("What you're looking at")
+      expect(described_class.new(repo_context: "  ").to_s).not_to include("What you're looking at")
+    end
+
+    it "guards user_flagged against invented red-pen marks" do
+      expect(prompt).to match(/do NOT assume a mark is\s+there/i)
+      expect(prompt).to match(/never describe a\s+mark, circle, or box/i)
+    end
+
+    it "forbids manufacturing issues on a silent / unannotated recording" do
+      expect(prompt).to match(/audible\s+narration/i)
+      expect(prompt).to match(/do\s+NOT compensate by manufacturing/i)
+      expect(prompt).to match(/few or no\s+issues/i)
+    end
+
+    it "requires every issue grounded in real transcript or visual evidence" do
+      expect(prompt).to match(/Ground every issue in real\s+evidence/i)
+    end
   end
 end
 

@@ -151,10 +151,26 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
     client.generate_content(
       file_uri: file_uri,
       mime_type: walkthrough.content_type,
-      prompt: Prompts::VideoWalkthroughAnalysis.new.to_s,
+      prompt: Prompts::VideoWalkthroughAnalysis.new(repo_context: repo_context_for(walkthrough)).to_s,
       response_schema: Prompts::VideoWalkthroughAnalysis::RESPONSE_SCHEMA,
       media_resolution: media_resolution
     )
+  end
+
+  # Orient Gemini to WHICH app it's watching so it can name UI surfaces and read
+  # intent precisely (the chat scopes the walkthrough to a repository). Kept to
+  # cheap, already-loaded signal — the repo slug and the operator's pinned chat
+  # context — so no GitHub fetch or checkout is needed on the videos queue. nil
+  # for an unscoped chat, which the prompt handles by omitting the section.
+  def repo_context_for(walkthrough)
+    chat = walkthrough.chat_session
+    parts = []
+    repo = chat.repository
+    parts << "Repository: #{repo.slug}" if repo
+    if chat.pinned_context.present?
+      parts << "Context the operator pinned to this chat:\n#{chat.pinned_context.to_s.strip}"
+    end
+    parts.join("\n\n").presence
   end
 
   def upload_to_gemini(client, walkthrough, video_path)
