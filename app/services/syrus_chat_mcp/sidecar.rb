@@ -235,7 +235,8 @@ module SyrusChatMcp
       PauseLandingQueueTool,
       ResumeLandingQueueTool,
       ReadQueueTool,
-      AnalyzeWalkthroughSegmentTool
+      AnalyzeWalkthroughSegmentTool,
+      ReadWalkthroughFrameTool
     ].freeze
 
     def self.tool_names(chat_session = nil)

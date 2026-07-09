@@ -55,7 +55,8 @@ module Prompts
               transcript_evidence: { type: "string", description: "the user's own words describing this issue, quoted from the narration — leave empty if they never mention it out loud" },
               visual_evidence: { type: "string", description: "what is visible on screen that shows the issue" },
               user_flagged: { type: "boolean", description: "true if the user explicitly pointed at this — a red pen mark / circle / underline on screen, or words like \"here\", \"this\", \"look at this\"" },
-              needs_closer_look: { type: "boolean", description: "true when the detail matters but small text or fast on-screen action means a focused, full-resolution re-analysis of this moment would help" }
+              needs_closer_look: { type: "boolean", description: "true when the detail matters but small text or fast on-screen action means a focused, full-resolution re-analysis of this moment would help" },
+              unreadable_text: { type: "string", description: "When important on-screen text — an error code, ID, URL, config value, stack trace, precise number — is too small or too fleeting for you to read from the video WITH CONFIDENCE, do NOT guess it. Leave it out of the description, set needs_closer_look=true, and describe here exactly WHAT text must be read and WHERE on screen (e.g. \"the error code in the red-circled banner\", \"the value in the Timeout field, top-right\"). A downstream agent reads it from a high-resolution screenshot at this issue's timestamp. Leave empty when there is no such hard-to-read text." }
             },
             required: %w[title description severity]
           }
@@ -108,6 +109,16 @@ module Prompts
            - Set `needs_closer_look` to true when the detail matters but small
              text or fast action means a focused, full-resolution re-analysis of
              that moment would read it more reliably.
+           - You are analyzing VIDEO, and you frequently CANNOT reliably read
+             small on-screen text — error codes, IDs, URLs, config values, stack
+             traces, precise numbers. When such text is IMPORTANT to the issue,
+             DO NOT GUESS it: a plausible-but-wrong error code or ID is worse than
+             none. Instead set `needs_closer_look` to true and use
+             `unreadable_text` to describe exactly WHAT text should be read and
+             WHERE on screen (e.g. "the error code in the red-circled banner",
+             "the value in the Timeout field, top-right"). A downstream agent will
+             read the exact characters from a HIGH-RESOLUTION screenshot at that
+             timestamp — so flag it, don't fabricate it.
 
         Do NOT invent issues, merge distinct issues, or editorialize about
         priorities. If something is ambiguous — you can't tell what the user

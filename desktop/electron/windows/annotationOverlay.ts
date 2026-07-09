@@ -4,17 +4,37 @@ import { BrowserWindow, globalShortcut, screen } from "electron"
 // frameless, transparent, always-on-top window spanning EVERY display; the
 // walkthrough recorder's full-screen getDisplayMedia captures it INCIDENTALLY,
 // so marks the user draws are burned into the recorded video with no change to
-// the capture pipeline. Draw mode is a global-shortcut TOGGLE (not hold-Ctrl):
-// a reliable OS-wide accelerator that needs no native hooks and no macOS
-// accessibility permission, and auto-fading strokes deliver the same "marks
-// appear, then disappear" intent as a momentary hold. See
-// assets/annotationOverlay.html for the canvas + fade renderer.
+// the capture pipeline. See assets/annotationOverlay.html for the canvas + fade
+// renderer.
+//
+// Interaction model — PRESS-TO-ARM, AUTO-RELEASE (not a persistent toggle):
+// tapping the global shortcut ARMS draw mode (the overlay starts capturing
+// pointer input + a red pen cursor). The user draws one or more strokes; the
+// moment they PAUSE — the pointer goes idle for ARM_IDLE_RELEASE_MS with no
+// stroke in progress — draw mode AUTO-RELEASES back to click-through, so the app
+// under test is interactive again without the user having to toggle anything
+// off. Esc and a second tap of the shortcut release immediately; an accidental
+// arm the user never draws on releases on its own after the idle window; and a
+// hard MAX_ARMED_MS cap force-releases no matter what, so the overlay can never
+// get stuck trapping the whole screen. Net effect: the screen is click-through
+// EXCEPT during the brief moments the user is actively annotating.
+//
+// Why NOT a true modifier-hold ("draw only while a key is physically held"):
+// that needs a GLOBAL keyboard hook. On macOS that means Accessibility
+// permission (a scary system prompt + a manual System-Settings toggle) plus a
+// native module (uiohook-napi) ABI-matched to Electron and bundled into the
+// universal mac DMG + the Windows installer. This app has been bitten
+// repeatedly by native/packaging fragility, so a native hook is deliberately
+// avoided. The press-to-arm/auto-release model delivers the same click-through
+// benefit with ZERO native code and ZERO permission prompts. True hold-to-draw
+// remains a possible FUTURE OPT-IN (uiohook-napi + Accessibility permission);
+// it is intentionally not implemented here.
 //
 // Focus discipline (never steal the narrator's keystrokes): the overlay is
 // created NON-ACTIVATING (focusable:false, shown with showInactive) so arming
 // it at record start never moves focus off the app under test. Focus is granted
-// ONLY while in draw mode — the canvas needs pointer input and the Escape key —
-// and dropped again the instant draw mode ends. enable() itself never moves
+// ONLY while armed — the canvas needs pointer input and the Escape key — and
+// dropped again the instant draw mode releases. enable() itself never moves
 // focus.
 //
 // Multi-display: the overlay spans the UNION of every display's bounds, so
@@ -38,12 +58,25 @@ export const ANNOTATION_SHORTCUT = "CommandOrControl+Shift+A"
 // three copies together.
 const FADE_DURATION_MS = 2500
 
+// Press-to-arm / auto-release timing. MIRRORED from src/annotationFade.ts (the
+// tested source of truth) — can't import across the electron/src rootDir split,
+// so annotation_overlay_spec.rb source-pins these copies to that module.
+// - ARM_IDLE_RELEASE_MS: pointer-quiet window after which armed draw mode
+//   auto-releases (no stroke in progress).
+// - ARM_POLL_MS: how often the main process samples the renderer's idle
+//   snapshot while armed.
+// - MAX_ARMED_MS: hard safety cap; draw mode force-releases after this long
+//   regardless of activity, so it can never stay stuck capturing the screen.
+const ARM_IDLE_RELEASE_MS = 1200
+const ARM_POLL_MS = 200
+const MAX_ARMED_MS = 15000
+
 export type AnnotationController = {
   // Creates the overlay + registers the draw-mode shortcut. Returns TRUE only
   // when the overlay exists AND the shortcut is actually registered; returns
   // false (after tearing down anything partial) when the overlay can't be
   // created or the accelerator is already owned, so callers degrade instead of
-  // advertising a dead affordance. Never moves focus. Idempotent.
+  // advertising a dead affordance. Never moves focus, never arms. Idempotent.
   enable: () => boolean
   // Stops capturing input INSTANTLY, fades any lingering marks, then destroys
   // the overlay + unregisters the shortcut once the fade elapses. The instant
@@ -58,19 +91,31 @@ type Options = {
   // Absolute path to assets/annotationOverlay.html (resolved by the caller so
   // this module stays free of app.getAppPath() and stays unit-inspectable).
   overlayHtmlPath: string
-  // Pushed on every draw-mode transition so the web recorder's HUD can reflect
-  // the live state (window.syrusShell.annotation.onModeChanged).
+  // Pushed on every draw-mode transition (armed / released) so the web
+  // recorder's HUD can reflect the live state
+  // (window.syrusShell.annotation.onModeChanged).
   onModeChanged: (drawing: boolean) => void
 }
 
 export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: Options): AnnotationController => {
   let overlay: BrowserWindow | null = null
-  let drawing = false
+  // True while draw mode is armed (the overlay is capturing pointer input).
+  let armed = false
+  // Bumped on every arm/release transition. A pollIdle snapshot captures the
+  // generation it was requested under; if a release→re-arm happened while its
+  // renderer round-trip was in flight, the stale reply is ignored so it can
+  // never auto-release a freshly re-armed session.
+  let armGeneration = 0
   // Set while a graceful teardown fade is in flight (disable() scheduled the
   // destroy). Tracked so enable() can finish it before reusing the surface, so
   // the overlay's `closed` handler can cancel it, and so the destroy fires at
   // most once.
   let teardownTimer: ReturnType<typeof setTimeout> | null = null
+  // While armed: the idle poll (samples the renderer to detect a pause and
+  // auto-release) and the hard max-armed cap (force-release safety net). Both
+  // cleared on every release / teardown so no stray timer outlives draw mode.
+  let idlePollTimer: ReturnType<typeof setInterval> | null = null
+  let maxArmedTimer: ReturnType<typeof setTimeout> | null = null
 
   const overlayAlive = () => overlay !== null && !overlay.isDestroyed()
 
@@ -92,50 +137,107 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
     }
   }
 
+  // Stop the auto-release watchers. Idempotent; called on every release path
+  // (idle, Esc, re-tap, max cap, disable, teardown) so neither the idle poll
+  // nor the hard cap can ever fire after draw mode has ended.
+  const stopArmWatch = () => {
+    if (idlePollTimer) {
+      clearInterval(idlePollTimer)
+      idlePollTimer = null
+    }
+    if (maxArmedTimer) {
+      clearTimeout(maxArmedTimer)
+      maxArmedTimer = null
+    }
+  }
+
   // Immediate, unconditional teardown: destroy the window + drop state. Used by
   // the fade timer, by a re-enable that pre-empts an in-flight fade, and on a
   // failed create.
   const destroyOverlayNow = () => {
     clearTeardownTimer()
+    stopArmWatch()
     if (overlayAlive()) {
       overlay!.destroy()
     }
     overlay = null
-    drawing = false
+    armed = false
   }
 
-  const setDrawing = (next: boolean) => {
-    if (!overlayAlive()) {
+  // The single place draw mode arms/releases. Flips OS-level input capture +
+  // focus, starts/stops the auto-release watchers, mirrors the state to the
+  // canvas, and pushes the transition to the HUD. Idempotent per state.
+  const setArmed = (next: boolean) => {
+    if (!overlayAlive() || next === armed) {
       return
     }
 
-    drawing = next
-    // Capture pointer input only while drawing; otherwise stay click-through so
+    armed = next
+    armGeneration += 1
+    // Capture pointer input only while armed; otherwise stay click-through so
     // the app under test is fully interactive. forward:true still delivers
     // move events for cursor feedback without swallowing clicks.
     overlay!.setIgnoreMouseEvents(!next, { forward: true })
     if (next) {
-      // Grant focus ONLY in draw mode: the canvas needs pointer input and the
+      // Grant focus ONLY while armed: the canvas needs pointer input and the
       // before-input-event Escape handler needs keyboard focus. enable() never
       // moves focus (the overlay is non-activating), so this is the single
       // place the overlay is allowed to take focus.
       overlay!.setFocusable(true)
       overlay!.focus()
+      // Arm the auto-release watchers: poll the renderer for a pause, and cap
+      // the whole armed session so it can never get stuck capturing input.
+      startArmWatch()
     } else {
       overlay!.blur()
       overlay!.setFocusable(false)
+      stopArmWatch()
     }
 
-    // Tell the canvas to release the in-flight stroke when leaving draw mode so
-    // it fades cleanly. Guarded + best-effort; the window may be tearing down.
+    // Mirror the armed state to the canvas: on arm it resets the idle clock; on
+    // release it ends the in-flight stroke so it fades cleanly. Guarded +
+    // best-effort; the window may be tearing down.
     overlay!.webContents
-      .executeJavaScript(`window.__syrusAnnotation && window.__syrusAnnotation.setDrawing(${next ? "true" : "false"})`)
+      .executeJavaScript(`window.__syrusAnnotation && window.__syrusAnnotation.setArmed(${next ? "true" : "false"})`)
       .catch(() => {})
 
     onModeChanged(next)
   }
 
-  const toggleDraw = () => setDrawing(!drawing)
+  // Sample the renderer's idle snapshot; auto-release once the pointer has been
+  // quiet for the whole idle window with no stroke in progress. Runs only while
+  // armed. A mid-stroke pointer (active:true) is never cut off.
+  const pollIdle = () => {
+    if (!overlayAlive() || !armed) {
+      return
+    }
+    // Tie this sample to the current arm session; a reply that resolves after a
+    // release→re-arm belongs to a stale generation and must not act.
+    const generation = armGeneration
+    overlay!.webContents
+      .executeJavaScript("window.__syrusAnnotation && window.__syrusAnnotation.idleSnapshot()")
+      .then((snap: { active?: boolean; idleMs?: number } | null | undefined) => {
+        if (!armed || armGeneration !== generation || !snap) {
+          return
+        }
+        if (!snap.active && (snap.idleMs ?? 0) >= ARM_IDLE_RELEASE_MS) {
+          setArmed(false)
+        }
+      })
+      .catch(() => {})
+  }
+
+  const startArmWatch = () => {
+    stopArmWatch()
+    idlePollTimer = setInterval(pollIdle, ARM_POLL_MS)
+    // Hard safety cap: force-release after MAX_ARMED_MS no matter what, even if
+    // the idle poll wedges or the renderer stops reporting. The overlay must
+    // never stay armed (capturing the whole screen) longer than this.
+    maxArmedTimer = setTimeout(() => setArmed(false), MAX_ARMED_MS)
+  }
+
+  // The global-shortcut handler: tap to arm, tap again to release immediately.
+  const toggleArm = () => setArmed(!armed)
 
   const enable = (): boolean => {
     // A previous disable() may still be fading before its scheduled destroy.
@@ -168,7 +270,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
         // Created hidden + non-focusable, then shown with showInactive() below:
         // arming the overlay at record start must NEVER move focus off the app
         // the narrator is demonstrating. Draw mode grants focus explicitly
-        // (setDrawing), so an empty transparent overlay can't swallow the
+        // (setArmed), so an empty transparent overlay can't swallow the
         // narrator's keystrokes.
         show: false,
         focusable: false,
@@ -186,34 +288,35 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
       overlay.setAlwaysOnTop(true, "screen-saver")
       overlay.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
       // Start click-through: the overlay must never block the app until the
-      // user explicitly enters draw mode.
+      // user explicitly arms draw mode.
       overlay.setIgnoreMouseEvents(true, { forward: true })
 
-      // Esc leaves draw mode. Handled in-main via before-input-event so the
+      // Esc releases draw mode. Handled in-main via before-input-event so the
       // overlay needs no preload/IPC of its own. Draw mode grants focus, so the
-      // keyDown reaches this handler; outside draw mode there's nothing to exit.
+      // keyDown reaches this handler; when not armed there's nothing to exit.
       overlay.webContents.on("before-input-event", (_event, input) => {
-        if (input.type === "keyDown" && input.key === "Escape" && drawing) {
-          setDrawing(false)
+        if (input.type === "keyDown" && input.key === "Escape" && armed) {
+          setArmed(false)
         }
       })
 
       overlay.on("closed", () => {
         clearTeardownTimer()
+        stopArmWatch()
         overlay = null
-        drawing = false
+        armed = false
       })
 
       void overlay.loadFile(overlayHtmlPath)
 
-      // Register the draw-mode toggle. register() returns false (it does NOT
+      // Register the draw-mode shortcut. register() returns false (it does NOT
       // throw) when the accelerator is already owned by another app; a
       // registered-but-false shortcut would leave the HUD advertising a dead
       // ⌘⇧A, so treat that as unavailable — tear down and report failure. (No
       // fallback accelerator: the recorder HUD's shortcut label is static, so
       // silently binding a different key would itself be a misleading
       // affordance.)
-      if (!globalShortcut.register(ANNOTATION_SHORTCUT, toggleDraw)) {
+      if (!globalShortcut.register(ANNOTATION_SHORTCUT, toggleArm)) {
         destroyOverlayNow()
         return false
       }
@@ -245,14 +348,17 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
       // never registered — fine
     }
 
-    const wasDrawing = drawing
-    drawing = false
+    const wasArmed = armed
+    armed = false
+    // Kill the auto-release watchers on every disable path so neither the idle
+    // poll nor the max-armed cap can fire after teardown.
+    stopArmWatch()
 
     if (!overlayAlive()) {
       // Nothing to tear down (already disabled / already destroyed). Still
       // leave the HUD consistent if we were mid-draw.
       clearTeardownTimer()
-      if (wasDrawing) {
+      if (wasArmed) {
         onModeChanged(false)
       }
       return
@@ -274,7 +380,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
       .catch(() => {})
 
     // Leave the HUD in a consistent "not drawing" state if we tore down mid-draw.
-    if (wasDrawing) {
+    if (wasArmed) {
       onModeChanged(false)
     }
 
@@ -288,6 +394,6 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged }: O
     enable,
     disable,
     isActive: overlayAlive,
-    isDrawing: () => drawing
+    isDrawing: () => armed
   }
 }

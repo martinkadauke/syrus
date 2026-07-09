@@ -2708,8 +2708,12 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           annotation={
             recorder.annotationAvailable
               ? {
+                  // Idle: tap the shortcut to arm the pen. Armed: the pen
+                  // auto-exits when the user pauses (no persistent toggle), so
+                  // the drawing hint describes the pause-to-exit behavior and
+                  // needs no shortcut glyph.
                   hint: t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() }),
-                  drawingHint: t("walkthrough_annotate_drawing", { shortcut: annotationShortcutLabel() }),
+                  drawingHint: t("walkthrough_annotate_drawing"),
                   drawing: recorder.drawing,
                   surfaceNote: shouldShowAnnotationSurfaceNote(recorder.annotationAvailable, recorder.displaySurface)
                     ? t("walkthrough_annotate_surface_note")

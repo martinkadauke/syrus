@@ -336,7 +336,19 @@ then `sections` (topical ranges — the handles for later "zoom in"), then
 `issues` grounded in `transcript_evidence` (the user's quoted words),
 `visual_evidence`, `severity` (low/medium/high), `surface`, `user_flagged` (the
 user circled/underlined with a red pen or said "here"/"this"), and
-`needs_closer_look`. **Segment "zoom in"** — the Gemini Files API retains the
+`needs_closer_look`. **OCR handoff (Gemini flags, Claude reads)** — Gemini
+Flash canNOT reliably OCR small on-screen text (error codes, IDs, URLs, config
+values, stack traces, precise numbers) from VIDEO at any resolution, but Claude
+reads that same text perfectly off a STILL frame. So the analysis prompt tells
+Gemini NOT to guess such text: it sets `needs_closer_look=true` and describes
+what/where in a new optional `unreadable_text` field instead of fabricating a
+value. Syrus then delivers a crisp still at that moment and
+`Prompts::VideoWalkthroughContext` instructs the chat agent (Claude) to READ the
+exact characters off the screenshot and never invent one it can't read. Flagged
+issues (`needs_closer_look` or a non-empty `unreadable_text`) get their frames
+grabbed at the higher OCR-grade `Gemini::FrameExtractor::HIGH_SCALE_WIDTH`/
+`HIGH_JPEG_QUALITY` (from the crisp pre-transcode source) and are prioritized to
+survive the per-video `MAX_FRAMES` cap. **Segment "zoom in"** — the Gemini Files API retains the
 upload ~48h, so `Gemini::Client#analyze_segment` re-analyzes a CLIP of the SAME
 file at full resolution with no re-upload (a `video_metadata` `{ start_offset:
 "12s", end_offset: "30s" }` sibling of `file_data`). The chat MCP tool
@@ -346,6 +358,21 @@ lets the chat agent get finer detail (exact error text, click sequence) on
 `needs_closer_look` moments or on request; it re-uploads the stored blob when
 the file is past retention, and reports "video expired" only when the blob is
 also pruned. Test seam `AnalyzeWalkthroughSegmentTool.client_factory`.
+**On-demand still (`read_walkthrough_frame`, deferred)** —
+`SyrusChatMcp::ReadWalkthroughFrameTool` lets the chat agent pull a crisp
+screenshot from the stored video at ANY timestamp (beyond the auto-attached
+ones) so it can OCR a moment it decides matters. It runs `Gemini::FrameExtractor`
+locally (no Gemini call/key needed), clamps the timestamp to the video, and
+maps a pruned/unreadable blob to a clean "video expired" error. **Delivery: the
+frame comes back as a native MCP `image` content block** — the MCP server
+serializes the tool `Response`'s content array verbatim onto the wire, and
+Claude Code (`claude --print`) renders an `{ type: "image", data, mimeType }`
+block into the agent's context as an actual image it sees THIS turn. That is the
+only channel that puts a picture in front of the chat agent mid-turn: there is
+no `--image` CLI flag (see `ClaudeInvocation`), and the disk-file + Read-tool
+path used for pasted attachments only reaches the NEXT turn. Helper
+`SyrusChatMcp.image_result(jpeg:, text:)`. 720p (the compact stored blob) is
+enough for Claude to OCR, so this tool extracts at the default width.
 The job downloads the video once locally and runs the whole media flow off it:
 Gemini analysis → CRISP screenshots via `Gemini::FrameExtractor` (`ffmpeg`) at
 each flagged issue's timestamp (they ride the analysis turn as image

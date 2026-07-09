@@ -10,10 +10,20 @@ module Prompts
     # High → low. Matches the analysis schema's severity enum.
     SEVERITY_ORDER = %w[high medium low].freeze
 
-    def initialize(walkthrough:, user_note: nil, illustrated: false)
+    def initialize(walkthrough:, user_note: nil, illustrated: false, attached_issue_keys: [])
       @walkthrough = walkthrough
       @user_note = user_note
       @illustrated = illustrated
+      @attached_issue_keys = Array(attached_issue_keys)
+    end
+
+    # Stable identity for matching an analysis issue to an attached screenshot.
+    # The analysis job builds these keys from the frames it ACTUALLY extracted
+    # (frame.seconds + frame.label == the issue's parsed timestamp + title), and
+    # this class computes the same key per issue to decide attached-vs-not. The
+    # two must stay in sync — change both if you change the shape.
+    def self.attachment_key(seconds:, title:)
+      [ seconds, title.to_s ]
     end
 
     def to_s
@@ -24,6 +34,8 @@ module Prompts
       parts << sections_section if sections.any?
       parts << issues_section
       parts << screenshots_note if @illustrated
+      parts << read_attached_screenshots_note if attached_reads.any?
+      parts << fetch_on_demand_note if unattached_reads.any?
       parts << closer_look_note if closer_look_issues.any?
       parts << transcript_section if transcript.any?
       parts << open_questions_section if @walkthrough.analysis_open_questions.any?
@@ -77,7 +89,40 @@ module Prompts
       lines << "  #{issue['description']}" if issue["description"].present?
       lines << "  The user said: \"#{issue['transcript_evidence']}\"" if issue["transcript_evidence"].present?
       lines << "  On screen: #{issue['visual_evidence']}" if issue["visual_evidence"].present?
+      lines << unreadable_line(issue) if issue["unreadable_text"].present?
       lines.join("\n")
+    end
+
+    # Per-issue steering for hard-to-read on-screen text. ONLY promise a
+    # screenshot when THIS issue's frame was actually attached to the turn;
+    # otherwise point the agent at the on-demand tool so we never tell it to
+    # read a still that was never attached (text-only delivery, extraction
+    # failure, or a frame dropped past the per-video cap).
+    def unreadable_line(issue)
+      want = issue["unreadable_text"].to_s.strip
+      if attached?(issue)
+        "  Too small to read from the video — read the exact text off the attached screenshot: #{want}"
+      else
+        "  Too small to read from the video, and no screenshot is attached — use " \
+          "#{read_frame_call(issue)} to grab a high-resolution still, then read: #{want}"
+      end
+    end
+
+    # The on-demand fetch call the agent can run to grab a crisp still itself.
+    def read_frame_call(issue)
+      stamp = issue["timestamp"].presence || "mm:ss"
+      "read_walkthrough_frame(walkthrough_id: #{@walkthrough.id}, timestamp: #{stamp})"
+    end
+
+    # Did this issue's screenshot actually make it into the turn? Keyed on the
+    # same (parsed seconds, title) identity the analysis job builds from the
+    # frames it extracted.
+    def attached?(issue)
+      key = self.class.attachment_key(
+        seconds: Gemini::FrameExtractor.parse_timestamp(issue["timestamp"]),
+        title: issue["title"]
+      )
+      @attached_issue_keys.include?(key)
     end
 
     def screenshots_note
@@ -87,6 +132,88 @@ module Prompts
         <issue>"). Use them to see exactly what I saw, and reference the
         relevant screenshot when you scope the fix.
       TEXT
+    end
+
+    # Issues with a specific hard-to-read value the video model flagged for a
+    # screenshot read (`unreadable_text`). These drive the OCR handoff, split by
+    # whether a crisp screenshot for the moment actually reached this turn. (The
+    # broader `needs_closer_look` signal is handled separately by closer_look_note,
+    # which points at the full re-analysis tool.)
+    def unreadable_text_issues
+      @unreadable_text_issues ||= @walkthrough.analysis_issues.select do |issue|
+        issue["unreadable_text"].to_s.strip.present?
+      end
+    end
+
+    def attached_reads
+      @attached_reads ||= unreadable_text_issues.select { |issue| attached?(issue) }
+    end
+
+    def unattached_reads
+      @unattached_reads ||= unreadable_text_issues.reject { |issue| attached?(issue) }
+    end
+
+    # OCR handoff for issues whose crisp screenshot IS attached to this turn: the
+    # video model can't reliably read small on-screen text, but the CHAT AGENT
+    # (Claude) reads a crisp still perfectly. Steer it to READ the exact text off
+    # the attached screenshot rather than trust the model's (deliberately
+    # withheld) guess. Always carries the never-invent guard.
+    def read_attached_screenshots_note
+      <<~TEXT.strip
+        ## Read the exact text off the screenshots
+        Some on-screen text — error codes, IDs, URLs, config values, exact
+        numbers, stack traces — was too small or too fleeting for the video model
+        to read reliably, so it deliberately did NOT transcribe it. The CRISP
+        SCREENSHOTS attached above capture those exact moments, and you read still
+        images far better than the video model reads video. READ the precise text
+        directly from the relevant screenshot and use the EXACT value in the Epic.
+        NEVER invent, guess, autocomplete, or paraphrase a value you cannot read;
+        if a screenshot still isn't legible, say so and grab a fresh
+        high-resolution still with read_walkthrough_frame(walkthrough_id:
+        #{@walkthrough.id}, timestamp: <mm:ss>) rather than guessing.#{read_list(attached_reads)}
+      TEXT
+    end
+
+    # OCR handoff for flagged text with NO attached screenshot — a text-only
+    # turn (no ffmpeg / extraction failure), or a frame dropped past the
+    # per-video cap. Turn the miss into a graceful fallback: fetch a crisp still
+    # on demand and read it. Always carries the never-invent guard.
+    def fetch_on_demand_note
+      <<~TEXT.strip
+        ## Fetch and read these screenshots on demand
+        Some on-screen text was too small for the video model to read, and NO
+        screenshot is attached for these moments. Grab a high-resolution still
+        yourself with read_walkthrough_frame(walkthrough_id: #{@walkthrough.id},
+        timestamp: <mm:ss>) and read the exact text off it. NEVER invent, guess,
+        autocomplete, or paraphrase a value you cannot read; if you truly cannot
+        read it, say so.
+
+        Fetch and read:
+        #{unattached_reads.filter_map { |issue| fetch_line(issue) }.join("\n")}
+      TEXT
+    end
+
+    def read_list(issues)
+      asks = issues.filter_map { |issue| ask_line(issue) }
+      asks.any? ? "\n\nSpecifically, read:\n#{asks.join("\n")}" : ""
+    end
+
+    def ask_line(issue)
+      want = issue["unreadable_text"].to_s.strip
+      return if want.blank?
+
+      stamp = issue["timestamp"].presence
+      title = issue["title"].to_s.strip
+      "- #{[ stamp && "at #{stamp}", title.presence ].compact.join(' ')}#{stamp || title.present? ? ' — ' : ''}#{want}"
+    end
+
+    def fetch_line(issue)
+      want = issue["unreadable_text"].to_s.strip
+      stamp = issue["timestamp"].presence
+      title = issue["title"].to_s.strip
+      label = [ stamp && "at #{stamp}", title.presence ].compact.join(" ")
+      prefix = label.present? ? "#{label} — " : ""
+      "- #{prefix}#{want} (#{read_frame_call(issue)})"
     end
 
     def closer_look_issues

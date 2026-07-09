@@ -166,4 +166,92 @@ RSpec.describe Gemini::FrameExtractor do
       expect(frames.map(&:seconds)).to eq((1..described_class::MAX_FRAMES).to_a)
     end
   end
+
+  # ffmpeg isn't in the test image (frames can't actually be rendered), so the
+  # "higher resolution" contract is asserted at the COMMAND level: the ffmpeg
+  # scale filter width and JPEG quality flag are what determine the frame's
+  # dimensions and fidelity.
+  describe "extraction resolution" do
+    # Records the ffmpeg commands and produces a frame for each so extract
+    # returns; answers the -version probe so available? is true.
+    def recording_runner(cmds)
+      lambda do |cmd|
+        if cmd == %w[ffmpeg -version]
+          [ "ffmpeg version 6.0", ok_status ]
+        else
+          cmds << cmd
+          File.binwrite(cmd.last, "jpeg-bytes")
+          [ "", ok_status ]
+        end
+      end
+    end
+
+    def scale_for(cmd)
+      cmd[cmd.index("-vf") + 1]
+    end
+
+    def quality_for(cmd)
+      cmd[cmd.index("-q:v") + 1]
+    end
+
+    it "defaults to the compact 720p-class width and standard JPEG quality" do
+      cmds = []
+      described_class.runner = recording_runner(cmds)
+
+      described_class.extract(video_path: "/tmp/v.webm", timestamps: [ { seconds: 5, label: "x" } ])
+
+      expect(scale_for(cmds.first)).to eq("scale=#{described_class::SCALE_WIDTH}:-1")
+      expect(scale_for(cmds.first)).to eq("scale=1280:-1")
+      expect(quality_for(cmds.first)).to eq(described_class::JPEG_QUALITY.to_s)
+    end
+
+    it "extracts a flagged (high-res) entry at the wider OCR-grade width and top quality" do
+      cmds = []
+      described_class.runner = recording_runner(cmds)
+
+      described_class.extract(
+        video_path: "/tmp/v.webm",
+        timestamps: [ {
+          seconds: 5, label: "unreadable code",
+          scale_width: described_class::HIGH_SCALE_WIDTH,
+          jpeg_quality: described_class::HIGH_JPEG_QUALITY
+        } ]
+      )
+
+      expect(scale_for(cmds.first)).to eq("scale=1920:-1")
+      expect(quality_for(cmds.first)).to eq("2")
+      # The higher width really is greater than the compact default.
+      expect(described_class::HIGH_SCALE_WIDTH).to be > described_class::SCALE_WIDTH
+    end
+
+    it "honors per-entry resolution overrides independently within one call" do
+      cmds = []
+      described_class.runner = recording_runner(cmds)
+
+      described_class.extract(
+        video_path: "/tmp/v.webm",
+        timestamps: [
+          { seconds: 5, label: "plain" },
+          { seconds: 9, label: "flagged", scale_width: described_class::HIGH_SCALE_WIDTH, jpeg_quality: described_class::HIGH_JPEG_QUALITY }
+        ]
+      )
+
+      expect(scale_for(cmds[0])).to eq("scale=1280:-1")
+      expect(scale_for(cmds[1])).to eq("scale=1920:-1")
+    end
+
+    it "applies a call-level scale_width/jpeg_quality to entries without their own override" do
+      cmds = []
+      described_class.runner = recording_runner(cmds)
+
+      described_class.extract(
+        video_path: "/tmp/v.webm",
+        timestamps: [ { seconds: 5, label: "x" } ],
+        scale_width: 1600, jpeg_quality: 3
+      )
+
+      expect(scale_for(cmds.first)).to eq("scale=1600:-1")
+      expect(quality_for(cmds.first)).to eq("3")
+    end
+  end
 end

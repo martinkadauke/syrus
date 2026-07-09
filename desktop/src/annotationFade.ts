@@ -43,3 +43,60 @@ export function canvasBackingSize(cssSize: number, dpr: number): number {
   const ratio = dpr > 0 ? dpr : 1
   return Math.max(1, Math.floor(cssSize * ratio))
 }
+
+// --- press-to-arm / auto-release draw-mode timing -----------------------
+//
+// Draw mode is NOT a persistent toggle. Tapping ⌘/Ctrl+Shift+A ARMS the pen
+// (the overlay starts capturing pointer input); it AUTO-RELEASES back to
+// click-through the moment the user pauses, so the app under test stays
+// interactive except during the brief window they're actively annotating.
+//
+// The decision math lives here (the tested source of truth) and is MIRRORED as
+// literals in electron/windows/annotationOverlay.ts, which owns the OS-level
+// input capture but can't import from src/ (its tsconfig rootDir is electron/).
+// spec/desktop/annotation_overlay_spec.rb source-pins the two copies together.
+//
+// Why auto-release and not a true modifier-HOLD ("draw only while a key is
+// physically down"): a real hold needs a GLOBAL keyboard hook, which on macOS
+// demands Accessibility permission (a scary system prompt + a manual
+// System-Settings toggle) and a native module (uiohook-napi) ABI-matched to
+// Electron and bundled into the universal DMG + the Windows installer. This app
+// has been bitten repeatedly by native/packaging fragility, so we deliberately
+// avoid it. Auto-release delivers the same click-through benefit — the overlay
+// only traps input while you're drawing — with ZERO native code and ZERO
+// permission prompts. The native hold remains a possible future opt-in.
+
+// Idle window: after the pointer goes quiet for this long with no stroke in
+// progress, draw mode auto-releases. ~1.2s is long enough to lift the pen
+// between strokes without dropping back to click-through, short enough that an
+// accidental arm (or a finished mark) returns control almost immediately.
+export const ARM_IDLE_RELEASE_MS = 1200
+
+// How often the main process samples the renderer's idle snapshot while armed.
+// Coarse enough to be free, fine enough that release feels instant.
+export const ARM_POLL_MS = 200
+
+// Hard safety cap: draw mode can NEVER stay armed (capturing input) longer than
+// this, even if the idle poll wedges or the renderer stops reporting activity.
+// When it elapses the overlay force-releases regardless, so the overlay can
+// never get stuck trapping the whole screen.
+export const MAX_ARMED_MS = 15_000
+
+// Auto-release predicate: release once the pointer has been idle for the whole
+// window AND no stroke is currently in progress. A mid-stroke pointer (button
+// still down, held still) is never cut off — the release waits until the stroke
+// ends and the idle window then elapses.
+export function shouldAutoReleaseOnIdle(
+  idleMs: number,
+  activeStroke: boolean,
+  idleReleaseMs: number = ARM_IDLE_RELEASE_MS
+): boolean {
+  if (activeStroke) return false
+  return idleMs >= idleReleaseMs
+}
+
+// Hard-cap predicate: true once the overlay has been armed at least this long,
+// regardless of activity. Drives the force-release safety net.
+export function armCapReached(armedMs: number, capMs: number = MAX_ARMED_MS): boolean {
+  return armedMs >= capMs
+}

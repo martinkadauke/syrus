@@ -6,11 +6,22 @@ require "spec_helper"
 # transparent, always-on-top Electron window spanning EVERY display. The
 # recorder's full-screen getDisplayMedia captures it INCIDENTALLY, so marks the
 # user draws are burned into the recorded video with no change to the capture
-# pipeline. Draw mode is a global-shortcut TOGGLE (CommandOrControl+Shift+A),
-# reliable OS-wide without native hooks or macOS accessibility permission.
+# pipeline.
+#
+# Interaction model: PRESS-TO-ARM, AUTO-RELEASE (not a persistent toggle).
+# Tapping the global shortcut (CommandOrControl+Shift+A) arms draw mode; the
+# overlay AUTO-RELEASES back to click-through once the pointer pauses
+# (ARM_IDLE_RELEASE_MS idle with no stroke in progress), so the app under test
+# stays interactive except while the user is actively annotating. Esc and a
+# second tap release immediately; a hard MAX_ARMED_MS cap force-releases
+# regardless. No native key hook and no macOS accessibility permission — a true
+# modifier-HOLD would need both (uiohook-napi + Accessibility), which this app
+# deliberately avoids; auto-release delivers the same click-through benefit for
+# free and leaves the native hold as a future opt-in.
 #
 # The overriding safety rules are: the overlay must NEVER steal keyboard focus
-# when armed, must NEVER stay stuck capturing the screen, and must NEVER
+# when armed, must NEVER stay stuck capturing the screen (idle auto-release +
+# hard cap + instant release on disable all guarantee this), and must NEVER
 # advertise a shortcut it did not actually register.
 #
 # The bridges are stringly typed (see ipc_channel_parity_spec.rb) and the
@@ -75,31 +86,38 @@ RSpec.describe "desktop annotation overlay" do
     end
 
     it "grants focus ONLY in draw mode and drops it the instant draw mode ends" do
-      set_drawing = overlay[/const setDrawing[\s\S]{0,1500}/]
-      # Draw on → capture (ignore=false) + take focus so the canvas + Esc work.
-      expect(set_drawing).to include("setIgnoreMouseEvents(!next, { forward: true })")
-      expect(set_drawing).to match(/setFocusable\(true\)[\s\S]{0,80}focus\(\)/)
-      # Draw off → blur + drop focusability so no keystroke is ever swallowed.
-      expect(set_drawing).to match(/blur\(\)[\s\S]{0,80}setFocusable\(false\)/)
+      set_armed = overlay[/const setArmed[\s\S]{0,2000}/]
+      # Armed → capture (ignore=false) + take focus so the canvas + Esc work.
+      expect(set_armed).to include("setIgnoreMouseEvents(!next, { forward: true })")
+      expect(set_armed).to match(/setFocusable\(true\)[\s\S]{0,80}focus\(\)/)
+      # Released → blur + drop focusability so no keystroke is ever swallowed.
+      expect(set_armed).to match(/blur\(\)[\s\S]{0,80}setFocusable\(false\)/)
       # Mirror the transition to the web HUD.
-      expect(set_drawing).to include("onModeChanged(next)")
+      expect(set_armed).to include("onModeChanged(next)")
     end
 
     it "leaves draw mode on Escape (which draw-mode focus now makes reachable)" do
       expect(overlay).to include("before-input-event")
-      expect(overlay).to match(/input\.key === "Escape"[\s\S]{0,80}setDrawing\(false\)/)
+      expect(overlay).to match(/input\.key === "Escape"[\s\S]{0,80}setArmed\(false\)/)
     end
   end
 
   describe "the draw-mode global shortcut" do
     it "is a normal accelerator, registered on enable and unregistered on disable" do
       expect(overlay).to include('export const ANNOTATION_SHORTCUT = "CommandOrControl+Shift+A"')
-      # enable() registers the toggle...
+      # enable() registers the arm/release handler...
       enable = overlay[/const enable[\s\S]{0,3600}/]
-      expect(enable).to include("globalShortcut.register(ANNOTATION_SHORTCUT, toggleDraw)")
+      expect(enable).to include("globalShortcut.register(ANNOTATION_SHORTCUT, toggleArm)")
       # ...disable() unregisters it.
-      disable = overlay[/const disable[\s\S]{0,1700}/]
+      disable = overlay[/const disable[\s\S]{0,1800}/]
       expect(disable).to include("globalShortcut.unregister(ANNOTATION_SHORTCUT)")
+    end
+
+    it "taps to arm and taps again to release (press-to-arm, not a sticky toggle)" do
+      # The accelerator flips armed state: tap arms, tap again releases. The
+      # NEW behavior is that draw mode also auto-releases on idle, so the tap is
+      # a shortcut in, not a persistent on/off the user must remember to undo.
+      expect(overlay).to include("const toggleArm = () => setArmed(!armed)")
     end
 
     it "returns false (not true) when the accelerator is already owned" do
@@ -107,7 +125,7 @@ RSpec.describe "desktop annotation overlay" do
       # A registered-but-false shortcut would advertise a dead shortcut, so
       # enable() must tear the overlay down and report unavailable.
       enable = overlay[/const enable[\s\S]{0,3600}/]
-      expect(enable).to match(/if \(!globalShortcut\.register\(ANNOTATION_SHORTCUT, toggleDraw\)\) \{[\s\S]{0,120}destroyOverlayNow\(\)[\s\S]{0,40}return false/)
+      expect(enable).to match(/if \(!globalShortcut\.register\(ANNOTATION_SHORTCUT, toggleArm\)\) \{[\s\S]{0,120}destroyOverlayNow\(\)[\s\S]{0,40}return false/)
     end
 
     it "never lets overlay creation crash the recording — enable() try/catch returns false" do
@@ -128,14 +146,17 @@ RSpec.describe "desktop annotation overlay" do
 
   describe "disable(): instant input release, graceful fade, real teardown" do
     it "stops capturing input INSTANTLY so it can never stay stuck over the screen" do
-      disable = overlay[/const disable[\s\S]{0,1700}/]
+      disable = overlay[/const disable[\s\S]{0,1800}/]
       # Click-through + non-focusable immediately, before any deferred destroy.
       expect(disable).to include("setIgnoreMouseEvents(true, { forward: true })")
       expect(disable).to match(/blur\(\)[\s\S]{0,80}setFocusable\(false\)/)
+      # The auto-release watchers (idle poll + hard cap) are killed on disable so
+      # neither can fire after teardown.
+      expect(disable).to include("stopArmWatch()")
     end
 
     it "wires the previously-dead clear() so lingering marks fade on stop" do
-      disable = overlay[/const disable[\s\S]{0,1700}/]
+      disable = overlay[/const disable[\s\S]{0,1800}/]
       # clear() is invoked over the executeJavaScript control surface on stop.
       expect(disable).to include("__syrusAnnotation.clear()")
       # The overlay HTML still defines clear() as that control surface.
@@ -143,12 +164,13 @@ RSpec.describe "desktop annotation overlay" do
     end
 
     it "destroys the overlay so it never outlives a recording, and is idempotent" do
-      # The shared teardown helper destroys + nulls the window...
-      destroy = overlay[/const destroyOverlayNow[\s\S]{0,220}/]
+      # The shared teardown helper destroys + nulls the window and kills timers...
+      destroy = overlay[/const destroyOverlayNow[\s\S]{0,320}/]
       expect(destroy).to include("overlay!.destroy()")
       expect(destroy).to include("overlay = null")
+      expect(destroy).to include("stopArmWatch()")
       # ...and disable() schedules it after the fade window (single timer).
-      disable = overlay[/const disable[\s\S]{0,1700}/]
+      disable = overlay[/const disable[\s\S]{0,1800}/]
       expect(disable).to match(/if \(!teardownTimer\)[\s\S]{0,120}setTimeout\(destroyOverlayNow/)
       # Calling disable() when already down is a safe no-op.
       expect(disable).to include("if (!overlayAlive())")
@@ -157,6 +179,91 @@ RSpec.describe "desktop annotation overlay" do
     it "re-enabling before the fade completes finishes the pending teardown first" do
       enable = overlay[/const enable[\s\S]{0,400}/]
       expect(enable).to match(/if \(teardownTimer\)[\s\S]{0,80}destroyOverlayNow\(\)/)
+    end
+  end
+
+  describe "press-to-arm / auto-release draw mode" do
+    it "mirrors the tested idle/cap timing constants from src/annotationFade.ts" do
+      # The tested source of truth (desktop/src/annotationFade.ts).
+      expect(fade_module).to include("export const ARM_IDLE_RELEASE_MS = 1200")
+      expect(fade_module).to include("export const ARM_POLL_MS = 200")
+      expect(fade_module).to include("export const MAX_ARMED_MS = 15_000")
+      # The overlay module can't import across the electron/src rootDir split, so
+      # it re-declares the same numbers as local literals — pin them together so
+      # a drift can't silently change the feel of one and not the other.
+      expect(overlay).to include("const ARM_IDLE_RELEASE_MS = 1200")
+      expect(overlay).to include("const ARM_POLL_MS = 200")
+      expect(overlay).to include("const MAX_ARMED_MS = 15000")
+    end
+
+    it "arms/releases through a single setArmed that flips input capture + focus" do
+      # setArmed is the one place draw mode transitions: capture toggles with the
+      # armed flag, and it is idempotent per state.
+      set_armed = overlay[/const setArmed[\s\S]{0,2000}/]
+      expect(set_armed).to include("next === armed")
+      expect(set_armed).to include("setIgnoreMouseEvents(!next, { forward: true })")
+      # Arming starts the auto-release watchers; releasing stops them. The arm
+      # branch (startArmWatch) precedes the release branch (stopArmWatch).
+      expect(set_armed).to include("startArmWatch()")
+      expect(set_armed).to include("stopArmWatch()")
+      expect(set_armed.index("startArmWatch()")).to be < set_armed.index("stopArmWatch()")
+    end
+
+    it "auto-releases when the pointer pauses (idle poll), never mid-stroke" do
+      # A poll samples the renderer's idle snapshot on an interval while armed and
+      # releases once the pointer has been quiet for the whole idle window with
+      # NO stroke in progress. A mid-stroke pointer (snap.active) is never cut off.
+      poll = overlay[/const pollIdle[\s\S]{0,700}/]
+      expect(poll).to include("__syrusAnnotation.idleSnapshot()")
+      expect(poll).to match(/!snap\.active && \(snap\.idleMs \?\? 0\) >= ARM_IDLE_RELEASE_MS/)
+      expect(poll).to include("setArmed(false)")
+      # The watcher runs the poll on ARM_POLL_MS.
+      expect(overlay).to include("setInterval(pollIdle, ARM_POLL_MS)")
+    end
+
+    it "ignores a stale idle snapshot from a previous arm session (generation guard)" do
+      # A release→re-arm while a poll's renderer round-trip is in flight must not
+      # let the stale reply auto-release the freshly re-armed session. Each poll
+      # captures armGeneration and the continuation bails when it no longer matches.
+      expect(overlay).to include("armGeneration += 1")
+      poll = overlay[/const pollIdle[\s\S]{0,700}/]
+      expect(poll).to include("const generation = armGeneration")
+      expect(poll).to match(/armGeneration !== generation/)
+    end
+
+    it "force-releases at the hard max-armed cap so it can never get stuck armed" do
+      # Independent of activity: after MAX_ARMED_MS the overlay releases no matter
+      # what, even if the idle poll wedges or the renderer stops reporting.
+      start = overlay[/const startArmWatch[\s\S]{0,400}/]
+      expect(start).to match(/setTimeout\(\(\) => setArmed\(false\), MAX_ARMED_MS\)/)
+    end
+
+    it "kills both auto-release watchers on every release / teardown path" do
+      # stopArmWatch clears the idle poll AND the max-armed cap; it must run on
+      # release (setArmed false), disable, destroy, and window close so no stray
+      # timer outlives draw mode.
+      stop = overlay[/const stopArmWatch[\s\S]{0,320}/]
+      expect(stop).to include("clearInterval(idlePollTimer)")
+      expect(stop).to include("clearTimeout(maxArmedTimer)")
+      # The window's own `closed` handler also drops the watchers.
+      closed = overlay[/overlay\.on\("closed"[\s\S]{0,160}/]
+      expect(closed).to include("stopArmWatch()")
+    end
+
+    it "exposes the renderer idle snapshot the poll reads and resets it on arm" do
+      # The overlay HTML tracks the last pointer activity and reports a read-only
+      # snapshot { active, idleMs } that the main process polls.
+      expect(overlay_html).to include("var lastPointerAt")
+      expect(overlay_html).to match(/idleSnapshot: function \(\)/)
+      expect(overlay_html).to include("active: active != null, idleMs: performance.now() - lastPointerAt")
+      # Arming resets the idle clock (fresh full idle window); releasing ends the
+      # in-flight stroke so it fades.
+      set_armed = overlay_html[/setArmed: function \(armed\)[\s\S]{0,220}/]
+      expect(set_armed).to include("noteActivity()")
+      expect(set_armed).to include("endStroke()")
+      # Any pointer activity (down/move/up) refreshes the idle clock so an active
+      # user isn't dropped to click-through mid-gesture.
+      expect(overlay_html).to include("function noteActivity()")
     end
   end
 

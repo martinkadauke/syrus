@@ -141,6 +141,17 @@ the work. You can ask for this directly too ("look again at what the error at
 after that, Syrus re-reads the stored copy if it's still around, and otherwise
 tells you the video has expired.
 
+**Exact codes and IDs, read — not guessed.** Small on-screen text — an error
+code, an ID, a URL, a config value, a stack trace, a precise number — is genuinely
+hard to read reliably from a moving video. So instead of guessing, the video
+analysis *flags* that text and points to exactly where it is, and Syrus hands the
+chat agent a **crisp, high-resolution screenshot** of that moment. The chat agent
+reads the exact characters straight off the still (it reads static images far more
+reliably than video) and uses the real value when it scopes the work — and if a
+shot still isn't legible, it grabs a fresh screenshot at any timestamp rather than
+inventing a value. The upshot: the error codes and identifiers that end up in your
+Epic are the ones that were actually on screen.
+
 You can also **drag in a pre-recorded video** (mp4/webm/QuickTime) — it flows
 through the same analysis. Recordings are capped at **15 minutes** (the
 recorder shows a live countdown and stops gracefully at the limit) and uploads

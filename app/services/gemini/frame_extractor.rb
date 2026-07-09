@@ -19,6 +19,14 @@ module Gemini
     # ~720p wide is plenty to read a UI while keeping each JPEG ~30-80KB.
     SCALE_WIDTH = 1280
     JPEG_QUALITY = 4 # ffmpeg -q:v (2=best … 31=worst); 4 is crisp + small
+    # Frames at moments the video model flagged as unreadable (small error
+    # codes, IDs, config values) are the ones the CHAT AGENT will OCR, so grab
+    # those toward full source width at top JPEG quality — the extra pixels are
+    # exactly what makes small text legible. The analysis job extracts these from
+    # the CRISP SOURCE (the original recording, before the compact-mp4 transcode),
+    # which is usually ≥1080p, so 1920 is a genuine higher-fidelity capture there.
+    HIGH_SCALE_WIDTH = 1920
+    HIGH_JPEG_QUALITY = 2
 
     class << self
       # Test seam: injectable command runner returning [stdout+stderr, status].
@@ -36,9 +44,13 @@ module Gemini
       end
     end
 
-    # timestamps: array of { seconds: Integer, label: String }. Returns the
-    # frames it could extract (order preserved, failures skipped).
-    def self.extract(video_path:, timestamps:)
+    # timestamps: array of { seconds: Integer, label: String }. Each entry may
+    # also carry per-frame `scale_width:` / `jpeg_quality:` overrides (used to
+    # grab flagged-for-OCR frames at higher resolution than the rest); entries
+    # without them fall back to the call-level `scale_width:` / `jpeg_quality:`,
+    # which default to the compact SCALE_WIDTH/JPEG_QUALITY. Returns the frames it
+    # could extract (order preserved, failures skipped).
+    def self.extract(video_path:, timestamps:, scale_width: SCALE_WIDTH, jpeg_quality: JPEG_QUALITY)
       return [] if timestamps.blank?
       return [] unless available?
 
@@ -46,7 +58,11 @@ module Gemini
         seconds = entry[:seconds]
         next unless seconds.is_a?(Numeric) && seconds >= 0
 
-        jpeg = extract_one(video_path, seconds)
+        jpeg = extract_one(
+          video_path, seconds,
+          scale_width: entry[:scale_width] || scale_width,
+          jpeg_quality: entry[:jpeg_quality] || jpeg_quality
+        )
         next if jpeg.blank?
 
         Frame.new(seconds: seconds.to_i, label: entry[:label].to_s, jpeg: jpeg)
@@ -69,7 +85,7 @@ module Gemini
       parts.map(&:to_i).reduce(0) { |acc, part| acc * 60 + part }
     end
 
-    def self.extract_one(video_path, seconds)
+    def self.extract_one(video_path, seconds, scale_width: SCALE_WIDTH, jpeg_quality: JPEG_QUALITY)
       Dir.mktmpdir("syrus-frame-") do |dir|
         out = File.join(dir, "frame.jpg")
         # Input-seek (-ss before -i) is fast; -frames:v 1 grabs a single frame;
@@ -78,8 +94,8 @@ module Gemini
           "ffmpeg", "-nostdin", "-loglevel", "error", "-y",
           "-ss", seconds.to_s, "-i", video_path,
           "-frames:v", "1",
-          "-vf", "scale=#{SCALE_WIDTH}:-1",
-          "-q:v", JPEG_QUALITY.to_s,
+          "-vf", "scale=#{scale_width}:-1",
+          "-q:v", jpeg_quality.to_s,
           out
         ]
         _output, status = runner.call(cmd)

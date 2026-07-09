@@ -16,7 +16,8 @@ RSpec.describe Prompts::VideoWalkthroughContext do
           "timestamp" => "01:12", "description" => "Clicking Save shows no feedback.",
           "transcript_evidence" => "nothing happens when I hit save",
           "visual_evidence" => "the spinner never appears",
-          "user_flagged" => true, "needs_closer_look" => true
+          "user_flagged" => true, "needs_closer_look" => true,
+          "unreadable_text" => "the error code in the red toast, bottom-right"
         },
         {
           "title" => "Header contrast is low", "severity" => "low", "surface" => "header",
@@ -50,6 +51,100 @@ RSpec.describe Prompts::VideoWalkthroughContext do
   it "orders issues high → medium → low" do
     text = described_class.new(walkthrough: walkthrough).to_s
     expect(text.index("Save button does nothing")).to be < text.index("Header contrast is low")
+  end
+
+  # The Save issue at 01:12 with title "Save button does nothing".
+  def save_issue_key
+    described_class.attachment_key(seconds: 72, title: "Save button does nothing")
+  end
+
+  it "renders an ATTACHED issue's unreadable_text as a read-off-the-attached-screenshot line" do
+    text = described_class.new(
+      walkthrough: walkthrough, illustrated: true, attached_issue_keys: [ save_issue_key ]
+    ).to_s
+
+    expect(text).to include("read the exact text off the attached screenshot: the error code in the red toast, bottom-right")
+    expect(text).not_to include("no screenshot is attached")
+  end
+
+  it "renders an UNATTACHED flagged issue as a fetch-on-demand line, never claiming a screenshot" do
+    # No attachments → the flagged issue has no screenshot; the agent is pointed
+    # at the on-demand tool instead of being told to read a still that isn't there.
+    text = described_class.new(walkthrough: walkthrough).to_s
+
+    expect(text).to include("no screenshot is attached")
+    expect(text).to include("read_walkthrough_frame(walkthrough_id: 7, timestamp: 01:12)")
+    expect(text).not_to include("read the exact text off the attached screenshot")
+  end
+
+  it "adds the read-attached OCR handoff (read exact text, never invent) when the flagged issue's screenshot IS attached" do
+    text = described_class.new(
+      walkthrough: walkthrough, illustrated: true, attached_issue_keys: [ save_issue_key ]
+    ).to_s
+
+    expect(text).to include("## Read the exact text off the screenshots")
+    expect(text).to match(/READ the precise text/)
+    expect(text).to match(/NEVER invent/)
+    # Points the agent at which screenshot / moment to read.
+    expect(text).to include("at 01:12")
+    expect(text).to include("the error code in the red toast, bottom-right")
+  end
+
+  it "omits the read-attached OCR handoff when nothing is attached (no screenshots)" do
+    text = described_class.new(walkthrough: walkthrough, illustrated: false).to_s
+    expect(text).not_to include("## Read the exact text off the screenshots")
+  end
+
+  it "on a text-only turn still carries the never-invent guard AND the read_walkthrough_frame fallback" do
+    # No attachments: the anti-hallucination guard must NOT be gated on
+    # illustrated, and the miss must degrade into an on-demand fetch.
+    text = described_class.new(walkthrough: walkthrough, illustrated: false).to_s
+
+    expect(text).to include("## Fetch and read these screenshots on demand")
+    expect(text).to match(/NEVER invent/)
+    expect(text).to include("read_walkthrough_frame(walkthrough_id: 7, timestamp: 01:12)")
+    # ...and it must NOT tell the agent to read an attached screenshot.
+    expect(text).not_to include("read the exact text off the attached screenshot")
+  end
+
+  it "lists only ATTACHED flagged issues under 'read' and the rest under fetch-on-demand" do
+    issues = (1..3).map do |n|
+      {
+        "title" => "Issue #{n}", "severity" => "high", "timestamp" => format("00:%02d", n * 10),
+        "description" => "d#{n}", "unreadable_text" => "value #{n}", "needs_closer_look" => true
+      }
+    end
+    wt = walkthrough(analysis_issues: issues)
+    # Only Issue 1 (at 00:10) actually got an attached frame.
+    attached = [ described_class.attachment_key(seconds: 10, title: "Issue 1") ]
+
+    text = described_class.new(walkthrough: wt, illustrated: true, attached_issue_keys: attached).to_s
+
+    read_idx = text.index("## Read the exact text off the screenshots")
+    fetch_idx = text.index("## Fetch and read these screenshots on demand")
+    expect(read_idx).to be_present
+    expect(fetch_idx).to be_present
+
+    read_section = text[read_idx...fetch_idx]
+    fetch_section = text[fetch_idx..]
+
+    # Section A "read:" lists only the attached issue.
+    expect(read_section).to include("value 1")
+    expect(read_section).not_to include("value 2")
+    expect(read_section).not_to include("value 3")
+
+    # Section B lists the two that were NOT attached, each with a fetch call.
+    expect(fetch_section).to include("value 2")
+    expect(fetch_section).to include("value 3")
+    expect(fetch_section).to include("read_walkthrough_frame")
+  end
+
+  it "omits the OCR handoff instruction when illustrated but no issue was flagged unreadable" do
+    plain = walkthrough(
+      analysis_issues: [ { "title" => "x", "severity" => "low", "description" => "y" } ]
+    )
+    text = described_class.new(walkthrough: plain, illustrated: true).to_s
+    expect(text).not_to include("## Read the exact text off the screenshots")
   end
 
   it "points the agent at analyze_walkthrough_segment for needs_closer_look issues" do

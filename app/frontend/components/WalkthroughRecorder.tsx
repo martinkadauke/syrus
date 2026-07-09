@@ -6,8 +6,12 @@ import { annotationBridge, type SyrusAnnotationBridge } from "../lib/desktopShel
 //
 // The desktop shell exposes window.syrusShell.annotation: a transparent
 // always-on-top overlay the recorder's full-screen capture picks up
-// incidentally, toggled with a global draw-mode shortcut. These pure helpers
-// drive the recording HUD's affordances; the shell owns the overlay itself.
+// incidentally. Draw mode is PRESS-TO-ARM, AUTO-RELEASE: tapping the global
+// shortcut arms the pen, and it drops back to click-through on its own once the
+// user pauses (so the app under test stays interactive except while actively
+// marking). onModeChanged pushes every arm/auto-release transition, so the HUD
+// just reflects `drawing` — the shell owns the overlay + the auto-release logic.
+// These pure helpers drive the recording HUD's affordances.
 
 // The draw-mode accelerator, formatted for display. macOS shows the glyphs it
 // uses everywhere (⌘⇧A); every other platform spells it out (Ctrl+Shift+A).
@@ -369,8 +373,11 @@ export function AnalyzingHint({
 }
 
 // The red-pen affordance rendered inside the HUD when the desktop shell offers
-// annotation. `hint` is the idle prompt ("✏️ Draw on screen: ⌘⇧A"); while the
-// pen is armed it swaps to `drawingHint` and emphasizes. `surfaceNote`, when
+// annotation. `hint` is the click-through prompt that tapping the shortcut arms
+// the pen ("✏️ Draw on screen — tap ⌘⇧A"); while the pen is armed it swaps to
+// `drawingHint` (which describes the pause-to-auto-exit behavior) and
+// emphasizes. `drawing` is pushed from the shell's onModeChanged, so it flips
+// back to `hint` automatically when draw mode auto-releases. `surfaceNote`, when
 // present, warns that marks only show when sharing the whole screen.
 export type WalkthroughAnnotationHud = {
   hint: string

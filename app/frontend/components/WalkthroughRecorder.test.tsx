@@ -296,7 +296,7 @@ describe("useWalkthroughRecorder annotation", () => {
     expect(result.current.annotationAvailable).toBe(false)
   })
 
-  it("reflects draw-mode transitions pushed from the overlay", async () => {
+  it("reflects arm + auto-release transitions pushed from the overlay", async () => {
     stubMedia()
     const { bridge, emitMode } = fakeAnnotation()
     const { result } = renderHook(() =>
@@ -306,13 +306,21 @@ describe("useWalkthroughRecorder annotation", () => {
     await act(async () => {
       await result.current.start()
     })
+    // Click-through by default — nothing armed until the user taps the shortcut.
     expect(result.current.drawing).toBe(false)
 
+    // Tap arms (overlay pushes true)...
     act(() => emitMode(true))
     expect(result.current.drawing).toBe(true)
 
+    // ...and the overlay AUTO-RELEASES when the user pauses (pushes false),
+    // flipping the HUD back to the idle hint with no toggle-off from the user.
     act(() => emitMode(false))
     expect(result.current.drawing).toBe(false)
+
+    // A fresh tap re-arms — the shortcut stays a press-to-arm, not a one-shot.
+    act(() => emitMode(true))
+    expect(result.current.drawing).toBe(true)
   })
 
   it("captures the shared display surface for the whole-screen nudge", async () => {
@@ -445,10 +453,10 @@ describe("WalkthroughRecorderHUD", () => {
     expect(screen.queryByTestId("walkthrough-annotate-surface-note")).not.toBeInTheDocument()
   })
 
-  it("shows the draw-on-screen hint when annotation is available and idle", () => {
+  it("shows the tap-to-draw hint when annotation is available and idle", () => {
     render(
       <WalkthroughRecorderHUD
-        annotation={{ hint: "Draw on screen: ⌘⇧A", drawingHint: "Drawing — Esc to stop", drawing: false }}
+        annotation={{ hint: "Draw on screen — tap ⌘⇧A", drawingHint: "Drawing — auto-exits when you pause · Esc", drawing: false }}
         elapsed={0}
         labels={hudLabels}
         micLive
@@ -457,15 +465,15 @@ describe("WalkthroughRecorderHUD", () => {
       />
     )
     const hint = screen.getByTestId("walkthrough-annotate-hint")
-    expect(hint).toHaveTextContent("Draw on screen: ⌘⇧A")
+    expect(hint).toHaveTextContent("Draw on screen — tap ⌘⇧A")
     // Idle hint is de-emphasized (muted, sm:inline only), not the active red.
     expect(hint.className).not.toContain("text-red-600")
   })
 
-  it("swaps to the emphasized drawing hint while the pen is armed", () => {
+  it("swaps to the emphasized auto-exit hint while the pen is armed", () => {
     render(
       <WalkthroughRecorderHUD
-        annotation={{ hint: "Draw on screen: ⌘⇧A", drawingHint: "Drawing — Esc to stop", drawing: true }}
+        annotation={{ hint: "Draw on screen — tap ⌘⇧A", drawingHint: "Drawing — auto-exits when you pause · Esc", drawing: true }}
         elapsed={0}
         labels={hudLabels}
         micLive
@@ -474,7 +482,8 @@ describe("WalkthroughRecorderHUD", () => {
       />
     )
     const hint = screen.getByTestId("walkthrough-annotate-hint")
-    expect(hint).toHaveTextContent("Drawing — Esc to stop")
+    // The armed hint describes the pause-to-auto-exit behavior, not a toggle-off.
+    expect(hint).toHaveTextContent("Drawing — auto-exits when you pause · Esc")
     expect(hint.className).toContain("text-red-600")
   })
 
@@ -482,8 +491,8 @@ describe("WalkthroughRecorderHUD", () => {
     const { unmount } = render(
       <WalkthroughRecorderHUD
         annotation={{
-          hint: "Draw on screen: ⌘⇧A",
-          drawingHint: "Drawing — Esc to stop",
+          hint: "Draw on screen — tap ⌘⇧A",
+          drawingHint: "Drawing — auto-exits when you pause · Esc",
           drawing: false,
           surfaceNote: "Share your whole screen to see marks"
         }}
@@ -501,7 +510,7 @@ describe("WalkthroughRecorderHUD", () => {
 
     render(
       <WalkthroughRecorderHUD
-        annotation={{ hint: "Draw on screen: ⌘⇧A", drawingHint: "Drawing — Esc to stop", drawing: false }}
+        annotation={{ hint: "Draw on screen — tap ⌘⇧A", drawingHint: "Drawing — auto-exits when you pause · Esc", drawing: false }}
         elapsed={0}
         labels={hudLabels}
         micLive

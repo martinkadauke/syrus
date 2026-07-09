@@ -45,6 +45,14 @@
         var dpr = 1
         var strokes = []
         var active = null
+        // When the pointer was last active (down/move/up) while armed. The main
+        // process polls idleSnapshot() and auto-releases draw mode once this
+        // goes quiet for its idle window with no stroke in progress. Reset on
+        // arm so a fresh armed session starts with a full idle window.
+        var lastPointerAt = performance.now()
+        function noteActivity() {
+          lastPointerAt = performance.now()
+        }
 
         function strokeAlpha(now, releasedAt) {
           if (FADE_DURATION_MS <= 0) return 0
@@ -133,27 +141,51 @@
           active = null
         }
 
+        function endStrokeWithActivity() {
+          // Lifting the pen is activity too — it (re)starts the idle window, so
+          // the pause is measured from when the last stroke finished.
+          noteActivity()
+          endStroke()
+        }
+
         canvas.addEventListener("pointerdown", function (e) {
           e.preventDefault()
+          noteActivity()
           beginStroke(e.clientX, e.clientY)
         })
         canvas.addEventListener("pointermove", function (e) {
+          // Any move while armed counts as activity (keeps draw mode alive while
+          // the user hovers toward where they want to mark), even before a
+          // stroke starts. Only extend the path once a stroke is active.
+          noteActivity()
           if (!active) return
           e.preventDefault()
           extendStroke(e.clientX, e.clientY)
         })
-        window.addEventListener("pointerup", endStroke)
-        window.addEventListener("pointercancel", endStroke)
+        window.addEventListener("pointerup", endStrokeWithActivity)
+        window.addEventListener("pointercancel", endStrokeWithActivity)
         window.addEventListener("blur", endStroke)
         window.addEventListener("resize", resize)
 
         // Main-process control surface (called via webContents.executeJavaScript
         // from annotationOverlay.ts). Kept minimal and guarded.
         window.__syrusAnnotation = {
-          // Draw mode toggled off: release the in-flight stroke so it starts
+          // Draw mode armed/released by the main process. On arm, reset the idle
+          // clock so a fresh armed session gets a full idle window before it can
+          // auto-release. On release, end the in-flight stroke so it starts
           // fading immediately, leaving a clean screen.
-          setDrawing: function (drawing) {
-            if (!drawing) endStroke()
+          setArmed: function (armed) {
+            if (armed) {
+              noteActivity()
+            } else {
+              endStroke()
+            }
+          },
+          // Read-only idle snapshot the main process polls to decide when to
+          // auto-release: how long since the last pointer activity, and whether
+          // a stroke is currently in progress (which must never be cut off).
+          idleSnapshot: function () {
+            return { active: active != null, idleMs: performance.now() - lastPointerAt }
           },
           // Force every mark to start fading now (record stop / discard).
           clear: function () {

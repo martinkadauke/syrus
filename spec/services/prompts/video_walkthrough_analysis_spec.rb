@@ -31,6 +31,17 @@ RSpec.describe Prompts::VideoWalkthroughAnalysis do
       expect(issue[:required]).to contain_exactly("title", "description", "severity")
     end
 
+    it "adds an optional unreadable_text field for the OCR handoff (not required)" do
+      issue = properties[:issues][:items]
+      expect(issue.dig(:properties, :unreadable_text, :type)).to eq("string")
+      # Optional: flagging is opt-in, so it stays out of the required set.
+      expect(issue[:required]).not_to include("unreadable_text")
+      # The description tells the model to describe WHAT/WHERE, not guess.
+      description = issue.dig(:properties, :unreadable_text, :description)
+      expect(description).to match(/do NOT guess/i)
+      expect(description).to match(/screenshot/i)
+    end
+
     it "requires the transcript alongside summary/issues/open_questions and drops positive_notes" do
       expect(schema[:required]).to contain_exactly("transcript", "summary", "issues", "open_questions")
       expect(properties).not_to have_key(:positive_notes)
@@ -70,6 +81,14 @@ RSpec.describe Prompts::VideoWalkthroughAnalysis do
     it "explains needs_closer_look for small-text / fast-action moments" do
       expect(prompt).to include("needs_closer_look")
       expect(prompt).to match(/small\s+text or fast action/)
+    end
+
+    it "tells the model NOT to guess unreadable small text, but to flag it via unreadable_text" do
+      expect(prompt).to match(/DO NOT GUESS/)
+      expect(prompt).to include("unreadable_text")
+      # Names the kinds of small text at risk and steers to the screenshot handoff.
+      expect(prompt).to match(/error codes/)
+      expect(prompt).to match(/HIGH-RESOLUTION screenshot/)
     end
   end
 end
