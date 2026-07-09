@@ -9,10 +9,15 @@
 # The build/deploy steps live here and nowhere else, so a website-only update
 # never means duplicating the release job.
 #
-# STUB: the site is static markdown under website/src/ with no in-repo build or
-# hosting target yet. When one exists (e.g. Astro + Pages/Netlify/Cloudflare),
-# replace the stub step with the real build + deploy and grant the permissions
-# it needs (e.g. pages: write, id-token: write).
+# The site is a static-exported Next.js app under website/ (output: "export").
+# It builds to website/out/ and deploys to GitHub Pages. Download links use the
+# stable releases/latest/download/ permalinks, so a new release only needs this
+# to run to refresh the displayed version/sizes (npm run sync-release).
+#
+# ONE-TIME SETUP (needs repo admin): Settings → Pages → Source = "GitHub
+# Actions", and set the custom domain to syrus-ai.dev (public/CNAME already
+# carries it) with "Enforce HTTPS". Until Pages is enabled, configure-pages
+# tries to enable it (enablement: true), which needs the token to be allowed to.
 name: Deploy website
 
 on:
@@ -28,8 +33,11 @@ on:
         required: false
         default: ""
 
+# Pages deploy needs to write the Pages deployment and mint an OIDC token.
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: deploy-website
@@ -38,19 +46,46 @@ concurrency:
 jobs:
   deploy-website:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: website
     steps:
       - uses: actions/checkout@v5
 
-      - name: (stub) Build and deploy the website
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Refresh release metadata (version + sizes shown on /download)
         env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run sync-release
+
+      - name: Build static site
+        env:
+          GIT_SHA: ${{ github.sha }}
+          GIT_REF: ${{ github.ref_name }}
           RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          echo "Triggered by: $GITHUB_EVENT_NAME${RELEASE_TAG:+ (release $RELEASE_TAG)}"
-          echo
-          echo "TODO: build the site from website/src/ and deploy it."
-          echo "The download links already use the stable"
-          echo "releases/latest/download/ permalinks (Syrus.dmg, Syrus-Intel.dmg,"
-          echo "Syrus-Setup.exe), so no rebuild is strictly required today. When the"
-          echo "site gains a build+host target, replace this step with the real"
-          echo "build + deploy (and inject \$RELEASE_TAG / download URLs if needed)."
-          echo "::notice::Website deploy is a stub — see .github/workflows/deploy-website.yml."
+        run: npm run build
+
+      - uses: actions/configure-pages@v5
+        with:
+          # Best-effort enable Pages (build_type: workflow) if an admin hasn't
+          # yet. If the token isn't allowed to, enable it once in Settings → Pages.
+          enablement: true
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: website/out
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

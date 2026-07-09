@@ -1,0 +1,244 @@
+@import "tailwindcss";
+
+/* ── Design tokens ──────────────────────────────────────────────────────────
+   Warm "parchment-meets-terminal" palette derived from the Syrus mark:
+   terracotta pencil on cream, near-black warm ground. */
+@theme {
+  --color-ink: #14110d;
+  --color-ink-soft: #1b1712;
+  --color-ink-2: #221c16;
+
+  --color-cream: #ece3d4;
+  --color-cream-dim: #b3a793;
+  --color-cream-faint: #8a7f6d;
+
+  --color-parchment: #f6efe1;
+  --color-parchment-soft: #ece1cd;
+  --color-cocoa: #2b211a;
+  --color-cocoa-dim: #6b5c4c;
+
+  /* Product terracotta (the winged-stylus mark — #b6492e at 600), tuned so the
+     accent stays legible on the dark warm ground. Matches the Syrus app brand. */
+  --color-clay: #cd7a5c;
+  --color-clay-bright: #dba28b;
+  --color-clay-deep: #b6492e;
+
+  /* text color that sits on top of the accent (buttons, filled nodes) */
+  --color-on-accent: #361208;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  --font-serif: var(--font-instrument), Georgia, "Times New Roman", serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+  /* Terracotta glow + button-shadow tints. */
+  --aurora-a: rgba(192, 92, 63, 0.5);
+  --aurora-b: rgba(219, 162, 139, 0.26);
+  --aurora-c: rgba(151, 59, 37, 0.32);
+  --accent-shadow: rgba(182, 73, 46, 0.58);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  /* Instant anchor jumps on purpose: CSS smooth-scroll across a page this tall
+     is cancelled by any wheel/trackpad input mid-flight, leaving users stranded
+     between sections. Instant + scroll-margin lands exactly, every time. */
+  -webkit-text-size-adjust: 100%;
+  /* Belt-and-suspenders against horizontal scroll: body overflow-x:hidden alone
+     doesn't stop the root from scrolling when a descendant overflows. */
+  overflow-x: hidden;
+}
+
+/* Anchor targets clear the fixed 64px nav with breathing room. */
+[id] {
+  scroll-margin-top: 5.5rem;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-ink);
+  color: var(--color-cream);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-clay) 42%, transparent);
+  color: #fff;
+}
+
+/* In @layer base so text-color utilities (e.g. text-on-accent) on <a> still win. */
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+}
+
+/* Warm-tinted focus ring for keyboard users. */
+:where(a, button, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-clay-bright);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ── Helpers ────────────────────────────────────────────────────────────── */
+/* In @layer components so width utilities (e.g. max-w-3xl on legal pages) can
+   override it — unlayered rules would always win over Tailwind utilities. */
+@layer components {
+  .wrap {
+    width: 100%;
+    max-width: 75rem;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+}
+
+.text-balance {
+  text-wrap: balance;
+}
+.text-pretty {
+  text-wrap: pretty;
+}
+
+/* Long-form legal pages (Impressum, Privacy). */
+.legal-prose {
+  color: var(--color-cream-dim);
+  font-size: 0.95rem;
+  line-height: 1.7;
+}
+.legal-prose h2 {
+  color: var(--color-cream);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 2rem 0 0.55rem;
+}
+.legal-prose p {
+  margin: 0 0 0.9rem;
+}
+.legal-prose a {
+  color: var(--color-clay);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.legal-prose a:hover {
+  color: var(--color-clay-bright);
+}
+.legal-prose strong {
+  color: var(--color-cream);
+  font-weight: 600;
+}
+
+/* Signature terracotta gradient for headline accents + CTAs. */
+.clay-gradient {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-clay-bright),
+    var(--color-clay) 55%,
+    var(--color-clay-deep)
+  );
+}
+.clay-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--color-clay-bright),
+    var(--color-clay)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Hairline surfaces used across cards. In @layer components so utilities like
+   hover:border-clay/30 can override the border color. */
+@layer components {
+  .hairline {
+    border: 1px solid color-mix(in oklab, var(--color-cream) 11%, transparent);
+  }
+
+  .card {
+    background: color-mix(in oklab, var(--color-ink-soft) 92%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-cream) 9%, transparent);
+    border-radius: 1rem;
+  }
+}
+
+/* Subtle grain to warm up flat dark areas (very low opacity). */
+.grain::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Animated glow that lives behind sections. In @layer components so per-use
+   opacity utilities (e.g. opacity-40 on the demo aurora) apply. */
+@layer components {
+  .aurora {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(90px);
+    opacity: 0.5;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -22px, 0) scale(1.06);
+  }
+}
+.animate-float-slow {
+  animation: float-slow 11s ease-in-out infinite;
+}
+
+@keyframes dash-flow {
+  to {
+    stroke-dashoffset: -1000;
+  }
+}
+
+/* Progressive enhancement: if scripting is unavailable, Motion never runs, so
+   force any reveal-animated content to its visible state instead of leaving it
+   at the SSR initial opacity:0. */
+@media (scripting: none) {
+  [data-reveal],
+  [data-reveal] * {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-float-slow,
+  .aurora {
+    animation: none !important;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
