@@ -21,7 +21,7 @@ module Factories
     Repository.create!({
       user: attrs[:user] || user,
       owner: "acme",
-      name: "widgets-#{SecureRandom.hex(2)}"
+      name: "widgets-#{SecureRandom.hex(8)}"
     }.merge(attrs))
   end
 
