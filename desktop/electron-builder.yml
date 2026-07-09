@@ -31,6 +31,11 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
+  # macOS requires a usage-description string to grant microphone access under
+  # the hardened runtime; without it TCC returns a SILENT track and walkthrough
+  # narration is lost. Paired with com.apple.security.device.audio-input.
+  extendInfo:
+    NSMicrophoneUsageDescription: "Syrus records your spoken narration while you capture a walkthrough video, so it can transcribe what you describe."
   # The Syrus CLI (pure-Go binaries staged by scripts/stage-cli.mjs).
   # Per-platform filters keep ~40 MB of the other OS's binaries out of each
   # package; Preferences installs from here — it powers the tray's Checkout
