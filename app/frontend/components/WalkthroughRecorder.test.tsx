@@ -10,11 +10,12 @@ import {
   RECORDER_MIME_CANDIDATES,
   RECORDER_WARNING_SECONDS,
   shouldShowAnnotationSurfaceNote,
+  useNativeRecorderHud,
   useWalkthroughRecorder,
   WalkthroughRecorderHUD
 } from "./WalkthroughRecorder"
 import { MAX_WALKTHROUGH_DURATION_SECONDS } from "../api/videoWalkthroughs"
-import type { SyrusAnnotationBridge } from "../lib/desktopShell"
+import type { SyrusAnnotationBridge, SyrusRecorderHudBridge } from "../lib/desktopShell"
 
 describe("formatClock", () => {
   it("renders zero as 0:00", () => {
@@ -573,5 +574,60 @@ describe("AnalyzingHint", () => {
       vi.advanceTimersByTime(ANALYZING_HINT_INTERVAL_MS * 3)
     })
     expect(hint).toHaveTextContent("only one")
+  })
+})
+
+describe("useNativeRecorderHud", () => {
+  function fakeBridge() {
+    const calls = { show: [] as unknown[], update: [] as unknown[], hide: 0 }
+    let actionCb: ((kind: "stop" | "discard") => void) | null = null
+    const bridge: SyrusRecorderHudBridge = {
+      available: true,
+      show: (state) => { calls.show.push(state); return Promise.resolve() },
+      update: (state) => { calls.update.push(state); return Promise.resolve() },
+      hide: () => { calls.hide += 1; return Promise.resolve() },
+      onAction: (callback) => { actionCb = callback; return () => { actionCb = null } }
+    }
+    return { bridge, calls, fire: (kind: "stop" | "discard") => actionCb?.(kind) }
+  }
+
+  it("shows on record start, updates on state change, and hides on stop", () => {
+    const seam = fakeBridge()
+    const { rerender } = renderHook(
+      ({ recording, clock }: { recording: boolean; clock: string }) =>
+        useNativeRecorderHud({ recording, state: { clock }, onStop: () => {}, onDiscard: () => {}, bridge: seam.bridge }),
+      { initialProps: { recording: true, clock: "0:01" } }
+    )
+
+    expect(seam.calls.show).toHaveLength(1)
+    expect(seam.calls.hide).toBe(0)
+
+    rerender({ recording: true, clock: "0:02" })
+    expect(seam.calls.update.length).toBeGreaterThanOrEqual(1)
+    expect(seam.calls.show).toHaveLength(1) // shown once, not re-shown
+
+    rerender({ recording: false, clock: "0:02" })
+    expect(seam.calls.hide).toBe(1)
+  })
+
+  it("routes the HUD's Stop and Discard clicks to the callbacks", () => {
+    const seam = fakeBridge()
+    const onStop = vi.fn()
+    const onDiscard = vi.fn()
+    renderHook(() =>
+      useNativeRecorderHud({ recording: true, state: {}, onStop, onDiscard, bridge: seam.bridge })
+    )
+
+    act(() => { seam.fire("stop") })
+    expect(onStop).toHaveBeenCalledTimes(1)
+    act(() => { seam.fire("discard") })
+    expect(onDiscard).toHaveBeenCalledTimes(1)
+  })
+
+  it("is inactive (returns false) with no bridge — a plain browser keeps the in-page HUD", () => {
+    const { result } = renderHook(() =>
+      useNativeRecorderHud({ recording: true, state: {}, onStop: () => {}, onDiscard: () => {}, bridge: null })
+    )
+    expect(result.current).toBe(false)
   })
 })

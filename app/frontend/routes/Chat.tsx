@@ -8,7 +8,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { GeminiSetupSheet } from "../components/GeminiSetupSheet"
-import { AnalyzingHint, annotationShortcutLabel, formatClock, shouldShowAnnotationSurfaceNote, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
+import { AnalyzingHint, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
 import {
   isWalkthroughVideoFile,
   MAX_WALKTHROUGH_BYTES,
@@ -2359,6 +2359,30 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
     void recorder.start()
   }
 
+  // In the desktop shell, drive the FLOATING recording HUD (a separate
+  // always-on-top, draggable window) so the controls live outside the Syrus
+  // window and stay reachable while the user demonstrates another app. Returns
+  // false in a plain browser, where the in-page WalkthroughRecorderHUD is used.
+  const recording = recorder.state.phase === "recording"
+  const recorderMicLive = recorder.state.phase === "recording" ? recorder.state.micLive : true
+  const nativeRecorderHud = useNativeRecorderHud({
+    recording,
+    state: {
+      clock: formatClock(recorder.elapsed),
+      remaining: t("walkthrough_remaining", { clock: formatClock(Math.max(0, MAX_WALKTHROUGH_DURATION_SECONDS - recorder.elapsed)) }),
+      remainingWarn: recorder.elapsed >= RECORDER_WARNING_SECONDS,
+      noMic: recorderMicLive ? undefined : t("walkthrough_no_mic"),
+      hint: recorder.annotationAvailable
+        ? (recorder.drawing ? t("walkthrough_annotate_drawing") : t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() }))
+        : undefined,
+      drawing: recorder.drawing,
+      stopLabel: t("walkthrough_stop"),
+      discardLabel: t("walkthrough_discard")
+    },
+    onStop: () => recorder.stop(),
+    onDiscard: () => recorder.stop({ discard: true })
+  })
+
   // Analysis progress arrives over AppUserChannel (video_walkthrough.* app
   // events re-dispatched as a DOM event by applyAppEvent).
   useEffect(() => {
@@ -2714,7 +2738,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           </button>
         </div>
       ) : null}
-      {recorder.state.phase === "recording" ? (
+      {recorder.state.phase === "recording" && !nativeRecorderHud ? (
         <WalkthroughRecorderHUD
           annotation={
             recorder.annotationAvailable

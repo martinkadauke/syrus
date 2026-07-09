@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { MAX_WALKTHROUGH_DURATION_SECONDS } from "../api/videoWalkthroughs"
-import { annotationBridge, type SyrusAnnotationBridge } from "../lib/desktopShell"
+import {
+  annotationBridge,
+  recorderHudBridge,
+  type SyrusAnnotationBridge,
+  type SyrusRecorderHudBridge,
+  type SyrusRecorderHudState
+} from "../lib/desktopShell"
 
 // --- red-pen annotation helpers (desktop shell only) --------------------
 //
@@ -316,6 +322,74 @@ export function useWalkthroughRecorder({
     // Live draw-mode flag from the overlay.
     drawing
   }
+}
+
+// Drives the desktop shell's FLOATING recording HUD — a separate always-on-top,
+// draggable window (window.syrusShell.recorderHud) — so the recording controls
+// live OUTSIDE the Syrus web-app window and stay reachable while the user
+// demonstrates another app. Shows it on record start, pushes `state` each tick,
+// hides it on stop; wires the HUD's Stop/Discard buttons back to onStop/onDiscard.
+// Returns whether the native HUD is active — false in a plain browser or older
+// shell, where the caller renders the in-page WalkthroughRecorderHUD instead.
+export function useNativeRecorderHud({
+  recording,
+  state,
+  onStop,
+  onDiscard,
+  bridge
+}: {
+  recording: boolean
+  state: SyrusRecorderHudState
+  onStop: () => void
+  onDiscard: () => void
+  bridge?: SyrusRecorderHudBridge | null
+}): boolean {
+  const bridgeRef = useRef<SyrusRecorderHudBridge | null>(bridge ?? recorderHudBridge())
+  // Latest callbacks, so the once-subscribed onAction always calls the current
+  // stop/discard without re-subscribing.
+  const handlersRef = useRef({ onStop, onDiscard })
+  handlersRef.current = { onStop, onDiscard }
+  const shownRef = useRef(false)
+
+  useEffect(() => {
+    const activeBridge = bridgeRef.current
+    if (!activeBridge) return
+
+    return activeBridge.onAction((kind) => {
+      if (kind === "stop") handlersRef.current.onStop()
+      else handlersRef.current.onDiscard()
+    })
+  }, [])
+
+  useEffect(() => {
+    const activeBridge = bridgeRef.current
+    if (!activeBridge) return
+
+    if (recording) {
+      if (shownRef.current) {
+        void activeBridge.update(state).catch(() => {})
+      } else {
+        shownRef.current = true
+        void activeBridge.show(state).catch(() => {})
+      }
+    } else if (shownRef.current) {
+      shownRef.current = false
+      void activeBridge.hide().catch(() => {})
+    }
+  }, [recording, state])
+
+  // Tear the HUD down on unmount even if the recording flag never flipped back.
+  useEffect(
+    () => () => {
+      if (shownRef.current) {
+        shownRef.current = false
+        void bridgeRef.current?.hide().catch(() => {})
+      }
+    },
+    []
+  )
+
+  return bridgeRef.current != null
 }
 
 // Analysis can run for minutes; a single static line ("Gemini is watching…")

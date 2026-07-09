@@ -82,6 +82,35 @@ export type SyrusShellBridge = {
   // Absent on older shells and in plain browsers — always feature-detect via
   // annotationBridge().
   annotation?: SyrusAnnotationBridge
+  // Absent on older shells and in plain browsers — always feature-detect via
+  // recorderHudBridge().
+  recorderHud?: SyrusRecorderHudBridge
+}
+
+// The floating recording HUD — a separate always-on-top, DRAGGABLE window
+// carrying the recording controls, so they live OUTSIDE the Syrus web-app
+// window and stay reachable while the user demonstrates another app. show() at
+// record start, update() each tick, hide() on stop/discard; onAction fires when
+// the user clicks the HUD's Stop / Discard. `available` is the static
+// desktop-shell presence gate — a plain browser has none and keeps the in-page
+// HUD. See desktop/electron/windows/recorderHud.ts.
+export type SyrusRecorderHudState = {
+  clock?: string
+  remaining?: string
+  remainingWarn?: boolean
+  noMic?: string
+  hint?: string
+  drawing?: boolean
+  stopLabel?: string
+  discardLabel?: string
+}
+
+export type SyrusRecorderHudBridge = {
+  available: boolean
+  show(state: SyrusRecorderHudState): Promise<void>
+  update(state: SyrusRecorderHudState): Promise<void>
+  hide(): Promise<void>
+  onAction(callback: (kind: "stop" | "discard") => void): () => void
 }
 
 declare global {
@@ -101,6 +130,13 @@ export function syrusShellBridge(): SyrusShellBridge | null {
 export function annotationBridge(): SyrusAnnotationBridge | null {
   const annotation = syrusShellBridge()?.annotation
   return annotation?.available ? annotation : null
+}
+
+// The floating-HUD surface, or null in a plain browser / older shell. Callers
+// use the native HUD when present and fall back to the in-page HUD otherwise.
+export function recorderHudBridge(): SyrusRecorderHudBridge | null {
+  const recorderHud = syrusShellBridge()?.recorderHud
+  return recorderHud?.available ? recorderHud : null
 }
 
 // Opens a URL in a new tab (or, in the desktop shell, wherever the shell

@@ -62,5 +62,23 @@ contextBridge.exposeInMainWorld("syrusShell", {
       ipcRenderer.on("annotation:mode-changed", listener)
       return () => ipcRenderer.removeListener("annotation:mode-changed", listener)
     }
+  },
+  // The floating recording HUD — a separate always-on-top, DRAGGABLE window
+  // carrying the recording controls, so they live OUTSIDE the Syrus web-app
+  // window and stay reachable while the user demonstrates another app.
+  // `available` (true here) is the web UI's static feature gate: a plain browser
+  // has no window.syrusShell.recorderHud and keeps its in-page HUD. show() at
+  // record start, update() each tick, hide() on stop/discard; onAction fires
+  // when the user clicks the HUD's Stop / Discard.
+  recorderHud: {
+    available: true,
+    show: (state: Record<string, unknown>) => ipcRenderer.invoke("recorderHud:show", state) as Promise<void>,
+    update: (state: Record<string, unknown>) => ipcRenderer.invoke("recorderHud:update", state) as Promise<void>,
+    hide: () => ipcRenderer.invoke("recorderHud:hide") as Promise<void>,
+    onAction: (callback: (kind: "stop" | "discard") => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, kind: "stop" | "discard") => callback(kind)
+      ipcRenderer.on("recorderHud:action", listener)
+      return () => ipcRenderer.removeListener("recorderHud:action", listener)
+    }
   }
 })

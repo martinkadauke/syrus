@@ -34,6 +34,7 @@ import { resolveInstanceOrigin, resolveOpenInSyrusTarget } from "./windows/openI
 import { computePopoverPosition } from "./windows/popoverPosition.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
 import { createAnnotationController, type AnnotationController } from "./windows/annotationOverlay.js"
+import { createRecorderHudController, type RecorderHudController } from "./windows/recorderHud.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -206,6 +207,11 @@ let webAppWindow: WebAppWindowHandle | null = null
 // on record start; torn down on record stop/discard, web-window close, and app
 // quit so an overlay + global shortcut never outlive a recording.
 let annotationController: AnnotationController | null = null
+// The floating recording HUD controller (walkthrough recorder). Lazily created
+// when the web app calls recorderHud:show at record start; torn down on
+// stop/discard, web-window close, and app quit so the pill never outlives a
+// recording.
+let recorderHudController: RecorderHudController | null = null
 let backendRecoveryTimer: NodeJS.Timeout | null = null
 let tray: Tray | null = null
 let cachedCredentials: Credentials | null = null
@@ -1223,6 +1229,20 @@ const ensureAnnotationController = (): AnnotationController => {
   return annotationController
 }
 
+// The floating recording HUD controller. Lazily created; button clicks are
+// forwarded back to the web recorder over the shell bridge
+// (window.syrusShell.recorderHud.onAction).
+const ensureRecorderHud = (): RecorderHudController => {
+  recorderHudController ??= createRecorderHudController({
+    htmlPath: path.join(app.getAppPath(), "assets", "recorderHud.html"),
+    preloadPath: path.join(__dirname, "windows", "recorderHudPreload.cjs"),
+    onAction: (kind) => {
+      webAppWindow?.window.webContents.send("recorderHud:action", kind)
+    }
+  })
+  return recorderHudController
+}
+
 // ipcMain.handle answers ANY renderer in the app by default — including the
 // web-app window after it somehow ended up on a foreign page. The shell:*
 // channels act on the host (write a skill into ~/.claude, relaunch the app),
@@ -1849,9 +1869,10 @@ const showWebAppWindow = async () => {
     onClosed: () => {
       webAppWindow = null
       // Closing the app window mid-recording can't run the renderer's
-      // annotation:disable — tear the overlay + shortcut down here so neither
-      // outlives the window that drives them.
+      // annotation:disable / recorderHud:hide — tear the overlay + shortcut +
+      // floating HUD down here so none outlive the window that drives them.
       annotationController?.disable()
+      recorderHudController?.hide()
       stopBackendRecoveryPolling()
       updateDockVisibility()
     }
@@ -1896,6 +1917,7 @@ const showWebAppWindow = async () => {
   // idempotent, so these are harmless no-ops when nothing is armed.
   handle.window.webContents.on("render-process-gone", () => {
     annotationController?.disable()
+    recorderHudController?.hide()
   })
   handle.window.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
     // Only a full main-frame navigation (reload / new document) drops the React
@@ -1904,6 +1926,7 @@ const showWebAppWindow = async () => {
     // is Electron's isSameDocument).
     if (isMainFrame && !isInPlace) {
       annotationController?.disable()
+      recorderHudController?.hide()
     }
   })
 
@@ -2592,6 +2615,32 @@ ipcMain.handle("annotation:disable", (event) => {
 
   annotationController?.disable()
 })
+
+// The floating recording HUD bridge (webAppPreload.cts / window.syrusShell.
+// recorderHud): the recorder shows the pill at record start, updates it on each
+// tick, and hides it on stop/discard. Same strict sender validation as the
+// other shell:* handlers.
+ipcMain.handle("recorderHud:show", (event, state) => {
+  if (!shellSenderAllowed(event, "recorderHud:show")) {
+    return
+  }
+
+  ensureRecorderHud().show(state && typeof state === "object" ? state : {})
+})
+ipcMain.handle("recorderHud:update", (event, state) => {
+  if (!shellSenderAllowed(event, "recorderHud:update")) {
+    return
+  }
+
+  recorderHudController?.update(state && typeof state === "object" ? state : {})
+})
+ipcMain.handle("recorderHud:hide", (event) => {
+  if (!shellSenderAllowed(event, "recorderHud:hide")) {
+    return
+  }
+
+  recorderHudController?.hide()
+})
 ipcMain.handle("quit-app", () => {
   app.quit()
 })
@@ -2858,10 +2907,11 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   isQuitting = true
   stopAppUserCable()
-  // Destroy the annotation overlay before teardown so a transparent
-  // always-on-top window never lingers past quit. (will-quit's
-  // unregisterAll also drops the draw-mode shortcut.)
+  // Destroy the annotation overlay + floating HUD before teardown so no
+  // always-on-top window lingers past quit. (will-quit's unregisterAll also
+  // drops the draw-mode shortcut.)
   annotationController?.disable()
+  recorderHudController?.hide()
 })
 
 app.on("will-quit", () => {
