@@ -1,118 +1,52 @@
 # `website/`
 
-Source for the public Syrus website at `syrusai.dev` (domain TBD).
+Public marketing site for Syrus, served at **https://syrus-ai.dev** via
+**GitHub Pages**.
 
-See [`docs/plans/website.md`](../docs/plans/website.md) for the
-full plan: tech stack, hosting, content strategy, launch gating. See
-[`docs/plans/website-information-architecture.md`](../docs/plans/website-information-architecture.md)
-for the route-by-route IA, content inventory, and target pages for
-follow-up website jobs.
+This is a **Next.js 15** app (App Router + Tailwind v4 + Motion) that builds to
+a fully static site (`output: "export"`). No server runs in production — Pages
+just serves the static files.
 
-## Status
+> **Note:** this replaced an earlier Astro/Starlight content scaffold, which is
+> preserved under [`_archive-astro/`](./_archive-astro/) (its markdown docs were
+> not migrated). See the PR that introduced this directory for the rationale.
 
-The website is content-complete enough to be the canonical public
-explanation of Syrus, but it is still framework-light. Pages are markdown
-under `website/src/`; Starlight/Astro configuration, custom components,
-screenshots, metadata generation, and hosting are intentionally separate
-follow-up work.
+## Develop
 
-Use this directory as the source of truth for public-facing product docs.
-When product behavior changes, update the matching page here in the same
-PR as the code change.
-
-The default local run path is `/docs/deployment/docker-compose`, backed
-by `install.sh --docker`. Do not add a separate one-shot local evaluation
-flow unless the product adds a maintained runner for it again.
-
-## Structure
-
-```
-website/
-├── src/
-│   ├── content/
-│   │   └── docs/                 # Starlight content (auto-routes to /docs/*)
-│   │       ├── index.md
-│   │       ├── getting-started.md
-│   │       ├── what-is-syrus.md
-│   │       ├── why-use-syrus.md
-│   │       ├── concepts.md
-│   │       ├── features.md
-│   │       ├── deployment/       # Docker Compose, source/custom image, Kubernetes
-│   │       ├── configuration.md
-│   │       ├── workflows.md
-│   │       ├── architecture.md
-│   │       ├── cli.md
-│   │       ├── api.md
-│   │       ├── recipes.md        # "How-tos and recipes"
-│   │       ├── troubleshooting.md
-│   │       └── faq.md
-│   └── pages/                    # custom routes
-│       ├── index.md              # home — becomes .astro once Starlight lands
-│       └── about.md              # naming, project history
-└── public/                       # static assets, CNAME, etc.
+```bash
+cd website
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-## Navigation Contract
+## Build (what Pages runs)
 
-The public website should browse in this order:
+```bash
+npm run sync-release   # refresh lib/release.json from the latest GH release (optional; network)
+npm run build          # emits the static site to website/out/
+```
 
-| Nav section | Canonical path | Purpose |
-| --- | --- | --- |
-| Home | `/` | Public landing page, proof visual, moat, and primary CTAs. |
-| What is Syrus? | `/docs/what-is-syrus` | Plain product explanation and issue-to-PR flow. |
-| Why use Syrus? | `/docs/why-use-syrus` | Self-host, BYOK, multi-user, and auditability positioning. |
-| Getting started | `/docs/getting-started` | Choose an evaluation or deployment path and learn the first loop. |
-| Desktop app | `/docs/desktop` | Desktop download and guided local install (macOS DMG today, Windows in beta), app window + menu bar/tray inbox, updates. |
-| Concepts | `/docs/concepts` | Job, Workflow, Step, Run, states, trigger kinds, and MCP signals. |
-| Feature docs | `/docs/features` | Product-feature map that points to canonical reference pages. |
-| Collaboration | `/docs/collaboration` | Solo, shared-repository team, fork-based team, and open source contributor modes; review policies; feedback policies. |
-| How-tos and recipes | `/docs/recipes` | Task-focused recipes: CI repair, PR feedback, scheduled jobs, custom workflows. |
-| Troubleshooting | `/docs/troubleshooting` | Failure modes and debugging steps. |
+`out/` is deployed by [`.github/workflows/deploy-website.yml`](../.github/workflows/deploy-website.yml)
+(build → `actions/upload-pages-artifact` → `actions/deploy-pages`). It runs on
+pushes to `website/**`, on `workflow_dispatch`, and as the final step of a
+release (`release.yml` → `publish-website`).
 
-Reference pages stay in the docs sidebar after the main learning path:
-`/docs/configuration`, `/docs/workflows`, `/docs/architecture`,
-`/docs/cli`, `/docs/api`, `/docs/faq`, and `/docs/deployment/*`.
+## How it works
 
-## Information Architecture
+- **Downloads** point at GitHub's stable latest-release permalinks
+  (`releases/latest/download/Syrus.dmg` and `Syrus-Setup.exe`), so they always
+  serve the newest release with no rebuild. The version + file sizes shown on
+  `/download` are display-only, baked into `lib/release.json` by
+  `npm run sync-release` (the workflow runs it each build).
+- **Demo form** (`components/demo.tsx`) POSTs to a self-hosted SMTP endpoint at
+  `NEXT_PUBLIC_API_BASE` (default `https://api.syrus-ai.dev`), which sends the
+  branded confirmation + team notification. If that endpoint is unreachable,
+  the form falls back to a `mailto:` — the site itself stays fully static.
+- **Custom domain** is set by `public/CNAME` (`syrus-ai.dev`). The apex/`www`
+  DNS must point at GitHub Pages, and the domain must be set in the repo's
+  Pages settings.
 
-Public visitors should be able to answer four questions without reading
-source:
+## Content
 
-| Question | Canonical pages |
-| --- | --- |
-| What is Syrus? | `src/pages/index.md`, `src/content/docs/what-is-syrus.md`, `src/content/docs/concepts.md` |
-| Why would I use it? | `src/content/docs/why-use-syrus.md`, `src/content/docs/faq.md` |
-| How do I try it? | `src/content/docs/getting-started.md`, `src/content/docs/desktop.md`, `src/content/docs/deployment/docker-compose.md` |
-| What does operating it involve? | `src/content/docs/deployment/`, `src/content/docs/configuration.md`, `src/content/docs/recipes.md`, `src/content/docs/troubleshooting.md` |
-
-Recommended sidebar order once Starlight lands:
-
-1. Docs index
-2. Getting Started
-3. Desktop app
-4. What is Syrus?
-5. Why use Syrus?
-6. Concepts
-7. Features
-8. Collaboration
-9. Workflows
-10. Configuration
-11. Deployment
-12. Recipes
-13. Troubleshooting
-14. Architecture
-15. Syrus CLI
-16. API
-17. FAQ
-
-## Contributing
-
-Update website docs in the same PR as product changes. A feature is not done if the user-facing page that explains it is stale.
-
-Pick an issue with the `syrus` label that references a `website/`
-path; fill in the content matching the stub's brief. Cross-reference
-the plan doc and IA inventory when in doubt about scope.
-
-Keep existing pages current before adding new pages. Add a top-level docs
-page only when the subject does not fit the navigation above, and update
-this README when the navigation contract changes.
+Copy lives in `lib/site.ts` (hero, workflow steps, feature pillars, entry
+points) and `lib/legal.ts` (Impressum + privacy). Pages are under `app/`.
