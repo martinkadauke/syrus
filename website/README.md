@@ -50,3 +50,27 @@ release (`release.yml` → `publish-website`).
 
 Copy lives in `lib/site.ts` (hero, workflow steps, feature pillars, entry
 points) and `lib/legal.ts` (Impressum + privacy). Pages are under `app/`.
+
+## Information Architecture
+
+The public documentation contract: every product behavior that operators or visitors need to understand has a corresponding page. A feature is not done if the user-facing page that explains it is stale.
+
+### Marketing pages (`src/pages/`)
+
+| Page | Path | Purpose |
+| --- | --- | --- |
+| Home | `src/pages/index.md` | Entry point: what Syrus is, the loop, how to start |
+| What is Syrus? | `src/pages/what-is-syrus.md` | Plain-language product model |
+| Why use Syrus? | `src/pages/why-use-syrus.md` | Fit assessment and value argument |
+| About | `src/pages/about.md` | Naming story and project history |
+
+### Docs (`src/content/docs/`)
+
+| Page | Path | Audience |
+| --- | --- | --- |
+| Start Here | `src/content/docs/index.md` | Orientation and navigation table |
+| What is Syrus? | `src/content/docs/what-is-syrus.md` | Product model in detail |
+| Why use Syrus? | `src/content/docs/why-use-syrus.md` | Fit and value argument |
+| Getting Started | `src/content/docs/getting-started.md` | First successful run |
+| Features | `src/content/docs/features.md` | Jobs, Epics, chats, credentials, GitHub App |
+| Troubleshooting | `src/content/docs/troubleshooting.md` | Failure modes and debug paths |

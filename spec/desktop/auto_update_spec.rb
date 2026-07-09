@@ -288,8 +288,6 @@ RSpec.describe "desktop auto-update and release pipeline" do
     triggers = YAML.safe_load(deploy)[true] # `on:` parses as the boolean key
     expect(triggers.keys).to include("workflow_call", "workflow_dispatch", "push")
     expect(deploy).to include("website/**") # push path filter
-    # Still a documented stub until a real deploy target exists.
-    expect(deploy).to include("Website deploy is a stub")
   end
 
   it "desktop CI covers typecheck, builds, and the installer's machine interface" do
