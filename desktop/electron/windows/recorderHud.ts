@@ -96,6 +96,11 @@ export const createRecorderHudController = ({ htmlPath, preloadPath, onAction }:
     // Windows SetWindowDisplayAffinity honor this; it's a no-op elsewhere.
     hud.setContentProtection(true)
     hud.on("closed", () => { hud = null })
+    // If the HUD renderer crashes or hangs, tear the window down — an
+    // always-on-top, content-protected window stuck on screen (that the user
+    // can't even screen-record to show us) is the worst failure here.
+    hud.webContents.on("render-process-gone", () => hide())
+    hud.webContents.on("unresponsive", () => hide())
 
     // Push the initial state only AFTER the page (and its onUpdate listener)
     // has loaded, or the first send is dropped.

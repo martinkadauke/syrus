@@ -995,7 +995,9 @@ describe("chat message image attachments", () => {
 
     const thumbnail = await screen.findByRole("button", { name: "Open diagram.png" })
     expect(screen.getByAltText("diagram.png")).toHaveAttribute("src", "data:image/png;base64,cGl4ZWxz")
-    expect(screen.queryByText("notes.pdf")).not.toBeInTheDocument()
+    // Non-image attachments (a PDF) render as a labeled chip, not a thumbnail, so
+    // they never leave a blank bubble and are always visible in the transcript.
+    expect(screen.getByText("notes.pdf")).toBeInTheDocument()
 
     fireEvent.click(thumbnail)
 

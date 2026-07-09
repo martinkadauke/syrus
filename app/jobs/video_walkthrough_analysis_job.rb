@@ -244,7 +244,12 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
       "video_walkthrough_id" => walkthrough.id,
       "source" => "walkthrough"
     }
-    chat.queued_messages.create!(content: content)
+    # Idempotent: a prior attempt may have created the queued message and then
+    # failed in the promoter (row already persisted). On retry, DON'T stack a
+    # duplicate — reuse the pending one and just re-promote.
+    unless queued_message_exists?(chat, walkthrough)
+      chat.queued_messages.create!(content: content)
+    end
     # Delivers immediately when the agent is idle; otherwise ChatTurnJob's
     # turn-end promotion picks it up — either way, no turn collision.
     ChatQueuedMessagePromoter.deliver_one_if_idle!(chat)
@@ -256,6 +261,14 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
       "The analysis succeeded but posting it to the chat failed. Retry to post it (the video won't be re-analyzed)."
     )
     false
+  end
+
+  # A still-pending queued message for THIS walkthrough (a prior attempt's, left
+  # behind when the promoter failed). Used to avoid stacking a duplicate on retry.
+  def queued_message_exists?(chat, walkthrough)
+    chat.queued_messages.pending.any? do |queued|
+      queued.content.is_a?(Hash) && queued.content["video_walkthrough_id"] == walkthrough.id
+    end
   end
 
   def transition!(walkthrough, state)

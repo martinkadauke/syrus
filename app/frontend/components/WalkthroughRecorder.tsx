@@ -369,6 +369,10 @@ export function useNativeRecorderHud({
   const handlersRef = useRef({ onStop, onDiscard })
   handlersRef.current = { onStop, onDiscard }
   const shownRef = useRef(false)
+  // The last state serialized to the HUD, so an IPC `update` fires only when the
+  // displayed state actually changes — NOT on every Compose re-render (typing in
+  // the composer while recording would otherwise spam the HUD window).
+  const lastSentRef = useRef<string>("")
 
   useEffect(() => {
     const activeBridge = bridgeRef.current
@@ -385,14 +389,20 @@ export function useNativeRecorderHud({
     if (!activeBridge) return
 
     if (recording) {
+      const serialized = JSON.stringify(state)
       if (shownRef.current) {
-        void activeBridge.update(state).catch(() => {})
+        if (serialized !== lastSentRef.current) {
+          lastSentRef.current = serialized
+          void activeBridge.update(state).catch(() => {})
+        }
       } else {
         shownRef.current = true
+        lastSentRef.current = serialized
         void activeBridge.show(state).catch(() => {})
       }
     } else if (shownRef.current) {
       shownRef.current = false
+      lastSentRef.current = ""
       void activeBridge.hide().catch(() => {})
     }
   }, [recording, state])

@@ -390,6 +390,16 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       # Re-delivery still posts the video message, not the analysis text.
       expect(queued.text).not_to include("## Sections")
     end
+
+    it "does not stack a duplicate queued message when one already exists (retry idempotency)" do
+      walkthrough = create_walkthrough(analysis: analysis)
+      # A prior attempt that queued the message then failed in the promoter.
+      chat.chat_queued_messages.create!(content: { "text" => "", "video_walkthrough_id" => walkthrough.id, "source" => "walkthrough" })
+
+      expect {
+        described_class.perform_now(walkthrough.id)
+      }.not_to change { chat.chat_queued_messages.count }
+    end
   end
 
   # Graceful degradation: a long video at full resolution can blow the

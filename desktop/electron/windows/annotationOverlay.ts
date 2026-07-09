@@ -201,20 +201,24 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
     // move events for cursor feedback without swallowing clicks.
     overlay!.setIgnoreMouseEvents(!next, { forward: true })
     if (next) {
-      // Grant focus ONLY while armed: the canvas needs pointer input and the
-      // before-input-event Escape handler needs keyboard focus. enable() never
-      // moves focus (the overlay is non-activating), so this is the single
-      // place the overlay is allowed to take focus.
-      overlay!.setFocusable(true)
-      overlay!.focus()
-      // TAP mode only: arm the auto-release watchers (poll the renderer for a
-      // pause, cap the session). HOLD mode releases deterministically on key-up
-      // (and Esc), so it needs no timers — and a MAX_ARMED cap would cut off a
-      // long deliberate hold mid-stroke.
-      if (mode === "tap") startArmWatch()
+      // Grant keyboard focus ONLY in TAP mode — the tap flow needs the
+      // before-input-event Escape handler to be reachable. In HOLD mode the pen
+      // arms on EVERY physical Ctrl key-down (the global hook); taking focus
+      // there would steal the keystream from the app under test and hijack the
+      // user's ordinary Ctrl keyboard shortcuts (Ctrl+C, Ctrl+Tab, …) for the
+      // whole recording. Pointer capture (setIgnoreMouseEvents above) is enough
+      // for drawing; keyboard focus stays with the app. Release is on Ctrl key-up.
+      if (mode === "tap") {
+        overlay!.setFocusable(true)
+        overlay!.focus()
+        // Arm the auto-release watchers (poll for a pause, cap the session).
+        startArmWatch()
+      }
     } else {
-      overlay!.blur()
-      overlay!.setFocusable(false)
+      if (mode === "tap") {
+        overlay!.blur()
+        overlay!.setFocusable(false)
+      }
       stopArmWatch()
     }
 

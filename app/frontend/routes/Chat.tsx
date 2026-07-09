@@ -777,6 +777,7 @@ function SwitchingProviderIndicator({ provider }: { provider: string }) {
 }
 
 function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   if (item.role === "user") {
     return (
       <article className="group/message relative flex justify-end pt-6" id={`chat_message_${item.id}`}>
@@ -786,13 +787,14 @@ function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, readOn
           {item.video_walkthrough_id ? (
             <div className="flex items-center justify-end gap-2 text-sm text-gray-500 dark:text-gray-400" data-testid="walkthrough-message-chip">
               <span aria-hidden="true">🎥</span>
-              <span>Shared a walkthrough video</span>
+              <span>{t("walkthrough_shared_chip")}</span>
             </div>
           ) : null}
           {item.text.trim().length > 0 ? (
             <PlainText className="whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
           ) : null}
           <MessageImageAttachments attachments={item.attachments} align="end" />
+          <MessageFileAttachments attachments={item.attachments} align="end" />
         </div>
       </article>
     )
@@ -849,6 +851,29 @@ function MessageImageAttachments({ attachments, align = "start" }: { attachments
       </div>
       {lightboxImage ? <ImageLightbox attachment={lightboxImage} onClose={() => setLightboxImage(null)} /> : null}
     </>
+  )
+}
+
+// Non-image attachments (e.g. PDFs) — images render as thumbnails, but a PDF (or
+// any other file) would otherwise show nothing, leaving a blank bubble when the
+// message has no text. Render each as a labeled chip so it's always visible.
+function MessageFileAttachments({ attachments, align = "start" }: { attachments?: ChatMessageItem["attachments"]; align?: "start" | "end" }) {
+  const files = (attachments || []).filter((attachment) => !attachment.mime_type.startsWith("image/"))
+  if (files.length === 0) return null
+
+  return (
+    <div className={`flex flex-wrap gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
+      {files.map((attachment, index) => (
+        <span
+          className="inline-flex max-w-[16rem] items-center gap-1.5 truncate rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+          key={`${attachment.name}-${index}`}
+          title={attachment.name}
+        >
+          <span aria-hidden="true">📎</span>
+          <span className="truncate">{attachment.name || "attachment"}</span>
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -2403,6 +2428,13 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       // keep the send button disabled for the next ordinary message.
       if (detail.state === "analyzed") setAttachmentError(null)
 
+      // A terminal state changes the chat payload's video_walkthroughs list
+      // (which powers the Media panel); the app-event only carries the walkthrough
+      // id/state, so refetch the payload to refresh the panel + the delivered turn.
+      if (detail.state === "analyzed" || detail.state === "failed") {
+        void queryClient.invalidateQueries({ queryKey })
+      }
+
       setWalkthrough((current) => {
         if (!current || current.id == null || current.id !== detail.id) return current
         if (detail.state === "analyzed") {
@@ -2418,7 +2450,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
 
     window.addEventListener("syrus:video-walkthrough", onWalkthroughEvent)
     return () => window.removeEventListener("syrus:video-walkthrough", onWalkthroughEvent)
-  }, [payload.chat.id, onNotice, t])
+  }, [payload.chat.id, onNotice, t, queryClient, queryKey])
 
   async function uploadWalkthrough(note: string) {
     if (!walkthrough || walkthrough.status !== "ready") return
@@ -4098,8 +4130,11 @@ function ChatWorkspacePanel({
 }
 
 function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: ChatRenderItem[]; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   const images = imageAttachments(messages)
   const walkthroughs = payload.video_walkthroughs || []
+  const walkthroughStateLabel = (state: string) =>
+    ({ uploaded: t("walkthrough_state_uploaded"), analyzing: t("walkthrough_state_analyzing"), analyzed: t("walkthrough_state_analyzed"), failed: t("walkthrough_state_failed") } as Record<string, string>)[state] || state
   const [lightboxImage, setLightboxImage] = useState<ChatMessageImageAttachment | null>(null)
   const [loadingSnapshotId, setLoadingSnapshotId] = useState<number | null>(null)
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
@@ -4215,7 +4250,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
 
       {walkthroughs.length > 0 ? (
         <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Walkthrough Videos</h2>
+          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{t("walkthrough_media_heading")}</h2>
           <div className="space-y-2">
             {walkthroughs.map((walkthrough) => (
               <article className="rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950" key={walkthrough.id}>
@@ -4232,7 +4267,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
                       <p className="mt-1 text-xs text-red-600 dark:text-red-400">{walkthrough.error_message}</p>
                     ) : null}
                     {!walkthrough.has_video && walkthrough.state !== "failed" ? (
-                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Video was cleaned up after its retention window — the analysis is kept.</p>
+                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{t("walkthrough_media_expired")}</p>
                     ) : null}
                   </div>
                 </div>
@@ -4291,16 +4326,6 @@ function snapshotKindLabel(kind: WhiteboardSnapshot["snapshot_kind"]) {
 
 function truncateSnapshotName(name: string) {
   return name.length > 40 ? `${name.slice(0, 39)}...` : name
-}
-
-function walkthroughStateLabel(state: string): string {
-  switch (state) {
-    case "uploaded": return "Uploaded"
-    case "analyzing": return "Analyzing…"
-    case "analyzed": return "Analyzed"
-    case "failed": return "Failed"
-    default: return state
-  }
 }
 
 function formatRelativeTime(value: string) {

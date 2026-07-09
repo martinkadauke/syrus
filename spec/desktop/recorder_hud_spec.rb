@@ -19,6 +19,9 @@ RSpec.describe "desktop recording HUD" do
     expect(controller).to include("showInactive()")
     # Excluded from the capture — the controls must not pollute the video.
     expect(controller).to include("setContentProtection(true)")
+    # A crashed/hung HUD renderer must not leave a stuck always-on-top window.
+    expect(controller).to include("render-process-gone")
+    expect(controller).to include("unresponsive")
 
     html = read("assets/recorderHud.html")
     # The pill is a drag region; the buttons are not.

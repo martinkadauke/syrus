@@ -1348,6 +1348,32 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(chat_record["scratchpad_items_count"]).to eq(2)
   end
 
+  it "preserves media (video_walkthrough_id) when editing a queued walkthrough message's note" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    queued = chat.chat_queued_messages.create!(content: { "text" => "", "video_walkthrough_id" => 7, "source" => "walkthrough" })
+
+    patch "/api/v1/app/chats/#{chat.id}/queued_messages/#{queued.id}", params: { chat_message: { text: "focus on save" } }
+
+    expect(response).to have_http_status(:ok)
+    content = queued.reload.content
+    expect(content["text"]).to eq("focus on save")
+    expect(content["video_walkthrough_id"]).to eq(7)
+    expect(content["source"]).to eq("walkthrough")
+  end
+
+  it "allows clearing a media-carrying queued message's note to blank" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    queued = chat.chat_queued_messages.create!(content: { "text" => "note", "video_walkthrough_id" => 7 })
+
+    patch "/api/v1/app/chats/#{chat.id}/queued_messages/#{queued.id}", params: { chat_message: { text: "" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(queued.reload.content["video_walkthrough_id"]).to eq(7)
+    expect(queued.content["text"]).to eq("")
+  end
+
   it "stores valid file attachments on a queued chat message" do
     sign_in_as(user)
     chat = ChatSession.create!(user: user, repository: repository, last_message_at: Time.current)

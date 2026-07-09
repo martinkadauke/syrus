@@ -86,6 +86,11 @@ RSpec.describe ChatProviders::Claude do
       expect(calls.first[:resume_session_id]).to eq("gone-session")
       expect(calls.last[:resume_session_id]).to be_nil
       expect(result.session_id).to eq("fresh-session")
+      # The fresh session has no prior context, so the retry must carry the FULL
+      # chat system prompt (the resume-mode prompt omits it).
+      expect(calls.first[:prompt]).not_to include("You are Syrus Chat")
+      expect(calls.last[:prompt]).to include("You are Syrus Chat")
+      expect(calls.last[:prompt]).to include("Continue.")
     end
 
     it "does NOT retry when the resumed turn runs (turns > 0) even if it errors" do

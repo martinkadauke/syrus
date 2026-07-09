@@ -159,8 +159,18 @@ RSpec.describe "desktop annotation overlay" do
     end
 
     it "arms the auto-release watchers ONLY in tap mode (hold releases on key-up)" do
-      set_armed = overlay[/const setArmed[\s\S]{0,2200}/]
-      expect(set_armed).to include('if (mode === "tap") startArmWatch()')
+      # startArmWatch() lives inside the arm branch's tap-only block.
+      set_armed = overlay[/const setArmed[\s\S]{0,2400}/]
+      expect(set_armed).to match(/if \(mode === "tap"\) \{[\s\S]{0,200}startArmWatch\(\)/)
+    end
+
+    it "does NOT take keyboard focus in hold mode, so a physical Ctrl never hijacks the app's shortcuts" do
+      # The focus grab lives inside the tap-only branch. In hold mode arming
+      # captures pointer (for drawing) but leaves keyboard focus with the app —
+      # otherwise every physical Ctrl key-down would steal the keystream and
+      # break the user's Ctrl+C / Ctrl+Tab / … for the whole recording.
+      set_armed = overlay[/const setArmed[\s\S]{0,2400}/]
+      expect(set_armed).to match(/if \(mode === "tap"\) \{[\s\S]{0,140}setFocusable\(true\)[\s\S]{0,60}focus\(\)/)
     end
 
     it "stops the native hook on every teardown path" do

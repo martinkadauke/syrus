@@ -56,7 +56,11 @@ module ChatProviders
           kind: "system"
         )
         result = run_invocation(
-          workspace_path: workspace_path, prompt: prompt, mcp_config: mcp_config,
+          # The resume-mode prompt deliberately OMITS the full system prompt (a
+          # resumed session already carries it). A fresh session doesn't — so
+          # without this it would run with no role / tool / proposal-flow
+          # instructions. Prepend the full chat system prompt for the fresh retry.
+          workspace_path: workspace_path, prompt: prompt_with_system(prompt), mcp_config: mcp_config,
           resume_session_id: nil, stop_requested: stop_requested,
           process_started: process_started, log_sink: log_sink
         )
@@ -119,6 +123,13 @@ module ChatProviders
         stop_requested: stop_requested,
         process_started: process_started
       ).run
+    end
+
+    # Prepend the full chat system prompt so the fresh-retry session gets the
+    # role / tools / proposal-flow instructions the resume-mode prompt omits.
+    def prompt_with_system(prompt)
+      system = Prompts::ChatSystem.new(repository: chat.repository, chat_session: chat).to_s
+      "#{system}\n\n---\n\n#{prompt}"
     end
 
     # A resume that died before the agent produced a single turn — the

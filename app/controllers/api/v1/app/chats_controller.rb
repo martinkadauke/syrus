@@ -422,12 +422,17 @@ module Api
           chat_session = find_chat_session
           queued_message = chat_session.queued_messages.find(params[:queued_message_id])
           text = message_text
-          if text.blank?
+          existing = queued_message.content.is_a?(Hash) ? queued_message.content : {}
+          if text.blank? && !queued_message.carries_media?
             render_error("validation_failed", "Message cannot be blank.", status: :unprocessable_content)
             return
           end
 
-          queued_message.update!(content: { "text" => text })
+          # Edit only the note text; PRESERVE the media (video_walkthrough_id /
+          # source / attachments) so editing a media-carrying queued message —
+          # e.g. adding a note to a pending walkthrough turn — doesn't discard it
+          # and silently drop the handoff on promotion.
+          queued_message.update!(content: existing.merge("text" => text))
           render json: chat_payload(chat_session.reload, message: "Queued message updated.")
         rescue ActiveRecord::RecordInvalid => e
           render_error("validation_failed", e.record.errors.full_messages.to_sentence, status: :unprocessable_content)
