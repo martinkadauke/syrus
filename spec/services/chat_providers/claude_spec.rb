@@ -58,6 +58,79 @@ RSpec.describe ChatProviders::Claude do
         env: { "GIT_TERMINAL_PROMPT" => "0" }
       )
     end
+
+    it "retries WITHOUT --resume when a resume hard-fails at startup (stale session)" do
+      calls = []
+      runner = ->(**kwargs) {
+        calls << kwargs
+        if kwargs[:resume_session_id]
+          # `claude --resume <gone>` dies immediately: is_error, zero turns.
+          result_fixture(is_error: true, outcome: "error_during_execution", turns: 0)
+        else
+          result_fixture(session_id: "fresh-session", turns: 2)
+        end
+      }
+      adapter = described_class.new(chat: chat, runner: runner)
+
+      result = adapter.invoke(
+        workspace_path: "/tmp/chat-workspace",
+        prompt: "Continue.",
+        log_sink: ->(*, **) { },
+        mcp_config: "/tmp/mcp.json",
+        resume_session_id: "gone-session",
+        stop_requested: -> { false },
+        process_started: ->(_process) { }
+      )
+
+      expect(calls.size).to eq(2)
+      expect(calls.first[:resume_session_id]).to eq("gone-session")
+      expect(calls.last[:resume_session_id]).to be_nil
+      expect(result.session_id).to eq("fresh-session")
+    end
+
+    it "does NOT retry when the resumed turn runs (turns > 0) even if it errors" do
+      calls = []
+      runner = ->(**kwargs) {
+        calls << kwargs
+        result_fixture(is_error: true, outcome: "error_during_execution", turns: 3, session_id: "chat-session-0")
+      }
+      adapter = described_class.new(chat: chat, runner: runner)
+
+      adapter.invoke(
+        workspace_path: "/tmp/chat-workspace", prompt: "Continue.",
+        log_sink: ->(*, **) { }, mcp_config: "/tmp/mcp.json",
+        resume_session_id: "chat-session-0",
+        stop_requested: -> { false }, process_started: ->(_process) { }
+      )
+
+      expect(calls.size).to eq(1)
+    end
+
+    it "swallows the stale-resume startup noise from the thread during the resume attempt" do
+      seen = []
+      runner = ->(**kwargs) {
+        if kwargs[:resume_session_id]
+          # The failing resume streams the scary line, then its zero-turn result.
+          kwargs[:log_sink].call("No conversation found with session ID: gone-session", kind: "system")
+          kwargs[:log_sink].call("[result] subtype=error_during_execution, is_error=true, turns=0, duration_ms=0", kind: "system")
+          result_fixture(is_error: true, outcome: "error_during_execution", turns: 0)
+        else
+          result_fixture(session_id: "fresh-session", turns: 1)
+        end
+      }
+      adapter = described_class.new(chat: chat, runner: runner)
+
+      adapter.invoke(
+        workspace_path: "/tmp/chat-workspace", prompt: "Continue.",
+        log_sink: ->(chunk = nil, **) { seen << chunk },
+        mcp_config: "/tmp/mcp.json", resume_session_id: "gone-session",
+        stop_requested: -> { false }, process_started: ->(_process) { }
+      )
+
+      expect(seen).not_to include(a_string_matching(/No conversation found/))
+      expect(seen).not_to include(a_string_matching(/turns=0/))
+      expect(seen).to include(a_string_matching(/continuing from recent history/))
+    end
   end
 
   describe "#session_capture" do
