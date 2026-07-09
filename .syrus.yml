@@ -120,3 +120,13 @@ grade:
       typed frontend model drifted.
     run: bin/test-react
     timeout_minutes: 3
+
+  - name: website-build
+    description: |
+      Builds the public Next.js website exactly like the GitHub Pages
+      deploy workflow. This rejects stale source layouts, broken static
+      export/type validation, and release-download page regressions
+      before `.github/workflows/deploy-website.yml` fails after merge.
+    run: npm --prefix website ci && npm --prefix website run sync-release && npm --prefix website run build
+    required: true
+    timeout_minutes: 5
