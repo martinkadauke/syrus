@@ -1,0 +1,748 @@
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { createConsumer } from "@rails/actioncable"
+import {
+  clearCredential,
+  exchangeCodexOauth,
+  savePartialCredentials,
+  startCodexOauth,
+  testCredential,
+  type CredentialTestResult,
+  type CredentialsPayload
+} from "../../api/credentials"
+import { ApiError } from "../../api/client"
+import { openInNewTab } from "../../lib/desktopShell"
+import { useT } from "../../hooks/useT"
+import { useSetupStatus } from "../OnboardingEmptyState"
+import { GithubAppPanel } from "../GithubAppPanel"
+import { GeminiSetupSheet } from "../GeminiSetupSheet"
+import { GithubTokenStep, CheckIcon, WarnIcon } from "./GithubTokenStep"
+import { ClaudeConnect } from "./ClaudeConnect"
+
+// Per-provider credential cards for the /credentials page, rebuilt around
+// the setup flow's components so first-run and day-two share one experience:
+// a clear connected-state summary (no more empty password fields standing in
+// for saved secrets), guided not-set copy, probe-before-save where an
+// unsaved-value endpoint exists (GitHub, Gemini), per-card partial saves,
+// and per-card errors instead of a stack of global banners.
+//
+// Saved-credential probes stay behind the explicit Test button — the server
+// probe shells out to provider CLIs with 30s timeouts, so nothing here
+// auto-tests stored secrets on mount.
+
+const queryKey = ["credentials"] as const
+
+type CardProps = {
+  payload: CredentialsPayload
+  onNotice: (message: string | null) => void
+}
+
+// ---------- shared shell ----------
+
+export function CredentialCard({
+  title,
+  connected,
+  description,
+  error,
+  children,
+  testId
+}: {
+  title: string
+  connected: boolean
+  description?: ReactNode
+  error?: string | null
+  children: ReactNode
+  testId: string
+}) {
+  return (
+    <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5" data-testid={testId}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+          {description ? <div className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</div> : null}
+        </div>
+        <ConnectionPill connected={connected} />
+      </div>
+      {error ? (
+        <p className="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="mt-4">{children}</div>
+    </section>
+  )
+}
+
+function ConnectionPill({ connected }: { connected: boolean }) {
+  const { t } = useT("settings")
+  return connected ? (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+      <svg aria-hidden="true" className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
+        <path clipRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42l2.79 2.79 6.79-6.79a1 1 0 011.42 0z" fillRule="evenodd" />
+      </svg>
+      {t('credential_cards.connected')}
+    </span>
+  ) : (
+    <span className="inline-flex shrink-0 items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-950/60 dark:text-amber-300">
+      {t('credential_cards.not_set')}
+    </span>
+  )
+}
+
+// SVG check/warn iconography (the setup flow's language), not emoji.
+export function CredentialTestResultLine({ result }: { result?: CredentialTestResult }) {
+  if (!result) return null
+  const scopes = result.details.scopes || []
+  const details = [
+    result.details.login ? `@${result.details.login}` : null,
+    scopes.length > 0 ? `scopes: ${scopes.join(", ")}` : null,
+    (result.details as { model?: string }).model ?? null
+  ].filter(Boolean)
+  return (
+    <p
+      className={`mt-2 flex items-start gap-1.5 text-xs ${result.ok ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}
+      role={result.ok ? "status" : "alert"}
+    >
+      {result.ok ? <CheckIcon /> : <WarnIcon />}
+      <span>
+        {result.message}
+        {details.length > 0 ? <span className="ml-1 text-gray-500 dark:text-gray-400">({details.join(" · ")})</span> : null}
+      </span>
+    </p>
+  )
+}
+
+// Test (saved credential) + Clear plumbing shared by every card, with the
+// error captured per-card instead of surfacing in a page-top banner stack.
+function useCredentialActions(onNotice: (message: string | null) => void) {
+  const { t } = useT("settings")
+  const queryClient = useQueryClient()
+  const [testResult, setTestResult] = useState<CredentialTestResult | undefined>(undefined)
+  const [error, setError] = useState<string | null>(null)
+
+  const test = useMutation({
+    mutationFn: (credential: string) => testCredential(credential),
+    onMutate: () => setError(null),
+    onSuccess: (payload) => {
+      setTestResult(payload.credential_test)
+      onNotice(payload.message || null)
+    },
+    onError: (err) => setError(errorMessage(err, t('credential_cards.test_error')))
+  })
+
+  const clear = useMutation({
+    mutationFn: (credential: string) => clearCredential(credential),
+    onMutate: () => setError(null),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setTestResult(undefined)
+      onNotice(updated.message || null)
+    },
+    onError: (err) => setError(errorMessage(err, t('credential_cards.clear_error')))
+  })
+
+  return { test, clear, testResult, setTestResult, error, setError }
+}
+
+function TestButton({ actions, credential }: { actions: ReturnType<typeof useCredentialActions>; credential: string }) {
+  const { t } = useT("settings")
+  return (
+    <button className={secondaryButtonClass()} disabled={actions.test.isPending} onClick={() => actions.test.mutate(credential)} type="button">
+      {actions.test.isPending ? t('credential_cards.testing') : t('credential_cards.test')}
+    </button>
+  )
+}
+
+function ClearButton({ actions, credential }: { actions: ReturnType<typeof useCredentialActions>; credential: string }) {
+  const { t } = useT("settings")
+  return (
+    <button
+      className="rounded border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 disabled:text-red-300 dark:disabled:text-red-500"
+      disabled={actions.clear.isPending}
+      onClick={() => actions.clear.mutate(credential)}
+      type="button"
+    >
+      {t('credential_cards.clear')}
+    </button>
+  )
+}
+
+function secondaryButtonClass() {
+  return "rounded border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:text-gray-300 dark:disabled:text-gray-600"
+}
+
+function primaryButtonClass() {
+  return "rounded bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-700 disabled:cursor-not-allowed disabled:opacity-60"
+}
+
+function inputClass() {
+  return "block w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:outline-terracotta-600"
+}
+
+function errorMessage(error: unknown, fallback: string) {
+  return error instanceof ApiError ? error.message : fallback
+}
+
+// ---------- GitHub ----------
+
+export function GithubCredentialCard({ payload, onNotice }: CardProps) {
+  const { t } = useT("settings")
+  const set = payload.credential_status.github_token
+  const [editing, setEditing] = useState(false)
+  const [appPanelOpen, setAppPanelOpen] = useState(false)
+  const actions = useCredentialActions(onNotice)
+  const setupStatus = useSetupStatus()
+  const showEditor = editing || !set
+  const appRegistered = !!setupStatus?.credential_status.github_app
+
+  return (
+    <CredentialCard
+      connected={set}
+      description={t('account_settings.github_access_desc')}
+      error={actions.error}
+      testId="credential-card-github"
+      title={t('credential_cards.github_title')}
+    >
+      {showEditor ? (
+        <div className="space-y-3">
+          <GithubTokenStep
+            autoFocus={false}
+            onSaved={() => {
+              setEditing(false)
+              actions.setTestResult(undefined)
+              onNotice(t('credential_cards.github_saved_notice'))
+            }}
+            saveLabel={t('credential_cards.github_save_label')}
+          />
+          {set ? (
+            <div className="flex justify-end">
+              <button className={secondaryButtonClass()} onClick={() => setEditing(false)} type="button">
+                {t('credential_cards.cancel')}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-700 dark:text-gray-300">{t('credential_cards.github_summary')}</p>
+          <GithubRateLimitLine payload={payload} />
+          <CredentialTestResultLine result={actions.testResult} />
+          <div className="flex flex-wrap gap-2">
+            <TestButton actions={actions} credential="github_token" />
+            <button className={secondaryButtonClass()} onClick={() => setEditing(true)} type="button">
+              {t('credential_cards.replace')}
+            </button>
+            <ClearButton actions={actions} credential="github_token" />
+          </div>
+        </div>
+      )}
+
+      {setupStatus ? (
+        <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className={`flex items-center gap-1.5 ${appRegistered ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}`}>
+              {appRegistered ? <CheckIcon /> : <WarnIcon />}
+              {appRegistered ? t('credential_cards.github_app_registered') : t('credential_cards.github_app_missing')}
+            </span>
+            {payload.user.admin ? (
+              <button className={secondaryButtonClass()} onClick={() => setAppPanelOpen((open) => !open)} type="button">
+                {appPanelOpen ? t('credential_cards.github_app_hide') : t('credential_cards.github_app_manage')}
+              </button>
+            ) : null}
+          </div>
+          {!payload.user.admin && !appRegistered ? (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('credential_cards.github_app_admin_only')}</p>
+          ) : null}
+          {appPanelOpen ? (
+            <div className="mt-3">
+              <GithubAppPanel onClose={() => setAppPanelOpen(false)} />
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </CredentialCard>
+  )
+}
+
+function GithubRateLimitLine({ payload }: { payload: CredentialsPayload }) {
+  const { t } = useT("settings")
+  if (!payload.github_rate_limit) {
+    return <p className="text-xs text-gray-400 dark:text-gray-500">{t('account_settings.github_quota_not_recorded')}</p>
+  }
+
+  return (
+    <p className="text-xs text-gray-500 dark:text-gray-400">
+      {t('account_settings.github_quota_prefix')} <strong>{payload.github_rate_limit.remaining}</strong> / {payload.github_rate_limit.limit}{" "}
+      {t('account_settings.github_quota_suffix', { resource: payload.github_rate_limit.resource })}
+    </p>
+  )
+}
+
+// ---------- Claude ----------
+
+export function ClaudeCredentialCard({ payload, onNotice }: CardProps) {
+  const { t } = useT("settings")
+  const queryClient = useQueryClient()
+  const set = payload.credential_status.claude_oauth_token
+  const [editing, setEditing] = useState(false)
+  const [manualToken, setManualToken] = useState("")
+  const actions = useCredentialActions(onNotice)
+  const showConnect = editing || !set
+
+  const saveManual = useMutation({
+    mutationFn: () => savePartialCredentials({ claude_oauth_token: manualToken.trim() }),
+    onMutate: () => actions.setError(null),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setManualToken("")
+      setEditing(false)
+      actions.setTestResult(undefined)
+      onNotice(t('credential_cards.claude_saved_notice'))
+    },
+    onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
+  })
+
+  return (
+    <CredentialCard
+      connected={set}
+      description={t('credential_cards.claude_description')}
+      error={actions.error}
+      testId="credential-card-claude"
+      title={t('credential_cards.claude_title')}
+    >
+      {showConnect ? (
+        <div className="space-y-3">
+          <ClaudeConnect
+            onConnected={(result) => {
+              setEditing(false)
+              actions.setTestResult(result)
+              onNotice(result.message || t('configure_agent.connected_default'))
+            }}
+            secondaryAction={
+              set ? (
+                <button className={secondaryButtonClass()} onClick={() => setEditing(false)} type="button">
+                  {t('credential_cards.cancel')}
+                </button>
+              ) : undefined
+            }
+          />
+          <details className="rounded border border-gray-200 dark:border-gray-700 p-3">
+            <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">{t('credential_cards.claude_manual_summary')}</summary>
+            <div className="mt-3 space-y-2">
+              <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                {t('account_settings.claude_token_help', { command: "claude setup-token", env: "CLAUDE_CODE_OAUTH_TOKEN" })}{" "}
+                <a
+                  className="font-medium text-terracotta-700 dark:text-terracotta-300 underline hover:text-terracotta-600"
+                  href="https://code.claude.com/docs/en/authentication#generate-a-long-lived-token"
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {t('account_settings.anthropic_docs')}
+                </a>
+                .
+              </p>
+              <div className="flex gap-2">
+                <input
+                  aria-label={t('credential_cards.claude_manual_label')}
+                  autoComplete="off"
+                  className={inputClass()}
+                  onChange={(event) => setManualToken(event.target.value)}
+                  spellCheck={false}
+                  type="password"
+                  value={manualToken}
+                />
+                <button
+                  className={secondaryButtonClass()}
+                  disabled={manualToken.trim().length === 0 || saveManual.isPending}
+                  onClick={() => saveManual.mutate()}
+                  type="button"
+                >
+                  {saveManual.isPending ? t('credential_cards.saving') : t('credential_cards.save')}
+                </button>
+              </div>
+            </div>
+          </details>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-700 dark:text-gray-300">{t('credential_cards.claude_summary')}</p>
+          <CredentialTestResultLine result={actions.testResult} />
+          <div className="flex flex-wrap gap-2">
+            <TestButton actions={actions} credential="claude_oauth_token" />
+            <button className={secondaryButtonClass()} onClick={() => setEditing(true)} type="button">
+              {t('credential_cards.replace')}
+            </button>
+            <ClearButton actions={actions} credential="claude_oauth_token" />
+          </div>
+        </div>
+      )}
+    </CredentialCard>
+  )
+}
+
+// ---------- Codex ----------
+
+export function CodexCredentialCard({ payload, onNotice }: CardProps) {
+  const { t } = useT("settings")
+  const queryClient = useQueryClient()
+  const actions = useCredentialActions(onNotice)
+  const mode = payload.user.codex_auth_mode
+  const connected = mode === "chatgpt_login" ? payload.credential_status.codex_auth_json : payload.credential_status.codex_api_key
+
+  // The auth-mode select lives INSIDE the card because the saved-credential
+  // probe reports wrong_mode when the stored secret does not match the mode.
+  const saveMode = useMutation({
+    mutationFn: (nextMode: string) => savePartialCredentials({ codex_auth_mode: nextMode }),
+    onMutate: () => actions.setError(null),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(t('credential_cards.codex_mode_saved_notice'))
+    },
+    onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
+  })
+
+  return (
+    <CredentialCard
+      connected={connected}
+      description={t('credential_cards.codex_description')}
+      error={actions.error}
+      testId="credential-card-codex"
+      title={t('credential_cards.codex_title')}
+    >
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+        {t('credential_cards.codex_auth_mode')}
+        <select
+          className={`mt-2 ${inputClass()}`}
+          disabled={saveMode.isPending}
+          onChange={(event) => saveMode.mutate(event.target.value)}
+          value={mode}
+        >
+          <option value="api_key">{t('account_settings.codex_api_key')}</option>
+          <option value="chatgpt_login">{t('account_settings.codex_chatgpt_login')}</option>
+        </select>
+      </label>
+
+      <div className="mt-4">
+        {mode === "chatgpt_login" ? (
+          <CodexChatGptSection actions={actions} onNotice={onNotice} set={payload.credential_status.codex_auth_json} />
+        ) : (
+          <CodexApiKeySection actions={actions} onNotice={onNotice} set={payload.credential_status.codex_api_key} />
+        )}
+      </div>
+    </CredentialCard>
+  )
+}
+
+function CodexApiKeySection({ set, actions, onNotice }: { set: boolean; actions: ReturnType<typeof useCredentialActions>; onNotice: (message: string | null) => void }) {
+  const { t } = useT("settings")
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [apiKey, setApiKey] = useState("")
+  const showEditor = editing || !set
+
+  const save = useMutation({
+    mutationFn: () => savePartialCredentials({ codex_api_key: apiKey.trim() }),
+    onMutate: () => actions.setError(null),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setApiKey("")
+      setEditing(false)
+      actions.setTestResult(undefined)
+      onNotice(t('credential_cards.codex_saved_notice'))
+    },
+    onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
+  })
+
+  if (showEditor) {
+    return (
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <input
+            aria-label={t('credential_cards.codex_api_key_label')}
+            autoComplete="off"
+            className={inputClass()}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder="sk-…"
+            spellCheck={false}
+            type="password"
+            value={apiKey}
+          />
+          <button className={secondaryButtonClass()} disabled={apiKey.trim().length === 0 || save.isPending} onClick={() => save.mutate()} type="button">
+            {save.isPending ? t('credential_cards.saving') : t('credential_cards.save')}
+          </button>
+          {set ? (
+            <button className={secondaryButtonClass()} onClick={() => setEditing(false)} type="button">
+              {t('credential_cards.cancel')}
+            </button>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-gray-700 dark:text-gray-300">{t('credential_cards.codex_api_key_summary')}</p>
+      <CredentialTestResultLine result={actions.testResult} />
+      <div className="flex flex-wrap gap-2">
+        <TestButton actions={actions} credential="codex_api_key" />
+        <button className={secondaryButtonClass()} onClick={() => setEditing(true)} type="button">
+          {t('credential_cards.replace')}
+        </button>
+        <ClearButton actions={actions} credential="codex_api_key" />
+      </div>
+    </div>
+  )
+}
+
+function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions: ReturnType<typeof useCredentialActions>; onNotice: (message: string | null) => void }) {
+  const { t } = useT("settings")
+  const queryClient = useQueryClient()
+  const [reauthorizing, setReauthorizing] = useState(false)
+  const [authStarted, setAuthStarted] = useState(false)
+  const [popupBlocked, setPopupBlocked] = useState<string | null>(null)
+  const [authCode, setAuthCode] = useState("")
+  const [autoConnecting, setAutoConnecting] = useState(false)
+  const [manualJson, setManualJson] = useState("")
+  const showFlow = reauthorizing || !set
+
+  const start = useMutation({
+    mutationFn: startCodexOauth,
+    onMutate: () => actions.setError(null),
+    onSuccess: (started) => {
+      setPopupBlocked(openInNewTab(started.authorize_url) ? null : started.authorize_url)
+      setAuthStarted(true)
+    },
+    onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
+  })
+
+  const exchange = useMutation({
+    mutationFn: (code?: string) => exchangeCodexOauth((code || authCode).trim()),
+    onSuccess: async (updated) => {
+      actions.setTestResult(updated.credential_test)
+      await queryClient.invalidateQueries({ queryKey })
+      setAuthCode("")
+      setAutoConnecting(false)
+      setReauthorizing(false)
+      onNotice(updated.message || t('credential_cards.codex_saved_notice'))
+    },
+    onError: (err) => {
+      setAutoConnecting(false)
+      actions.setError(errorMessage(err, t('credential_cards.save_error')))
+    }
+  })
+
+  const saveManual = useMutation({
+    mutationFn: () => savePartialCredentials({ codex_auth_json: manualJson }),
+    onMutate: () => actions.setError(null),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      setManualJson("")
+      setReauthorizing(false)
+      actions.setTestResult(undefined)
+      onNotice(t('credential_cards.codex_saved_notice'))
+    },
+    onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
+  })
+
+  // The desktop/browser callback listener broadcasts the OAuth code over the
+  // user's app-event channel; auto-exchange it so the operator never has to
+  // paste. Ref-routed so the subscription (created once per auth start)
+  // always calls the latest mutation.
+  const autoExchangeRef = useRef((code: string) => {
+    setAuthCode(code)
+    setAutoConnecting(true)
+    exchange.mutate(code)
+  })
+  autoExchangeRef.current = (code: string) => {
+    setAuthCode(code)
+    setAutoConnecting(true)
+    exchange.mutate(code)
+  }
+
+  useEffect(() => {
+    if (!authStarted) return
+
+    const consumer = createConsumer()
+    const subscription = consumer.subscriptions.create(
+      { channel: "AppUserChannel" },
+      {
+        received(data: unknown) {
+          const event = data as { type?: string; payload?: { code?: string } }
+          const code = event.type === "codex_oauth.callback" ? event.payload?.code?.trim() : ""
+          if (code) autoExchangeRef.current(code)
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, [authStarted])
+
+  if (!showFlow) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-gray-700 dark:text-gray-300">{t('credential_cards.codex_auth_json_summary')}</p>
+        <CredentialTestResultLine result={actions.testResult} />
+        <div className="flex flex-wrap gap-2">
+          <TestButton actions={actions} credential="codex_auth_json" />
+          <button className={secondaryButtonClass()} onClick={() => setReauthorizing(true)} type="button">
+            {t('credential_cards.reauthorize')}
+          </button>
+          <ClearButton actions={actions} credential="codex_auth_json" />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          className="rounded bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-700"
+          disabled={start.isPending}
+          onClick={() => start.mutate()}
+          type="button"
+        >
+          {start.isPending ? t('credential_cards.opening') : t('credential_cards.codex_authorize')}
+        </button>
+        {set ? (
+          <button className={secondaryButtonClass()} onClick={() => setReauthorizing(false)} type="button">
+            {t('credential_cards.cancel')}
+          </button>
+        ) : null}
+      </div>
+      {popupBlocked ? (
+        <p className="text-xs text-amber-600 dark:text-amber-300">
+          {t('account_settings.codex_popup_blocked')}{" "}
+          <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
+            {t('account_settings.codex_open_auth')}
+          </a>
+          .
+        </p>
+      ) : null}
+      {autoConnecting ? <p className="text-xs text-gray-500 dark:text-gray-400">{t('account_settings.connecting')}</p> : null}
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+        <input
+          aria-label="ChatGPT authorization code"
+          autoComplete="off"
+          className={inputClass()}
+          onChange={(event) => setAuthCode(event.target.value)}
+          placeholder={authStarted ? t('credential_cards.codex_code_placeholder') : t('credential_cards.codex_code_placeholder_disabled')}
+          type="text"
+          value={authCode}
+        />
+        <button
+          className={secondaryButtonClass()}
+          disabled={exchange.isPending || authCode.trim().length === 0}
+          onClick={() => exchange.mutate(undefined)}
+          type="button"
+        >
+          {exchange.isPending ? t('account_settings.connecting') : t('credential_cards.connect')}
+        </button>
+      </div>
+      <CredentialTestResultLine result={actions.testResult} />
+
+      <details className="rounded border border-gray-200 dark:border-gray-700 p-3">
+        <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">{t('account_settings.paste_auth_json')}</summary>
+        <div className="mt-3 space-y-2">
+          <textarea
+            aria-label="Codex ChatGPT auth.json"
+            className={`${inputClass()} font-mono text-xs`}
+            onChange={(event) => setManualJson(event.target.value)}
+            rows={6}
+            value={manualJson}
+          />
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-gray-500 dark:text-gray-400">{t('account_settings.auth_json_help')}</p>
+            <button
+              className={secondaryButtonClass()}
+              disabled={manualJson.trim().length === 0 || saveManual.isPending}
+              onClick={() => saveManual.mutate()}
+              type="button"
+            >
+              {saveManual.isPending ? t('credential_cards.saving') : t('credential_cards.save')}
+            </button>
+          </div>
+        </div>
+      </details>
+    </div>
+  )
+}
+
+// ---------- Gemini ----------
+
+export function GeminiCredentialCard({ payload, onNotice }: CardProps) {
+  // settings is the default namespace; the Gemini setup sheet's copy lives in
+  // the chat namespace (shared with Chat.tsx and ConfigureAgentModal).
+  const { t } = useT(["settings", "chat"])
+  const set = payload.credential_status.gemini_api_key
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const actions = useCredentialActions(onNotice)
+
+  const sheetLabels = {
+    title: t("chat:gemini_setup_title"),
+    intro: t("chat:gemini_setup_intro"),
+    getKey: t("chat:gemini_setup_get_key"),
+    keyPlaceholder: t("chat:gemini_setup_placeholder"),
+    validateAndSave: t("chat:gemini_setup_save"),
+    validating: t("chat:gemini_setup_validating"),
+    stageFormat: t("chat:gemini_stage_format"),
+    stageReach: t("chat:gemini_stage_reach"),
+    stageVideo: t("chat:gemini_stage_video"),
+    saved: t("chat:gemini_setup_saved"),
+    keyHelp: t("chat:gemini_setup_key_help")
+  }
+
+  return (
+    <CredentialCard
+      connected={set}
+      description={
+        <>
+          {t('credential_cards.gemini_description')}{" "}
+          <a
+            className="font-medium text-terracotta-700 dark:text-terracotta-300 underline hover:text-terracotta-600"
+            href="https://aistudio.google.com/apikey"
+            rel="noreferrer"
+            target="_blank"
+          >
+            aistudio.google.com/apikey
+          </a>{" "}
+          {t('credential_cards.gemini_description_suffix')}
+        </>
+      }
+      error={actions.error}
+      testId="credential-card-gemini"
+      title={t('credential_cards.gemini_title')}
+    >
+      {set ? (
+        <div className="space-y-3">
+          <p className="text-sm text-gray-700 dark:text-gray-300">{t('credential_cards.gemini_summary')}</p>
+          <CredentialTestResultLine result={actions.testResult} />
+          <div className="flex flex-wrap gap-2">
+            <TestButton actions={actions} credential="gemini_api_key" />
+            <button className={secondaryButtonClass()} onClick={() => setSheetOpen(true)} type="button">
+              {t('credential_cards.gemini_replace')}
+            </button>
+            <ClearButton actions={actions} credential="gemini_api_key" />
+          </div>
+        </div>
+      ) : (
+        <button className={primaryButtonClass()} onClick={() => setSheetOpen(true)} type="button">
+          {t('credential_cards.gemini_set_up')}
+        </button>
+      )}
+
+      {sheetOpen ? (
+        <GeminiSetupSheet
+          labels={sheetLabels}
+          onClose={() => setSheetOpen(false)}
+          onConfigured={() => {
+            setSheetOpen(false)
+            actions.setTestResult(undefined)
+            onNotice(t("chat:gemini_setup_saved"))
+          }}
+        />
+      ) : null}
+    </CredentialCard>
+  )
+}

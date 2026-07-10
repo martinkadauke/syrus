@@ -154,8 +154,16 @@ export function updateCredentials(values: CredentialsInput) {
 // keys present in the payload, so this leaves every other profile/credential
 // field untouched — used by the onboarding "Configure GitHub" modal.
 export function saveGithubToken(githubToken: string) {
+  return savePartialCredentials({ github_token: githubToken })
+}
+
+// Partial save: only the provided keys are sent, and the controller updates
+// just the keys present (blank write-only values are dropped server-side).
+// A per-card save therefore can never clear another credential — clearing
+// stays the explicit clear_credential endpoint.
+export function savePartialCredentials(values: Partial<CredentialsInput>) {
   return patchJson<CredentialsPayload>("/api/v1/app/credentials", {
-    user: { github_token: githubToken }
+    user: values
   })
 }
 

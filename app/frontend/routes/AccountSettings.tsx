@@ -1,26 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createConsumer } from "@rails/actioncable"
 import type { FormEvent, ReactNode } from "react"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { useLocation } from "react-router-dom"
 import i18n from "../i18n"
 import { ApiError } from "../api/client"
 import { useT } from "../hooks/useT"
-import { openInNewTab } from "../lib/desktopShell"
 import { NoticeToast } from "../components/NoticeToast"
 import { OnboardingEmptyState, useSetupStatus } from "../components/OnboardingEmptyState"
 import {
-  clearCredential,
-  exchangeClaudeOauth,
-  exchangeCodexOauth,
+  ClaudeCredentialCard,
+  CodexCredentialCard,
+  GeminiCredentialCard,
+  GithubCredentialCard
+} from "../components/credentials/CredentialCard"
+import {
   fetchCredentials,
   revokeApiToken,
   rotateApiToken,
-  startClaudeOauth,
-  startCodexOauth,
-  testCredential,
+  savePartialCredentials,
   updateCredentials,
-  type CredentialTestResult,
   type CredentialsInput,
   type CredentialsPayload
 } from "../api/credentials"
@@ -91,34 +89,61 @@ function CredentialsView({ payload, onNotice, section }: { payload: CredentialsP
   const setupStatus = useSetupStatus()
   const prefix = routePrefix(location.pathname)
 
-  return (
-    <>
-      {section === "credentials" ? <GithubCredentialGuide /> : null}
-      {section === "credentials" && setupStatus && !setupStatus.first_successful_job_completed ? (
-        <OnboardingEmptyState
-          fallbackDescription="Save the GitHub and agent credentials Syrus should use, then continue to repository setup."
-          fallbackTitle="Finish setup"
-          prefix={prefix}
-          setupStatus={setupStatus}
-        />
-      ) : null}
-      <CredentialsForm onNotice={onNotice} payload={payload} section={section} />
-      {section === "credentials" && payload.user.admin ? <ApiTokenPanel onNotice={onNotice} payload={payload} /> : null}
-    </>
-  )
+  if (section === "credentials") {
+    return (
+      <>
+        {setupStatus && !setupStatus.first_successful_job_completed ? (
+          <OnboardingEmptyState
+            fallbackDescription="Save the GitHub and agent credentials Syrus should use, then continue to repository setup."
+            fallbackTitle="Finish setup"
+            prefix={prefix}
+            setupStatus={setupStatus}
+          />
+        ) : null}
+        {/* One card per provider, each owning its own state, actions, and
+            errors — the same guided components the setup flow uses. */}
+        <GithubCredentialCard onNotice={onNotice} payload={payload} />
+        <ClaudeCredentialCard onNotice={onNotice} payload={payload} />
+        <CodexCredentialCard onNotice={onNotice} payload={payload} />
+        <GeminiCredentialCard onNotice={onNotice} payload={payload} />
+        {payload.options.chat_providers.length > 0 ? <ChatProviderPanel onNotice={onNotice} payload={payload} /> : null}
+        {payload.user.admin ? <ApiTokenPanel onNotice={onNotice} payload={payload} /> : null}
+      </>
+    )
+  }
+
+  return <CredentialsForm onNotice={onNotice} payload={payload} section={section} />
 }
 
-function GithubCredentialGuide() {
+// Chat provider pick, saved immediately per-change (partial PATCH) — the
+// credentials page no longer has a global Save.
+function ChatProviderPanel({ payload, onNotice }: { payload: CredentialsPayload; onNotice: (message: string | null) => void }) {
   const { t } = useT("settings")
+  const queryClient = useQueryClient()
+  const chatProvider = payload.user.chat_provider || ""
+  const save = useMutation({
+    mutationFn: (provider: string) => savePartialCredentials({ chat_provider: provider }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(t('credential_cards.chat_provider_saved_notice'))
+    }
+  })
+
   return (
-    <section className="rounded border border-blue-100 dark:border-blue-900/60 bg-blue-50 dark:bg-blue-950/40 p-4 text-sm text-blue-950 dark:text-blue-100">
-      <h2 className="font-medium">{t('account_settings.github_access')}</h2>
-      <p className="mt-1">
-        {t('account_settings.github_access_desc')}
-      </p>
-      <p className="mt-1 text-xs text-blue-800 dark:text-blue-200">
-        {t('account_settings.github_access_pat_note')}
-      </p>
+    <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
+      <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('credential_cards.chat_provider_heading')}</h2>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('credential_cards.chat_provider_desc')}</p>
+      {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save credentials.")}</PanelMessage> : null}
+      <select
+        aria-label={t('credential_cards.chat_provider_heading')}
+        className={`mt-3 ${inputClass()}`}
+        disabled={save.isPending}
+        onChange={(event) => save.mutate(event.target.value)}
+        value={payload.options.chat_providers.includes(chatProvider) ? chatProvider : ""}
+      >
+        <option disabled value="">{t('account_settings.select_provider')}</option>
+        {payload.options.chat_providers.map((provider) => <option key={provider} value={provider}>{titleize(provider)}</option>)}
+      </select>
     </section>
   )
 }
@@ -128,101 +153,18 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
   const queryClient = useQueryClient()
   const [values, setValues] = useState<CredentialsInput>(inputFromPayload(payload))
   const roleOptions = payload.options.roles || ["developer", "product_owner"]
-  const [testResults, setTestResults] = useState<Record<string, CredentialTestResult>>({})
-  const [codexOauthCode, setCodexOauthCode] = useState("")
-  const [codexOauthStarted, setCodexOauthStarted] = useState(false)
-  const [codexOauthAutoConnecting, setCodexOauthAutoConnecting] = useState(false)
-  const [codexOauthPopupBlocked, setCodexOauthPopupBlocked] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: () => updateCredentials(values),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
       setValues(inputFromPayload(updated))
-      setTestResults({})
       onNotice(updated.message || "Credentials updated.")
     }
   })
-  const clear = useMutation({
-    mutationFn: (credential: string) => clearCredential(credential),
-    onSuccess: (updated, credential) => {
-      queryClient.setQueryData(queryKey, updated)
-      setValues(inputFromPayload(updated))
-      setTestResults((current) => {
-        const next = { ...current }
-        delete next[credential]
-        return next
-      })
-      onNotice(updated.message || "Credential cleared.")
-    }
-  })
-  const test = useMutation({
-    mutationFn: (credential: string) => testCredential(credential),
-    onSuccess: (updated) => {
-      setTestResults((current) => ({
-        ...current,
-        [updated.credential_test.credential]: updated.credential_test
-      }))
-      onNotice(updated.message || "Credential tested.")
-    }
-  })
-  const startCodex = useMutation({
-    mutationFn: startCodexOauth,
-    onSuccess: (started) => {
-      setCodexOauthPopupBlocked(openInNewTab(started.authorize_url) ? null : started.authorize_url)
-      setCodexOauthStarted(true)
-      onNotice(null)
-    }
-  })
-  const exchangeCodex = useMutation({
-    mutationFn: (code?: string) => exchangeCodexOauth((code || codexOauthCode).trim()),
-    onSuccess: async (updated) => {
-      setTestResults((current) => ({
-        ...current,
-        [updated.credential_test.credential]: updated.credential_test
-      }))
-      await queryClient.invalidateQueries({ queryKey })
-      setCodexOauthCode("")
-      setCodexOauthAutoConnecting(false)
-      onNotice(updated.message || "ChatGPT authorization saved.")
-    },
-    onError: () => {
-      setCodexOauthAutoConnecting(false)
-    }
-  })
-  const autoExchangeRef = useRef((code: string) => {
-    setCodexOauthCode(code)
-    setCodexOauthAutoConnecting(true)
-    onNotice(null)
-    exchangeCodex.mutate(code)
-  })
-  autoExchangeRef.current = (code: string) => {
-    setCodexOauthCode(code)
-    setCodexOauthAutoConnecting(true)
-    onNotice(null)
-    exchangeCodex.mutate(code)
-  }
 
   useEffect(() => {
     setValues(inputFromPayload(payload))
   }, [payload])
-
-  useEffect(() => {
-    if (!codexOauthStarted) return
-
-    const consumer = createConsumer()
-    const subscription = consumer.subscriptions.create(
-      { channel: "AppUserChannel" },
-      {
-        received(data: unknown) {
-          const event = data as { type?: string; payload?: { code?: string } }
-          const code = event.type === "codex_oauth.callback" ? event.payload?.code?.trim() : ""
-          if (code) autoExchangeRef.current(code)
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
-  }, [codexOauthStarted])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -230,19 +172,12 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
     save.mutate()
   }
 
-  const codexApiKeySelected = values.codex_auth_mode === "api_key"
-  const codexAuthJsonSelected = values.codex_auth_mode === "chatgpt_login"
   const selectedAutoApprove = payload.options.auto_approve_modes.find((option) => option.value === values.auto_approve_mode)
-  const testingCredential = test.variables
 
   return (
     <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
       <form className="space-y-5" onSubmit={submit}>
         {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save credentials.")}</PanelMessage> : null}
-        {clear.isError ? <PanelMessage tone="error">{errorMessage(clear.error, "Unable to clear credential.")}</PanelMessage> : null}
-        {test.isError ? <PanelMessage tone="error">{errorMessage(test.error, "Unable to test credential.")}</PanelMessage> : null}
-        {startCodex.isError ? <PanelMessage tone="error">{errorMessage(startCodex.error, "Unable to start ChatGPT authorization.")}</PanelMessage> : null}
-        {exchangeCodex.isError ? <PanelMessage tone="error">{errorMessage(exchangeCodex.error, "Unable to exchange ChatGPT authorization code.")}</PanelMessage> : null}
 
         {section === "profile" ? (
           <>
@@ -290,134 +225,6 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
             <Field label="Profile bio">
               <textarea className={inputClass()} maxLength={1000} onChange={(event) => setValues({ ...values, profile_bio: event.target.value })} rows={4} value={values.profile_bio} />
             </Field>
-          </>
-        ) : null}
-
-        {section === "credentials" ? (
-          <SecretField
-            clearPending={clear.isPending}
-            description={
-              <ClaudeTokenHelp
-                onConnected={(result) => {
-                  setTestResults((current) => ({ ...current, claude_oauth_token: result }))
-                  onNotice(result.message || "Claude connected.")
-                }}
-              />
-            }
-            label="Claude OAuth token"
-            name="claude_oauth_token"
-            onChange={(value) => setValues({ ...values, claude_oauth_token: value })}
-            onClear={() => clear.mutate("claude_oauth_token")}
-            set={payload.credential_status.claude_oauth_token}
-            testPending={test.isPending && testingCredential === "claude_oauth_token"}
-            testResult={testResults.claude_oauth_token}
-            unsaved={values.claude_oauth_token.trim().length > 0}
-            onTest={() => test.mutate("claude_oauth_token")}
-            value={values.claude_oauth_token}
-          />
-        ) : null}
-
-        {section === "credentials" ? (
-          <Field label="Codex authentication">
-            <select className={inputClass()} onChange={(event) => setValues({ ...values, codex_auth_mode: event.target.value })} value={values.codex_auth_mode}>
-              <option value="api_key">{t('account_settings.codex_api_key')}</option>
-              <option value="chatgpt_login">{t('account_settings.codex_chatgpt_login')}</option>
-            </select>
-          </Field>
-        ) : null}
-
-        {section === "credentials" && payload.options.chat_providers.length > 0 ? (
-          <Field label="Chat provider">
-            <select className={inputClass()} onChange={(event) => setValues({ ...values, chat_provider: event.target.value })} value={values.chat_provider}>
-              <option disabled value="">{t('account_settings.select_provider')}</option>
-              {payload.options.chat_providers.map((provider) => <option key={provider} value={provider}>{titleize(provider)}</option>)}
-            </select>
-          </Field>
-        ) : null}
-
-        {section === "credentials" && codexApiKeySelected ? (
-          <SecretField
-            clearPending={clear.isPending}
-            label="Codex API key"
-            name="codex_api_key"
-            onChange={(value) => setValues({ ...values, codex_api_key: value })}
-            onClear={() => clear.mutate("codex_api_key")}
-            set={payload.credential_status.codex_api_key}
-            testPending={test.isPending && testingCredential === "codex_api_key"}
-            testResult={testResults.codex_api_key}
-            unsaved={values.codex_api_key.trim().length > 0}
-            onTest={() => test.mutate("codex_api_key")}
-            value={values.codex_api_key}
-          />
-        ) : null}
-
-        {section === "credentials" && codexAuthJsonSelected ? (
-          <CodexChatGptLogin
-            authCode={codexOauthCode}
-            authStarted={codexOauthStarted}
-            autoConnecting={codexOauthAutoConnecting}
-            clearPending={clear.isPending}
-            exchangePending={exchangeCodex.isPending}
-            manualValue={values.codex_auth_json}
-            onAuthorize={() => startCodex.mutate()}
-            onClear={() => clear.mutate("codex_auth_json")}
-            onExchange={() => exchangeCodex.mutate(undefined)}
-            onManualChange={(value) => setValues({ ...values, codex_auth_json: value })}
-            onTest={() => test.mutate("codex_auth_json")}
-            onCodeChange={setCodexOauthCode}
-            popupBlockedUrl={codexOauthPopupBlocked}
-            set={payload.credential_status.codex_auth_json}
-            startPending={startCodex.isPending}
-            testPending={test.isPending && testingCredential === "codex_auth_json"}
-            testResult={testResults.codex_auth_json}
-          />
-        ) : null}
-
-        {section === "credentials" ? (
-          <SecretField
-            clearPending={clear.isPending}
-            description={
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Walkthrough-video analysis uses Gemini; a free API key from{" "}
-                <a className="font-medium text-blue-700 dark:text-blue-300 underline hover:text-blue-600 dark:hover:text-blue-400" href="https://aistudio.google.com/apikey" rel="noreferrer" target="_blank">
-                  aistudio.google.com/apikey
-                </a>{" "}
-                is required.
-              </p>
-            }
-            label="Gemini (video analysis)"
-            name="gemini_api_key"
-            onChange={(value) => setValues({ ...values, gemini_api_key: value })}
-            onClear={() => clear.mutate("gemini_api_key")}
-            set={payload.credential_status.gemini_api_key}
-            testPending={test.isPending && testingCredential === "gemini_api_key"}
-            testResult={testResults.gemini_api_key}
-            unsaved={values.gemini_api_key.trim().length > 0}
-            onTest={() => test.mutate("gemini_api_key")}
-            value={values.gemini_api_key}
-          />
-        ) : null}
-
-        {section === "credentials" ? (
-          <>
-            <SecretField
-              clearPending={clear.isPending}
-              label="GitHub personal access token"
-              name="github_token"
-              onChange={(value) => setValues({ ...values, github_token: value })}
-              onClear={() => clear.mutate("github_token")}
-              set={payload.credential_status.github_token}
-              testPending={test.isPending && testingCredential === "github_token"}
-              testResult={testResults.github_token}
-              unsaved={values.github_token.trim().length > 0}
-              onTest={() => test.mutate("github_token")}
-              value={values.github_token}
-            />
-            <p className="-mt-3 text-xs text-gray-500 dark:text-gray-400">
-              {t('account_settings.github_token_note')}
-            </p>
-
-            <GithubRateLimit payload={payload} />
           </>
         ) : null}
 
@@ -490,327 +297,6 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
         </button>
       </form>
     </section>
-  )
-}
-
-function ClaudeTokenHelp({ onConnected }: { onConnected: (result: CredentialTestResult) => void }) {
-  const { t } = useT("settings")
-  return (
-    <div className="mt-3 space-y-3">
-      <ClaudeOauthConnector onConnected={onConnected} />
-      <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
-        You can also run <code className="font-mono text-gray-700 dark:text-gray-300">claude setup-token</code> and paste the long-lived token it prints. Syrus stores this value and passes it as <code className="font-mono text-gray-700 dark:text-gray-300">CLAUDE_CODE_OAUTH_TOKEN</code> for Claude runs. Do not paste the short-lived token from Claude Code's local credential store. See the{" "}
-        <a className="font-medium text-blue-700 dark:text-blue-300 underline hover:text-blue-600 dark:hover:text-blue-400" href="https://code.claude.com/docs/en/authentication#generate-a-long-lived-token" rel="noreferrer" target="_blank">
-          {t('account_settings.anthropic_docs')}
-        </a>
-        .
-      </p>
-    </div>
-  )
-}
-
-function ClaudeOauthConnector({ onConnected }: { onConnected: (result: CredentialTestResult) => void }) {
-  const { t } = useT("settings")
-  const queryClient = useQueryClient()
-  const [authStarted, setAuthStarted] = useState(false)
-  const [popupBlocked, setPopupBlocked] = useState<string | null>(null)
-  const [code, setCode] = useState("")
-  const [starting, setStarting] = useState(false)
-  const [exchanging, setExchanging] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [connected, setConnected] = useState<string | null>(null)
-
-  async function authorize() {
-    setError(null)
-    setPopupBlocked(null)
-    setStarting(true)
-    try {
-      const { authorize_url } = await startClaudeOauth()
-      if (!openInNewTab(authorize_url)) setPopupBlocked(authorize_url)
-      setAuthStarted(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not start Claude authorization.")
-    } finally {
-      setStarting(false)
-    }
-  }
-
-  async function connect() {
-    if (code.trim().length === 0) {
-      setError("Paste the code from Claude first.")
-      return
-    }
-
-    setError(null)
-    setExchanging(true)
-    try {
-      const payload = await exchangeClaudeOauth(code.trim())
-      if (payload.credential_test.ok) {
-        await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
-        await queryClient.invalidateQueries({ queryKey })
-        setCode("")
-        setConnected(payload.credential_test.message || "Claude connected.")
-        onConnected(payload.credential_test)
-      } else {
-        setError(payload.credential_test.message || "The token Claude returned did not work. Try again.")
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not exchange the code. Try authorizing again.")
-    } finally {
-      setExchanging(false)
-    }
-  }
-
-  return (
-    <div className="rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/40 p-3 text-xs text-gray-600 dark:text-gray-400">
-      <p>
-        {t('account_settings.claude_oauth_desc')}
-      </p>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:bg-blue-300 dark:disabled:bg-blue-900"
-          disabled={starting}
-          onClick={authorize}
-          type="button"
-        >
-          {starting ? "Opening..." : authStarted ? "Reopen Claude authorization" : "Authorize with Claude"}
-        </button>
-        <input
-          aria-label="Authorization code from Claude"
-          autoComplete="off"
-          className="min-w-0 flex-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-1.5 font-mono text-sm text-gray-900 dark:text-gray-100 shadow-sm focus:outline-blue-600 disabled:bg-gray-100 dark:disabled:bg-gray-800"
-          disabled={!authStarted}
-          onChange={(event) => setCode(event.target.value)}
-          placeholder="paste code here"
-          spellCheck={false}
-          type="text"
-          value={code}
-        />
-        <button
-          className="rounded border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 disabled:text-gray-300 dark:disabled:text-gray-600"
-          disabled={!authStarted || exchanging || code.trim().length === 0}
-          onClick={connect}
-          type="button"
-        >
-          {exchanging ? "Connecting..." : "Connect"}
-        </button>
-      </div>
-      {popupBlocked ? (
-        <p className="mt-2 text-amber-700 dark:text-amber-300">
-          {t('account_settings.popup_blocked')}{" "}
-          <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
-            {t('account_settings.open_auth_page')}
-          </a>{" "}
-          manually.
-        </p>
-      ) : null}
-      {connected ? <p className="mt-2 text-emerald-700 dark:text-emerald-300">{connected}</p> : null}
-      {error ? <p className="mt-2 text-red-700 dark:text-red-300">{error}</p> : null}
-    </div>
-  )
-}
-
-function CodexChatGptLogin({
-  authCode,
-  authStarted,
-  autoConnecting,
-  manualValue,
-  set,
-  popupBlockedUrl,
-  startPending,
-  exchangePending,
-  clearPending,
-  testPending,
-  testResult,
-  onAuthorize,
-  onExchange,
-  onCodeChange,
-  onManualChange,
-  onClear,
-  onTest
-}: {
-  authCode: string
-  authStarted: boolean
-  autoConnecting: boolean
-  manualValue: string
-  set: boolean
-  popupBlockedUrl: string | null
-  startPending: boolean
-  exchangePending: boolean
-  clearPending: boolean
-  testPending: boolean
-  testResult?: CredentialTestResult
-  onAuthorize: () => void
-  onExchange: () => void
-  onCodeChange: (value: string) => void
-  onManualChange: (value: string) => void
-  onClear: () => void
-  onTest: () => void
-}) {
-  const { t } = useT("settings")
-  const manualUnsaved = manualValue.trim().length > 0
-  const exchangeDisabled = exchangePending || authCode.trim().length === 0
-
-  return (
-    <div className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-      <div>{t('account_settings.codex_login_label')}</div>
-      <StatusLine set={set} />
-      <div className="mt-3 space-y-3 rounded border border-gray-200 dark:border-gray-700 p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            className="rounded bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-700"
-            disabled={startPending}
-            onClick={onAuthorize}
-            type="button"
-          >
-            {startPending ? "Opening..." : "Authorize with ChatGPT"}
-          </button>
-          {set ? (
-            <button className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 disabled:text-red-300 dark:disabled:text-red-500" disabled={clearPending} onClick={onClear} type="button">
-              {t('account_settings.clear')}
-            </button>
-          ) : null}
-          <button className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:text-gray-300 dark:disabled:text-gray-600" disabled={!set || manualUnsaved || testPending} onClick={onTest} type="button">
-            {testPending ? "Testing..." : "Test"}
-          </button>
-        </div>
-        {popupBlockedUrl ? (
-          <p className="text-xs text-amber-600 dark:text-amber-300">
-            {t('account_settings.codex_popup_blocked')}{" "}
-            <a className="font-medium underline" href={popupBlockedUrl} rel="noreferrer" target="_blank">
-              {t('account_settings.codex_open_auth')}
-            </a>
-            .
-          </p>
-        ) : null}
-        {autoConnecting ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400">{t('account_settings.connecting')}</p>
-        ) : null}
-        <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-          <input
-            aria-label="ChatGPT authorization code"
-            autoComplete="off"
-            className={inputClass()}
-            onChange={(event) => onCodeChange(event.target.value)}
-            placeholder={authStarted ? "Copy the full redirect URL from your browser's address bar and paste it here." : "Authorize first, then paste the redirect URL"}
-            type="text"
-            value={authCode}
-          />
-          <button
-            className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:text-gray-300 dark:disabled:text-gray-600"
-            disabled={exchangeDisabled}
-            onClick={onExchange}
-            type="button"
-          >
-            {exchangePending ? "Connecting..." : "Connect"}
-          </button>
-        </div>
-        <CredentialTestLine result={testResult} unsaved={manualUnsaved} />
-      </div>
-
-      <details className="mt-3 rounded border border-gray-200 dark:border-gray-700 p-3">
-        <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">{t('account_settings.paste_auth_json')}</summary>
-        <div className="mt-3 space-y-2">
-          <textarea aria-label="Codex ChatGPT auth.json" className={`${inputClass()} font-mono text-xs`} name="codex_auth_json" onChange={(event) => onManualChange(event.target.value)} rows={6} value={manualValue} />
-          <p className="text-xs text-gray-500 dark:text-gray-400">{t('account_settings.auth_json_help')}</p>
-        </div>
-      </details>
-    </div>
-  )
-}
-
-function SecretField({
-  label,
-  name,
-  value,
-  set,
-  description,
-  clearPending,
-  testPending,
-  testResult,
-  unsaved,
-  onChange,
-  onClear,
-  onTest
-}: {
-  label: string
-  name: string
-  value: string
-  set: boolean
-  description?: ReactNode
-  clearPending: boolean
-  testPending: boolean
-  testResult?: CredentialTestResult
-  unsaved: boolean
-  onChange: (value: string) => void
-  onClear: () => void
-  onTest: () => void
-}) {
-  const { t } = useT("settings")
-  return (
-    <Field label={label}>
-      <StatusLine set={set} />
-      <div className="mt-2 flex gap-2">
-        <input aria-label={label} autoComplete="off" className={inputClass()} name={name} onChange={(event) => onChange(event.target.value)} type="password" value={value} />
-        <button className="rounded border border-gray-300 dark:border-gray-600 px-3 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:text-gray-300 dark:disabled:text-gray-600" disabled={!set || unsaved || testPending} onClick={onTest} type="button">
-          {testPending ? "Testing..." : "Test"}
-        </button>
-        {set ? (
-          <button className="rounded border border-gray-300 dark:border-gray-600 px-3 text-sm text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 disabled:text-red-300 dark:disabled:text-red-500" disabled={clearPending} onClick={onClear} type="button">
-            {t('account_settings.clear')}
-          </button>
-        ) : null}
-      </div>
-      {description}
-      <CredentialTestLine result={testResult} unsaved={unsaved} />
-    </Field>
-  )
-}
-
-function SecretTextArea({
-  label,
-  name,
-  value,
-  set,
-  clearPending,
-  testPending,
-  testResult,
-  unsaved,
-  onChange,
-  onClear,
-  onTest
-}: {
-  label: string
-  name: string
-  value: string
-  set: boolean
-  clearPending: boolean
-  testPending: boolean
-  testResult?: CredentialTestResult
-  unsaved: boolean
-  onChange: (value: string) => void
-  onClear: () => void
-  onTest: () => void
-}) {
-  const { t } = useT("settings")
-  return (
-    <Field label={label}>
-      <StatusLine set={set} />
-      <div className="mt-2 space-y-2">
-        <textarea aria-label={label} className={`${inputClass()} font-mono text-xs`} name={name} onChange={(event) => onChange(event.target.value)} rows={6} value={value} />
-        <div className="flex gap-2">
-          <button className="rounded border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:text-gray-300 dark:disabled:text-gray-600" disabled={!set || unsaved || testPending} onClick={onTest} type="button">
-            {testPending ? "Testing..." : "Test"}
-          </button>
-          {set ? (
-            <button className="rounded border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/50 disabled:text-red-300 dark:disabled:text-red-500" disabled={clearPending} onClick={onClear} type="button">
-              {t('account_settings.clear')}
-            </button>
-          ) : null}
-        </div>
-      </div>
-      <CredentialTestLine result={testResult} unsaved={unsaved} />
-    </Field>
   )
 }
 
@@ -891,45 +377,6 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       {label}
       <div className="mt-2">{children}</div>
     </label>
-  )
-}
-
-function StatusLine({ set }: { set: boolean }) {
-  const { t } = useT("settings")
-  return set ? (
-    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('account_settings.currently_set')}</p>
-  ) : (
-    <p className="mt-1 text-xs text-amber-600 dark:text-amber-300">{t('account_settings.not_set')}</p>
-  )
-}
-
-function CredentialTestLine({ result, unsaved }: { result?: CredentialTestResult; unsaved: boolean }) {
-  const { t } = useT("settings")
-  if (unsaved) {
-    return <p className="mt-2 text-xs text-amber-600 dark:text-amber-300">{t('account_settings.save_before_test')}</p>
-  }
-
-  if (!result) return null
-
-  const scopes = result.details.scopes || []
-  const suffix = scopes.length > 0 ? ` Scopes: ${scopes.join(", ")}.` : ""
-  return (
-    <p className={`mt-2 text-xs ${result.ok ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}>
-      <span aria-hidden="true">{result.ok ? "✅" : "❌"}</span> {result.message}{suffix}
-    </p>
-  )
-}
-
-function GithubRateLimit({ payload }: { payload: CredentialsPayload }) {
-  const { t } = useT("settings")
-  if (!payload.github_rate_limit) {
-    return <p className="text-xs text-gray-400 dark:text-gray-500">{t('account_settings.github_quota_not_recorded')}</p>
-  }
-
-  return (
-    <p className="text-xs text-gray-500 dark:text-gray-400">
-      {t('account_settings.github_quota_prefix')} <strong>{payload.github_rate_limit.remaining}</strong> / {payload.github_rate_limit.limit} {t('account_settings.github_quota_suffix', { resource: payload.github_rate_limit.resource })}
-    </p>
   )
 }
 

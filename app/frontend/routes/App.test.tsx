@@ -7441,18 +7441,20 @@ describe("App", () => {
     }
   })
 
-  it("renders the credentials route and updates account settings", async () => {
+  it("renders the credentials route as provider cards and connects Claude through the setup flow", async () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
-      if (path === "/api/v1/app/notification_preferences" && init?.method === "PATCH") {
-        return Promise.resolve(new Response(JSON.stringify(notificationPreferencesPayload({ job_failed: false, message: "Notification preferences updated." })), { status: 200, headers: { "Content-Type": "application/json" } }))
-      }
       if (path === "/api/v1/app/notification_preferences") {
         return Promise.resolve(new Response(JSON.stringify(notificationPreferencesPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/credentials" && init?.method === "PATCH") {
-        return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ name: "Ada Lovelace", chatProvider: "codex", chatProviders: ["claude", "codex"], message: "Credentials updated." })), { status: 200, headers: { "Content-Type": "application/json" } }))
+        return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ chatProvider: "codex", chatProviders: ["claude", "codex"] })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path === "/api/v1/app/credentials/test_claude_cli" && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({
+          credential_test: { credential: "claude_oauth_token", ok: false, message: "Claude is not authenticated on this machine yet.", details: {} }
+        }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
       if (path === "/api/v1/app/credentials/claude_oauth_start" && init?.method === "POST") {
         return Promise.resolve(new Response(JSON.stringify({ authorize_url: "https://claude.ai/oauth/authorize?state=abc" }), { status: 200, headers: { "Content-Type": "application/json" } }))
@@ -7485,52 +7487,54 @@ describe("App", () => {
     expect(within(settingsNav).getByRole("link", { name: "Credentials" })).toHaveClass("bg-blue-50")
     expect(within(settingsNav).getByRole("link", { name: "Notifications" })).toHaveAttribute("href", "/app-shell/notifications/settings")
     expect(within(settingsNav).getByRole("link", { name: "Notifications" })).not.toHaveClass("bg-blue-50")
-    expect(await screen.findByText("A personal access token is the fallback credential for repositories without an active Syrus GitHub App installation. If an admin registers and installs the App on a repository, Syrus uses the App for that repository instead.")).toBeInTheDocument()
-    expect(screen.getByText("Keep a PAT configured for PAT-only repositories and GitHub owner/repository pickers.")).toBeInTheDocument()
-    expect(screen.getByText("Authorize with Claude, copy the code Claude shows, then paste it here to save a durable OAuth token for Syrus runs.")).toBeInTheDocument()
-    expect(screen.getByText("claude setup-token")).toBeInTheDocument()
-    expect(screen.getByText("CLAUDE_CODE_OAUTH_TOKEN")).toBeInTheDocument()
-    expect(screen.getByText(/Do not paste the short-lived token from Claude Code's local credential store/)).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: "Anthropic authentication docs" })).toHaveAttribute("href", "https://code.claude.com/docs/en/authentication#generate-a-long-lived-token")
-    expect(screen.getByLabelText("Authorization code from Claude")).toBeDisabled()
-    fireEvent.click(screen.getByRole("button", { name: "Authorize with Claude" }))
+
+    // One card per provider, replacing the single monolithic form.
+    expect(await screen.findByTestId("credential-card-github")).toBeInTheDocument()
+    expect(screen.getByTestId("credential-card-claude")).toBeInTheDocument()
+    expect(screen.getByTestId("credential-card-codex")).toBeInTheDocument()
+    expect(screen.getByTestId("credential-card-gemini")).toBeInTheDocument()
+    expect(screen.getByText("A personal access token is the fallback credential for repositories without an active Syrus GitHub App installation. If an admin registers and installs the App on a repository, Syrus uses the App for that repository instead.")).toBeInTheDocument()
+
+    // Saved secrets read as saved — a summary, not an empty password field.
+    const claudeCard = screen.getByTestId("credential-card-claude")
+    expect(within(claudeCard).getByText("A Claude OAuth token is saved for Syrus runs.")).toBeInTheDocument()
+
+    // Replace opens the same connect flow onboarding uses: preflight,
+    // authorize, paste the code.
+    fireEvent.click(within(claudeCard).getByRole("button", { name: "Replace" }))
+    expect(within(claudeCard).getByLabelText("Authorization code from Claude")).toBeDisabled()
+    expect(within(claudeCard).getByText("Paste a long-lived token instead")).toBeInTheDocument()
+    expect(within(claudeCard).getByRole("link", { name: "Anthropic authentication docs" })).toHaveAttribute("href", "https://code.claude.com/docs/en/authentication#generate-a-long-lived-token")
+    fireEvent.click(within(claudeCard).getByRole("button", { name: /Authorize with Claude/ }))
     await waitFor(() => expect(openSpy).toHaveBeenCalledWith("https://claude.ai/oauth/authorize?state=abc", "_blank"))
-    await waitFor(() => expect(screen.getByLabelText("Authorization code from Claude")).toBeEnabled())
-    fireEvent.change(screen.getByLabelText("Authorization code from Claude"), { target: { value: "auth-code#state" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "Connect" }).at(-1) as HTMLButtonElement)
+    await waitFor(() => expect(within(claudeCard).getByLabelText("Authorization code from Claude")).toBeEnabled())
+    fireEvent.change(within(claudeCard).getByLabelText("Authorization code from Claude"), { target: { value: "auth-code#state" } })
+    fireEvent.click(within(claudeCard).getByRole("button", { name: "Connect" }))
     await waitFor(() => expect(screen.getAllByText("Claude OAuth token is valid.").length).toBeGreaterThan(0))
     const exchangeCall = fetchSpy.mock.calls.find((call) => call[0] === "/api/v1/app/credentials/claude_oauth_exchange")
     expect(JSON.parse(String(exchangeCall?.[1]?.body))).toEqual({ code: "auth-code#state" })
-    expect(screen.getByLabelText("Codex authentication")).toBeInTheDocument()
-    expect(screen.getByLabelText("Chat provider")).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("Chat provider"), { target: { value: "codex" } })
-    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("Max turns")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("Pause scheduling")).not.toBeInTheDocument()
-    expect(screen.queryByText("Personal documents")).not.toBeInTheDocument()
-    expect(screen.queryByLabelText("Google Doc URL")).not.toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("GitHub personal access token"), { target: { value: "ghp_new" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
+    // The Codex auth-mode select lives inside its card; the chat provider
+    // saves immediately as a partial PATCH — there is no global Save.
+    expect(screen.getByLabelText("Codex authentication")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Chat provider"), { target: { value: "codex" } })
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
         "/api/v1/app/credentials",
         expect.objectContaining({
           method: "PATCH",
-          credentials: "same-origin"
+          credentials: "same-origin",
+          body: JSON.stringify({ user: { chat_provider: "codex" } })
         })
       )
     })
-    const patchCall = fetchSpy.mock.calls.find((call) => call[0] === "/api/v1/app/credentials" && call[1]?.method === "PATCH")
-    const patchBody = JSON.parse(String(patchCall?.[1]?.body))
-    expect(patchBody.user).toEqual(expect.objectContaining({
-      claude_oauth_token: "",
-      codex_api_key: "",
-      codex_auth_json: "",
-      chat_provider: "codex",
-      github_token: "ghp_new"
-    }))
-    expect(await screen.findByText("Credentials updated.")).toBeInTheDocument()
+    expect(await screen.findByText("Chat provider saved.")).toBeInTheDocument()
+
+    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Max turns")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Pause scheduling")).not.toBeInTheDocument()
+    expect(screen.queryByText("Personal documents")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Google Doc URL")).not.toBeInTheDocument()
     expect(screen.queryByRole("heading", { name: "Notifications" })).not.toBeInTheDocument()
   })
 
@@ -7628,8 +7632,8 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "Credentials" })).toBeInTheDocument()
-    const testButtons = await screen.findAllByRole("button", { name: "Test" })
-    fireEvent.click(testButtons[testButtons.length - 1])
+    const githubCard = await screen.findByTestId("credential-card-github")
+    fireEvent.click(within(githubCard).getByRole("button", { name: "Test" }))
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -7642,10 +7646,10 @@ describe("App", () => {
       )
     })
     expect((await screen.findAllByText(/GitHub token is valid for ada/)).length).toBeGreaterThan(0)
-    expect(screen.getByText(/Scopes: repo, workflow/)).toBeInTheDocument()
+    expect(within(githubCard).getByText(/@ada · scopes: repo, workflow/)).toBeInTheDocument()
   })
 
-  it("authorizes Codex ChatGPT login from the credentials route", async () => {
+  it("authorizes Codex ChatGPT login from the Codex card", async () => {
     const openSpy = vi.spyOn(window, "open").mockReturnValue({} as Window)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input, init) => {
       const path = String(input)
@@ -7667,7 +7671,7 @@ describe("App", () => {
         }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
-      return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ codexAuthJson: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ codexAuthMode: "chatgpt_login" })), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
     render(
@@ -7679,8 +7683,9 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "Credentials" })).toBeInTheDocument()
-    fireEvent.change(await screen.findByLabelText("Codex authentication"), { target: { value: "chatgpt_login" } })
-    fireEvent.click(await screen.findByRole("button", { name: "Authorize with ChatGPT" }))
+    const codexCard = await screen.findByTestId("credential-card-codex")
+    expect(within(codexCard).getByLabelText("Codex authentication")).toHaveValue("chatgpt_login")
+    fireEvent.click(within(codexCard).getByRole("button", { name: "Authorize with ChatGPT" }))
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -7689,9 +7694,10 @@ describe("App", () => {
       )
     })
     expect(openSpy).toHaveBeenCalledWith("https://auth.openai.com/oauth/authorize?state=abc", "_blank")
+    expect(within(codexCard).getByText("Paste auth.json manually")).toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText("ChatGPT authorization code"), { target: { value: "code#abc" } })
-    fireEvent.click(screen.getAllByRole("button", { name: "Connect" }).at(-1) as HTMLButtonElement)
+    fireEvent.change(within(codexCard).getByLabelText("ChatGPT authorization code"), { target: { value: "code#abc" } })
+    fireEvent.click(within(codexCard).getByRole("button", { name: "Connect" }))
 
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -7704,7 +7710,6 @@ describe("App", () => {
       )
     })
     expect((await screen.findAllByText("Codex ChatGPT auth.json is valid.")).length).toBeGreaterThan(0)
-    expect(screen.getByText("Paste auth.json manually")).toBeInTheDocument()
   })
 
   it("automatically exchanges Codex OAuth callbacks received over ActionCable", async () => {
@@ -7729,7 +7734,7 @@ describe("App", () => {
         }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
-      return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ codexAuthJson: true })), { status: 200, headers: { "Content-Type": "application/json" } }))
+      return Promise.resolve(new Response(JSON.stringify(credentialsPayload({ codexAuthMode: "chatgpt_login" })), { status: 200, headers: { "Content-Type": "application/json" } }))
     })
 
     render(
@@ -7741,8 +7746,8 @@ describe("App", () => {
     )
 
     expect(await screen.findByRole("main", { name: "Credentials" })).toBeInTheDocument()
-    fireEvent.change(await screen.findByLabelText("Codex authentication"), { target: { value: "chatgpt_login" } })
-    fireEvent.click(await screen.findByRole("button", { name: "Authorize with ChatGPT" }))
+    const codexCard = await screen.findByTestId("credential-card-codex")
+    fireEvent.click(within(codexCard).getByRole("button", { name: "Authorize with ChatGPT" }))
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith("https://auth.openai.com/oauth/authorize?state=abc", "_blank")
