@@ -514,7 +514,14 @@ the live hook and retries a dead hook instead of parroting a stale mode.
   Windows on ARM runs via built-in x64 emulation). Test desktop changes with
   `npm --prefix desktop run typecheck`, `npm --prefix desktop run build:renderer`,
   and `npm --prefix desktop run build:main`; run the desktop RSpec startup spec
-  when Electron main/preload code changes.
+  when Electron main/preload code changes. Local backend updates stream their
+  progress over the existing shell-notice bridge: `updateBackend` parses the
+  installer's `--json` NDJSON into `ShellNoticeState.backendUpdate` (phase
+  `starting`/`downloading`/`migrating` + pull percent), the SPA renders it as
+  a sidebar notice, and `useBackendUpdate` is the SPA's single choke point for
+  "the backend is deliberately unreachable" — surfaces that read failed
+  connectivity/credential checks must gate on it instead of rendering the
+  unconfigured default ("GitHub not connected").
 - **Brand palette (terracotta).** The product accent is the terracotta of the
   winged-stylus brand mark (`#b6492e` at 600). `config/tailwind.config.js`
   defines the `terracotta` scale and remaps Tailwind's `blue` scale onto the
