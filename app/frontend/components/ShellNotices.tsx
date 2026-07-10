@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { syrusShellBridge, type SyrusShellBridge, type SyrusShellState } from "../lib/desktopShell"
+import { syrusShellBridge, type SyrusBackendUpdate, type SyrusShellBridge, type SyrusShellState } from "../lib/desktopShell"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { CloseIcon } from "./CloseIcon"
 
@@ -48,13 +48,50 @@ function BridgedShellNotices({ bridge }: { bridge: SyrusShellBridge }) {
 
   if (!state) return null
 
+  // `?? null` on purpose: older shells predate the backendUpdate member.
+  const backendUpdate = state.backendUpdate ?? null
+  const backend = backendUpdate ? <BackendUpdateNotice update={backendUpdate} /> : null
   const update = state.updateReadyVersion ? <UpdateNotice bridge={bridge} version={state.updateReadyVersion} /> : null
   const skill = <SkillOfferNotice bridge={bridge} state={state} />
 
   return (
     <div className="shrink-0 space-y-2 px-3 pb-2 empty:hidden" data-testid="shell-notices">
+      {backend}
       {update}
       {skill}
+    </div>
+  )
+}
+
+// The shell is updating the local backend (pull → recreate → migrate): a
+// quiet progress row for the 1–3 minutes the backend is unreachable. It
+// removes itself the moment the bridge reports the update finished — there
+// is no dismiss, because the state is the shell's, not the user's.
+function BackendUpdateNotice({ update }: { update: SyrusBackendUpdate }) {
+  const { t } = useTranslation("nav")
+  const percent = update.percent !== null ? Math.max(0, Math.min(100, update.percent)) : null
+  const phaseLabel =
+    update.phase === "downloading" && percent !== null
+      ? t("shell.backend_update_downloading_percent", { percent })
+      : t(`shell.backend_update_${update.phase}`)
+
+  return (
+    <div className={noticeBoxClass()} data-testid="backend-update-notice" role="status">
+      <span className="block font-medium text-gray-700 dark:text-gray-200">{t("shell.backend_update_title")}</span>
+      <span className="mt-0.5 block text-[11px] text-gray-500 dark:text-gray-400">{phaseLabel}</span>
+      <span aria-hidden="true" className="mt-1.5 block h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+        {percent !== null ? (
+          <span
+            className="block h-full rounded-full bg-terracotta-600 transition-[width] duration-300 ease-out"
+            style={{ width: `${percent}%` }}
+          />
+        ) : (
+          // No percentage known (phase without one, or compose streamed no
+          // parseable pull progress): an indeterminate sweep, stilled for
+          // reduced-motion users.
+          <span className="block h-full w-1/3 rounded-full bg-terracotta-600/70 motion-safe:animate-progress-indeterminate" />
+        )}
+      </span>
     </div>
   )
 }

@@ -283,6 +283,7 @@
     "step_pat_label": "Persönlicher Zugriffstoken",
     "step_app_label": "GitHub App",
     "admin_required": "Ein persönlicher Zugriffstoken ist gespeichert. Die GitHub App wird einmalig pro Instanz von einem Administrator registriert — bitten Sie einen Administrator, sie zu registrieren, um diesen Schritt abzuschließen.",
+    "backend_updating": "Das Syrus-Backend wird gerade aktualisiert — der Status der Zugangsdaten kann im Moment nicht geprüft werden. Ihre gespeicherten Zugangsdaten sind davon nicht betroffen; in ein bis zwei Minuten ist es geschafft.",
     "step1_heading": "1. GitHub Token-Einstellungen öffnen",
     "step1_description": "Generieren Sie einen klassischen persönlichen Zugriffstoken.",
     "step1_link": "github.com/settings/tokens öffnen",

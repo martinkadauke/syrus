@@ -1,7 +1,8 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { BootstrapPayload } from "../api/bootstrap"
+import { resetBackendUpdateStoreForTests } from "../hooks/useBackendUpdate"
 import { OnboardingEmptyState } from "./OnboardingEmptyState"
 
 type SetupStatus = NonNullable<BootstrapPayload["setup_status"]>
@@ -73,5 +74,38 @@ describe("OnboardingEmptyState", () => {
     expect(screen.queryByText("Tesseram da")).not.toBeInTheDocument()
     expect(screen.queryByText("Horrea aperi")).not.toBeInTheDocument()
     expect(screen.queryByText("Syrum conveni")).not.toBeInTheDocument()
+  })
+
+  describe("while the desktop shell updates the backend", () => {
+    afterEach(() => {
+      delete window.syrusShell
+      resetBackendUpdateStoreForTests()
+    })
+
+    it("falls back to the generic copy instead of 'connect credentials'", async () => {
+      // During the update every check against the backend fails; setup_status
+      // reads as unconfigured. The empty state must not send the user off to
+      // re-enter credentials they already have.
+      window.syrusShell = {
+        getState: vi.fn().mockResolvedValue({
+          updateReadyVersion: null,
+          claudeDetected: false,
+          skillInstalled: false,
+          skillOfferDismissed: true,
+          backendUpdate: { phase: "downloading", percent: 42 }
+        }),
+        onStateChanged: vi.fn().mockReturnValue(() => {}),
+        relaunchToUpdate: vi.fn(),
+        installSkill: vi.fn(),
+        dismissSkillOffer: vi.fn()
+      }
+      resetBackendUpdateStoreForTests()
+
+      renderState(makeSetupStatus({ next_step: "configure_credentials", next_step_path: "/credentials" }))
+
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Nothing here" })).toBeInTheDocument())
+      expect(screen.queryByRole("heading", { name: "Connect credentials first" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    })
   })
 })

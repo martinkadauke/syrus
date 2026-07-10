@@ -3,6 +3,7 @@ import type { DragEvent, ReactNode } from "react"
 import { Children, useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useT } from "../hooks/useT"
+import { useBackendUpdating } from "../hooks/useBackendUpdate"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { ApiError } from "../api/client"
 import { dashboardApiSearch } from "../api/dashboard"
@@ -76,8 +77,14 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
   )
 }
 
-function ReadinessPanel({ prefix, readiness }: { prefix: string; readiness?: NonNullable<NonNullable<BootstrapPayload["setup_status"]>["readiness"]> }) {
+export function ReadinessPanel({ prefix, readiness }: { prefix: string; readiness?: NonNullable<NonNullable<BootstrapPayload["setup_status"]>["readiness"]> }) {
   const { t } = useT("dashboard")
+  // While the desktop shell updates the local backend, readiness checks fail
+  // because the backend is deliberately unreachable — showing them would read
+  // as "credentials gone". The sidebar's backend-update notice explains the
+  // outage; the warnings return the moment the update ends.
+  const backendUpdating = useBackendUpdating()
+  if (backendUpdating) return null
   if (!readiness || readiness.status === "ok") return null
 
   const failingChecks = readiness.checks.filter((check) => check.status !== "ok")
