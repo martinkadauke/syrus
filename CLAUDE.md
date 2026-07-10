@@ -418,11 +418,28 @@ permissions and pre-warms the mic (paired with the `com.apple.security.device.au
 entitlement + `NSMicrophoneUsageDescription`), without which macOS handed
 `getUserMedia` a SILENT track and narration was lost. The recording controls
 live in a separate always-on-top DRAGGABLE window (`recorderHud.ts`, content-
-protected so it's excluded from the capture). **Red pen**: `annotationOverlay.ts`
-does true HOLD-to-draw via a native global-key hook (`globalKeyHook.ts`,
-uiohook-napi — N-API, all-arch prebuilds, asar-unpacked; fails soft to the
-tap-to-arm shortcut when the module or macOS Accessibility permission is
-unavailable). enable() reports `{ available, hold }` so the HUD hint matches.
+protected so it's excluded from the capture). The HUD panel is RECTANGULAR
+(rounded corners composite with artifacts on a transparent always-on-top
+window) and the window is sized to its content: the renderer measures the
+panel after every render and reports it over `recorderHud:resize`
+(`ipcRenderer.send` on the HUD's own preload — not scanned by the invoke-based
+IPC parity spec), so no locale's hint can truncate. The HUD also carries a
+mouse-only pen toggle button: main intercepts the `"pen"` action and flips the
+overlay's pointer capture directly (`AnnotationController#toggleDraw`), a
+zero-keyboard fallback that works regardless of uiohook or Accessibility
+state; pen-armed sessions always get the auto-release watchers. **Red pen**:
+`annotationOverlay.ts` does true HOLD-to-draw via a native global-key hook
+(`globalKeyHook.ts`, uiohook-napi — N-API, all-arch prebuilds, asar-unpacked;
+fails soft to the tap-to-arm shortcut when the module or macOS Accessibility
+permission is unavailable — but never silently: every degrade point logs to
+console + `<userData>/hold-to-draw.log`, a failed require is NOT cached so the
+next recording retries, and disable() re-opens the once-per-recording
+Accessibility prompt gate so granting the permission mid-session upgrades the
+NEXT recording without a relaunch). enable() reports `{ available, hold,
+reason? }` — reason (`no-module` / `no-accessibility` / `start-failed`) drives
+the HUD hint, which nudges "allow Accessibility for hold" when that's the
+actual obstacle; a repeat enable() on a live overlay re-derives `hold` from
+the live hook and retries a dead hook instead of parroting a stale mode.
 
 ## Conventions
 
