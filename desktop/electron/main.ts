@@ -1233,22 +1233,32 @@ const ensureAnnotationController = (): AnnotationController => {
   annotationController ??= createAnnotationController({
     overlayHtmlPath: path.join(app.getAppPath(), "assets", "annotationOverlay.html"),
     // Mirror draw-mode transitions to the web recorder's HUD via the shell
-    // bridge (window.syrusShell.annotation.onModeChanged).
+    // bridge (window.syrusShell.annotation.onModeChanged) — and straight to
+    // the floating HUD, so its pen button's pressed state flips instantly
+    // instead of waiting on the React round-trip.
     onModeChanged: (drawing) => {
       webAppWindow?.window.webContents.send("annotation:mode-changed", drawing)
+      recorderHudController?.update({ drawing })
     }
   })
   return annotationController
 }
 
-// The floating recording HUD controller. Lazily created; button clicks are
-// forwarded back to the web recorder over the shell bridge
-// (window.syrusShell.recorderHud.onAction).
+// The floating recording HUD controller. Lazily created; Stop/Discard clicks
+// are forwarded back to the web recorder over the shell bridge
+// (window.syrusShell.recorderHud.onAction). The pen toggle is handled HERE:
+// it flips the overlay's pointer capture directly (same setArmed path as the
+// keyboard flows), so a mouse-only user can draw even when the native key
+// hook or macOS Accessibility permission is unavailable.
 const ensureRecorderHud = (): RecorderHudController => {
   recorderHudController ??= createRecorderHudController({
     htmlPath: path.join(app.getAppPath(), "assets", "recorderHud.html"),
     preloadPath: path.join(__dirname, "windows", "recorderHudPreload.cjs"),
     onAction: (kind) => {
+      if (kind === "pen") {
+        annotationController?.toggleDraw()
+        return
+      }
       webAppWindow?.window.webContents.send("recorderHud:action", kind)
     }
   })

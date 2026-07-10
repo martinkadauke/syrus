@@ -3,6 +3,7 @@ import { MAX_WALKTHROUGH_DURATION_SECONDS } from "../api/videoWalkthroughs"
 import {
   annotationBridge,
   recorderHudBridge,
+  type AnnotationHoldFailureReason,
   type SyrusAnnotationBridge,
   type SyrusRecorderHudBridge,
   type SyrusRecorderHudState
@@ -32,9 +33,25 @@ export function annotationShortcutLabel(mac: boolean = isMacPlatform()): string 
 }
 
 // The modifier the native HOLD-to-draw hook watches (Ctrl on both platforms;
-// shown as ⌃ Control on macOS where Ctrl is a distinct key from ⌘).
+// shown as the bare ⌃ glyph on macOS — the hint must stay tiny — and spelled
+// out where the glyph is unfamiliar).
 export function annotationHoldLabel(mac: boolean = isMacPlatform()): string {
-  return mac ? "⌃ Control" : "Ctrl"
+  return mac ? "⌃" : "Ctrl"
+}
+
+// Which idle hint the recording HUD shows for the pen: HOLD when the native
+// hook is live; the Accessibility nudge when hold failed ONLY for the macOS
+// permission (the tap fallback still works, and granting the permission
+// upgrades the next recording to hold); the plain TAP hint otherwise.
+export type AnnotationIdleHintKind = "hold" | "accessibility" | "tap"
+
+export function annotationIdleHintKind(
+  hold: boolean,
+  reason?: AnnotationHoldFailureReason | null
+): AnnotationIdleHintKind {
+  if (hold) return "hold"
+  if (reason === "no-accessibility") return "accessibility"
+  return "tap"
 }
 
 // The overlay is only composited into the recording when the user shares a
@@ -131,6 +148,9 @@ export function useWalkthroughRecorder({
   // Whether the live annotation surface is the native HOLD-to-draw hook (Ctrl
   // held → armed) vs the TAP fallback (⌘⇧A), so the HUD shows the right hint.
   const [annotationHold, setAnnotationHold] = useState(false)
+  // WHY hold mode could not start (null when it did, or when nothing reported
+  // a reason). "no-accessibility" drives the HUD's "grant Accessibility" nudge.
+  const [annotationReason, setAnnotationReason] = useState<AnnotationHoldFailureReason | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamsRef = useRef<MediaStream[]>([])
   const chunksRef = useRef<Blob[]>([])
@@ -161,6 +181,7 @@ export function useWalkthroughRecorder({
     setDrawing(false)
     setAnnotationReady(false)
     setAnnotationHold(false)
+    setAnnotationReason(null)
     setDisplaySurface(null)
   }, [])
 
@@ -240,11 +261,16 @@ export function useWalkthroughRecorder({
           if (finishedRef.current) return
           setAnnotationReady(result.available === true)
           setAnnotationHold(result.hold === true)
+          // Why hold could not start (undefined on success / old shells) —
+          // "no-accessibility" turns the idle hint into the grant-permission
+          // nudge while the tap fallback stays advertised and functional.
+          setAnnotationReason(result.hold === true ? null : (result.reason ?? null))
         })
         .catch(() => {
           if (!finishedRef.current) {
             setAnnotationReady(false)
             setAnnotationHold(false)
+            setAnnotationReason(null)
           }
         })
       annotationUnsubscribeRef.current = annotationApi.onModeChanged((armed) => setDrawing(armed))
@@ -336,6 +362,9 @@ export function useWalkthroughRecorder({
     // Whether the live annotation surface is the native HOLD-to-draw hook (vs the
     // tap fallback) — the HUD hint reads "hold Ctrl" vs "tap ⌘⇧A" accordingly.
     annotationHold,
+    // Why hold mode could not start (null when it did). "no-accessibility"
+    // makes the HUD nudge the user to grant the macOS permission.
+    annotationReason,
     // The chosen capture surface, for the "share your whole screen" nudge.
     displaySurface,
     // Live draw-mode flag from the overlay.
@@ -476,17 +505,19 @@ export function AnalyzingHint({
 }
 
 // The red-pen affordance rendered inside the HUD when the desktop shell offers
-// annotation. `hint` is the click-through prompt that tapping the shortcut arms
-// the pen ("✏️ Draw on screen — tap ⌘⇧A"); while the pen is armed it swaps to
-// `drawingHint` (which describes the pause-to-auto-exit behavior) and
-// emphasizes. `drawing` is pushed from the shell's onModeChanged, so it flips
-// back to `hint` automatically when draw mode auto-releases. `surfaceNote`, when
-// present, warns that marks only show when sharing the whole screen.
+// annotation: a deliberately QUIET status — a tiny dot (gray while idle, red
+// while drawing) beside a short muted hint ("Hold ⌃ to draw" / "Drawing").
+// `drawing` is pushed from the shell's onModeChanged, so it flips back to
+// `hint` automatically when draw mode releases. `surfaceNote`, when present,
+// warns that marks only show when sharing the whole screen; `accessibilityNote`
+// (macOS, hold hook blocked by the Accessibility permission) tells the user
+// where in System Settings to grant it — the tap shortcut works meanwhile.
 export type WalkthroughAnnotationHud = {
   hint: string
   drawingHint: string
   drawing: boolean
   surfaceNote?: string
+  accessibilityNote?: string
 }
 
 // The floating HUD while recording: pulsing dot, elapsed clock, remaining
@@ -540,13 +571,18 @@ export function WalkthroughRecorderHUD({
         ) : null}
         {annotation ? (
           <span
-            className={
-              annotation.drawing
-                ? "text-xs font-semibold text-red-600 dark:text-red-400"
-                : "hidden text-xs text-gray-500 sm:inline dark:text-gray-400"
-            }
+            className={`items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 ${
+              annotation.drawing ? "inline-flex" : "hidden sm:inline-flex"
+            }`}
             data-testid="walkthrough-annotate-hint"
           >
+            <span
+              aria-hidden="true"
+              className={`inline-block h-1.5 w-1.5 flex-none rounded-full ${
+                annotation.drawing ? "bg-red-600" : "bg-gray-400 dark:bg-gray-500"
+              }`}
+              data-testid="walkthrough-annotate-dot"
+            />
             {annotation.drawing ? annotation.drawingHint : annotation.hint}
           </span>
         ) : null}
@@ -576,6 +612,14 @@ export function WalkthroughRecorderHUD({
           data-testid="walkthrough-annotate-surface-note"
         >
           {annotation.surfaceNote}
+        </span>
+      ) : null}
+      {annotation?.accessibilityNote ? (
+        <span
+          className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+          data-testid="walkthrough-annotate-accessibility-note"
+        >
+          {annotation.accessibilityNote}
         </span>
       ) : null}
     </div>

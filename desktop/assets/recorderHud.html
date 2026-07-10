@@ -2,12 +2,19 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <!-- The floating recording HUD: a small always-on-top pill the user can
+    <!-- The floating recording HUD: a small always-on-top panel the user can
          DRAG anywhere on screen (including off the surface being demonstrated),
          so the recording controls are always reachable without switching back
          to the Syrus window. State is pushed in over IPC (window.__recorderHud
-         from recorderHudPreload); Stop / Discard send actions back. The whole
-         pill is a drag region except the buttons. -->
+         from recorderHudPreload); Stop / Discard / the pen toggle send actions
+         back. The whole panel is a drag region except the buttons.
+
+         The panel is RECTANGULAR on purpose: rounded corners on a transparent
+         always-on-top window render with visible compositing artifacts on
+         macOS, so this matches the web app's bordered-white-panel look
+         instead. After every render the script measures the panel and asks
+         main to size the WINDOW to the content (recorderHud:resize), so text
+         is never truncated no matter the locale. -->
     <style>
       :root { color-scheme: light dark; }
       html, body {
@@ -25,16 +32,15 @@
         align-items: center;
         gap: 10px;
         padding: 8px 12px;
-        margin: 6px;
-        border-radius: 9999px;
-        background: rgba(255, 255, 255, 0.98);
-        border: 1px solid rgba(0, 0, 0, 0.1);
-        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+        margin: 8px;
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
         color: #111827;
         white-space: nowrap;
       }
       @media (prefers-color-scheme: dark) {
-        .pill { background: rgba(17, 24, 39, 0.98); border-color: rgba(255, 255, 255, 0.12); color: #f3f4f6; }
+        .pill { background: #111827; border-color: rgba(255, 255, 255, 0.16); color: #f3f4f6; }
       }
       .dot { position: relative; width: 12px; height: 12px; flex: none; }
       .dot::before, .dot::after {
@@ -48,12 +54,16 @@
       @media (prefers-color-scheme: dark) { .remaining { color: #9ca3af; } .remaining.warn { color: #fbbf24; } }
       .nomic { font-size: 12px; color: #d97706; }
       @media (prefers-color-scheme: dark) { .nomic { color: #fbbf24; } }
-      .hint { font-size: 12px; color: #dc2626; font-weight: 600; }
-      .hint.idle { color: #6b7280; font-weight: 400; }
-      @media (prefers-color-scheme: dark) { .hint.idle { color: #9ca3af; } }
+      /* The pen state: a tiny neutral dot + short muted text while idle, a red
+         dot while drawing. Deliberately quiet — the old bright-red 600-weight
+         hint shouted over the whole HUD. */
+      .penstatus { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: #6b7280; }
+      @media (prefers-color-scheme: dark) { .penstatus { color: #9ca3af; } }
+      .pendot { width: 6px; height: 6px; flex: none; border-radius: 9999px; background: #9ca3af; }
+      .penstatus.drawing .pendot { background: #dc2626; }
       button {
         -webkit-app-region: no-drag;
-        border: 0; border-radius: 9999px; cursor: pointer; font-weight: 600;
+        border: 0; border-radius: 4px; cursor: pointer; font-weight: 600;
         font-size: 12px; padding: 5px 12px;
       }
       button.stop { background: #dc2626; color: #fff; }
@@ -61,16 +71,34 @@
       button.discard { background: transparent; color: #6b7280; padding: 5px 8px; }
       button.discard:hover { background: rgba(0,0,0,0.06); color: #374151; }
       @media (prefers-color-scheme: dark) { button.discard { color: #9ca3af; } button.discard:hover { background: rgba(255,255,255,0.08); color: #e5e7eb; } }
+      /* The mouse-only pen toggle: a restrained icon button, active while the
+         pen is armed. Works with no keyboard at all — the fallback when the
+         native hold hook / Accessibility permission is unavailable. */
+      button.pen {
+        background: transparent; border: 1px solid transparent; color: #6b7280;
+        padding: 3px 7px; font-size: 13px; line-height: 1;
+      }
+      button.pen:hover { background: rgba(0,0,0,0.06); }
+      button.pen.active { background: rgba(220, 38, 38, 0.12); border-color: #dc2626; }
+      @media (prefers-color-scheme: dark) {
+        button.pen { color: #9ca3af; }
+        button.pen:hover { background: rgba(255,255,255,0.08); }
+        button.pen.active { background: rgba(220, 38, 38, 0.25); }
+      }
       .hidden { display: none !important; }
     </style>
   </head>
   <body>
-    <div class="pill" role="status">
+    <div class="pill" id="pill" role="status">
       <span class="dot" aria-hidden="true"></span>
       <span class="clock" id="clock">0:00</span>
       <span class="remaining" id="remaining"></span>
       <span class="nomic hidden" id="nomic"></span>
-      <span class="hint idle hidden" id="hint"></span>
+      <span class="penstatus hidden" id="penstatus">
+        <span class="pendot" aria-hidden="true"></span>
+        <span id="hint"></span>
+      </span>
+      <button class="pen hidden" id="pen" type="button" aria-label="Toggle drawing" aria-pressed="false">&#x270F;&#xFE0F;</button>
       <button class="stop" id="stop" type="button">Stop &amp; attach</button>
       <button class="discard" id="discard" type="button">Discard</button>
     </div>
@@ -82,22 +110,55 @@
 
         $("stop").addEventListener("click", function () { window.__recorderHud && window.__recorderHud.action("stop"); });
         $("discard").addEventListener("click", function () { window.__recorderHud && window.__recorderHud.action("discard"); });
+        $("pen").addEventListener("click", function () { window.__recorderHud && window.__recorderHud.action("pen"); });
+
+        // Ask main to size the WINDOW to the panel so no locale's text is ever
+        // clipped by the old fixed 480px width. Measured a frame after render
+        // so layout has settled; +16 covers the panel's 8px margins.
+        function sendSize() {
+          if (!(window.__recorderHud && window.__recorderHud.resize)) return;
+          var pill = $("pill");
+          window.__recorderHud.resize({
+            width: Math.ceil(pill.offsetWidth) + 16,
+            height: Math.ceil(pill.offsetHeight) + 16
+          });
+        }
+
+        // Updates MERGE into the last-known state instead of replacing it:
+        // main pushes tiny partial updates (e.g. { drawing } straight from the
+        // overlay's mode change) between the recorder's full-state ticks, and a
+        // partial update must not blank the clock or the hint.
+        var current = {};
+        function render() {
+          set("clock", current.clock || "0:00");
+          set("remaining", current.remaining || "");
+          toggle("remaining", !!current.remaining);
+          if (current.remainingWarn) $("remaining").classList.add("warn"); else $("remaining").classList.remove("warn");
+          set("nomic", current.noMic || "");
+          toggle("nomic", !!current.noMic);
+          var hint = current.hint || "";
+          set("hint", hint);
+          // The hint doubles as the annotation-availability signal: no hint
+          // means no live overlay, so the pen state AND the pen button hide
+          // together (never advertise a dead affordance).
+          toggle("penstatus", !!hint);
+          toggle("pen", !!hint);
+          if (current.drawing) $("penstatus").classList.add("drawing"); else $("penstatus").classList.remove("drawing");
+          if (current.drawing) $("pen").classList.add("active"); else $("pen").classList.remove("active");
+          $("pen").setAttribute("aria-pressed", current.drawing ? "true" : "false");
+          $("pen").setAttribute("aria-label", current.penLabel || "Toggle drawing");
+          set("stop", current.stopLabel || "Stop & attach");
+          set("discard", current.discardLabel || "Discard");
+          requestAnimationFrame(sendSize);
+        }
 
         if (window.__recorderHud && window.__recorderHud.onUpdate) {
           window.__recorderHud.onUpdate(function (state) {
             state = state || {};
-            set("clock", state.clock || "0:00");
-            set("remaining", state.remaining || "");
-            toggle("remaining", !!state.remaining);
-            if (state.remainingWarn) $("remaining").classList.add("warn"); else $("remaining").classList.remove("warn");
-            set("nomic", state.noMic || "");
-            toggle("nomic", !!state.noMic);
-            var hint = state.hint || "";
-            set("hint", hint);
-            toggle("hint", !!hint);
-            if (state.drawing) $("hint").classList.remove("idle"); else $("hint").classList.add("idle");
-            set("stop", state.stopLabel || "Stop & attach");
-            set("discard", state.discardLabel || "Discard");
+            for (var key in state) {
+              if (Object.prototype.hasOwnProperty.call(state, key)) current[key] = state[key];
+            }
+            render();
           });
         }
       })();

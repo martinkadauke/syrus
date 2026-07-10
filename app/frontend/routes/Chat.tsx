@@ -8,7 +8,7 @@ import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
 import { GeminiSetupSheet } from "../components/GeminiSetupSheet"
-import { AnalyzingHint, annotationHoldLabel, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
+import { AnalyzingHint, annotationHoldLabel, annotationIdleHintKind, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
 import {
   isWalkthroughVideoFile,
   MAX_WALKTHROUGH_BYTES,
@@ -2401,11 +2401,17 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   // false in a plain browser, where the in-page WalkthroughRecorderHUD is used.
   const recording = recorder.state.phase === "recording"
   const recorderMicLive = recorder.state.phase === "recording" ? recorder.state.micLive : true
-  // Hint text depends on the annotation mode: HOLD (native hook) reads "hold
-  // Control", TAP (fallback) reads "tap ⌘⇧A"; both swap while actively drawing.
-  const annotationHintIdle = recorder.annotationHold
-    ? t("walkthrough_annotate_hold_hint", { key: annotationHoldLabel() })
-    : t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() })
+  // Hint text depends on the live annotation mode: HOLD (native hook) reads
+  // "Hold ⌃ to draw", TAP (fallback) reads "⌘⇧A to draw" — and when hold
+  // failed only for the macOS Accessibility permission, the idle hint nudges
+  // the user to grant it (the tap shortcut keeps working meanwhile).
+  const annotationIdleKind = annotationIdleHintKind(recorder.annotationHold, recorder.annotationReason)
+  const annotationHintIdle =
+    annotationIdleKind === "hold"
+      ? t("walkthrough_annotate_hold_hint", { key: annotationHoldLabel() })
+      : annotationIdleKind === "accessibility"
+        ? t("walkthrough_annotate_accessibility_hint", { shortcut: annotationShortcutLabel() })
+        : t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() })
   const annotationHintDrawing = recorder.annotationHold
     ? t("walkthrough_annotate_hold_drawing", { key: annotationHoldLabel() })
     : t("walkthrough_annotate_drawing")
@@ -2421,7 +2427,8 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
         : undefined,
       drawing: recorder.drawing,
       stopLabel: t("walkthrough_stop"),
-      discardLabel: t("walkthrough_discard")
+      discardLabel: t("walkthrough_discard"),
+      penLabel: t("walkthrough_hud_pen")
     },
     onStop: () => recorder.stop(),
     onDiscard: () => recorder.stop({ discard: true })
@@ -2789,19 +2796,32 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           </button>
         </div>
       ) : null}
+      {recorder.state.phase === "recording" && nativeRecorderHud && annotationIdleKind === "accessibility" ? (
+        // The floating native HUD only fits the terse hint; the actionable
+        // System Settings guidance renders here in the page — the ONLY way a
+        // desktop user (always on the native HUD) ever sees it.
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" data-testid="walkthrough-annotate-accessibility-note">
+          {t("walkthrough_annotate_accessibility_note")}
+        </div>
+      ) : null}
       {recorder.state.phase === "recording" && !nativeRecorderHud ? (
         <WalkthroughRecorderHUD
           annotation={
             recorder.annotationAvailable
               ? {
-                  // Mode-aware: HOLD reads "hold Control", TAP reads "tap ⌘⇧A";
-                  // both swap to the drawing variant while the pen is armed.
+                  // Mode-aware: HOLD reads "Hold ⌃ to draw", TAP reads "⌘⇧A to
+                  // draw"; both swap to the drawing variant while the pen is
+                  // armed.
                   hint: annotationHintIdle,
                   drawingHint: annotationHintDrawing,
                   drawing: recorder.drawing,
                   surfaceNote: shouldShowAnnotationSurfaceNote(recorder.annotationAvailable, recorder.displaySurface)
                     ? t("walkthrough_annotate_surface_note")
-                    : undefined
+                    : undefined,
+                  // In-page guidance for the no-accessibility degrade: name the
+                  // System Settings pane that brings hold-to-draw back.
+                  accessibilityNote:
+                    annotationIdleKind === "accessibility" ? t("walkthrough_annotate_accessibility_note") : undefined
                 }
               : undefined
           }
