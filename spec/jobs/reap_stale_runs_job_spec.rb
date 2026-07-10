@@ -447,6 +447,33 @@ RSpec.describe ReapStaleRunsJob do
           .not_to change { enqueued_run_job_count(run) }
       end
 
+      it "does not treat a failed root RunJob as an active inline driver" do
+        ensure_solid_queue_test_tables!
+        clear_solid_queue_test_tables!
+
+        _workflow, step, run = queued_orphan
+        root_run = step.runs.create!(job: job, trigger_kind: "auto_merge")
+        queue_job = SolidQueue::Job.create!(
+          class_name: "RunJob",
+          queue_name: "runs",
+          priority: 10,
+          arguments: { "arguments" => [ root_run.id ] },
+          created_at: 10.minutes.ago,
+          updated_at: 10.minutes.ago
+        )
+        SolidQueue::FailedExecution.create!(
+          job: queue_job,
+          error: { "exception_class" => "SolidQueue::Processes::ProcessPrunedError" },
+          created_at: 5.minutes.ago
+        )
+        ActiveJob::Base.queue_adapter.enqueued_jobs.clear
+
+        expect { described_class.perform_now }
+          .to change { enqueued_run_job_count(run) }.by(1)
+      ensure
+        clear_solid_queue_test_tables! if ActiveRecord::Base.connection.table_exists?(:solid_queue_jobs)
+      end
+
       it "leaves a just-created queued Run alone (inside the grace window)" do
         workflow = Workflow.create!(job: job, trigger_kind: "auto_merge")
         workflow.update_columns(state: "running", started_at: 20.minutes.ago)

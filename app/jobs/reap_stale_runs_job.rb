@@ -168,10 +168,11 @@ class ReapStaleRunsJob < ApplicationJob
 
   # Finds Runs in :running state with no active SQ::Job referencing
   # them. "Active" here means a row in solid_queue_jobs that hasn't
-  # been finalized (finished_at NULL). A pending job, a claimed
-  # job, or a failed-but-not-yet-cleaned-up job all qualify;
-  # successfully-finished jobs do not. If no row matches, the Run
-  # has no worker that will ever resume it — reap it.
+  # been finalized (finished_at NULL) and has not moved to
+  # solid_queue_failed_executions. A pending, ready, claimed, or
+  # scheduled job qualifies; failed jobs do not, even if Solid Queue
+  # leaves finished_at NULL on the job row. If no row matches, the
+  # Run has no worker that will ever resume it — reap it.
   #
   # Grace period (ORPHAN_RUN_GRACE_PERIOD) prevents reaping a Run
   # whose RunJob enqueue hasn't committed yet (the AR transaction
@@ -204,6 +205,8 @@ class ReapStaleRunsJob < ApplicationJob
   def active_run_job_root_run_ids
     SolidQueue::Job
       .where(class_name: "RunJob", finished_at: nil)
+      .left_outer_joins(:failed_execution)
+      .where(solid_queue_failed_executions: { id: nil })
       .pluck(:arguments)
       .filter_map { |args| args&.dig("arguments")&.first }
       .map(&:to_i)
