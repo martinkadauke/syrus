@@ -76,6 +76,7 @@ jobs:
     outputs:
       image_tag: ${{ steps.compute.outputs.image_tag }} # test-<short-sha>
       app_version: ${{ steps.compute.outputs.app_version }} # X.Y.Z-test.N
+      version_tag: ${{ steps.compute.outputs.version_tag }} # test-X.Y.Z-test.N (manifest pin)
     steps:
       - uses: actions/checkout@v5
         with:
@@ -97,11 +98,17 @@ jobs:
           base="$(printf '%s\n%s\n' "${latest_tag:-0.0.0}" "${pkg%%-*}" | sort -V | tail -1)"
           IFS=. read -r MA MI PA <<<"$base"
           app_version="$MA.$MI.$((PA + 1))-test.$GITHUB_RUN_NUMBER"
+          # The image is ALSO tagged test-<app_version> and that tag is what the
+          # manifest pins — so the in-app badge reads consistently
+          # ("app 0.1.4-test.1 · backend test-0.1.4-test.1"). The sha tag
+          # stays for traceability back to the commit.
+          version_tag="test-$app_version"
           {
             echo "image_tag=$image_tag"
             echo "app_version=$app_version"
+            echo "version_tag=$version_tag"
           } >> "$GITHUB_OUTPUT"
-          echo "### Test release $app_version (backend image tag: $image_tag, ref: $GITHUB_REF_NAME)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Test release $app_version (backend image tags: $version_tag + $image_tag, ref: $GITHUB_REF_NAME)" >> "$GITHUB_STEP_SUMMARY"
 
       # A test tag must NEVER be able to collide with (or be mistaken for) a
       # release tag. The regex alone rules out `latest` and semver, but the
@@ -110,6 +117,7 @@ jobs:
         env:
           IMAGE_TAG: ${{ steps.compute.outputs.image_tag }}
           APP_VERSION: ${{ steps.compute.outputs.app_version }}
+          VERSION_TAG: ${{ steps.compute.outputs.version_tag }}
         run: |
           set -euo pipefail
           if ! [[ "$IMAGE_TAG" =~ ^test-[a-f0-9]{7,}$ ]]; then
@@ -123,6 +131,12 @@ jobs:
           fi
           if ! [[ "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-test\.[0-9]+$ ]]; then
             echo "::error::app version '$APP_VERSION' must look like X.Y.Z-test.N"; exit 1
+          fi
+          if ! [[ "$VERSION_TAG" =~ ^test-[0-9]+\.[0-9]+\.[0-9]+-test\.[0-9]+$ ]]; then
+            echo "::error::version tag '$VERSION_TAG' must look like test-X.Y.Z-test.N"; exit 1
+          fi
+          if [ "$VERSION_TAG" = "latest" ]; then
+            echo "::error::version tag must never be 'latest'"; exit 1
           fi
 
   # ---------------------------------------------------------------------------
@@ -270,6 +284,7 @@ jobs:
         env:
           IMAGE: ghcr.io/tkadauke/syrus-backend
           VERSION: ${{ needs.prepare.outputs.image_tag }}
+          VERSION_TAG: ${{ needs.prepare.outputs.version_tag }}
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -277,17 +292,19 @@ jobs:
           refs=()
           for d in *; do refs+=("$IMAGE@sha256:$d"); done
           if [ "${#refs[@]}" -eq 0 ]; then echo "::error::no per-arch digests to merge"; exit 1; fi
-          echo "merging ${#refs[@]} arch(es) into $IMAGE:$VERSION"
-          docker buildx imagetools create -t "$IMAGE:$VERSION" "${refs[@]}"
+          echo "merging ${#refs[@]} arch(es) into $IMAGE:$VERSION + $IMAGE:$VERSION_TAG"
+          docker buildx imagetools create -t "$IMAGE:$VERSION" -t "$IMAGE:$VERSION_TAG" "${refs[@]}"
 
       - name: Verify the test manifest exists
         env:
           IMAGE: ghcr.io/tkadauke/syrus-backend
           VERSION: ${{ needs.prepare.outputs.image_tag }}
+          VERSION_TAG: ${{ needs.prepare.outputs.version_tag }}
         run: |
           set -euo pipefail
           . ./bin/docker-image-lib
           syrus_verify_pushed "$IMAGE" "$VERSION"
+          syrus_verify_pushed "$IMAGE" "$VERSION_TAG"
 
   # ---------------------------------------------------------------------------
   # Cross-compile the CLI tarballs (bin/release-cli: linux/amd64 + arm64 +
@@ -448,7 +465,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           SYRUS_RELEASE_BUILD: "1"
-          SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.image_tag }}
+          SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}
         run: |
           set -o pipefail
           build() {
@@ -500,7 +517,7 @@ jobs:
       - name: Verify signature, notarization, and the backend manifest pin
         env:
           VERSION: ${{ needs.prepare.outputs.app_version }}
-          BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.image_tag }}
+          BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}
         run: |
           set -euo pipefail
           APP="desktop/out/mac-universal/Syrus.app"
@@ -651,7 +668,7 @@ jobs:
           AZURE_SIGN_CERT_PROFILE: ${{ secrets.AZURE_SIGN_CERT_PROFILE || vars.AZURE_SIGN_CERT_PROFILE }}
           AZURE_SIGN_PUBLISHER_NAME: ${{ secrets.AZURE_SIGN_PUBLISHER_NAME || vars.AZURE_SIGN_PUBLISHER_NAME }}
           SYRUS_RELEASE_BUILD: "1"
-          SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.image_tag }}
+          SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}
         run: |
           AZURE_SIGN_ENDPOINT="${AZURE_SIGN_ENDPOINT%/}"
           npm --prefix desktop run build -- --win --publish never \
@@ -664,7 +681,7 @@ jobs:
       - name: Verify signatures and the backend manifest pin
         shell: pwsh
         env:
-          BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.image_tag }}
+          BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}
         run: |
           $exes = Get-ChildItem -Path desktop/out -Filter "Syrus-Setup-*.exe"
           if ($exes.Count -eq 0) { throw "No Syrus-Setup-*.exe artifacts found under desktop/out" }

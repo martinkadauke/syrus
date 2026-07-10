@@ -181,8 +181,19 @@ export const compareVersions = (
   return "same"
 }
 
-const describeVersion = (version: string | null | undefined): string =>
-  parseVersion(version) ? `Syrus ${version?.trim()}` : "an unknown-version dev build"
+// Name the version STRING the bundle carries whenever there is one —
+// "Syrus 0.1.4-test.1" beats "an unknown-version dev build" even though the
+// prerelease suffix makes it unparseable for ORDERING (compareVersions stays
+// strict; the newer/older note is simply omitted). Only the 0.0.0 sentinel
+// and a missing plist read as a dev build.
+const describeVersion = (version: string | null | undefined): string => {
+  const trimmed = version?.trim()
+  if (!trimmed || trimmed === UNKNOWN_VERSION) {
+    return "an unknown-version dev build"
+  }
+
+  return `Syrus ${trimmed}`
+}
 
 // Dialog copy for replacing an existing install. Shown BEFORE any copying;
 // "Keep Existing" hands over to the already-installed copy.
