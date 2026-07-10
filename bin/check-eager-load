@@ -29,7 +29,7 @@ if [ ! -x "bin/rails" ]; then
   exit 0
 fi
 
-if output=$(RAILS_ENV=test bin/rails runner 'Rails.application.eager_load!' 2>&1); then
+if output=$(RAILS_ENV=test bundle exec bin/rails runner 'Rails.application.eager_load!' 2>&1); then
   [ "$QUIET" = "--quiet" ] || echo "[check-eager-load] ok"
   exit 0
 fi
@@ -47,6 +47,6 @@ This will crashloop the production pods. Common causes:
   - Namespace mismatch between path and constant.
 
 Reproduce locally:
-  RAILS_ENV=test bin/rails runner 'Rails.application.eager_load!'
+  RAILS_ENV=test bundle exec bin/rails runner 'Rails.application.eager_load!'
 MSG
 exit 1
