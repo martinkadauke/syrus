@@ -97,7 +97,7 @@ class Job < ApplicationRecord
   validates :priority, presence: true, inclusion: { in: PRIORITIES }
   validates :job_provider_setting, presence: true, inclusion: { in: PROVIDER_SETTINGS }
   validates :stack_base, presence: true, inclusion: { in: STACK_BASES }
-  validates :agent_provider, presence: true, inclusion: { in: User::AGENT_PROVIDERS }
+  validates :agent_provider, presence: true, inclusion: { in: -> { User.agent_providers } }
   validates :validity, presence: true, inclusion: { in: VALIDITIES }
   validates :triaging_reason, presence: true, inclusion: { in: TRIAGING_REASONS }
   validates :approved_via, inclusion: { in: APPROVAL_VIAS }, allow_nil: true
