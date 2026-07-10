@@ -2,6 +2,7 @@ import { execFile, spawn } from "node:child_process"
 import { createWriteStream } from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
+import readline from "node:readline"
 import { promisify } from "node:util"
 import { getBackendMode, getLocalInstall, localStateDir } from "../settings.js"
 import {
@@ -16,6 +17,9 @@ import {
 import { removeSupersededSyrusImages } from "./imageCleanup.js"
 import { installerCommand, installerScriptPath } from "./installPaths.js"
 import { DATA_VOLUME_NAME } from "./installerDriver.js"
+import { BackendUpdateProgressTracker, type BackendUpdateProgress } from "./updateProgress.js"
+
+export type { BackendUpdateProgress } from "./updateProgress.js"
 
 const execFileAsync = promisify(execFile)
 
@@ -146,17 +150,36 @@ export const currentImagePin = async (): Promise<string | null> => {
   }
 }
 
+// The update's live progress feed for the web sidebar: called with each new
+// phase/percent snapshot, then with null once the update ends (either way).
+// Progress is strictly cosmetic — a throwing callback must never be able to
+// fail or wedge the update itself.
+type UpdateBackendDeps = {
+  onProgress?: (progress: BackendUpdateProgress | null) => void
+}
+
 // Applies a new pinned image by re-running the bundled installer against the
 // existing state dir — the same audited path a fresh install takes: rewrite
 // the SYRUS_IMAGE pin, pull, recreate containers, health-gate. Output appends
 // to install.log so Backend → Open Install Log covers updates too.
-export const updateBackend = async (image: string): Promise<boolean> => {
+export const updateBackend = async (image: string, deps: UpdateBackendDeps = {}): Promise<boolean> => {
   if (getBackendMode() !== "local" || busy) {
     return false
   }
 
   busy = true
+  const report = (progress: BackendUpdateProgress | null) => {
+    try {
+      deps.onProgress?.(progress)
+    } catch {
+      // Progress display must never break the update.
+    }
+  }
   try {
+    const tracker = new BackendUpdateProgressTracker()
+    // Report "starting" before the daemon wait so the sidebar notice covers
+    // the whole outage window, not just the installer's own runtime.
+    report(tracker.snapshot())
     if (!(await ensureDaemon())) {
       return false
     }
@@ -183,9 +206,22 @@ export const updateBackend = async (image: string): Promise<boolean> => {
           image
         ])
         const child = spawn(command, args, { env, windowsHide: true })
-        child.stdout.pipe(log, { end: false })
-        child.stderr.pipe(log, { end: false })
+        // Parse the installer's --json NDJSON line-by-line (the same protocol
+        // the onboarding driver consumes) so the update reports phases and
+        // docker-pull percentages; every raw line still lands in install.log.
+        readline.createInterface({ input: child.stdout }).on("line", (line) => {
+          log.write(`${line}\n`)
+          const progress = tracker.observeLine(line)
+          if (progress) {
+            report(progress)
+          }
+        })
+        readline.createInterface({ input: child.stderr }).on("line", (line) => {
+          log.write(`${line}\n`)
+        })
         child.on("error", () => resolve(false))
+        // "close", not "exit": close fires only after stdio has drained, so
+        // the final NDJSON lines are parsed and nothing writes after end().
         child.on("close", (code) => resolve(code === 0))
       })
 
@@ -210,6 +246,8 @@ export const updateBackend = async (image: string): Promise<boolean> => {
   } catch {
     return false
   } finally {
+    // The notice must disappear on EVERY exit — success, failure, or throw.
+    report(null)
     busy = false
   }
 }

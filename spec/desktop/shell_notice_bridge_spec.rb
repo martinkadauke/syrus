@@ -35,6 +35,10 @@ RSpec.describe "desktop shell-notice bridge" do
     expect(preload).to include("claudeDetected: boolean")
     expect(preload).to include("skillInstalled: boolean")
     expect(preload).to include("skillOfferDismissed: boolean")
+    expect(preload).to include("backendUpdate: BackendUpdateProgress | null")
+    # The backend-update member's own shape: coarse phase + optional percent.
+    expect(preload).to include(%(phase: "starting" | "downloading" | "migrating"))
+    expect(preload).to include("percent: number | null")
     # installSkill resolves { ok, message } — failures render inline, no dialog.
     expect(preload).to include("Promise<{ ok: boolean; message: string | null }>")
     # Nothing beyond the contract leaks across: no node built-ins, no second
@@ -50,6 +54,7 @@ RSpec.describe "desktop shell-notice bridge" do
     expect(state).to include("claudeDetected: await agentToolPresent()")
     expect(state).to include("claudeSkillPath()")
     expect(state).to include("skillOfferDismissed: skillOfferDismissed()")
+    expect(state).to include("backendUpdate: backendUpdateProgress")
     # Handlers for all four channels.
     expect(main).to include('ipcMain.handle("shell:get-state"')
     expect(main).to include('ipcMain.handle("shell:relaunch-to-update"')
@@ -95,6 +100,7 @@ RSpec.describe "desktop shell-notice bridge" do
     expect(inert).to include("updateReadyVersion: null")
     expect(inert).to include("claudeDetected: false")
     expect(inert).to include("skillOfferDismissed: true")
+    expect(inert).to include("backendUpdate: null")
     get_state = main[/ipcMain\.handle\("shell:get-state"[\s\S]{0,300}/]
     expect(get_state).to include("return INERT_SHELL_NOTICE_STATE")
     install = main[/ipcMain\.handle\("shell:install-skill"[\s\S]{0,400}/]
@@ -122,6 +128,18 @@ RSpec.describe "desktop shell-notice bridge" do
     install = main[/const performCliInstall[\s\S]{0,4400}/]
     expect(install).to match(/finally \{[\s\S]{0,600}void broadcastShellNoticeState\(\)/)
     expect(install).to match(/skillInstalled = true\s*\n[\s\S]{0,300}store\.set\("skillInstallOffered", true\)/)
+  end
+
+  it "streams backend-update progress over the SAME bridge, no new channels" do
+    # A local backend update is 1–3 minutes of deliberate unreachability.
+    # offerBackendUpdateIfPinned feeds each phase/percent snapshot into the
+    # shared notice state and re-broadcasts — the sidebar shows progress, and
+    # the web app stops reading the outage as "GitHub not connected".
+    offer = main[/const offerBackendUpdateIfPinned[\s\S]{0,2400}/]
+    expect(offer).to match(/updateBackend\(image, \{\s*\n\s*onProgress: \(progress\) => \{\s*\n\s*backendUpdateProgress = progress\s*\n\s*void broadcastShellNoticeState\(\)/)
+    # Reuses shell:get-state / shell:state-changed — a new invoke channel here
+    # would need ipc_channel_parity_spec churn and a wider attack surface.
+    expect(main).not_to include("shell:backend-update")
   end
 
   it "turns update-downloaded into a broadcast, not a dialog" do

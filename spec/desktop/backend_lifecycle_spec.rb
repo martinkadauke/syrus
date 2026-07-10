@@ -90,6 +90,33 @@ RSpec.describe "desktop backend lifecycle" do
     expect(main_process).to include("reportBackendActionFailure")
   end
 
+  it "reports update phases from the installer's own NDJSON, and always clears them" do
+    update_fn = lifecycle[/export const updateBackend[\s\S]*?\n\}/]
+    # The update path parses the same --json protocol the onboarding driver
+    # consumes (step markers + wrapped compose pull progress) instead of
+    # blind-piping stdout — every raw line still lands in install.log.
+    expect(update_fn).to include("new BackendUpdateProgressTracker()")
+    expect(update_fn).to match(/readline\.createInterface\(\{ input: child\.stdout \}\)\.on\("line", \(line\) => \{\s*\n\s*log\.write\(`\$\{line\}\\n`\)\s*\n\s*const progress = tracker\.observeLine\(line\)/)
+    # Progress is cosmetic: a throwing callback must never fail the update...
+    expect(update_fn).to match(/const report = [\s\S]{0,200}try \{\s*\n\s*deps\.onProgress\?\.\(progress\)\s*\n\s*\} catch \{/)
+    # ...and the notice must disappear on EVERY exit — success, failure, throw.
+    expect(update_fn).to match(/\} finally \{[\s\S]{0,120}report\(null\)\s*\n\s*busy = false/)
+    # The sidebar covers the whole outage window: "starting" is reported
+    # before the daemon wait, not first when the installer prints something.
+    expect(update_fn).to match(/report\(tracker\.snapshot\(\)\)\s*\n\s*if \(!\(await ensureDaemon\(\)\)\)/)
+  end
+
+  it "maps installer steps onto the coarse sidebar phases" do
+    update_progress = read("electron/installer/updateProgress.ts")
+    expect(update_progress).to include('image_pull: "downloading"')
+    expect(update_progress).to include('stack_up: "starting"')
+    expect(update_progress).to include('health: "migrating"')
+    # The percent belongs to the pull — a later phase must not show a stale bar.
+    expect(update_progress).to match(/if \(phase !== "downloading"\) \{\s*\n\s*this\.percent = null/)
+    # Pure module: renderer-side vitest exercises it directly, like pullProgress.
+    expect(update_progress).not_to match(/require\("node:|from "node:|from "electron"/)
+  end
+
   it "retires superseded syrus images only after a healthy update, never on first install" do
     # Every backend update pulls a fresh multi-GB image; without cleanup the
     # Docker VM disk fills with dead syrus-backend images after a few updates.
