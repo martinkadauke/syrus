@@ -628,6 +628,7 @@ export function cancelCodingCheckout(path: string) {
   return deleteJson<ChatPayload>(path)
 }
 
+
 export function clearChatHistory(path: string) {
   return deleteJson<ChatPayload>(path)
 }
