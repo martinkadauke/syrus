@@ -130,9 +130,11 @@ a feature branch — without publishing anything:
 
 - **Backend image** — built natively per arch (same no-QEMU matrix as the
   release), integration-tested with `bin/test-docker`, and **pushed to GHCR**
-  as `ghcr.io/tkadauke/syrus-backend:test-<short-sha>`. The tag shape is
-  guarded (`test-` prefix, never `latest`, never semver), so a test image can
-  never collide with or shadow a release tag. `:latest` is never touched, and
+  under two twin tags: `ghcr.io/tkadauke/syrus-backend:test-<X.Y.Z-test.N>`
+  (the badge-consistent tag the installers pin) and `:test-<short-sha>` (commit
+  traceability). Both shapes are guarded (`test-` prefix, never `latest`,
+  never semver), so a test image can never collide with or shadow a release
+  tag. `:latest` is never touched, and
   test builds write their own registry build-cache tags
   (`buildcache-test-<arch>`) so a divergent branch can't evict the warm cache
   the next real release depends on.
@@ -140,7 +142,9 @@ a feature branch — without publishing anything:
   uncheck `build_windows`) an **Azure-signed** Windows installer, versioned
   `X.Y.Z-test.<run-number>` (the next patch over the same tag/`package.json`
   base a release uses) so a test build can never be mistaken for a release.
-  Both installers pin the `test-<short-sha>` image in their `manifest.json`,
+  Both installers pin the `test-<X.Y.Z-test.N>` image in their `manifest.json`
+  (so the in-app badge reads consistently, e.g. `app 0.1.4-test.1 · backend
+  test-0.1.4-test.1`),
   and they build only **after** that tag verifiably exists on GHCR, so a
   downloaded test installer actually installs end-to-end.
 - **CLI tarballs** — the same `bin/release-cli` build as a release

@@ -36,9 +36,10 @@ RSpec.describe "desktop test-release pipeline" do
     # No release surface at all.
     expect(workflow_text).not_to include("gh release")
     expect(workflow_text).not_to include("--generate-notes")
-    # The only imagetools target is the guarded test tag — :latest never moves.
-    expect(workflow_text).to match(/imagetools create -t "\$IMAGE:\$VERSION"/)
-    expect(workflow_text).not_to match(/imagetools create -t "[^"]*:latest"/)
+    # The only imagetools targets are the two guarded test tags (sha +
+    # version-named twin) — :latest never moves.
+    expect(workflow_text).to match(/imagetools create -t "\$IMAGE:\$VERSION" -t "\$IMAGE:\$VERSION_TAG"/)
+    expect(workflow_text).not_to match(/imagetools create[^\n]*:latest/)
     # No publish/publish-website jobs — build jobs only.
     expect(workflow["jobs"].keys).to contain_exactly(
       "prepare", "build-backend", "merge-backend", "build-cli", "build-mac", "build-windows"
@@ -57,6 +58,10 @@ RSpec.describe "desktop test-release pipeline" do
     expect(workflow_text).to include('^test-[a-f0-9]{7,}$')
     expect(workflow_text).to include('if [ "$IMAGE_TAG" = "latest" ]')
     expect(workflow_text).to include('"$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]')
+    # The version-named twin tag is guarded to the test- prefix too, so the
+    # badge-consistent tag can also never collide with a release tag.
+    expect(workflow_text).to include('version_tag="test-$app_version"')
+    expect(workflow_text).to include('^test-[0-9]+\.[0-9]+\.[0-9]+-test\.[0-9]+$')
     # The installers carry a -test.<run-number> prerelease over the next
     # patch, so a test app can never be mistaken for a release. (The reverse
     # direction — a test install never auto-updating ONTO a release — is the
@@ -136,7 +141,9 @@ RSpec.describe "desktop test-release pipeline" do
     # SYRUS_BACKEND_IMAGE overrides stage-backend-assets.mjs's version-derived
     # pin — without it, SYRUS_RELEASE_BUILD=1 would pin :<app_version>, a tag
     # that never exists. Both desktop build steps must stage it.
-    stage_ref = "SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.image_tag }}"
+    # The manifest pins the VERSION-NAMED tag so the in-app badge reads
+    # consistently (app 0.1.4-test.1 · backend test-0.1.4-test.1).
+    stage_ref = "SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}"
     expect(workflow_text.scan(stage_ref).size).to eq(2)
     # Both desktop jobs run AFTER merge-backend, so the pinned tag verifiably
     # exists on GHCR before any installer that references it is built.

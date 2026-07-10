@@ -257,6 +257,16 @@ describe("replacePrompt", () => {
     expect(prompt.detail).not.toContain("appears newer")
   })
 
+  it("names a prerelease version string instead of calling it a dev build", () => {
+    // The exact user-reported dialog: a 0.1.4-test.1 DMG over an old dev
+    // build read "replace an unknown-version dev build with an
+    // unknown-version dev build". The prerelease is unparseable for ORDERING
+    // (no newer/older claim) but its string must be shown.
+    const prompt = replacePrompt({ existingVersion: "0.0.0", newVersion: "0.1.4-test.1", targetPath })
+    expect(prompt.detail).toContain("replace an unknown-version dev build in /Applications with Syrus 0.1.4-test.1")
+    expect(prompt.detail).not.toContain("appears newer")
+  })
+
   it("describes an unreadable installed version as an unknown-version dev build", () => {
     const prompt = replacePrompt({ existingVersion: null, newVersion: "0.1.4", targetPath })
     expect(prompt.detail).toContain("replace an unknown-version dev build in /Applications with Syrus 0.1.4")
