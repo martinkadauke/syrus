@@ -4,8 +4,9 @@
 // fallback. A fresh install is silent, but replacing an existing install
 // asks first, naming both versions. Every path ends away from the DMG:
 // decline launches the existing install, a failed copy explains the manual
-// drag and quits. The decision helpers are pure and Electron-free so the
-// renderer test suite can exercise them.
+// drag and quits, a failed launch names the installed location and quits.
+// The decision helpers are pure and Electron-free so the renderer test
+// suite can exercise them.
 import { execFile } from "node:child_process"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -56,10 +57,13 @@ export type InstallTarget = {
 }
 
 // Pure target choice from observed facts: replace the install that already
-// exists (preferring /Applications when both do — the other copy is left
-// alone, never silently deleted); otherwise a fresh install goes to
-// /Applications when it is writable without admin rights, ~/Applications
-// when it is not.
+// exists AND can actually be replaced. /Applications wins when it holds a
+// copy and is writable without admin rights; a /Applications copy a standard
+// user cannot touch is never targeted (that replace would be a guaranteed
+// EACCES dead end) — the ~/Applications copy, existing or fresh, is used
+// instead and the admin copy stays; the instance-takeover identity sorts out
+// the duality at launch. The non-target copy is never silently deleted.
+// Fresh installs go to /Applications when writable, ~/Applications when not.
 export const chooseInstallTarget = ({
   bundleName,
   homeDir,
@@ -76,7 +80,7 @@ export const chooseInstallTarget = ({
   const systemPath = path.join(SYSTEM_APPLICATIONS, bundleName)
   const userPath = path.join(homeDir, "Applications", bundleName)
 
-  if (systemExists) {
+  if (systemExists && systemWritable) {
     return { path: systemPath, existingInstall: true }
   }
   if (userExists) {
@@ -143,8 +147,15 @@ const parseVersion = (value: string | null | undefined): number[] | null => {
     return null
   }
 
-  const parts = trimmed.split(".").map((part) => Number.parseInt(part, 10))
-  return parts.some((part) => Number.isNaN(part) || part < 0) ? null : parts
+  // Strictly numeric segments only — parseInt would silently truncate
+  // "0.1.4-beta.1" to 0.1.4. Prerelease/malformed versions are not
+  // comparable and classify as unknown.
+  const parts = trimmed.split(".")
+  if (parts.length === 0 || !parts.every((part) => /^\d+$/.test(part))) {
+    return null
+  }
+
+  return parts.map((part) => Number.parseInt(part, 10))
 }
 
 // How `candidate` (the launching copy) relates to `existing` (the installed
@@ -213,30 +224,96 @@ export const installDecisionForResponse = (
   response: number
 ): InstallDecision => (response === prompt.replaceIndex ? "replace" : "launch-existing")
 
-// Dialog copy for a failed install: the app quits afterwards instead of
-// running from the DMG, so the copy has to point at the manual path.
+// Dialog copy for a failed install COPY (the existing install, if any, is
+// untouched — installBundle stages before it swaps): the app quits
+// afterwards instead of running from the DMG, so the copy has to point at
+// the manual path.
 export const installFailedPrompt = ({
   bundleName,
-  targetPath
+  targetPath,
+  reason
 }: {
   bundleName: string
   targetPath: string | null
+  reason?: string | null
 }) => ({
   message: "Syrus could not be installed.",
   detail:
     `Copying ${bundleName}${targetPath ? ` to ${path.dirname(targetPath)}` : ""} failed. ` +
-    "Drag Syrus into your Applications folder in Finder, then launch it from there.",
+    "Drag Syrus into your Applications folder in Finder, then launch it from there." +
+    (reason ? `\n\n(${reason})` : ""),
+  buttons: ["Quit"] as const
+})
+
+// Dialog copy for a failed LAUNCH of an installed copy — either the one the
+// user chose to keep, or the one that was just installed successfully. The
+// install is in place; only the hand-over failed. The app quits afterwards,
+// so the copy points at launching it manually.
+export const launchFailedPrompt = ({
+  targetPath,
+  justInstalled,
+  reason
+}: {
+  targetPath: string
+  justInstalled: boolean
+  reason?: string | null
+}) => ({
+  message: justInstalled
+    ? "Syrus was installed but could not be opened."
+    : "Syrus could not open the installed copy.",
+  detail:
+    (justInstalled
+      ? `Syrus was installed to ${path.dirname(targetPath)} but couldn't be opened automatically. `
+      : `Syrus couldn't open the installed copy at ${targetPath}. `) +
+    "Launch it from Applications manually." +
+    (reason ? `\n\n(${reason})` : ""),
   buttons: ["Quit"] as const
 })
 
 // Copies the bundle to the chosen target with ditto (preserves the code
-// signature and bundle metadata a plain recursive copy would drop), replaces
-// any previous install, strips the quarantine flag best-effort, and returns
-// the installed path; throws if the copy cannot be produced.
+// signature and bundle metadata a plain recursive copy would drop), strips
+// the quarantine flag best-effort, and returns the installed path; throws if
+// the copy cannot be produced.
+//
+// Staged swap, never destroy-then-copy: ditto lands in a sibling staging
+// directory first (same volume, so the swap is a rename), the existing
+// install is only moved aside once the full copy exists, and a failed final
+// rename moves it back. A failure at any point leaves the previous install
+// in place — the caller quits on failure, so "no runnable Syrus left" must
+// be impossible when one existed before.
 export const installBundle = async (bundlePath: string, target: string): Promise<string> => {
   await fs.mkdir(path.dirname(target), { recursive: true })
-  await fs.rm(target, { recursive: true, force: true })
-  await execFileAsync("/usr/bin/ditto", [bundlePath, target])
+
+  const staging = `${target}.installing-${process.pid}`
+  const previous = `${target}.previous-${process.pid}`
+  await fs.rm(staging, { recursive: true, force: true })
+  try {
+    await execFileAsync("/usr/bin/ditto", [bundlePath, staging])
+  } catch (error) {
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
+    throw error
+  }
+
+  let movedAside = false
+  try {
+    try {
+      await fs.rename(target, previous)
+      movedAside = true
+    } catch {
+      // No existing install at the target — nothing to move aside.
+    }
+    await fs.rename(staging, target)
+  } catch (error) {
+    if (movedAside) {
+      await fs.rename(previous, target).catch(() => {})
+    }
+    await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
+    throw error
+  }
+  if (movedAside) {
+    await fs.rm(previous, { recursive: true, force: true }).catch(() => {})
+  }
+
   try {
     await execFileAsync("/usr/bin/xattr", ["-dr", "com.apple.quarantine", target])
   } catch {
