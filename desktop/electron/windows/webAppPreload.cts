@@ -41,5 +41,44 @@ contextBridge.exposeInMainWorld("syrusShell", {
     ipcRenderer.invoke("shell:install-skill") as Promise<{ ok: boolean; message: string | null }>,
   dismissSkillOffer: () => {
     void ipcRenderer.invoke("shell:dismiss-skill-offer")
+  },
+  // Red-pen screen annotation for the walkthrough recorder. Present only in
+  // the desktop shell, so `available` (true here) is the web UI's STATIC
+  // feature gate — a plain browser has no window.syrusShell.annotation at all
+  // and shows no annotation affordance. enable() spins up the transparent
+  // always-on-top overlay + the CommandOrControl+Shift+A draw-mode toggle on
+  // record start and RESOLVES the main process's boolean: true only when the
+  // overlay AND the shortcut actually came up, false when the overlay can't be
+  // created or the accelerator is already taken. The recorder gates its runtime
+  // HUD hint on that boolean so it never advertises a dead affordance.
+  // disable() tears both down on stop/discard. onModeChanged fires on every
+  // draw-mode transition so the recording HUD can reflect it.
+  annotation: {
+    available: true,
+    enable: () => ipcRenderer.invoke("annotation:enable") as Promise<{ available: boolean; hold: boolean }>,
+    disable: () => ipcRenderer.invoke("annotation:disable") as Promise<void>,
+    onModeChanged: (callback: (drawing: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, drawing: boolean) => callback(drawing)
+      ipcRenderer.on("annotation:mode-changed", listener)
+      return () => ipcRenderer.removeListener("annotation:mode-changed", listener)
+    }
+  },
+  // The floating recording HUD — a separate always-on-top, DRAGGABLE window
+  // carrying the recording controls, so they live OUTSIDE the Syrus web-app
+  // window and stay reachable while the user demonstrates another app.
+  // `available` (true here) is the web UI's static feature gate: a plain browser
+  // has no window.syrusShell.recorderHud and keeps its in-page HUD. show() at
+  // record start, update() each tick, hide() on stop/discard; onAction fires
+  // when the user clicks the HUD's Stop / Discard.
+  recorderHud: {
+    available: true,
+    show: (state: Record<string, unknown>) => ipcRenderer.invoke("recorderHud:show", state) as Promise<void>,
+    update: (state: Record<string, unknown>) => ipcRenderer.invoke("recorderHud:update", state) as Promise<void>,
+    hide: () => ipcRenderer.invoke("recorderHud:hide") as Promise<void>,
+    onAction: (callback: (kind: "stop" | "discard") => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, kind: "stop" | "discard") => callback(kind)
+      ipcRenderer.on("recorderHud:action", listener)
+      return () => ipcRenderer.removeListener("recorderHud:action", listener)
+    }
   }
 })

@@ -159,12 +159,45 @@ class ChatTurnJob < ApplicationJob
     snapshot = AgentEnvironmentSnapshot.for_chat(repository: @chat.repository, chat_session: @chat)
     return proposal_outcome_prompt(snapshot: snapshot, user_text: user_text) if proposal_outcome_message?
 
+    walkthrough_text = walkthrough_orientation(user_note: user_text)
+    if walkthrough_text
+      return [ snapshot, system_guidance(parent_session_id), (chat_history_fallback if parent_session_id.present?), walkthrough_text ]
+        .compact.join("\n\n---\n\n")
+    end
+
     if parent_session_id.present?
       elaboration_guidance = Prompts::ChatSystem.new(repository: @chat.repository, chat_session: @chat).elaboration_guidance
       return [ snapshot, elaboration_guidance.presence, chat_history_fallback, user_text ].compact.join("\n\n---\n\n")
     end
 
     [ Prompts::ChatSystem.new(repository: @chat.repository, chat_session: @chat).to_s, user_text ].join("\n\n")
+  end
+
+  # A walkthrough-video message triggers the FIRST-CLASS handoff: rather than
+  # dumping the analysis in as a fake user message, orient the agent to pull it
+  # with its tools (get_walkthrough_analysis / read_walkthrough_frame) and work
+  # autonomously toward an Epic. Returns nil for a normal message. If the row
+  # vanished, fall through to a normal turn on whatever note was typed.
+  def walkthrough_orientation(user_note:)
+    # Labs flag off → historic walkthrough messages read as plain notes; the
+    # agent is not oriented toward tools it can no longer see.
+    return nil unless Feature.video_walkthroughs_enabled?
+    return nil unless @user_message.content.is_a?(Hash)
+
+    walkthrough_id = @user_message.content["video_walkthrough_id"]
+    return nil if walkthrough_id.blank?
+
+    walkthrough = ChatVideoWalkthrough.find_by(id: walkthrough_id)
+    return nil unless walkthrough
+
+    Prompts::VideoWalkthroughContext.new(walkthrough: walkthrough, user_note: user_note).to_s
+  end
+
+  # Full system prompt for a fresh session; the compact elaboration guidance when
+  # resuming (the resumed session already carries the full system context).
+  def system_guidance(parent_session_id)
+    chat_system = Prompts::ChatSystem.new(repository: @chat.repository, chat_session: @chat)
+    parent_session_id.present? ? chat_system.elaboration_guidance.presence : chat_system.to_s
   end
 
   def chat_history_fallback

@@ -320,6 +320,110 @@ dependencies after Jobs exist.
 Dev and prod use `solid_cable` (NOT `async`) so browser app events work
 across web/worker processes.
 
+**Walkthrough videos (video → Epic)** — a labs feature behind the
+`video_walkthroughs` Feature flag (default OFF; declared in
+`config/features.yml`, toggled in the app's Features tab). When the flag is
+off: the composer hides recording/video intake (`payload.walkthroughs_enabled`),
+the upload/retry endpoints 404, `VideoWalkthroughAnalysisJob` fails the row
+terminally, `ChatTurnJob` skips walkthrough orientation, and the three
+walkthrough MCP tools vanish from the sidecar's advertised set
+(`Sidecar::WALKTHROUGH_TOOLS`) — while already-analyzed threads keep their
+history (media panel + message cards render read-only) and
+`VideoWalkthroughPruneJob` keeps enforcing retention. When ON — chats accept
+narrated screen
+recordings (composer `+ → Record a walkthrough`, drag-in, or file picker;
+webm/mp4/mov, ≤15 min, ≤500 MB). `ChatVideoWalkthrough` (Active Storage)
+uploads via multipart `POST /api/v1/app/chats/:chat_id/video_walkthroughs`;
+`VideoWalkthroughAnalysisJob` (queue `videos`, low-concurrency) runs Gemini —
+Files API resumable upload → poll ACTIVE → one `generateContent` with a JSON
+`responseSchema` (`Prompts::VideoWalkthroughAnalysis`) at FULL
+`media_resolution` (LOW measurably garbles small on-screen text; the job
+retries at LOW only if a ≥12-min video's full-res attempt is actually
+rate-limited — graceful degradation, `Gemini::Client::LOW_RESOLUTION_FALLBACK_SECONDS`).
+The schema is engineered for Flash's strengths: a timestamped `transcript`
+FIRST (Flash is excellent at ASR; it anchors the rest and curbs hallucination),
+then `sections` (topical ranges — the handles for later "zoom in"), then
+`issues` grounded in `transcript_evidence` (the user's quoted words),
+`visual_evidence`, `severity` (low/medium/high), `surface`, `user_flagged` (the
+user circled/underlined with a red pen or said "here"/"this"), and
+`needs_closer_look`. **OCR handoff (Gemini flags, Claude reads)** — Gemini
+Flash canNOT reliably OCR small on-screen text (error codes, IDs, URLs, config
+values, stack traces, precise numbers) from VIDEO at any resolution, but Claude
+reads that same text perfectly off a STILL frame. So the analysis prompt tells
+Gemini NOT to guess such text: it sets `needs_closer_look=true` and describes
+what/where in a new optional `unreadable_text` field instead of fabricating a
+value. The chat agent then pulls a crisp still itself (via `get_walkthrough_analysis`
+or `read_walkthrough_frame`, below) and `Prompts::VideoWalkthroughReport` steers it
+to READ the exact characters off the screenshot and never invent one it can't
+read. Flagged issues (`needs_closer_look` or a non-empty `unreadable_text`) are
+captured at top OCR-grade `HIGH_JPEG_QUALITY` and prioritized to survive the
+per-response `MAX_FRAMES` cap. **Segment "zoom in"** — the Gemini Files API retains the
+upload ~48h, so `Gemini::Client#analyze_segment` re-analyzes a CLIP of the SAME
+file at full resolution with no re-upload (a `video_metadata` `{ start_offset:
+"12s", end_offset: "30s" }` sibling of `file_data`). The chat MCP tool
+`analyze_walkthrough_segment(walkthrough_id, start, end, focus)`
+(`SyrusChatMcp::AnalyzeWalkthroughSegmentTool`, deferred, `Prompts::VideoWalkthroughSegment`)
+lets the chat agent get finer detail (exact error text, click sequence) on
+`needs_closer_look` moments or on request; it re-uploads the stored blob when
+the file is past retention, and reports "video expired" only when the blob is
+also pruned. Test seam `AnalyzeWalkthroughSegmentTool.client_factory`.
+**On-demand still (`read_walkthrough_frame`, deferred)** —
+`SyrusChatMcp::ReadWalkthroughFrameTool` lets the chat agent pull a crisp
+screenshot from the stored video at ANY timestamp (beyond the ones
+`get_walkthrough_analysis` returns) so it can OCR a moment it decides matters. It runs `Gemini::FrameExtractor`
+locally (no Gemini call/key needed), clamps the timestamp to the video, and
+maps a pruned/unreadable blob to a clean "video expired" error. **Delivery: the
+frame comes back as a native MCP `image` content block** — the MCP server
+serializes the tool `Response`'s content array verbatim onto the wire, and
+Claude Code (`claude --print`) renders an `{ type: "image", data, mimeType }`
+block into the agent's context as an actual image it sees THIS turn. That is the
+only channel that puts a picture in front of the chat agent mid-turn: there is
+no `--image` CLI flag (see `ClaudeInvocation`), and the disk-file + Read-tool
+path used for pasted attachments only reaches the NEXT turn. Helper
+`SyrusChatMcp.image_result(jpeg:, text:)`. 720p (the compact stored blob) is
+enough for Claude to OCR, so this tool extracts at the default width.
+The job downloads the video once locally and runs the media flow off it: Gemini
+analysis (oriented to the repo — slug + pinned chat context — and guardrailed
+against inventing user-flagged issues when narration is silent and no mark is
+visible) → `Gemini::VideoTranscoder` transcodes the source to a compact 720p mp4
+that REPLACES the stored blob (empirically Gemini analyzes the compact mp4 as
+well as the original — the narration carries the context — best-effort, keeps the
+original on failure).
+**First-class handoff (NOT a spoofed user message):** the job then posts the
+VIDEO itself as a chat message (`video_walkthrough_id` + the operator's note),
+shown in the thread as a walkthrough card and in the media panel. `ChatTurnJob`
+detects that message and orients the agent with the SHORT
+`Prompts::VideoWalkthroughContext` (names the tools, does not dump the analysis);
+the agent then calls `get_walkthrough_analysis` (returns the report +
+on-demand crisp stills as MCP image blocks) and works autonomously toward an Epic
+— every step a real `tool_use`/`tool_result` chat event you can trace. Gemini is
+the eyes, the chat agent stays the brain. Auth is an AI Studio API key only
+(`User#gemini_api_key`, encrypted; validated via free `models.list` —
+`CredentialProbe.gemini_key`, model resolved at analysis time by
+`Gemini::Client#resolve_video_model!` against `VIDEO_MODELS`): the gemini-cli
+OAuth path has no Files API and reusing its OAuth client violates Google ToS.
+Videos are Active Storage blobs on Disk/S3 (NOT inlined in SQLite — only the
+metadata row is). `VideoWalkthroughPruneJob` (daily) enforces both a time
+ceiling (`AppSetting.video_retention_days`, default 7) and an instance-wide
+size budget (`AppSetting.video_storage_budget_bytes`, LRU eviction, default
+2 GB, 0 = unlimited) on the stored video blobs — the analysis + screenshots
+always persist. Test seams: `VideoWalkthroughAnalysisJob.client_factory`,
+`CredentialProbe.gemini_client_factory`, `Gemini::FrameExtractor.runner`,
+`Gemini::VideoTranscoder.runner`.
+Progress streams as `video_walkthrough.*` app events. **Desktop capture**:
+`screenCapture.ts` FORCES full-screen capture (`useSystemPicker: false`, the
+cursor's display) so the red-pen annotation overlay is always recorded — a
+single window/tab would exclude it. It also grants the renderer's media
+permissions and pre-warms the mic (paired with the `com.apple.security.device.audio-input`
+entitlement + `NSMicrophoneUsageDescription`), without which macOS handed
+`getUserMedia` a SILENT track and narration was lost. The recording controls
+live in a separate always-on-top DRAGGABLE window (`recorderHud.ts`, content-
+protected so it's excluded from the capture). **Red pen**: `annotationOverlay.ts`
+does true HOLD-to-draw via a native global-key hook (`globalKeyHook.ts`,
+uiohook-napi — N-API, all-arch prebuilds, asar-unpacked; fails soft to the
+tap-to-arm shortcut when the module or macOS Accessibility permission is
+unavailable). enable() reports `{ available, hold }` so the HUD hint matches.
+
 ## Conventions
 
 - **Public website/docs stay current.** Product-facing behavior changes
@@ -335,7 +439,9 @@ across web/worker processes.
   (`Prompts::Initial`, `Prompts::PrFeedback`, `Prompts::PullRequestSummary`,
   `Prompts::SubmitSummaryInstructions`, `Prompts::TestPlan`,
   `Prompts::Rebase`, `Prompts::PushRebase`,
-  `Prompts::ScheduledTask`, `Prompts::DirectJob`, `Prompts::EpicContext`).
+  `Prompts::ScheduledTask`, `Prompts::DirectJob`, `Prompts::EpicContext`,
+  `Prompts::VideoWalkthroughAnalysis`, `Prompts::VideoWalkthroughContext`,
+  `Prompts::VideoWalkthroughReport`, `Prompts::VideoWalkthroughSegment`).
   Each has a `to_s`. Compose by appending; never inline prompt text in
   jobs/services. Epic-aware prompts append `Prompts::EpicContext` as
   orientation only; it must not expand the current Job's implementation scope.
@@ -464,6 +570,8 @@ across web/worker processes.
 - **SolidQueue queues** — `runs` for normal agent workflow Runs; `merges`
   for auto-merge, rebase, and stack-rebase workflow roots; `chat`
   (dedicated low-concurrency worker) for ChatTurnJob and ChatWorkspaceJob;
+  `videos` (low-concurrency) for VideoWalkthroughAnalysisJob, whose
+  multi-minute Gemini uploads/polling would otherwise pin default threads;
   `default` for pollers, app-event broadcasts, and reaper jobs. Splitting
   prevents long RunJobs from starving landing, chat, the reaper, and UI
   broadcasts.

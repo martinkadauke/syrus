@@ -374,6 +374,31 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
         ) : null}
 
         {section === "credentials" ? (
+          <SecretField
+            clearPending={clear.isPending}
+            description={
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Walkthrough-video analysis uses Gemini; a free API key from{" "}
+                <a className="font-medium text-blue-700 dark:text-blue-300 underline hover:text-blue-600 dark:hover:text-blue-400" href="https://aistudio.google.com/apikey" rel="noreferrer" target="_blank">
+                  aistudio.google.com/apikey
+                </a>{" "}
+                is required.
+              </p>
+            }
+            label="Gemini (video analysis)"
+            name="gemini_api_key"
+            onChange={(value) => setValues({ ...values, gemini_api_key: value })}
+            onClear={() => clear.mutate("gemini_api_key")}
+            set={payload.credential_status.gemini_api_key}
+            testPending={test.isPending && testingCredential === "gemini_api_key"}
+            testResult={testResults.gemini_api_key}
+            unsaved={values.gemini_api_key.trim().length > 0}
+            onTest={() => test.mutate("gemini_api_key")}
+            value={values.gemini_api_key}
+          />
+        ) : null}
+
+        {section === "credentials" ? (
           <>
             <SecretField
               clearPending={clear.isPending}
@@ -947,6 +972,7 @@ function inputFromPayload(payload: CredentialsPayload): CredentialsInput {
     codex_auth_mode: payload.user.codex_auth_mode,
     codex_api_key: "",
     codex_auth_json: "",
+    gemini_api_key: "",
     github_token: "",
     agent_max_turns: payload.user.agent_max_turns,
     scheduling_paused: payload.user.scheduling_paused,

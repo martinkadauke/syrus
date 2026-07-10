@@ -96,9 +96,13 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
   const { t } = useT("admin")
   const queryClient = useQueryClient()
   const [signupsOpen, setSignupsOpen] = useState(payload.settings.signups_open)
+  const [videoRetentionDays, setVideoRetentionDays] = useState(String(payload.settings.video_retention_days))
+  const [videoBudgetMb, setVideoBudgetMb] = useState(String(payload.settings.video_storage_budget_mb))
   const update = useMutation({
     mutationFn: () => updateAdminSettings({
-      signups_open: signupsOpen
+      signups_open: signupsOpen,
+      video_retention_days: Number(videoRetentionDays),
+      video_storage_budget_mb: Number(videoBudgetMb)
     }),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
@@ -108,7 +112,9 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
 
   useEffect(() => {
     setSignupsOpen(payload.settings.signups_open)
-  }, [payload.settings.signups_open])
+    setVideoRetentionDays(String(payload.settings.video_retention_days))
+    setVideoBudgetMb(String(payload.settings.video_storage_budget_mb))
+  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -132,6 +138,32 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
             {t("settings.signups_open_help")}
           </span>
         </span>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="admin-settings-video-retention">{t("settings.video_retention_label")}</label>
+        <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{t("settings.video_retention_help")}</span>
+        <input
+          id="admin-settings-video-retention"
+          className="mt-1 w-32 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100 px-2 py-1 text-sm"
+          min={1}
+          onChange={(event) => setVideoRetentionDays(event.target.value)}
+          type="number"
+          value={videoRetentionDays}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="admin-settings-video-budget">{t("settings.video_budget_label")}</label>
+        <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{t("settings.video_budget_help")}</span>
+        <input
+          id="admin-settings-video-budget"
+          className="mt-1 w-32 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100 px-2 py-1 text-sm"
+          min={0}
+          onChange={(event) => setVideoBudgetMb(event.target.value)}
+          type="number"
+          value={videoBudgetMb}
+        />
       </div>
 
       <button

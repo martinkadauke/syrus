@@ -135,6 +135,10 @@
     "saving": "Wird gespeichert...",
     "signups_open_label": "Offene Anmeldungen",
     "signups_open_help": "Wenn aktiviert, kann sich jeder unter /users/new registrieren. Wenn deaktiviert, ist die Anmeldung nur per Einladung möglich, aber Einladungslinks funktionieren weiterhin.",
+    "video_retention_label": "Aufbewahrung von Walkthrough-Videos (Tage)",
+    "video_retention_help": "Wie lange hochgeladene Walkthrough-Videos aufbewahrt werden. Die Analyse und ihre Screenshots bleiben immer im Chat.",
+    "video_budget_label": "Speicherbudget für Walkthrough-Videos (MB)",
+    "video_budget_help": "Instanzweite Obergrenze für gespeicherte Walkthrough-Videos. Bei Überschreitung werden die ältesten zuerst entfernt. 0 = kein Limit.",
     "settings_updated": "Einstellungen aktualisiert."
   },
   "github_app": {

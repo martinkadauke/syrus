@@ -28,12 +28,15 @@ WORKDIR /rails
 #   - `nodejs` + `npm` are required to install the agent CLIs, which
 #     the agent worker spawns per Run via AgentInvocation / CodexInvocation.
 #   - `gnupg` and `ca-certificates` are needed for NodeSource's apt repo.
+#   - `ffmpeg` extracts still frames from walkthrough videos at the
+#     timestamps Gemini flags, so the analysis chat turn can illustrate each
+#     issue (VideoWalkthroughFrameExtractor).
 ARG NODE_MAJOR=22
 ARG CLAUDE_CODE_VERSION=2.1.126
 ARG CODEX_CLI_VERSION=0.129.0
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
-      ca-certificates curl default-mysql-client git gnupg libjemalloc2 libvips && \
+      ca-certificates curl default-mysql-client ffmpeg git gnupg libjemalloc2 libvips && \
     ln -s /usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so && \
     curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
     apt-get install --no-install-recommends -y nodejs && \

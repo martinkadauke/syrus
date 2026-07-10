@@ -24,6 +24,7 @@ import * as backendLifecycle from "./installer/backendLifecycle.js"
 import { readBackendManifest, uninstallScriptPath } from "./installer/installPaths.js"
 import { uninstallCommand } from "./installer/uninstallCommand.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
+import { registerMediaPermissionHandlers, registerScreenCaptureHandler } from "./screenCapture.js"
 import { decideOnSecondInstance, takeoverPrompt, type InstanceIdentity } from "./instanceTakeover.js"
 import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
@@ -32,6 +33,8 @@ import { createOnboardingWindow } from "./windows/onboardingWindow.js"
 import { resolveInstanceOrigin, resolveOpenInSyrusTarget } from "./windows/openInSyrusTarget.js"
 import { computePopoverPosition } from "./windows/popoverPosition.js"
 import { createWebAppWindow, type WebAppWindowHandle } from "./windows/webAppWindow.js"
+import { createAnnotationController, type AnnotationController } from "./windows/annotationOverlay.js"
+import { createRecorderHudController, type RecorderHudController } from "./windows/recorderHud.js"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -199,6 +202,16 @@ let preferencesWindow: BrowserWindow | null = null
 let onboardingWindow: BrowserWindow | null = null
 let onboardingDriver: OnboardingDriver | null = null
 let webAppWindow: WebAppWindowHandle | null = null
+// The red-pen annotation overlay controller (labs feature of the walkthrough
+// recorder). Lazily created the first time the web app calls annotation:enable
+// on record start; torn down on record stop/discard, web-window close, and app
+// quit so an overlay + global shortcut never outlive a recording.
+let annotationController: AnnotationController | null = null
+// The floating recording HUD controller (walkthrough recorder). Lazily created
+// when the web app calls recorderHud:show at record start; torn down on
+// stop/discard, web-window close, and app quit so the pill never outlives a
+// recording.
+let recorderHudController: RecorderHudController | null = null
 let backendRecoveryTimer: NodeJS.Timeout | null = null
 let tray: Tray | null = null
 let cachedCredentials: Credentials | null = null
@@ -1198,6 +1211,38 @@ const broadcastShellNoticeState = async () => {
   webAppWindow?.window.webContents.send("shell:state-changed", state)
 }
 
+// The annotation overlay controller (labs feature of the walkthrough recorder):
+// a transparent, always-on-top red-pen surface the recorder's full-screen
+// capture picks up incidentally. Lazily created so the overlay module (and its
+// global shortcut) only spin up when a recording actually asks for them. The
+// HTML lives in assets/ (packaged via electron-builder's assets/**/* glob and
+// referenced under app.getAppPath(), which resolves in both dev and asar).
+const ensureAnnotationController = (): AnnotationController => {
+  annotationController ??= createAnnotationController({
+    overlayHtmlPath: path.join(app.getAppPath(), "assets", "annotationOverlay.html"),
+    // Mirror draw-mode transitions to the web recorder's HUD via the shell
+    // bridge (window.syrusShell.annotation.onModeChanged).
+    onModeChanged: (drawing) => {
+      webAppWindow?.window.webContents.send("annotation:mode-changed", drawing)
+    }
+  })
+  return annotationController
+}
+
+// The floating recording HUD controller. Lazily created; button clicks are
+// forwarded back to the web recorder over the shell bridge
+// (window.syrusShell.recorderHud.onAction).
+const ensureRecorderHud = (): RecorderHudController => {
+  recorderHudController ??= createRecorderHudController({
+    htmlPath: path.join(app.getAppPath(), "assets", "recorderHud.html"),
+    preloadPath: path.join(__dirname, "windows", "recorderHudPreload.cjs"),
+    onAction: (kind) => {
+      webAppWindow?.window.webContents.send("recorderHud:action", kind)
+    }
+  })
+  return recorderHudController
+}
+
 // ipcMain.handle answers ANY renderer in the app by default — including the
 // web-app window after it somehow ended up on a foreign page. The shell:*
 // channels act on the host (write a skill into ~/.claude, relaunch the app),
@@ -1823,6 +1868,11 @@ const showWebAppWindow = async () => {
     onLoadFailed: () => startBackendRecoveryPolling(),
     onClosed: () => {
       webAppWindow = null
+      // Closing the app window mid-recording can't run the renderer's
+      // annotation:disable / recorderHud:hide — tear the overlay + shortcut +
+      // floating HUD down here so none outlive the window that drives them.
+      annotationController?.disable()
+      recorderHudController?.hide()
       stopBackendRecoveryPolling()
       updateDockVisibility()
     }
@@ -1857,6 +1907,28 @@ const showWebAppWindow = async () => {
   }
   handle.window.webContents.on("did-finish-load", attemptTokenProvisioning)
   handle.window.webContents.on("did-navigate-in-page", attemptTokenProvisioning)
+
+  // The red-pen annotation overlay is armed by the RENDERER (record start) but
+  // lives in the MAIN process. A Cmd+R reload or a render-process crash reuses
+  // this same window/webContents WITHOUT running the React unmount's
+  // annotation:disable, so an overlay left in draw mode would keep capturing
+  // ALL pointer input over the display with no way out. Tear it down on both —
+  // the overlay must never outlive the renderer that armed it. disable() is
+  // idempotent, so these are harmless no-ops when nothing is armed.
+  handle.window.webContents.on("render-process-gone", () => {
+    annotationController?.disable()
+    recorderHudController?.hide()
+  })
+  handle.window.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    // Only a full main-frame navigation (reload / new document) drops the React
+    // tree that armed the overlay. In-place (same-document) SPA route changes
+    // keep it, and the React unmount handles those, so ignore them (isInPlace
+    // is Electron's isSameDocument).
+    if (isMainFrame && !isInPlace) {
+      annotationController?.disable()
+      recorderHudController?.hide()
+    }
+  })
 
   try {
     await webAppWindow.loadServerUrl()
@@ -2518,6 +2590,57 @@ ipcMain.handle("shell:dismiss-skill-offer", async (event) => {
   store.set("skillOfferDismissed", true)
   await broadcastShellNoticeState()
 })
+// The annotation overlay bridge (webAppPreload.cts / window.syrusShell.
+// annotation): the walkthrough recorder turns the red-pen overlay on at record
+// start and off at stop/discard. Same strict sender validation as the other
+// shell:* handlers — only the web-app window's top frame on the configured
+// instance origin may create an always-on-top overlay + register the global
+// draw-mode shortcut.
+ipcMain.handle("annotation:enable", (event) => {
+  if (!shellSenderAllowed(event, "annotation:enable")) {
+    return { available: false, hold: false }
+  }
+
+  // Propagate whether an annotation surface came up AND whether it's the native
+  // HOLD hook or the tap fallback ({ available, hold }); the recorder gates its
+  // hint on this so it never advertises an affordance that can't work and shows
+  // "hold Ctrl" vs "tap ⌘⇧A" correctly. A failure here never breaks the
+  // recording — the recorder just omits the annotation UI.
+  return ensureAnnotationController().enable()
+})
+ipcMain.handle("annotation:disable", (event) => {
+  if (!shellSenderAllowed(event, "annotation:disable")) {
+    return
+  }
+
+  annotationController?.disable()
+})
+
+// The floating recording HUD bridge (webAppPreload.cts / window.syrusShell.
+// recorderHud): the recorder shows the pill at record start, updates it on each
+// tick, and hides it on stop/discard. Same strict sender validation as the
+// other shell:* handlers.
+ipcMain.handle("recorderHud:show", (event, state) => {
+  if (!shellSenderAllowed(event, "recorderHud:show")) {
+    return
+  }
+
+  ensureRecorderHud().show(state && typeof state === "object" ? state : {})
+})
+ipcMain.handle("recorderHud:update", (event, state) => {
+  if (!shellSenderAllowed(event, "recorderHud:update")) {
+    return
+  }
+
+  recorderHudController?.update(state && typeof state === "object" ? state : {})
+})
+ipcMain.handle("recorderHud:hide", (event) => {
+  if (!shellSenderAllowed(event, "recorderHud:hide")) {
+    return
+  }
+
+  recorderHudController?.hide()
+})
 ipcMain.handle("quit-app", () => {
   app.quit()
 })
@@ -2692,6 +2815,14 @@ app.whenReady().then(async () => {
     app.dock?.hide()
   }
 
+  // getDisplayMedia (the web app's "Record a walkthrough") rejects in
+  // Electron without a display-media handler; getUserMedia(audio) can be denied
+  // at the Electron layer without a permission handler. Register both, then the
+  // recorder captures the whole screen + the user's narration. See
+  // screenCapture.ts.
+  registerMediaPermissionHandlers()
+  registerScreenCaptureHandler()
+
   if (process.platform === "win32") {
     // Must match electron-builder.yml appId — NSIS stamps it into the Start
     // Menu shortcut, and Windows only shows Notification toasts when the
@@ -2776,6 +2907,11 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   isQuitting = true
   stopAppUserCable()
+  // Destroy the annotation overlay + floating HUD before teardown so no
+  // always-on-top window lingers past quit. (will-quit's unregisterAll also
+  // drops the draw-mode shortcut.)
+  annotationController?.disable()
+  recorderHudController?.hide()
 })
 
 app.on("will-quit", () => {

@@ -41,6 +41,17 @@ type NotificationReadPayload = {
 }
 
 export function applyAppEvent(queryClient: QueryClient, event: AppEvent) {
+  if (event.type.startsWith("video_walkthrough.")) {
+    // The chat composer owns the walkthrough chip; hand it the payload
+    // directly (a chat-scoped query invalidation would not carry state).
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("syrus:video-walkthrough", {
+        detail: { id: event.id, ...(event.payload as object | undefined) }
+      }))
+    }
+    return
+  }
+
   if (event.type === "notification_created") {
     const current = queryClient.getQueryData<{ unread_count: number }>(["notifications"])
     const unreadCount = typeof event.unread_count === "number" ? event.unread_count : (current?.unread_count ?? 0) + 1

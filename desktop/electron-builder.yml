@@ -22,6 +22,15 @@ extraResources:
   - from: resources/backend
     to: backend
 artifactName: ${productName}-${version}-${arch}.${ext}
+# uiohook-napi ships a native .node addon (the global keyboard hook that powers
+# hold-to-draw). Native modules can't be require()'d from inside the asar, so
+# unpack it. It's an N-API module with per-platform+arch prebuilds under
+# prebuilds/<platform>-<arch>/, selected at runtime by node-gyp-build — both mac
+# arches ride along in the universal build, so hold-to-draw works on Intel + Apple
+# Silicon. If it ever fails to load, the annotation overlay falls back to
+# tap-to-arm, so this can never break the app.
+asarUnpack:
+  - "**/node_modules/uiohook-napi/**"
 mac:
   category: public.app-category.developer-tools
   # 512px master; a 1024px design asset would sharpen the Retina dock icon.
@@ -31,6 +40,11 @@ mac:
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   notarize: true
+  # macOS requires a usage-description string to grant microphone access under
+  # the hardened runtime; without it TCC returns a SILENT track and walkthrough
+  # narration is lost. Paired with com.apple.security.device.audio-input.
+  extendInfo:
+    NSMicrophoneUsageDescription: "Syrus records your spoken narration while you capture a walkthrough video, so it can transcribe what you describe."
   # The Syrus CLI (pure-Go binaries staged by scripts/stage-cli.mjs).
   # Per-platform filters keep ~40 MB of the other OS's binaries out of each
   # package; Preferences installs from here — it powers the tray's Checkout
@@ -44,7 +58,11 @@ mac:
   # builds. Without this, @electron/universal fails the merge ("Detected file
   # ... same in both x64 and arm64 builds and not covered by the x64ArchFiles
   # rule"). This tells it to keep them as-is (both arches' CLI end up bundled).
-  x64ArchFiles: "**/cli/*"
+  # uiohook-napi's prebuilds/<platform>-<arch>/ .node files are likewise present
+  # (identically) in BOTH arch app builds — node-gyp-build selects the right one
+  # at runtime by process.arch — so they need the same treatment or the universal
+  # merge fails. Brace-expanded minimatch covers both.
+  x64ArchFiles: "{**/cli/*,**/uiohook-napi/prebuilds/**}"
   target:
     # ONE universal (arm64 + x64) build — a single Syrus.dmg that runs on both
     # Apple Silicon and Intel, no Intel-vs-Apple-Silicon download split. Both

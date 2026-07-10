@@ -7,6 +7,17 @@ import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
 import type { ExcalidrawElement } from "@excalidraw/excalidraw/element/types"
 import { ApiError } from "../api/client"
 import { NoticeToast } from "../components/NoticeToast"
+import { GeminiSetupSheet } from "../components/GeminiSetupSheet"
+import { AnalyzingHint, annotationHoldLabel, annotationShortcutLabel, formatClock, RECORDER_WARNING_SECONDS, shouldShowAnnotationSurfaceNote, useNativeRecorderHud, useWalkthroughRecorder, WalkthroughRecorderHUD } from "../components/WalkthroughRecorder"
+import {
+  isWalkthroughVideoFile,
+  MAX_WALKTHROUGH_BYTES,
+  MAX_WALKTHROUGH_DURATION_SECONDS,
+  measureVideoDuration,
+  retryVideoWalkthrough,
+  uploadVideoWalkthrough,
+  type VideoWalkthrough
+} from "../api/videoWalkthroughs"
 import { refreshRecentChats, updateRecentChatCache } from "../lib/chatCache"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import {
@@ -271,6 +282,7 @@ function sharedChatRenderPayload(payload: SharedChatPayload): ChatPayload {
     agent_questions: [],
     queued_messages: [],
     scratchpad_items: [],
+    video_walkthroughs: [],
     attachment_groups: { repositories: [], epics: [], jobs: [], documents: [] },
     documents_in_scope: [],
     attachment_results: [],
@@ -288,10 +300,13 @@ function sharedChatRenderPayload(payload: SharedChatPayload): ChatPayload {
       app_stop_path: "",
       app_bookmarks_path: "",
       app_attachments_path: "",
+      app_video_walkthroughs_path: "",
       app_whiteboard_path: "",
       app_switch_provider_path: "",
       app_scratchpad_reorder_path: ""
-    }
+    },
+    gemini_configured: false,
+    walkthroughs_enabled: false
   }
 }
 
@@ -327,6 +342,20 @@ type ChatQueryKey = readonly ["chats", string, string]
 
 export function chatQueryKey(id: string | number, search: string): ChatQueryKey {
   return ["chats", String(id), search] as const
+}
+
+type WalkthroughDraft = {
+  // Monotonic client-side identity: state updates from an upload are keyed to
+  // the draft that started them, so a late resolution can't corrupt a draft
+  // the user has since replaced.
+  key: number
+  file: File
+  filename: string
+  durationSeconds: number | null
+  status: "ready" | "uploading" | "analyzing" | "failed"
+  percent: number
+  id?: number
+  error?: string
 }
 
 type PendingSlashCommandConfirmation = {
@@ -749,14 +778,24 @@ function SwitchingProviderIndicator({ provider }: { provider: string }) {
 }
 
 function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   if (item.role === "user") {
     return (
       <article className="group/message relative flex justify-end pt-6" id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
         {readOnly ? null : <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />}
         <div className="max-w-[min(42rem,85%)] space-y-2">
-          <PlainText className="whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
+          {item.video_walkthrough_id ? (
+            <div className="flex items-center justify-end gap-2 text-sm text-gray-500 dark:text-gray-400" data-testid="walkthrough-message-chip">
+              <span aria-hidden="true">🎥</span>
+              <span>{t("walkthrough_shared_chip")}</span>
+            </div>
+          ) : null}
+          {item.text.trim().length > 0 ? (
+            <PlainText className="whitespace-pre-wrap break-words rounded bg-blue-600 px-4 py-2 text-sm leading-normal text-white dark:bg-blue-500" text={item.text} />
+          ) : null}
           <MessageImageAttachments attachments={item.attachments} align="end" />
+          <MessageFileAttachments attachments={item.attachments} align="end" />
         </div>
       </article>
     )
@@ -813,6 +852,29 @@ function MessageImageAttachments({ attachments, align = "start" }: { attachments
       </div>
       {lightboxImage ? <ImageLightbox attachment={lightboxImage} onClose={() => setLightboxImage(null)} /> : null}
     </>
+  )
+}
+
+// Non-image attachments (e.g. PDFs) — images render as thumbnails, but a PDF (or
+// any other file) would otherwise show nothing, leaving a blank bubble when the
+// message has no text. Render each as a labeled chip so it's always visible.
+function MessageFileAttachments({ attachments, align = "start" }: { attachments?: ChatMessageItem["attachments"]; align?: "start" | "end" }) {
+  const files = (attachments || []).filter((attachment) => !attachment.mime_type.startsWith("image/"))
+  if (files.length === 0) return null
+
+  return (
+    <div className={`flex flex-wrap gap-2 ${align === "end" ? "justify-end" : "justify-start"}`}>
+      {files.map((attachment, index) => (
+        <span
+          className="inline-flex max-w-[16rem] items-center gap-1.5 truncate rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+          key={`${attachment.name}-${index}`}
+          title={attachment.name}
+        >
+          <span aria-hidden="true">📎</span>
+          <span className="truncate">{attachment.name || "attachment"}</span>
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -1769,6 +1831,27 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
   const [clearConfirmationOpen, setClearConfirmationOpen] = useState(false)
   const [reportDialogOpen, setReportDialogOpen] = useState(false)
   const [attachmentPopoverOpen, setAttachmentPopoverOpen] = useState(false)
+  // One walkthrough video per message (v1). The chip above the composer
+  // narrates its lifecycle: ready -> uploading(pct) -> analyzing -> failed;
+  // an analyzed walkthrough clears the chip (its turn appears in the thread).
+  const [walkthrough, setWalkthrough] = useState<WalkthroughDraft | null>(null)
+  // Reassuring lines the chip rotates through while Gemini analyzes — the wait
+  // can run minutes, so a single frozen line reads as stuck. The first entry is
+  // the original static copy so nothing regresses if rotation is suppressed
+  // (single message / prefers-reduced-motion).
+  const walkthroughAnalyzingHints = useMemo(
+    () => [
+      t("walkthrough_analyzing"),
+      t("walkthrough_analyzing_narration"),
+      t("walkthrough_analyzing_issues"),
+      t("walkthrough_analyzing_screenshots"),
+      t("walkthrough_analyzing_finishing")
+    ],
+    [t]
+  )
+  const [geminiSheetOpen, setGeminiSheetOpen] = useState(false)
+  const pendingVideoRef = useRef<File | null>(null)
+  const walkthroughKeyRef = useRef(0)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const attachmentPopoverRef = useRef<HTMLDivElement | null>(null)
@@ -1964,7 +2047,24 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
     : null
 
   function submitMessage() {
-    if (send.isPending || systemAction.isPending || systemCommandAction.isPending || text.trim().length === 0) return
+    if (send.isPending || systemAction.isPending || systemCommandAction.isPending) return
+    if (walkthrough?.status === "ready") {
+      // A walkthrough and image/PDF attachments can't share one send: the
+      // video goes to Gemini, the attachments to the chat agent — silently
+      // splitting them (and leaking the images to the next message) is the
+      // review finding. Block explicitly instead.
+      if (attachments.length > 0) {
+        setAttachmentError(t("walkthrough_no_other_attachments"))
+        return
+      }
+      // Send commits the walkthrough: the video uploads with the typed text
+      // riding along as the user's note; the analysis turn carries both.
+      void uploadWalkthrough(text)
+      return
+    }
+    // Any media makes the message sendable on its own — a bare attachment (or
+    // walkthrough) IS the message, no text required.
+    if (text.trim().length === 0 && attachments.length === 0) return
     const attachmentValidationError = attachmentValidationMessage(attachments)
     if (attachmentValidationError) {
       setAttachmentError(attachmentValidationError)
@@ -2222,10 +2322,208 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
     return null
   }
 
+  // Route an incoming video (drag, picker, or a finished recording) into the
+  // walkthrough draft: gate on Gemini config, duration, and size — gently,
+  // with specific copy, before any bytes move.
+  //
+  // `knownDuration` comes from the recorder's own clock (measureVideoDuration
+  // returns null for MediaRecorder webm, whose metadata duration is Infinity),
+  // so recorded videos still trip the ≥12-min low-resolution gate.
+  // `assumeConfigured` is set by the post-setup handoff: the calling render's
+  // payload.gemini_configured is still stale (the refetch hasn't landed), but
+  // the key was just saved — re-checking it would loop the setup sheet.
+  async function intakeWalkthroughVideo(
+    file: File,
+    options: { knownDuration?: number | null; assumeConfigured?: boolean } = {}
+  ) {
+    // Labs flag: every video intake path (drag-in, file picker, recorder)
+    // funnels through here, so one check gates them all.
+    if (!payload.walkthroughs_enabled) {
+      setAttachmentError(t("walkthrough_disabled"))
+      return
+    }
+    if (!options.assumeConfigured && !payload.gemini_configured) {
+      pendingVideoRef.current = file
+      setGeminiSheetOpen(true)
+      return
+    }
+
+    // Never clobber an in-flight walkthrough: replacing during upload would
+    // orphan the running XHR, and during analysis would lose the server row.
+    // Only a settled draft (ready/failed) is replaceable.
+    if (walkthrough && (walkthrough.status === "uploading" || walkthrough.status === "analyzing")) {
+      setAttachmentError(t("walkthrough_one_at_a_time"))
+      return
+    }
+
+    if (file.size > MAX_WALKTHROUGH_BYTES) {
+      setAttachmentError(t("walkthrough_too_large"))
+      return
+    }
+
+    const durationSeconds = options.knownDuration ?? (await measureVideoDuration(file))
+    if (durationSeconds && durationSeconds > MAX_WALKTHROUGH_DURATION_SECONDS) {
+      setAttachmentError(t("walkthrough_too_long", { limit: formatClock(MAX_WALKTHROUGH_DURATION_SECONDS), actual: formatClock(durationSeconds) }))
+      return
+    }
+
+    setAttachmentError(null)
+    walkthroughKeyRef.current += 1
+    setWalkthrough({ key: walkthroughKeyRef.current, file, filename: file.name || "walkthrough.webm", durationSeconds, status: "ready", percent: 0 })
+  }
+
+  const recorder = useWalkthroughRecorder({
+    onFinished: ({ blob, mimeType, durationSeconds }) => {
+      const extension = mimeType.includes("mp4") ? "mp4" : "webm"
+      const file = new File([blob], `walkthrough-${new Date().toISOString().slice(0, 19).replaceAll(":", "-")}.${extension}`, { type: mimeType })
+      // Pass the recorder's measured duration — the webm blob can't be
+      // re-measured, so this is the only reliable source for the gate.
+      void intakeWalkthroughVideo(file, { knownDuration: durationSeconds })
+    }
+  })
+
+  function startWalkthroughRecording() {
+    setAttachmentPopoverOpen(false)
+    if (!payload.walkthroughs_enabled) {
+      setAttachmentError(t("walkthrough_disabled"))
+      return
+    }
+    if (!payload.gemini_configured) {
+      setGeminiSheetOpen(true)
+      return
+    }
+    void recorder.start()
+  }
+
+  // In the desktop shell, drive the FLOATING recording HUD (a separate
+  // always-on-top, draggable window) so the controls live outside the Syrus
+  // window and stay reachable while the user demonstrates another app. Returns
+  // false in a plain browser, where the in-page WalkthroughRecorderHUD is used.
+  const recording = recorder.state.phase === "recording"
+  const recorderMicLive = recorder.state.phase === "recording" ? recorder.state.micLive : true
+  // Hint text depends on the annotation mode: HOLD (native hook) reads "hold
+  // Control", TAP (fallback) reads "tap ⌘⇧A"; both swap while actively drawing.
+  const annotationHintIdle = recorder.annotationHold
+    ? t("walkthrough_annotate_hold_hint", { key: annotationHoldLabel() })
+    : t("walkthrough_annotate_hint", { shortcut: annotationShortcutLabel() })
+  const annotationHintDrawing = recorder.annotationHold
+    ? t("walkthrough_annotate_hold_drawing", { key: annotationHoldLabel() })
+    : t("walkthrough_annotate_drawing")
+  const nativeRecorderHud = useNativeRecorderHud({
+    recording,
+    state: {
+      clock: formatClock(recorder.elapsed),
+      remaining: t("walkthrough_remaining", { clock: formatClock(Math.max(0, MAX_WALKTHROUGH_DURATION_SECONDS - recorder.elapsed)) }),
+      remainingWarn: recorder.elapsed >= RECORDER_WARNING_SECONDS,
+      noMic: recorderMicLive ? undefined : t("walkthrough_no_mic"),
+      hint: recorder.annotationAvailable
+        ? (recorder.drawing ? annotationHintDrawing : annotationHintIdle)
+        : undefined,
+      drawing: recorder.drawing,
+      stopLabel: t("walkthrough_stop"),
+      discardLabel: t("walkthrough_discard")
+    },
+    onStop: () => recorder.stop(),
+    onDiscard: () => recorder.stop({ discard: true })
+  })
+
+  // Analysis progress arrives over AppUserChannel (video_walkthrough.* app
+  // events re-dispatched as a DOM event by applyAppEvent).
+  useEffect(() => {
+    function onWalkthroughEvent(event: Event) {
+      const detail = (event as CustomEvent<{ id: number; state: string; error_message: string | null; chat_session_id: number }>).detail
+      if (!detail || detail.chat_session_id !== payload.chat.id) return
+
+      // A walkthrough finishing frees the composer — clear any lingering
+      // walkthrough-scoped error (e.g. a one-at-a-time rejection) so it can't
+      // keep the send button disabled for the next ordinary message.
+      if (detail.state === "analyzed") setAttachmentError(null)
+
+      // A terminal state changes the chat payload's video_walkthroughs list
+      // (which powers the Media panel); the app-event only carries the walkthrough
+      // id/state, so refetch the payload to refresh the panel + the delivered turn.
+      if (detail.state === "analyzed" || detail.state === "failed") {
+        void queryClient.invalidateQueries({ queryKey })
+      }
+
+      setWalkthrough((current) => {
+        if (!current || current.id == null || current.id !== detail.id) return current
+        if (detail.state === "analyzed") {
+          onNotice(t("walkthrough_analyzed"))
+          return null // its turn appears in the thread
+        }
+        if (detail.state === "failed") {
+          return { ...current, status: "failed", error: detail.error_message || t("walkthrough_failed_generic") }
+        }
+        return { ...current, status: "analyzing" }
+      })
+    }
+
+    window.addEventListener("syrus:video-walkthrough", onWalkthroughEvent)
+    return () => window.removeEventListener("syrus:video-walkthrough", onWalkthroughEvent)
+  }, [payload.chat.id, onNotice, t, queryClient, queryKey])
+
+  async function uploadWalkthrough(note: string) {
+    if (!walkthrough || walkthrough.status !== "ready") return
+
+    // Every state update from here on is keyed to THIS draft — if the user
+    // replaces the walkthrough (only possible once it's back to a settled
+    // state), a late resolution from the old upload can't corrupt the new one.
+    const activeKey = walkthrough.key
+    const keyed = (updater: (current: WalkthroughDraft) => WalkthroughDraft | null) =>
+      setWalkthrough((current) => (current && current.key === activeKey ? updater(current) : current))
+
+    // Clear the composer at the START of the upload, not after it resolves:
+    // the text has been captured as the note, so leaving it lets a second
+    // Enter double-send it and destroys a draft typed during the upload.
+    setText("")
+    try {
+      window.localStorage.removeItem(CHAT_DRAFT_KEY_PREFIX + chatId)
+    } catch (_error) {
+      // Local storage can be unavailable in hardened browser modes.
+    }
+
+    keyed((current) => ({ ...current, status: "uploading", percent: 0 }))
+    try {
+      const { video_walkthrough } = await uploadVideoWalkthrough({
+        chatSessionId: payload.chat.id,
+        file: walkthrough.file,
+        filename: walkthrough.filename,
+        durationSeconds: walkthrough.durationSeconds,
+        note: note.trim() || undefined,
+        onProgress: (percent) => {
+          keyed((current) => (current.status === "uploading" ? { ...current, percent } : current))
+        }
+      })
+      keyed((current) => ({ ...current, status: "analyzing", id: video_walkthrough.id }))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("walkthrough_failed_generic")
+      keyed((current) => ({ ...current, status: "failed", error: message }))
+    }
+  }
+
+  function retryWalkthroughAnalysis() {
+    if (!walkthrough?.id) return
+    setWalkthrough((current) => (current ? { ...current, status: "analyzing", error: undefined } : current))
+    retryVideoWalkthrough(walkthrough.id).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : t("walkthrough_failed_generic")
+      setWalkthrough((current) => (current ? { ...current, status: "failed", error: message } : current))
+    })
+  }
+
   function handleAttachmentChange(files: FileList | null) {
-    const selectedFiles = Array.from(files || [])
+    let selectedFiles = Array.from(files || [])
     if (fileInputRef.current) fileInputRef.current.value = ""
     if (selectedFiles.length === 0) return
+
+    // Videos take the walkthrough path (real upload + Gemini analysis) —
+    // never the base64 message-attachment path.
+    const video = payload.walkthroughs_enabled ? selectedFiles.find(isWalkthroughVideoFile) : undefined
+    if (video) {
+      void intakeWalkthroughVideo(video)
+      selectedFiles = selectedFiles.filter((file) => !isWalkthroughVideoFile(file))
+      if (selectedFiles.length === 0) return
+    }
 
     const nextAttachments = [
       ...attachments,
@@ -2491,6 +2789,64 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           </button>
         </div>
       ) : null}
+      {recorder.state.phase === "recording" && !nativeRecorderHud ? (
+        <WalkthroughRecorderHUD
+          annotation={
+            recorder.annotationAvailable
+              ? {
+                  // Mode-aware: HOLD reads "hold Control", TAP reads "tap ⌘⇧A";
+                  // both swap to the drawing variant while the pen is armed.
+                  hint: annotationHintIdle,
+                  drawingHint: annotationHintDrawing,
+                  drawing: recorder.drawing,
+                  surfaceNote: shouldShowAnnotationSurfaceNote(recorder.annotationAvailable, recorder.displaySurface)
+                    ? t("walkthrough_annotate_surface_note")
+                    : undefined
+                }
+              : undefined
+          }
+          elapsed={recorder.elapsed}
+          labels={{
+            recording: t("walkthrough_recording"),
+            noMic: t("walkthrough_no_mic"),
+            stop: t("walkthrough_stop"),
+            discard: t("walkthrough_discard"),
+            windowHint: t("walkthrough_window_hint"),
+            remaining: (clock) => t("walkthrough_remaining", { clock })
+          }}
+          micLive={recorder.state.micLive}
+          onDiscard={() => recorder.stop({ discard: true })}
+          onStop={() => recorder.stop()}
+        />
+      ) : null}
+      {geminiSheetOpen ? (
+        <GeminiSetupSheet
+          labels={{
+            title: t("gemini_setup_title"),
+            intro: t("gemini_setup_intro"),
+            getKey: t("gemini_setup_get_key"),
+            keyPlaceholder: t("gemini_setup_placeholder"),
+            validateAndSave: t("gemini_setup_save"),
+            validating: t("gemini_setup_validating"),
+            stageFormat: t("gemini_stage_format"),
+            stageReach: t("gemini_stage_reach"),
+            stageVideo: t("gemini_stage_video"),
+            saved: t("gemini_setup_saved"),
+            keyHelp: t("gemini_setup_key_help")
+          }}
+          onClose={() => setGeminiSheetOpen(false)}
+          onConfigured={() => {
+            setGeminiSheetOpen(false)
+            void queryClient.invalidateQueries({ queryKey })
+            const pending = pendingVideoRef.current
+            pendingVideoRef.current = null
+            // assumeConfigured: the key was just saved, but this render's
+            // payload.gemini_configured is still stale until the refetch
+            // lands — without it, intake would re-open the sheet forever.
+            if (pending) void intakeWalkthroughVideo(pending, { assumeConfigured: true })
+          }}
+        />
+      ) : null}
       {reportDialogOpen ? (
         <ReportIssueDialog
           body={reportIssueBody(payload, prefix)}
@@ -2583,6 +2939,56 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
             ))}
           </div>
         ) : null}
+      {walkthrough ? (
+        <div className="mb-3 flex w-full items-center gap-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-700 dark:bg-gray-900" data-testid="walkthrough-chip">
+          <span aria-hidden="true" className="text-base">🎬</span>
+          <span className="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200">
+            {walkthrough.filename}
+            {walkthrough.durationSeconds ? <span className="ml-1 text-xs text-gray-500">({formatClock(walkthrough.durationSeconds)})</span> : null}
+          </span>
+          {walkthrough.status === "ready" ? <span className="text-xs text-gray-500">{t("walkthrough_ready")}</span> : null}
+          {walkthrough.status === "uploading" ? (
+            <span className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+              {t("walkthrough_uploading", { percent: walkthrough.percent })}
+              <span className="h-1.5 w-24 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+                <span className="block h-full rounded-full bg-terracotta-600 transition-all" style={{ width: `${walkthrough.percent}%` }} />
+              </span>
+            </span>
+          ) : null}
+          {walkthrough.status === "analyzing" ? (
+            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-terracotta-500 border-t-transparent" />
+              <AnalyzingHint messages={walkthroughAnalyzingHints} />
+            </span>
+          ) : null}
+          {walkthrough.status === "failed" ? (
+            <span className="flex items-center gap-2 text-xs text-red-700 dark:text-red-300">
+              <span className="max-w-64 truncate" title={walkthrough.error}>{walkthrough.error}</span>
+              {walkthrough.id ? (
+                <button className="font-medium underline hover:no-underline" onClick={retryWalkthroughAnalysis} type="button">
+                  {t("walkthrough_retry")}
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+          {walkthrough.status === "ready" || walkthrough.status === "failed" ? (
+            <button
+              aria-label={t("walkthrough_remove")}
+              className="rounded-full p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 dark:hover:bg-gray-700"
+              onClick={() => {
+                setWalkthrough(null)
+                // Clear any walkthrough-scoped error (e.g. one-at-a-time) so
+                // it can't linger and disable the send button for the next
+                // ordinary message.
+                setAttachmentError(null)
+              }}
+              type="button"
+            >
+              <CloseIcon className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {showAttachedRepositories && attachedRepositories.length > 0 ? (
         <div className="mb-3 flex w-full flex-wrap gap-2">
           {attachedRepositories.map((repository) => (
@@ -2604,7 +3010,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       ) : null}
       <div className="flex items-end justify-between gap-3">
         <input
-          accept="image/*,application/pdf"
+          accept={payload.walkthroughs_enabled ? "image/*,application/pdf,video/webm,video/mp4,video/quicktime" : "image/*,application/pdf"}
           aria-label={t("chat_attachments")}
           className="hidden"
           disabled={send.isPending || systemAction.isPending}
@@ -2643,6 +3049,22 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
               <UploadIcon className="h-4 w-4 shrink-0 text-gray-400" />
               {t("upload_file")}
             </button>
+            {payload.walkthroughs_enabled ? (
+              <button
+                className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                onClick={startWalkthroughRecording}
+                title={t("record_walkthrough_title")}
+                type="button"
+              >
+                <span aria-hidden="true" className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                  <span className="h-2.5 w-2.5 rounded-full border-2 border-red-500" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block">{t("record_walkthrough")}</span>
+                  <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{t("record_walkthrough_hint")}</span>
+                </span>
+              </button>
+            ) : null}
             <div className="border-t border-gray-100 dark:border-gray-800" />
             <AddAttachment payload={payload} prefix={prefix} queryKey={queryKey} onAttached={() => setAttachmentPopoverOpen(false)} onNotice={onNotice} />
           </div>
@@ -2674,7 +3096,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           <span aria-live="polite" className="sr-only">{ghostSuggestion ? t("suggestion_available", { suggestion: ghostSuggestion }) : ""}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button aria-label={agentActive ? t("enqueue_message") : t("send_message")} className={`${primaryButton()} inline-flex items-center justify-center`} disabled={send.isPending || systemAction.isPending || systemCommandAction.isPending || text.trim().length === 0 || pendingConfirmation != null || attachmentError != null} type="submit">
+          <button aria-label={agentActive ? t("enqueue_message") : t("send_message")} className={`${primaryButton()} inline-flex items-center justify-center`} disabled={send.isPending || systemAction.isPending || systemCommandAction.isPending || (text.trim().length === 0 && walkthrough?.status !== "ready" && attachments.length === 0) || pendingConfirmation != null || attachmentError != null} type="submit">
             {agentActive ? <EnqueueIcon className="h-4 w-4" /> : <SendIcon className="h-4 w-4" />}
           </button>
           {agentActive && text.trim().length > 0 ? (
@@ -3721,7 +4143,11 @@ function ChatWorkspacePanel({
 }
 
 function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: ChatRenderItem[]; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   const images = imageAttachments(messages)
+  const walkthroughs = payload.video_walkthroughs || []
+  const walkthroughStateLabel = (state: string) =>
+    ({ uploaded: t("walkthrough_state_uploaded"), analyzing: t("walkthrough_state_analyzing"), analyzed: t("walkthrough_state_analyzed"), failed: t("walkthrough_state_failed") } as Record<string, string>)[state] || state
   const [lightboxImage, setLightboxImage] = useState<ChatMessageImageAttachment | null>(null)
   const [loadingSnapshotId, setLoadingSnapshotId] = useState<number | null>(null)
   const [snapshotError, setSnapshotError] = useState<string | null>(null)
@@ -3794,7 +4220,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
     }
   }
 
-  if (images.length === 0 && snapshotItems.length === 0 && !snapshots.isPending && !snapshots.isError) {
+  if (images.length === 0 && snapshotItems.length === 0 && walkthroughs.length === 0 && !snapshots.isPending && !snapshots.isError) {
     return <PanelMessage>No media shared yet.</PanelMessage>
   }
 
@@ -3828,6 +4254,35 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
                   >
                     {loadingSnapshotId === snapshot.id ? "Loading..." : "Load"}
                   </button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {walkthroughs.length > 0 ? (
+        <section className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{t("walkthrough_media_heading")}</h2>
+          <div className="space-y-2">
+            {walkthroughs.map((walkthrough) => (
+              <article className="rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950" key={walkthrough.id}>
+                <div className="flex items-start gap-3">
+                  <div aria-hidden="true" className="flex h-10 w-10 shrink-0 items-center justify-center rounded bg-gray-100 text-lg dark:bg-gray-800">🎥</div>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100" title={walkthrough.title}>{walkthrough.title}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                      {walkthrough.duration_seconds != null ? <span className="tabular-nums">{formatClock(walkthrough.duration_seconds)}</span> : null}
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">{walkthroughStateLabel(walkthrough.state)}</span>
+                      <span>{formatRelativeTime(walkthrough.created_at)}</span>
+                    </div>
+                    {walkthrough.state === "failed" && walkthrough.error_message ? (
+                      <p className="mt-1 text-xs text-red-600 dark:text-red-400">{walkthrough.error_message}</p>
+                    ) : null}
+                    {!walkthrough.has_video && walkthrough.state !== "failed" ? (
+                      <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{t("walkthrough_media_expired")}</p>
+                    ) : null}
+                  </div>
                 </div>
               </article>
             ))}

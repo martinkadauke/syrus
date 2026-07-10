@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { desktopBuiltAt, isDesktopShell, openInNewTab, syrusShellBridge, type SyrusShellBridge } from "./desktopShell"
+import {
+  annotationBridge,
+  desktopBuiltAt,
+  isDesktopShell,
+  openInNewTab,
+  syrusShellBridge,
+  type SyrusAnnotationBridge,
+  type SyrusShellBridge
+} from "./desktopShell"
 
 const desktopUa = "Mozilla/5.0 (Macintosh) Chrome/130.0.0.0 Electron/39.8.10 SyrusDesktop/0.1.0 Safari/537.36"
 const browserUa = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15"
@@ -18,6 +26,53 @@ describe("syrusShellBridge", () => {
     window.syrusShell = bridge
 
     expect(syrusShellBridge()).toBe(bridge)
+  })
+})
+
+describe("annotationBridge", () => {
+  afterEach(() => {
+    delete window.syrusShell
+  })
+
+  const fakeAnnotation = (available: boolean): SyrusAnnotationBridge => ({
+    available,
+    // enable() resolves the runtime overlay-available boolean (true/false),
+    // not void — the recorder gates its HUD hint on it.
+    enable: vi.fn().mockResolvedValue(true),
+    disable: vi.fn().mockResolvedValue(undefined),
+    onModeChanged: vi.fn().mockReturnValue(() => {})
+  })
+
+  it("is null in a plain browser (no shell bridge at all)", () => {
+    expect(annotationBridge()).toBeNull()
+  })
+
+  it("is null when the shell has no annotation surface (older shell)", () => {
+    window.syrusShell = {} as SyrusShellBridge
+    expect(annotationBridge()).toBeNull()
+  })
+
+  it("is null when the shell reports the overlay unavailable", () => {
+    const annotation = fakeAnnotation(false)
+    window.syrusShell = { annotation } as unknown as SyrusShellBridge
+    expect(annotationBridge()).toBeNull()
+  })
+
+  it("returns the surface when the shell reports it available", () => {
+    const annotation = fakeAnnotation(true)
+    window.syrusShell = { annotation } as unknown as SyrusShellBridge
+    expect(annotationBridge()).toBe(annotation)
+  })
+
+  it("exposes an enable() that resolves the runtime overlay-available boolean", async () => {
+    // `available` (static presence) gates the surface's existence; enable()'s
+    // resolved boolean reports whether the overlay + shortcut actually came up
+    // for a given recording — the recorder gates its HUD hint on the latter.
+    const annotation = fakeAnnotation(true)
+    ;(annotation.enable as ReturnType<typeof vi.fn>).mockResolvedValue(false)
+    window.syrusShell = { annotation } as unknown as SyrusShellBridge
+
+    await expect(annotationBridge()?.enable()).resolves.toBe(false)
   })
 })
 

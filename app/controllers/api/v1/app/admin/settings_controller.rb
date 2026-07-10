@@ -33,6 +33,10 @@ module Api
             {
               settings: {
                 signups_open: setting.signups_open,
+                # Walkthrough-video media management — analysis + screenshots
+                # always persist; these bound only the stored video blobs.
+                video_retention_days: setting.video_retention_days,
+                video_storage_budget_mb: setting.video_storage_budget_mb,
                 clearable_secrets: AppSetting.clearable_secrets.map do |key, label|
                   {
                     key: key,
@@ -45,12 +49,19 @@ module Api
           end
 
           def settings_params
-            permitted_settings = [ :signups_open ] + AppSetting.clearable_secrets.keys.map(&:to_sym)
+            permitted_settings = [ :signups_open, :video_retention_days, :video_storage_budget_mb ] +
+                                 AppSetting.clearable_secrets.keys.map(&:to_sym)
 
             params
               .expect(app_setting: permitted_settings)
               .to_h
-              .reject { |key, value| key != "signups_open" && value.blank? }
+              .reject { |key, value| booleanish?(key) ? false : value.blank? }
+          end
+
+          # signups_open is a boolean (false must survive the blank-reject);
+          # everything else is only applied when a value is actually sent.
+          def booleanish?(key)
+            key == "signups_open"
           end
         end
       end

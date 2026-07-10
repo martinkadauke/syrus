@@ -1,8 +1,23 @@
+require "base64"
+
 module SyrusChatMcp
   HEAD_TAIL_BYTES = 4.kilobytes
 
   def self.success(payload)
     MCP::Tool::Response.new([ { type: "text", text: JSON.generate(payload) } ])
+  end
+
+  # A non-error tool response carrying a raw image the agent sees DIRECTLY. The
+  # MCP server serializes this content array verbatim onto the wire as an MCP
+  # `image` content block ({ type, data, mimeType }); Claude Code (claude
+  # --print) renders that block into the model's context as an actual image —
+  # the native path for putting a picture in front of the agent mid-turn (there
+  # is no `--image` CLI flag, and disk+Read only reaches the NEXT turn). An
+  # optional text block rides alongside to tell the agent what to do with it.
+  def self.image_result(jpeg:, text: nil, mime_type: "image/jpeg")
+    content = [ { type: "image", data: Base64.strict_encode64(jpeg), mimeType: mime_type } ]
+    content << { type: "text", text: text } if text.present?
+    MCP::Tool::Response.new(content)
   end
 
   def self.invalid(reason)

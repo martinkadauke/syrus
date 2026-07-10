@@ -54,3 +54,4 @@ config/credentials/*.key
 !/app/assets/builds/.keep
 .claude/scheduled_tasks.lock
 tmp/mcp_repro/
+.claude/worktrees/

@@ -42,6 +42,7 @@ function makePayload(locale = "en"): CredentialsPayload {
       claude_oauth_token: false,
       codex_api_key: false,
       codex_auth_json: false,
+    gemini_api_key: false,
       api_token: null
     },
     github_rate_limit: null,

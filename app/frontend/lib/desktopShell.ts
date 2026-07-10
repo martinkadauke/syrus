@@ -53,12 +53,69 @@ export type SyrusShellState = {
   skillOfferDismissed: boolean
 }
 
+// Red-pen screen annotation for the walkthrough recorder — a desktop-only
+// surface on the shell bridge. In the Electron shell, enable() (called on
+// record start) spins up a transparent always-on-top overlay plus a global
+// draw-mode toggle (⌘/Ctrl+Shift+A); the recorder's full-screen capture picks
+// up the strokes incidentally. disable() (on stop/discard) tears both down.
+// `available` is the STATIC desktop-shell presence gate — true only in the
+// desktop shell; a plain browser has no `annotation` surface at all, so the
+// recorder shows no annotation UI. enable() RESOLVES a runtime boolean — true
+// only when the overlay AND the shortcut actually came up — so the recorder
+// can withhold the ⌘⇧A hint when the overlay couldn't run. See
+// desktop/electron/windows/annotationOverlay.ts.
+// What annotation enable() resolves: whether a surface came up, and if so
+// whether it's the native HOLD-to-draw hook (Ctrl held → armed) or the TAP
+// fallback (⌘⇧A). The recorder shows the matching hint.
+export type AnnotationEnableResult = { available: boolean; hold: boolean }
+
+export type SyrusAnnotationBridge = {
+  available: boolean
+  enable(): Promise<AnnotationEnableResult>
+  disable(): Promise<void>
+  // Fires on every draw-mode transition (true when the pen is armed). Returns
+  // an unsubscribe, mirroring onStateChanged.
+  onModeChanged(callback: (drawing: boolean) => void): () => void
+}
+
 export type SyrusShellBridge = {
   getState(): Promise<SyrusShellState>
   onStateChanged(callback: (state: SyrusShellState) => void): () => void
   relaunchToUpdate(): void
   installSkill(): Promise<{ ok: boolean; message: string }>
   dismissSkillOffer(): void
+  // Absent on older shells and in plain browsers — always feature-detect via
+  // annotationBridge().
+  annotation?: SyrusAnnotationBridge
+  // Absent on older shells and in plain browsers — always feature-detect via
+  // recorderHudBridge().
+  recorderHud?: SyrusRecorderHudBridge
+}
+
+// The floating recording HUD — a separate always-on-top, DRAGGABLE window
+// carrying the recording controls, so they live OUTSIDE the Syrus web-app
+// window and stay reachable while the user demonstrates another app. show() at
+// record start, update() each tick, hide() on stop/discard; onAction fires when
+// the user clicks the HUD's Stop / Discard. `available` is the static
+// desktop-shell presence gate — a plain browser has none and keeps the in-page
+// HUD. See desktop/electron/windows/recorderHud.ts.
+export type SyrusRecorderHudState = {
+  clock?: string
+  remaining?: string
+  remainingWarn?: boolean
+  noMic?: string
+  hint?: string
+  drawing?: boolean
+  stopLabel?: string
+  discardLabel?: string
+}
+
+export type SyrusRecorderHudBridge = {
+  available: boolean
+  show(state: SyrusRecorderHudState): Promise<void>
+  update(state: SyrusRecorderHudState): Promise<void>
+  hide(): Promise<void>
+  onAction(callback: (kind: "stop" | "discard") => void): () => void
 }
 
 declare global {
@@ -70,6 +127,21 @@ declare global {
 export function syrusShellBridge(): SyrusShellBridge | null {
   if (typeof window === "undefined") return null
   return window.syrusShell ?? null
+}
+
+// The annotation surface, or null when it's unavailable (plain browser, older
+// shell, or a shell that reported the overlay can't run — `available: false`).
+// Callers gate all annotation UI on a non-null return.
+export function annotationBridge(): SyrusAnnotationBridge | null {
+  const annotation = syrusShellBridge()?.annotation
+  return annotation?.available ? annotation : null
+}
+
+// The floating-HUD surface, or null in a plain browser / older shell. Callers
+// use the native HUD when present and fall back to the in-page HUD otherwise.
+export function recorderHudBridge(): SyrusRecorderHudBridge | null {
+  const recorderHud = syrusShellBridge()?.recorderHud
+  return recorderHud?.available ? recorderHud : null
 }
 
 // Opens a URL in a new tab (or, in the desktop shell, wherever the shell

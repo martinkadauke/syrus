@@ -4,8 +4,9 @@ import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTe
 import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
 import { useT } from "../hooks/useT"
+import { GeminiSetupSheet } from "./GeminiSetupSheet"
 
-type AgentTab = "claude" | "codex"
+type AgentTab = "claude" | "gemini"
 
 type Preflight =
   | { status: "checking" }
@@ -13,8 +14,23 @@ type Preflight =
   | { status: "error" }
 
 export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
-  const { t } = useT("settings")
+  // settings namespace is the default (bare `configure_agent.*` keys); the
+  // Gemini setup sheet's copy lives in the chat namespace (shared with Chat.tsx).
+  const { t } = useT(["settings", "chat"])
   const queryClient = useQueryClient()
+  const geminiSheetLabels = {
+    title: t("chat:gemini_setup_title"),
+    intro: t("chat:gemini_setup_intro"),
+    getKey: t("chat:gemini_setup_get_key"),
+    keyPlaceholder: t("chat:gemini_setup_placeholder"),
+    validateAndSave: t("chat:gemini_setup_save"),
+    validating: t("chat:gemini_setup_validating"),
+    stageFormat: t("chat:gemini_stage_format"),
+    stageReach: t("chat:gemini_stage_reach"),
+    stageVideo: t("chat:gemini_stage_video"),
+    saved: t("chat:gemini_setup_saved"),
+    keyHelp: t("chat:gemini_setup_key_help")
+  }
   const [tab, setTab] = useState<AgentTab>("claude")
   const [preflight, setPreflight] = useState<Preflight>({ status: "checking" })
   const [authStarted, setAuthStarted] = useState(false)
@@ -23,14 +39,19 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
   const [exchanging, setExchanging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [connected, setConnected] = useState<string | null>(null)
+  const [geminiSheetOpen, setGeminiSheetOpen] = useState(false)
+  const [geminiConfigured, setGeminiConfigured] = useState(false)
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose()
+      // When the nested Gemini sheet is open, let ITS Escape handler close the
+      // sheet only — both listeners live on document and fire on one keypress,
+      // so without this guard Escape tears down the whole modal too.
+      if (event.key === "Escape" && !geminiSheetOpen) onClose()
     }
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
-  }, [onClose])
+  }, [onClose, geminiSheetOpen])
 
   // Preflight: is Claude already usable on this machine?
   useEffect(() => {
@@ -148,10 +169,9 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
               <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-gray-400 dark:bg-gray-800 dark:text-gray-500">{t('configure_agent.soon')}</span>
             </button>
             <button
-              aria-disabled="true"
-              aria-selected={false}
-              className="cursor-not-allowed px-4 py-2 text-sm font-medium text-gray-400 dark:text-gray-600"
-              disabled
+              aria-selected={tab === "gemini"}
+              className={tabClass(tab === "gemini")}
+              onClick={() => setTab("gemini")}
               role="tab"
               title={t('configure_agent.gemini_title')}
               type="button"
@@ -161,7 +181,44 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
             </button>
           </div>
 
-          {connected ? (
+          {tab === "gemini" ? (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {t('configure_agent.gemini_tab_intro')}
+              </p>
+              {geminiConfigured ? (
+                <>
+                  <StatusBox tone="ok">{t('configure_agent.gemini_tab_configured')}</StatusBox>
+                  <div className="flex justify-end">
+                    <button
+                      className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      onClick={onClose}
+                      type="button"
+                    >
+                      {t('configure_agent.done')}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    onClick={onClose}
+                    type="button"
+                  >
+                    {t('configure_agent.skip_for_now')}
+                  </button>
+                  <button
+                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    onClick={() => setGeminiSheetOpen(true)}
+                    type="button"
+                  >
+                    {t('configure_agent.gemini_tab_add_key')}
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : connected ? (
             <>
               <StatusBox tone="ok">{connected}</StatusBox>
               <div className="flex justify-end">
@@ -261,6 +318,22 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
           )}
         </div>
       </section>
+      {geminiSheetOpen ? (
+        // Stop backdrop clicks in the nested sheet from bubbling to this
+        // modal's own onClose — otherwise dismissing the sheet also closes
+        // the whole Configure-agent modal.
+        <div onClick={(event) => event.stopPropagation()}>
+          <GeminiSetupSheet
+            labels={geminiSheetLabels}
+            onClose={() => setGeminiSheetOpen(false)}
+            onConfigured={() => {
+              setGeminiSheetOpen(false)
+              setGeminiConfigured(true)
+              onSaved?.()
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }

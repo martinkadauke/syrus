@@ -989,6 +989,30 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     )
   end
 
+  it "accepts an empty-text message that carries an attachment (the media is the message)" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    attachment = { name: "shot.png", mime_type: "image/png", data: Base64.strict_encode64("bytes") }
+
+    post "/api/v1/app/chats/#{chat.id}/message", params: {
+      chat_message: { text: "", attachments: [ attachment ] }
+    }
+
+    expect(response).to have_http_status(:ok)
+    message = chat.reload.messages.where(role: "user").last
+    expect(message.content["text"]).to eq("")
+    expect(message.content["attachments"].first["name"]).to eq("shot.png")
+  end
+
+  it "still rejects an empty-text message with no attachments" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+
+    post "/api/v1/app/chats/#{chat.id}/message", params: { chat_message: { text: "   " } }
+
+    expect(response).to have_http_status(:unprocessable_content)
+  end
+
   it "starts the first-message chat with a pending generated title" do
     sign_in_as(user)
 
@@ -1131,6 +1155,38 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(body.dig("paths", "app_scratchpad_reorder_path")).to eq("/api/v1/app/chats/#{chat.id}/scratchpad_items/reorder")
     expect(body["queued_messages"]).to eq([])
     expect(body["paths"].keys).not_to include("chat_messages_path", "chat_attachments_path", "chat_whiteboard_path")
+  end
+
+  it "includes walkthrough videos in the payload for the media panel" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    walkthrough = chat.video_walkthroughs.create!(
+      user: user, content_type: "video/mp4", byte_size: 12, duration_seconds: 90,
+      title: "Checkout run", state: "analyzed"
+    ) { |w| w.file.attach(io: StringIO.new("mp4"), filename: "w.mp4", content_type: "video/mp4") }
+
+    get "/api/v1/app/chats/#{chat.id}"
+
+    entry = parse_body["video_walkthroughs"].find { |row| row["id"] == walkthrough.id }
+    expect(entry).to include(
+      "title" => "Checkout run", "state" => "analyzed", "duration_seconds" => 90, "has_video" => true
+    )
+    # Flag off (default in test): composer intake is gated, but history stays.
+    expect(parse_body["walkthroughs_enabled"]).to eq(false)
+  end
+
+  it "reports walkthroughs_enabled true in the chat payload when the labs flag is on" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    feature = Feature.find_or_create_by!(slug: "video_walkthroughs") do |record|
+      record.category = "Labs"
+      record.name = "Walkthrough videos"
+    end
+    feature.update!(enabled: true)
+
+    get "/api/v1/app/chats/#{chat.id}"
+
+    expect(parse_body["walkthroughs_enabled"]).to eq(true)
   end
 
   it "answers an active agent question" do
@@ -1306,6 +1362,32 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     chat_record = parse_body.dig("groups", 0, "chats")&.find { |c| c["id"] == chat.id }
     expect(chat_record).not_to be_nil
     expect(chat_record["scratchpad_items_count"]).to eq(2)
+  end
+
+  it "preserves media (video_walkthrough_id) when editing a queued walkthrough message's note" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    queued = chat.chat_queued_messages.create!(content: { "text" => "", "video_walkthrough_id" => 7, "source" => "walkthrough" })
+
+    patch "/api/v1/app/chats/#{chat.id}/queued_messages/#{queued.id}", params: { chat_message: { text: "focus on save" } }
+
+    expect(response).to have_http_status(:ok)
+    content = queued.reload.content
+    expect(content["text"]).to eq("focus on save")
+    expect(content["video_walkthrough_id"]).to eq(7)
+    expect(content["source"]).to eq("walkthrough")
+  end
+
+  it "allows clearing a media-carrying queued message's note to blank" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    queued = chat.chat_queued_messages.create!(content: { "text" => "note", "video_walkthrough_id" => 7 })
+
+    patch "/api/v1/app/chats/#{chat.id}/queued_messages/#{queued.id}", params: { chat_message: { text: "" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(queued.reload.content["video_walkthrough_id"]).to eq(7)
+    expect(queued.content["text"]).to eq("")
   end
 
   it "stores valid file attachments on a queued chat message" do

@@ -50,6 +50,39 @@ RSpec.describe "API: /api/v1/app/admin/settings", type: :request do
     expect(parse_body["message"]).to eq("Settings updated.")
   end
 
+  it "exposes and updates the walkthrough-video storage settings" do
+    sign_in_as(admin)
+
+    get "/api/v1/app/admin/settings"
+    expect(parse_body.dig("settings", "video_retention_days")).to eq(7)
+    expect(parse_body.dig("settings", "video_storage_budget_mb")).to eq(2048)
+
+    patch "/api/v1/app/admin/settings", params: {
+      app_setting: { signups_open: false, video_retention_days: 14, video_storage_budget_mb: 512 }
+    }
+
+    expect(response).to have_http_status(:ok)
+    setting = AppSetting.current.reload
+    expect(setting.video_retention_days).to eq(14)
+    expect(setting.video_storage_budget_mb).to eq(512)
+    # signups_open (a boolean false) must still be applied, not blank-rejected.
+    expect(setting.signups_open).to be false
+  end
+
+  it "rejects a destructive video_retention_days of 0 without persisting it" do
+    sign_in_as(admin)
+    AppSetting.current.update!(video_retention_days: 7)
+
+    patch "/api/v1/app/admin/settings", params: {
+      app_setting: { video_retention_days: 0 }
+    }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "code")).to eq("validation_failed")
+    # The prior safe value is preserved — 0 would purge every stored video.
+    expect(AppSetting.current.reload.video_retention_days).to eq(7)
+  end
+
   it "rejects unknown app secret names" do
     sign_in_as(admin)
 

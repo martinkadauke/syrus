@@ -45,6 +45,27 @@ RSpec.describe Feature, type: :model do
     end
   end
 
+  describe ".video_walkthroughs_enabled?" do
+    it "is false when the row is absent and follows the row when present" do
+      Feature.where(slug: "video_walkthroughs").delete_all
+      expect(Feature.video_walkthroughs_enabled?).to eq(false)
+
+      feature = Feature.create!(slug: "video_walkthroughs", category: "Labs", name: "Walkthrough videos", enabled: true)
+      expect(Feature.video_walkthroughs_enabled?).to eq(true)
+
+      feature.update!(enabled: false)
+      expect(Feature.video_walkthroughs_enabled?).to eq(false)
+    end
+  end
+
+  describe "declarations" do
+    it "declares the video_walkthroughs labs flag default-off in config/features.yml" do
+      declaration = YAML.load_file(Rails.root.join("config/features.yml")).fetch("features")
+                        .find { |f| f["slug"] == "video_walkthroughs" }
+      expect(declaration).to include("category" => "Labs", "default" => false)
+    end
+  end
+
   describe "seed data" do
     it "creates the terminal feature idempotently" do
       Feature.where(slug: "terminal").delete_all

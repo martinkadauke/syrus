@@ -391,7 +391,10 @@
     "auth_error": "Could not start authorization.",
     "connected_default": "Claude connected.",
     "exchange_error": "The token Claude returned did not work. Try again.",
-    "exchange_catch_error": "Could not exchange the code. Try authorizing again."
+    "exchange_catch_error": "Could not exchange the code. Try authorizing again.",
+    "gemini_tab_intro": "Gemini turns screen-recording walkthroughs into Epics — optional, add it now or later. It isn't the coding agent; your Claude (or Codex) agent still does the work.",
+    "gemini_tab_configured": "Gemini is set up — walkthrough videos will be analyzed automatically.",
+    "gemini_tab_add_key": "Add Gemini API key"
   },
   "account_settings": {
     "loading_credentials": "Loading credentials...",

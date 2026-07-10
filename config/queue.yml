@@ -24,6 +24,14 @@ default: &default
       threads: <%= ENV.fetch("CHAT_CONCURRENCY", 2) %>
       processes: 1
       polling_interval: 0.1
+    # Walkthrough-video analysis pins a thread for many minutes
+    # (500MB streamed Gemini upload + ACTIVE polling + a long
+    # generateContent). Isolated so a few simultaneous analyses
+    # can't starve pollers, reapers, or app-event broadcasts.
+    - queues: "videos"
+      threads: <%= ENV.fetch("VIDEO_CONCURRENCY", 2) %>
+      processes: 1
+      polling_interval: 0.5
     # Everything else — recurring reapers / pollers, app-event
     # broadcasts, prune jobs. All short-lived; sharing a small
     # thread pool is fine. Critically, this worker is independent
@@ -51,6 +59,10 @@ development:
       polling_interval: 0.5
     - queues: "chat"
       threads: <%= ENV.fetch("DEV_CHAT_CONCURRENCY", 1) %>
+      processes: 1
+      polling_interval: 0.5
+    - queues: "videos"
+      threads: <%= ENV.fetch("DEV_VIDEO_CONCURRENCY", 1) %>
       processes: 1
       polling_interval: 0.5
     - queues: "default"

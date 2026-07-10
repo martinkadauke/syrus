@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <!-- The floating recording HUD: a small always-on-top pill the user can
+         DRAG anywhere on screen (including off the surface being demonstrated),
+         so the recording controls are always reachable without switching back
+         to the Syrus window. State is pushed in over IPC (window.__recorderHud
+         from recorderHudPreload); Stop / Discard send actions back. The whole
+         pill is a drag region except the buttons. -->
+    <style>
+      :root { color-scheme: light dark; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: transparent;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+        user-select: none;
+        cursor: default;
+      }
+      .pill {
+        -webkit-app-region: drag;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
+        margin: 6px;
+        border-radius: 9999px;
+        background: rgba(255, 255, 255, 0.98);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+        color: #111827;
+        white-space: nowrap;
+      }
+      @media (prefers-color-scheme: dark) {
+        .pill { background: rgba(17, 24, 39, 0.98); border-color: rgba(255, 255, 255, 0.12); color: #f3f4f6; }
+      }
+      .dot { position: relative; width: 12px; height: 12px; flex: none; }
+      .dot::before, .dot::after {
+        content: ""; position: absolute; inset: 0; border-radius: 9999px; background: #dc2626;
+      }
+      .dot::before { animation: ping 1.2s cubic-bezier(0,0,0.2,1) infinite; opacity: 0.75; }
+      @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+      .clock { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .remaining { font-size: 12px; font-variant-numeric: tabular-nums; color: #6b7280; }
+      .remaining.warn { color: #d97706; font-weight: 600; }
+      @media (prefers-color-scheme: dark) { .remaining { color: #9ca3af; } .remaining.warn { color: #fbbf24; } }
+      .nomic { font-size: 12px; color: #d97706; }
+      @media (prefers-color-scheme: dark) { .nomic { color: #fbbf24; } }
+      .hint { font-size: 12px; color: #dc2626; font-weight: 600; }
+      .hint.idle { color: #6b7280; font-weight: 400; }
+      @media (prefers-color-scheme: dark) { .hint.idle { color: #9ca3af; } }
+      button {
+        -webkit-app-region: no-drag;
+        border: 0; border-radius: 9999px; cursor: pointer; font-weight: 600;
+        font-size: 12px; padding: 5px 12px;
+      }
+      button.stop { background: #dc2626; color: #fff; }
+      button.stop:hover { background: #b91c1c; }
+      button.discard { background: transparent; color: #6b7280; padding: 5px 8px; }
+      button.discard:hover { background: rgba(0,0,0,0.06); color: #374151; }
+      @media (prefers-color-scheme: dark) { button.discard { color: #9ca3af; } button.discard:hover { background: rgba(255,255,255,0.08); color: #e5e7eb; } }
+      .hidden { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <div class="pill" role="status">
+      <span class="dot" aria-hidden="true"></span>
+      <span class="clock" id="clock">0:00</span>
+      <span class="remaining" id="remaining"></span>
+      <span class="nomic hidden" id="nomic"></span>
+      <span class="hint idle hidden" id="hint"></span>
+      <button class="stop" id="stop" type="button">Stop &amp; attach</button>
+      <button class="discard" id="discard" type="button">Discard</button>
+    </div>
+    <script>
+      (function () {
+        var $ = function (id) { return document.getElementById(id); };
+        function set(id, text) { var el = $(id); if (el) el.textContent = text; }
+        function toggle(id, on) { var el = $(id); if (el) el.classList.toggle("hidden", !on); }
+
+        $("stop").addEventListener("click", function () { window.__recorderHud && window.__recorderHud.action("stop"); });
+        $("discard").addEventListener("click", function () { window.__recorderHud && window.__recorderHud.action("discard"); });
+
+        if (window.__recorderHud && window.__recorderHud.onUpdate) {
+          window.__recorderHud.onUpdate(function (state) {
+            state = state || {};
+            set("clock", state.clock || "0:00");
+            set("remaining", state.remaining || "");
+            toggle("remaining", !!state.remaining);
+            if (state.remainingWarn) $("remaining").classList.add("warn"); else $("remaining").classList.remove("warn");
+            set("nomic", state.noMic || "");
+            toggle("nomic", !!state.noMic);
+            var hint = state.hint || "";
+            set("hint", hint);
+            toggle("hint", !!hint);
+            if (state.drawing) $("hint").classList.remove("idle"); else $("hint").classList.add("idle");
+            set("stop", state.stopLabel || "Stop & attach");
+            set("discard", state.discardLabel || "Discard");
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

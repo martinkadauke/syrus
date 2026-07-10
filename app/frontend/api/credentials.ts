@@ -29,6 +29,7 @@ export type CredentialsUser = {
 }
 
 export type CredentialStatus = {
+  gemini_api_key: boolean
   github_token: boolean
   claude_oauth_token: boolean
   codex_api_key: boolean
@@ -123,6 +124,7 @@ export type CredentialsInput = {
   codex_auth_mode: string
   codex_api_key: string
   codex_auth_json: string
+  gemini_api_key: string
   github_token: string
   agent_max_turns: number
   scheduling_paused: boolean
@@ -160,6 +162,12 @@ export function saveGithubToken(githubToken: string) {
 export function clearCredential(credential: string) {
   return postJson<CredentialsPayload>("/api/v1/app/credentials/clear_credential", {
     credential
+  })
+}
+
+export function testGeminiKey(geminiApiKey: string) {
+  return postJson<CredentialTestPayload>("/api/v1/app/credentials/test_gemini_key", {
+    gemini_api_key: geminiApiKey
   })
 }
 

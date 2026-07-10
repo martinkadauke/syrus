@@ -1,0 +1,205 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>Syrus annotation overlay</title>
+    <style>
+      /* Fully transparent, click-through by default. The window's own
+         setIgnoreMouseEvents controls whether pointer events reach this page;
+         when they do (draw mode on), the crosshair signals "pen armed". */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        cursor: crosshair;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #pen {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="pen"></canvas>
+    <script>
+      // Self-contained red-pen renderer. Mirrors desktop/src/annotationFade.ts
+      // (the tested source of truth) — keep FADE_DURATION_MS / STROKE_WIDTH /
+      // STROKE_GLOW and the strokeAlpha formula in sync; a drift fails
+      // spec/desktop/annotation_overlay_spec.rb.
+      ;(function () {
+        var FADE_DURATION_MS = 2500
+        var STROKE_WIDTH = 6
+        var STROKE_GLOW = 12
+        var PEN_COLOR = "#ff2d2d"
+
+        var canvas = document.getElementById("pen")
+        var ctx = canvas.getContext("2d")
+        var dpr = 1
+        var strokes = []
+        var active = null
+        // When the pointer was last active (down/move/up) while armed. The main
+        // process polls idleSnapshot() and auto-releases draw mode once this
+        // goes quiet for its idle window with no stroke in progress. Reset on
+        // arm so a fresh armed session starts with a full idle window.
+        var lastPointerAt = performance.now()
+        function noteActivity() {
+          lastPointerAt = performance.now()
+        }
+
+        function strokeAlpha(now, releasedAt) {
+          if (FADE_DURATION_MS <= 0) return 0
+          var age = now - releasedAt
+          if (age <= 0) return 1
+          if (age >= FADE_DURATION_MS) return 0
+          return 1 - age / FADE_DURATION_MS
+        }
+
+        function resize() {
+          dpr = window.devicePixelRatio > 0 ? window.devicePixelRatio : 1
+          var w = Math.max(1, Math.floor(window.innerWidth * dpr))
+          var h = Math.max(1, Math.floor(window.innerHeight * dpr))
+          if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w
+            canvas.height = h
+          }
+        }
+
+        function render() {
+          var now = performance.now()
+          resize()
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+          ctx.clearRect(0, 0, canvas.width, canvas.height)
+          ctx.lineCap = "round"
+          ctx.lineJoin = "round"
+
+          var kept = []
+          for (var i = 0; i < strokes.length; i++) {
+            var s = strokes[i]
+            // An active (unreleased) stroke holds full opacity; a released one
+            // fades from releasedAt.
+            var alpha = s.releasedAt == null ? 1 : strokeAlpha(now, s.releasedAt)
+            if (alpha <= 0) continue
+            kept.push(s)
+            if (s.points.length === 0) continue
+
+            ctx.globalAlpha = alpha
+            // Outer glow first for contrast on any background.
+            ctx.strokeStyle = PEN_COLOR
+            ctx.shadowColor = PEN_COLOR
+            ctx.shadowBlur = STROKE_GLOW
+            ctx.lineWidth = STROKE_WIDTH
+            drawPath(s.points)
+            // A crisp white-ish core lifts the line off busy backgrounds.
+            ctx.shadowBlur = 0
+            ctx.globalAlpha = Math.min(1, alpha)
+            ctx.strokeStyle = PEN_COLOR
+            ctx.lineWidth = STROKE_WIDTH
+            drawPath(s.points)
+          }
+          strokes = kept
+          ctx.globalAlpha = 1
+          ctx.shadowBlur = 0
+          requestAnimationFrame(render)
+        }
+
+        function drawPath(points) {
+          if (points.length === 1) {
+            var p = points[0]
+            ctx.beginPath()
+            ctx.arc(p.x, p.y, STROKE_WIDTH / 2, 0, Math.PI * 2)
+            ctx.fillStyle = PEN_COLOR
+            ctx.fill()
+            return
+          }
+          ctx.beginPath()
+          ctx.moveTo(points[0].x, points[0].y)
+          for (var i = 1; i < points.length; i++) {
+            ctx.lineTo(points[i].x, points[i].y)
+          }
+          ctx.stroke()
+        }
+
+        function beginStroke(x, y) {
+          active = { points: [{ x: x, y: y }], releasedAt: null }
+          strokes.push(active)
+        }
+        function extendStroke(x, y) {
+          if (!active) return
+          active.points.push({ x: x, y: y })
+        }
+        function endStroke() {
+          if (!active) return
+          active.releasedAt = performance.now()
+          active = null
+        }
+
+        function endStrokeWithActivity() {
+          // Lifting the pen is activity too — it (re)starts the idle window, so
+          // the pause is measured from when the last stroke finished.
+          noteActivity()
+          endStroke()
+        }
+
+        canvas.addEventListener("pointerdown", function (e) {
+          e.preventDefault()
+          noteActivity()
+          beginStroke(e.clientX, e.clientY)
+        })
+        canvas.addEventListener("pointermove", function (e) {
+          // Any move while armed counts as activity (keeps draw mode alive while
+          // the user hovers toward where they want to mark), even before a
+          // stroke starts. Only extend the path once a stroke is active.
+          noteActivity()
+          if (!active) return
+          e.preventDefault()
+          extendStroke(e.clientX, e.clientY)
+        })
+        window.addEventListener("pointerup", endStrokeWithActivity)
+        window.addEventListener("pointercancel", endStrokeWithActivity)
+        window.addEventListener("blur", endStroke)
+        window.addEventListener("resize", resize)
+
+        // Main-process control surface (called via webContents.executeJavaScript
+        // from annotationOverlay.ts). Kept minimal and guarded.
+        window.__syrusAnnotation = {
+          // Draw mode armed/released by the main process. On arm, reset the idle
+          // clock so a fresh armed session gets a full idle window before it can
+          // auto-release. On release, end the in-flight stroke so it starts
+          // fading immediately, leaving a clean screen.
+          setArmed: function (armed) {
+            if (armed) {
+              noteActivity()
+            } else {
+              endStroke()
+            }
+          },
+          // Read-only idle snapshot the main process polls to decide when to
+          // auto-release: how long since the last pointer activity, and whether
+          // a stroke is currently in progress (which must never be cut off).
+          idleSnapshot: function () {
+            return { active: active != null, idleMs: performance.now() - lastPointerAt }
+          },
+          // Force every mark to start fading now (record stop / discard).
+          clear: function () {
+            endStroke()
+            var now = performance.now()
+            for (var i = 0; i < strokes.length; i++) {
+              if (strokes[i].releasedAt == null) strokes[i].releasedAt = now
+            }
+          }
+        }
+
+        resize()
+        requestAnimationFrame(render)
+      })()
+    </script>
+  </body>
+</html>

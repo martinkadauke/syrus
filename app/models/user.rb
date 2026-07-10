@@ -35,7 +35,8 @@ class User < ApplicationRecord
     "github_token" => "GitHub token",
     "claude_oauth_token" => "Claude OAuth token",
     "codex_api_key" => "Codex API key",
-    "codex_auth_json" => "Codex ChatGPT auth.json"
+    "codex_auth_json" => "Codex ChatGPT auth.json",
+    "gemini_api_key" => "Gemini API key"
   }.freeze
   DASHBOARD_PREFERENCES_DEFAULTS = {
     "last_subject" => "epic",
@@ -123,6 +124,7 @@ class User < ApplicationRecord
   encrypts :claude_oauth_token
   encrypts :codex_api_key
   encrypts :codex_auth_json
+  encrypts :gemini_api_key
   encrypts :github_token
   # `deterministic: true` so we can WHERE on the encrypted column
   # for the API auth lookup. Same plaintext always encrypts to the
@@ -462,6 +464,14 @@ class User < ApplicationRecord
 
   def chat_provider_configured?(provider)
     provider_configured?(provider)
+  end
+
+  # Gemini is not an agent/chat provider — it's the video-understanding
+  # service behind walkthrough analysis. Configured = an AI Studio API key
+  # is saved (the OAuth/Code-Assist path has no Files API and reusing the
+  # gemini-cli OAuth client violates Google's ToS, so keys are the one path).
+  def gemini_configured?
+    gemini_api_key.present?
   end
 
   # Generate (and persist) a fresh API token. Returns the

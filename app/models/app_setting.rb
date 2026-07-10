@@ -13,6 +13,19 @@ class AppSetting < ApplicationRecord
     greater_than_or_equal_to: 0,
     less_than_or_equal_to: 10
   }
+  # Retention must be >= 1 day: 0 or negative makes the prune cutoff
+  # (`video_retention_days.days.ago`) land at/after now, which would purge
+  # EVERY stored walkthrough video instance-wide. There is no "keep forever"
+  # via 0 — the size budget is the way to relax the cap.
+  validates :video_retention_days, numericality: {
+    only_integer: true,
+    greater_than_or_equal_to: 1
+  }
+  # 0 = unlimited (size cap disabled); negatives are meaningless.
+  validates :video_storage_budget_mb, numericality: {
+    only_integer: true,
+    greater_than_or_equal_to: 0
+  }
 
   encrypts :github_app_private_key_pem
 
@@ -45,6 +58,20 @@ class AppSetting < ApplicationRecord
 
   def self.merge_train_max_size
     current.merge_train_max_size
+  end
+
+  # Walkthrough-video media management. The analysis + screenshots persist
+  # forever (they're the value); only the heavy video is time- and
+  # size-bounded by VideoWalkthroughPruneJob.
+  def self.video_retention_days
+    current.video_retention_days
+  end
+
+  # Instance-wide ceiling on total stored walkthrough-video bytes. 0 disables
+  # the size cap (time-based retention still applies).
+  def self.video_storage_budget_bytes
+    mb = current.video_storage_budget_mb
+    mb.to_i.positive? ? mb * 1024 * 1024 : 0
   end
 
   def self.report_issue_repo_slug

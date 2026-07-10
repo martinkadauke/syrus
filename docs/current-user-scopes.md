@@ -47,6 +47,7 @@ per-user/private:
   - app/controllers/api/v1/app/tags_controller.rb
   - app/controllers/api/v1/app/terminal_sessions_controller.rb
   - app/controllers/api/v1/app/theme_controller.rb
+  - app/controllers/api/v1/app/video_walkthroughs_controller.rb
   - app/controllers/api/v1/app/whiteboard_snapshots_controller.rb
   - app/controllers/application_controller.rb
   - app/controllers/spa_controller.rb
@@ -129,6 +130,7 @@ instead of broader model scopes.
 | `app/controllers/api/v1/app/tags_controller.rb` | per-user/private | Tags are created, updated, deleted, and listed through `Current.user.tags`. |
 | `app/controllers/api/v1/app/terminal_sessions_controller.rb` | per-user/private | Terminal sessions are listed, created, shown, and killed through `Current.user.terminal_sessions`; recent Workflow workspace choices and workflow defaults are scoped through `Current.user.workflows`. |
 | `app/controllers/api/v1/app/theme_controller.rb` | per-user/private | Updates only `Current.user.theme` for the signed-in operator. |
+| `app/controllers/api/v1/app/video_walkthroughs_controller.rb` | per-user/private | Creates walkthroughs through `Current.user.chat_sessions`; retry joins chat_sessions on `Current.user.id`. |
 | `app/controllers/api/v1/app/whiteboard_snapshots_controller.rb` | per-user/private | Lists and loads snapshots only through `Current.user.chat_sessions`. |
 | `app/controllers/api/v1/app/auth_controller.rb` | per-user/private | Public auth status can resume the current session and serialize whether a signed-in user is present. |
 | `app/controllers/api/v1/app/profiles_controller.rb` | per-user/private | Profile browsing excludes private credential data while using the current user for viewer-sensitive profile payloads. |
