@@ -724,6 +724,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
     t.index ["tool_use_id"], name: "index_local_tool_calls_on_tool_use_id"
   end
 
+
   create_table "local_tunnel_sessions", force: :cascade do |t|
     t.string "branch"
     t.integer "chat_session_id"
@@ -768,6 +769,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
     t.index ["run_id"], name: "index_main_concern_reports_on_run_id"
     t.index ["workflow_id"], name: "index_main_concern_reports_on_workflow_id"
   end
+
 
   create_table "merge_train_members", force: :cascade do |t|
     t.datetime "created_at", null: false
