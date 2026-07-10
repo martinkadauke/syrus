@@ -2759,7 +2759,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
 
     if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && text.trim().length > 0) {
       event.preventDefault()
-      stash.mutate()
+      stash.mutate(undefined)
       return
     }
 
@@ -3212,7 +3212,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
               aria-label={t("scratchpad_stash")}
               className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:text-gray-300 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:disabled:text-gray-600"
               disabled={stash.isPending}
-              onClick={() => stash.mutate()}
+              onClick={() => stash.mutate(undefined)}
               title={t("scratchpad_stash_tab")}
               type="button"
             >
