@@ -155,20 +155,44 @@ RSpec.describe "desktop web-container window" do
     expect(main_process).to include('app.on("second-instance"')
   end
 
-  it "self-installs into ~/Applications before opening any window" do
+  it "self-installs into Applications before opening any window" do
     # The DMG's double-click contract: running from the mounted image (or
-    # Downloads) copies the bundle into ~/Applications, launches the copy,
-    # and quits — no dialog, no drag target. The lock is released first so
-    # the copy doesn't lose the single-instance race against this instance.
+    # Downloads) installs the bundle into Applications — /Applications when
+    # writable without admin rights, ~/Applications otherwise — launches the
+    # copy, and quits. No drag target. A fresh install stays silent, but an
+    # existing install is only replaced after a Replace/Keep-Existing prompt
+    # that names both versions. The lock is released before each launch so
+    # the launched copy doesn't lose the single-instance race against this
+    # instance.
     when_ready = main_process[/app\.whenReady\(\)\.then\(async \(\) => \{[\s\S]*/]
     expect(when_ready).to include("shouldSelfInstall(")
+    expect(when_ready).to include("resolveInstallTarget(")
+    expect(when_ready).to include("installedBundleVersion(")
     expect(when_ready).to include("installBundle(")
+    # Ask BEFORE copying: the replace prompt precedes the install, and the
+    # decline decision goes through the pure helper.
+    expect(when_ready.index("replacePrompt(")).to be < when_ready.index("installBundle(")
+    expect(when_ready).to include("installDecisionForResponse(")
     expect(when_ready.index("app.releaseSingleInstanceLock()")).to be < when_ready.index("launchInstalledCopy(")
     expect(when_ready.index("launchInstalledCopy(")).to be < when_ready.index("createMenu()")
 
+    # No DMG session, ever: the failure path explains the manual drag and
+    # quits instead of silently continuing from the mounted image.
+    failure_branch = when_ready[/\} catch \{[\s\S]{0,900}?app\.quit\(\)/]
+    expect(failure_branch).to include("installFailedPrompt(")
+    expect(when_ready).not_to include("Keep running from the current location")
+
     self_install = read("electron/selfInstall.ts")
     expect(self_install).to include("/usr/bin/ditto")
+    # /Applications is the preferred target; ~/Applications the admin-free
+    # fallback; an existing install is replaced wherever it lives.
+    expect(self_install).to include('export const SYSTEM_APPLICATIONS = "/Applications"')
     expect(self_install).to match(%r{path\.join\(homeDir, "Applications"\)})
+    expect(self_install).to include("systemWritable ? systemPath : userPath")
+    # A 0.0.0 dev build must read as unknown — never "newer", never a silent
+    # downgrade of a versioned install.
+    expect(self_install).to include('export const UNKNOWN_VERSION = "0.0.0"')
+    expect(self_install).to include("CFBundleShortVersionString")
   end
 
   it "shows the dock icon only while a real window is open" do

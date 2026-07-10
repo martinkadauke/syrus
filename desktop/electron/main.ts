@@ -25,7 +25,18 @@ import { readBackendManifest, uninstallScriptPath } from "./installer/installPat
 import { uninstallCommand } from "./installer/uninstallCommand.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
 import { decideOnSecondInstance, takeoverPrompt, type InstanceIdentity } from "./instanceTakeover.js"
-import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
+import {
+  bundlePathFromExecPath,
+  installBundle,
+  installDecisionForResponse,
+  installFailedPrompt,
+  installedBundleVersion,
+  launchInstalledCopy,
+  replacePrompt,
+  resolveInstallTarget,
+  shouldSelfInstall,
+  type InstallTarget
+} from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { paintUnreadDot } from "./trayBadge.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
@@ -2700,13 +2711,43 @@ app.whenReady().then(async () => {
   }
 
   // Running from the mounted DMG (or Downloads, or anywhere that isn't an
-  // Applications folder): install ourselves into ~/Applications and relaunch
+  // Applications folder): install ourselves into Applications and relaunch
   // from there. This is the DMG's double-click install contract — no drag
-  // target, no dialog. ~/Applications keeps it admin-free.
+  // target. /Applications is preferred, ~/Applications is the admin-free
+  // fallback, and whichever already holds a Syrus.app is replaced — after
+  // asking, with both versions named. A fresh install stays silent. Every
+  // branch below ends in app.quit(): the session never continues from the
+  // DMG, even when the copy fails.
   const bundlePath = bundlePathFromExecPath(process.execPath)
   if (shouldSelfInstall({ isPackaged: app.isPackaged, platform: process.platform, bundlePath, homeDir: os.homedir() })) {
+    let target: InstallTarget | null = null
     try {
-      const installed = await installBundle(bundlePath, os.homedir())
+      target = await resolveInstallTarget(bundlePath, os.homedir())
+      if (target.existingInstall) {
+        const prompt = replacePrompt({
+          existingVersion: await installedBundleVersion(target.path),
+          newVersion: app.getVersion(),
+          targetPath: target.path
+        })
+        const choice = await dialog.showMessageBox({
+          type: "question",
+          message: prompt.message,
+          detail: prompt.detail,
+          buttons: [...prompt.buttons],
+          defaultId: prompt.replaceIndex,
+          cancelId: prompt.cancelId
+        })
+        if (installDecisionForResponse(prompt, choice.response) === "launch-existing") {
+          // Keep Existing: hand over to the installed copy. The lock is
+          // released BEFORE the launch, or the installed copy loses the
+          // single-instance race against this dying instance.
+          app.releaseSingleInstanceLock()
+          await launchInstalledCopy(target.path).catch(() => {})
+          app.quit()
+          return
+        }
+      }
+      const installed = await installBundle(bundlePath, target.path)
       // Give up the single-instance lock BEFORE the copy starts, or it would
       // lose the lock race against this dying instance and quit itself.
       app.releaseSingleInstanceLock()
@@ -2714,8 +2755,22 @@ app.whenReady().then(async () => {
       app.quit()
       return
     } catch {
-      // Keep running from the current location — a read-only mount still
-      // works for evaluating the app; the next launch retries the install.
+      // The copy could not be produced (or launched). Never keep running
+      // from the DMG — explain the manual drag and quit.
+      const failure = installFailedPrompt({
+        bundleName: path.basename(bundlePath),
+        targetPath: target?.path ?? null
+      })
+      await dialog
+        .showMessageBox({
+          type: "error",
+          message: failure.message,
+          detail: failure.detail,
+          buttons: [...failure.buttons]
+        })
+        .catch(() => {})
+      app.quit()
+      return
     }
   }
 
