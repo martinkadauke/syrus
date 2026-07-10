@@ -38,7 +38,7 @@ Invariants (each mapped to its enforcement below):
 
 | # | Path | Platform | What runs |
 |---|------|----------|-----------|
-| E1 | DMG download → double-click Syrus in the image | macOS | self-installs to `~/Applications`, relaunches, onboarding |
+| E1 | DMG download → double-click Syrus in the image | macOS | self-installs to `/Applications` (`~/Applications` without admin rights; asks before replacing an existing install), relaunches, onboarding |
 | E2 | NSIS `Syrus-Setup*.exe` one-click | Windows | installs to `%LocalAppData%\Programs\syrus-desktop`, launches, onboarding |
 | E3 | App auto-update (electron-updater) | both | new app version relaunches; backend pin + CLI freshness checks run |
 | E4 | Repo clone + `install.sh --docker` / `bin/setup` | dev/ops | CLI via `bin/setup` (optionally `--install-cli`); no app |

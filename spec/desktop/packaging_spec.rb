@@ -49,7 +49,7 @@ RSpec.describe "desktop packaging" do
   end
 
   it "lays the DMG out as double-click install: one centered icon, no drag target" do
-    # The app self-installs into ~/Applications on first launch
+    # The app self-installs into Applications on first launch
     # (electron/selfInstall.ts) — a drag target would be a competing,
     # worse instruction.
     expect(builder_config).not_to include("type: link")

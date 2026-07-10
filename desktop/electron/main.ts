@@ -26,7 +26,19 @@ import { uninstallCommand } from "./installer/uninstallCommand.js"
 import { OnboardingDriver } from "./installer/installerDriver.js"
 import { registerMediaPermissionHandlers, registerScreenCaptureHandler } from "./screenCapture.js"
 import { decideOnSecondInstance, takeoverPrompt, type InstanceIdentity } from "./instanceTakeover.js"
-import { bundlePathFromExecPath, installBundle, launchInstalledCopy, shouldSelfInstall } from "./selfInstall.js"
+import {
+  bundlePathFromExecPath,
+  installBundle,
+  installDecisionForResponse,
+  installFailedPrompt,
+  installedBundleVersion,
+  launchFailedPrompt,
+  launchInstalledCopy,
+  replacePrompt,
+  resolveInstallTarget,
+  shouldSelfInstall,
+  type InstallTarget
+} from "./selfInstall.js"
 import { maybeProvisionDesktopToken } from "./tokenProvisioner.js"
 import { paintUnreadDot } from "./trayBadge.js"
 import { createOnboardingWindow } from "./windows/onboardingWindow.js"
@@ -2765,7 +2777,19 @@ if (!hasSingleInstanceLock) {
 }
 
 let takeoverPromptOpen = false
+// True from the moment the whenReady self-install gate starts until this
+// process exits. Every gate branch ends in app.quit(), so the flag is
+// intentionally never cleared: once the gate has run, this process must
+// never open a window (it would be a session running from the DMG).
+let selfInstallGateActive = false
 app.on("second-instance", (_event, _argv, _cwd, additionalData) => {
+  // Re-double-clicking the DMG while the gate's dialog is pending must not
+  // open a window from the mounted image — just re-surface the dialog.
+  if (selfInstallGateActive) {
+    app.focus({ steal: true })
+    return
+  }
+
   const incoming = additionalData as Partial<InstanceIdentity> | undefined
   const own = ownInstanceIdentity()
   // Takeover launches the incoming bundle via `open`; that path is
@@ -2831,22 +2855,97 @@ app.whenReady().then(async () => {
   }
 
   // Running from the mounted DMG (or Downloads, or anywhere that isn't an
-  // Applications folder): install ourselves into ~/Applications and relaunch
+  // Applications folder): install ourselves into Applications and relaunch
   // from there. This is the DMG's double-click install contract — no drag
-  // target, no dialog. ~/Applications keeps it admin-free.
+  // target. /Applications is preferred, ~/Applications is the admin-free
+  // fallback, and whichever already holds a Syrus.app is replaced — after
+  // asking, with both versions named. A fresh install stays silent. Every
+  // branch below ends in app.quit(): the session never continues from the
+  // DMG, even when the copy fails.
   const bundlePath = bundlePathFromExecPath(process.execPath)
   if (shouldSelfInstall({ isPackaged: app.isPackaged, platform: process.platform, bundlePath, homeDir: os.homedir() })) {
+    // From here on second-instance events only re-surface the gate's dialog
+    // (never open windows); every branch below quits, so the flag stays set.
+    selfInstallGateActive = true
+    let target: InstallTarget | null = null
+    let installedTo: string | null = null
     try {
-      const installed = await installBundle(bundlePath, os.homedir())
+      target = await resolveInstallTarget(bundlePath, os.homedir())
+      if (target.existingInstall) {
+        const prompt = replacePrompt({
+          existingVersion: await installedBundleVersion(target.path),
+          newVersion: app.getVersion(),
+          targetPath: target.path
+        })
+        // The dock is hidden and no window exists yet: without stealing
+        // focus, macOS can leave this parentless dialog behind Finder while
+        // we hold the single-instance lock forever.
+        app.focus({ steal: true })
+        const choice = await dialog.showMessageBox({
+          type: "question",
+          message: prompt.message,
+          detail: prompt.detail,
+          buttons: [...prompt.buttons],
+          defaultId: prompt.replaceIndex,
+          cancelId: prompt.cancelId
+        })
+        if (installDecisionForResponse(prompt, choice.response) === "launch-existing") {
+          // Keep Existing: hand over to the installed copy. The lock is
+          // released BEFORE the launch, or the installed copy loses the
+          // single-instance race against this dying instance.
+          app.releaseSingleInstanceLock()
+          try {
+            await launchInstalledCopy(target.path)
+          } catch (error) {
+            console.warn("self-install: launching the existing copy failed", error)
+            const failure = launchFailedPrompt({
+              targetPath: target.path,
+              justInstalled: false,
+              reason: error instanceof Error ? error.message : String(error)
+            })
+            app.focus({ steal: true })
+            await dialog
+              .showMessageBox({
+                type: "error",
+                message: failure.message,
+                detail: failure.detail,
+                buttons: [...failure.buttons]
+              })
+              .catch(() => {})
+          }
+          app.quit()
+          return
+        }
+      }
+      installedTo = await installBundle(bundlePath, target.path)
       // Give up the single-instance lock BEFORE the copy starts, or it would
       // lose the lock race against this dying instance and quit itself.
       app.releaseSingleInstanceLock()
-      await launchInstalledCopy(installed)
+      await launchInstalledCopy(installedTo)
       app.quit()
       return
-    } catch {
-      // Keep running from the current location — a read-only mount still
-      // works for evaluating the app; the next launch retries the install.
+    } catch (error) {
+      // Never keep running from the DMG. Distinguish the two failures: a
+      // failed COPY left any previous install untouched (installBundle
+      // stages before it swaps) — point at the manual drag; a failed LAUNCH
+      // after a successful install means the install is in place — point at
+      // opening it from Applications.
+      console.warn("self-install failed", error)
+      const reason = error instanceof Error ? error.message : String(error)
+      const failure = installedTo
+        ? launchFailedPrompt({ targetPath: installedTo, justInstalled: true, reason })
+        : installFailedPrompt({ bundleName: path.basename(bundlePath), targetPath: target?.path ?? null, reason })
+      app.focus({ steal: true })
+      await dialog
+        .showMessageBox({
+          type: "error",
+          message: failure.message,
+          detail: failure.detail,
+          buttons: [...failure.buttons]
+        })
+        .catch(() => {})
+      app.quit()
+      return
     }
   }
 

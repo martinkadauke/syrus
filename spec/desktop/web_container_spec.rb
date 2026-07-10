@@ -133,10 +133,18 @@ RSpec.describe "desktop web-container window" do
     # Switch releases the lock BEFORE launching the new copy (or the new copy
     # loses the lock race against the dying instance — the original trap).
     expect(main_process).to include("decideOnSecondInstance(own, incoming)")
-    handler = main_process[/app\.on\("second-instance"[\s\S]{0,1800}/]
+    handler = main_process[/app\.on\("second-instance"[\s\S]{0,2600}/]
     expect(handler).to include("takeoverPrompt(own, incoming")
     expect(handler.index("app.releaseSingleInstanceLock()")).to be < handler.index("launchInstalledCopy(")
     expect(handler).to include("void openSyrus()")
+    # While the self-install gate's dialog is pending, a second instance
+    # (re-double-clicked DMG) must only re-surface the dialog — never route
+    # to openSyrus and open a window from the mounted image.
+    guard = handler[/if \(selfInstallGateActive\) \{[\s\S]{0,200}?\n  \}/]
+    expect(guard).to include("app.focus({ steal: true })")
+    expect(guard).to include("return")
+    expect(guard).not_to include("openSyrus")
+    expect(handler.index("if (selfInstallGateActive)")).to be < handler.index("decideOnSecondInstance")
   end
 
   it "recovers by polling /up from the main process and reloading" do
@@ -155,20 +163,85 @@ RSpec.describe "desktop web-container window" do
     expect(main_process).to include('app.on("second-instance"')
   end
 
-  it "self-installs into ~/Applications before opening any window" do
+  it "self-installs into Applications before opening any window" do
     # The DMG's double-click contract: running from the mounted image (or
-    # Downloads) copies the bundle into ~/Applications, launches the copy,
-    # and quits — no dialog, no drag target. The lock is released first so
-    # the copy doesn't lose the single-instance race against this instance.
+    # Downloads) installs the bundle into Applications — /Applications when
+    # writable without admin rights, ~/Applications otherwise — launches the
+    # copy, and quits. No drag target. A fresh install stays silent, but an
+    # existing install is only replaced after a Replace/Keep-Existing prompt
+    # that names both versions. The lock is released before each launch so
+    # the launched copy doesn't lose the single-instance race against this
+    # instance.
     when_ready = main_process[/app\.whenReady\(\)\.then\(async \(\) => \{[\s\S]*/]
     expect(when_ready).to include("shouldSelfInstall(")
+    expect(when_ready).to include("resolveInstallTarget(")
+    expect(when_ready).to include("installedBundleVersion(")
     expect(when_ready).to include("installBundle(")
-    expect(when_ready.index("app.releaseSingleInstanceLock()")).to be < when_ready.index("launchInstalledCopy(")
+
+    # A fresh install stays silent: the replace prompt exists ONLY inside the
+    # existing-install gate, and it precedes any copying.
+    existing_gate = when_ready[/if \(target\.existingInstall\) \{[\s\S]*?\n {6}\}\n/]
+    expect(existing_gate).to include("replacePrompt(")
+    expect(existing_gate).to include("installDecisionForResponse(")
+    expect(existing_gate).not_to include("installBundle(")
+    expect(when_ready.scan("replacePrompt(").length).to eq(1)
+    expect(when_ready.index("replacePrompt(")).to be < when_ready.index("installBundle(")
+
+    # Declining really does prevent the copy: the decline branch quits and
+    # returns without ever reaching installBundle.
+    decline_branch = when_ready[/if \(installDecisionForResponse\(prompt, choice\.response\) === "launch-existing"\) \{[\s\S]*?\n {8}\}\n/]
+    expect(decline_branch).to include("app.quit()")
+    expect(decline_branch).to include("return")
+    expect(decline_branch).not_to include("installBundle(")
+
+    # BOTH hand-over paths (keep-existing and post-install) release the lock
+    # BEFORE their launch, or the launched copy loses the single-instance
+    # race against this dying instance.
+    releases = when_ready.enum_for(:scan, /app\.releaseSingleInstanceLock\(\)/).map { Regexp.last_match.begin(0) }
+    launches = when_ready.enum_for(:scan, /await launchInstalledCopy\(/).map { Regexp.last_match.begin(0) }
+    expect(releases.length).to eq(2)
+    expect(launches.length).to eq(2)
+    launches.each_with_index do |launch, i|
+      own_release = releases.select { |release| release < launch && (i.zero? || release > launches[i - 1]) }
+      expect(own_release).not_to be_empty
+    end
     expect(when_ready.index("launchInstalledCopy(")).to be < when_ready.index("createMenu()")
+
+    # No DMG session, ever — and no silent-nothing endings. The outer catch
+    # distinguishes a failed COPY (installFailedPrompt, manual drag) from a
+    # failed LAUNCH after a successful install (launchFailedPrompt, open from
+    # Applications), logs the cause, and quits. The keep-existing launch
+    # failure gets its own dialog too. Every dialog in the gate steals focus
+    # first — the dock is hidden, so a parentless dialog can otherwise sit
+    # behind Finder while we hold the single-instance lock.
+    outer_catch = when_ready[/\n {4}\} catch \(error\) \{[\s\S]*?app\.quit\(\)/]
+    expect(outer_catch).to include("? launchFailedPrompt(")
+    expect(outer_catch).to include(": installFailedPrompt(")
+    expect(outer_catch).to include("console.warn(")
+    inner_catch = when_ready[/\n {10}\} catch \(error\) \{[\s\S]*?\n {10}\}/]
+    expect(inner_catch).to include("launchFailedPrompt(")
+    expect(inner_catch).to include("console.warn(")
+    expect(when_ready.scan("app.focus({ steal: true })").length).to be >= 3
+    expect(when_ready).not_to include("Keep running from the current location")
+    expect(when_ready).not_to include("launchInstalledCopy(target.path).catch")
 
     self_install = read("electron/selfInstall.ts")
     expect(self_install).to include("/usr/bin/ditto")
+    # /Applications is the preferred target; ~/Applications the admin-free
+    # fallback; an existing install is replaced where it can actually be
+    # replaced (a non-writable /Applications copy is never targeted).
+    expect(self_install).to include('export const SYSTEM_APPLICATIONS = "/Applications"')
     expect(self_install).to match(%r{path\.join\(homeDir, "Applications"\)})
+    expect(self_install).to include("if (systemExists && systemWritable) {")
+    expect(self_install).to include("systemWritable ? systemPath : userPath")
+    # The copy is staged and swapped — never destroy-then-copy, so a failed
+    # install can never leave zero runnable copies where one existed.
+    expect(self_install).to include(".installing-")
+    expect(self_install).to include(".previous-")
+    # A 0.0.0 dev build must read as unknown — never "newer", never a silent
+    # downgrade of a versioned install.
+    expect(self_install).to include('export const UNKNOWN_VERSION = "0.0.0"')
+    expect(self_install).to include("CFBundleShortVersionString")
   end
 
   it "shows the dock icon only while a real window is open" do
