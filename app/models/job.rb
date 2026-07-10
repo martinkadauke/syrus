@@ -482,7 +482,6 @@ class Job < ApplicationRecord
     save!
     true
   end
-
   def approve_for_landing!
     return true if approved? || landing? || closed?
 
