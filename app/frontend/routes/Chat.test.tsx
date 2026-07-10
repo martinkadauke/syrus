@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
-import { ChatRoute, storedWorkspaceCollapsed, asExcalidrawElements, VALID_EXCALIDRAW_TYPES, getStartingPhrase } from "./Chat"
+import { ChatRoute, storedWorkspaceCollapsed, asExcalidrawElements, VALID_EXCALIDRAW_TYPES, getStartingPhrase, shouldAnimateMessageEntrance } from "./Chat"
 
 describe("storedWorkspaceCollapsed", () => {
   beforeEach(() => {
@@ -956,6 +956,87 @@ describe("chat compose image attachments", () => {
     expect(annotateButton.querySelector("svg")).toBeInTheDocument()
     expect(annotateButton.querySelector("span")).toHaveClass("group-hover:opacity-100", "group-focus-visible:opacity-100")
     expect(screen.getByRole("button", { name: "Remove screen.png" }).querySelector("svg")).toBeInTheDocument()
+  })
+})
+
+describe("chat composer paste-to-attach", () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    mockDesktopViewport()
+  })
+
+  it("attaches a pasted image through the same funnel as the picker", async () => {
+    mockChatRouteFetch()
+    renderRoute()
+    const textarea = await screen.findByPlaceholderText("Ask about this repository...")
+
+    const file = new File(["pixels"], "pasted.png", { type: "image/png" })
+    fireEvent.paste(textarea, {
+      clipboardData: { files: [file], items: [{ kind: "file", type: "image/png", getAsFile: () => file }], getData: () => "" }
+    })
+
+    expect(await screen.findByRole("button", { name: "Remove pasted.png" })).toBeInTheDocument()
+  })
+
+  it("falls back to clipboard items when files is empty (Safari)", async () => {
+    mockChatRouteFetch()
+    renderRoute()
+    const textarea = await screen.findByPlaceholderText("Ask about this repository...")
+
+    const file = new File(["pixels"], "safari.png", { type: "image/png" })
+    fireEvent.paste(textarea, {
+      clipboardData: { files: [], items: [{ kind: "file", type: "image/png", getAsFile: () => file }], getData: () => "" }
+    })
+
+    expect(await screen.findByRole("button", { name: "Remove safari.png" })).toBeInTheDocument()
+  })
+
+  it("leaves plain-text pastes to the browser default", async () => {
+    mockChatRouteFetch()
+    renderRoute()
+    const textarea = await screen.findByPlaceholderText("Ask about this repository...")
+
+    fireEvent.paste(textarea, {
+      clipboardData: { files: [], items: [{ kind: "string", type: "text/plain", getAsFile: () => null }], getData: () => "hello" }
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /^Remove / })).not.toBeInTheDocument()
+    })
+  })
+})
+
+describe("chat_polish message entrance", () => {
+  beforeEach(() => {
+    window.localStorage.clear()
+    mockDesktopViewport()
+  })
+
+  it("animates only messages that arrive after the initial load", () => {
+    expect(shouldAnimateMessageEntrance(true, 10, 5)).toBe(true)
+    // History and older pages stay at rest; the flag and null ids gate hard.
+    expect(shouldAnimateMessageEntrance(true, 5, 5)).toBe(false)
+    expect(shouldAnimateMessageEntrance(true, 3, 5)).toBe(false)
+    expect(shouldAnimateMessageEntrance(false, 10, 5)).toBe(false)
+    expect(shouldAnimateMessageEntrance(true, null, 5)).toBe(false)
+    expect(shouldAnimateMessageEntrance(true, 10, null)).toBe(false)
+  })
+
+  it("renders initially loaded messages at rest even with the flag on", async () => {
+    const script = document.createElement("script")
+    script.id = "syrus-bootstrap-data"
+    script.type = "application/json"
+    script.textContent = JSON.stringify({ feature_flags: { chat_polish: true } })
+    document.body.appendChild(script)
+    mockChatRouteFetch()
+
+    renderRoute()
+    await screen.findByText("Discuss aqueducts.")
+
+    const article = document.getElementById("chat_message_9")
+    expect(article).not.toBeNull()
+    expect(article!.className).not.toContain("animate-chat-message-in")
+    script.remove()
   })
 })
 

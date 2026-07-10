@@ -320,6 +320,13 @@ dependencies after Jobs exist.
 Dev and prod use `solid_cable` (NOT `async`) so browser app events work
 across web/worker processes.
 
+Chat composer input follows chat-app conventions: pasting a file (image,
+PDF) into the composer attaches it through the same funnel as the picker
+and drag-in (`handlePaste` → `handleAttachmentChange` in Chat.tsx), so
+validation, the walkthrough-video split, and the one-at-a-time guard all
+apply. The `chat_polish` UI-experiment Feature (default off) adds subtle
+motion-safe chat animations (new-message entrance, smooth jump-to-bottom).
+
 **Walkthrough videos (video → Epic)** — a labs feature behind the
 `video_walkthroughs` Feature flag (default OFF; declared in
 `config/features.yml`, toggled in the app's Features tab). When the flag is

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
-import type { CSSProperties, DragEvent, ErrorInfo, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode, UIEvent } from "react"
+import type { ClipboardEvent as ReactClipboardEvent, CSSProperties, DragEvent, ErrorInfo, FormEvent, KeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode, UIEvent } from "react"
 import { Component, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
 import "@excalidraw/excalidraw/index.css"
@@ -92,7 +92,7 @@ import {
   type SharedChatPayload,
   type WhiteboardSnapshot
 } from "../api/chats"
-import { fetchBootstrap } from "../api/bootstrap"
+import { fetchBootstrap, readInitialBootstrap } from "../api/bootstrap"
 import { postJobCommand } from "../api/jobs"
 import { CloseIcon } from "../components/CloseIcon"
 import { ConfirmationCard } from "../components/ConfirmationCard"
@@ -463,10 +463,25 @@ function ChatView({ chatId, payload, prefix, queryKey }: { chatId: string; paylo
 function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: { bookmarkTarget: BookmarkTarget | null; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const location = useLocation()
   const { t } = useT("chat")
+  // Passive observer of the shared bootstrap cache (AppChrome owns the
+  // fetch; flags also arrive via the inline syrus-bootstrap-data script) —
+  // same pattern as useSetupStatus. An enabled query here would clobber the
+  // seeded cache and double-fetch on every thread mount.
+  const initialBootstrap = readInitialBootstrap()
+  const bootstrap = useQuery({
+    queryKey: ["bootstrap"],
+    queryFn: fetchBootstrap,
+    enabled: false,
+    initialData: initialBootstrap ?? undefined,
+    staleTime: initialBootstrap ? Number.POSITIVE_INFINITY : 0
+  })
+  const chatPolish = Boolean(bootstrap.data?.feature_flags?.chat_polish)
   const streamRef = useRef<HTMLDivElement | null>(null)
   const atBottomRef = useRef(true)
   const streamChatIdRef = useRef(payload.chat.id)
   const maxPayloadMessageIdRef = useRef(maxMessageId(payload.messages))
+  // Frozen at mount / chat switch — the boundary between "history" and "new".
+  const entranceBaselineMessageIdRef = useRef(maxMessageId(payload.messages))
   const bookmarkLoadBeforeRef = useRef<number | null>(null)
   const preserveScrollAfterOlderLoadRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
   const [newMessageCount, setNewMessageCount] = useState(0)
@@ -494,10 +509,10 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
   })
 
   const scrollToBottom = useCallback(() => {
-    scrollMessageStreamToBottom(streamRef.current)
+    scrollMessageStreamToBottom(streamRef.current, { smooth: chatPolish })
     atBottomRef.current = true
     setNewMessageCount(0)
-  }, [])
+  }, [chatPolish])
 
   const requestOlderMessages = useCallback((options: { preserveScroll: boolean }) => {
     if (!hasMoreOlder || oldestId == null || loadOlder.isPending) return false
@@ -528,6 +543,7 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
     atBottomRef.current = true
     streamChatIdRef.current = payload.chat.id
     maxPayloadMessageIdRef.current = maxMessageId(payload.messages)
+    entranceBaselineMessageIdRef.current = maxMessageId(payload.messages)
   }, [payload.chat.id])
 
   useEffect(() => {
@@ -638,7 +654,7 @@ function MessageStream({ bookmarkTarget, payload, prefix, queryKey, onNotice }: 
         ) : item.type === "tool_group" ? (
           <ToolGroup item={item} key={renderItemKey(item)} />
         ) : (
-          <ChatMessage item={item} key={renderItemKey(item)} payload={payload} pendingActionIds={pendingActionIds} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
+          <ChatMessage animateIn={shouldAnimateMessageEntrance(chatPolish, item.id, entranceBaselineMessageIdRef.current)} item={item} key={renderItemKey(item)} payload={payload} pendingActionIds={pendingActionIds} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         ))}
         {agentQuestions.length > 0 ? <AgentQuestions questions={agentQuestions} queryKey={queryKey} onNotice={onNotice} /> : null}
         {payload.switching_provider ? <SwitchingProviderIndicator provider={payload.chat.chat_provider ?? ""} /> : agentActive ? <AgentActivityIndicator running={payload.agent_busy} /> : null}
@@ -777,11 +793,13 @@ function SwitchingProviderIndicator({ provider }: { provider: string }) {
   )
 }
 
-function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
+function ChatMessage({ animateIn = false, item, payload, pendingActionIds, prefix, queryKey, readOnly = false, onNotice }: { animateIn?: boolean; item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; pendingActionIds: Set<number>; prefix: string; queryKey: ChatQueryKey; readOnly?: boolean; onNotice: (message: string | null) => void }) {
   const { t } = useT("chat")
+  // chat_polish entrance; motion-safe: keeps reduced-motion users at rest.
+  const entranceClass = animateIn ? " motion-safe:animate-chat-message-in" : ""
   if (item.role === "user") {
     return (
-      <article className="group/message relative flex justify-end pt-6" id={`chat_message_${item.id}`}>
+      <article className={`group/message relative flex justify-end pt-6${entranceClass}`} id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
         {readOnly ? null : <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />}
         <div className="max-w-[min(42rem,85%)] space-y-2">
@@ -804,7 +822,7 @@ function ChatMessage({ item, payload, pendingActionIds, prefix, queryKey, readOn
   if (item.role === "assistant") {
     if (!item.text) return null
     return (
-      <article className="group/message relative pt-6" id={`chat_message_${item.id}`}>
+      <article className={`group/message relative pt-6${entranceClass}`} id={`chat_message_${item.id}`}>
         <span className="absolute -top-4" id={`message-${item.id}`} />
         {readOnly ? null : <BookmarkControl item={item} payload={payload} queryKey={queryKey} onNotice={onNotice} />}
         <div className="space-y-3">
@@ -946,9 +964,24 @@ function messageStreamNeedsOlderMessages(element: HTMLElement) {
   return element.clientHeight > 0 && element.scrollHeight <= element.clientHeight + CHAT_INITIAL_FILL_MARGIN_PX
 }
 
-function scrollMessageStreamToBottom(element: HTMLElement | null) {
+function scrollMessageStreamToBottom(element: HTMLElement | null, options: { smooth?: boolean } = {}) {
   if (!element) return
+  // Smooth only for explicit user gestures under chat_polish; auto-follow
+  // during streaming stays instant so the viewport never chases animations.
+  const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
+  if (options.smooth && !reduceMotion && typeof element.scrollTo === "function") {
+    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" })
+    return
+  }
   element.scrollTop = element.scrollHeight
+}
+
+// chat_polish: only messages that ARRIVE while the thread is open animate in —
+// the initially loaded history must render at rest (and older pages prepend
+// with LOWER ids, so they can never satisfy the > check).
+export function shouldAnimateMessageEntrance(polish: boolean, messageId: number | null | undefined, initialMaxId: number | null): boolean {
+  if (!polish || messageId == null || initialMaxId == null) return false
+  return messageId > initialMaxId
 }
 
 function findChatMessageAnchor(stream: HTMLElement, messageId: number) {
@@ -2518,7 +2551,30 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
     })
   }
 
-  function handleAttachmentChange(files: FileList | null) {
+  // Paste-to-attach, ChatGPT/Claude style: an image (or any file) on the
+  // clipboard becomes a composer attachment through the SAME funnel as the
+  // picker and drag-in — inheriting size validation, the walkthrough video
+  // split, and the one-at-a-time guard. Plain text pastes fall through to the
+  // browser's default insert.
+  function handlePaste(event: ReactClipboardEvent<HTMLTextAreaElement>) {
+    const clipboard = event.clipboardData
+    if (!clipboard) return
+
+    let files = Array.from(clipboard.files || [])
+    if (files.length === 0) {
+      // Safari sometimes exposes pasted images only through items[].
+      files = Array.from(clipboard.items || [])
+        .filter((entry) => entry.kind === "file")
+        .map((entry) => entry.getAsFile())
+        .filter((file): file is File => file != null)
+    }
+    if (files.length === 0) return
+
+    event.preventDefault()
+    handleAttachmentChange(files)
+  }
+
+  function handleAttachmentChange(files: FileList | File[] | null) {
     let selectedFiles = Array.from(files || [])
     if (fileInputRef.current) fileInputRef.current.value = ""
     if (selectedFiles.length === 0) return
@@ -3101,6 +3157,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
               if (clearConfirmationOpen) setClearConfirmationOpen(false)
             }}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={ghostSuggestion ? "" : payload.switching_provider ? t("switching_to_provider", { provider: providerLabel(payload.chat.chat_provider ?? "") }) : agentActive ? t("queue_followup") : payload.chat.repository ? t("ask_repository") : t("ask_anything")}
             ref={textareaRef}
             required
