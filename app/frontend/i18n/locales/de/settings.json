@@ -476,6 +476,9 @@
     "gemini_replace": "Schlüssel ersetzen",
     "chat_provider_heading": "Chat-Anbieter",
     "chat_provider_desc": "Der Anbieter, auf dem Syrus-Chats laufen. Änderungen werden sofort gespeichert.",
-    "chat_provider_saved_notice": "Chat-Anbieter gespeichert."
+    "chat_provider_saved_notice": "Chat-Anbieter gespeichert.",
+    "claude_set_up": "Claude verbinden",
+    "codex_code_label": "ChatGPT-Autorisierungscode",
+    "codex_auth_json_label": "Codex ChatGPT auth.json"
   }
 }

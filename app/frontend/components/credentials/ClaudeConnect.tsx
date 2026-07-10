@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTestResult } from "../../api/credentials"
 import { openInNewTab } from "../../lib/desktopShell"
@@ -15,6 +15,11 @@ type Preflight =
 // and paste-to-connect auto-exchange. Extracted from ConfigureAgentModal so
 // onboarding and the credentials page share the identical experience.
 //
+// The preflight POSTs test_claude_cli, which spawns `claude --print`
+// server-side (30s timeout) — hosts must only mount this component behind an
+// explicit user action (a modal CTA, a card's Connect/Replace click), never
+// on a plain page view.
+//
 // Backend-outage aware: while the desktop shell's backend update has the
 // containers down, the preflight is deferred (a rejected check would
 // silently drop the "Claude already works" confirmation and walk the user
@@ -30,11 +35,13 @@ type Preflight =
 export function ClaudeConnect({
   onConnected,
   onPreflight,
-  secondaryAction
+  secondaryAction,
+  autoFocus = false
 }: {
   onConnected: (result: CredentialTestResult) => void
   onPreflight?: (ready: boolean) => void
   secondaryAction?: ReactNode
+  autoFocus?: boolean
 }) {
   const { t } = useT("settings")
   const queryClient = useQueryClient()
@@ -45,6 +52,16 @@ export function ClaudeConnect({
   const [exchanging, setExchanging] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const backendOutage = useBackendOutage()
+  const authorizeRef = useRef<HTMLButtonElement>(null)
+
+  // When the host reveals this flow via an explicit click that unmounted the
+  // clicked control (e.g. a card's Replace button), move keyboard focus to
+  // the flow's first actionable control. During an outage the walkthrough
+  // (and its authorize button) is replaced by the updating note, so this
+  // re-runs when the outage clears and the button mounts.
+  useEffect(() => {
+    if (autoFocus && !backendOutage) authorizeRef.current?.focus()
+  }, [autoFocus, backendOutage])
 
   // Preflight: is Claude already usable on this machine? Deferred while the
   // backend outage is on — the call could only fail — and retried
@@ -155,6 +172,7 @@ export function ClaudeConnect({
           <button
             className="mt-2 inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
             onClick={authorize}
+            ref={authorizeRef}
             type="button"
           >
             {authStarted ? t('configure_agent.reopen_auth') : t('configure_agent.authorize_claude')}

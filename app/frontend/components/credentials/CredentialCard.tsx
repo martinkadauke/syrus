@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
+import { useEffect, useRef, useState, type ReactNode, type Ref } from "react"
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { createConsumer } from "@rails/actioncable"
 import {
   clearCredential,
@@ -28,13 +28,28 @@ import { ClaudeConnect } from "./ClaudeConnect"
 //
 // Saved-credential probes stay behind the explicit Test button — the server
 // probe shells out to provider CLIs with 30s timeouts, so nothing here
-// auto-tests stored secrets on mount.
+// auto-tests stored secrets on mount. The same rule covers the Claude CLI
+// preflight: ClaudeConnect only mounts after an explicit Connect/Replace
+// click, never on page load.
 
 const queryKey = ["credentials"] as const
 
 type CardProps = {
   payload: CredentialsPayload
   onNotice: (message: string | null) => void
+}
+
+// Write a mutation's payload snapshot into the credentials cache.
+// - Strips the server's generic `message` ("Credentials updated.") so the
+//   page-level payload-message effect cannot overwrite the card's specific
+//   notice with it.
+// - Follows up with an invalidation so concurrent partial PATCHes (e.g. a
+//   mode change racing a key save) reconcile against a fresh GET instead of
+//   whichever full snapshot happened to land last.
+export function cacheCredentials(queryClient: QueryClient, updated: CredentialsPayload) {
+  const { message: _ignored, ...snapshot } = updated
+  queryClient.setQueryData(queryKey, snapshot)
+  void queryClient.invalidateQueries({ queryKey })
 }
 
 // ---------- shared shell ----------
@@ -45,7 +60,8 @@ export function CredentialCard({
   description,
   error,
   children,
-  testId
+  testId,
+  headingRef
 }: {
   title: string
   connected: boolean
@@ -53,12 +69,17 @@ export function CredentialCard({
   error?: string | null
   children: ReactNode
   testId: string
+  headingRef?: Ref<HTMLHeadingElement>
 }) {
   return (
     <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5" data-testid={testId}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+          {/* tabIndex=-1 so state flips that unmount the activated control can
+              hand keyboard focus somewhere sensible instead of document.body. */}
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 focus:outline-none" ref={headingRef} tabIndex={-1}>
+            {title}
+          </h2>
           {description ? <div className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{description}</div> : null}
         </div>
         <ConnectionPill connected={connected} />
@@ -71,6 +92,15 @@ export function CredentialCard({
       <div className="mt-4">{children}</div>
     </section>
   )
+}
+
+// Focus target for card-mode flips: entering an editor focuses its first
+// control (autoFocus on mount); leaving it (Cancel / save / clear) focuses
+// the card heading so keyboard users are not dropped onto document.body.
+function useCardFocus() {
+  const headingRef = useRef<HTMLHeadingElement>(null)
+  const focusHeading = () => headingRef.current?.focus()
+  return { headingRef, focusHeading }
 }
 
 function ConnectionPill({ connected }: { connected: boolean }) {
@@ -114,7 +144,7 @@ export function CredentialTestResultLine({ result }: { result?: CredentialTestRe
 
 // Test (saved credential) + Clear plumbing shared by every card, with the
 // error captured per-card instead of surfacing in a page-top banner stack.
-function useCredentialActions(onNotice: (message: string | null) => void) {
+function useCredentialActions(onNotice: (message: string | null) => void, focusAfterClear?: () => void) {
   const { t } = useT("settings")
   const queryClient = useQueryClient()
   const [testResult, setTestResult] = useState<CredentialTestResult | undefined>(undefined)
@@ -134,9 +164,11 @@ function useCredentialActions(onNotice: (message: string | null) => void) {
     mutationFn: (credential: string) => clearCredential(credential),
     onMutate: () => setError(null),
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
+      cacheCredentials(queryClient, updated)
       setTestResult(undefined)
       onNotice(updated.message || null)
+      // The Clear button unmounts when the card flips to its not-set state.
+      focusAfterClear?.()
     },
     onError: (err) => setError(errorMessage(err, t('credential_cards.clear_error')))
   })
@@ -190,7 +222,8 @@ export function GithubCredentialCard({ payload, onNotice }: CardProps) {
   const set = payload.credential_status.github_token
   const [editing, setEditing] = useState(false)
   const [appPanelOpen, setAppPanelOpen] = useState(false)
-  const actions = useCredentialActions(onNotice)
+  const { headingRef, focusHeading } = useCardFocus()
+  const actions = useCredentialActions(onNotice, focusHeading)
   const setupStatus = useSetupStatus()
   const showEditor = editing || !set
   const appRegistered = !!setupStatus?.credential_status.github_app
@@ -200,23 +233,34 @@ export function GithubCredentialCard({ payload, onNotice }: CardProps) {
       connected={set}
       description={t('account_settings.github_access_desc')}
       error={actions.error}
+      headingRef={headingRef}
       testId="credential-card-github"
       title={t('credential_cards.github_title')}
     >
       {showEditor ? (
         <div className="space-y-3">
           <GithubTokenStep
-            autoFocus={false}
+            // Focus the token input only when the user explicitly opened the
+            // editor via Replace — never steal focus on page load.
+            autoFocus={editing}
             onSaved={() => {
               setEditing(false)
               actions.setTestResult(undefined)
               onNotice(t('credential_cards.github_saved_notice'))
+              focusHeading()
             }}
             saveLabel={t('credential_cards.github_save_label')}
           />
           {set ? (
             <div className="flex justify-end">
-              <button className={secondaryButtonClass()} onClick={() => setEditing(false)} type="button">
+              <button
+                className={secondaryButtonClass()}
+                onClick={() => {
+                  setEditing(false)
+                  focusHeading()
+                }}
+                type="button"
+              >
                 {t('credential_cards.cancel')}
               </button>
             </div>
@@ -284,20 +328,21 @@ export function ClaudeCredentialCard({ payload, onNotice }: CardProps) {
   const { t } = useT("settings")
   const queryClient = useQueryClient()
   const set = payload.credential_status.claude_oauth_token
-  const [editing, setEditing] = useState(false)
+  const [connecting, setConnecting] = useState(false)
   const [manualToken, setManualToken] = useState("")
-  const actions = useCredentialActions(onNotice)
-  const showConnect = editing || !set
+  const { headingRef, focusHeading } = useCardFocus()
+  const actions = useCredentialActions(onNotice, focusHeading)
 
   const saveManual = useMutation({
     mutationFn: () => savePartialCredentials({ claude_oauth_token: manualToken.trim() }),
     onMutate: () => actions.setError(null),
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
+      cacheCredentials(queryClient, updated)
       setManualToken("")
-      setEditing(false)
+      setConnecting(false)
       actions.setTestResult(undefined)
       onNotice(t('credential_cards.claude_saved_notice'))
+      focusHeading()
     },
     onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
   })
@@ -307,23 +352,34 @@ export function ClaudeCredentialCard({ payload, onNotice }: CardProps) {
       connected={set}
       description={t('credential_cards.claude_description')}
       error={actions.error}
+      headingRef={headingRef}
       testId="credential-card-claude"
       title={t('credential_cards.claude_title')}
     >
-      {showConnect ? (
+      {connecting ? (
         <div className="space-y-3">
+          {/* Mounted only after an explicit Connect/Replace click: the connect
+              flow preflights `claude --print` server-side on mount (a real CLI
+              spawn), which must never happen on a plain page view. */}
           <ClaudeConnect
+            autoFocus
             onConnected={(result) => {
-              setEditing(false)
+              setConnecting(false)
               actions.setTestResult(result)
               onNotice(result.message || t('configure_agent.connected_default'))
+              focusHeading()
             }}
             secondaryAction={
-              set ? (
-                <button className={secondaryButtonClass()} onClick={() => setEditing(false)} type="button">
-                  {t('credential_cards.cancel')}
-                </button>
-              ) : undefined
+              <button
+                className={secondaryButtonClass()}
+                onClick={() => {
+                  setConnecting(false)
+                  focusHeading()
+                }}
+                type="button"
+              >
+                {t('credential_cards.cancel')}
+              </button>
             }
           />
           <details className="rounded border border-gray-200 dark:border-gray-700 p-3">
@@ -363,18 +419,22 @@ export function ClaudeCredentialCard({ payload, onNotice }: CardProps) {
             </div>
           </details>
         </div>
-      ) : (
+      ) : set ? (
         <div className="space-y-3">
           <p className="text-sm text-gray-700 dark:text-gray-300">{t('credential_cards.claude_summary')}</p>
           <CredentialTestResultLine result={actions.testResult} />
           <div className="flex flex-wrap gap-2">
             <TestButton actions={actions} credential="claude_oauth_token" />
-            <button className={secondaryButtonClass()} onClick={() => setEditing(true)} type="button">
+            <button className={secondaryButtonClass()} onClick={() => setConnecting(true)} type="button">
               {t('credential_cards.replace')}
             </button>
             <ClearButton actions={actions} credential="claude_oauth_token" />
           </div>
         </div>
+      ) : (
+        <button className={primaryButtonClass()} onClick={() => setConnecting(true)} type="button">
+          {t('credential_cards.claude_set_up')}
+        </button>
       )}
     </CredentialCard>
   )
@@ -385,9 +445,14 @@ export function ClaudeCredentialCard({ payload, onNotice }: CardProps) {
 export function CodexCredentialCard({ payload, onNotice }: CardProps) {
   const { t } = useT("settings")
   const queryClient = useQueryClient()
-  const actions = useCredentialActions(onNotice)
+  const { headingRef, focusHeading } = useCardFocus()
+  const actions = useCredentialActions(onNotice, focusHeading)
   const mode = payload.user.codex_auth_mode
   const connected = mode === "chatgpt_login" ? payload.credential_status.codex_auth_json : payload.credential_status.codex_api_key
+  // Lives at CARD level (not inside the ChatGPT section) so an auth-mode flip
+  // mid-authorization cannot unmount the ActionCable callback subscription
+  // and drop the OAuth code.
+  const chatGptFlow = useCodexChatGptFlow(actions, onNotice)
 
   // The auth-mode select lives INSIDE the card because the saved-credential
   // probe reports wrong_mode when the stored secret does not match the mode.
@@ -395,7 +460,7 @@ export function CodexCredentialCard({ payload, onNotice }: CardProps) {
     mutationFn: (nextMode: string) => savePartialCredentials({ codex_auth_mode: nextMode }),
     onMutate: () => actions.setError(null),
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
+      cacheCredentials(queryClient, updated)
       onNotice(t('credential_cards.codex_mode_saved_notice'))
     },
     onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
@@ -406,6 +471,7 @@ export function CodexCredentialCard({ payload, onNotice }: CardProps) {
       connected={connected}
       description={t('credential_cards.codex_description')}
       error={actions.error}
+      headingRef={headingRef}
       testId="credential-card-codex"
       title={t('credential_cards.codex_title')}
     >
@@ -424,16 +490,26 @@ export function CodexCredentialCard({ payload, onNotice }: CardProps) {
 
       <div className="mt-4">
         {mode === "chatgpt_login" ? (
-          <CodexChatGptSection actions={actions} onNotice={onNotice} set={payload.credential_status.codex_auth_json} />
+          <CodexChatGptSection actions={actions} flow={chatGptFlow} focusHeading={focusHeading} set={payload.credential_status.codex_auth_json} />
         ) : (
-          <CodexApiKeySection actions={actions} onNotice={onNotice} set={payload.credential_status.codex_api_key} />
+          <CodexApiKeySection actions={actions} focusHeading={focusHeading} onNotice={onNotice} set={payload.credential_status.codex_api_key} />
         )}
       </div>
     </CredentialCard>
   )
 }
 
-function CodexApiKeySection({ set, actions, onNotice }: { set: boolean; actions: ReturnType<typeof useCredentialActions>; onNotice: (message: string | null) => void }) {
+function CodexApiKeySection({
+  set,
+  actions,
+  onNotice,
+  focusHeading
+}: {
+  set: boolean
+  actions: ReturnType<typeof useCredentialActions>
+  onNotice: (message: string | null) => void
+  focusHeading: () => void
+}) {
   const { t } = useT("settings")
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
@@ -444,11 +520,12 @@ function CodexApiKeySection({ set, actions, onNotice }: { set: boolean; actions:
     mutationFn: () => savePartialCredentials({ codex_api_key: apiKey.trim() }),
     onMutate: () => actions.setError(null),
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
+      cacheCredentials(queryClient, updated)
       setApiKey("")
       setEditing(false)
       actions.setTestResult(undefined)
       onNotice(t('credential_cards.codex_saved_notice'))
+      focusHeading()
     },
     onError: (err) => actions.setError(errorMessage(err, t('credential_cards.save_error')))
   })
@@ -460,6 +537,9 @@ function CodexApiKeySection({ set, actions, onNotice }: { set: boolean; actions:
           <input
             aria-label={t('credential_cards.codex_api_key_label')}
             autoComplete="off"
+            // Only focus when the editor was opened via Replace, not when it
+            // renders because no key is saved yet (page load).
+            autoFocus={editing}
             className={inputClass()}
             onChange={(event) => setApiKey(event.target.value)}
             placeholder="sk-…"
@@ -471,7 +551,14 @@ function CodexApiKeySection({ set, actions, onNotice }: { set: boolean; actions:
             {save.isPending ? t('credential_cards.saving') : t('credential_cards.save')}
           </button>
           {set ? (
-            <button className={secondaryButtonClass()} onClick={() => setEditing(false)} type="button">
+            <button
+              className={secondaryButtonClass()}
+              onClick={() => {
+                setEditing(false)
+                focusHeading()
+              }}
+              type="button"
+            >
               {t('credential_cards.cancel')}
             </button>
           ) : null}
@@ -495,7 +582,10 @@ function CodexApiKeySection({ set, actions, onNotice }: { set: boolean; actions:
   )
 }
 
-function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions: ReturnType<typeof useCredentialActions>; onNotice: (message: string | null) => void }) {
+// All state for the Codex ChatGPT OAuth flow, held at CARD level so the
+// ActionCable auto-exchange subscription and an in-flight authorization
+// survive auth-mode flips that unmount the section UI.
+function useCodexChatGptFlow(actions: ReturnType<typeof useCredentialActions>, onNotice: (message: string | null) => void) {
   const { t } = useT("settings")
   const queryClient = useQueryClient()
   const [reauthorizing, setReauthorizing] = useState(false)
@@ -504,7 +594,6 @@ function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions
   const [authCode, setAuthCode] = useState("")
   const [autoConnecting, setAutoConnecting] = useState(false)
   const [manualJson, setManualJson] = useState("")
-  const showFlow = reauthorizing || !set
 
   const start = useMutation({
     mutationFn: startCodexOauth,
@@ -518,7 +607,11 @@ function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions
 
   const exchange = useMutation({
     mutationFn: (code?: string) => exchangeCodexOauth((code || authCode).trim()),
+    // Clear any stale card error (e.g. from a failed earlier exchange) the
+    // moment a retry starts, so a success never renders under a red banner.
+    onMutate: () => actions.setError(null),
     onSuccess: async (updated) => {
+      actions.setError(null)
       actions.setTestResult(updated.credential_test)
       await queryClient.invalidateQueries({ queryKey })
       setAuthCode("")
@@ -536,7 +629,7 @@ function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions
     mutationFn: () => savePartialCredentials({ codex_auth_json: manualJson }),
     onMutate: () => actions.setError(null),
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
+      cacheCredentials(queryClient, updated)
       setManualJson("")
       setReauthorizing(false)
       actions.setTestResult(undefined)
@@ -578,6 +671,36 @@ function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions
     return () => subscription.unsubscribe()
   }, [authStarted])
 
+  return {
+    reauthorizing,
+    setReauthorizing,
+    authStarted,
+    popupBlocked,
+    authCode,
+    setAuthCode,
+    autoConnecting,
+    manualJson,
+    setManualJson,
+    start,
+    exchange,
+    saveManual
+  }
+}
+
+function CodexChatGptSection({
+  set,
+  actions,
+  flow,
+  focusHeading
+}: {
+  set: boolean
+  actions: ReturnType<typeof useCredentialActions>
+  flow: ReturnType<typeof useCodexChatGptFlow>
+  focusHeading: () => void
+}) {
+  const { t } = useT("settings")
+  const showFlow = flow.reauthorizing || !set
+
   if (!showFlow) {
     return (
       <div className="space-y-3">
@@ -585,7 +708,7 @@ function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions
         <CredentialTestResultLine result={actions.testResult} />
         <div className="flex flex-wrap gap-2">
           <TestButton actions={actions} credential="codex_auth_json" />
-          <button className={secondaryButtonClass()} onClick={() => setReauthorizing(true)} type="button">
+          <button className={secondaryButtonClass()} onClick={() => flow.setReauthorizing(true)} type="button">
             {t('credential_cards.reauthorize')}
           </button>
           <ClearButton actions={actions} credential="codex_auth_json" />
@@ -598,46 +721,56 @@ function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <button
+          // Focus the flow's first control when it was revealed explicitly
+          // via Re-authorize (which unmounts the activated button).
+          autoFocus={flow.reauthorizing}
           className="rounded bg-gray-900 dark:bg-gray-100 px-3 py-2 text-sm font-medium text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-white disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-gray-700"
-          disabled={start.isPending}
-          onClick={() => start.mutate()}
+          disabled={flow.start.isPending}
+          onClick={() => flow.start.mutate()}
           type="button"
         >
-          {start.isPending ? t('credential_cards.opening') : t('credential_cards.codex_authorize')}
+          {flow.start.isPending ? t('credential_cards.opening') : t('credential_cards.codex_authorize')}
         </button>
         {set ? (
-          <button className={secondaryButtonClass()} onClick={() => setReauthorizing(false)} type="button">
+          <button
+            className={secondaryButtonClass()}
+            onClick={() => {
+              flow.setReauthorizing(false)
+              focusHeading()
+            }}
+            type="button"
+          >
             {t('credential_cards.cancel')}
           </button>
         ) : null}
       </div>
-      {popupBlocked ? (
+      {flow.popupBlocked ? (
         <p className="text-xs text-amber-600 dark:text-amber-300">
           {t('account_settings.codex_popup_blocked')}{" "}
-          <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
+          <a className="font-medium underline" href={flow.popupBlocked} rel="noreferrer" target="_blank">
             {t('account_settings.codex_open_auth')}
           </a>
           .
         </p>
       ) : null}
-      {autoConnecting ? <p className="text-xs text-gray-500 dark:text-gray-400">{t('account_settings.connecting')}</p> : null}
+      {flow.autoConnecting ? <p className="text-xs text-gray-500 dark:text-gray-400">{t('account_settings.connecting')}</p> : null}
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
         <input
-          aria-label="ChatGPT authorization code"
+          aria-label={t('credential_cards.codex_code_label')}
           autoComplete="off"
           className={inputClass()}
-          onChange={(event) => setAuthCode(event.target.value)}
-          placeholder={authStarted ? t('credential_cards.codex_code_placeholder') : t('credential_cards.codex_code_placeholder_disabled')}
+          onChange={(event) => flow.setAuthCode(event.target.value)}
+          placeholder={flow.authStarted ? t('credential_cards.codex_code_placeholder') : t('credential_cards.codex_code_placeholder_disabled')}
           type="text"
-          value={authCode}
+          value={flow.authCode}
         />
         <button
           className={secondaryButtonClass()}
-          disabled={exchange.isPending || authCode.trim().length === 0}
-          onClick={() => exchange.mutate(undefined)}
+          disabled={flow.exchange.isPending || flow.authCode.trim().length === 0}
+          onClick={() => flow.exchange.mutate(undefined)}
           type="button"
         >
-          {exchange.isPending ? t('account_settings.connecting') : t('credential_cards.connect')}
+          {flow.exchange.isPending ? t('account_settings.connecting') : t('credential_cards.connect')}
         </button>
       </div>
       <CredentialTestResultLine result={actions.testResult} />
@@ -646,21 +779,21 @@ function CodexChatGptSection({ set, actions, onNotice }: { set: boolean; actions
         <summary className="cursor-pointer text-sm text-gray-700 dark:text-gray-300">{t('account_settings.paste_auth_json')}</summary>
         <div className="mt-3 space-y-2">
           <textarea
-            aria-label="Codex ChatGPT auth.json"
+            aria-label={t('credential_cards.codex_auth_json_label')}
             className={`${inputClass()} font-mono text-xs`}
-            onChange={(event) => setManualJson(event.target.value)}
+            onChange={(event) => flow.setManualJson(event.target.value)}
             rows={6}
-            value={manualJson}
+            value={flow.manualJson}
           />
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-gray-500 dark:text-gray-400">{t('account_settings.auth_json_help')}</p>
             <button
               className={secondaryButtonClass()}
-              disabled={manualJson.trim().length === 0 || saveManual.isPending}
-              onClick={() => saveManual.mutate()}
+              disabled={flow.manualJson.trim().length === 0 || flow.saveManual.isPending}
+              onClick={() => flow.saveManual.mutate()}
               type="button"
             >
-              {saveManual.isPending ? t('credential_cards.saving') : t('credential_cards.save')}
+              {flow.saveManual.isPending ? t('credential_cards.saving') : t('credential_cards.save')}
             </button>
           </div>
         </div>
@@ -677,7 +810,8 @@ export function GeminiCredentialCard({ payload, onNotice }: CardProps) {
   const { t } = useT(["settings", "chat"])
   const set = payload.credential_status.gemini_api_key
   const [sheetOpen, setSheetOpen] = useState(false)
-  const actions = useCredentialActions(onNotice)
+  const { headingRef, focusHeading } = useCardFocus()
+  const actions = useCredentialActions(onNotice, focusHeading)
 
   const sheetLabels = {
     title: t("chat:gemini_setup_title"),
@@ -711,6 +845,7 @@ export function GeminiCredentialCard({ payload, onNotice }: CardProps) {
         </>
       }
       error={actions.error}
+      headingRef={headingRef}
       testId="credential-card-gemini"
       title={t('credential_cards.gemini_title')}
     >
@@ -735,11 +870,16 @@ export function GeminiCredentialCard({ payload, onNotice }: CardProps) {
       {sheetOpen ? (
         <GeminiSetupSheet
           labels={sheetLabels}
-          onClose={() => setSheetOpen(false)}
+          onClose={() => {
+            setSheetOpen(false)
+            // The sheet held focus; hand it back into the card instead of body.
+            focusHeading()
+          }}
           onConfigured={() => {
             setSheetOpen(false)
             actions.setTestResult(undefined)
             onNotice(t("chat:gemini_setup_saved"))
+            focusHeading()
           }}
         />
       ) : null}

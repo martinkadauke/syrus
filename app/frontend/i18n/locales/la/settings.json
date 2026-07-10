@@ -476,6 +476,9 @@
     "gemini_replace": "Clavem substitue",
     "chat_provider_heading": "Praebitor colloquiorum",
     "chat_provider_desc": "Praebitor quo colloquia Syri utuntur. Mutationes statim servantur.",
-    "chat_provider_saved_notice": "Praebitor colloquiorum servatus."
+    "chat_provider_saved_notice": "Praebitor colloquiorum servatus.",
+    "claude_set_up": "Claude conecte",
+    "codex_code_label": "Codex auctoritatis ChatGPT",
+    "codex_auth_json_label": "Codex ChatGPT auth.json"
   }
 }

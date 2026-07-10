@@ -142,41 +142,51 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
                 </div>
               )}
             </div>
-          ) : connected ? (
-            <>
-              <StatusBox tone="ok">{connected}</StatusBox>
-              <div className="flex justify-end">
-                <button
-                  className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                  onClick={onClose}
-                  type="button"
-                >
-                  {t('configure_agent.done')}
-                </button>
+          ) : null}
+          {/* The Claude flow stays MOUNTED (display: none) while the Gemini
+              tab is active: unmounting it mid-authorization would reset
+              authStarted/code and, worse, tempt a re-Authorize that rotates
+              the session's PKCE verifier — invalidating the code the user
+              already copied. Pre-extraction this state lived at modal level
+              and survived tab flips; keeping the component alive preserves
+              that without giving up the shared extraction. */}
+          <div className={tab === "claude" ? undefined : "hidden"}>
+            {connected ? (
+              <div className="space-y-5">
+                <StatusBox tone="ok">{connected}</StatusBox>
+                <div className="flex justify-end">
+                  <button
+                    className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    onClick={onClose}
+                    type="button"
+                  >
+                    {t('configure_agent.done')}
+                  </button>
+                </div>
               </div>
-            </>
-          ) : (
-            // The connect flow owns the CLI preflight AND the backend-outage
-            // deferral (the updating note replaces the authorize walkthrough
-            // while the containers are down) — shared with the credentials
-            // page's Claude card.
-            <ClaudeConnect
-              onConnected={(result) => {
-                setConnected(result.message || t('configure_agent.connected_default'))
-                onSaved?.()
-              }}
-              onPreflight={setAmbientReady}
-              secondaryAction={
-                <button
-                  className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
-                  onClick={onClose}
-                  type="button"
-                >
-                  {ambientReady ? t('configure_agent.skip_for_now') : t('configure_agent.cancel')}
-                </button>
-              }
-            />
-          )}
+            ) : (
+              // The connect flow owns the CLI preflight AND the backend-outage
+              // deferral (the updating note replaces the authorize walkthrough
+              // while the containers are down) — shared with the credentials
+              // page's Claude card.
+              <ClaudeConnect
+                onConnected={(result) => {
+                  setConnected(result.message || t('configure_agent.connected_default'))
+                  onSaved?.()
+                }}
+                onPreflight={setAmbientReady}
+                secondaryAction={
+                  <button
+                    className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    onClick={onClose}
+                    type="button"
+                  >
+                    {ambientReady ? t('configure_agent.skip_for_now') : t('configure_agent.cancel')}
+                  </button>
+                }
+              />
+            )}
+          </div>
         </div>
       </section>
       {geminiSheetOpen ? (

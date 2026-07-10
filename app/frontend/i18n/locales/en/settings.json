@@ -476,6 +476,9 @@
     "gemini_replace": "Replace key",
     "chat_provider_heading": "Chat provider",
     "chat_provider_desc": "The provider Syrus chats run on. Changes save immediately.",
-    "chat_provider_saved_notice": "Chat provider saved."
+    "chat_provider_saved_notice": "Chat provider saved.",
+    "claude_set_up": "Connect Claude",
+    "codex_code_label": "ChatGPT authorization code",
+    "codex_auth_json_label": "Codex ChatGPT auth.json"
   }
 }

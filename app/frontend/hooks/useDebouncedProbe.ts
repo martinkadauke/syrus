@@ -28,6 +28,10 @@ export function useDebouncedProbe(
   useEffect(() => {
     const trimmed = value.trim()
     if (trimmed.length === 0) {
+      // Bump the sequence so a probe still in flight for the previous value
+      // cannot resolve late and overwrite idle with a green result — which
+      // would re-enable Save under an empty input.
+      probeSeq.current += 1
       setState({ status: "idle" })
       return
     }

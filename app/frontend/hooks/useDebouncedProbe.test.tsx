@@ -66,6 +66,25 @@ describe("useDebouncedProbe", () => {
     expect(result.current).toEqual({ status: "done", result: okResult })
   })
 
+  it("stays idle when the value is cleared while a probe is in flight", async () => {
+    let resolveProbe: (result: CredentialTestResult) => void = () => {}
+    const probe = vi.fn(() => new Promise<CredentialTestResult>((resolve) => { resolveProbe = resolve }))
+    const { result, rerender } = renderHook(({ value }) => useDebouncedProbe(value, probe, OPTIONS), {
+      initialProps: { value: "ghp_token" }
+    })
+
+    // Let the probe fire, then clear the input before it resolves.
+    await waitFor(() => expect(probe).toHaveBeenCalledTimes(1))
+    rerender({ value: "" })
+    expect(result.current).toEqual({ status: "idle" })
+
+    // The stale response lands late — it must NOT resurrect a green result
+    // over the emptied input (which would re-enable Save with nothing typed).
+    resolveProbe(okResult)
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(result.current).toEqual({ status: "idle" })
+  })
+
   it("resets to idle when the value is cleared", async () => {
     const probe = vi.fn().mockResolvedValue(okResult)
     const { result, rerender } = renderHook(({ value }) => useDebouncedProbe(value, probe, OPTIONS), {

@@ -8,6 +8,7 @@ import { useT } from "../hooks/useT"
 import { NoticeToast } from "../components/NoticeToast"
 import { OnboardingEmptyState, useSetupStatus } from "../components/OnboardingEmptyState"
 import {
+  cacheCredentials,
   ClaudeCredentialCard,
   CodexCredentialCard,
   GeminiCredentialCard,
@@ -124,7 +125,11 @@ function ChatProviderPanel({ payload, onNotice }: { payload: CredentialsPayload;
   const save = useMutation({
     mutationFn: (provider: string) => savePartialCredentials({ chat_provider: provider }),
     onSuccess: (updated) => {
-      queryClient.setQueryData(queryKey, updated)
+      // cacheCredentials strips the server's generic "Credentials updated."
+      // message before caching, so the payload-message effect cannot
+      // overwrite the specific notice below, and refetches to reconcile
+      // concurrent partial saves.
+      cacheCredentials(queryClient, updated)
       onNotice(t('credential_cards.chat_provider_saved_notice'))
     }
   })

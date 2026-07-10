@@ -78,6 +78,8 @@ function mockRoutes(routes: {
   patch?: () => Response
   claudePreflight?: () => Response
   githubProbe?: () => Response
+  codexStart?: () => Response
+  codexExchange?: () => Response
 } = {}) {
   return vi.spyOn(window, "fetch").mockImplementation(async (input, init) => {
     const url = String(input)
@@ -86,6 +88,9 @@ function mockRoutes(routes: {
     if (url.endsWith("/clear_credential")) return routes.clear?.() ?? jsonResponse(makePayload())
     if (url.endsWith("/test_claude_cli")) return routes.claudePreflight?.() ?? jsonResponse({ credential_test: { credential: "claude_oauth_token", ok: false, message: "Not yet.", details: {} } })
     if (url.endsWith("/test_github_token")) return routes.githubProbe?.() ?? jsonResponse({ credential_test: { ok: false, message: "", details: {} } })
+    if (url.endsWith("/codex_oauth_start")) return routes.codexStart?.() ?? jsonResponse({ authorize_url: "https://auth.openai.com/oauth/authorize?state=abc", listener_started: true })
+    if (url.endsWith("/codex_oauth_exchange")) return routes.codexExchange?.() ?? jsonResponse({ credential_test: { credential: "codex_auth_json", ok: true, message: "Codex ChatGPT auth.json is valid.", details: {} } })
+    if (url.endsWith("/credentials") && method === "GET") return jsonResponse(makePayload())
     if (url.endsWith("/credentials") && method === "PATCH") return routes.patch?.() ?? jsonResponse(makePayload())
     throw new Error(`unexpected fetch: ${method} ${url}`)
   })
@@ -174,11 +179,26 @@ describe("ClaudeCredentialCard", () => {
     await waitFor(() => expect(fetchSpy.mock.calls.some(([url]) => String(url).endsWith("/test_claude_cli"))).toBe(true))
   })
 
+  it("never spawns the CLI preflight on a plain page view — only after the explicit Connect action", async () => {
+    const fetchSpy = mockRoutes()
+    renderCard(<ClaudeCredentialCard onNotice={() => {}} payload={makePayload()} />)
+
+    // Unset card shows a CTA, not the mounted connect flow: test_claude_cli
+    // runs `claude --print` server-side and must never fire without a click.
+    expect(screen.getByRole("button", { name: "Connect Claude" })).toBeInTheDocument()
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect Claude" }))
+    expect(screen.getByRole("button", { name: /Authorize with Claude/ })).toBeInTheDocument()
+    await waitFor(() => expect(fetchSpy.mock.calls.some(([url]) => String(url).endsWith("/test_claude_cli"))).toBe(true))
+  })
+
   it("saves a manually pasted token as a partial PATCH containing only that key", async () => {
     const fetchSpy = mockRoutes({ patch: () => jsonResponse(makePayload({ credential_status: { claude_oauth_token: true } })) })
     const onNotice = vi.fn()
     renderCard(<ClaudeCredentialCard onNotice={onNotice} payload={makePayload()} />)
 
+    fireEvent.click(screen.getByRole("button", { name: "Connect Claude" }))
     fireEvent.change(screen.getByLabelText("Claude OAuth token"), { target: { value: "  sk-ant-oat01-abc  " } })
     fireEvent.click(screen.getByRole("button", { name: "Save" }))
 
@@ -192,6 +212,7 @@ describe("ClaudeCredentialCard", () => {
     const fetchSpy = mockRoutes()
     renderCard(<ClaudeCredentialCard onNotice={() => {}} payload={makePayload()} />)
 
+    fireEvent.click(screen.getByRole("button", { name: "Connect Claude" }))
     const save = screen.getByRole("button", { name: "Save" })
     expect(save).toBeDisabled()
     fireEvent.change(screen.getByLabelText("Claude OAuth token"), { target: { value: "   " } })
@@ -265,6 +286,57 @@ describe("CodexCredentialCard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Re-authorize" }))
     expect(screen.getByRole("button", { name: "Authorize with ChatGPT" })).toBeInTheDocument()
+  })
+
+  it("clears the stale card error when a ChatGPT exchange retry succeeds", async () => {
+    let exchangeAttempts = 0
+    mockRoutes({
+      codexExchange: () => {
+        exchangeAttempts += 1
+        return exchangeAttempts === 1
+          ? jsonResponse({ error: { message: "Exchange blew up." } }, 422)
+          : jsonResponse({ credential_test: { credential: "codex_auth_json", ok: true, message: "Codex ChatGPT auth.json is valid.", details: {} }, message: "Codex ChatGPT auth.json is valid." })
+      }
+    })
+    const onNotice = vi.fn()
+    renderCard(<CodexCredentialCard onNotice={onNotice} payload={makePayload({ codex_auth_mode: "chatgpt_login" })} />)
+
+    fireEvent.change(screen.getByLabelText("ChatGPT authorization code"), { target: { value: "code#1" } })
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Exchange blew up.")
+
+    fireEvent.change(screen.getByLabelText("ChatGPT authorization code"), { target: { value: "code#2" } })
+    fireEvent.click(screen.getByRole("button", { name: "Connect" }))
+
+    await waitFor(() => expect(onNotice).toHaveBeenCalledWith("Codex ChatGPT auth.json is valid."))
+    // The red banner from the failed attempt must not persist over success.
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+})
+
+describe("card focus management", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("moves focus into the GitHub editor on Replace and back to the heading on Cancel", async () => {
+    mockRoutes()
+    renderCard(<GithubCredentialCard onNotice={() => {}} payload={makePayload({ credential_status: { github_token: true } })} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Replace" }))
+    await waitFor(() => expect(screen.getByPlaceholderText("ghp_…")).toHaveFocus())
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.getByRole("heading", { name: "GitHub" })).toHaveFocus()
+  })
+
+  it("focuses the Claude connect flow's first control on Connect and restores heading focus on Cancel", async () => {
+    mockRoutes()
+    renderCard(<ClaudeCredentialCard onNotice={() => {}} payload={makePayload()} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Connect Claude" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /Authorize with Claude/ })).toHaveFocus())
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.getByRole("heading", { name: "Claude" })).toHaveFocus()
   })
 })
 

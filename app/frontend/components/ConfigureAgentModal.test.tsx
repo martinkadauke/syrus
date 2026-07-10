@@ -116,6 +116,35 @@ describe("ConfigureAgentModal", () => {
     expect(JSON.parse(exchangeCall?.[1]?.body as string)).toEqual({ code: "pasted-code#state" })
   })
 
+  it("preserves an in-flight Claude authorization across tab switches", async () => {
+    vi.spyOn(window, "open").mockReturnValue({} as Window)
+    const fetchSpy = mockRoutes({ exchange: () => jsonResponse({ credential_test: tokenValid }) })
+    const onSaved = vi.fn()
+    renderModal({ onSaved })
+
+    // Start the authorization on the Claude tab.
+    await waitFor(() => expect(screen.queryByText(/Checking for an existing Claude login/)).not.toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: /Authorize with Claude/ }))
+    await waitFor(() => expect(screen.getByPlaceholderText("paste code here")).toBeEnabled())
+
+    // Visit the Gemini tab and come back: the Claude flow stays mounted
+    // (hidden), so authStarted survives — re-clicking Authorize (which would
+    // rotate the PKCE verifier and kill the copied code) is not required.
+    fireEvent.click(screen.getByRole("tab", { name: /Gemini/ }))
+    expect(screen.getByRole("button", { name: /Add Gemini API key/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("tab", { name: "Claude" }))
+
+    const input = screen.getByPlaceholderText("paste code here")
+    expect(input).toBeEnabled()
+
+    // Pasting the already-copied code still auto-exchanges.
+    fireEvent.paste(input, { clipboardData: { getData: () => "kept-code#state" } })
+    await waitFor(() => expect(screen.getByText("Claude OAuth token is valid.")).toBeInTheDocument())
+    expect(onSaved).toHaveBeenCalledTimes(1)
+    // Exactly one claude_oauth_start — no forced re-authorization.
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith("/claude_oauth_start"))).toHaveLength(1)
+  })
+
   it("makes the Gemini tab selectable and opens the setup sheet from it", async () => {
     mockRoutes({})
     renderModal()
