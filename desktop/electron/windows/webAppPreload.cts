@@ -55,7 +55,15 @@ contextBridge.exposeInMainWorld("syrusShell", {
   // draw-mode transition so the recording HUD can reflect it.
   annotation: {
     available: true,
-    enable: () => ipcRenderer.invoke("annotation:enable") as Promise<{ available: boolean; hold: boolean }>,
+    // reason (present only when hold could not start) names the obstacle —
+    // "no-module" | "no-accessibility" | "start-failed" — so the recorder can
+    // tell the user how to get hold mode instead of silently degrading.
+    enable: () =>
+      ipcRenderer.invoke("annotation:enable") as Promise<{
+        available: boolean
+        hold: boolean
+        reason?: "no-module" | "no-accessibility" | "start-failed"
+      }>,
     disable: () => ipcRenderer.invoke("annotation:disable") as Promise<void>,
     onModeChanged: (callback: (drawing: boolean) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, drawing: boolean) => callback(drawing)

@@ -67,7 +67,7 @@ RSpec.describe "desktop annotation overlay" do
       # The old bug created a focusable window on enable(); guard the regression.
       expect(overlay).not_to include("focusable: true")
       # enable() itself must not grab focus (focus is a draw-mode-only action).
-      enable = overlay[/const enable[\s\S]{0,4400}/]
+      enable = overlay[/const enable[\s\S]{0,6600}/]
       expect(enable).not_to include("overlay.focus()")
     end
 
@@ -103,7 +103,7 @@ RSpec.describe "desktop annotation overlay" do
     it "is a normal accelerator, registered on enable and unregistered on disable" do
       expect(overlay).to include('export const ANNOTATION_SHORTCUT = "CommandOrControl+Shift+A"')
       # enable() registers the arm/release handler...
-      enable = overlay[/const enable[\s\S]{0,4400}/]
+      enable = overlay[/const enable[\s\S]{0,6600}/]
       expect(enable).to include("globalShortcut.register(ANNOTATION_SHORTCUT, toggleArm)")
       # ...disable() unregisters it.
       disable = overlay[/const disable[\s\S]{0,2400}/]
@@ -121,7 +121,7 @@ RSpec.describe "desktop annotation overlay" do
       # register() returns false without throwing when the accelerator is taken.
       # In the TAP fallback a registered-but-false shortcut would advertise a dead
       # shortcut, so enable() tears the overlay down and reports unavailable.
-      enable = overlay[/const enable[\s\S]{0,4200}/]
+      enable = overlay[/const enable[\s\S]{0,6600}/]
       expect(enable).to match(/if \(!globalShortcut\.register\(ANNOTATION_SHORTCUT, toggleArm\)\) \{[\s\S]{0,140}destroyOverlayNow\(\)[\s\S]{0,80}return \{ available: false, hold: false \}/)
     end
 
@@ -136,8 +136,9 @@ RSpec.describe "desktop annotation overlay" do
 
     it "reports available only when the overlay exists AND a mode came up" do
       # The tap-mode success path returns available:true,hold:false after
-      # showInactive(); the hold path returns hold:true.
-      expect(overlay).to match(/showInactive\(\)[\s\S]{0,80}return \{ available: true, hold: false \}/)
+      # showInactive() — carrying WHY hold couldn't start so the HUD can say so;
+      # the hold path returns hold:true.
+      expect(overlay).to match(/showInactive\(\)[\s\S]{0,80}return \{ available: true, hold: false, reason: holdStart\.reason \}/)
       expect(overlay).to include("return { available: true, hold: true }")
     end
   end
@@ -146,16 +147,34 @@ RSpec.describe "desktop annotation overlay" do
     let(:hook) { read("electron/windows/globalKeyHook.ts") }
 
     it "tries the HOLD hook first and only falls back to the tap shortcut" do
-      enable = overlay[/const enable[\s\S]{0,4200}/]
+      enable = overlay[/const enable[\s\S]{0,6600}/]
       # Mode is set to hold BEFORE starting the hook so its arm/release don't
       # start the tap auto-release watchers.
-      expect(enable).to match(/mode = "hold"[\s\S]{0,200}holdHookFactory\(\{/)
+      expect(enable).to match(/mode = "hold"\n\s*const holdStart = holdHookFactory\(\{/)
       expect(enable).to include("onHold: () => setArmed(true)")
       expect(enable).to include("onRelease: () => setArmed(false)")
       # A live hook short-circuits before the tap shortcut is registered.
-      expect(enable).to match(/if \(holdHook\)[\s\S]{0,120}return \{ available: true, hold: true \}/)
-      # Only after the hook returns null does it register the tap accelerator.
+      expect(enable).to match(/if \(holdHook\)[\s\S]{0,160}return \{ available: true, hold: true \}/)
+      # Only after the hook reports no hook does it register the tap accelerator.
       expect(enable).to match(/mode = "tap"[\s\S]{0,140}globalShortcut\.register\(ANNOTATION_SHORTCUT/)
+    end
+
+    it "re-derives the reported mode from the LIVE hook when the overlay is already up" do
+      # A second enable() on a live overlay must not parrot a stale mode flag:
+      # hold is reported only when the hook object is actually alive, and a
+      # tap-mode (or dead-hook) surface RETRIES the hook — permission or the
+      # native module may have arrived since — upgrading in place on success.
+      enable = overlay[/const enable[\s\S]{0,6600}/]
+      expect(enable).to match(/if \(mode === "hold" && holdHook\) \{[\s\S]{0,60}return \{ available: true, hold: true \}/)
+      # The retry disarms any tap-mode arm FIRST (the release path depends on
+      # the current mode), then swaps the hook + mode and drops the now-unneeded
+      # tap accelerator.
+      upgrade = enable[/setArmed\(false\)\n\s*const upgrade = holdHookFactory[\s\S]{0,900}/]
+      expect(upgrade).to include("stopHoldHook()")
+      expect(upgrade).to match(/holdHook = upgrade\.hook[\s\S]{0,40}mode = "hold"/)
+      expect(upgrade).to include("globalShortcut.unregister(ANNOTATION_SHORTCUT)")
+      # A failed retry still reports the live tap surface, with the reason.
+      expect(upgrade).to include("return { available: true, hold: false, reason: upgrade.reason }")
     end
 
     it "arms the auto-release watchers ONLY in tap mode (hold releases on key-up)" do
@@ -180,18 +199,66 @@ RSpec.describe "desktop annotation overlay" do
       expect(overlay[/overlay\.on\("closed"[\s\S]{0,200}/]).to include("stopHoldHook()")
     end
 
-    it "the hook soft-loads uiohook, watches Ctrl, and fails to null (never crashes)" do
-      # Soft require: a load failure returns null, not a throw.
+    it "the hook soft-loads uiohook, watches Ctrl, and fails to a null hook (never crashes)" do
+      # Soft require: a load failure reports a null hook, not a throw.
       expect(hook).to include('require("uiohook-napi")')
-      expect(hook).to match(/catch \{[\s\S]{0,40}cachedModule = null/)
       # Watches BOTH Ctrl keys; fires onHold on down, onRelease on up.
       expect(hook).to include("UiohookKey.Ctrl")
       expect(hook).to include("UiohookKey.CtrlRight")
       expect(hook).to include("onHold()")
       expect(hook).to include("onRelease()")
-      # macOS Accessibility gate: prompt at most once, else return null → fallback.
+      # macOS Accessibility gate: prompt at most once per gate window, else a
+      # null hook → fallback.
       expect(hook).to include("isTrustedAccessibilityClient")
-      expect(hook).to match(/return null/)
+      expect(hook).to match(/\{ hook: null/)
+    end
+
+    it "caches the uiohook module ONLY on a successful load, so a transient failure retries" do
+      # The old cache stored null forever after one failed require, permanently
+      # degrading the whole process to tap mode. Now only success is cached and
+      # the failure path returns without poisoning the cache.
+      expect(hook).to match(/if \(cachedModule\) return cachedModule/)
+      expect(hook).not_to match(/cachedModule = null/)
+      load_fn = hook[/const loadUiohook[\s\S]{0,500}/]
+      expect(load_fn).to match(/catch \(error\) \{[\s\S]{0,160}return null/)
+    end
+
+    it "LOGS every silent-degrade point (console + a hold-to-draw.log under userData)" do
+      # "I held Ctrl and nothing happened" was undiagnosable on a packaged DMG:
+      # the three failure points (module load, Accessibility, uIOhook.start)
+      # degraded with zero logging. Each now logs a reason, and the logger
+      # writes both console.warn and an append-only file — and never throws.
+      expect(hook).to include("console.warn")
+      expect(hook).to include('HOLD_TO_DRAW_LOG_BASENAME = "hold-to-draw.log"')
+      expect(hook).to match(/appendFileSync\(path\.join\(app\.getPath\("userData"\), HOLD_TO_DRAW_LOG_BASENAME\)/)
+      expect(hook).to include("uiohook-napi failed to load")
+      expect(hook).to include("macOS Accessibility permission not granted")
+      expect(hook).to include("uIOhook.start() failed")
+      # The known uiohook quirk — a failed stop() wedges is_worker_running and a
+      # later start() silently no-ops — is the one way hold:true can be
+      # advertised while Ctrl does nothing. Both stop() sites log the failure.
+      expect(hook.scan("uIOhook.stop() failed").length).to be >= 2
+      # The logger itself fails soft: both sinks are wrapped so diagnostics can
+      # never take down the feature they diagnose.
+      logger = hook[/const logHoldToDrawFailure[\s\S]{0,900}/]
+      expect(logger.scan(/\} catch \{/).length).to be >= 2
+    end
+
+    it "reports WHY the hook could not start, for the HUD hint" do
+      expect(hook).to include('export type HoldHookFailureReason = "no-module" | "no-accessibility" | "start-failed"')
+      expect(hook).to include('return { hook: null, reason: "no-accessibility" }')
+      expect(hook).to include('return { hook: null, reason: "no-module" }')
+      expect(hook).to include('return { hook: null, reason: "start-failed" }')
+    end
+
+    it "re-checks (and may re-prompt for) Accessibility once per RECORDING, not once per app run" do
+      # disable() re-opens the prompt gate, so a user who grants the permission
+      # mid-session gets hold mode on the NEXT recording without relaunching —
+      # while a recording still triggers at most one OS prompt.
+      expect(hook).to include("export const resetAccessibilityPromptGate")
+      expect(hook[/export const resetAccessibilityPromptGate[\s\S]{0,120}/]).to include("promptedAccessibility = false")
+      disable = overlay[/const disable[\s\S]{0,2600}/]
+      expect(disable).to include("resetAccessibilityPromptGate()")
     end
 
     it "bundles the native module unpacked from the asar in the packaged app" do
@@ -379,12 +446,14 @@ RSpec.describe "desktop annotation overlay" do
 
   describe "the preload bridge" do
     it "exposes window.syrusShell.annotation as the web app's feature gate" do
-      annotation = preload[/annotation: \{[\s\S]{0,900}/]
+      annotation = preload[/annotation: \{[\s\S]{0,1400}/]
       # available:true is the desktop-only STATIC signal — a plain browser has none.
       expect(annotation).to include("available: true")
-      # enable() resolves { available, hold } — the recorder gates its HUD hint
-      # on available and picks the hold-vs-tap wording from hold.
-      expect(annotation).to include('enable: () => ipcRenderer.invoke("annotation:enable") as Promise<{ available: boolean; hold: boolean }>')
+      # enable() resolves { available, hold, reason? } — the recorder gates its
+      # HUD hint on available, picks the hold-vs-tap wording from hold, and
+      # surfaces the grant-Accessibility nudge from reason.
+      expect(annotation).to include('ipcRenderer.invoke("annotation:enable")')
+      expect(annotation).to match(/annotation:enable"\) as Promise<\{[\s\S]{0,120}reason\?: "no-module" \| "no-accessibility" \| "start-failed"/)
       expect(annotation).to include('disable: () => ipcRenderer.invoke("annotation:disable")')
       # onModeChanged subscribes + returns an unsubscribe, mirroring onStateChanged.
       expect(annotation).to include('ipcRenderer.on("annotation:mode-changed", listener)')

@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   ANALYZING_HINT_INTERVAL_MS,
   AnalyzingHint,
+  annotationHoldLabel,
+  annotationIdleHintKind,
   annotationShortcutLabel,
   formatClock,
   isMacPlatform,
@@ -155,6 +157,26 @@ describe("annotation helpers", () => {
   it("formats the draw-mode accelerator per platform", () => {
     expect(annotationShortcutLabel(true)).toBe("⌘⇧A")
     expect(annotationShortcutLabel(false)).toBe("Ctrl+Shift+A")
+  })
+
+  it("keeps the hold-modifier label tiny (bare glyph on macOS)", () => {
+    expect(annotationHoldLabel(true)).toBe("⌃")
+    expect(annotationHoldLabel(false)).toBe("Ctrl")
+  })
+
+  it("picks the idle hint kind from the live mode + failure reason", () => {
+    // Hold is live → the hold hint, whatever reason may linger.
+    expect(annotationIdleHintKind(true)).toBe("hold")
+    expect(annotationIdleHintKind(true, "no-accessibility")).toBe("hold")
+    // Hold failed only for the macOS permission → the grant-Accessibility
+    // nudge (tap keeps working, and granting upgrades the next recording).
+    expect(annotationIdleHintKind(false, "no-accessibility")).toBe("accessibility")
+    // Any other degrade (module missing, start failure, old shell without
+    // reason reporting) → the plain tap hint.
+    expect(annotationIdleHintKind(false, "no-module")).toBe("tap")
+    expect(annotationIdleHintKind(false, "start-failed")).toBe("tap")
+    expect(annotationIdleHintKind(false, null)).toBe("tap")
+    expect(annotationIdleHintKind(false)).toBe("tap")
   })
 
   it("shows the whole-screen note only for window/browser captures when annotation is available", () => {
@@ -310,11 +332,55 @@ describe("useWalkthroughRecorder annotation", () => {
     })
     expect(result.current.annotationAvailable).toBe(true)
     expect(result.current.annotationHold).toBe(true)
+    // Hold came up — no failure reason to surface.
+    expect(result.current.annotationReason).toBeNull()
 
     act(() => {
       result.current.stop({ discard: true })
     })
     expect(result.current.annotationHold).toBe(false)
+  })
+
+  it("threads the hold-failure reason through so the HUD can nudge for Accessibility", async () => {
+    stubMedia()
+    // macOS without the Accessibility permission: the overlay comes up in TAP
+    // mode and reports WHY hold couldn't start. The recorder exposes that so
+    // the HUD idle hint can tell the user granting the permission fixes it.
+    const { bridge } = fakeAnnotation({
+      enable: vi.fn().mockResolvedValue({ available: true, hold: false, reason: "no-accessibility" })
+    })
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(result.current.annotationAvailable).toBe(true)
+    expect(result.current.annotationHold).toBe(false)
+    expect(result.current.annotationReason).toBe("no-accessibility")
+
+    // Torn down with the rest of the annotation state on stop.
+    act(() => {
+      result.current.stop({ discard: true })
+    })
+    expect(result.current.annotationReason).toBeNull()
+  })
+
+  it("leaves the reason null when an older shell reports no reason", async () => {
+    stubMedia()
+    const { bridge } = fakeAnnotation({
+      enable: vi.fn().mockResolvedValue({ available: true, hold: false })
+    })
+    const { result } = renderHook(() =>
+      useWalkthroughRecorder({ onFinished: vi.fn(), annotation: bridge })
+    )
+
+    await act(async () => {
+      await result.current.start()
+    })
+    expect(result.current.annotationAvailable).toBe(true)
+    expect(result.current.annotationReason).toBeNull()
   })
 
   it("reflects arm + auto-release transitions pushed from the overlay", async () => {

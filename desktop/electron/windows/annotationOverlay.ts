@@ -1,5 +1,10 @@
 import { BrowserWindow, globalShortcut, screen } from "electron"
-import { startHoldToDrawHook, type HoldToDrawHook } from "./globalKeyHook.js"
+import {
+  resetAccessibilityPromptGate,
+  startHoldToDrawHook,
+  type HoldHookFailureReason,
+  type HoldToDrawHook
+} from "./globalKeyHook.js"
 
 // Red-pen screen annotation during a walkthrough recording. The overlay is a
 // frameless, transparent, always-on-top window spanning EVERY display; the
@@ -67,10 +72,12 @@ const ARM_IDLE_RELEASE_MS = 1200
 const ARM_POLL_MS = 200
 const MAX_ARMED_MS = 15000
 
-// What enable() reports back: whether an annotation surface came up at all, and
-// if so whether it's HOLD mode (native global-key hook) or the TAP fallback —
-// so the recorder HUD shows the matching hint.
-export type AnnotationEnableResult = { available: boolean; hold: boolean }
+// What enable() reports back: whether an annotation surface came up at all,
+// whether it's HOLD mode (native global-key hook) or the TAP fallback — so the
+// recorder HUD shows the matching hint — and, when hold could NOT start, WHY
+// (reason), so the HUD can tell the user how to get hold mode (e.g. grant
+// macOS Accessibility) instead of silently degrading.
+export type AnnotationEnableResult = { available: boolean; hold: boolean; reason?: HoldHookFailureReason }
 
 export type AnnotationController = {
   // Creates the overlay, then tries the HOLD hook and falls back to the TAP
@@ -87,6 +94,11 @@ export type AnnotationController = {
   disable: () => void
   isActive: () => boolean
   isDrawing: () => boolean
+  // Mouse-only draw toggle for the recorder HUD's pen button: flips pointer
+  // capture through the same setArmed path as the keyboard flows, so a user
+  // can arm the pen with a click even when the native key hook, the tap
+  // accelerator's modifier keys, or macOS Accessibility are unavailable.
+  toggleDraw: () => void
 }
 
 type Options = {
@@ -267,6 +279,20 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
   // The global-shortcut handler: tap to arm, tap again to release immediately.
   const toggleArm = () => setArmed(!armed)
 
+  // The HUD pen button's mouse-only toggle. Unlike the keyboard paths, a
+  // pen-armed session ALWAYS gets the auto-release watchers — even in hold
+  // mode. While armed the overlay captures the pointer over the whole screen,
+  // and the HUD's pen button may sit UNDER the overlay in the same
+  // always-on-top level; a mouse-only user could otherwise have no reliable
+  // way to disarm. The idle auto-release + hard cap are that way out.
+  const toggleDraw = () => {
+    const next = !armed
+    setArmed(next)
+    if (next && armed && mode === "hold") {
+      startArmWatch()
+    }
+  }
+
   const enable = (): AnnotationEnableResult => {
     // A previous disable() may still be fading before its scheduled destroy.
     // Finish that teardown now rather than reusing a window that's about to be
@@ -275,7 +301,36 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
       destroyOverlayNow()
     }
     if (overlayAlive()) {
-      return { available: true, hold: mode === "hold" }
+      // Re-derive the reported mode from the LIVE hook, not the mode flag a
+      // previous enable() left behind — advertising a stale hold:true when the
+      // hook is gone is exactly the "held Ctrl, nothing happened" failure.
+      if (mode === "hold" && holdHook) {
+        return { available: true, hold: true }
+      }
+      // The overlay is up but hold-to-draw is not (tap fallback, or the hook
+      // died). The native module or Accessibility permission may have arrived
+      // since the last attempt — release any tap-mode arm first (the release
+      // path depends on the CURRENT mode), then retry the hook and upgrade the
+      // live surface in place.
+      setArmed(false)
+      const upgrade = holdHookFactory({
+        onHold: () => setArmed(true),
+        onRelease: () => setArmed(false)
+      })
+      if (upgrade.hook) {
+        stopHoldHook()
+        holdHook = upgrade.hook
+        mode = "hold"
+        // Hold mode never registered the tap accelerator on ITS success path;
+        // release it so the upgrade leaves the same state.
+        try {
+          globalShortcut.unregister(ANNOTATION_SHORTCUT)
+        } catch {
+          // never registered — fine
+        }
+        return { available: true, hold: true }
+      }
+      return { available: true, hold: false, reason: upgrade.reason }
     }
 
     try {
@@ -341,14 +396,15 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
 
       // Prefer HOLD-to-draw via the native global-key hook (Ctrl held → armed).
       // Set mode FIRST so the hook's arm/release don't start the tap-mode
-      // auto-release watchers. The hook returns null when the native module or
-      // (on macOS) Accessibility permission is unavailable — then fall through
-      // to the tap shortcut.
+      // auto-release watchers. The hook reports a null hook plus WHY (module
+      // missing, macOS Accessibility not granted, start failure) — then fall
+      // through to the tap shortcut and surface that reason to the HUD.
       mode = "hold"
-      holdHook = holdHookFactory({
+      const holdStart = holdHookFactory({
         onHold: () => setArmed(true),
         onRelease: () => setArmed(false)
       })
+      holdHook = holdStart.hook
       if (holdHook) {
         // Show WITHOUT activating — enable() must not move focus.
         overlay.showInactive()
@@ -368,7 +424,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
       // Show WITHOUT activating — enable() must not move focus.
       overlay.showInactive()
 
-      return { available: true, hold: false }
+      return { available: true, hold: false, reason: holdStart.reason }
     } catch {
       // Transparent always-on-top is compositor-dependent on Linux; on failure
       // tear down whatever partially came up and report unavailable so the
@@ -384,6 +440,12 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
   }
 
   const disable = () => {
+    // The recording is over — re-open the once-per-gate macOS Accessibility
+    // prompt window so the NEXT recording re-checks the permission. A user who
+    // grants it mid-session gets hold mode on their next recording without
+    // relaunching, and still sees at most one OS prompt per recording.
+    resetAccessibilityPromptGate()
+
     // Free the accelerator immediately so a re-record — or another app — can
     // take it right away, independent of the visual fade below.
     try {
@@ -440,6 +502,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
     enable,
     disable,
     isActive: overlayAlive,
-    isDrawing: () => armed
+    isDrawing: () => armed,
+    toggleDraw
   }
 }

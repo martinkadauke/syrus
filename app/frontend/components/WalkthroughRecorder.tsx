@@ -3,6 +3,7 @@ import { MAX_WALKTHROUGH_DURATION_SECONDS } from "../api/videoWalkthroughs"
 import {
   annotationBridge,
   recorderHudBridge,
+  type AnnotationHoldFailureReason,
   type SyrusAnnotationBridge,
   type SyrusRecorderHudBridge,
   type SyrusRecorderHudState
@@ -32,9 +33,25 @@ export function annotationShortcutLabel(mac: boolean = isMacPlatform()): string 
 }
 
 // The modifier the native HOLD-to-draw hook watches (Ctrl on both platforms;
-// shown as ⌃ Control on macOS where Ctrl is a distinct key from ⌘).
+// shown as the bare ⌃ glyph on macOS — the hint must stay tiny — and spelled
+// out where the glyph is unfamiliar).
 export function annotationHoldLabel(mac: boolean = isMacPlatform()): string {
-  return mac ? "⌃ Control" : "Ctrl"
+  return mac ? "⌃" : "Ctrl"
+}
+
+// Which idle hint the recording HUD shows for the pen: HOLD when the native
+// hook is live; the Accessibility nudge when hold failed ONLY for the macOS
+// permission (the tap fallback still works, and granting the permission
+// upgrades the next recording to hold); the plain TAP hint otherwise.
+export type AnnotationIdleHintKind = "hold" | "accessibility" | "tap"
+
+export function annotationIdleHintKind(
+  hold: boolean,
+  reason?: AnnotationHoldFailureReason | null
+): AnnotationIdleHintKind {
+  if (hold) return "hold"
+  if (reason === "no-accessibility") return "accessibility"
+  return "tap"
 }
 
 // The overlay is only composited into the recording when the user shares a
@@ -131,6 +148,9 @@ export function useWalkthroughRecorder({
   // Whether the live annotation surface is the native HOLD-to-draw hook (Ctrl
   // held → armed) vs the TAP fallback (⌘⇧A), so the HUD shows the right hint.
   const [annotationHold, setAnnotationHold] = useState(false)
+  // WHY hold mode could not start (null when it did, or when nothing reported
+  // a reason). "no-accessibility" drives the HUD's "grant Accessibility" nudge.
+  const [annotationReason, setAnnotationReason] = useState<AnnotationHoldFailureReason | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const streamsRef = useRef<MediaStream[]>([])
   const chunksRef = useRef<Blob[]>([])
@@ -161,6 +181,7 @@ export function useWalkthroughRecorder({
     setDrawing(false)
     setAnnotationReady(false)
     setAnnotationHold(false)
+    setAnnotationReason(null)
     setDisplaySurface(null)
   }, [])
 
@@ -240,11 +261,16 @@ export function useWalkthroughRecorder({
           if (finishedRef.current) return
           setAnnotationReady(result.available === true)
           setAnnotationHold(result.hold === true)
+          // Why hold could not start (undefined on success / old shells) —
+          // "no-accessibility" turns the idle hint into the grant-permission
+          // nudge while the tap fallback stays advertised and functional.
+          setAnnotationReason(result.hold === true ? null : (result.reason ?? null))
         })
         .catch(() => {
           if (!finishedRef.current) {
             setAnnotationReady(false)
             setAnnotationHold(false)
+            setAnnotationReason(null)
           }
         })
       annotationUnsubscribeRef.current = annotationApi.onModeChanged((armed) => setDrawing(armed))
@@ -336,6 +362,9 @@ export function useWalkthroughRecorder({
     // Whether the live annotation surface is the native HOLD-to-draw hook (vs the
     // tap fallback) — the HUD hint reads "hold Ctrl" vs "tap ⌘⇧A" accordingly.
     annotationHold,
+    // Why hold mode could not start (null when it did). "no-accessibility"
+    // makes the HUD nudge the user to grant the macOS permission.
+    annotationReason,
     // The chosen capture surface, for the "share your whole screen" nudge.
     displaySurface,
     // Live draw-mode flag from the overlay.

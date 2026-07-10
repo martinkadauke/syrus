@@ -66,8 +66,13 @@ export type SyrusShellState = {
 // desktop/electron/windows/annotationOverlay.ts.
 // What annotation enable() resolves: whether a surface came up, and if so
 // whether it's the native HOLD-to-draw hook (Ctrl held → armed) or the TAP
-// fallback (⌘⇧A). The recorder shows the matching hint.
-export type AnnotationEnableResult = { available: boolean; hold: boolean }
+// fallback (⌘⇧A). The recorder shows the matching hint. When hold could NOT
+// start, `reason` names the obstacle — most usefully "no-accessibility",
+// where the hint can tell the user that granting macOS Accessibility brings
+// hold mode back (the tap fallback keeps working meanwhile).
+export type AnnotationHoldFailureReason = "no-module" | "no-accessibility" | "start-failed"
+
+export type AnnotationEnableResult = { available: boolean; hold: boolean; reason?: AnnotationHoldFailureReason }
 
 export type SyrusAnnotationBridge = {
   available: boolean
