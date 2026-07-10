@@ -1198,6 +1198,12 @@ type ShellNoticeState = {
   claudeDetected: boolean
   skillInstalled: boolean
   skillOfferDismissed: boolean
+  // The local backend update in flight (image pull → container recreate →
+  // migrations), or null when none is running. The sidebar shows it as a
+  // progress notice, and the web app uses its presence to stop treating
+  // failed connectivity/credential checks as "not configured" while the
+  // backend is deliberately unreachable.
+  backendUpdate: backendLifecycle.BackendUpdateProgress | null
 }
 
 // The legacy dialog-era keys still count as a dismissal: an install that
@@ -1208,6 +1214,10 @@ const skillOfferDismissed = () =>
   store.get("skillInstallOffered", false) ||
   store.get("cliInstallOffered", false)
 
+// The backend update currently in flight — set by offerBackendUpdateIfPinned's
+// progress feed, cleared (null) when updateBackend finishes either way.
+let backendUpdateProgress: backendLifecycle.BackendUpdateProgress | null = null
+
 const shellNoticeState = async (): Promise<ShellNoticeState> => ({
   updateReadyVersion: appUpdates.downloadedUpdateVersion(),
   claudeDetected: await agentToolPresent(),
@@ -1215,7 +1225,8 @@ const shellNoticeState = async (): Promise<ShellNoticeState> => ({
     .access(claudeSkillPath())
     .then(() => true)
     .catch(() => false),
-  skillOfferDismissed: skillOfferDismissed()
+  skillOfferDismissed: skillOfferDismissed(),
+  backendUpdate: backendUpdateProgress
 })
 
 const broadcastShellNoticeState = async () => {
@@ -1314,7 +1325,8 @@ const INERT_SHELL_NOTICE_STATE: ShellNoticeState = {
   updateReadyVersion: null,
   claudeDetected: false,
   skillInstalled: false,
-  skillOfferDismissed: true
+  skillOfferDismissed: true,
+  backendUpdate: null
 }
 
 // The sidebar's "Add the Syrus skill" action. Failures return inline
@@ -2036,7 +2048,18 @@ const offerBackendUpdateIfPinned = async () => {
     return
   }
 
-  if (await backendLifecycle.updateBackend(image)) {
+  // Stream the update's phases (downloading/starting/migrating + pull
+  // percent) to the web sidebar over the shell-notice bridge: a backend
+  // update is 1–3 minutes of deliberate unreachability, and without this the
+  // web app reads the outage as failed checks ("GitHub not connected").
+  const ok = await backendLifecycle.updateBackend(image, {
+    onProgress: (progress) => {
+      backendUpdateProgress = progress
+      void broadcastShellNoticeState()
+    }
+  })
+
+  if (ok) {
     new Notification({ title: "Syrus backend updated", body: image }).show()
     void webAppWindow?.loadServerUrl()
   } else {
@@ -2247,6 +2270,26 @@ const finishOnboarding = async () => {
   await showWebAppWindow()
 }
 
+// Every relaunch-to-update entry point runs this first: while updateBackend
+// is applying a new backend pin, quitAndInstall would orphan (or
+// SIGPIPE-kill) the installer mid-pin-rewrite, and the relaunched app would
+// boot with backendUpdate null while the containers are still churning —
+// resurrecting the masked "GitHub not connected" failure this state exists
+// to prevent. Defer with an explanation instead; the update takes 1–3
+// minutes and the sidebar notice shows its progress.
+const deferRelaunchWhileBackendBusy = (): boolean => {
+  if (!backendLifecycle.backendBusy()) {
+    return false
+  }
+
+  void dialog.showMessageBox({
+    type: "info",
+    message: "Finishing backend update…",
+    detail: "Syrus is updating its local backend right now. Relaunch to update the app once the backend update completes — usually a minute or two."
+  })
+  return true
+}
+
 // Shared "Restart to update" entry: appears in the app menu and the tray
 // context menu once electron-updater has an update staged.
 const updateMenuItems = (): Electron.MenuItemConstructorOptions[] => {
@@ -2259,6 +2302,10 @@ const updateMenuItems = (): Electron.MenuItemConstructorOptions[] => {
     {
       label: `Restart to update Syrus (v${version})`,
       click: () => {
+        if (deferRelaunchWhileBackendBusy()) {
+          return
+        }
+
         // quitAndInstall closes windows BEFORE any quit event fires, so the
         // hide-on-close handler would preventDefault and abort the update
         // unless the quit flag is already set.
@@ -2588,6 +2635,11 @@ ipcMain.handle("shell:relaunch-to-update", (event) => {
   // Only meaningful once electron-updater has an update staged — a stray
   // call from the page must not quit a perfectly healthy app.
   if (!appUpdates.downloadedUpdateVersion()) {
+    return
+  }
+
+  // Never mid-backend-update: quitting now would orphan the installer.
+  if (deferRelaunchWhileBackendBusy()) {
     return
   }
 
@@ -3021,6 +3073,9 @@ app.on("before-quit", () => {
   // drops the draw-mode shortcut.)
   annotationController?.disable()
   recorderHudController?.hide()
+  // Never orphan an in-flight backend-update installer (detached on POSIX,
+  // it would outlive the app and keep mutating the stack unwatched).
+  backendLifecycle.killUpdateChild()
 })
 
 app.on("will-quit", () => {

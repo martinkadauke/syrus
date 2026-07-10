@@ -4,6 +4,7 @@ import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTe
 import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
 import { useT } from "../hooks/useT"
+import { useBackendOutage } from "../hooks/useBackendUpdate"
 import { GeminiSetupSheet } from "./GeminiSetupSheet"
 
 type AgentTab = "claude" | "gemini"
@@ -41,6 +42,12 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
   const [connected, setConnected] = useState<string | null>(null)
   const [geminiSheetOpen, setGeminiSheetOpen] = useState(false)
   const [geminiConfigured, setGeminiConfigured] = useState(false)
+  // While the desktop shell's backend update has the containers down, the
+  // preflight below rejects — which would silently drop the "Claude is
+  // already connected" confirmation and walk the user through re-authorizing
+  // credentials that sit safely in the DB. Same failure class as the GitHub
+  // token modal: never render absence from a failed check.
+  const backendOutage = useBackendOutage()
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -53,9 +60,14 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [onClose, geminiSheetOpen])
 
-  // Preflight: is Claude already usable on this machine?
+  // Preflight: is Claude already usable on this machine? Deferred while the
+  // backend outage is on — the call could only fail — and retried
+  // automatically when the outage clears (backendOutage is a dependency).
   useEffect(() => {
+    if (backendOutage) return
+
     let cancelled = false
+    setPreflight({ status: "checking" })
     testClaudeCli()
       .then((payload) => {
         if (!cancelled) setPreflight({ status: "done", result: payload.credential_test })
@@ -66,7 +78,7 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [backendOutage])
 
   async function authorize() {
     setError(null)
@@ -231,6 +243,12 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
                 </button>
               </div>
             </>
+          ) : backendOutage ? (
+            // The updating note instead of the authorize walkthrough: the
+            // preflight is deferred, so "already connected" can't be shown
+            // yet, and starting an OAuth flow against a down backend only
+            // ends in errors.
+            <StatusBox tone="warning">{t('backend_updating')}</StatusBox>
           ) : (
             <div className="space-y-4">
               {preflight.status === "checking" ? (

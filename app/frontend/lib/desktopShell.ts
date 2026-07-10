@@ -46,11 +46,30 @@ export function desktopBuiltAt(): string | null {
 // browsers (and older shells) have no window.syrusShell — always
 // feature-detect through syrusShellBridge() and render nothing without it.
 
+// A local backend update in flight, driven by the desktop shell (it runs the
+// installer that pulls the new image, recreates the containers, and waits
+// through the migrations). `percent` is the overall docker-pull percentage —
+// non-null only during "downloading", and only when compose streamed
+// parseable progress; without it the sidebar shows an indeterminate bar.
+// `outage` is the tri-state gating signal: containers are only recreated
+// from the stack_up step on, so during the (long) image pull the OLD backend
+// still serves requests. The sidebar notice shows for the WHOLE update, but
+// surfaces that read failed connectivity/credential checks gate on `outage`
+// only (see useBackendOutage) — never presenting the unconfigured default
+// ("GitHub not connected") while the backend is deliberately unreachable.
+export type SyrusBackendUpdate = {
+  phase: "starting" | "downloading" | "migrating"
+  percent: number | null
+  outage: boolean
+}
+
 export type SyrusShellState = {
   updateReadyVersion: string | null
   claudeDetected: boolean
   skillInstalled: boolean
   skillOfferDismissed: boolean
+  // Absent on older shells — always read through `?? null`.
+  backendUpdate?: SyrusBackendUpdate | null
 }
 
 // Red-pen screen annotation for the walkthrough recorder — a desktop-only

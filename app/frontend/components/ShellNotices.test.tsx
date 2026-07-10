@@ -9,6 +9,7 @@ function shellState(overrides: Partial<SyrusShellState> = {}): SyrusShellState {
     claudeDetected: false,
     skillInstalled: false,
     skillOfferDismissed: false,
+    backendUpdate: null,
     ...overrides
   }
 }
@@ -136,6 +137,65 @@ describe("ShellNotices", () => {
 
     expect(bridge.dismissSkillOffer).toHaveBeenCalledTimes(1)
     expect(screen.queryByText("Claude detected — install Syrus skill?")).not.toBeInTheDocument()
+  })
+
+  it("shows the backend-update notice with the download percentage and a determinate bar", async () => {
+    // outage false on purpose: the sidebar notice covers the WHOLE update,
+    // not just the container-recreation window the gating keys off.
+    installBridge({ backendUpdate: { phase: "downloading", percent: 42, outage: false } })
+
+    render(<ShellNotices />)
+
+    const notice = await screen.findByTestId("backend-update-notice")
+    expect(notice).toHaveTextContent("Updating Syrus backend")
+    expect(notice).toHaveTextContent("Downloading (42%)")
+    expect(notice.querySelector('[style*="width: 42%"]')).not.toBeNull()
+  })
+
+  it.each([
+    ["starting", "Starting…", false],
+    ["downloading", "Downloading…", false],
+    ["migrating", "Migrating database…", true]
+  ] as const)("shows an indeterminate bar and the %s label when no percent is known", async (phase, label, outage) => {
+    installBridge({ backendUpdate: { phase, percent: null, outage } })
+
+    render(<ShellNotices />)
+
+    const notice = await screen.findByTestId("backend-update-notice")
+    expect(notice).toHaveTextContent(label)
+    expect(notice.querySelector(".motion-safe\\:animate-progress-indeterminate")).not.toBeNull()
+    expect(notice.querySelector('[style*="width"]')).toBeNull()
+  })
+
+  it("removes the backend-update notice the moment the shell reports the update finished", async () => {
+    let pushState: ((state: SyrusShellState) => void) | undefined
+    installBridge(
+      { backendUpdate: { phase: "migrating", percent: null, outage: true } },
+      {
+        onStateChanged: vi.fn().mockImplementation((callback: (state: SyrusShellState) => void) => {
+          pushState = callback
+          return () => {}
+        })
+      }
+    )
+
+    render(<ShellNotices />)
+    await screen.findByTestId("backend-update-notice")
+
+    act(() => pushState?.(shellState({ backendUpdate: null })))
+
+    expect(screen.queryByTestId("backend-update-notice")).not.toBeInTheDocument()
+  })
+
+  it("shows no backend-update notice on older shells whose state lacks the member", async () => {
+    const state = shellState()
+    delete (state as Partial<SyrusShellState>).backendUpdate
+    const bridge = installBridge({}, { getState: vi.fn().mockResolvedValue(state) })
+
+    render(<ShellNotices />)
+
+    await waitFor(() => expect(bridge.getState).toHaveBeenCalled())
+    expect(screen.queryByTestId("backend-update-notice")).not.toBeInTheDocument()
   })
 
   it("reacts to bridge state changes pushed through onStateChanged", async () => {

@@ -90,6 +90,84 @@ RSpec.describe "desktop backend lifecycle" do
     expect(main_process).to include("reportBackendActionFailure")
   end
 
+  it "reports update phases from the installer's own NDJSON, and always clears them" do
+    update_fn = lifecycle[/export const updateBackend[\s\S]*?\n\}/]
+    # The update path parses the same --json protocol the onboarding driver
+    # consumes (step markers + wrapped compose pull progress) instead of
+    # blind-piping stdout — every raw line still lands in install.log.
+    expect(update_fn).to include("new BackendUpdateProgressTracker()")
+    # The whole delivery wire, not just the parse: observing a line must feed
+    # report(), and report() must feed deps.onProgress — deleting either link
+    # silently kills the sidebar progress.
+    expect(update_fn).to match(/readline\.createInterface\(\{ input: child\.stdout \}\)\.on\("line", \(line\) => \{\s*\n\s*log\.write\(`\$\{line\}\\n`\)\s*\n\s*const progress = tracker\.observeLine\(line\)\s*\n\s*if \(progress\) \{\s*\n\s*report\(progress\)/)
+    # Progress is cosmetic: a throwing callback must never fail the update...
+    expect(update_fn).to match(/const report = [\s\S]{0,200}try \{\s*\n\s*deps\.onProgress\?\.\(progress\)\s*\n\s*\} catch \{/)
+    # ...and the notice must disappear on EVERY exit — success, failure, throw.
+    expect(update_fn).to match(/\} finally \{[\s\S]{0,120}report\(null\)\s*\n\s*busy = false/)
+    # The sidebar covers the whole outage window: "starting" is reported
+    # before the daemon wait, not first when the installer prints something.
+    expect(update_fn).to match(/report\(tracker\.snapshot\(\)\)\s*\n\s*if \(!\(await ensureDaemon\(\)\)\)/)
+  end
+
+  it "bounds the update by wall clock and kills the whole installer tree at the deadline" do
+    # install.sh has no overall timeout of its own (its health curl has no
+    # --max-time; a wedged pull can sit forever). Without this bound a hung
+    # installer leaves `busy` true and the backendUpdate state non-null
+    # FOREVER: the watchdog starves on the busy short-circuit, Backend menu
+    # actions refuse, and the web app's gated surfaces stay suppressed.
+    expect(lifecycle).to include("UPDATE_DEADLINE_MS = 30 * 60_000")
+    update_fn = lifecycle[/export const updateBackend[\s\S]*?\n\}/]
+    expect(update_fn).to match(/const deadline = setTimeout\(\(\) => \{[\s\S]{0,300}killUpdateChild\(\)\s*\n\s*\}, UPDATE_DEADLINE_MS\)/)
+    # Every exit path clears the deadline and the child registration; a spawn
+    # error may never be followed by "close".
+    expect(update_fn).to match(/const settle = \(ok: boolean\) => \{\s*\n\s*clearTimeout\(deadline\)\s*\n\s*updateChild = null\s*\n\s*resolve\(ok\)/)
+    # POSIX spawns detached so the deadline kill reaches docker/compose
+    # grandchildren via the process group; Windows uses taskkill /T.
+    expect(update_fn).to match(/spawn\(command, args, \{ env, detached: true \}\)/)
+    kill_fn = lifecycle[/export const killUpdateChild[\s\S]*?\n\}/]
+    expect(kill_fn).to match(/execFile\("taskkill", \["\/pid", String\(child\.pid\), "\/T", "\/F"\]/)
+    expect(kill_fn).to match(/process\.kill\(-child\.pid, "SIGTERM"\)/)
+  end
+
+  it "never lets a relaunch or quit orphan the in-flight installer" do
+    # quitAndInstall while updateBackend runs would orphan the (detached)
+    # installer mid-pin-rewrite, and the relaunched app would boot with
+    # backendUpdate null while containers are still churning — resurrecting
+    # the masked "GitHub not connected" failure.
+    expect(lifecycle).to include("export const backendBusy = () => busy")
+    guard = main_process[/const deferRelaunchWhileBackendBusy[\s\S]{0,900}/]
+    expect(guard).to include("backendLifecycle.backendBusy()")
+    expect(guard).to include("Finishing backend update…")
+    # Both relaunch entry points run the guard: the sidebar bridge handler
+    # and the shared app/tray "Restart to update" menu item.
+    relaunch_handler = main_process[/ipcMain\.handle\("shell:relaunch-to-update"[\s\S]{0,900}/]
+    expect(relaunch_handler).to include("if (deferRelaunchWhileBackendBusy())")
+    menu_item = main_process[/const updateMenuItems[\s\S]{0,900}/]
+    expect(menu_item).to include("if (deferRelaunchWhileBackendBusy())")
+    # A genuine quit kills the installer tree instead of orphaning it.
+    before_quit = main_process[/app\.on\("before-quit", \(\) => \{[\s\S]{0,600}\n\}\)/]
+    expect(before_quit).to include("backendLifecycle.killUpdateChild()")
+  end
+
+  it "maps installer steps onto the coarse sidebar phases" do
+    update_progress = read("electron/installer/updateProgress.ts")
+    expect(update_progress).to include('image_pull: "downloading"')
+    expect(update_progress).to include('stack_up: "starting"')
+    expect(update_progress).to include('health: "migrating"')
+    # Step ids come from a parsed external stream — a plain object literal
+    # would resolve "constructor"/"toString"/"__proto__" through the
+    # prototype chain into functions adopted as the phase.
+    expect(update_progress).to match(/STEP_PHASES[\s\S]{0,120}Object\.assign\(Object\.create\(null\)/)
+    # The outage flag (what the web app's gating keys off) flips at stack_up —
+    # container recreation — never during the pull, and rides every snapshot.
+    expect(update_progress).to match(/id === "stack_up" && !this\.outage/)
+    expect(update_progress).to include("outage: this.outage")
+    # The percent belongs to the pull — a later phase must not show a stale bar.
+    expect(update_progress).to match(/if \(phase !== "downloading"\) \{\s*\n\s*this\.percent = null/)
+    # Pure module: renderer-side vitest exercises it directly, like pullProgress.
+    expect(update_progress).not_to match(/require\("node:|from "node:|from "electron"/)
+  end
+
   it "retires superseded syrus images only after a healthy update, never on first install" do
     # Every backend update pulls a fresh multi-GB image; without cleanup the
     # Docker VM disk fills with dead syrus-backend images after a few updates.

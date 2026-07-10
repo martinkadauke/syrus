@@ -31,7 +31,12 @@
     "skill_installing": "Instituitur…",
     "skill_installed": "Ars instituta ✓",
     "skill_install_failed": "Ars institui non potuit.",
-    "skill_dismiss": "Oblationem artis dimitte"
+    "skill_dismiss": "Oblationem artis dimitte",
+    "backend_update_title": "Fundamentum Syri renovatur",
+    "backend_update_starting": "Incipit…",
+    "backend_update_downloading": "Detrahitur…",
+    "backend_update_downloading_percent": "Detrahitur ({{percent}}%)",
+    "backend_update_migrating": "Datorum basis migratur…"
   },
   "onboarding": {
     "configure_credentials_title": "Primum testimonia coniunge",

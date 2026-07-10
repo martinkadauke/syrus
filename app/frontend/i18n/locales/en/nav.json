@@ -31,7 +31,12 @@
     "skill_installing": "Installing…",
     "skill_installed": "Skill installed ✓",
     "skill_install_failed": "Could not install the skill.",
-    "skill_dismiss": "Dismiss skill offer"
+    "skill_dismiss": "Dismiss skill offer",
+    "backend_update_title": "Updating Syrus backend",
+    "backend_update_starting": "Starting…",
+    "backend_update_downloading": "Downloading…",
+    "backend_update_downloading_percent": "Downloading ({{percent}}%)",
+    "backend_update_migrating": "Migrating database…"
   },
   "onboarding": {
     "configure_credentials_title": "Connect credentials first",

@@ -1,5 +1,6 @@
 {
   "title": "Settings",
+  "backend_updating": "The Syrus backend is updating — credential status can't be checked right now. Your saved credentials are unaffected; this closes out in a minute or two.",
   "profile": {
     "loading": "Loading profile...",
     "error_load": "Unable to load this profile.",

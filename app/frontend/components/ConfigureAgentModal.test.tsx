@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetBackendUpdateStoreForTests, useBackendOutage } from "../hooks/useBackendUpdate"
 import { ConfigureAgentModal } from "./ConfigureAgentModal"
 
 function renderModal(props: { onClose?: () => void; onSaved?: () => void } = {}) {
@@ -192,5 +193,65 @@ describe("ConfigureAgentModal", () => {
 
     await waitFor(() => expect(screen.getByText("Code expired.")).toBeInTheDocument())
     expect(screen.queryByRole("button", { name: "Done" })).not.toBeInTheDocument()
+  })
+
+  it("shows the updating note, defers the preflight during the outage, and retries when it clears", async () => {
+    // A rejected preflight during the outage would silently drop the
+    // "Claude already connected" confirmation and re-run the full authorize
+    // walkthrough — the same false-from-failure class as the GitHub modal.
+    let pushState: ((state: unknown) => void) | undefined
+    window.syrusShell = {
+      getState: vi.fn().mockResolvedValue({
+        updateReadyVersion: null,
+        claudeDetected: false,
+        skillInstalled: false,
+        skillOfferDismissed: true,
+        backendUpdate: { phase: "migrating", percent: null, outage: true }
+      }),
+      onStateChanged: vi.fn().mockImplementation((callback: (state: unknown) => void) => {
+        pushState = callback
+        return () => {}
+      }),
+      relaunchToUpdate: vi.fn(),
+      installSkill: vi.fn(),
+      dismissSkillOffer: vi.fn()
+    }
+    resetBackendUpdateStoreForTests()
+
+    // Warm the shared store before the modal mounts — in the real app it has
+    // been subscribed since app load (ShellNotices), so the outage is already
+    // known when the modal opens.
+    function Warm() {
+      return <span data-testid="warm">{String(useBackendOutage())}</span>
+    }
+    const warm = render(<Warm />)
+    await waitFor(() => expect(screen.getByTestId("warm")).toHaveTextContent("true"))
+    warm.unmount()
+
+    const fetchSpy = mockRoutes({ preflight: () => jsonResponse({ credential_test: ready }) })
+    renderModal()
+
+    expect(await screen.findByText(/The Syrus backend is updating/)).toBeInTheDocument()
+    // The authorize walkthrough is replaced, and the doomed preflight call is
+    // deferred entirely.
+    expect(screen.queryByRole("button", { name: /Authorize with Claude/ })).not.toBeInTheDocument()
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith("/test_claude_cli"))).toHaveLength(0)
+
+    // The outage clears → the preflight fires and the ambient confirmation
+    // the failure would have swallowed appears.
+    act(() => {
+      pushState?.({
+        updateReadyVersion: null,
+        claudeDetected: false,
+        skillInstalled: false,
+        skillOfferDismissed: true,
+        backendUpdate: null
+      })
+    })
+    await waitFor(() => expect(screen.getByText(/already works on this machine/)).toBeInTheDocument())
+    expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith("/test_claude_cli"))).toHaveLength(1)
+
+    delete window.syrusShell
+    resetBackendUpdateStoreForTests()
   })
 })

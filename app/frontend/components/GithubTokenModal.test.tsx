@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import { resetBackendUpdateStoreForTests } from "../hooks/useBackendUpdate"
 import { GithubTokenModal } from "./GithubTokenModal"
 
 function renderModal(props: { onClose?: () => void; onSaved?: () => void } = {}) {
@@ -145,4 +146,55 @@ describe("GithubTokenModal", () => {
     expect(screen.queryByText(/To monitor and interact with GitHub/)).not.toBeInTheDocument()
     expect(screen.queryByPlaceholderText("ghp_…")).not.toBeInTheDocument()
   })
+
+  it("never presents the 'no token yet' step while the backend update has the containers down", async () => {
+    // The backend is deliberately unreachable during the outage window:
+    // bootstrap fails, credential_status is unknown — NOT absent. The modal
+    // must say what's happening instead of walking the user through
+    // re-entering a token they already have.
+    installShellBridge({ phase: "migrating", percent: null, outage: true })
+    // Earlier tests in this file rendered without a bridge; the store caches
+    // that subscription attempt, so drop it before rendering with one.
+    resetBackendUpdateStoreForTests()
+    mockRoutes({})
+    renderModal()
+
+    expect(await screen.findByText(/The Syrus backend is updating/)).toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("ghp_…")).not.toBeInTheDocument()
+    expect(screen.queryByText("Personal access token")).not.toBeInTheDocument()
+
+    delete window.syrusShell
+    resetBackendUpdateStoreForTests()
+  })
+
+  it("keeps the credential flow open during the image pull — the old backend still serves", async () => {
+    // outage is false for the whole downloading phase: gating then would
+    // hard-block a working flow on a false premise.
+    installShellBridge({ phase: "downloading", percent: 42, outage: false })
+    resetBackendUpdateStoreForTests()
+    mockRoutes({})
+    renderModal()
+
+    expect(await screen.findByPlaceholderText("ghp_…")).toBeInTheDocument()
+    expect(screen.queryByText(/The Syrus backend is updating/)).not.toBeInTheDocument()
+
+    delete window.syrusShell
+    resetBackendUpdateStoreForTests()
+  })
 })
+
+function installShellBridge(backendUpdate: { phase: "starting" | "downloading" | "migrating"; percent: number | null; outage: boolean }) {
+  window.syrusShell = {
+    getState: vi.fn().mockResolvedValue({
+      updateReadyVersion: null,
+      claudeDetected: false,
+      skillInstalled: false,
+      skillOfferDismissed: true,
+      backendUpdate
+    }),
+    onStateChanged: vi.fn().mockReturnValue(() => {}),
+    relaunchToUpdate: vi.fn(),
+    installSkill: vi.fn(),
+    dismissSkillOffer: vi.fn()
+  }
+}

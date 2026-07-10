@@ -31,7 +31,12 @@
     "skill_installing": "Wird installiert…",
     "skill_installed": "Skill installiert ✓",
     "skill_install_failed": "Der Skill konnte nicht installiert werden.",
-    "skill_dismiss": "Skill-Angebot ausblenden"
+    "skill_dismiss": "Skill-Angebot ausblenden",
+    "backend_update_title": "Syrus-Backend wird aktualisiert",
+    "backend_update_starting": "Wird gestartet…",
+    "backend_update_downloading": "Wird heruntergeladen…",
+    "backend_update_downloading_percent": "Wird heruntergeladen ({{percent}} %)",
+    "backend_update_migrating": "Datenbank wird migriert…"
   },
   "onboarding": {
     "configure_credentials_title": "Zugangsdaten zuerst verbinden",

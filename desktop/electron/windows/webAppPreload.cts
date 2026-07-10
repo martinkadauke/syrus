@@ -20,11 +20,25 @@
 // (.cts → .cjs), which sandboxed preloads require.
 import { contextBridge, ipcRenderer } from "electron"
 
+// A local backend update in flight: coarse phase + overall docker-pull
+// percent (only during "downloading", null when compose streams no parseable
+// progress). The sidebar renders it as a progress notice for the WHOLE
+// update; `outage` (true from container recreation on — during the long
+// image pull the old backend still serves requests) is what the web app's
+// tri-state gating keys off, so failed checks during the actual outage are
+// never read as "unconfigured".
+type BackendUpdateProgress = {
+  phase: "starting" | "downloading" | "migrating"
+  percent: number | null
+  outage: boolean
+}
+
 type ShellNoticeState = {
   updateReadyVersion: string | null
   claudeDetected: boolean
   skillInstalled: boolean
   skillOfferDismissed: boolean
+  backendUpdate: BackendUpdateProgress | null
 }
 
 contextBridge.exposeInMainWorld("syrusShell", {

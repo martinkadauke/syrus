@@ -3,6 +3,7 @@ import type { DragEvent, ReactNode } from "react"
 import { Children, useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useT } from "../hooks/useT"
+import { useBackendOutage } from "../hooks/useBackendUpdate"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { ApiError } from "../api/client"
 import { dashboardApiSearch } from "../api/dashboard"
@@ -76,8 +77,16 @@ function DashboardView({ payload, pathname, search }: { payload: DashboardPayloa
   )
 }
 
-function ReadinessPanel({ prefix, readiness }: { prefix: string; readiness?: NonNullable<NonNullable<BootstrapPayload["setup_status"]>["readiness"]> }) {
+export function ReadinessPanel({ prefix, readiness }: { prefix: string; readiness?: NonNullable<NonNullable<BootstrapPayload["setup_status"]>["readiness"]> }) {
   const { t } = useT("dashboard")
+  // While the desktop shell's backend update has the containers down,
+  // readiness checks fail because the backend is deliberately unreachable —
+  // showing them would read as "credentials gone". The sidebar's notice
+  // explains what's happening; the warnings return the moment the update
+  // ends. During the image-pull half of an update the old backend still
+  // serves, so outage stays false and the panel behaves normally.
+  const backendOutage = useBackendOutage()
+  if (backendOutage) return null
   if (!readiness || readiness.status === "ok") return null
 
   const failingChecks = readiness.checks.filter((check) => check.status !== "ok")

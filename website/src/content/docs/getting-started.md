@@ -21,7 +21,7 @@ Use the path that answers the question you have right now.
 
 | If you want to... | Start here | What you will see |
 | --- | --- | --- |
-| Install Syrus on your Mac with no terminal | [Desktop app](/docs/desktop) | A DMG download, a guided setup that installs the Docker backend for you, the full web UI in a native window, and a menu-bar inbox. |
+| Install Syrus on your Mac with no terminal | [Desktop app](/docs/desktop) | A DMG download, a guided setup that installs the Docker backend for you, the full web UI in a native window, and a menu-bar inbox. When the app later updates its local backend, a sidebar notice shows the progress (download percentage, restart, database migration) until Syrus is reachable again. |
 | Try the full product loop for yourself or a small team | [Docker Compose](/docs/deployment/docker-compose) or your operator-provided setup | Web UI, worker, database, repository polling, Job history, and a real GitHub PR. |
 | Develop Syrus itself | The project README | Source checkout, Ruby/Node/Go toolchain, `bin/dev`, and fast reloads. |
 | Self-host on shared infrastructure | [Deployment](/docs/deployment) and [Kubernetes](/docs/deployment/kubernetes) | The same app on your own infrastructure, once you have chosen ingress, storage, secrets, backups, and operations. |

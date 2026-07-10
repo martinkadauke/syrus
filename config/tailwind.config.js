@@ -40,10 +40,18 @@ module.exports = {
         "chat-message-in": {
           from: { opacity: "0", transform: "translateY(6px)" },
           to: { opacity: "1", transform: "translateY(0)" }
+        },
+        // Indeterminate progress sweep (backend-update sidebar notice): a
+        // one-third-width bar crossing its track. Guarded by motion-safe: at
+        // the call site so reduced-motion users see a still bar.
+        "progress-indeterminate": {
+          from: { transform: "translateX(-100%)" },
+          to: { transform: "translateX(300%)" }
         }
       },
       animation: {
-        "chat-message-in": "chat-message-in 0.25s ease-out both"
+        "chat-message-in": "chat-message-in 0.25s ease-out both",
+        "progress-indeterminate": "progress-indeterminate 1.4s ease-in-out infinite"
       }
     }
   }
