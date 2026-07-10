@@ -5,14 +5,13 @@ class ReapStaleRunsJob < ApplicationJob
 
   # Three reaping signals, in order of confidence/speed:
   #
-  # 1. SolidQueue itself proved the worker died — the SQ::Job for
+  # 1. SolidQueue thinks the worker died — the SQ::Job for
   #    this Run is in failed_execution with a `ProcessPrunedError`.
-  #    SQ's supervisor doesn't fail-claimed-executions casually:
-  #    only after the owning worker process's heartbeat lapsed past
-  #    `process_alive_threshold` (5 min default). When we see this,
-  #    the worker process is *definitively* gone and so any RunJob
-  #    code mid-perform on its behalf is gone too. Reap immediately.
-  #    Recovers post-deploy zombies in ~1 min.
+  #    SQ's supervisor doesn't fail-claimed-executions casually, but
+  #    production has shown this can still be a false positive under
+  #    heartbeat starvation or DB contention while the agent subprocess
+  #    continues streaming. Reap only when there is no fresh Run activity
+  #    and no still-running SpawnedProcess for that Run.
   #
   # 2. Orphaned-Run detection — Run is :running but no SQ::Job
   #    exists for it (not pending, not claimed, not failed). This is
@@ -40,6 +39,7 @@ class ReapStaleRunsJob < ApplicationJob
   # :running with no enqueued/active job is by definition
   # orphaned.
   ORPHAN_RUN_GRACE_PERIOD = 2.minutes
+  WORKER_DEATH_ACTIVITY_GRACE_PERIOD = ORPHAN_RUN_GRACE_PERIOD
   MISSED_AUTO_RETRY_LOOKBACK = 24.hours
 
   def perform
@@ -71,7 +71,7 @@ class ReapStaleRunsJob < ApplicationJob
     run_ids = pruned_run_ids_from_solid_queue
     return if run_ids.empty?
     Run.where(id: run_ids, state: "running").find_each do |run|
-      reap!(run, reason: "SolidQueue::ProcessPrunedError — worker process is gone (deploy or crash)")
+      reap!(run, reason: "SolidQueue::ProcessPrunedError — worker process is gone (deploy or crash)", guard_live_work: true)
     end
   end
 
@@ -185,7 +185,7 @@ class ReapStaleRunsJob < ApplicationJob
     active_ids = active_run_job_run_ids
     candidates.each do |run|
       next if active_ids.include?(run.id)
-      reap!(run, reason: "no SolidQueue::Job for Run ##{run.id} — orphaned (RunJob died without transitioning)")
+      reap!(run, reason: "no SolidQueue::Job for Run ##{run.id} — orphaned (RunJob died without transitioning)", guard_live_work: true)
     end
   rescue ActiveRecord::StatementInvalid => e
     Rails.logger.debug("[ReapStaleRunsJob] SolidQueue tables unreachable (#{e.class}); skipping orphan-run path")
@@ -256,7 +256,12 @@ class ReapStaleRunsJob < ApplicationJob
     (root_run_ids + inline_run_ids).map(&:to_i).to_set
   end
 
-  def reap!(run, reason:)
+  def reap!(run, reason:, guard_live_work: false)
+    if guard_live_work && (deferral_reason = live_work_deferral_reason(run))
+      Rails.logger.info("[ReapStaleRunsJob] Run ##{run.id} not reaped yet despite #{reason}: #{deferral_reason}")
+      return
+    end
+
     if (reconciliation = RunCompletionReconciler.call(run)).reconciled?
       Rails.logger.info("[ReapStaleRunsJob] Run ##{run.id} reconciled instead of reaped: #{reconciliation.reason}")
       return
@@ -284,6 +289,28 @@ class ReapStaleRunsJob < ApplicationJob
     end
   rescue StandardError => e
     Rails.logger.warn("[ReapStaleRunsJob] reap failed for Run ##{run.id}: #{e.class}: #{e.message}")
+  end
+
+  def live_work_deferral_reason(run)
+    heartbeat_at = run.last_heartbeat_at
+    return "fresh Run heartbeat at #{heartbeat_at.iso8601}" if recent_worker_death_activity?(heartbeat_at)
+
+    log_at = JobLog.where(run_id: run.id).maximum(:created_at)
+    return "fresh JobLog at #{log_at.iso8601}" if recent_worker_death_activity?(log_at)
+
+    process = SpawnedProcess.running.where(run_id: run.id).order(Arel.sql("COALESCE(last_chunk_at, started_at) DESC")).first
+    return nil unless process
+
+    process_at = process.last_chunk_at || process.started_at
+    if recent_worker_death_activity?(process_at)
+      "active SpawnedProcess ##{process.id} with recent output at #{process_at.iso8601}"
+    else
+      "active SpawnedProcess ##{process.id}"
+    end
+  end
+
+  def recent_worker_death_activity?(timestamp)
+    timestamp.present? && timestamp >= WORKER_DEATH_ACTIVITY_GRACE_PERIOD.ago
   end
 
   # Backstop for deploy/crash failures that reached Workflow#failed

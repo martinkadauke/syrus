@@ -207,12 +207,48 @@ RSpec.describe ReapStaleRunsJob do
           .and_return(run_ids.map(&:to_i))
       end
 
-      it "reaps a running Run whose SQ::Job was failed with ProcessPrunedError, even if heartbeat is fresh" do
-        # Fresh heartbeat — heartbeat-stale path WOULD NOT reap. Only
-        # the SQ-pruned signal does.
+      it "defers a ProcessPrunedError reap while the Run heartbeat is fresh" do
         run = running_run(heartbeat_age: 30.seconds)
         stub_pruned(run.id)
         described_class.perform_now
+        expect(run.reload.state).to eq("running")
+        expect(run.agent_outcome).to be_nil
+      end
+
+      it "defers a ProcessPrunedError reap while the Run has fresh logs" do
+        run = running_run(heartbeat_age: ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds)
+        JobLog.append!(run: run, chunk: "agent is still making progress")
+        stub_pruned(run.id)
+
+        described_class.perform_now
+
+        expect(run.reload.state).to eq("running")
+        expect(run.agent_outcome).to be_nil
+      end
+
+      it "defers a ProcessPrunedError reap while a spawned process is still running" do
+        run = running_run(heartbeat_age: ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds)
+        SpawnedProcess.create!(
+          run: run,
+          kind: "agent",
+          command: "claude --print",
+          hostname: "worker-1",
+          started_at: 5.minutes.ago
+        )
+        stub_pruned(run.id)
+
+        described_class.perform_now
+
+        expect(run.reload.state).to eq("running")
+        expect(run.agent_outcome).to be_nil
+      end
+
+      it "reaps a ProcessPrunedError Run once there is no fresh activity or active spawned process" do
+        run = running_run(heartbeat_age: ReapStaleRunsJob::ORPHAN_RUN_GRACE_PERIOD + 30.seconds)
+        stub_pruned(run.id)
+
+        described_class.perform_now
+
         expect(run.reload.state).to eq("failed")
         expect(run.agent_outcome).to eq("worker_died")
       end
@@ -231,12 +267,12 @@ RSpec.describe ReapStaleRunsJob do
         expect(running.reload.state).to eq("running")
       end
 
-      it "still falls through to heartbeat-stale reaping after the SQ-pruned pass" do
+      it "still falls through to heartbeat-stale reaping after deferring fresh SQ-pruned work" do
         sq_pruned = running_run(heartbeat_age: 30.seconds)
         old = running_run(heartbeat_age: Run::STALE_HEARTBEAT_THRESHOLD + 1.minute)
         stub_pruned(sq_pruned.id)
         described_class.perform_now
-        expect(sq_pruned.reload.state).to eq("failed")  # via SQ signal
+        expect(sq_pruned.reload.state).to eq("running") # fresh activity defers the SQ signal
         expect(old.reload.state).to eq("failed")        # via heartbeat-stale
       end
 
@@ -248,6 +284,16 @@ RSpec.describe ReapStaleRunsJob do
 
         expect(inline_run.reload.state).to eq("failed")
         expect(inline_run.agent_outcome).to eq("worker_died")
+      end
+
+      it "defers a pruned inline Run while it is still heartbeating" do
+        _workflow, root_run, inline_run = inline_workflow_runs
+        inline_run.update_column(:last_heartbeat_at, 30.seconds.ago)
+        stub_pruned_roots(root_run.id)
+
+        described_class.perform_now
+
+        expect(inline_run.reload.state).to eq("running")
       end
 
       it "schedules step resume for a reaped agentic inline Run with a captured session" do
