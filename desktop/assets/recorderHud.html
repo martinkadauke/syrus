@@ -146,6 +146,7 @@
           if (current.drawing) $("penstatus").classList.add("drawing"); else $("penstatus").classList.remove("drawing");
           if (current.drawing) $("pen").classList.add("active"); else $("pen").classList.remove("active");
           $("pen").setAttribute("aria-pressed", current.drawing ? "true" : "false");
+          $("pen").setAttribute("aria-label", current.penLabel || "Toggle drawing");
           set("stop", current.stopLabel || "Stop & attach");
           set("discard", current.discardLabel || "Discard");
           requestAnimationFrame(sendSize);

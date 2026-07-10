@@ -2427,7 +2427,8 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
         : undefined,
       drawing: recorder.drawing,
       stopLabel: t("walkthrough_stop"),
-      discardLabel: t("walkthrough_discard")
+      discardLabel: t("walkthrough_discard"),
+      penLabel: t("walkthrough_hud_pen")
     },
     onStop: () => recorder.stop(),
     onDiscard: () => recorder.stop({ discard: true })
@@ -2793,6 +2794,14 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           >
             {pendingProposals.length > 1 ? `Jump (${(jumpIndex % pendingProposals.length) + 1} of ${pendingProposals.length})` : "Jump ↑"}
           </button>
+        </div>
+      ) : null}
+      {recorder.state.phase === "recording" && nativeRecorderHud && annotationIdleKind === "accessibility" ? (
+        // The floating native HUD only fits the terse hint; the actionable
+        // System Settings guidance renders here in the page — the ONLY way a
+        // desktop user (always on the native HUD) ever sees it.
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300" data-testid="walkthrough-annotate-accessibility-note">
+          {t("walkthrough_annotate_accessibility_note")}
         </div>
       ) : null}
       {recorder.state.phase === "recording" && !nativeRecorderHud ? (

@@ -71,6 +71,11 @@ const FADE_DURATION_MS = 2500
 const ARM_IDLE_RELEASE_MS = 1200
 const ARM_POLL_MS = 200
 const MAX_ARMED_MS = 15000
+// At the cap, an in-flight stroke gets grace re-checks this far apart …
+const MAX_ARMED_GRACE_MS = 1000
+// … up to this absolute ceiling, after which release is unconditional (a
+// wedged renderer must never keep the screen captured).
+const MAX_ARMED_HARD_MS = 30000
 
 // What enable() reports back: whether an annotation surface came up at all,
 // whether it's HOLD mode (native global-key hook) or the TAP fallback — so the
@@ -270,14 +275,42 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
   const startArmWatch = () => {
     stopArmWatch()
     idlePollTimer = setInterval(pollIdle, ARM_POLL_MS)
-    // Hard safety cap: force-release after MAX_ARMED_MS no matter what, even if
-    // the idle poll wedges or the renderer stops reporting. The overlay must
-    // never stay armed (capturing the whole screen) longer than this.
-    maxArmedTimer = setTimeout(() => setArmed(false), MAX_ARMED_MS)
+    // Hard safety cap: force-release after MAX_ARMED_MS — but unlike the idle
+    // poll's explicit snap.active check, a blind release here would cut a
+    // stroke mid-draw. At the cap, re-check briefly while a stroke is active
+    // and release the moment it ends; MAX_ARMED_HARD_MS is the unconditional
+    // ceiling (wedged renderer included) so the screen is never captured
+    // indefinitely.
+    const armedAt = Date.now()
+    const releaseAtCap = () => {
+      if (!overlayAlive() || !armed) return
+      if (Date.now() - armedAt >= MAX_ARMED_HARD_MS) {
+        setArmed(false)
+        return
+      }
+      overlay!.webContents
+        .executeJavaScript("window.__syrusAnnotation && window.__syrusAnnotation.idleSnapshot()")
+        .then((snap: { active?: boolean } | null | undefined) => {
+          if (!overlayAlive() || !armed) return
+          if (snap?.active) {
+            maxArmedTimer = setTimeout(releaseAtCap, MAX_ARMED_GRACE_MS)
+            return
+          }
+          setArmed(false)
+        })
+        .catch(() => setArmed(false))
+    }
+    maxArmedTimer = setTimeout(releaseAtCap, MAX_ARMED_MS)
   }
 
   // The global-shortcut handler: tap to arm, tap again to release immediately.
-  const toggleArm = () => setArmed(!armed)
+  // A fading overlay (disable() ran; destroy is scheduled) is NOT armable —
+  // re-capturing the pointer over a dying window would trap clicks for the
+  // rest of the fade.
+  const toggleArm = () => {
+    if (teardownTimer) return
+    setArmed(!armed)
+  }
 
   // The HUD pen button's mouse-only toggle. Unlike the keyboard paths, a
   // pen-armed session ALWAYS gets the auto-release watchers — even in hold
@@ -286,6 +319,7 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
   // always-on-top level; a mouse-only user could otherwise have no reliable
   // way to disarm. The idle auto-release + hard cap are that way out.
   const toggleDraw = () => {
+    if (teardownTimer) return
     const next = !armed
     setArmed(next)
     if (next && armed && mode === "hold") {
@@ -314,7 +348,14 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
       // live surface in place.
       setArmed(false)
       const upgrade = holdHookFactory({
-        onHold: () => setArmed(true),
+        onHold: () => {
+          // A physical Ctrl hold takes OWNERSHIP of an armed session: if the
+          // pen button armed first, its idle/cap watchers must stand down or
+          // they'd release draw mode while the key is still held (release is
+          // the key-up's job). setArmed(true) alone would early-return.
+          stopArmWatch()
+          setArmed(true)
+        },
         onRelease: () => setArmed(false)
       })
       if (upgrade.hook) {
@@ -401,7 +442,14 @@ export const createAnnotationController = ({ overlayHtmlPath, onModeChanged, hol
       // through to the tap shortcut and surface that reason to the HUD.
       mode = "hold"
       const holdStart = holdHookFactory({
-        onHold: () => setArmed(true),
+        onHold: () => {
+          // A physical Ctrl hold takes OWNERSHIP of an armed session: if the
+          // pen button armed first, its idle/cap watchers must stand down or
+          // they'd release draw mode while the key is still held (release is
+          // the key-up's job). setArmed(true) alone would early-return.
+          stopArmWatch()
+          setArmed(true)
+        },
         onRelease: () => setArmed(false)
       })
       holdHook = holdStart.hook

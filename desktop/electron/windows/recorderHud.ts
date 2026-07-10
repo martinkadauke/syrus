@@ -39,6 +39,9 @@ type Options = {
 
 export const createRecorderHudController = ({ htmlPath, preloadPath, onAction }: Options): RecorderHudController => {
   let hud: BrowserWindow | null = null
+  // False until the first content-fit resize after each show() — see the
+  // grow-only rule in the resize handler.
+  let sizedSinceShow = false
   const alive = () => hud !== null && !hud.isDestroyed()
 
   // Forward HUD button clicks to the recorder, but ONLY from our own HUD
@@ -61,8 +64,16 @@ export const createRecorderHudController = ({ htmlPath, preloadPath, onAction }:
     const height = Math.round(Number(requested.height))
     if (!Number.isFinite(width) || !Number.isFinite(height)) return
 
-    const w = Math.min(Math.max(width, HUD_MIN_WIDTH), HUD_MAX_WIDTH)
+    let w = Math.min(Math.max(width, HUD_MIN_WIDTH), HUD_MAX_WIDTH)
     const h = Math.min(Math.max(height, HUD_MIN_HEIGHT), HUD_MAX_HEIGHT)
+    // First resize after show() snugs the 480px placeholder to content;
+    // afterwards the width only GROWS. Shrinking mid-recording (the hint
+    // swaps to the shorter "Drawing" on every pen arm) would shift the
+    // buttons under the user's pointer between two clicks.
+    if (sizedSinceShow) {
+      w = Math.max(w, hud!.getBounds().width)
+    }
+    sizedSinceShow = true
     const bounds = hud!.getBounds()
     if (bounds.width === w && bounds.height === h) return
     hud!.setBounds({
@@ -91,6 +102,7 @@ export const createRecorderHudController = ({ htmlPath, preloadPath, onAction }:
   }
 
   const show = (state: RecorderHudState) => {
+    sizedSinceShow = false
     if (alive()) {
       update(state)
       hud!.showInactive()

@@ -85,6 +85,15 @@ RSpec.describe "desktop recording HUD" do
     expect(resize).to match(/Math\.min\(Math\.max\(width, HUD_MIN_WIDTH\), HUD_MAX_WIDTH\)/)
     expect(resize).to include("hud!.setBounds({")
     expect(resize).to include("bounds.x + (bounds.width - w) / 2")
+    # After the first content-fit of each show(), the width only grows —
+    # shrinking mid-recording would shift the buttons under the pointer.
+    expect(resize).to match(/if \(sizedSinceShow\) \{[\s\S]{0,120}Math\.max\(w, hud!\.getBounds\(\)\.width\)/)
+    expect(controller).to include("sizedSinceShow = false")
+
+    html = read("assets/recorderHud.html")
+    # The pen button's accessible name is pushed localized like every other
+    # HUD string; the hardcoded text is only the fallback.
+    expect(html).to include('$("pen").setAttribute("aria-label", current.penLabel || "Toggle drawing")')
     expect(resize).to include("bounds.y + (bounds.height - h)")
   end
 

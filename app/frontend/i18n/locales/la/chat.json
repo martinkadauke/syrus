@@ -147,6 +147,7 @@
   "walkthrough_state_failed": "Defecit",
   "walkthrough_state_uploaded": "Imposita",
   "walkthrough_stop": "Siste & adiunge",
+  "walkthrough_hud_pen": "Stilum vertere",
   "walkthrough_too_large": "Hoc video maius quam 500 MB est. Praecide aut minore resolutione memora.",
   "walkthrough_too_long": "Hoc video {{actual}} longum est — perambulationes ad {{limit}} finiuntur ut analysis celeris gratuitaque maneat.",
   "walkthrough_uploading": "Sursum fertur {{percent}}%",

@@ -44,7 +44,13 @@ export type HoldHookFailureReason = "no-module" | "no-accessibility" | "start-fa
 export const HOLD_TO_DRAW_LOG_BASENAME = "hold-to-draw.log"
 
 const logHoldToDrawFailure = (message: string, error?: unknown) => {
-  const detail = error instanceof Error ? error.message : error ? String(error) : ""
+  let detail = ""
+  try {
+    detail = error instanceof Error ? error.message : error ? String(error) : ""
+  } catch {
+    // a throwing toString/Symbol.toPrimitive must not escape the logger
+    detail = "(unprintable error)"
+  }
   const line = `[hold-to-draw] ${message}${detail ? ` — ${detail}` : ""}`
   try {
     console.warn(line)

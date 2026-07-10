@@ -114,7 +114,9 @@ RSpec.describe "desktop annotation overlay" do
       # The accelerator flips armed state: tap arms, tap again releases. The
       # NEW behavior is that draw mode also auto-releases on idle, so the tap is
       # a shortcut in, not a persistent on/off the user must remember to undo.
-      expect(overlay).to include("const toggleArm = () => setArmed(!armed)")
+      # (Guarded: a fading overlay — disable() ran, destroy scheduled — is not
+      # armable; see the dedicated fade-guard example.)
+      expect(overlay).to match(/const toggleArm = \(\) => \{[\s\S]{0,300}setArmed\(!armed\)/)
     end
 
     it "reports unavailable when the tap accelerator is already owned" do
@@ -151,7 +153,9 @@ RSpec.describe "desktop annotation overlay" do
       # Mode is set to hold BEFORE starting the hook so its arm/release don't
       # start the tap auto-release watchers.
       expect(enable).to match(/mode = "hold"\n\s*const holdStart = holdHookFactory\(\{/)
-      expect(enable).to include("onHold: () => setArmed(true)")
+      # A physical Ctrl hold takes ownership from a pen-armed session: the tap
+      # watchers stand down so the idle poll / cap can't release mid-hold.
+      expect(enable).to match(/onHold: \(\) => \{[\s\S]{0,400}stopArmWatch\(\)[\s\S]{0,80}setArmed\(true\)/)
       expect(enable).to include("onRelease: () => setArmed(false)")
       # A live hook short-circuits before the tap shortcut is registered.
       expect(enable).to match(/if \(holdHook\)[\s\S]{0,160}return \{ available: true, hold: true \}/)
@@ -169,7 +173,7 @@ RSpec.describe "desktop annotation overlay" do
       # The retry disarms any tap-mode arm FIRST (the release path depends on
       # the current mode), then swaps the hook + mode and drops the now-unneeded
       # tap accelerator.
-      upgrade = enable[/setArmed\(false\)\n\s*const upgrade = holdHookFactory[\s\S]{0,900}/]
+      upgrade = enable[/setArmed\(false\)\n\s*const upgrade = holdHookFactory[\s\S]{0,1600}/]
       expect(upgrade).to include("stopHoldHook()")
       expect(upgrade).to match(/holdHook = upgrade\.hook[\s\S]{0,40}mode = "hold"/)
       expect(upgrade).to include("globalShortcut.unregister(ANNOTATION_SHORTCUT)")
@@ -354,11 +358,22 @@ RSpec.describe "desktop annotation overlay" do
       expect(poll).to match(/armGeneration !== generation/)
     end
 
-    it "force-releases at the hard max-armed cap so it can never get stuck armed" do
-      # Independent of activity: after MAX_ARMED_MS the overlay releases no matter
-      # what, even if the idle poll wedges or the renderer stops reporting.
-      start = overlay[/const startArmWatch[\s\S]{0,400}/]
-      expect(start).to match(/setTimeout\(\(\) => setArmed\(false\), MAX_ARMED_MS\)/)
+    it "force-releases at the max-armed cap without cutting an in-flight stroke" do
+      # After MAX_ARMED_MS the overlay releases — but a stroke in progress gets
+      # grace re-checks until it ends, bounded by the absolute
+      # MAX_ARMED_HARD_MS ceiling (a wedged renderer never keeps the screen
+      # captured).
+      start = overlay[/const startArmWatch[\s\S]{0,1600}/]
+      expect(start).to match(/setTimeout\(releaseAtCap, MAX_ARMED_MS\)/)
+      expect(start).to include("MAX_ARMED_HARD_MS")
+      expect(start).to match(/snap\?\.active[\s\S]{0,120}setTimeout\(releaseAtCap, MAX_ARMED_GRACE_MS\)/)
+    end
+
+    it "refuses to arm a fading overlay (disable ran; destroy scheduled)" do
+      toggle_arm = overlay[/const toggleArm = \(\) => \{[\s\S]{0,300}?\n  \}/]
+      expect(toggle_arm).to include("if (teardownTimer) return")
+      toggle_draw = overlay[/const toggleDraw = \(\) => \{[\s\S]{0,500}?\n  \}/]
+      expect(toggle_draw).to include("if (teardownTimer) return")
     end
 
     it "kills both auto-release watchers on every release / teardown path" do

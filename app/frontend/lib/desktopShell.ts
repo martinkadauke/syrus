@@ -112,6 +112,7 @@ export type SyrusRecorderHudState = {
   hint?: string
   drawing?: boolean
   stopLabel?: string
+  penLabel?: string
   discardLabel?: string
 }
 

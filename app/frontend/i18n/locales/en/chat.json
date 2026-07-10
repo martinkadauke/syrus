@@ -147,6 +147,7 @@
   "walkthrough_state_failed": "Failed",
   "walkthrough_state_uploaded": "Uploaded",
   "walkthrough_stop": "Stop & attach",
+  "walkthrough_hud_pen": "Toggle drawing",
   "walkthrough_too_large": "That video is over 500 MB. Trim it or record at a lower resolution.",
   "walkthrough_too_long": "That video is {{actual}} long — walkthroughs are capped at {{limit}} so the analysis stays fast and free-tier friendly.",
   "walkthrough_uploading": "Uploading {{percent}}%",
