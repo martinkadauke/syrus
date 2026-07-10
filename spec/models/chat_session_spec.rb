@@ -86,6 +86,7 @@ RSpec.describe ChatSession do
     expect(session.errors[:local_daemon_state]).to be_present
   end
 
+
   it "resolves chat provider from the session, user chat provider, then user agent provider" do
     inherited = described_class.new(user: Factories.user(agent_provider: "codex"))
     user_override = described_class.new(user: Factories.user(agent_provider: "codex", chat_provider: "claude"))

@@ -39,3 +39,8 @@ features:
     name: "Local Mode"
     description: "Enables the Local chat mode, where the agent connects to a daemon running on the user's local machine via a reverse WebSocket tunnel."
     default: false
+  - slug: local_mode
+    category: "Labs"
+    name: "Local Mode"
+    description: "Enables the Local chat mode, where the agent connects to a daemon running on the user's local machine via a reverse WebSocket tunnel."
+    default: false
