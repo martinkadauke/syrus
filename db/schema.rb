@@ -598,11 +598,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_001541) do
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
     t.datetime "last_seen_fork_review_comment_at"
-<<<<<<< HEAD
     t.integer "linked_chat_id"
-=======
-    t.bigint "linked_chat_id"
->>>>>>> fff017b0 (Syrus implement step (will be rewritten by summarize))
     t.string "local_mergeability_base_sha"
     t.datetime "local_mergeability_checked_at"
     t.string "local_mergeability_head_sha"
