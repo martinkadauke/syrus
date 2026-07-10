@@ -59,6 +59,12 @@ RSpec.describe Feature, type: :model do
   end
 
   describe "declarations" do
+    it "declares the chat_polish UI-experiment flag default-off in config/features.yml" do
+      declaration = YAML.load_file(Rails.root.join("config/features.yml")).fetch("features")
+                        .find { |f| f["slug"] == "chat_polish" }
+      expect(declaration).to include("category" => "UI Experiments", "default" => false)
+    end
+
     it "declares the video_walkthroughs labs flag default-off in config/features.yml" do
       declaration = YAML.load_file(Rails.root.join("config/features.yml")).fetch("features")
                         .find { |f| f["slug"] == "video_walkthroughs" }

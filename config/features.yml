@@ -14,6 +14,11 @@ features:
     name: "Terminal"
     description: "Enables the interactive terminal experience."
     default: false
+  - slug: chat_polish
+    category: "UI Experiments"
+    name: "Chat polish"
+    description: "Subtle chat animations: new messages fade in, the new-messages jump scrolls smoothly. Motion-safe (respects reduced-motion). Introduced in PR #1655."
+    default: false
   - slug: video_walkthroughs
     category: "Labs"
     name: "Walkthrough videos"

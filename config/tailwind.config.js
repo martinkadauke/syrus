@@ -33,6 +33,17 @@ module.exports = {
       colors: {
         terracotta,
         blue: terracotta
+      },
+      // chat_polish: new chat messages ease in. Guarded by motion-safe: at the
+      // call site so reduced-motion users never see it.
+      keyframes: {
+        "chat-message-in": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "translateY(0)" }
+        }
+      },
+      animation: {
+        "chat-message-in": "chat-message-in 0.25s ease-out both"
       }
     }
   }
