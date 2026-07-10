@@ -19,13 +19,22 @@ export type RecorderHudController = {
   isVisible: () => boolean
 }
 
+// The HUD window is sized to its CONTENT: the renderer measures the panel
+// after every update (locales differ wildly in hint length) and asks for a
+// resize. Clamped so a compromised HUD renderer can't request an absurd
+// always-on-top window.
+export const HUD_MIN_WIDTH = 120
+export const HUD_MAX_WIDTH = 1600
+export const HUD_MIN_HEIGHT = 40
+export const HUD_MAX_HEIGHT = 240
+
 type Options = {
   // Absolute path to assets/recorderHud.html (resolved by the caller).
   htmlPath: string
   // Absolute path to the compiled recorderHudPreload.cjs.
   preloadPath: string
-  // Invoked when the user clicks Stop / Discard on the HUD.
-  onAction: (kind: "stop" | "discard") => void
+  // Invoked when the user clicks Stop / Discard / the pen toggle on the HUD.
+  onAction: (kind: "stop" | "discard" | "pen") => void
 }
 
 export const createRecorderHudController = ({ htmlPath, preloadPath, onAction }: Options): RecorderHudController => {
@@ -33,10 +42,35 @@ export const createRecorderHudController = ({ htmlPath, preloadPath, onAction }:
   const alive = () => hud !== null && !hud.isDestroyed()
 
   // Forward HUD button clicks to the recorder, but ONLY from our own HUD
-  // window's webContents so a stray renderer can't drive Stop/Discard.
+  // window's webContents so a stray renderer can't drive Stop/Discard (or arm
+  // the pen).
   ipcMain.on("recorderHud:action", (event, kind) => {
     if (!alive() || event.sender !== hud!.webContents) return
-    if (kind === "stop" || kind === "discard") onAction(kind)
+    if (kind === "stop" || kind === "discard" || kind === "pen") onAction(kind)
+  })
+
+  // Fit the window to the measured panel. Same sender guard as actions. The
+  // resize keeps the panel anchored where the user parked it: hold the
+  // horizontal CENTER and the BOTTOM edge (it lives above the Dock/taskbar)
+  // while the width tracks the content, so a hint change never walks the HUD
+  // across the screen.
+  ipcMain.on("recorderHud:resize", (event, size) => {
+    if (!alive() || event.sender !== hud!.webContents) return
+    const requested = (size ?? {}) as { width?: unknown; height?: unknown }
+    const width = Math.round(Number(requested.width))
+    const height = Math.round(Number(requested.height))
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return
+
+    const w = Math.min(Math.max(width, HUD_MIN_WIDTH), HUD_MAX_WIDTH)
+    const h = Math.min(Math.max(height, HUD_MIN_HEIGHT), HUD_MAX_HEIGHT)
+    const bounds = hud!.getBounds()
+    if (bounds.width === w && bounds.height === h) return
+    hud!.setBounds({
+      x: Math.round(bounds.x + (bounds.width - w) / 2),
+      y: Math.round(bounds.y + (bounds.height - h)),
+      width: w,
+      height: h
+    })
   })
 
   // Park the pill at the bottom-center of the display the cursor is on, above
@@ -64,6 +98,8 @@ export const createRecorderHudController = ({ htmlPath, preloadPath, onAction }:
     }
 
     hud = new BrowserWindow({
+      // Placeholder until the renderer measures its panel and requests a
+      // content-fitting size over recorderHud:resize.
       width: 480,
       height: 88,
       frame: false,

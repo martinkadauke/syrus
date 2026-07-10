@@ -540,10 +540,10 @@ describe("WalkthroughRecorderHUD", () => {
     expect(screen.queryByTestId("walkthrough-annotate-surface-note")).not.toBeInTheDocument()
   })
 
-  it("shows the tap-to-draw hint when annotation is available and idle", () => {
+  it("shows a QUIET idle hint — muted text beside a tiny gray dot, never red", () => {
     render(
       <WalkthroughRecorderHUD
-        annotation={{ hint: "Draw on screen — tap ⌘⇧A", drawingHint: "Drawing — auto-exits when you pause · Esc", drawing: false }}
+        annotation={{ hint: "⌘⇧A to draw", drawingHint: "Drawing · Esc", drawing: false }}
         elapsed={0}
         labels={hudLabels}
         micLive
@@ -552,15 +552,20 @@ describe("WalkthroughRecorderHUD", () => {
       />
     )
     const hint = screen.getByTestId("walkthrough-annotate-hint")
-    expect(hint).toHaveTextContent("Draw on screen — tap ⌘⇧A")
-    // Idle hint is de-emphasized (muted, sm:inline only), not the active red.
+    expect(hint).toHaveTextContent("⌘⇧A to draw")
+    // The redesigned hint stays neutral in BOTH states — no red text, no bold.
     expect(hint.className).not.toContain("text-red-600")
+    expect(hint.className).not.toContain("font-semibold")
+    expect(hint.className).toContain("text-gray-500")
+    // Idle keeps the small-screen gate; the status dot is gray while idle.
+    expect(hint.className).toContain("hidden sm:inline-flex")
+    expect(screen.getByTestId("walkthrough-annotate-dot").className).toContain("bg-gray-400")
   })
 
-  it("swaps to the emphasized auto-exit hint while the pen is armed", () => {
+  it("flips only the dot to red (and stays visible) while the pen is armed", () => {
     render(
       <WalkthroughRecorderHUD
-        annotation={{ hint: "Draw on screen — tap ⌘⇧A", drawingHint: "Drawing — auto-exits when you pause · Esc", drawing: true }}
+        annotation={{ hint: "⌘⇧A to draw", drawingHint: "Drawing · Esc", drawing: true }}
         elapsed={0}
         labels={hudLabels}
         micLive
@@ -569,9 +574,45 @@ describe("WalkthroughRecorderHUD", () => {
       />
     )
     const hint = screen.getByTestId("walkthrough-annotate-hint")
-    // The armed hint describes the pause-to-auto-exit behavior, not a toggle-off.
-    expect(hint).toHaveTextContent("Drawing — auto-exits when you pause · Esc")
-    expect(hint.className).toContain("text-red-600")
+    expect(hint).toHaveTextContent("Drawing · Esc")
+    // Subtle by design: the DRAWING state is a small red dot, not shouting
+    // red bold text (the old design overwhelmed the HUD).
+    expect(hint.className).not.toContain("text-red-600")
+    expect(hint.className).not.toContain("font-semibold")
+    expect(screen.getByTestId("walkthrough-annotate-dot").className).toContain("bg-red-600")
+    // While drawing the status is always visible, not gated behind sm:.
+    expect(hint.className).toContain("inline-flex")
+    expect(hint.className).not.toContain("hidden")
+  })
+
+  it("shows the System Settings guidance only when an accessibility note is supplied", () => {
+    const annotation = { hint: "⌘⇧A to draw", drawingHint: "Drawing · Esc", drawing: false }
+    const { unmount } = render(
+      <WalkthroughRecorderHUD
+        annotation={{ ...annotation, accessibilityNote: "Allow Syrus under System Settings → Privacy & Security → Accessibility" }}
+        elapsed={0}
+        labels={hudLabels}
+        micLive
+        onDiscard={() => {}}
+        onStop={() => {}}
+      />
+    )
+    expect(screen.getByTestId("walkthrough-annotate-accessibility-note")).toHaveTextContent(
+      "System Settings → Privacy & Security → Accessibility"
+    )
+    unmount()
+
+    render(
+      <WalkthroughRecorderHUD
+        annotation={annotation}
+        elapsed={0}
+        labels={hudLabels}
+        micLive
+        onDiscard={() => {}}
+        onStop={() => {}}
+      />
+    )
+    expect(screen.queryByTestId("walkthrough-annotate-accessibility-note")).not.toBeInTheDocument()
   })
 
   it("shows the capture-surface note only when one is supplied", () => {

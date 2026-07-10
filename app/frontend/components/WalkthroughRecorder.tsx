@@ -505,17 +505,19 @@ export function AnalyzingHint({
 }
 
 // The red-pen affordance rendered inside the HUD when the desktop shell offers
-// annotation. `hint` is the click-through prompt that tapping the shortcut arms
-// the pen ("✏️ Draw on screen — tap ⌘⇧A"); while the pen is armed it swaps to
-// `drawingHint` (which describes the pause-to-auto-exit behavior) and
-// emphasizes. `drawing` is pushed from the shell's onModeChanged, so it flips
-// back to `hint` automatically when draw mode auto-releases. `surfaceNote`, when
-// present, warns that marks only show when sharing the whole screen.
+// annotation: a deliberately QUIET status — a tiny dot (gray while idle, red
+// while drawing) beside a short muted hint ("Hold ⌃ to draw" / "Drawing").
+// `drawing` is pushed from the shell's onModeChanged, so it flips back to
+// `hint` automatically when draw mode releases. `surfaceNote`, when present,
+// warns that marks only show when sharing the whole screen; `accessibilityNote`
+// (macOS, hold hook blocked by the Accessibility permission) tells the user
+// where in System Settings to grant it — the tap shortcut works meanwhile.
 export type WalkthroughAnnotationHud = {
   hint: string
   drawingHint: string
   drawing: boolean
   surfaceNote?: string
+  accessibilityNote?: string
 }
 
 // The floating HUD while recording: pulsing dot, elapsed clock, remaining
@@ -569,13 +571,18 @@ export function WalkthroughRecorderHUD({
         ) : null}
         {annotation ? (
           <span
-            className={
-              annotation.drawing
-                ? "text-xs font-semibold text-red-600 dark:text-red-400"
-                : "hidden text-xs text-gray-500 sm:inline dark:text-gray-400"
-            }
+            className={`items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400 ${
+              annotation.drawing ? "inline-flex" : "hidden sm:inline-flex"
+            }`}
             data-testid="walkthrough-annotate-hint"
           >
+            <span
+              aria-hidden="true"
+              className={`inline-block h-1.5 w-1.5 flex-none rounded-full ${
+                annotation.drawing ? "bg-red-600" : "bg-gray-400 dark:bg-gray-500"
+              }`}
+              data-testid="walkthrough-annotate-dot"
+            />
             {annotation.drawing ? annotation.drawingHint : annotation.hint}
           </span>
         ) : null}
@@ -605,6 +612,14 @@ export function WalkthroughRecorderHUD({
           data-testid="walkthrough-annotate-surface-note"
         >
           {annotation.surfaceNote}
+        </span>
+      ) : null}
+      {annotation?.accessibilityNote ? (
+        <span
+          className="rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+          data-testid="walkthrough-annotate-accessibility-note"
+        >
+          {annotation.accessibilityNote}
         </span>
       ) : null}
     </div>
