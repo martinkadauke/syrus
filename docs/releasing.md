@@ -115,6 +115,53 @@ the static site under `website/src/` has no in-repo build/host target yet — bu
 whenever one lands, it lands in that one workflow and all three entry points get
 it at once.)
 
+## Test releases
+
+**Actions → "Test release" → Run workflow** (pick the branch), or from a
+terminal:
+
+```
+gh workflow run test-release.yml --ref <branch>
+```
+
+A test release ([`.github/workflows/test-release.yml`](../.github/workflows/test-release.yml))
+deterministically builds **every** shippable component from any ref — including
+a feature branch — without publishing anything:
+
+- **Backend image** — built natively per arch (same no-QEMU matrix as the
+  release), integration-tested with `bin/test-docker`, and **pushed to GHCR**
+  as `ghcr.io/tkadauke/syrus-backend:test-<short-sha>`. The tag shape is
+  guarded (`test-` prefix, never `latest`, never semver), so a test image can
+  never collide with or shadow a release tag. `:latest` is never touched.
+- **Desktop apps** — a **signed + notarized** macOS DMG and (unless you
+  uncheck `build_windows`) an **Azure-signed** Windows installer, versioned
+  `X.Y.Z-test.<run-number>` (the next patch over the newest release tag) so a
+  test build can never be mistaken for — or auto-update onto — a release. Both
+  installers pin the `test-<short-sha>` image in their `manifest.json`, and
+  they build only **after** that tag verifiably exists on GHCR, so a
+  downloaded test installer actually installs end-to-end.
+
+The built installers land as **workflow-run artifacts** — `test-staged-mac`
+(the versioned `.dmg`) and `test-staged-windows` (the versioned Setup `.exe`)
+on the run's Summary page, kept for **14 days**. They are deliberately **not**
+attached to a GitHub Release and carry no stable-name aliases (`Syrus.dmg` /
+`Syrus-Setup.exe` are the website permalinks — releases only) and no
+auto-update feed files: the workflow runs with `contents: read` permissions,
+so creating a tag or Release is structurally impossible.
+
+| Input | Meaning |
+| --- | --- |
+| `run_integration_tests` | Run `bin/test-docker` against each built arch before pushing (default on). Uncheck for a faster untested image. |
+| `build_windows` | Also build + sign the Windows installer (default on). |
+
+**Test release vs. `dry_run`:** a dry-run *release* is a rehearsal — it builds
+and signs everything but pushes **nothing**, so its installers pin an image
+tag that never exists. A *test release* always pushes the test-tagged image,
+so its artifacts are actually usable: install the DMG, and the app pulls and
+runs the exact backend built from your branch. Use `dry_run` to validate the
+release pipeline itself; use a test release to hand someone a working build of
+unmerged work.
+
 ## Versioning convention
 
 Semantic versioning, **tag-driven**. The git tag is the source of truth; the
