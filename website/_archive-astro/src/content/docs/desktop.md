@@ -54,16 +54,6 @@ instances.)
 - **The full Syrus web app in a native window.** Jobs, Epics, chats,
   repositories, insights — everything. External links (GitHub PRs,
   issues) open in your default browser.
-- **Draw on your screen while recording a walkthrough.** When you record a
-  [walkthrough video](/docs/features) in the desktop app, **hold Control** to
-  draw a red pen — circle or point at problems on screen, and release to stop.
-  The marks appear in the recording (and fade after a couple of seconds) so the
-  analysis sees exactly what you're describing. The desktop app records your
-  whole screen and your narration automatically, and the recording controls
-  float in a small window you can drag out of the way. On macOS, hold-to-draw
-  asks once for Accessibility permission; if you decline, tap **⌘⇧A** to toggle
-  the pen instead. This is a desktop-only convenience — browser recordings are
-  unaffected.
 - **The menu-bar inbox.** Implemented and failed Jobs, notifications with
   badge counts, approve/retry/feedback actions, and a compose shortcut —
   one keyboard shortcut away. "Open in Syrus" actions focus the app
