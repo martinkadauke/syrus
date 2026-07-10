@@ -53,18 +53,19 @@ points) and `lib/legal.ts` (Impressum + privacy). Pages are under `app/`.
 
 ## Information Architecture
 
-The site surfaces three content kinds: marketing pages (what, why, proof),
-documentation (deployment, configuration, API), and legal.
+The current static site is intentionally small:
 
-Key pages and docs (source-of-truth markdown under `src/`):
-
-| Page | Path | Purpose |
+| Page/section | Path | Purpose |
 | --- | --- | --- |
-| What is Syrus? | `src/pages/what-is-syrus.md` | Product positioning |
-| Why use Syrus? | `src/pages/why-use-syrus.md` | Adoption rationale and fit check |
-| Getting Started | `src/content/docs/getting-started.md` | First deployment walkthrough |
-| Troubleshooting | `src/content/docs/troubleshooting.md` | Common failure modes |
+| Home | `app/page.tsx` | Marketing landing page assembled from hero, workflow, feature, entry-point, and demo sections |
+| Download | `app/download/page.tsx` | Desktop and CLI release downloads |
+| Request a demo | `components/demo.tsx` | Demo/contact form with mailto fallback |
+| Product copy | `lib/site.ts` | Source of truth for hero copy, workflow steps, feature pillars, and entry points |
+
+Copy lives in `lib/site.ts`. Prefer updating that shared copy over scattering
+parallel wording through components.
 
 **Convention: A feature is not done if the user-facing page that explains it is stale.**
 Every PR that adds or changes product behavior should update the relevant page
-under `src/` or say explicitly in the PR body why no update is needed.
+or shared copy in `website/`, or say explicitly in the PR body why no update is
+needed.

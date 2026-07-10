@@ -3,34 +3,38 @@
 require "spec_helper"
 
 RSpec.describe "website product positioning pages" do
-  let(:pages_root) { File.expand_path("../../website/src/pages", __dir__) }
-  let(:home) { File.read(File.join(pages_root, "index.md")) }
-  let(:what_is_syrus) { File.read(File.join(pages_root, "what-is-syrus.md")) }
-  let(:why_use_syrus) { File.read(File.join(pages_root, "why-use-syrus.md")) }
-  let(:normalized_what_is_syrus) { what_is_syrus.gsub(/\s+/, " ") }
-  let(:normalized_why_use_syrus) { why_use_syrus.gsub(/\s+/, " ") }
+  def read_website(path)
+    File.read(File.expand_path("../../website/#{path}", __dir__))
+  end
 
-  it "links the explanatory pages from the home page" do
-    expect(home).to include("[What is Syrus?](/what-is-syrus)")
-    expect(home).to include("[Why use Syrus?](/why-use-syrus)")
+  let(:site_copy) { read_website("lib/site.ts") }
+  let(:demo) { read_website("components/demo.tsx") }
+  let(:download_page) { read_website("app/download/page.tsx") }
+  let(:normalized_copy) { site_copy.gsub(/\s+/, " ") }
+
+  it "links the explanatory sections from the home navigation" do
+    nav = read_website("components/nav.tsx")
+
+    expect(nav).to include("How it works")
+    expect(nav).to include("/#how")
+    expect(nav).to include("Why Syrus")
+    expect(nav).to include("/#features")
   end
 
   it "explains what Syrus is using current product terminology" do
-    expect(what_is_syrus).to include("title: What is Syrus?")
-    expect(normalized_what_is_syrus).to include("self-hosted automation harness for agentic coding work")
-    expect(normalized_what_is_syrus).to include("turns GitHub issues, PR feedback, scheduled tasks, retries, and rebases into controlled agent runs")
-    expect(normalized_what_is_syrus).to include("A **Job** is the long-lived thread of work.")
-    expect(normalized_what_is_syrus).to include("A **Workflow** is one attempt to move that Job forward.")
-    expect(normalized_what_is_syrus).to include("A **Step** is one stage in the Workflow")
-    expect(normalized_what_is_syrus).to include("A **Run** is one execution attempt for a Step")
+    expect(normalized_copy).to include("epics and tickets")
+    expect(normalized_copy).to include("Jobs")
+    expect(normalized_copy).to include("tracked job")
+    expect(normalized_copy).to include("pull request")
+    expect(normalized_copy).to include("landing queue")
+    expect(normalized_copy).to include("full transcript, diff, and review")
   end
 
   it "helps visitors decide whether Syrus fits their workflow" do
-    expect(why_use_syrus).to include("title: Why use Syrus?")
-    expect(normalized_why_use_syrus).to include("If those are not your problems, Syrus may be more machinery than you need.")
-    expect(normalized_why_use_syrus).to include("Syrus is strongest for bounded GitHub work")
-    expect(normalized_why_use_syrus).to include("Syrus may not fit if:")
-    expect(normalized_why_use_syrus).to include("you only want interactive local coding help")
-    expect(normalized_why_use_syrus).to include("your team does not use GitHub issues and pull requests as the workflow")
+    expect(normalized_copy).to include("Self-hosted on your infrastructure")
+    expect(normalized_copy).to include("GitHub")
+    expect(normalized_copy).to include("Claude or Codex")
+    expect(demo).to include("Request a demo")
+    expect(download_page).to include("Download Syrus")
   end
 end

@@ -10,22 +10,28 @@ RSpec.describe "website content coverage" do
   it "keeps the public docs navigation contract in the website README" do
     readme = read_website("README.md")
 
+    expect(readme).to include("Next.js 15")
     expect(readme).to include("Information Architecture")
-    expect(readme).to include("What is Syrus?")
-    expect(readme).to include("Why use Syrus?")
-    expect(readme).to include("Getting Started")
-    expect(readme).to include("Troubleshooting")
+    expect(readme).to include("Home")
+    expect(readme).to include("Download")
+    expect(readme).to include("Request a demo")
+    expect(readme).to include("Copy lives in `lib/site.ts`")
     expect(readme).to include("A feature is not done if the user-facing page that explains it is stale")
   end
 
-  it "has product pages for the basic visitor questions" do
+  it "has current Next.js surfaces for the basic visitor questions" do
     pages = {
-      "src/pages/index.md" => ["The Loop", "Start Small", "Label GitHub issues"],
-      "src/content/docs/index.md" => ["Start Here", "Product Manual", "Operating Syrus"],
-      "src/content/docs/what-is-syrus.md" => ["The 30-Second Version", "What Syrus Owns", "The Core Terms"],
-      "src/content/docs/why-use-syrus.md" => ["Own The Keys", "Keep GitHub As The Workflow", "Good Fits"],
-      "src/content/docs/features.md" => ["Epics", "Chats", "GitHub App And PAT Behavior"],
-      "src/content/docs/getting-started.md" => ["First Successful Run", "Create the first admin", "Review the PR"]
+      "app/page.tsx" => ["<Hero", "<TeamWorkflow", "<Features", "<EntryPoints", "<Demo"],
+      "app/download/page.tsx" => ["Download Syrus", "macOS", "Windows", "CLI"],
+      "lib/site.ts" => [
+        "Ship more of your roadmap.",
+        "Proposes epics & tickets",
+        "Multiply your output",
+        "Approve it — it lands itself",
+        "Issue or ticket",
+        "Scheduled task"
+      ],
+      "components/nav.tsx" => ["How it works", "Why Syrus", "Entry points", "Request a demo"]
     }
 
     pages.each do |path, expected_sections|

@@ -278,7 +278,8 @@ RSpec.describe "install.sh GUI interface" do
           write_curl_stub(stub_dir)
           out, _err, status = run_install(
             "--docker", "--json", "--non-interactive", "--skip-runtime-install",
-            "--target-dir", target, "--image", "ghcr.io/example/syrus-backend:dev-abc", stub_dir: stub_dir
+            "--target-dir", target, "--port", "3999",
+            "--image", "ghcr.io/example/syrus-backend:dev-abc", stub_dir: stub_dir
           )
 
           expect(status.exitstatus).to eq(0)
@@ -365,7 +366,8 @@ RSpec.describe "install.sh GUI interface" do
           write_curl_stub(stub_dir)
           out, _err, status = run_install(
             "--docker", "--json", "--non-interactive", "--skip-runtime-install",
-            "--target-dir", target, "--image", "ghcr.io/example/syrus-backend:dev-abc", stub_dir: stub_dir
+            "--target-dir", target, "--port", "3999",
+            "--image", "ghcr.io/example/syrus-backend:dev-abc", stub_dir: stub_dir
           )
 
           # Attempts 1–2 fail on network, attempt 3 is denied → logout →
@@ -456,7 +458,8 @@ RSpec.describe "install.sh GUI interface" do
             pull_error: "denied: requested access to the resource is denied")
           out, _err, status = run_install(
             "--docker", "--json", "--non-interactive", "--skip-runtime-install",
-            "--target-dir", target, "--image", "ghcr.io/example/syrus-backend:dev-abc", stub_dir: stub_dir
+            "--target-dir", target, "--port", "3999",
+            "--image", "ghcr.io/example/syrus-backend:dev-abc", stub_dir: stub_dir
           )
 
           # The local copy is adopted and the run proceeds to the health poll

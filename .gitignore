@@ -18,6 +18,7 @@
 !.bundle/
 !.bundle/config
 vendor/bundle/
+.syrus/
 node_modules/
 desktop/dist/
 desktop/dist-electron/
