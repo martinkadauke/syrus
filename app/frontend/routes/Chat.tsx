@@ -2063,7 +2063,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
     }
   })
   const stash = useMutation({
-    mutationFn: () => createScratchpadItem(chatId, text),
+    mutationFn: (content?: string) => createScratchpadItem(chatId, content ?? text),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
       setText("")
@@ -2319,6 +2319,17 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
 
     if (command.name === "/share") {
       systemAction.mutate({ kind: "share" })
+      return
+    }
+
+    if (command.name === "/scratch") {
+      if (argsText) {
+        stash.mutate(argsText, { onSuccess: () => onNotice("Stashed to scratch pad") })
+      } else {
+        setScratchpadOpen(true)
+        setText("")
+        onNotice(null)
+      }
       return
     }
 
@@ -3230,6 +3241,22 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
           <button aria-label={agentActive ? t("enqueue_message") : t("send_message")} className={`${primaryButton()} inline-flex items-center justify-center`} disabled={send.isPending || systemAction.isPending || systemCommandAction.isPending || (text.trim().length === 0 && walkthrough?.status !== "ready" && attachments.length === 0) || pendingConfirmation != null || attachmentError != null} type="submit">
             {agentActive ? <EnqueueIcon className="h-4 w-4" /> : <SendIcon className="h-4 w-4" />}
           </button>
+          {agentActive && text.trim().length > 0 ? (
+            <button
+              aria-label={t("scratchpad_stash")}
+              className="inline-flex h-9 items-center justify-center rounded border border-gray-300 bg-white px-2.5 text-gray-600 hover:bg-gray-50 disabled:text-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-300 dark:hover:bg-gray-800 dark:disabled:text-gray-600"
+              disabled={stash.isPending}
+              onClick={() => stash.mutate(undefined)}
+              title={t("scratchpad_stash")}
+              type="button"
+            >
+              <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                <rect height="4" rx="1" width="6" x="9" y="3" />
+                <path d="M9 12h6M9 16h4" />
+              </svg>
+            </button>
+          ) : null}
           {agentActive && !payload.switching_provider ? <StopButton payload={payload} queryKey={queryKey} /> : null}
         </div>
       </div>
