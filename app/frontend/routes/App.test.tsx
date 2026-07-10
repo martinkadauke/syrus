@@ -10688,7 +10688,7 @@ describe("App", () => {
 
   it("renders a chat attachment add button in the composer", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(chatPayload()), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify({ ...chatPayload(), walkthroughs_enabled: true }), { status: 200, headers: { "Content-Type": "application/json" } })
     )
 
     render(
@@ -10706,11 +10706,42 @@ describe("App", () => {
     expect(screen.getByLabelText("Chat attachments")).toHaveAttribute("accept", "image/*,application/pdf,video/webm,video/mp4,video/quicktime")
   })
 
+  it("gates video intake behind the walkthroughs labs flag", async () => {
+    // chatPayload() carries no walkthroughs_enabled — the flag-off default.
+    vi.spyOn(window, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ ...chatPayload(), gemini_configured: true }), { status: 200, headers: { "Content-Type": "application/json" } })
+    )
+
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={["/app-shell/chats/8"]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    )
+
+    await screen.findByPlaceholderText("Ask about this repository...")
+
+    // No video types offered by the picker, no Record entry in the + menu.
+    expect(screen.getByLabelText("Chat attachments")).toHaveAttribute("accept", "image/*,application/pdf")
+    fireEvent.click(screen.getByRole("button", { name: "Add attachment" }))
+    expect(await screen.findByRole("dialog", { name: "Add attachment" })).toBeInTheDocument()
+    expect(screen.queryByText("Record a walkthrough")).not.toBeInTheDocument()
+
+    // A dropped video does NOT become a walkthrough draft.
+    const form = screen.getByPlaceholderText("Ask about this repository...").closest("form") as HTMLElement
+    const video = new File(["v"], "walkthrough.webm", { type: "video/webm" })
+    fireEvent.drop(form, { dataTransfer: { files: [video] } })
+    await waitFor(() => {
+      expect(screen.queryByTestId("walkthrough-chip")).not.toBeInTheDocument()
+    })
+  })
+
   it("blocks sending a ready walkthrough alongside image attachments", async () => {
     // Gemini must be configured or the drop opens the setup sheet instead of
     // creating a walkthrough draft (chatPayload defaults gemini_configured off).
     const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ ...chatPayload(), gemini_configured: true }), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify({ ...chatPayload(), gemini_configured: true, walkthroughs_enabled: true }), { status: 200, headers: { "Content-Type": "application/json" } })
     )
     // jsdom implements neither media metadata nor URL.createObjectURL, so the
     // real measureVideoDuration would hang the intake await; resolve it here.
@@ -10751,7 +10782,7 @@ describe("App", () => {
 
   it("blocks dropping a second walkthrough while the first is uploading", async () => {
     vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ ...chatPayload(), gemini_configured: true }), { status: 200, headers: { "Content-Type": "application/json" } })
+      new Response(JSON.stringify({ ...chatPayload(), gemini_configured: true, walkthroughs_enabled: true }), { status: 200, headers: { "Content-Type": "application/json" } })
     )
     vi.spyOn(videoWalkthroughs, "measureVideoDuration").mockResolvedValue(30)
     // Hold the upload in-flight so the draft stays "uploading" — a settled

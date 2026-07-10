@@ -305,7 +305,8 @@ function sharedChatRenderPayload(payload: SharedChatPayload): ChatPayload {
       app_switch_provider_path: "",
       app_scratchpad_reorder_path: ""
     },
-    gemini_configured: false
+    gemini_configured: false,
+    walkthroughs_enabled: false
   }
 }
 
@@ -2335,6 +2336,12 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
     file: File,
     options: { knownDuration?: number | null; assumeConfigured?: boolean } = {}
   ) {
+    // Labs flag: every video intake path (drag-in, file picker, recorder)
+    // funnels through here, so one check gates them all.
+    if (!payload.walkthroughs_enabled) {
+      setAttachmentError(t("walkthrough_disabled"))
+      return
+    }
     if (!options.assumeConfigured && !payload.gemini_configured) {
       pendingVideoRef.current = file
       setGeminiSheetOpen(true)
@@ -2377,6 +2384,10 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
 
   function startWalkthroughRecording() {
     setAttachmentPopoverOpen(false)
+    if (!payload.walkthroughs_enabled) {
+      setAttachmentError(t("walkthrough_disabled"))
+      return
+    }
     if (!payload.gemini_configured) {
       setGeminiSheetOpen(true)
       return
@@ -2507,7 +2518,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
 
     // Videos take the walkthrough path (real upload + Gemini analysis) —
     // never the base64 message-attachment path.
-    const video = selectedFiles.find(isWalkthroughVideoFile)
+    const video = payload.walkthroughs_enabled ? selectedFiles.find(isWalkthroughVideoFile) : undefined
     if (video) {
       void intakeWalkthroughVideo(video)
       selectedFiles = selectedFiles.filter((file) => !isWalkthroughVideoFile(file))
@@ -2999,7 +3010,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
       ) : null}
       <div className="flex items-end justify-between gap-3">
         <input
-          accept="image/*,application/pdf,video/webm,video/mp4,video/quicktime"
+          accept={payload.walkthroughs_enabled ? "image/*,application/pdf,video/webm,video/mp4,video/quicktime" : "image/*,application/pdf"}
           aria-label={t("chat_attachments")}
           className="hidden"
           disabled={send.isPending || systemAction.isPending}
@@ -3038,20 +3049,22 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
               <UploadIcon className="h-4 w-4 shrink-0 text-gray-400" />
               {t("upload_file")}
             </button>
-            <button
-              className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-              onClick={startWalkthroughRecording}
-              title={t("record_walkthrough_title")}
-              type="button"
-            >
-              <span aria-hidden="true" className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
-                <span className="h-2.5 w-2.5 rounded-full border-2 border-red-500" />
-              </span>
-              <span className="min-w-0">
-                <span className="block">{t("record_walkthrough")}</span>
-                <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{t("record_walkthrough_hint")}</span>
-              </span>
-            </button>
+            {payload.walkthroughs_enabled ? (
+              <button
+                className="flex w-full items-start gap-2 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                onClick={startWalkthroughRecording}
+                title={t("record_walkthrough_title")}
+                type="button"
+              >
+                <span aria-hidden="true" className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center">
+                  <span className="h-2.5 w-2.5 rounded-full border-2 border-red-500" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block">{t("record_walkthrough")}</span>
+                  <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">{t("record_walkthrough_hint")}</span>
+                </span>
+              </button>
+            ) : null}
             <div className="border-t border-gray-100 dark:border-gray-800" />
             <AddAttachment payload={payload} prefix={prefix} queryKey={queryKey} onAttached={() => setAttachmentPopoverOpen(false)} onNotice={onNotice} />
           </div>

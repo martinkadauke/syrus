@@ -427,6 +427,7 @@ export type ChatPayload = {
     app_scratchpad_reorder_path: string
   }
   gemini_configured: boolean
+  walkthroughs_enabled: boolean
 }
 
 export type ChatMessagesPayload = {

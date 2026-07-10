@@ -1,6 +1,14 @@
 require "rails_helper"
 
 RSpec.describe SyrusChatMcp::Sidecar do
+  before do
+    feature = Feature.find_or_create_by!(slug: "video_walkthroughs") do |record|
+      record.category = "Labs"
+      record.name = "Walkthrough videos"
+    end
+    feature.update!(enabled: true)
+  end
+
   let!(:bootstrap_admin) { Factories.user(admin: true) }
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user) }
@@ -345,6 +353,19 @@ RSpec.describe SyrusChatMcp::Sidecar do
       with_chat_session_env(nil) do
         expect { described_class.new }.to raise_error(KeyError, /SYRUS_CHAT_SESSION_ID/)
       end
+    end
+  end
+
+  describe "walkthrough labs flag" do
+    it "advertises the walkthrough tools only while the feature is enabled" do
+      names = SyrusChatMcp::DeferredSidecar.tool_names(chat_session)
+      expect(names).to include("get_walkthrough_analysis", "analyze_walkthrough_segment", "read_walkthrough_frame")
+
+      Feature.find_by!(slug: "video_walkthroughs").update!(enabled: false)
+
+      names = SyrusChatMcp::DeferredSidecar.tool_names(chat_session)
+      expect(names).not_to include("get_walkthrough_analysis", "analyze_walkthrough_segment", "read_walkthrough_frame")
+      expect(described_class.tool_names(chat_session, tier: :deferred)).not_to include("get_walkthrough_analysis")
     end
   end
 end

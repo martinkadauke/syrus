@@ -179,6 +179,9 @@ class ChatTurnJob < ApplicationJob
   # autonomously toward an Epic. Returns nil for a normal message. If the row
   # vanished, fall through to a normal turn on whatever note was typed.
   def walkthrough_orientation(user_note:)
+    # Labs flag off → historic walkthrough messages read as plain notes; the
+    # agent is not oriented toward tools it can no longer see.
+    return nil unless Feature.video_walkthroughs_enabled?
     return nil unless @user_message.content.is_a?(Hash)
 
     walkthrough_id = @user_message.content["video_walkthrough_id"]

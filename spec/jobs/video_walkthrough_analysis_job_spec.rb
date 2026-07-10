@@ -57,6 +57,14 @@ class FakeGeminiWalkthroughClient
 end
 
 RSpec.describe VideoWalkthroughAnalysisJob do
+  before do
+    feature = Feature.find_or_create_by!(slug: "video_walkthroughs") do |record|
+      record.category = "Labs"
+      record.name = "Walkthrough videos"
+    end
+    feature.update!(enabled: true)
+  end
+
   include ActiveJob::TestHelper
 
   let(:user) { Factories.user(gemini_api_key: "gk-test") }
@@ -281,6 +289,19 @@ RSpec.describe VideoWalkthroughAnalysisJob do
       expect(factory_api_keys).to be_empty
       expect(AppEvents).not_to have_received(:broadcast)
       expect(chat.chat_queued_messages.count).to eq(0)
+    end
+
+    it "fails the walkthrough terminally when the labs flag is off" do
+      walkthrough = create_walkthrough(state: "uploaded")
+      Feature.find_by!(slug: "video_walkthroughs").update!(enabled: false)
+
+      described_class.perform_now(walkthrough.id)
+
+      # Terminal state, not a silent return — the composer chip polls to a
+      # resolution and must not spin forever.
+      expect(walkthrough.reload.state).to eq("failed")
+      expect(walkthrough.error_message).to include("not enabled")
+      expect(factory_api_keys).to be_empty
     end
 
     it "returns without raising for a missing walkthrough id" do

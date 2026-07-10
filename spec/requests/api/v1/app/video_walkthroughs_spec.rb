@@ -30,7 +30,29 @@ RSpec.describe "API: /api/v1/app video walkthroughs", type: :request do
     end
   end
 
+  before do
+    feature = Feature.find_or_create_by!(slug: "video_walkthroughs") do |record|
+      record.category = "Labs"
+      record.name = "Walkthrough videos"
+    end
+    feature.update!(enabled: true)
+  end
+
   before { ActiveJob::Base.queue_adapter.enqueued_jobs.clear }
+
+  it "returns 404 for create and retry when the walkthrough feature is disabled" do
+    sign_in_as(user)
+    walkthrough = create_walkthrough(chat: chat, state: "failed")
+    Feature.find_by!(slug: "video_walkthroughs").update!(enabled: false)
+
+    post "/api/v1/app/chats/#{chat.id}/video_walkthroughs", params: { file: upload_file }
+    expect(response).to have_http_status(:not_found)
+    expect(parse_body.dig("error", "code")).to eq("video_walkthroughs_disabled")
+
+    post "/api/v1/app/video_walkthroughs/#{walkthrough.id}/retry"
+    expect(response).to have_http_status(:not_found)
+    expect(parse_body.dig("error", "code")).to eq("video_walkthroughs_disabled")
+  end
 
   describe "POST /api/v1/app/chats/:chat_id/video_walkthroughs" do
     it "creates the walkthrough, persists the note on the row, and enqueues analysis with just the id" do

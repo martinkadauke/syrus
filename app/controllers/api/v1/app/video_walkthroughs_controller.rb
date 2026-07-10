@@ -8,6 +8,8 @@ module Api
       # row; progress then streams over AppUserChannel
       # (video_walkthrough.analyzing → .analyzed | .failed).
       class VideoWalkthroughsController < BaseController
+        before_action :require_walkthrough_feature
+
         def create
           chat = Current.user.chat_sessions.find(params[:chat_id])
 
@@ -75,6 +77,14 @@ module Api
         end
 
         private
+
+        # Same labs-flag contract as the terminal: a disabled feature's
+        # endpoints answer 404 so they are indistinguishable from absent.
+        def require_walkthrough_feature
+          return if Feature.video_walkthroughs_enabled?
+
+          render_error("video_walkthroughs_disabled", "Walkthrough videos are not enabled.", status: :not_found)
+        end
 
         # The client measures duration (HTMLVideoElement / the recorder
         # clock); the server has no ffmpeg and Gemini decodes the video

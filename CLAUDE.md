@@ -320,7 +320,17 @@ dependencies after Jobs exist.
 Dev and prod use `solid_cable` (NOT `async`) so browser app events work
 across web/worker processes.
 
-**Walkthrough videos (video → Epic)** — chats accept narrated screen
+**Walkthrough videos (video → Epic)** — a labs feature behind the
+`video_walkthroughs` Feature flag (default OFF; declared in
+`config/features.yml`, toggled in the app's Features tab). When the flag is
+off: the composer hides recording/video intake (`payload.walkthroughs_enabled`),
+the upload/retry endpoints 404, `VideoWalkthroughAnalysisJob` fails the row
+terminally, `ChatTurnJob` skips walkthrough orientation, and the three
+walkthrough MCP tools vanish from the sidecar's advertised set
+(`Sidecar::WALKTHROUGH_TOOLS`) — while already-analyzed threads keep their
+history (media panel + message cards render read-only) and
+`VideoWalkthroughPruneJob` keeps enforcing retention. When ON — chats accept
+narrated screen
 recordings (composer `+ → Record a walkthrough`, drag-in, or file picker;
 webm/mp4/mov, ≤15 min, ≤500 MB). `ChatVideoWalkthrough` (Active Storage)
 uploads via multipart `POST /api/v1/app/chats/:chat_id/video_walkthroughs`;

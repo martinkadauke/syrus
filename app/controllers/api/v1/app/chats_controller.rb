@@ -981,7 +981,11 @@ module Api
               app_scratchpad_reorder_path: "/api/v1/app/chats/#{chat_session.id}/scratchpad_items/reorder",
               app_video_walkthroughs_path: "/api/v1/app/chats/#{chat_session.id}/video_walkthroughs"
             },
-            gemini_configured: Current.user.gemini_configured?
+            gemini_configured: Current.user.gemini_configured?,
+            # Labs flag: gates the composer's record/drag/upload intake. The
+            # video_walkthroughs media list stays in the payload regardless so
+            # already-analyzed threads keep their history when the flag is off.
+            walkthroughs_enabled: Feature.video_walkthroughs_enabled?
           }
         end
 

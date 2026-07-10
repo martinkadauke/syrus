@@ -1171,6 +1171,22 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(entry).to include(
       "title" => "Checkout run", "state" => "analyzed", "duration_seconds" => 90, "has_video" => true
     )
+    # Flag off (default in test): composer intake is gated, but history stays.
+    expect(parse_body["walkthroughs_enabled"]).to eq(false)
+  end
+
+  it "reports walkthroughs_enabled true in the chat payload when the labs flag is on" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user)
+    feature = Feature.find_or_create_by!(slug: "video_walkthroughs") do |record|
+      record.category = "Labs"
+      record.name = "Walkthrough videos"
+    end
+    feature.update!(enabled: true)
+
+    get "/api/v1/app/chats/#{chat.id}"
+
+    expect(parse_body["walkthroughs_enabled"]).to eq(true)
   end
 
   it "answers an active agent question" do

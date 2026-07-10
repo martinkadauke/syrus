@@ -128,6 +128,7 @@
   "walkthrough_annotate_surface_note": "Bildschirmzeichnungen erscheinen nur, wenn du den ganzen Bildschirm teilst.",
   "walkthrough_discard": "Verwerfen",
   "walkthrough_failed_generic": "Die Analyse ist fehlgeschlagen.",
+  "walkthrough_disabled": "Walkthrough-Videos sind auf dieser Instanz nicht aktiviert — ein Admin kann sie unter Features einschalten.",
   "walkthrough_no_mic": "Kein Mikrofon — Kommentar wird nicht aufgenommen",
   "walkthrough_no_other_attachments": "Sende den Walkthrough allein — entferne Bild- oder Dateianhänge und sende sie in einer separaten Nachricht.",
   "walkthrough_one_at_a_time": "Ein Walkthrough wird bereits verarbeitet — warte, bis er fertig ist, und füge dann einen weiteren hinzu.",

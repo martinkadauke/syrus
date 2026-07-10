@@ -72,6 +72,13 @@ module SyrusChatMcp
       AdminRefreshInstallationsTool
     ].freeze
 
+    # Gated by the `video_walkthroughs` labs Feature (see tools_for_session).
+    WALKTHROUGH_TOOLS = [
+      GetWalkthroughAnalysisTool,
+      AnalyzeWalkthroughSegmentTool,
+      ReadWalkthroughFrameTool
+    ].freeze
+
     TOOLS = [
       AttachRepositoryTool,
       ProposeEpicTool,
@@ -116,6 +123,10 @@ module SyrusChatMcp
       tools = tools.select do |tool|
         !admin_tool?(tool) || chat_session.user.admin?
       end
+      # Labs flag: when walkthroughs are disabled the tools vanish from the
+      # advertised set entirely — the agent never sees them, so it cannot
+      # call them against pre-existing walkthrough rows either.
+      tools = tools.reject { |tool| walkthrough_tool?(tool) } unless Feature.video_walkthroughs_enabled?
       tools.map { |tool| authorize_tool(tool) }
     end
 
@@ -127,6 +138,10 @@ module SyrusChatMcp
 
     def self.admin_tool?(tool)
       ADMIN_TOOLS.include?(tool)
+    end
+
+    def self.walkthrough_tool?(tool)
+      WALKTHROUGH_TOOLS.include?(tool)
     end
 
     def self.server_name

@@ -40,6 +40,13 @@ class VideoWalkthroughAnalysisJob < ApplicationJob
     walkthrough = ChatVideoWalkthrough.find_by(id: walkthrough_id)
     return unless walkthrough&.uploaded?
 
+    # Labs flag off → land the row in a terminal state (the composer chip
+    # polls to a resolution; a silent return would spin it forever).
+    unless Feature.video_walkthroughs_enabled?
+      fail_walkthrough!(walkthrough, "Walkthrough videos are not enabled on this instance — an admin can turn them on under Features.")
+      return
+    end
+
     user = walkthrough.user
     unless user.gemini_configured?
       fail_walkthrough!(walkthrough, "Gemini is not configured — add an API key under Credentials.")

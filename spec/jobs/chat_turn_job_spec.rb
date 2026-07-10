@@ -28,7 +28,16 @@ RSpec.describe ChatTurnJob do
     FileUtils.rm_rf(workspace_root)
   end
 
+  def enable_walkthroughs!(enabled: true)
+    feature = Feature.find_or_create_by!(slug: "video_walkthroughs") do |record|
+      record.category = "Labs"
+      record.name = "Walkthrough videos"
+    end
+    feature.update!(enabled: enabled)
+  end
+
   it "orients the agent to its walkthrough tools (not an analysis dump) for a walkthrough message" do
+    enable_walkthroughs!
     walkthrough = ChatVideoWalkthrough.new(
       chat_session: chat, user: user, content_type: "video/mp4", byte_size: 10,
       duration_seconds: 101, title: "run", state: "analyzed",
@@ -55,6 +64,34 @@ RSpec.describe ChatTurnJob do
     expect(received[:prompt]).to include("propose an Epic")
     # The analysis itself is NOT dumped into the prompt — the agent pulls it.
     expect(received[:prompt]).not_to include("## Narration transcript")
+  end
+
+  it "treats a walkthrough message as a plain note when the labs flag is off" do
+    enable_walkthroughs!(enabled: false)
+    walkthrough = ChatVideoWalkthrough.new(
+      chat_session: chat, user: user, content_type: "video/mp4", byte_size: 10,
+      duration_seconds: 101, title: "run", state: "analyzed",
+      analysis: { "summary" => "s", "issues" => [], "open_questions" => [] }
+    ).tap do |w|
+      w.file.attach(io: StringIO.new("mp4"), filename: "w.mp4", content_type: "video/mp4")
+      w.save!
+    end
+    message = chat.messages.create!(
+      role: "user",
+      content: { "text" => "watch save", "video_walkthrough_id" => walkthrough.id, "source" => "walkthrough" }
+    )
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "s1")
+    }
+
+    described_class.perform_now(chat.id, message.id)
+
+    # No orientation toward tools the sidecar no longer advertises.
+    expect(received[:prompt]).not_to include("get_walkthrough_analysis")
+    expect(received[:prompt]).to include("watch save")
   end
 
   it "runs a first turn with the chat system prompt, MCP config, no max-turns, and captures output" do
