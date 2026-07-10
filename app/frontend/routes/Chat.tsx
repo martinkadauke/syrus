@@ -3207,7 +3207,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
               <span className="inline-flex shrink-0 items-center rounded border border-gray-300 bg-gray-50 px-1 text-[10px] font-medium text-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-500">⇥ {t("suggestion_tab_hint")}</span>
             </div>
           ) : null}
-          {text.trim().length > 0 ? (
+          {!agentActive && text.trim().length > 0 ? (
             <button
               aria-label={t("scratchpad_stash")}
               className="absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded text-gray-400 hover:bg-gray-100 hover:text-gray-600 disabled:text-gray-300 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300 dark:disabled:text-gray-600"
