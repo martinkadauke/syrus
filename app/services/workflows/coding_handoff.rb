@@ -3,12 +3,13 @@ module Workflows
   # then opens (or updates) the PR. Instantiated by the complete_implement_step
   # MCP tool once the agent commits and pushes from the chat workspace.
   #
-  # Chain: prepare → grader_fanout → grader_collect → summarize → test_plan → pr_open
+  # On grader pass: workflow succeeds, PR is opened by pr_open, after_success
+  # posts a confirmation to the linked chat and clears linked_chat_id.
   #
-  # No retry-until loop: grader failures surface back to the owning chat session
-  # via linked_chat_id (handled by the cm-grader workflow). linked_chat_id is
-  # intentionally preserved on the Job so that future grader-routing code can
-  # deliver results to the right session.
+  # On grader fail: grader_collect raises StepFailed with no loop node to
+  # catch it, so hard_fail_workflow! fires. after_fail posts the failure report
+  # to the linked chat and reverts the job to :coding so the operator can fix
+  # and re-run complete_implement_step.
   class CodingHandoff < Base
     def self.trigger_kind = "coding_handoff"
 
@@ -19,6 +20,48 @@ module Workflows
 
     def self.prepare_skipped_for?(job)
       job.skip_prepare?
+    end
+
+    def self.after_success(workflow)
+      return unless Feature.coding_mode_enabled?
+
+      chat_id = workflow.job.linked_chat_id
+      return unless chat_id
+
+      workflow.job.update!(linked_chat_id: nil)
+
+      chat = ChatSession.find_by(id: chat_id)
+      return unless chat
+
+      GraderChatReporter.report_success(workflow: workflow, chat: chat)
+    end
+
+    def self.after_fail(workflow)
+      return unless Feature.coding_mode_enabled?
+
+      chat = ChatSession.find_by(id: workflow.job.linked_chat_id)
+
+      if grader_failure?(workflow)
+        GraderChatReporter.report_failure(workflow: workflow, chat: chat) if chat
+        if workflow.job.may_revert_to_coding_mode?
+          workflow.job.revert_to_coding_mode!
+          workflow.job.save!
+        end
+      else
+        # Non-grader failure (e.g. prepare failed). propagate_fail_to_job!
+        # was suppressed, so drive the job to :failed manually so the
+        # operator has the normal Retry path.
+        if workflow.job.may_mark_failed?
+          workflow.job.mark_failed!
+          workflow.job.save!
+        end
+      end
+    rescue StandardError => e
+      Rails.logger.warn("[CodingHandoff] after_fail raised for workflow #{workflow.id}: #{e.class}: #{e.message}")
+    end
+
+    def self.grader_failure?(workflow)
+      workflow.steps.where(kind: "grader_collect", state: "failed").exists?
     end
   end
 end
