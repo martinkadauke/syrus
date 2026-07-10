@@ -9,7 +9,7 @@ RSpec.describe "website product positioning pages" do
 
   let(:site_copy) { read_website("lib/site.ts") }
   let(:demo) { read_website("components/demo.tsx") }
-  let(:download_page) { read_website("app/download/page.tsx") }
+  let(:download_page) { read_website("src/app/download/page.tsx") }
   let(:normalized_copy) { site_copy.gsub(/\s+/, " ") }
 
   it "links the explanatory sections from the home navigation" do

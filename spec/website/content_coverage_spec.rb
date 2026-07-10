@@ -21,8 +21,8 @@ RSpec.describe "website content coverage" do
 
   it "has current Next.js surfaces for the basic visitor questions" do
     pages = {
-      "app/page.tsx" => ["<Hero", "<TeamWorkflow", "<Features", "<EntryPoints", "<Demo"],
-      "app/download/page.tsx" => ["Download Syrus", "macOS", "Windows", "CLI"],
+      "src/app/page.tsx" => ["<Hero", "<TeamWorkflow", "<Features", "<EntryPoints", "<Demo"],
+      "src/app/download/page.tsx" => ["Download Syrus", "macOS", "Windows", "CLI"],
       "lib/site.ts" => [
         "Ship more of your roadmap.",
         "Proposes epics & tickets",
@@ -52,7 +52,7 @@ RSpec.describe "website content coverage" do
   end
 
   it "keeps markdown pages free of unfinished stub comments" do
-    markdown_files = Dir[File.expand_path("../../website/**/*.md", __dir__)]
+    markdown_files = Dir[File.expand_path("../../website/**/*.md", __dir__)].reject { |f| f.include?("/node_modules/") }
 
     offenders = markdown_files.select do |path|
       File.read(path).match?(/<!--\s*(STUB|TODO)/i)

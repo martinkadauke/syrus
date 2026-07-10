@@ -7,7 +7,7 @@ RSpec.describe "website home page" do
     File.read(File.expand_path("../../website/#{path}", __dir__))
   end
 
-  let(:page) { read_website("app/page.tsx") }
+  let(:page) { read_website("src/app/page.tsx") }
   let(:site_copy) { read_website("lib/site.ts") }
   let(:nav) { read_website("components/nav.tsx") }
   let(:normalized_copy) { site_copy.gsub(/\s+/, " ") }
