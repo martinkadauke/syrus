@@ -51,12 +51,16 @@ export function desktopBuiltAt(): string | null {
 // through the migrations). `percent` is the overall docker-pull percentage —
 // non-null only during "downloading", and only when compose streamed
 // parseable progress; without it the sidebar shows an indeterminate bar.
-// While this is non-null the backend is DELIBERATELY unreachable: surfaces
-// that read failed connectivity/credential checks must not present the
-// unconfigured default ("GitHub not connected") — see useBackendUpdate.
+// `outage` is the tri-state gating signal: containers are only recreated
+// from the stack_up step on, so during the (long) image pull the OLD backend
+// still serves requests. The sidebar notice shows for the WHOLE update, but
+// surfaces that read failed connectivity/credential checks gate on `outage`
+// only (see useBackendOutage) — never presenting the unconfigured default
+// ("GitHub not connected") while the backend is deliberately unreachable.
 export type SyrusBackendUpdate = {
   phase: "starting" | "downloading" | "migrating"
   percent: number | null
+  outage: boolean
 }
 
 export type SyrusShellState = {

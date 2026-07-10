@@ -5,7 +5,7 @@ import { fetchBootstrap } from "../api/bootstrap"
 import { CloseIcon } from "./CloseIcon"
 import { GithubAppPanel } from "./GithubAppPanel"
 import { useT } from "../hooks/useT"
-import { useBackendUpdating } from "../hooks/useBackendUpdate"
+import { useBackendOutage } from "../hooks/useBackendUpdate"
 
 const TOKEN_SETTINGS_URL = "https://github.com/settings/tokens"
 const TEST_DEBOUNCE_MS = 500
@@ -24,11 +24,12 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
   const bootstrap = useQuery({ queryKey: ["bootstrap"], queryFn: fetchBootstrap })
   const isAdmin = !!bootstrap.data?.current_user?.admin
   const credStatus = bootstrap.data?.setup_status?.credential_status
-  // While the desktop shell updates the local backend, credential status
-  // can't be read — a failed bootstrap here would present the "no token yet"
-  // step to a user whose token sits safely in the DB. Say what's actually
-  // happening instead of defaulting to "unconfigured".
-  const backendUpdating = useBackendUpdating()
+  // While the desktop shell's backend update has the containers down,
+  // credential status can't be read — a failed bootstrap here would present
+  // the "no token yet" step to a user whose token sits safely in the DB. Say
+  // what's actually happening instead of defaulting to "unconfigured".
+  // (During the image pull the old backend still serves — no gate.)
+  const backendOutage = useBackendOutage()
 
   // Local optimistic flag so the flow advances to the App step immediately
   // after the token saves, before the bootstrap refetch lands.
@@ -76,8 +77,8 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
             </button>
           </div>
 
-          {backendUpdating ? (
-            <Box tone="muted">{t('github_token.backend_updating')}</Box>
+          {backendOutage ? (
+            <Box tone="muted">{t('backend_updating')}</Box>
           ) : (
             <>
               <Stepper patDone={patDone} appDone={appDone} active={phase} />

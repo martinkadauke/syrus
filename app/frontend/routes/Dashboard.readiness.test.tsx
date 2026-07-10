@@ -29,6 +29,23 @@ function renderPanel(readiness: Readiness) {
   )
 }
 
+function installShellBridge(backendUpdate: { phase: "starting" | "downloading" | "migrating"; percent: number | null; outage: boolean }) {
+  window.syrusShell = {
+    getState: vi.fn().mockResolvedValue({
+      updateReadyVersion: null,
+      claudeDetected: false,
+      skillInstalled: false,
+      skillOfferDismissed: true,
+      backendUpdate
+    }),
+    onStateChanged: vi.fn().mockReturnValue(() => {}),
+    relaunchToUpdate: vi.fn(),
+    installSkill: vi.fn(),
+    dismissSkillOffer: vi.fn()
+  }
+  resetBackendUpdateStoreForTests()
+}
+
 describe("ReadinessPanel", () => {
   afterEach(() => {
     delete window.syrusShell
@@ -41,28 +58,26 @@ describe("ReadinessPanel", () => {
     expect(screen.getByText("GitHub credentials missing.")).toBeInTheDocument()
   })
 
-  it("suppresses the failing checks while the desktop shell updates the backend", async () => {
+  it("suppresses the failing checks while the backend update has the containers down", async () => {
     // The checks fail BECAUSE the backend is deliberately unreachable —
     // showing "GitHub credentials missing" here is the exact scare this
     // feature exists to prevent. The sidebar's update notice explains the
     // outage instead; the panel returns once the update finishes.
-    window.syrusShell = {
-      getState: vi.fn().mockResolvedValue({
-        updateReadyVersion: null,
-        claudeDetected: false,
-        skillInstalled: false,
-        skillOfferDismissed: true,
-        backendUpdate: { phase: "starting", percent: null }
-      }),
-      onStateChanged: vi.fn().mockReturnValue(() => {}),
-      relaunchToUpdate: vi.fn(),
-      installSkill: vi.fn(),
-      dismissSkillOffer: vi.fn()
-    }
-    resetBackendUpdateStoreForTests()
+    installShellBridge({ phase: "migrating", percent: null, outage: true })
 
     renderPanel(failingReadiness)
 
     await waitFor(() => expect(screen.queryByText("GitHub credentials missing.")).not.toBeInTheDocument())
+  })
+
+  it("keeps showing genuine failing checks during the image pull — no outage yet", async () => {
+    // The old backend serves throughout the pull, so a real readiness
+    // problem must stay visible; suppressing it then would be over-gating.
+    installShellBridge({ phase: "downloading", percent: 42, outage: false })
+
+    renderPanel(failingReadiness)
+
+    await waitFor(() => expect(window.syrusShell?.getState).toHaveBeenCalled())
+    expect(screen.getByText("GitHub credentials missing.")).toBeInTheDocument()
   })
 })

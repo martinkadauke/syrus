@@ -1,4 +1,4 @@
-import { execFile, spawn } from "node:child_process"
+import { execFile, spawn, type ChildProcess } from "node:child_process"
 import { createWriteStream } from "node:fs"
 import fs from "node:fs/promises"
 import path from "node:path"
@@ -28,6 +28,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 const WATCHDOG_INTERVAL_MS = 30_000
 const DAEMON_WAIT_DEADLINE_MS = 180_000
 const HEALTH_WAIT_POLLS = 60 // × 2s = 120s
+// Wall-clock bound on a backend update. install.sh has no overall timeout of
+// its own (its health probe curls with no --max-time; a wedged pull can sit
+// forever), and a hung installer would otherwise leave `busy` true and the
+// sidebar's backendUpdate state non-null FOREVER — watchdog starved, Backend
+// menu refusing, gated surfaces suppressed. Generous on purpose: multi-GB
+// pulls on slow links are legitimate.
+const UPDATE_DEADLINE_MS = 30 * 60_000
 
 // "data-gone" means Docker is healthy but the Syrus data volume no longer
 // exists (wiped containers/volumes) — the stack can never recover on its own.
@@ -89,6 +96,38 @@ const ensureDaemon = async () => {
 
 let busy = false
 let lastHealthy = true
+let updateChild: ChildProcess | null = null
+
+// Whether a lifecycle action (start/stop/update) is in flight. Exposed so
+// main can defer actions that must not race an update — most importantly
+// "Relaunch to update", whose quitAndInstall would orphan the installer
+// mid-pin-rewrite and relaunch into a churning stack with no update state.
+export const backendBusy = () => busy
+
+// Kill the whole in-flight installer tree (same technique as the onboarding
+// driver's killInstallChild): POSIX signals the detached process group so
+// docker/compose grandchildren die too; Windows (no process groups) walks
+// the tree with taskkill /T. Used by the update deadline and by main's
+// before-quit, so neither a wedged pull nor a quitting app can orphan a
+// half-applied update. Best-effort by contract.
+export const killUpdateChild = () => {
+  const child = updateChild
+  if (!child?.pid) {
+    return
+  }
+
+  console.warn("[backend-update] killing the in-flight installer (deadline exceeded or app quitting)")
+  if (process.platform === "win32") {
+    execFile("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }, () => {})
+    return
+  }
+
+  try {
+    process.kill(-child.pid, "SIGTERM")
+  } catch {
+    child.kill("SIGTERM")
+  }
+}
 
 export const startBackend = async (): Promise<boolean> => {
   if (getBackendMode() !== "local" || busy) {
@@ -205,7 +244,23 @@ export const updateBackend = async (image: string, deps: UpdateBackendDeps = {})
           "--image",
           image
         ])
-        const child = spawn(command, args, { env, windowsHide: true })
+        // POSIX: detached puts the script's docker/compose grandchildren in
+        // one process group so killUpdateChild can signal the whole tree;
+        // Windows has no process groups and uses taskkill /T instead (same
+        // split as the onboarding driver's install spawn).
+        const child =
+          process.platform === "win32"
+            ? spawn(command, args, { env, windowsHide: true })
+            : spawn(command, args, { env, detached: true })
+        updateChild = child
+        // Wall-clock deadline: a wedged pull / compose / health probe must
+        // not leave `busy` true and the update state stuck forever. The kill
+        // surfaces as a non-zero close, which resolves false through the
+        // existing failure path (finally clears the progress state).
+        const deadline = setTimeout(() => {
+          log.write(`backend update exceeded ${UPDATE_DEADLINE_MS / 60_000} minutes — killing the installer\n`)
+          killUpdateChild()
+        }, UPDATE_DEADLINE_MS)
         // Parse the installer's --json NDJSON line-by-line (the same protocol
         // the onboarding driver consumes) so the update reports phases and
         // docker-pull percentages; every raw line still lands in install.log.
@@ -219,10 +274,17 @@ export const updateBackend = async (image: string, deps: UpdateBackendDeps = {})
         readline.createInterface({ input: child.stderr }).on("line", (line) => {
           log.write(`${line}\n`)
         })
-        child.on("error", () => resolve(false))
+        // Both exits clear the deadline + child registration — a spawn
+        // error may never be followed by "close".
+        const settle = (ok: boolean) => {
+          clearTimeout(deadline)
+          updateChild = null
+          resolve(ok)
+        }
+        child.on("error", () => settle(false))
         // "close", not "exit": close fires only after stdio has drained, so
         // the final NDJSON lines are parsed and nothing writes after end().
-        child.on("close", (code) => resolve(code === 0))
+        child.on("close", (code) => settle(code === 0))
       })
 
       // Superseded-image cleanup runs ONLY on the update path (first installs

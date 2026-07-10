@@ -517,11 +517,15 @@ the live hook and retries a dead hook instead of parroting a stale mode.
   when Electron main/preload code changes. Local backend updates stream their
   progress over the existing shell-notice bridge: `updateBackend` parses the
   installer's `--json` NDJSON into `ShellNoticeState.backendUpdate` (phase
-  `starting`/`downloading`/`migrating` + pull percent), the SPA renders it as
-  a sidebar notice, and `useBackendUpdate` is the SPA's single choke point for
-  "the backend is deliberately unreachable" — surfaces that read failed
-  connectivity/credential checks must gate on it instead of rendering the
-  unconfigured default ("GitHub not connected").
+  `starting`/`downloading`/`migrating` + pull percent + `outage`), bounded by
+  a 30-minute deadline that kills a wedged installer tree; the SPA renders it
+  as a sidebar notice for the whole update, and `useBackendOutage` (in
+  `useBackendUpdate.ts`, with a 5-minute staleness fuse) is the SPA's single
+  choke point for "the backend is deliberately unreachable" — surfaces that
+  read failed connectivity/credential checks must gate on it instead of
+  rendering the unconfigured default ("GitHub not connected"). `outage` is
+  true only from container recreation (`stack_up`) on; during the image pull
+  the old backend still serves and nothing is gated.
 - **Brand palette (terracotta).** The product accent is the terracotta of the
   winged-stylus brand mark (`#b6492e` at 600). `config/tailwind.config.js`
   defines the `terracotta` scale and remaps Tailwind's `blue` scale onto the

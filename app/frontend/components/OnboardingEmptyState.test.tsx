@@ -77,22 +77,14 @@ describe("OnboardingEmptyState", () => {
   })
 
   describe("while the desktop shell updates the backend", () => {
-    afterEach(() => {
-      delete window.syrusShell
-      resetBackendUpdateStoreForTests()
-    })
-
-    it("falls back to the generic copy instead of 'connect credentials'", async () => {
-      // During the update every check against the backend fails; setup_status
-      // reads as unconfigured. The empty state must not send the user off to
-      // re-enter credentials they already have.
+    function installShellBridge(backendUpdate: { phase: "starting" | "downloading" | "migrating"; percent: number | null; outage: boolean }) {
       window.syrusShell = {
         getState: vi.fn().mockResolvedValue({
           updateReadyVersion: null,
           claudeDetected: false,
           skillInstalled: false,
           skillOfferDismissed: true,
-          backendUpdate: { phase: "downloading", percent: 42 }
+          backendUpdate
         }),
         onStateChanged: vi.fn().mockReturnValue(() => {}),
         relaunchToUpdate: vi.fn(),
@@ -100,12 +92,34 @@ describe("OnboardingEmptyState", () => {
         dismissSkillOffer: vi.fn()
       }
       resetBackendUpdateStoreForTests()
+    }
+
+    afterEach(() => {
+      delete window.syrusShell
+      resetBackendUpdateStoreForTests()
+    })
+
+    it("falls back to the generic copy instead of 'connect credentials' during the outage", async () => {
+      // With the containers down every check against the backend fails;
+      // setup_status reads as unconfigured. The empty state must not send
+      // the user off to re-enter credentials they already have.
+      installShellBridge({ phase: "migrating", percent: null, outage: true })
 
       renderState(makeSetupStatus({ next_step: "configure_credentials", next_step_path: "/credentials" }))
 
       await waitFor(() => expect(screen.getByRole("heading", { name: "Nothing here" })).toBeInTheDocument())
       expect(screen.queryByRole("heading", { name: "Connect credentials first" })).not.toBeInTheDocument()
       expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    })
+
+    it("keeps the setup CTA during the image pull — the old backend still serves", async () => {
+      installShellBridge({ phase: "downloading", percent: 42, outage: false })
+
+      renderState(makeSetupStatus({ next_step: "configure_credentials", next_step_path: "/credentials" }))
+
+      // Give the bridge snapshot a chance to land; the CTA must survive it.
+      await waitFor(() => expect(window.syrusShell?.getState).toHaveBeenCalled())
+      expect(screen.getByRole("heading", { name: "Connect credentials first" })).toBeInTheDocument()
     })
   })
 })

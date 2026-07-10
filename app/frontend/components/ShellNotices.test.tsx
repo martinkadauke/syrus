@@ -140,7 +140,9 @@ describe("ShellNotices", () => {
   })
 
   it("shows the backend-update notice with the download percentage and a determinate bar", async () => {
-    installBridge({ backendUpdate: { phase: "downloading", percent: 42 } })
+    // outage false on purpose: the sidebar notice covers the WHOLE update,
+    // not just the container-recreation window the gating keys off.
+    installBridge({ backendUpdate: { phase: "downloading", percent: 42, outage: false } })
 
     render(<ShellNotices />)
 
@@ -151,11 +153,11 @@ describe("ShellNotices", () => {
   })
 
   it.each([
-    ["starting", "Starting…"],
-    ["downloading", "Downloading…"],
-    ["migrating", "Migrating database…"]
-  ] as const)("shows an indeterminate bar and the %s label when no percent is known", async (phase, label) => {
-    installBridge({ backendUpdate: { phase, percent: null } })
+    ["starting", "Starting…", false],
+    ["downloading", "Downloading…", false],
+    ["migrating", "Migrating database…", true]
+  ] as const)("shows an indeterminate bar and the %s label when no percent is known", async (phase, label, outage) => {
+    installBridge({ backendUpdate: { phase, percent: null, outage } })
 
     render(<ShellNotices />)
 
@@ -168,7 +170,7 @@ describe("ShellNotices", () => {
   it("removes the backend-update notice the moment the shell reports the update finished", async () => {
     let pushState: ((state: SyrusShellState) => void) | undefined
     installBridge(
-      { backendUpdate: { phase: "migrating", percent: null } },
+      { backendUpdate: { phase: "migrating", percent: null, outage: true } },
       {
         onStateChanged: vi.fn().mockImplementation((callback: (state: SyrusShellState) => void) => {
           pushState = callback

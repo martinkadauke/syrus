@@ -2270,6 +2270,26 @@ const finishOnboarding = async () => {
   await showWebAppWindow()
 }
 
+// Every relaunch-to-update entry point runs this first: while updateBackend
+// is applying a new backend pin, quitAndInstall would orphan (or
+// SIGPIPE-kill) the installer mid-pin-rewrite, and the relaunched app would
+// boot with backendUpdate null while the containers are still churning —
+// resurrecting the masked "GitHub not connected" failure this state exists
+// to prevent. Defer with an explanation instead; the update takes 1–3
+// minutes and the sidebar notice shows its progress.
+const deferRelaunchWhileBackendBusy = (): boolean => {
+  if (!backendLifecycle.backendBusy()) {
+    return false
+  }
+
+  void dialog.showMessageBox({
+    type: "info",
+    message: "Finishing backend update…",
+    detail: "Syrus is updating its local backend right now. Relaunch to update the app once the backend update completes — usually a minute or two."
+  })
+  return true
+}
+
 // Shared "Restart to update" entry: appears in the app menu and the tray
 // context menu once electron-updater has an update staged.
 const updateMenuItems = (): Electron.MenuItemConstructorOptions[] => {
@@ -2282,6 +2302,10 @@ const updateMenuItems = (): Electron.MenuItemConstructorOptions[] => {
     {
       label: `Restart to update Syrus (v${version})`,
       click: () => {
+        if (deferRelaunchWhileBackendBusy()) {
+          return
+        }
+
         // quitAndInstall closes windows BEFORE any quit event fires, so the
         // hide-on-close handler would preventDefault and abort the update
         // unless the quit flag is already set.
@@ -2611,6 +2635,11 @@ ipcMain.handle("shell:relaunch-to-update", (event) => {
   // Only meaningful once electron-updater has an update staged — a stray
   // call from the page must not quit a perfectly healthy app.
   if (!appUpdates.downloadedUpdateVersion()) {
+    return
+  }
+
+  // Never mid-backend-update: quitting now would orphan the installer.
+  if (deferRelaunchWhileBackendBusy()) {
     return
   }
 
@@ -3044,6 +3073,9 @@ app.on("before-quit", () => {
   // drops the draw-mode shortcut.)
   annotationController?.disable()
   recorderHudController?.hide()
+  // Never orphan an in-flight backend-update installer (detached on POSIX,
+  // it would outlive the app and keep mutating the stack unwatched).
+  backendLifecycle.killUpdateChild()
 })
 
 app.on("will-quit", () => {

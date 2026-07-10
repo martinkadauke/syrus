@@ -27,14 +27,23 @@ export type BackendUpdatePhase = "starting" | "downloading" | "migrating"
 // What crosses the shell-notice bridge (main → webAppPreload → the SPA's
 // sidebar). `percent` is only ever non-null during "downloading"; older
 // compose versions print plain-text pull progress that never parses, and the
-// sidebar degrades to an indeterminate bar.
-export type BackendUpdateProgress = { phase: BackendUpdatePhase; percent: number | null }
+// sidebar degrades to an indeterminate bar. `outage` is what the web app's
+// tri-state gating keys off: the containers are only recreated from the
+// stack_up step on, so during the (long) image pull the OLD backend still
+// serves requests — gating credential surfaces then would block a working
+// flow on a false premise. The sidebar notice shows for the WHOLE update;
+// only the gating is outage-scoped.
+export type BackendUpdateProgress = { phase: BackendUpdatePhase; percent: number | null; outage: boolean }
 
-const STEP_PHASES: Record<string, BackendUpdatePhase> = {
+// Null-prototype map on purpose: step ids come from a parsed external
+// stream, and a plain object literal would resolve ids like "constructor" /
+// "toString" / "__proto__" through the prototype chain into functions that
+// get adopted as the phase and serialized over IPC.
+const STEP_PHASES: Record<string, BackendUpdatePhase | undefined> = Object.assign(Object.create(null), {
   image_pull: "downloading",
   stack_up: "starting",
   health: "migrating"
-}
+})
 
 const parseJsonObject = (line: string): Record<string, unknown> | null => {
   const trimmed = line.trim()
@@ -59,11 +68,12 @@ const parseJsonObject = (line: string): Record<string, unknown> | null => {
 export class BackendUpdateProgressTracker {
   private phase: BackendUpdatePhase = "starting"
   private percent: number | null = null
+  private outage = false
   private pulling = false
   private aggregator = new PullProgressAggregator()
 
   snapshot(): BackendUpdateProgress {
-    return { phase: this.phase, percent: this.percent }
+    return { phase: this.phase, percent: this.percent, outage: this.outage }
   }
 
   // One raw installer stdout line → the new progress snapshot when the line
@@ -99,16 +109,31 @@ export class BackendUpdateProgressTracker {
       this.pulling = status === "start"
     }
 
-    const phase = STEP_PHASES[id]
-    if (!phase || status !== "start" || phase === this.phase) {
+    if (status !== "start") {
       return null
     }
 
-    this.phase = phase
-    // The percent belongs to the pull; a later phase must not carry a stale
-    // 100% bar into "migrating".
-    if (phase !== "downloading") {
-      this.percent = null
+    // The outage begins at stack_up (containers recreated) and holds through
+    // the health wait — it never clears mid-update; the update finishing
+    // clears the whole progress state instead.
+    const outageChanged = id === "stack_up" && !this.outage
+    if (outageChanged) {
+      this.outage = true
+    }
+
+    const phase = STEP_PHASES[id]
+    const phaseChanged = typeof phase === "string" && phase !== this.phase
+    if (!phaseChanged && !outageChanged) {
+      return null
+    }
+
+    if (phaseChanged) {
+      this.phase = phase
+      // The percent belongs to the pull; a later phase must not carry a
+      // stale 100% bar into "migrating".
+      if (phase !== "downloading") {
+        this.percent = null
+      }
     }
 
     return this.snapshot()

@@ -1,5 +1,6 @@
 {
   "title": "Settings",
+  "backend_updating": "The Syrus backend is updating — credential status can't be checked right now. Your saved credentials are unaffected; this closes out in a minute or two.",
   "profile": {
     "loading": "Loading profile...",
     "error_load": "Unable to load this profile.",
@@ -283,7 +284,6 @@
     "step_pat_label": "Personal access token",
     "step_app_label": "GitHub App",
     "admin_required": "A personal access token is saved. The GitHub App is registered once per instance by an admin — ask an admin to register it to finish this step.",
-    "backend_updating": "The Syrus backend is updating — credential status can't be checked right now. Your saved credentials are unaffected; this closes out in a minute or two.",
     "step1_heading": "1. Open GitHub token settings",
     "step1_description": "Generate a classic personal access token.",
     "step1_link": "Open github.com/settings/tokens",

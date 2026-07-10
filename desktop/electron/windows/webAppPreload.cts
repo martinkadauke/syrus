@@ -22,12 +22,15 @@ import { contextBridge, ipcRenderer } from "electron"
 
 // A local backend update in flight: coarse phase + overall docker-pull
 // percent (only during "downloading", null when compose streams no parseable
-// progress). The sidebar renders it as a progress notice, and the web app
-// treats its presence as "the backend is deliberately unreachable — failed
-// connectivity checks are not 'unconfigured'".
+// progress). The sidebar renders it as a progress notice for the WHOLE
+// update; `outage` (true from container recreation on — during the long
+// image pull the old backend still serves requests) is what the web app's
+// tri-state gating keys off, so failed checks during the actual outage are
+// never read as "unconfigured".
 type BackendUpdateProgress = {
   phase: "starting" | "downloading" | "migrating"
   percent: number | null
+  outage: boolean
 }
 
 type ShellNoticeState = {

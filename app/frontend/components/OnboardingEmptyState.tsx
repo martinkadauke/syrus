@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { Link } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
-import { useBackendUpdating } from "../hooks/useBackendUpdate"
+import { useBackendOutage } from "../hooks/useBackendUpdate"
 
 type SetupStatus = NonNullable<BootstrapPayload["setup_status"]>
 
@@ -36,11 +36,13 @@ export function OnboardingEmptyState({
   setupStatus
 }: OnboardingEmptyStateProps) {
   const { t } = useTranslation("nav")
-  // While the desktop shell updates the local backend, setup_status reflects
-  // failed checks, not reality — falling back to the generic empty-state copy
-  // avoids telling the user to "connect credentials" they already have.
-  const backendUpdating = useBackendUpdating()
-  const nextStep = backendUpdating ? null : setupStatus?.next_step || null
+  // While the desktop shell's backend update has the containers down,
+  // setup_status reflects failed checks, not reality — falling back to the
+  // generic empty-state copy avoids telling the user to "connect credentials"
+  // they already have. (During the image pull the old backend still serves,
+  // so outage stays false and the setup CTA renders normally.)
+  const backendOutage = useBackendOutage()
+  const nextStep = backendOutage ? null : setupStatus?.next_step || null
 
   const setupCopy: Record<NonNullable<SetupStatus["next_step"]>, { title: string; description: string; action: string; latin: string }> = {
     configure_credentials: {
@@ -64,7 +66,7 @@ export function OnboardingEmptyState({
   }
 
   const copy = nextStep ? setupCopy[nextStep] : null
-  const actionPath = (backendUpdating ? null : setupStatus?.next_step_path) || fallbackActionPath || null
+  const actionPath = (backendOutage ? null : setupStatus?.next_step_path) || fallbackActionPath || null
   const actionText = copy?.action || fallbackActionText
 
   return (

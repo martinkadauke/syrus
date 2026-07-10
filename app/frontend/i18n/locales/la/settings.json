@@ -1,5 +1,6 @@
 {
   "title": "Optiones",
+  "backend_updating": "Fundamentum Syri nunc renovatur — status testimoniorum in praesenti inspici non potest. Testimonia tua servata salva manent; intra unum alterumve minutum perficitur.",
   "profile": {
     "loading": "Imago onerans...",
     "error_load": "Haec imago onerari non potuit.",
@@ -283,7 +284,6 @@
     "step_pat_label": "Tessera personalis",
     "step_app_label": "Applicatio GitHub",
     "admin_required": "Tessera accessus personalis servata est. Applicatio GitHub semel per instantiam ab administratore registratur — petas administratorem ut eam registret ad hunc gradum absolvendum.",
-    "backend_updating": "Fundamentum Syri nunc renovatur — status testimoniorum in praesenti inspici non potest. Testimonia tua servata salva manent; intra unum alterumve minutum perficitur.",
     "step1_heading": "1. Optiones tesserae GitHub aperire",
     "step1_description": "Tesseram accessus personalis classicam generare.",
     "step1_link": "github.com/settings/tokens aperire",

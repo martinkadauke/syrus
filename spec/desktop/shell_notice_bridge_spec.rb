@@ -36,9 +36,12 @@ RSpec.describe "desktop shell-notice bridge" do
     expect(preload).to include("skillInstalled: boolean")
     expect(preload).to include("skillOfferDismissed: boolean")
     expect(preload).to include("backendUpdate: BackendUpdateProgress | null")
-    # The backend-update member's own shape: coarse phase + optional percent.
+    # The backend-update member's own shape: coarse phase + optional percent
+    # + the outage flag the SPA's tri-state gating keys off (true only from
+    # container recreation on — the pull leaves the old backend serving).
     expect(preload).to include(%(phase: "starting" | "downloading" | "migrating"))
     expect(preload).to include("percent: number | null")
+    expect(preload).to include("outage: boolean")
     # installSkill resolves { ok, message } — failures render inline, no dialog.
     expect(preload).to include("Promise<{ ok: boolean; message: string | null }>")
     # Nothing beyond the contract leaks across: no node built-ins, no second
