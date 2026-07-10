@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { testGeminiKey, updateCredentials } from "../api/credentials"
 import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
+import { ValidationStages, type StageStatus, type ValidationStage as GenericValidationStage } from "./credentials/ValidationStages"
 
 // Gemini onboarding, invoked lazily the first time it matters — the user
 // dragged a video or hit "Record a walkthrough" without a key. Mirrors the
@@ -14,13 +15,7 @@ import { CloseIcon } from "./CloseIcon"
 // OAuth client in third-party apps violates Google's ToS. AI Studio keys are
 // free (no card) and validate with a free models.list ping.
 
-type StageStatus = "pending" | "running" | "ok" | "failed"
-
-export type ValidationStage = {
-  key: "format" | "reach" | "video"
-  status: StageStatus
-  detail?: string
-}
+export type ValidationStage = GenericValidationStage<"format" | "reach" | "video">
 
 // Client-side sanity gate before any network call: AI Studio keys are long
 // machine tokens (historically `AIza...`, newer keys `AQ....`) — the check is
@@ -201,25 +196,7 @@ export function GeminiSetupSheet({
             value={key}
           />
 
-          <ul className="mt-4 space-y-2" data-testid="gemini-validation-stages">
-            {stages.map((stage) => (
-              <li className="flex items-center gap-2 text-sm" data-status={stage.status} data-testid={`gemini-stage-${stage.key}`} key={stage.key}>
-                <StageIcon status={stage.status} />
-                <span
-                  className={
-                    stage.status === "failed"
-                      ? "text-red-700 dark:text-red-300"
-                      : stage.status === "ok"
-                        ? "text-emerald-700 dark:text-emerald-300"
-                        : "text-gray-600 dark:text-gray-300"
-                  }
-                >
-                  {stageLabels[stage.key]}
-                  {stage.detail ? <span className="ml-1 text-xs text-gray-400">({stage.detail})</span> : null}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <ValidationStages labels={stageLabels} stages={stages} testIdPrefix="gemini" />
 
           {error ? (
             <p className="mt-3 text-sm text-red-700 dark:text-red-300" role="alert">
@@ -245,29 +222,6 @@ export function GeminiSetupSheet({
       </section>
     </div>
   )
-}
-
-function StageIcon({ status }: { status: StageStatus }) {
-  if (status === "running") {
-    return (
-      <span aria-hidden="true" className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-terracotta-500 border-t-transparent" />
-    )
-  }
-  if (status === "ok") {
-    return (
-      <span aria-hidden="true" className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-100 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
-        ✓
-      </span>
-    )
-  }
-  if (status === "failed") {
-    return (
-      <span aria-hidden="true" className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-red-100 text-[10px] font-bold text-red-700 dark:bg-red-900 dark:text-red-300">
-        ✕
-      </span>
-    )
-  }
-  return <span aria-hidden="true" className="inline-block h-4 w-4 rounded-full border-2 border-gray-200 dark:border-gray-700" />
 }
 
 function pause(ms: number) {

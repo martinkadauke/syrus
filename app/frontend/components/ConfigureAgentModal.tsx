@@ -1,24 +1,15 @@
 import { useEffect, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
-import { exchangeClaudeOauth, startClaudeOauth, testClaudeCli, type CredentialTestResult } from "../api/credentials"
-import { openInNewTab } from "../lib/desktopShell"
 import { CloseIcon } from "./CloseIcon"
 import { useT } from "../hooks/useT"
-import { useBackendOutage } from "../hooks/useBackendUpdate"
 import { GeminiSetupSheet } from "./GeminiSetupSheet"
+import { ClaudeConnect, StatusBox } from "./credentials/ClaudeConnect"
 
 type AgentTab = "claude" | "gemini"
-
-type Preflight =
-  | { status: "checking" }
-  | { status: "done"; result: CredentialTestResult }
-  | { status: "error" }
 
 export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   // settings namespace is the default (bare `configure_agent.*` keys); the
   // Gemini setup sheet's copy lives in the chat namespace (shared with Chat.tsx).
   const { t } = useT(["settings", "chat"])
-  const queryClient = useQueryClient()
   const geminiSheetLabels = {
     title: t("chat:gemini_setup_title"),
     intro: t("chat:gemini_setup_intro"),
@@ -33,21 +24,10 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
     keyHelp: t("chat:gemini_setup_key_help")
   }
   const [tab, setTab] = useState<AgentTab>("claude")
-  const [preflight, setPreflight] = useState<Preflight>({ status: "checking" })
-  const [authStarted, setAuthStarted] = useState(false)
-  const [popupBlocked, setPopupBlocked] = useState<string | null>(null)
-  const [code, setCode] = useState("")
-  const [exchanging, setExchanging] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [ambientReady, setAmbientReady] = useState(false)
   const [connected, setConnected] = useState<string | null>(null)
   const [geminiSheetOpen, setGeminiSheetOpen] = useState(false)
   const [geminiConfigured, setGeminiConfigured] = useState(false)
-  // While the desktop shell's backend update has the containers down, the
-  // preflight below rejects — which would silently drop the "Claude is
-  // already connected" confirmation and walk the user through re-authorizing
-  // credentials that sit safely in the DB. Same failure class as the GitHub
-  // token modal: never render absence from a failed check.
-  const backendOutage = useBackendOutage()
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -59,74 +39,6 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
     document.addEventListener("keydown", onKeyDown)
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [onClose, geminiSheetOpen])
-
-  // Preflight: is Claude already usable on this machine? Deferred while the
-  // backend outage is on — the call could only fail — and retried
-  // automatically when the outage clears (backendOutage is a dependency).
-  useEffect(() => {
-    if (backendOutage) return
-
-    let cancelled = false
-    setPreflight({ status: "checking" })
-    testClaudeCli()
-      .then((payload) => {
-        if (!cancelled) setPreflight({ status: "done", result: payload.credential_test })
-      })
-      .catch(() => {
-        if (!cancelled) setPreflight({ status: "error" })
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [backendOutage])
-
-  async function authorize() {
-    setError(null)
-    setPopupBlocked(null)
-    try {
-      const { authorize_url } = await startClaudeOauth()
-      if (!openInNewTab(authorize_url)) setPopupBlocked(authorize_url)
-      setAuthStarted(true)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('configure_agent.auth_error'))
-    }
-  }
-
-  async function connect(codeOverride?: string) {
-    const codeToExchange = (codeOverride ?? code).trim()
-    if (codeToExchange.length === 0) {
-      setError(t('configure_agent.paste_code_first'))
-      return
-    }
-    setError(null)
-    setExchanging(true)
-    try {
-      const payload = await exchangeClaudeOauth(codeToExchange)
-      if (payload.credential_test.ok) {
-        await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
-        await queryClient.invalidateQueries({ queryKey: ["credentials"] })
-        setConnected(payload.credential_test.message || t('configure_agent.connected_default'))
-        onSaved?.()
-      } else {
-        setError(payload.credential_test.message || t('configure_agent.exchange_error'))
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('configure_agent.exchange_catch_error'))
-    } finally {
-      setExchanging(false)
-    }
-  }
-
-  function pasteAndConnect(event: React.ClipboardEvent<HTMLInputElement>) {
-    const pastedCode = event.clipboardData.getData("text").trim()
-    if (!authStarted || pastedCode.length === 0) return
-
-    event.preventDefault()
-    setCode(pastedCode)
-    setTimeout(() => connect(pastedCode), 0)
-  }
-
-  const ambientReady = preflight.status === "done" && preflight.result.ok
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
@@ -243,73 +155,18 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
                 </button>
               </div>
             </>
-          ) : backendOutage ? (
-            // The updating note instead of the authorize walkthrough: the
-            // preflight is deferred, so "already connected" can't be shown
-            // yet, and starting an OAuth flow against a down backend only
-            // ends in errors.
-            <StatusBox tone="warning">{t('backend_updating')}</StatusBox>
           ) : (
-            <div className="space-y-4">
-              {preflight.status === "checking" ? (
-                <p className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" role="status">
-                  <Spinner /> {t('configure_agent.checking_login')}
-                </p>
-              ) : null}
-
-              {ambientReady ? (
-                <StatusBox tone="ok">
-                  {t('configure_agent.ambient_ready')}
-                </StatusBox>
-              ) : null}
-
-              <ol className="space-y-3 text-sm text-gray-700 dark:text-gray-300">
-                <li>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">{t('configure_agent.step1_heading')}</p>
-                  <p className="mt-1 text-gray-600 dark:text-gray-400">
-                    {t('configure_agent.step1_description')}
-                  </p>
-                  <button
-                    className="mt-2 inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    onClick={authorize}
-                    type="button"
-                  >
-                    {authStarted ? t('configure_agent.reopen_auth') : t('configure_agent.authorize_claude')}
-                    <span aria-hidden="true">↗</span>
-                  </button>
-                  {popupBlocked ? (
-                    <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-                      {t('configure_agent.popup_blocked')}{" "}
-                      <a className="font-medium underline" href={popupBlocked} rel="noreferrer" target="_blank">
-                        {t('configure_agent.open_auth_page')}
-                      </a>{" "}
-                      {t('configure_agent.popup_blocked_manually')}
-                    </p>
-                  ) : null}
-                </li>
-                <li className={authStarted ? "" : "opacity-50"}>
-                  <p className="font-medium text-gray-900 dark:text-gray-100">{t('configure_agent.step2_heading')}</p>
-                  <p className="mt-1 text-gray-600 dark:text-gray-400">{t('configure_agent.step2_description')}</p>
-                  <label className="mt-2 block">
-                    <span className="sr-only">{t('configure_agent.input_label')}</span>
-                    <input
-                      autoComplete="off"
-                      className="block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-3 py-2 font-mono text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      disabled={!authStarted}
-                      onChange={(event) => setCode(event.target.value)}
-                      onPaste={pasteAndConnect}
-                      placeholder={t('configure_agent.input_placeholder')}
-                      spellCheck={false}
-                      type="text"
-                      value={code}
-                    />
-                  </label>
-                </li>
-              </ol>
-
-              {error ? <StatusBox tone="error">{error}</StatusBox> : null}
-
-              <div className="flex items-center justify-end gap-2">
+            // The connect flow owns the CLI preflight AND the backend-outage
+            // deferral (the updating note replaces the authorize walkthrough
+            // while the containers are down) — shared with the credentials
+            // page's Claude card.
+            <ClaudeConnect
+              onConnected={(result) => {
+                setConnected(result.message || t('configure_agent.connected_default'))
+                onSaved?.()
+              }}
+              onPreflight={setAmbientReady}
+              secondaryAction={
                 <button
                   className="rounded-md border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
                   onClick={onClose}
@@ -317,22 +174,8 @@ export function ConfigureAgentModal({ onClose, onSaved }: { onClose: () => void;
                 >
                   {ambientReady ? t('configure_agent.skip_for_now') : t('configure_agent.cancel')}
                 </button>
-                <button
-                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                  disabled={!authStarted || exchanging || code.trim().length === 0}
-                  onClick={() => connect()}
-                  type="button"
-                >
-                  {exchanging ? (
-                    <>
-                      <Spinner light /> {t('configure_agent.connecting')}
-                    </>
-                  ) : (
-                    t('configure_agent.connect')
-                  )}
-                </button>
-              </div>
-            </div>
+              }
+            />
           )}
         </div>
       </section>
@@ -361,27 +204,4 @@ function tabClass(active: boolean) {
   return active
     ? `${base} border-blue-600 text-blue-700 dark:text-blue-300`
     : `${base} border-transparent text-gray-500 dark:text-gray-400`
-}
-
-function StatusBox({ tone, children }: { tone: "ok" | "warning" | "error"; children: React.ReactNode }) {
-  const toneClass =
-    tone === "ok"
-      ? "border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300"
-      : tone === "warning"
-        ? "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
-        : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
-  return (
-    <p className={`rounded border px-3 py-2 text-sm ${toneClass}`} role={tone === "ok" ? "status" : "alert"}>
-      {children}
-    </p>
-  )
-}
-
-function Spinner({ light }: { light?: boolean }) {
-  return (
-    <svg aria-hidden="true" className={`h-4 w-4 animate-spin ${light ? "text-white" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" d="M4 12a8 8 0 018-8" fill="currentColor" />
-    </svg>
-  )
 }

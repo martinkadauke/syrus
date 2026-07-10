@@ -1,26 +1,16 @@
-import { useEffect, useRef, useState } from "react"
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { saveGithubToken, testGithubToken, type CredentialTestResult } from "../api/credentials"
+import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import { fetchBootstrap } from "../api/bootstrap"
 import { CloseIcon } from "./CloseIcon"
 import { GithubAppPanel } from "./GithubAppPanel"
+import { GithubTokenStep } from "./credentials/GithubTokenStep"
 import { useT } from "../hooks/useT"
 import { useBackendOutage } from "../hooks/useBackendUpdate"
-
-const TOKEN_SETTINGS_URL = "https://github.com/settings/tokens"
-const TEST_DEBOUNCE_MS = 500
-
-type TestState =
-  | { status: "idle" }
-  | { status: "testing" }
-  | { status: "done"; result: CredentialTestResult }
-  | { status: "error"; message: string }
 
 // The GitHub onboarding step requires BOTH credentials, set up in order:
 // first a personal access token, then the GitHub App.
 export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; onSaved?: () => void }) {
   const { t } = useT("settings")
-  const queryClient = useQueryClient()
   const bootstrap = useQuery({ queryKey: ["bootstrap"], queryFn: fetchBootstrap })
   const isAdmin = !!bootstrap.data?.current_user?.admin
   const credStatus = bootstrap.data?.setup_status?.credential_status
@@ -84,7 +74,7 @@ export function GithubTokenModal({ onClose, onSaved }: { onClose: () => void; on
               <Stepper patDone={patDone} appDone={appDone} active={phase} />
 
               {phase === "pat" ? (
-                <TokenStep onSaved={() => setPatSaved(true)} />
+                <GithubTokenStep onSaved={() => setPatSaved(true)} />
               ) : isAdmin ? (
                 // Create → install the GitHub App, owned by the panel.
                 <GithubAppPanel onClose={onClose} onSaved={onSaved} />
@@ -129,138 +119,6 @@ function Stepper({ patDone, appDone, active }: { patDone: boolean; appDone: bool
   )
 }
 
-// Step 1: paste + verify + save a personal access token.
-function TokenStep({ onSaved }: { onSaved: () => void }) {
-  const { t } = useT("settings")
-  const queryClient = useQueryClient()
-  const [token, setToken] = useState("")
-  const [test, setTest] = useState<TestState>({ status: "idle" })
-  const [saveError, setSaveError] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const probeSeq = useRef(0)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
-
-  useEffect(() => {
-    const trimmed = token.trim()
-    if (trimmed.length === 0) {
-      setTest({ status: "idle" })
-      return
-    }
-    const seq = ++probeSeq.current
-    setTest({ status: "testing" })
-    const handle = setTimeout(async () => {
-      try {
-        const payload = await testGithubToken(trimmed)
-        if (seq === probeSeq.current) setTest({ status: "done", result: payload.credential_test })
-      } catch (err) {
-        if (seq === probeSeq.current) setTest({ status: "error", message: err instanceof Error ? err.message : t('github_token.verify_error') })
-      }
-    }, TEST_DEBOUNCE_MS)
-    return () => clearTimeout(handle)
-  }, [token, t])
-
-  const tokenValid = test.status === "done" && test.result.ok
-
-  const save = useMutation({
-    mutationFn: () => saveGithubToken(token.trim()),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["bootstrap"] })
-      await queryClient.invalidateQueries({ queryKey: ["credentials"] })
-      onSaved()
-    },
-    onError: (err) => setSaveError(err instanceof Error ? err.message : t('github_token.save_error'))
-  })
-
-  function submit(event: React.FormEvent) {
-    event.preventDefault()
-    setSaveError(null)
-    if (!tokenValid) return
-    save.mutate()
-  }
-
-  return (
-    <form className="space-y-5" onSubmit={submit}>
-      <ol className="space-y-4 text-sm text-gray-700 dark:text-gray-300">
-        <li>
-          <p className="font-medium text-gray-900 dark:text-gray-100">{t('github_token.step1_heading')}</p>
-          <p className="mt-1 text-gray-600 dark:text-gray-400">{t('github_token.step1_description')}</p>
-          <a className="mt-2 inline-flex items-center gap-1 rounded bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 dark:bg-gray-100 dark:text-gray-900 dark:hover:bg-white" href={TOKEN_SETTINGS_URL} rel="noreferrer" target="_blank">
-            {t('github_token.step1_link')} <span aria-hidden="true">↗</span>
-          </a>
-        </li>
-        <li>
-          <p className="font-medium text-gray-900 dark:text-gray-100">{t('github_token.step2_heading')}</p>
-          <p className="mt-1 text-gray-600 dark:text-gray-400">
-            {t('github_token.step2_description')}
-          </p>
-          <ul className="mt-2 space-y-1">
-            <li className="flex items-center gap-2">
-              <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800 dark:bg-gray-800 dark:text-gray-200">repo</code>
-              <span className="text-gray-600 dark:text-gray-400">{t('github_token.scope_repo')}</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <code className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-800 dark:bg-gray-800 dark:text-gray-200">workflow</code>
-              <span className="text-gray-600 dark:text-gray-400">{t('github_token.scope_workflow')}</span>
-            </li>
-          </ul>
-        </li>
-        <li>
-          <p className="font-medium text-gray-900 dark:text-gray-100">{t('github_token.step3_heading')}</p>
-          <label className="mt-2 block">
-            <span className="sr-only">{t('github_token.input_label')}</span>
-            <input
-              autoComplete="off"
-              className="block w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950 px-3 py-2 font-mono text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              name="github_token"
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="ghp_…"
-              ref={inputRef}
-              spellCheck={false}
-              type="password"
-              value={token}
-            />
-          </label>
-          <TokenStatus test={test} />
-        </li>
-      </ol>
-
-      {saveError ? <Box tone="error">{saveError}</Box> : null}
-
-      <div className="flex items-center justify-end gap-2">
-        <button className="rounded-md bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60" disabled={!tokenValid || save.isPending} type="submit">
-          {save.isPending ? t('github_token.saving') : t('github_token.save_continue')}
-        </button>
-      </div>
-    </form>
-  )
-}
-
-function TokenStatus({ test }: { test: TestState }) {
-  const { t } = useT("settings")
-  if (test.status === "idle") return null
-  if (test.status === "testing") {
-    return (
-      <p className="mt-2 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400" role="status">
-        <Spinner /> {t('github_token.checking_token')}
-      </p>
-    )
-  }
-  if (test.status === "error") return <StatusLine tone="error">{test.message}</StatusLine>
-
-  const result = test.result
-  if (result.ok) return <StatusLine tone="ok"><CheckIcon /> {result.message}</StatusLine>
-  const tone = result.details.login ? "warning" : "error"
-  return <StatusLine tone={tone}><WarnIcon /> {result.message}</StatusLine>
-}
-
-function StatusLine({ tone, children }: { tone: "ok" | "warning" | "error"; children: React.ReactNode }) {
-  const toneClass = tone === "ok" ? "text-green-700 dark:text-green-400" : tone === "warning" ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400"
-  return <p className={`mt-2 flex items-start gap-1.5 text-sm ${toneClass}`} role={tone === "ok" ? "status" : "alert"}>{children}</p>
-}
-
 function Box({ tone, children }: { tone: "ok" | "muted" | "error"; children: React.ReactNode }) {
   const toneClass = tone === "ok"
     ? "border-green-200 bg-green-50 text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-300"
@@ -268,29 +126,4 @@ function Box({ tone, children }: { tone: "ok" | "muted" | "error"; children: Rea
       ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
       : "border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-800/50 dark:text-gray-400"
   return <p className={`rounded border px-3 py-2 text-sm ${toneClass}`} role={tone === "error" ? "alert" : tone === "ok" ? "status" : undefined}>{children}</p>
-}
-
-function Spinner() {
-  return (
-    <svg aria-hidden="true" className="h-4 w-4 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path className="opacity-75" d="M4 12a8 8 0 018-8" fill="currentColor" />
-    </svg>
-  )
-}
-
-function CheckIcon() {
-  return (
-    <svg aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-      <path clipRule="evenodd" d="M16.704 5.29a1 1 0 010 1.42l-7.5 7.5a1 1 0 01-1.42 0l-3.5-3.5a1 1 0 011.42-1.42l2.79 2.79 6.79-6.79a1 1 0 011.42 0z" fillRule="evenodd" />
-    </svg>
-  )
-}
-
-function WarnIcon() {
-  return (
-    <svg aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
-      <path clipRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.515 2.625H3.72c-1.345 0-2.188-1.458-1.515-2.625L8.485 2.495zM10 6a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 6zm0 8a1 1 0 100-2 1 1 0 000 2z" fillRule="evenodd" />
-    </svg>
-  )
 }
