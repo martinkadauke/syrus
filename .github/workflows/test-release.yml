@@ -16,13 +16,19 @@
 #   `prepare`). A test tag can therefore never collide with or shadow a
 #   release tag.
 # - The desktop apps are versioned `X.Y.Z-test.<run-number>` (the next patch
-#   over the newest release tag) so a test build can never be mistaken for a
-#   release, and electron-updater treats it as a pre-release.
+#   over the same tag/package.json base release.yml uses) so a test build can
+#   never be mistaken for a release. Auto-update is disarmed in BOTH
+#   directions: release installs never see a test build (nothing here stages
+#   or publishes feed files), and test installs never self-replace —
+#   appUpdates.ts skips auto-update for `-test.` versions, because the
+#   baked-in GitHub feed plus semver ordering (X.Y.Z-test.N < X.Y.Z) would
+#   otherwise swap a pinned evaluation for the next published release.
 # - Desktop jobs run AFTER merge-backend: by the time a DMG/installer exists,
 #   the image tag pinned inside its manifest.json is verifiably pulled-able.
-# - Artifacts land on the WORKFLOW RUN (test-staged-mac / test-staged-windows,
-#   14 days), not in a GitHub Release, and there are no stable-name aliases
-#   (Syrus.dmg / Syrus-Setup.exe imply the website permalinks).
+# - Artifacts land on the WORKFLOW RUN (test-staged-mac / test-staged-windows /
+#   test-staged-cli, 14 days), not in a GitHub Release, and there are no
+#   stable-name aliases (Syrus.dmg / Syrus-Setup.exe imply the website
+#   permalinks).
 # - There is no publish job at all: no draft release, no `:latest` move, no
 #   LLM notes, no website deploy.
 #
@@ -60,9 +66,10 @@ jobs:
   # ---------------------------------------------------------------------------
   # Compute the two identifiers and guard them against release collisions:
   # - image_tag: test-<short-sha> — the GHCR tag for the backend image.
-  # - app_version: next patch over the newest v* tag + -test.<run-number> —
-  #   what the desktop apps are stamped with (valid semver, unmistakably not
-  #   a release).
+  # - app_version: next patch over release.yml's version base (the HIGHER of
+  #   the newest v* tag and the committed desktop/package.json floor) +
+  #   -test.<run-number> — what the desktop apps are stamped with (valid
+  #   semver, unmistakably not a release).
   # ---------------------------------------------------------------------------
   prepare:
     runs-on: ubuntu-latest
@@ -81,8 +88,13 @@ jobs:
           git fetch --tags --quiet || true
           short_sha="$(git rev-parse --short HEAD)"
           image_tag="test-$short_sha"
+          # Same version base as release.yml's prepare: the HIGHER of the
+          # newest release tag and the committed desktop/package.json (a
+          # 0.0.0 dev sentinel normally, but the floor keeps test builds on
+          # the right release line during a planned major/minor bump).
+          pkg="$(node -p "require('./desktop/package.json').version")"
           latest_tag="$(git tag --list 'v*' | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | sort -V | tail -1)"
-          base="${latest_tag:-0.0.0}"
+          base="$(printf '%s\n%s\n' "${latest_tag:-0.0.0}" "${pkg%%-*}" | sort -V | tail -1)"
           IFS=. read -r MA MI PA <<<"$base"
           app_version="$MA.$MI.$((PA + 1))-test.$GITHUB_RUN_NUMBER"
           {
@@ -162,16 +174,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Build THIS arch natively; bin/test-docker gates it unless the operator
-      # opted out via run_integration_tests. Same shared per-arch registry
-      # cache refs as release.yml (registry cache is content-addressed — worst
-      # case a divergent test ref costs the next release a cache miss, never
-      # correctness).
+      # opted out via run_integration_tests. The registry cache uses TEST-OWN
+      # per-arch refs (buildcache-test-<arch>), NOT release.yml's shared
+      # buildcache-<arch> tags: bin/publish-image's --cache-to mode=max
+      # REPLACES the cache tag it writes, so a divergent test branch would
+      # evict the warm cache the next real release depends on. publish-image
+      # takes a single SYRUS_DOCKER_CACHE_REF (no separate from/to), so the
+      # first test build after a cache expiry pays a full cold build — an
+      # accepted cost; later test builds are warm again.
       - name: Build (and integration-test) the image — native ${{ matrix.arch }}
         env:
           IMAGE_TAG: ${{ needs.prepare.outputs.image_tag }}
           RUN_TESTS: ${{ inputs.run_integration_tests }}
           SYRUS_DOCKER_REGISTRY_CACHE: "1"
-          SYRUS_DOCKER_CACHE_REF: ghcr.io/tkadauke/syrus-backend:buildcache-${{ matrix.arch }}
+          SYRUS_DOCKER_CACHE_REF: ghcr.io/tkadauke/syrus-backend:buildcache-test-${{ matrix.arch }}
         run: |
           set -euo pipefail
           # The build timestamp is DERIVED FROM THE SOURCE (HEAD's committer
@@ -199,7 +215,7 @@ jobs:
         env:
           IMAGE: ghcr.io/tkadauke/syrus-backend
           PLATFORM: ${{ matrix.platform }}
-          CACHE_REF: ghcr.io/tkadauke/syrus-backend:buildcache-${{ matrix.arch }}
+          CACHE_REF: ghcr.io/tkadauke/syrus-backend:buildcache-test-${{ matrix.arch }}
           VERSION: ${{ needs.prepare.outputs.image_tag }}
         run: |
           set -euo pipefail
@@ -272,6 +288,37 @@ jobs:
           set -euo pipefail
           . ./bin/docker-image-lib
           syrus_verify_pushed "$IMAGE" "$VERSION"
+
+  # ---------------------------------------------------------------------------
+  # Cross-compile the CLI tarballs (bin/release-cli: linux/amd64 + arm64 +
+  # SHA256SUMS-cli.txt, gated on `go test ./...`) and stage them on the run —
+  # the Linux CLI is a shippable component too, so a test release must prove
+  # it builds. Unconditional, like release.yml's build-cli.
+  # ---------------------------------------------------------------------------
+  build-cli:
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          # setup-go's default cache lookup expects go.sum at the repo ROOT;
+          # ours lives under cli/, so without this the cache step warns and
+          # caches nothing on every run.
+          cache-dependency-path: cli/go.sum
+
+      - name: Build CLI test tarballs
+        env:
+          TAG: v${{ needs.prepare.outputs.app_version }}
+        run: bin/release-cli "$TAG"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: test-staged-cli
+          path: dist/releases/v${{ needs.prepare.outputs.app_version }}/cli/
+          if-no-files-found: error
+          retention-days: 14
 
   # ---------------------------------------------------------------------------
   # macOS: sign + notarize + staple, exactly like a real release, then upload
@@ -374,7 +421,9 @@ jobs:
         run: npm ci --prefix desktop
 
       # Stamp the -test. version so the produced app can never be mistaken
-      # for (or auto-update onto) a release.
+      # for a release — and so the app's own updater guard (appUpdates.ts
+      # skips auto-update for -test. versions) keeps the pinned test install
+      # from replacing itself with the next published release.
       - name: Set version
         env:
           VERSION: ${{ needs.prepare.outputs.app_version }}

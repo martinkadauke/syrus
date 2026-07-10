@@ -132,22 +132,37 @@ a feature branch — without publishing anything:
   release), integration-tested with `bin/test-docker`, and **pushed to GHCR**
   as `ghcr.io/tkadauke/syrus-backend:test-<short-sha>`. The tag shape is
   guarded (`test-` prefix, never `latest`, never semver), so a test image can
-  never collide with or shadow a release tag. `:latest` is never touched.
+  never collide with or shadow a release tag. `:latest` is never touched, and
+  test builds write their own registry build-cache tags
+  (`buildcache-test-<arch>`) so a divergent branch can't evict the warm cache
+  the next real release depends on.
 - **Desktop apps** — a **signed + notarized** macOS DMG and (unless you
   uncheck `build_windows`) an **Azure-signed** Windows installer, versioned
-  `X.Y.Z-test.<run-number>` (the next patch over the newest release tag) so a
-  test build can never be mistaken for — or auto-update onto — a release. Both
-  installers pin the `test-<short-sha>` image in their `manifest.json`, and
-  they build only **after** that tag verifiably exists on GHCR, so a
+  `X.Y.Z-test.<run-number>` (the next patch over the same tag/`package.json`
+  base a release uses) so a test build can never be mistaken for a release.
+  Both installers pin the `test-<short-sha>` image in their `manifest.json`,
+  and they build only **after** that tag verifiably exists on GHCR, so a
   downloaded test installer actually installs end-to-end.
+- **CLI tarballs** — the same `bin/release-cli` build as a release
+  (`go test ./...` gate, linux/amd64 + arm64 tarballs, `SHA256SUMS-cli.txt`).
 
-The built installers land as **workflow-run artifacts** — `test-staged-mac`
-(the versioned `.dmg`) and `test-staged-windows` (the versioned Setup `.exe`)
-on the run's Summary page, kept for **14 days**. They are deliberately **not**
-attached to a GitHub Release and carry no stable-name aliases (`Syrus.dmg` /
-`Syrus-Setup.exe` are the website permalinks — releases only) and no
-auto-update feed files: the workflow runs with `contents: read` permissions,
-so creating a tag or Release is structurally impossible.
+Auto-update is disarmed in **both directions**. Release installs never see a
+test build: the workflow stages and publishes no update-feed files. And a test
+install never replaces itself: a signed test build still carries the baked-in
+GitHub Releases feed, and semver orders `X.Y.Z-test.N` *below* `X.Y.Z`, so an
+armed updater would silently swap the pinned evaluation for the next published
+release — the app therefore skips auto-update entirely for `-test.` versions
+(`desktop/electron/appUpdates.ts`). Graduating a test install to a release is
+a deliberate manual reinstall.
+
+The built artifacts land as **workflow-run artifacts** — `test-staged-mac`
+(the versioned `.dmg`), `test-staged-windows` (the versioned Setup `.exe`),
+and `test-staged-cli` (the CLI tarballs + checksums) on the run's Summary
+page, kept for **14 days**. They are deliberately **not** attached to a GitHub
+Release and carry no stable-name aliases (`Syrus.dmg` / `Syrus-Setup.exe` are
+the website permalinks — releases only) and no auto-update feed files: the
+workflow runs with `contents: read` permissions, so creating a tag or Release
+is structurally impossible.
 
 | Input | Meaning |
 | --- | --- |

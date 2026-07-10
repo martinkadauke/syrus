@@ -41,7 +41,7 @@ RSpec.describe "desktop test-release pipeline" do
     expect(workflow_text).not_to match(/imagetools create -t "[^"]*:latest"/)
     # No publish/publish-website jobs — build jobs only.
     expect(workflow["jobs"].keys).to contain_exactly(
-      "prepare", "build-backend", "merge-backend", "build-mac", "build-windows"
+      "prepare", "build-backend", "merge-backend", "build-cli", "build-mac", "build-windows"
     )
   end
 
@@ -57,10 +57,37 @@ RSpec.describe "desktop test-release pipeline" do
     expect(workflow_text).to include('^test-[a-f0-9]{7,}$')
     expect(workflow_text).to include('if [ "$IMAGE_TAG" = "latest" ]')
     expect(workflow_text).to include('"$IMAGE_TAG" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]')
-    # The installers carry a -test.<run-number> prerelease over the next patch,
-    # so a test app can never be mistaken for (or auto-update onto) a release.
+    # The installers carry a -test.<run-number> prerelease over the next
+    # patch, so a test app can never be mistaken for a release. (The reverse
+    # direction — a test install never auto-updating ONTO a release — is the
+    # appUpdates.ts guard, pinned below.)
     expect(workflow_text).to include('-test.$GITHUB_RUN_NUMBER')
     expect(workflow_text).to include('^[0-9]+\.[0-9]+\.[0-9]+-test\.[0-9]+$')
+    # The version base mirrors release.yml's prepare: the HIGHER of the newest
+    # release tag and the committed desktop/package.json floor, so test builds
+    # stay on the right release line during a planned major/minor bump.
+    expect(workflow_text).to include(%q{pkg="$(node -p "require('./desktop/package.json').version")"})
+    expect(workflow_text).to include(%q{base="$(printf '%s\n%s\n' "${latest_tag:-0.0.0}" "${pkg%%-*}" | sort -V | tail -1)"})
+  end
+
+  it "disarms auto-update in both directions" do
+    # Direction 1: release installs never see a test build — nothing here is
+    # published to the GitHub Releases feed (permissions + artifact tests
+    # above pin that).
+    # Direction 2: a test install never replaces ITSELF — a signed test build
+    # still carries the baked-in GitHub feed (electron-builder writes
+    # app-update.yml regardless of --publish never), and semver orders
+    # X.Y.Z-test.N BELOW X.Y.Z, so an armed updater would swap the pinned
+    # evaluation for the next published release. The app's updater guard
+    # skips auto-update for -test. versions; the classifier's behavior is
+    # covered by desktop/src/pinnedTestBuild.test.ts, the wiring is pinned
+    # here.
+    classifier = File.read(File.join(repo_root, "desktop/electron/pinnedTestBuild.ts"), encoding: "UTF-8")
+    expect(classifier).to include('isPinnedTestBuild = (version: string): boolean => /-test\.\d+$/.test(version)')
+    app_updates = File.read(File.join(repo_root, "desktop/electron/appUpdates.ts"), encoding: "UTF-8")
+    expect(app_updates).to include('import { isPinnedTestBuild } from "./pinnedTestBuild.js"')
+    expect(app_updates).to match(/updatesEnabled = \(\)[\s\S]{0,160}!isPinnedTestBuild\(app\.getVersion\(\)\)/)
+    expect(File.exist?(File.join(repo_root, "desktop/src/pinnedTestBuild.test.ts"))).to be(true)
   end
 
   it "builds the backend natively per arch, always pushes by digest, and merges the test tag" do
@@ -82,6 +109,12 @@ RSpec.describe "desktop test-release pipeline" do
     expect(workflow.dig("jobs", "merge-backend", "if")).to be_nil
     # The merged manifest is verified pullable through the shared helper.
     expect(workflow_text).to include('syrus_verify_pushed "$IMAGE" "$VERSION"')
+    # Test builds write their OWN registry cache refs. bin/publish-image's
+    # --cache-to mode=max REPLACES the tag it writes, so pointing a test build
+    # at release.yml's shared buildcache-<arch> tags would let a divergent
+    # test branch evict the warm cache the next real release depends on.
+    expect(workflow_text.scan("ghcr.io/tkadauke/syrus-backend:buildcache-test-${{ matrix.arch }}").size).to eq(2)
+    expect(workflow_text).not_to include("syrus-backend:buildcache-${{ matrix.arch }}")
   end
 
   it "derives SYRUS_BUILT_AT from the source, never the wall clock, in both build and push" do
@@ -124,23 +157,39 @@ RSpec.describe "desktop test-release pipeline" do
     # both desktop jobs, and Go is pinned so the hard-fail never fires.
     expect(workflow_text.scan('SYRUS_RELEASE_BUILD: "1"').size).to eq(2)
     setup_go = workflow_text.scan(%r{uses: actions/setup-go@\S+\s+with:\s+go-version-file: cli/go\.mod})
-    expect(setup_go.length).to eq(2) # build-mac + build-windows
-    expect(workflow_text.scan("cache-dependency-path: cli/go.sum").size).to eq(2)
+    expect(setup_go.length).to eq(3) # build-cli + build-mac + build-windows
+    expect(workflow_text.scan("cache-dependency-path: cli/go.sum").size).to eq(3)
     expect(workflow_text).to include("grep -qF 'stage-cli: Go toolchain not found'")
     # Stage only — nothing ever publishes from a build.
     expect(workflow_text).to include("--publish never")
     expect(workflow_text).not_to include("--publish always")
   end
 
+  it "cross-compiles and stages the CLI tarballs like a real release" do
+    # The Linux CLI is a shippable component too: bin/release-cli runs
+    # `go test ./...`, cross-compiles linux/amd64 + arm64 tarballs, and writes
+    # SHA256SUMS-cli.txt. A test release must prove it builds.
+    expect(workflow.dig("jobs", "build-cli", "needs")).to eq("prepare")
+    expect(workflow_text).to match(%r{run: bin/release-cli "\$TAG"})
+    expect(workflow_text).to include("TAG: v${{ needs.prepare.outputs.app_version }}")
+    expect(workflow_text).to include("path: dist/releases/v${{ needs.prepare.outputs.app_version }}/cli/")
+    # No input gate — release.yml's build-cli is unconditional, so is this.
+    expect(workflow.dig("jobs", "build-cli", "if")).to be_nil
+  end
+
   it "uploads versioned artifacts to the run only — no permalinks, no update feed" do
-    # The versioned .dmg / Setup .exe land as workflow-run artifacts with a
-    # 14-day retention and hard-fail if the build produced nothing.
+    # The versioned .dmg / Setup .exe / CLI tarballs land as workflow-run
+    # artifacts with a 14-day retention and hard-fail if the build produced
+    # nothing.
     mac_upload = workflow_text[/name: test-staged-mac[\s\S]{0,200}/]
     expect(mac_upload).to include("if-no-files-found: error")
     expect(mac_upload).to include("retention-days: 14")
     windows_upload = workflow_text[/name: test-staged-windows[\s\S]{0,200}/]
     expect(windows_upload).to include("if-no-files-found: error")
     expect(windows_upload).to include("retention-days: 14")
+    cli_upload = workflow_text[/name: test-staged-cli[\s\S]{0,200}/]
+    expect(cli_upload).to include("if-no-files-found: error")
+    expect(cli_upload).to include("retention-days: 14")
     expect(workflow_text).to match(%r{cp "desktop/out/Syrus-\$VERSION-universal\.dmg" "\$RUNNER_TEMP/staged/"})
     expect(workflow_text).to match(%r{cp "desktop/out/Syrus-Setup-\$VERSION-x64\.exe" "\$RUNNER_TEMP/staged/"})
     # No stable-name aliases (those are the website permalinks — releases only)
@@ -156,11 +205,14 @@ RSpec.describe "desktop test-release pipeline" do
 
   it "never inlines the computed tag/version into shell bodies" do
     # Same rule as release.yml: attacker-influenceable values reach run:
-    # bodies only via env, never inline ${{ }} interpolation.
-    run_bodies = workflow_text.scan(/run: \|[\s\S]*?(?=\n      - |\n  [a-z]|\z)/)
-    expect(run_bodies).not_to be_empty
+    # bodies only via env, never inline ${{ }} interpolation. Walk the parsed
+    # YAML rather than regex-slicing the text so EVERY run: value is covered —
+    # single-line runs and folded scalars included, not just literal
+    # `run: |` blocks.
+    run_bodies = workflow["jobs"].values.flat_map { |job| Array(job["steps"]).map { |step| step["run"] } }.compact
+    expect(run_bodies.length).to be >= 15 # every step in the file, not a lucky regex subset
     run_bodies.each do |body|
-      expect(body).not_to match(/\$\{\{\s*needs\.prepare\.outputs\.(image_tag|app_version)\s*\}\}/)
+      expect(body).not_to match(/\$\{\{\s*needs\./)
       expect(body).not_to match(/\$\{\{\s*inputs\./)
     end
   end
@@ -171,6 +223,7 @@ RSpec.describe "desktop test-release pipeline" do
     expect(runbook).to include("gh workflow run test-release.yml --ref")
     expect(runbook).to include("test-staged-mac")
     expect(runbook).to include("test-staged-windows")
+    expect(runbook).to include("test-staged-cli")
     # The tag scheme and retention are the operator-facing contract.
     expect(runbook).to match(/test-<short-sha>|test-<sha>/)
     expect(runbook).to include("14 days")

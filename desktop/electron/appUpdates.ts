@@ -1,5 +1,6 @@
 import { app, autoUpdater as nativeAutoUpdater } from "electron"
 import electronUpdater from "electron-updater"
+import { isPinnedTestBuild } from "./pinnedTestBuild.js"
 
 const { autoUpdater } = electronUpdater
 
@@ -10,7 +11,12 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000
 // signed app — Squirrel.Mac validates the signature — so everything here is
 // inert for unsigned dev builds (!app.isPackaged) and can be switched off
 // with SYRUS_DISABLE_AUTO_UPDATE (CI, tests).
-const updatesEnabled = () => app.isPackaged && !process.env.SYRUS_DISABLE_AUTO_UPDATE
+
+// Test builds are also inert — see pinnedTestBuild.ts: their baked-in feed
+// plus semver ordering (X.Y.Z-test.N < X.Y.Z) would otherwise silently
+// replace a pinned test install with the next published release.
+const updatesEnabled = () =>
+  app.isPackaged && !process.env.SYRUS_DISABLE_AUTO_UPDATE && !isPinnedTestBuild(app.getVersion())
 
 let downloadedVersion: string | null = null
 let checkTimer: NodeJS.Timeout | null = null
