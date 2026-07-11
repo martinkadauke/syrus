@@ -625,6 +625,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
     t.string "kind", default: "issue", null: false
     t.text "landing_failure_reason"
     t.string "last_ci_handled_sha"
+    t.integer "linked_chat_id"
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
     t.datetime "last_seen_fork_review_comment_at"
