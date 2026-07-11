@@ -1151,7 +1151,8 @@ module Api
             # already-analyzed threads keep their history when the flag is off.
             walkthroughs_enabled: Feature.video_walkthroughs_enabled?,
             coding_mode_enabled: Feature.coding_mode_enabled?,
-            local_mode_enabled: Feature.local_mode_enabled?
+            local_mode_enabled: Feature.local_mode_enabled?,
+            local_tunnel_connected: Feature.local_mode_enabled? && LocalDaemonSession.connected.exists?(chat_session_id: chat_session.id)
           }
         end
 

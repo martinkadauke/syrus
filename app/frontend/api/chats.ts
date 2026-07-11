@@ -462,6 +462,7 @@ export type ChatPayload = {
   walkthroughs_enabled: boolean
   coding_mode_enabled: boolean
   local_mode_enabled: boolean
+  local_tunnel_connected: boolean
 }
 
 export type ChatMessagesPayload = {
