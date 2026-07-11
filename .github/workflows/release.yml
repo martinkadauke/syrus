@@ -62,9 +62,6 @@ on:
 permissions:
   contents: write # create the git tag and the GitHub Release
   packages: write # push the backend image to GHCR
-  pages: write # publish-website calls deploy-website.yml, which deploys Pages
-  id-token: write # …and mints the Pages OIDC token. A reusable workflow can't
-                  # exceed the caller's grants, so these must be declared here.
 
 # One release at a time; never cancel a half-finished publish.
 concurrency:
@@ -335,6 +332,15 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-website:
     needs: [prepare, publish]
+    # deploy-website.yml needs pages + id-token, and a called workflow can't
+    # exceed its CALLER's grants — scoped to this job only (least privilege;
+    # granting them workflow-wide would hand OIDC minting to every job).
+    # Validated by dispatch: missing grants here are a parse-time
+    # startup_failure, even though this job is skipped on dry runs.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     # Skip while a release is held for notes review — deploy the site once it's
     # actually published (re-run "Deploy website" manually, or it auto-runs on
     # the next website/** push).

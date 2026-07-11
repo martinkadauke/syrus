@@ -480,11 +480,17 @@ jobs:
           cp "$RUNNER_TEMP/build.log" . 2>/dev/null || true
           cp "$RUNNER_TEMP/notary_developer_log.json" . 2>/dev/null || true
 
+      # The name deliberately does NOT start with the artifact_prefix:
+      # release.yml's publish job downloads `pattern: staged-*` with
+      # merge-multiple and attaches EVERY downloaded file as a public Release
+      # asset. Artifacts persist across run attempts, so a transient build-mac
+      # failure followed by "Re-run failed jobs" would otherwise ship
+      # build.log + notary_developer_log.json on the published release.
       - name: Upload failure diagnostics
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ inputs.artifact_prefix }}-mac-diagnostics
+          name: mac-diagnostics-${{ inputs.artifact_prefix }}
           path: |
             build.log
             notary_developer_log.json

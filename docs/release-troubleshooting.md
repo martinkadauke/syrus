@@ -4,7 +4,8 @@
 red X to a cause in minutes: find your error string in the triage table,
 jump to the section, run the Check, apply the Fix. It covers the macOS
 signing/notarization path (`CSC_LINK` + notarytool) and the Windows Azure
-Artifact Signing path (both live in `release.yml` — `build-mac` and
+Artifact Signing path (both live in the shared `_build-app.yml` build
+module, called by `release.yml` and `test-build.yml` — `build-mac` and
 `build-windows` — which run in **parallel**). To prove signing without
 cutting a release, run a **dry-run release** (`dry_run = true`): the build
 jobs are identical on a dry and a real run — they sign and stage every
@@ -274,13 +275,16 @@ permission) see [6.4](#64-build-backend-disk-and-cache).
   notary log.
 - **Fix:** for CDN lag, retry `stapler validate` after 30–60 s. Otherwise
   fix the upstream notarization and re-run. Because `build-mac` uses
-  `--publish never` and only STAGES its outputs, a red here uploads
-  nothing — the GitHub Release stays untouched, so a re-run has no stale
-  assets to collide with.
+  `--publish never` and only STAGES its outputs, a red here leaves the
+  GitHub Release untouched, so a re-run has no stale assets to collide
+  with. (A failed run does upload a `mac-diagnostics-*` run artifact with
+  build.log + the notary log for debugging — deliberately named OUTSIDE
+  the `staged-*` namespace so publish's download glob can never attach it
+  to the Release, even across re-run attempts.)
 
 ## 5. Windows (Azure Artifact Signing)
 
-Windows signing runs live in `release.yml`'s `build-windows`
+Windows signing runs live in the shared `_build-app.yml` module's `build-windows`
 job on every manual dispatch (in parallel with `build-mac`); its guard
 fails the run when any of the four `AZURE_SIGN_*` identifiers (or the
 client credentials) are absent — add the listed ones per the

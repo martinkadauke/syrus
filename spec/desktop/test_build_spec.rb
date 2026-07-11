@@ -122,7 +122,10 @@ RSpec.describe "desktop test-build pipeline" do
     # Badge consistency (user-reported): the backend must BAKE the app-style
     # version (X.Y.Z-test.N), not the sha tag, and both build sites take it
     # from inputs.version — "app 0.1.4-test.3 · backend 0.1.4-test.3".
-    expect(build_text.scan(/VERSION: \$\{\{ inputs\.version \}\}/).size).to be >= 2
+    backend_build = build_text[/- name: Build \+ integration-test[\s\S]{0,2400}?bin\/publish-image/]
+    expect(backend_build).to match(/VERSION: \$\{\{ inputs\.version \}\}/)
+    digest_push = build_text[/- name: Push \$\{\{ matrix\.arch \}\} by digest[\s\S]{0,2400}?SYRUS_VERSION=\$VERSION/]
+    expect(digest_push).to match(/VERSION: \$\{\{ inputs\.version \}\}/)
     expect(build_text).to include("--skip-tests")
     # The by-digest push and the manifest merge are gated on the push_image
     # input, not a dry_run flag — and the test caller ALWAYS passes true, so
@@ -165,7 +168,9 @@ RSpec.describe "desktop test-build pipeline" do
     # BOTH desktop build steps — overriding stage-backend-assets.mjs's
     # version-derived pin, which would otherwise be :<app_version>, a tag that
     # never exists. The test caller pins the VERSION-NAMED tag so the in-app
-    # badge reads consistently (app 0.1.4-test.1 · backend test-0.1.4-test.1).
+    # badge reads identically for app and backend (the module bakes the
+    # app-style version as SYRUS_VERSION: app 0.1.4-test.1 · backend
+    # 0.1.4-test.1); the version-named tag is registry addressing.
     expect(build_text.scan("SYRUS_BACKEND_IMAGE: ${{ inputs.backend_image_pin }}").size).to eq(2)
     expect(workflow.dig("jobs", "build", "with", "backend_image_pin")).to eq(
       "ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}"
@@ -227,6 +232,21 @@ RSpec.describe "desktop test-build pipeline" do
     # latest.yml / .blockmap) is gated on stage_update_feed, which the test
     # caller turns OFF — so a test build never feeds the update channel.
     expect(workflow.dig("jobs", "build", "with", "stage_update_feed")).to eq(false)
+    # …and the module's guard has the right polarity: the permalink aliases +
+    # update-feed files are copied ONLY inside the STAGE_FEED=true branch.
+    expect(build_text.scan("STAGE_FEED: ${{ inputs.stage_update_feed }}").size).to eq(2)
+    mac_stage = build_text[/if \[ "\$STAGE_FEED" = "true" \]; then[\s\S]{0,600}?else/]
+    expect(mac_stage).to include("latest-mac.yml")
+    expect(mac_stage).to include('staged/Syrus.dmg"')
+    win_stage = build_text[/latest\.yml[\s\S]{0,400}?else/]
+    expect(win_stage).to include("Syrus-Setup.exe")
+
+    # The failure-diagnostics artifact must stay OUTSIDE the caller's
+    # `<prefix>-*` namespace: release's publish downloads `pattern: staged-*`
+    # with merge-multiple and attaches every file to the PUBLIC Release, and
+    # artifacts persist across re-run attempts.
+    expect(build_text).to include("name: mac-diagnostics-${{ inputs.artifact_prefix }}")
+    expect(build_text).not_to include("name: ${{ inputs.artifact_prefix }}-mac-diagnostics")
   end
 
   it "never inlines the computed tag/version into shell bodies" do

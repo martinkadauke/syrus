@@ -96,9 +96,11 @@ jobs:
           IFS=. read -r MA MI PA <<<"$base"
           app_version="$MA.$MI.$((PA + 1))-test.$GITHUB_RUN_NUMBER"
           # The image is ALSO tagged test-<app_version> and that tag is what the
-          # manifest pins — so the in-app badge reads consistently
-          # ("app 0.1.4-test.1 · backend test-0.1.4-test.1"). The sha tag
-          # stays for traceability back to the commit.
+          # manifest pins (registry ADDRESSING). The in-app badge shows the
+          # SYRUS_VERSION the module BAKES into the image (the app-style
+          # version), so it reads identically for both halves:
+          # "app 0.1.4-test.1 · backend 0.1.4-test.1". The sha tag stays for
+          # traceability back to the commit.
           version_tag="test-$app_version"
           {
             echo "image_tag=$image_tag"

@@ -185,10 +185,12 @@ a feature branch — without publishing anything:
   `X.Y.Z-test.<run-number>` (the next patch over the same tag/`package.json`
   base a release uses) so a test build can never be mistaken for a release.
   Both installers pin the `test-<X.Y.Z-test.N>` image in their `manifest.json`
-  (so the in-app badge reads consistently, e.g. `app 0.1.4-test.1 · backend
-  test-0.1.4-test.1`),
-  and they build only **after** that tag verifiably exists on GHCR, so a
-  downloaded test installer actually installs end-to-end.
+  (registry addressing), and the image itself bakes the app-style version as
+  `SYRUS_VERSION`, so the in-app badge reads identically for both halves:
+  `app 0.1.4-test.1 · backend 0.1.4-test.1`. The installers build in
+  **parallel** with the backend image (the pin is a string, not a pull); the
+  run only succeeds when the tag was also pushed and verified, so a downloaded
+  test installer from a green run installs end-to-end.
 - **CLI tarballs** — the same `bin/release-cli` build as a release
   (`go test ./...` gate, linux/amd64 + arm64 tarballs, `SHA256SUMS-cli.txt`).
 

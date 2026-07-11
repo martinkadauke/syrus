@@ -90,10 +90,15 @@ RSpec.describe "desktop auto-update and release pipeline" do
     expect(workflow.dig("permissions", "contents")).to eq("write")
     expect(workflow.dig("permissions", "packages")).to eq("write")
     # publish-website calls deploy-website.yml (a reusable workflow that needs
-    # pages + id-token); a reusable workflow can't exceed the caller's grants,
-    # so release must declare them here or the call fails to start.
-    expect(workflow.dig("permissions", "pages")).to eq("write")
-    expect(workflow.dig("permissions", "id-token")).to eq("write")
+    # pages + id-token); a called workflow can't exceed its caller's grants,
+    # and missing grants are a parse-time startup_failure (even though the
+    # job is skipped on dry runs). Least privilege: granted on the
+    # publish-website JOB only — workflow-wide would hand OIDC minting to
+    # every job.
+    expect(workflow.dig("permissions", "pages")).to be_nil
+    expect(workflow.dig("permissions", "id-token")).to be_nil
+    pw_perms = workflow.dig("jobs", "publish-website", "permissions")
+    expect(pw_perms).to eq("contents" => "read", "pages" => "write", "id-token" => "write")
     # One coherent pipeline: compute the version (prepare), build everything
     # through the shared reusable module (build), then a single publish job and
     # the website deploy. release.yml is thin — the build/sign jobs live in the
@@ -291,7 +296,13 @@ RSpec.describe "desktop auto-update and release pipeline" do
   it "release workflow verifies the signature, stapling, and stable download aliases" do
     # Verify + stage live in the shared module. The release feed staging is the
     # stage_update_feed=true branch (the release caller passes true).
-    expect(YAML.safe_load(release_workflow).dig("jobs", "build", "with", "stage_update_feed")).to eq(true)
+    release_with = YAML.safe_load(release_workflow).dig("jobs", "build", "with")
+    expect(release_with["stage_update_feed"]).to eq(true)
+    # A skipped job inside the module still yields a successful `build`
+    # result, so these with: values are the ONLY thing keeping Windows and
+    # the integration gate in every release — pin them.
+    expect(release_with["build_windows"]).to eq(true)
+    expect(release_with["run_integration_tests"]).to eq(true)
     expect(build_workflow).to include("codesign --verify --deep --strict")
     expect(build_workflow).to include("xcrun stapler validate")
     # One universal macOS build → one Syrus.dmg permalink (no Intel split);
