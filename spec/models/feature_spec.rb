@@ -32,6 +32,25 @@ RSpec.describe Feature, type: :model do
     it "returns false for unknown slugs" do
       expect(Feature.enabled?("missing")).to be false
     end
+
+    it "memoizes lookups in Current for the request duration" do
+      Feature.create!(slug: "memoized_feature", category: "Example", name: "Memoized", enabled: true)
+      Current.feature_enabled_cache = {}
+
+      expect(Feature).to receive(:find_by).with(slug: "memoized_feature").once.and_call_original
+
+      expect(Feature.enabled?("memoized_feature")).to be true
+      expect(Feature.enabled?(:memoized_feature)).to be true
+    end
+
+    it "can clear memoized values" do
+      Feature.create!(slug: "cleared_feature", category: "Example", name: "Cleared", enabled: true)
+      Current.feature_enabled_cache = { "cleared_feature" => false }
+
+      Feature.clear_enabled_cache!("cleared_feature")
+
+      expect(Feature.enabled?("cleared_feature")).to be true
+    end
   end
 
   describe ".terminal_enabled?" do
@@ -69,6 +88,12 @@ RSpec.describe Feature, type: :model do
       declaration = YAML.load_file(Rails.root.join("config/features.yml")).fetch("features")
                         .find { |f| f["slug"] == "video_walkthroughs" }
       expect(declaration).to include("category" => "Labs", "default" => false)
+    end
+
+    it "declares the performance logging operations flag default-off in config/features.yml" do
+      declaration = YAML.load_file(Rails.root.join("config/features.yml")).fetch("features")
+                        .find { |f| f["slug"] == "performance_logging" }
+      expect(declaration).to include("category" => "Operations", "default" => false)
     end
   end
 

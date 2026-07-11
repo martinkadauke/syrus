@@ -256,6 +256,7 @@ Rails.application.routes.draw do
           post "installations/refresh", to: "installations#refresh"
           resources :invitations, only: %i[ index create destroy ]
           resources :features, only: %i[ index update ], param: :slug
+          get "performance", to: "performance#show"
           get "settings", to: "settings#show"
           patch "settings", to: "settings#update"
           post "settings/clear_secret", to: "settings#clear_secret"
@@ -307,6 +308,7 @@ Rails.application.routes.draw do
         # Overview + stuck list (mirror F).
         get "overview", to: "overview#show"
         get "stuck",    to: "overview#stuck"
+        get "performance", to: "performance#show"
 
         # Operator console kill switches.
         get  "console",                 to: "console#show"

@@ -29,3 +29,8 @@ features:
     name: "Coding Mode"
     description: "Enables Coding Mode for Syrus Chat, allowing the agent to implement code changes directly in the session checkout instead of just planning. Introduced in PR #1554."
     default: false
+  - slug: performance_logging
+    category: "Operations"
+    name: "Performance logging"
+    description: "Records structured slow request, SQL, and phase events to logs and a short-lived admin diagnostics buffer."
+    default: false

@@ -1,4 +1,6 @@
 class Feature < ApplicationRecord
+  after_commit :clear_request_enabled_cache
+
   normalizes :slug, with: ->(slug) { slug.to_s.strip }
   normalizes :category, with: ->(category) { category.to_s.strip }
   normalizes :name, with: ->(name) { name.to_s.strip }
@@ -8,7 +10,18 @@ class Feature < ApplicationRecord
   validates :name, presence: true
 
   def self.enabled?(slug)
-    find_by(slug: slug.to_s)&.enabled? || false
+    key = slug.to_s
+    cache = Current.feature_enabled_cache ||= {}
+    return cache[key] if cache.key?(key)
+
+    cache[key] = find_by(slug: key)&.enabled? || false
+  end
+
+  def self.clear_enabled_cache!(slug = nil)
+    cache = Current.feature_enabled_cache
+    return unless cache
+
+    slug ? cache.delete(slug.to_s) : cache.clear
   end
 
   def self.terminal_enabled?
@@ -21,5 +34,12 @@ class Feature < ApplicationRecord
 
   def self.coding_mode_enabled?
     enabled?(:coding_mode)
+  end
+
+  private
+
+  def clear_request_enabled_cache
+    self.class.clear_enabled_cache!(slug)
+    Current.performance_logging_enabled = nil if slug == "performance_logging"
   end
 end

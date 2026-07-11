@@ -88,30 +88,32 @@ module App
     end
 
     def call
-      SmartFolder.ensure_builtins_for_subject!(subject)
+      PerformanceLogging.phase("dashboard_payload", subject: subject, view: view, ownership_scope: ownership_scope) do
+        SmartFolder.ensure_builtins_for_subject!(subject)
 
-      {
-        subject: subject,
-        view: view,
-        page: page,
-        per_page: PER_PAGE,
-        total: current_result.fetch(:total),
-        total_pages: total_pages(current_result.fetch(:total)),
-        counts: counts,
-        ownership_scope: ownership_scope_json,
-        preferences: preferences_json,
-        controls: controls_json,
-        ownership: ownership_json,
-        filter: current_filter.to_h,
-        landing_queue: landing_queue_json,
-        smart_folders: smart_folders_json,
-        active_smart_folder_id: active_smart_folder&.id,
-        items: current_result.fetch(:items),
-        lanes: lanes_json,
-        kanban_limit: view == "kanban" ? kanban_limit : nil,
-        setup: ::App::SetupStatus.call(user: user),
-        paths: paths_json
-      }
+        {
+          subject: subject,
+          view: view,
+          page: page,
+          per_page: PER_PAGE,
+          total: current_result.fetch(:total),
+          total_pages: total_pages(current_result.fetch(:total)),
+          counts: counts,
+          ownership_scope: ownership_scope_json,
+          preferences: preferences_json,
+          controls: controls_json,
+          ownership: ownership_json,
+          filter: current_filter.to_h,
+          landing_queue: landing_queue_json,
+          smart_folders: smart_folders_json,
+          active_smart_folder_id: active_smart_folder&.id,
+          items: current_result.fetch(:items),
+          lanes: lanes_json,
+          kanban_limit: view == "kanban" ? kanban_limit : nil,
+          setup: ::App::SetupStatus.call(user: user),
+          paths: paths_json
+        }
+      end
     end
 
     private
@@ -951,7 +953,6 @@ module App
           position: folder.position,
           subject_type: folder.subject_type,
           visibility: folder.visibility.to_s,
-          position: folder.position,
           count: count,
           active: active_smart_folder&.id == folder.id,
           filter: folder.filter,
