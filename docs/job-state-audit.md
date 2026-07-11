@@ -7,21 +7,44 @@ re-discovery.
 
 ## State graph
 
-10 declared states. Reachability via production code paths varies — some
+11 declared states. Reachability via production code paths varies — some
 states are listed only as `from:` and have no event that enters them.
 
 | State | Entry events | Exit events | Reachable in prod? |
 |---|---|---|---|
 | `triaging` (initial) | initial; `reopen` | `advance_after_triage`, `mark_classifier_uncertain` (self), `block_by_epic`, `close` | Yes — initial on every `Job.create!` |
 | `blocked_by_epic` | `advance_after_triage`, `block_by_epic` | `release_epic_block`, `close` | Yes |
-| `queued` | `advance_after_triage`, `release_epic_block` | `mark_implemented`, `block_by_epic`, `close` | Yes |
+| `queued` | `advance_after_triage`, `release_epic_block` | `mark_implemented`, `block_by_epic`, `close`, `claim_for_coding` | Yes |
 | `open` | **None** | `mark_implemented`, `approve`, `block_by_epic`, `close` | **No** (see Finding 1) |
-| `implemented` | `mark_implemented`, `unapprove`, `fail_landing` | `approve`, `close` | Yes |
+| `coding` | `claim_for_coding` | `release_from_coding`, `close` | Yes — when `coding_mode` feature flag is on and a chat session claims the implement step |
+| `implemented` | `mark_implemented`, `unapprove`, `fail_landing`, `release_from_coding` | `approve`, `close`, `claim_for_coding` | Yes |
 | `approved` | `approve`, `defer_landing` | `unapprove`, `land`, `start_landing`, `close` | Yes |
 | `landing` | `land`, `start_landing` | `mark_merged`, `fail_landing`, `defer_landing`, `close` | Yes |
 | `merged` | `mark_merged` | `close` | **No** (see Finding 2) |
 | `landing_failed` | **None** | `mark_implemented`, `approve`, `close` | **No** (see Finding 3) |
 | `closed` | `close` | `reopen` | Yes |
+
+### Coding Mode lock (`linked_chat_id`)
+
+When a Job is in `:coding` state, `linked_chat_id` is set to the owning
+`ChatSession`. `StepDispatcher.start_workflow` skips dispatch while the Job is
+in `:coding` state (and the `coding_mode` feature flag is on), leaving any
+newly-created workflows queued.
+
+Three exit paths from `:coding`:
+
+- **New-job cancel** (`Job#cancel_new_coding_job!`): clears `linked_chat_id` then
+  closes the Job via `close` (`coding → closed`).
+- **Takeover cancel** (`Job#release_coding_mode_takeover!`): clears `linked_chat_id`
+  then fires `release_from_coding` (`coding → implemented`) and drains queued workflows.
+  Used when the operator discards the coding session without handing off.
+- **Handoff** (`Job#complete_coding_handoff!`): fires `release_from_coding`
+  (`coding → implemented`) but **keeps `linked_chat_id`** so grader results can be
+  routed back to the owning session. Also cancels held `initial` workflows (whose
+  `implement` step the coding session has already performed). The caller then
+  instantiates a `coding_handoff` workflow
+  (prepare → grader_fanout → grader_collect → summarize → test_plan → pr_open)
+  which runs freely because the job is no longer in `:coding` state.
 
 ## Events
 
@@ -29,15 +52,18 @@ states are listed only as `from:` and have no event that enters them.
 |---|---|---|---|
 | `advance_after_triage` | `triaging → blocked_by_epic` (guard) or `triaging → queued` (guard, after: create_initial_run_if_needed) | guard + after | Job model itself; deferred dependency resolution |
 | `mark_classifier_uncertain` | `triaging → triaging` (self) | sets `triaging_reason = "classifier_uncertain"` | IngestionClassifier |
-| `block_by_epic` | `[triaging, queued, open] → blocked_by_epic` (guard) | guard | Job#block_by_epic! self-call (line 573) |
+| `block_by_epic` | `[triaging, queued, open] → blocked_by_epic` (guard) | guard | Job#block_by_epic! self-call |
 | `release_epic_block` | `blocked_by_epic → queued` (guard, after: create_initial_run_if_needed) | guard + after | Epic model |
-| `mark_implemented` | `[queued, open, landing_failed] → implemented` | none | `Steps::PrOpen`, `AutoApprovalRule`, `Job#approve_for_landing!` |
-| `approve` | `[open, implemented, landing_failed] → approved` | before: assign_approval_metadata | JobsController, app dashboard bulk API, AutoApprovalRule, PollMergeStateJob, PollPullRequestJob |
-| `unapprove` | `approved → implemented` | after: clear_approval_metadata | JobsController |
+| `mark_implemented` | `[queued, running] → implemented` | after: notify_job_implemented | `Steps::PrOpen`, `AutoApprovalRule`, `Job#approve_for_landing!` |
+| `approve` | `implemented → approved` | before: assign_approval_metadata | JobsController, app dashboard bulk API, AutoApprovalRule, PollMergeStateJob, PollPullRequestJob |
+| `unapprove` | `approved → implemented` | after: clear_approval_metadata | JobsController, `ChatFeedbackSubmission`, `Job#lock_for_coding_mode!` |
+| `claim_for_coding` | `[queued, implemented] → coding` | none | `Job#lock_for_coding_mode!` |
+| `release_from_coding` | `coding → implemented` | none | `Job#release_coding_mode_takeover!`, `Job#complete_coding_handoff!` |
+| `revert_to_coding_mode` | `running → coding` | none | `Workflows::CodingHandoff#after_fail` (when graders fail; keeps linked_chat_id so agent can iterate and re-trigger) |
 | `land` | `approved → landing` | none | **None** (see Finding 4) |
 | `start_landing` | `approved → landing` | none | LandingQueueProcessor#land |
 | `mark_merged` | `landing → merged` | after: lambda (finished_at, closure_reason, scheduled task outcome, refresh_epic_auto_state) | **None** (see Finding 2) |
-| `close` | `[open, triaging, blocked_by_epic, queued, implemented, approved, landing, landing_failed] → closed` | `after: :refresh_epic_auto_state` (event-level) + transition-level `after:` lambda (finished_at, scheduled task outcome) | Job#close_with_reason! → Steps::AutoMerge, PollPullRequestJob, JobsController, etc. |
+| `close` | `[triaging, blocked_by_epic, queued, running, implemented, failed, approved, landing, coding] → closed` | transition-level `after:` lambda (finished_at, scheduled task outcome, refresh_epic_auto_state) | Job#close_with_reason! → Steps::AutoMerge, PollPullRequestJob, JobsController, etc. |
 | `fail_landing` | `landing → implemented` | after: clears `approved_at` | RunJob.record_landing_failure! |
 | `defer_landing` | `landing → approved` | none | Steps::AutoMerge.handle_needs_rebase! + the TRANSIENT_MERGE_ERRORS rescue |
 | `reopen` | `closed → triaging` | clears closure_reason, finished_at, failure_count, sets triaging_reason | JobsController#reopen |

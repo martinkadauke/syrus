@@ -95,6 +95,269 @@ RSpec.describe ChatWorkspace do
     end
   end
 
+  describe ".ensure_coding_checkout!" do
+    it "full-clones the repository and creates a coding branch on first call" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      path = described_class.repo_path_for(chat_session, repository)
+      expect(path.join(".git")).to exist
+      branch = `git -C #{path} rev-parse --abbrev-ref HEAD`.strip
+      expect(branch).to eq("syrus-chat-#{chat_session.id}")
+      expect(chat_session.reload.coding_checkout_branch).to eq("syrus-chat-#{chat_session.id}")
+    end
+
+    it "is idempotent when coding_checkout_branch is already set" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      branch_before = chat_session.reload.coding_checkout_branch
+      path_before = described_class.repo_path_for(chat_session, repository)
+      mtime_before = File.stat(path_before.join(".git").to_s).mtime
+
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      expect(chat_session.reload.coding_checkout_branch).to eq(branch_before)
+      # The .git directory should not have been touched (no re-clone happened)
+      expect(File.stat(path_before.join(".git").to_s).mtime).to eq(mtime_before)
+    end
+
+    it "replaces an existing shallow checkout with a full clone" do
+      shallow_path = described_class.repo_path_for(chat_session, repository)
+      FileUtils.mkdir_p(shallow_path.join(".git").to_s)
+      File.write(shallow_path.join(".git", "shallow").to_s, "stubbed\n")
+
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      expect(shallow_path.join(".git")).to exist
+      expect(`git -C #{shallow_path} rev-parse --abbrev-ref HEAD`.strip).to eq("syrus-chat-#{chat_session.id}")
+    end
+
+    it "records a repository attachment on the session" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      expect(chat_session.reload.attached_repositories).to include(repository)
+    end
+  end
+
+  describe ".ensure_job_branch_checkout!" do
+    let(:job_branch) { "syrus/fix-login-42" }
+
+    before do
+      # Push a job branch to the bare remote so the clone can check it out.
+      Dir.mktmpdir("syrus-chatws-branch-seed") do |tmp|
+        sh("git clone -q #{bare_remote_dir} #{tmp}")
+        sh("git -C #{tmp} checkout -b #{job_branch}")
+        File.write(Pathname.new(tmp).join("feature.txt"), "job feature\n")
+        sh("git -C #{tmp} add feature.txt")
+        sh("git -C #{tmp} commit -q -m 'job commit' --author='Seed <s@e>'")
+        sh("git -C #{tmp} push -q origin #{job_branch}")
+      end
+    end
+
+    it "clones the repository checked out at the job branch" do
+      described_class.ensure_job_branch_checkout!(chat_session, repository, job_branch)
+
+      path = described_class.repo_path_for(chat_session, repository)
+      expect(path.join(".git")).to exist
+      branch = `git -C #{path} rev-parse --abbrev-ref HEAD`.strip
+      expect(branch).to eq(job_branch)
+      expect(chat_session.reload.coding_checkout_branch).to eq(job_branch)
+    end
+
+    it "is idempotent when coding_checkout_branch already equals the job branch" do
+      described_class.ensure_job_branch_checkout!(chat_session, repository, job_branch)
+      path = described_class.repo_path_for(chat_session, repository)
+      mtime_before = File.stat(path.join(".git").to_s).mtime
+
+      described_class.ensure_job_branch_checkout!(chat_session, repository, job_branch)
+
+      expect(File.stat(path.join(".git").to_s).mtime).to eq(mtime_before)
+    end
+
+    it "replaces an existing checkout when called with a different branch" do
+      # First set up a regular coding checkout
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      expect(chat_session.reload.coding_checkout_branch).to eq("syrus-chat-#{chat_session.id}")
+
+      described_class.ensure_job_branch_checkout!(chat_session, repository, job_branch)
+
+      path = described_class.repo_path_for(chat_session, repository)
+      expect(`git -C #{path} rev-parse --abbrev-ref HEAD`.strip).to eq(job_branch)
+      expect(chat_session.reload.coding_checkout_branch).to eq(job_branch)
+    end
+
+    it "records a repository attachment on the session" do
+      described_class.ensure_job_branch_checkout!(chat_session, repository, job_branch)
+
+      expect(chat_session.reload.attached_repositories).to include(repository)
+    end
+
+    it "makes the job branch files accessible in the checkout" do
+      described_class.ensure_job_branch_checkout!(chat_session, repository, job_branch)
+
+      path = described_class.repo_path_for(chat_session, repository)
+      expect(path.join("feature.txt").read).to include("job feature")
+    end
+  end
+
+  describe ".uncommitted_changes?" do
+    it "returns false for a clean working tree" do
+      described_class.attach_repository!(chat_session, repository)
+      path = described_class.repo_path_for(chat_session, repository)
+
+      expect(described_class.uncommitted_changes?(path)).to eq(false)
+    end
+
+    it "returns true when there is an untracked file" do
+      described_class.attach_repository!(chat_session, repository)
+      path = described_class.repo_path_for(chat_session, repository)
+      File.write(path.join("new_file.txt").to_s, "change\n")
+
+      expect(described_class.uncommitted_changes?(path)).to eq(true)
+    end
+
+    it "returns true when there is a modified tracked file" do
+      described_class.attach_repository!(chat_session, repository)
+      path = described_class.repo_path_for(chat_session, repository)
+      File.open(path.join("README.md").to_s, "a") { |f| f.puts "change" }
+
+      expect(described_class.uncommitted_changes?(path)).to eq(true)
+    end
+
+    it "returns false for a path with no .git directory" do
+      path = Pathname.new("/tmp/not-a-git-repo-#{SecureRandom.hex(4)}")
+      expect(described_class.uncommitted_changes?(path)).to eq(false)
+    end
+  end
+
+  describe ".cancel_coding_checkout!" do
+    it "deletes the coding branch and clears coding checkout state on the session" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      path = described_class.repo_path_for(chat_session, repository)
+      expect(`git -C #{path} rev-parse --abbrev-ref HEAD`.strip).to eq("syrus-chat-#{chat_session.id}")
+
+      described_class.cancel_coding_checkout!(chat_session, repository)
+
+      expect(chat_session.reload.coding_checkout_branch).to be_nil
+      expect(chat_session.coding_checkout_uncommitted).to eq(false)
+      expect(`git -C #{path} rev-parse --abbrev-ref HEAD`.strip).to eq("main")
+    end
+
+    it "is a no-op when coding_checkout_branch is not set" do
+      expect {
+        described_class.cancel_coding_checkout!(chat_session, repository)
+      }.not_to raise_error
+
+      expect(chat_session.reload.coding_checkout_branch).to be_nil
+    end
+
+    it "clears state even when the checkout directory does not exist" do
+      chat_session.update_columns(coding_checkout_branch: "syrus-chat-missing", coding_checkout_uncommitted: true)
+
+      described_class.cancel_coding_checkout!(chat_session, repository)
+
+      expect(chat_session.reload.coding_checkout_branch).to be_nil
+      expect(chat_session.coding_checkout_uncommitted).to eq(false)
+    end
+  end
+
+  describe ".file_tree" do
+    it "returns a sorted flat file list from the coding checkout" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      result = described_class.file_tree(chat_session, repository)
+
+      expect(result).not_to be_nil
+      expect(result[:files]).to be_an(Array)
+      expect(result[:files]).to include("README.md")
+      expect(result[:checkout_branch]).to eq("syrus-chat-#{chat_session.id}")
+    end
+
+    it "excludes .git directory entries" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      result = described_class.file_tree(chat_session, repository)
+
+      expect(result[:files]).not_to include(match(%r{\A\.git/}))
+      expect(result[:files]).not_to include(".git")
+    end
+
+    it "returns nil when the coding checkout directory does not exist" do
+      result = described_class.file_tree(chat_session, repository)
+
+      expect(result).to be_nil
+    end
+  end
+
+  describe ".file_content" do
+    it "returns the content of an existing file" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      result = described_class.file_content(chat_session, repository, "README.md")
+
+      expect(result).not_to be_nil
+      expect(result[:binary]).to eq(false)
+      expect(result[:too_large]).to eq(false)
+      expect(result[:content]).to include("Widgets")
+    end
+
+    it "returns nil for a nonexistent file" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      result = described_class.file_content(chat_session, repository, "no_such_file.rb")
+
+      expect(result).to be_nil
+    end
+
+    it "returns nil for path traversal attempts" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      result = described_class.file_content(chat_session, repository, "../../../etc/passwd")
+
+      expect(result).to be_nil
+    end
+
+    it "returns nil when the checkout does not exist" do
+      result = described_class.file_content(chat_session, repository, "README.md")
+
+      expect(result).to be_nil
+    end
+  end
+
+  describe ".coding_diff" do
+    it "returns cumulative diff (origin vs working tree) for modified tracked files" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      checkout_path = described_class.repo_path_for(chat_session, repository)
+      File.write(checkout_path.join("README.md").to_s, "# Changed\n")
+
+      result = described_class.coding_diff(chat_session, repository, mode: :cumulative)
+
+      expect(result).to include("Changed")
+    end
+
+    it "returns turn diff (HEAD vs working tree uncommitted changes)" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      checkout_path = described_class.repo_path_for(chat_session, repository)
+      File.write(checkout_path.join("README.md").to_s, "# Turn change\n")
+
+      result = described_class.coding_diff(chat_session, repository, mode: :turn)
+
+      expect(result).to include("Turn change")
+    end
+
+    it "returns empty string when checkout does not exist" do
+      result = described_class.coding_diff(chat_session, repository, mode: :cumulative)
+
+      expect(result).to eq("")
+    end
+
+    it "defaults to cumulative mode" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      result = described_class.coding_diff(chat_session, repository)
+
+      expect(result).to be_a(String)
+    end
+  end
+
   describe ".destroy!" do
     it "removes the workspace path" do
       path = described_class.ensure_root!(chat_session)

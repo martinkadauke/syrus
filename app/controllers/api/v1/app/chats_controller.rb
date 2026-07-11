@@ -76,6 +76,23 @@ module Api
             return
           end
 
+          if chat_params.respond_to?(:key?) && chat_params.key?(:mode)
+            unless Feature.coding_mode_enabled?
+              render_error("feature_disabled", "Coding Mode is not enabled on this instance.", status: :unprocessable_content)
+              return
+            end
+
+            mode = chat_params[:mode].to_s.strip
+            unless ChatSession::MODES.include?(mode)
+              render_error("validation_failed", "Invalid mode. Must be one of: #{ChatSession::MODES.join(", ")}.", status: :unprocessable_content)
+              return
+            end
+
+            chat_session.update!(mode: mode)
+            render json: chat_payload(chat_session.reload, message: "Chat mode updated.")
+            return
+          end
+
           pinned = if chat_params.respond_to?(:key?) && chat_params.key?(:pinned)
             params[:chat][:pinned]
           else
@@ -696,6 +713,112 @@ module Api
           render_error("validation_failed", e.message, status: :unprocessable_content)
         end
 
+        def cancel_coding_checkout
+          chat_session = find_chat_session
+          unless Feature.coding_mode_enabled?
+            render_error("feature_disabled", "Coding Mode is not enabled on this instance.", status: :not_found)
+            return
+          end
+
+          repository = chat_session.repository
+          unless repository
+            render_error("not_found", "No repository attached to this chat.", status: :not_found)
+            return
+          end
+
+          if chat_session.coding_checkout_branch.blank?
+            render_error("not_found", "No active coding checkout for this chat.", status: :not_found)
+            return
+          end
+
+          ChatWorkspace.cancel_coding_checkout!(chat_session, repository)
+          render json: chat_payload(chat_session.reload, message: "Coding checkout cancelled.")
+        rescue ActiveRecord::RecordNotFound
+          raise
+        rescue StandardError => e
+          render_error("server_error", "Could not cancel coding checkout: #{e.message}", status: :internal_server_error)
+        end
+
+        def coding_files
+          chat_session = find_chat_session
+          unless Feature.coding_mode_enabled?
+            render_error("feature_disabled", "Coding Mode is not enabled on this instance.", status: :not_found)
+            return
+          end
+
+          unless chat_session.repository
+            render_error("not_found", "No repository attached to this chat.", status: :not_found)
+            return
+          end
+
+          if chat_session.coding_checkout_branch.blank?
+            render_error("not_found", "No active coding checkout for this chat.", status: :not_found)
+            return
+          end
+
+          result = ChatWorkspace.file_tree(chat_session, chat_session.repository)
+          unless result
+            render_error("not_found", "Coding checkout directory not found.", status: :not_found)
+            return
+          end
+
+          render json: result
+        end
+
+        def coding_file
+          chat_session = find_chat_session
+          unless Feature.coding_mode_enabled?
+            render_error("feature_disabled", "Coding Mode is not enabled on this instance.", status: :not_found)
+            return
+          end
+
+          unless chat_session.repository
+            render_error("not_found", "No repository attached to this chat.", status: :not_found)
+            return
+          end
+
+          if chat_session.coding_checkout_branch.blank?
+            render_error("not_found", "No active coding checkout for this chat.", status: :not_found)
+            return
+          end
+
+          file_path = params[:path].to_s.strip
+          if file_path.blank?
+            render_error("validation_failed", "path parameter is required.", status: :unprocessable_content)
+            return
+          end
+
+          result = ChatWorkspace.file_content(chat_session, chat_session.repository, file_path)
+          if result.nil?
+            render_error("not_found", "File not found in coding checkout.", status: :not_found)
+            return
+          end
+
+          render json: result.merge(path: file_path)
+        end
+
+        def coding_diff
+          chat_session = find_chat_session
+          unless Feature.coding_mode_enabled?
+            render_error("feature_disabled", "Coding Mode is not enabled on this instance.", status: :not_found)
+            return
+          end
+
+          unless chat_session.repository
+            render json: { diff: "", mode: "cumulative", checkout_branch: nil }
+            return
+          end
+
+          mode = params[:mode].to_s == "turn" ? :turn : :cumulative
+          diff = ChatWorkspace.coding_diff(chat_session, chat_session.repository, mode: mode)
+
+          render json: {
+            diff: diff,
+            mode: mode.to_s,
+            checkout_branch: chat_session.coding_checkout_branch
+          }
+        end
+
         def search_proposals
           chat_session = find_chat_session
           query = params[:q].to_s.strip
@@ -979,13 +1102,18 @@ module Api
               app_whiteboard_path: "/api/v1/app/chats/#{chat_session.id}/whiteboard",
               app_switch_provider_path: "/api/v1/app/chats/#{chat_session.id}/switch_provider",
               app_scratchpad_reorder_path: "/api/v1/app/chats/#{chat_session.id}/scratchpad_items/reorder",
-              app_video_walkthroughs_path: "/api/v1/app/chats/#{chat_session.id}/video_walkthroughs"
+              app_video_walkthroughs_path: "/api/v1/app/chats/#{chat_session.id}/video_walkthroughs",
+              app_cancel_coding_checkout_path: "/api/v1/app/chats/#{chat_session.id}/coding_checkout",
+              app_coding_files_path: "/api/v1/app/chats/#{chat_session.id}/coding_files",
+              app_coding_file_path: "/api/v1/app/chats/#{chat_session.id}/coding_file",
+              app_coding_diff_path: "/api/v1/app/chats/#{chat_session.id}/coding_diff"
             },
             gemini_configured: Current.user.gemini_configured?,
             # Labs flag: gates the composer's record/drag/upload intake. The
             # video_walkthroughs media list stays in the payload regardless so
             # already-analyzed threads keep their history when the flag is off.
-            walkthroughs_enabled: Feature.video_walkthroughs_enabled?
+            walkthroughs_enabled: Feature.video_walkthroughs_enabled?,
+            coding_mode_enabled: Feature.coding_mode_enabled?
           }
         end
 
@@ -1667,6 +1795,7 @@ module Api
             effective_chat_provider: chat_session.effective_chat_provider,
             effective_chat_provider_label: chat_provider_label(chat_session.effective_chat_provider),
             chat_provider_options: chat_provider_options(chat_session),
+            mode: chat_session.mode,
             chat_path: chat_path(chat_session),
             repository: repository ? repository_json(repository).merge(repository_path: repository_path(repository)) : nil,
             turn_in_flight: chat_session.turn_in_flight?,
@@ -1678,7 +1807,9 @@ module Api
             cumulative_cost_usd: chat_session.cumulative_cost.to_f,
             pending_proposal_count: chat_session.proposals.where(state: "proposed").count +
               chat_session.pending_actions.where(state: "pending").count,
-            scratchpad_items_count: chat_session.scratchpad_items.count
+            scratchpad_items_count: chat_session.scratchpad_items.count,
+            coding_checkout_uncommitted: chat_session.coding_checkout_uncommitted?,
+            coding_checkout_branch: chat_session.coding_checkout_branch
           }
         end
 

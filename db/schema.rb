@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_11_001541) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -253,6 +253,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
 
   create_table "chat_sessions", force: :cascade do |t|
     t.string "chat_provider"
+    t.string "coding_checkout_branch"
+    t.boolean "coding_checkout_uncommitted", default: false, null: false
     t.datetime "created_at", null: false
     t.decimal "cumulative_cost_usd", precision: 12, scale: 6, default: "0.0", null: false
     t.integer "cumulative_input_tokens", default: 0, null: false
@@ -260,6 +262,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.datetime "hidden_at"
     t.datetime "last_message_at"
     t.datetime "last_read_at"
+    t.string "mode", default: "planning", null: false
     t.boolean "onboarding", default: false, null: false
     t.boolean "pinned", default: false, null: false
     t.text "pinned_context"
@@ -595,6 +598,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
     t.datetime "last_seen_fork_review_comment_at"
+    t.integer "linked_chat_id"
     t.string "local_mergeability_base_sha"
     t.datetime "local_mergeability_checked_at"
     t.string "local_mergeability_head_sha"
@@ -636,6 +640,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
     t.index ["grace_period_expires_at"], name: "index_jobs_on_grace_period_expires_at"
+    t.index ["linked_chat_id"], name: "index_jobs_on_linked_chat_id"
     t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
     t.index ["parent_job_id"], name: "index_jobs_on_parent_job_id"
@@ -1167,6 +1172,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_09_183428) do
   add_foreign_key "job_logs", "runs"
   add_foreign_key "job_pins", "jobs"
   add_foreign_key "job_pins", "users"
+  add_foreign_key "jobs", "chat_sessions", column: "linked_chat_id"
   add_foreign_key "jobs", "epics"
   add_foreign_key "jobs", "jobs", column: "parent_job_id"
   add_foreign_key "jobs", "repositories"

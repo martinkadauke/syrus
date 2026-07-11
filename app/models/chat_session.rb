@@ -50,6 +50,7 @@ class ChatSession < ApplicationRecord
   has_many :whiteboard_snapshots, dependent: :destroy
   has_one :claude_session, as: :resumable, dependent: :destroy
   has_one :whiteboard, dependent: :destroy
+  has_one :linked_job, class_name: "Job", foreign_key: :linked_chat_id, inverse_of: :linked_chat, dependent: :nullify
 
   after_update_commit :broadcast_header, if: :header_previously_changed?
   after_create :attach_initial_repository
@@ -71,6 +72,10 @@ class ChatSession < ApplicationRecord
             numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :cumulative_cost_usd,
             numericality: { greater_than_or_equal_to: 0 }
+  MODES = %w[ planning coding ].freeze
+
+  enum :mode, { planning: "planning", coding: "coding" }, default: "planning"
+
   validates :chat_provider, inclusion: { in: User::CHAT_PROVIDERS }, allow_nil: true
   validates :share_token, uniqueness: true, allow_nil: true
 
@@ -225,7 +230,8 @@ class ChatSession < ApplicationRecord
           stop_requested_at: stop_requested_at&.iso8601,
           cumulative_input_tokens: cumulative_input_tokens.to_i,
           cumulative_output_tokens: cumulative_output_tokens.to_i,
-          cumulative_cost_usd: cumulative_cost.to_f
+          cumulative_cost_usd: cumulative_cost.to_f,
+          coding_checkout_uncommitted: coding_checkout_uncommitted?
         }
       }
     )
@@ -290,9 +296,11 @@ class ChatSession < ApplicationRecord
     saved_change_to_title? ||
       saved_change_to_pinned_context? ||
       saved_change_to_chat_provider? ||
+      saved_change_to_mode? ||
       saved_change_to_cumulative_input_tokens? ||
       saved_change_to_cumulative_output_tokens? ||
-      saved_change_to_cumulative_cost_usd?
+      saved_change_to_cumulative_cost_usd? ||
+      saved_change_to_coding_checkout_uncommitted?
   end
 
   def attach_initial_repository

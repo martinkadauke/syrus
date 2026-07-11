@@ -288,6 +288,7 @@ RSpec.describe ChatSession do
           action: "update_header",
           chat: {
             chat_provider: "claude",
+            coding_checkout_uncommitted: false,
             title: "Updated chat",
             title_pending: false,
             pinned_context: nil,
@@ -500,6 +501,29 @@ RSpec.describe ChatSession do
       expect(JobDependency.exists?(dependency.id)).to be(false)
       expect(ChatProposal.exists?(proposal.id)).to be(false)
       expect(Job.exists?(dependent_job.id)).to be(true)
+    end
+  end
+
+  describe "mode" do
+    it "defaults to planning" do
+      session = described_class.create!(user: repo.user)
+
+      expect(session.mode).to eq("planning")
+      expect(session).to be_planning
+      expect(session).not_to be_coding
+    end
+
+    it "accepts coding mode" do
+      session = described_class.new(user: repo.user, mode: "coding")
+
+      expect(session).to be_valid
+      expect(session).to be_coding
+    end
+
+    it "rejects unknown modes" do
+      expect {
+        described_class.new(user: repo.user, mode: "autopilot")
+      }.to raise_error(ArgumentError, /'autopilot' is not a valid mode/)
     end
   end
 

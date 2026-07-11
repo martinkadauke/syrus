@@ -91,6 +91,7 @@ Rails.application.routes.draw do
         post "jobs/:job_id/approve", to: "job_lifecycle#approve", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/unapprove", to: "job_lifecycle#unapprove", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/reopen", to: "job_lifecycle#reopen", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        post "jobs/:job_id/open_in_coding_mode", to: "job_coding_mode#open", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:id/chat_feedback", to: "jobs#chat_feedback", constraints: { id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:job_id/pending_feedback", to: "pending_feedback#index", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/pending_feedback/:id/apply", to: "pending_feedback#apply", constraints: { job_id: /[a-zA-Z0-9_-]+/, id: /\d+/ }
@@ -184,6 +185,10 @@ Rails.application.routes.draw do
         post "chats/:id/pending_actions/:pending_action_id/confirm", to: "chats#confirm_pending_action", constraints: { id: /\d+/, pending_action_id: /\d+/ }
         post "chats/:id/pending_actions/:pending_action_id/reject", to: "chats#destroy_pending_action", constraints: { id: /\d+/, pending_action_id: /\d+/ }
         delete "chats/:id/pending_actions/:pending_action_id", to: "chats#destroy_pending_action", constraints: { id: /\d+/, pending_action_id: /\d+/ }
+        delete "chats/:id/coding_checkout", to: "chats#cancel_coding_checkout", constraints: { id: /\d+/ }
+        get "chats/:id/coding_files", to: "chats#coding_files", constraints: { id: /\d+/ }
+        get "chats/:id/coding_file", to: "chats#coding_file", constraints: { id: /\d+/ }
+        get "chats/:id/coding_diff", to: "chats#coding_diff", constraints: { id: /\d+/ }
         get "repositories/new", to: "repositories#new"
         get "repositories/:id/edit", to: "repositories#edit", constraints: { id: /\d+/ }
         get "repositories/owners", to: "repositories#owners"

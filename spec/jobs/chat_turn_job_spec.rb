@@ -36,6 +36,174 @@ RSpec.describe ChatTurnJob do
     feature.update!(enabled: enabled)
   end
 
+  def enable_coding_mode!(enabled: true)
+    feature = Feature.find_or_create_by!(slug: "coding_mode") do |record|
+      record.category = "Labs"
+      record.name = "Coding Mode"
+    end
+    feature.update!(enabled: enabled)
+  end
+
+  it "calls ensure_coding_checkout! instead of refreshing repository checkouts in coding mode" do
+    enable_coding_mode!
+    chat.update!(mode: "coding")
+    ensure_called = false
+    refresh_called = false
+    allow(ChatWorkspace).to receive(:ensure_coding_checkout!) do
+      ensure_called = true
+    end
+    allow(ChatWorkspace).to receive(:attach_repository!) do
+      refresh_called = true
+    end
+    ChatTurnJob.agent_runner = ->(**_) { result_fixture(session_id: "s1") }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(ensure_called).to eq(true)
+    expect(refresh_called).to eq(false)
+  end
+
+  it "calls refresh for attached repositories in planning mode, not ensure_coding_checkout!" do
+    ensure_called = false
+    allow(ChatWorkspace).to receive(:ensure_coding_checkout!) { ensure_called = true }
+    FileUtils.mkdir_p(ChatWorkspace.repo_path_for(chat, repository).join(".git"))
+    allow(ChatWorkspace).to receive(:attach_repository!)
+    ChatTurnJob.agent_runner = ->(**_) { result_fixture(session_id: "s1") }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(ensure_called).to eq(false)
+  end
+
+  it "logs a warning and continues when ensure_coding_checkout! fails in coding mode" do
+    enable_coding_mode!
+    chat.update!(mode: "coding")
+    allow(ChatWorkspace).to receive(:ensure_coding_checkout!).and_raise(StandardError, "clone failed")
+    allow(Rails.logger).to receive(:warn)
+    ran_agent = false
+    ChatTurnJob.agent_runner = ->(**_) {
+      ran_agent = true
+      result_fixture(session_id: "s1")
+    }
+
+    expect { described_class.perform_now(chat.id, user_message.id) }.not_to raise_error
+
+    expect(ran_agent).to eq(true)
+    expect(Rails.logger).to have_received(:warn).with(
+      /coding checkout setup failed for chat ##{chat.id}: StandardError: clone failed/
+    )
+  end
+
+  it "updates coding_checkout_uncommitted after the turn when there are uncommitted changes" do
+    enable_coding_mode!
+    chat.update!(mode: "coding", coding_checkout_branch: "syrus-chat-#{chat.id}")
+    path = ChatWorkspace.repo_path_for(chat, repository)
+    allow(ChatWorkspace).to receive(:ensure_coding_checkout!)
+    allow(ChatWorkspace).to receive(:repo_path_for).with(chat, repository).and_return(path)
+    allow(ChatWorkspace).to receive(:uncommitted_changes?).with(path).and_return(true)
+    allow(AppEvents).to receive(:broadcast)
+    ChatTurnJob.agent_runner = ->(**_) { result_fixture(session_id: "s1") }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(chat.reload.coding_checkout_uncommitted).to eq(true)
+  end
+
+  it "does not update coding_checkout_uncommitted when state has not changed" do
+    enable_coding_mode!
+    chat.update!(mode: "coding", coding_checkout_branch: "syrus-chat-#{chat.id}", coding_checkout_uncommitted: false)
+    path = ChatWorkspace.repo_path_for(chat, repository)
+    allow(ChatWorkspace).to receive(:ensure_coding_checkout!)
+    allow(ChatWorkspace).to receive(:repo_path_for).with(chat, repository).and_return(path)
+    allow(ChatWorkspace).to receive(:uncommitted_changes?).with(path).and_return(false)
+    update_columns_called = false
+    allow(chat).to receive(:update_columns).and_wrap_original do |original, **attrs|
+      update_columns_called = true if attrs.key?(:coding_checkout_uncommitted)
+      original.call(**attrs)
+    end
+    ChatTurnJob.agent_runner = ->(**_) { result_fixture(session_id: "s1") }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(update_columns_called).to eq(false)
+  end
+
+  it "skips coding checkout state update when chat has no coding_checkout_branch" do
+    enable_coding_mode!
+    chat.update!(mode: "coding")
+    allow(ChatWorkspace).to receive(:ensure_coding_checkout!)
+    allow(ChatWorkspace).to receive(:uncommitted_changes?)
+    ChatTurnJob.agent_runner = ->(**_) { result_fixture(session_id: "s1") }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(ChatWorkspace).not_to have_received(:uncommitted_changes?)
+  end
+
+  it "does not inject the coding mode section when the feature flag is off (planning mode chat)" do
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "s1")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(received[:prompt]).not_to include("Coding Mode")
+    expect(received[:prompt]).not_to include("complete_implement_step")
+  end
+
+  it "does not inject the coding mode section for a planning-mode chat even when the flag is on" do
+    enable_coding_mode!
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "s1")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(received[:prompt]).not_to include("Coding Mode")
+  end
+
+  it "injects the coding mode section when the flag is on and the chat is in coding mode" do
+    enable_coding_mode!
+    chat.update!(mode: "coding")
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "s1")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(received[:prompt]).to include("Coding Mode")
+    expect(received[:prompt]).to include("implement code")
+    expect(received[:prompt]).to include("complete_implement_step")
+    expect(received[:prompt]).to include("grader")
+  end
+
+  it "includes the workspace root and attached job context in the coding mode prompt" do
+    enable_coding_mode!
+    job = Factories.job_record(user: user, repository: repository, issue_title: "Add widget API",
+                               branch_name: "syrus/direct-999")
+    chat.chat_attachments.create!(attachable: job)
+    chat.update!(mode: "coding")
+
+    received = {}
+    ChatTurnJob.agent_runner = ->(**kwargs) {
+      received.merge!(kwargs)
+      result_fixture(session_id: "s1")
+    }
+
+    described_class.perform_now(chat.id, user_message.id)
+
+    expect(received[:prompt]).to include(workspace_path.to_s)
+    expect(received[:prompt]).to include("syrus/direct-999")
+    expect(received[:prompt]).to include("Add widget API")
+    expect(received[:prompt]).to include(job.id.to_s)
+  end
+
   it "orients the agent to its walkthrough tools (not an analysis dump) for a walkthrough message" do
     enable_walkthroughs!
     walkthrough = ChatVideoWalkthrough.new(
