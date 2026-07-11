@@ -154,7 +154,10 @@ RSpec.describe "desktop auto-update and release pipeline" do
     # --no-push (identical whether or not we push → both arches always
     # exercised), then push_image pushes that arch BY DIGEST. The tag/skip-tests
     # come from inputs, so the invocation is the args-array form.
-    expect(build_workflow).to match(/args=\("\$IMAGE_TAG" --no-push\)/)
+    # The positional arg doubles as the baked SYRUS_VERSION — it must be the
+    # APP-STYLE version so the in-app badge reads identically for app and
+    # backend, never the registry tag.
+    expect(build_workflow).to match(/args=\("\$VERSION" --no-push\)/)
     expect(build_workflow).to match(%r{bin/publish-image "\$\{args\[@\]\}"})
     expect(build_workflow).not_to include("--multi-arch") # QEMU path is gone from CI
     expect(build_workflow).to include("push-by-digest=true")

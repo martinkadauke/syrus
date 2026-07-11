@@ -38,11 +38,11 @@ on:
   workflow_call:
     inputs:
       version:
-        description: "App version (X.Y.Z or X.Y.Z-test.N) — stamped into the desktop apps and the CLI tag v$version."
+        description: "App version (X.Y.Z or X.Y.Z-test.N) — stamped into the desktop apps, the CLI tag v$version, AND baked into the backend image as SYRUS_VERSION so the in-app badge reads identically for app and backend."
         type: string
         required: true
       image_primary_tag:
-        description: "Primary GHCR tag for the backend image; also the bin/publish-image build tag and the SYRUS_VERSION build-arg."
+        description: "Primary GHCR tag for the backend image (registry addressing only; the baked SYRUS_VERSION comes from `version`)."
         type: string
         required: true
       image_extra_tag:
@@ -154,7 +154,14 @@ jobs:
       # the two legs from clobbering each other's mode=max cache.
       - name: Build + integration-test (native ${{ matrix.arch }})
         env:
-          IMAGE_TAG: ${{ inputs.image_primary_tag }}
+          # The APP-STYLE version (X.Y.Z or X.Y.Z-test.N) is what gets BAKED
+          # into the image as SYRUS_VERSION — it's what the backend half of
+          # the in-app BuildBadge reports, so it must format identically to
+          # the app's own version ("app 0.1.4-test.3 · backend 0.1.4-test.3").
+          # The guarded test- image TAGS are registry addressing only; baking
+          # the sha tag here is what made the badge read "backend
+          # test-<sha>" next to "app <version>".
+          VERSION: ${{ inputs.version }}
           RUN_TESTS: ${{ inputs.run_integration_tests }}
           SYRUS_DOCKER_REGISTRY_CACHE: "1"
           SYRUS_DOCKER_CACHE_REF: ${{ inputs.cache_ref_prefix }}-${{ matrix.arch }}
@@ -171,7 +178,7 @@ jobs:
           # pins both).
           SYRUS_BUILT_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%SZ' HEAD)"
           export SYRUS_BUILT_AT
-          args=("$IMAGE_TAG" --no-push)
+          args=("$VERSION" --no-push)
           if [ "$RUN_TESTS" != "true" ]; then
             echo "::warning::run_integration_tests=false — skipping bin/test-docker for this arch."
             args+=(--skip-tests)
@@ -189,7 +196,9 @@ jobs:
           IMAGE: ghcr.io/tkadauke/syrus-backend
           PLATFORM: ${{ matrix.platform }}
           CACHE_REF: ${{ inputs.cache_ref_prefix }}-${{ matrix.arch }}
-          VERSION: ${{ inputs.image_primary_tag }}
+          # Lockstep with the build step above: the baked SYRUS_VERSION is the
+          # app-style version, not the registry tag.
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           mkdir -p /tmp/digests

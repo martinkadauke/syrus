@@ -118,7 +118,11 @@ RSpec.describe "desktop test-build pipeline" do
     expect(build_yaml.dig("jobs", "build-backend", "strategy", "matrix", "include")).to be_an(Array)
     # The build goes through bin/publish-image --no-push (integration gate
     # included; run_integration_tests=false maps to its --skip-tests flag).
-    expect(build_text).to match(/args=\("\$IMAGE_TAG" --no-push\)/)
+    expect(build_text).to match(/args=\("\$VERSION" --no-push\)/)
+    # Badge consistency (user-reported): the backend must BAKE the app-style
+    # version (X.Y.Z-test.N), not the sha tag, and both build sites take it
+    # from inputs.version — "app 0.1.4-test.3 · backend 0.1.4-test.3".
+    expect(build_text.scan(/VERSION: \$\{\{ inputs\.version \}\}/).size).to be >= 2
     expect(build_text).to include("--skip-tests")
     # The by-digest push and the manifest merge are gated on the push_image
     # input, not a dry_run flag — and the test caller ALWAYS passes true, so
