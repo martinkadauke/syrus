@@ -97,24 +97,26 @@ RSpec.describe "Docker image scripts" do
     expect(deploy).not_to include("--built-at=")
   end
 
-  it "keeps the release workflow's by-digest rebuild in lockstep with publish-image's build args" do
-    # release.yml pushes each arch with a raw `docker buildx build` that must
-    # be a pure cache hit of what bin/publish-image built and tested. A missing
-    # build-arg there silently rebuilds a DIFFERENT image (empty SYRUS_VERSION
-    # / SYRUS_BUILT_AT) than the one the integration gate validated. The
-    # timestamp is DERIVED FROM THE SOURCE (HEAD's committer date, UTC) with
-    # the identical expression in the build step and the push step — and,
-    # because it is deterministic, in BOTH matrix legs, so the two arch images
-    # in the single released multi-arch manifest carry one timestamp. No
-    # GITHUB_ENV hand-off, no wall clock anywhere in the release image path.
-    release_yml = File.read(File.join(root, ".github/workflows/release.yml"))
-    expect(release_yml).to include('--build-arg "GIT_SHA=$(git rev-parse --short HEAD)"')
-    expect(release_yml).to include('--build-arg "SYRUS_VERSION=$VERSION"')
-    expect(release_yml).to include('--build-arg "SYRUS_BUILT_AT=$SYRUS_BUILT_AT"')
+  it "keeps the shared build module's by-digest rebuild in lockstep with publish-image's build args" do
+    # The backend build lives in the reusable _build-app.yml module now (called
+    # by both release.yml and test-build.yml). It pushes each arch with a raw
+    # `docker buildx build` that must be a pure cache hit of what
+    # bin/publish-image built and tested. A missing build-arg there silently
+    # rebuilds a DIFFERENT image (empty SYRUS_VERSION / SYRUS_BUILT_AT) than the
+    # one the integration gate validated. The timestamp is DERIVED FROM THE
+    # SOURCE (HEAD's committer date, UTC) with the identical expression in the
+    # build step and the push step — and, because it is deterministic, in BOTH
+    # matrix legs, so the two arch images in the single released multi-arch
+    # manifest carry one timestamp. No GITHUB_ENV hand-off, no wall clock
+    # anywhere in the release image path.
+    build_yml = File.read(File.join(root, ".github/workflows/_build-app.yml"))
+    expect(build_yml).to include('--build-arg "GIT_SHA=$(git rev-parse --short HEAD)"')
+    expect(build_yml).to include('--build-arg "SYRUS_VERSION=$VERSION"')
+    expect(build_yml).to include('--build-arg "SYRUS_BUILT_AT=$SYRUS_BUILT_AT"')
     git_stamp = %q{SYRUS_BUILT_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%SZ' HEAD)"}
-    expect(release_yml.scan(git_stamp).size).to eq(2)
-    expect(release_yml).not_to include('SYRUS_BUILT_AT="$(date')
-    expect(release_yml).not_to include('SYRUS_BUILT_AT=${SYRUS_BUILT_AT:-}')
+    expect(build_yml.scan(git_stamp).size).to eq(2)
+    expect(build_yml).not_to include('SYRUS_BUILT_AT="$(date')
+    expect(build_yml).not_to include('SYRUS_BUILT_AT=${SYRUS_BUILT_AT:-}')
   end
 
   it "verifies pushes through imagetools, not a hand-rolled base64 bearer token" do

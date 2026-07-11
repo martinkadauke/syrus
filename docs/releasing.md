@@ -40,18 +40,29 @@ any failure — see [the pipeline](#the-pipeline-githubworkflowsreleaseyml)).
 
 ### The pipeline (`.github/workflows/release.yml`)
 
+`release.yml` is **thin**: it owns the release-specific bits — the version calc
+(`prepare`) and the near-atomic go-live (`publish`) — and delegates the actual
+build+sign of every shippable component to a **shared reusable module**,
+[`.github/workflows/_build-app.yml`](../.github/workflows/_build-app.yml). That
+same module is called by the Test build pipeline (`test-build.yml`), so the two
+can never drift: a test build and a release build every component the same way,
+byte-for-byte, differing only in the inputs each caller passes (image tags,
+cache prefix, whether to push, whether to stage the auto-update feed, artifact
+names/retention). See [The shared build module](#the-shared-build-module).
+
 ```
-prepare ─┬─ build-backend (MATRIX, native per arch — NO QEMU:
-         │                  amd64 on ubuntu-latest, arm64 on ubuntu-24.04-arm;
-         │                  each builds its arch, runs bin/test-docker on it,
-         │                  then pushes that arch BY DIGEST) ──┐
-         │                                                     ▼
-         │                              merge-backend (imagetools create → the
-         │                              multi-arch :X.Y.Z tag; NOT :latest)
-         ├─ build-cli     (cross-compile tarballs → staged)
-         ├─ build-mac     (sign + notarize + staple → staged)
-         └─ build-windows (Azure-sign → staged)
-                    │  merge-backend + all three apps must pass
+prepare ── build  (uses ./.github/workflows/_build-app.yml — the SHARED spine):
+                 ┌─ build-backend (MATRIX, native per arch — NO QEMU:
+                 │                  amd64 on ubuntu-latest, arm64 on ubuntu-24.04-arm;
+                 │                  each builds its arch, runs bin/test-docker on it,
+                 │                  then pushes that arch BY DIGEST) ──┐
+                 │                                                     ▼
+                 │                       merge-backend (imagetools create → the
+                 │                       multi-arch :X.Y.Z tag; NOT :latest)
+                 ├─ build-cli     (cross-compile tarballs → staged)
+                 ├─ build-mac     (sign + notarize + staple → staged)
+                 └─ build-windows (Azure-sign → staged)
+                    │  the whole build spine must pass
                     ▼
                  publish   (NEAR-ATOMIC draft-release flow:
                             snapshot :latest, create an invisible DRAFT
@@ -62,6 +73,37 @@ prepare ─┬─ build-backend (MATRIX, native per arch — NO QEMU:
                     ▼
              publish-website  (calls the shared deploy-website workflow — stub)
 ```
+
+### The shared build module
+
+`.github/workflows/_build-app.yml` is a `workflow_call` module that builds and
+signs the whole shippable set — backend image (native per-arch matrix →
+multi-arch manifest), CLI tarballs, the notarized macOS app, and the Azure-signed
+Windows installer — and stages them as run artifacts. It owns none of the
+release-specific plumbing: version computation stays in each caller's `prepare`
+job, and publishing (draft release, `:latest` move, notes, website) stays in
+`release.yml`. Callers reach it as a single job (`build:`) and pass `secrets:
+inherit` so it gets every signing secret; it declares only `contents: read` +
+`packages: write`.
+
+The two callers differ **only** in inputs:
+
+| Input | Release | Test build |
+| --- | --- | --- |
+| `version` | `X.Y.Z` | `X.Y.Z-test.N` |
+| `image_primary_tag` | `X.Y.Z` | `test-<short-sha>` |
+| `image_extra_tag` | — | `test-<X.Y.Z-test.N>` |
+| `backend_image_pin` | `…syrus-backend:X.Y.Z` | `…syrus-backend:test-<X.Y.Z-test.N>` |
+| `cache_ref_prefix` | `…syrus-backend:buildcache` | `…syrus-backend:buildcache-test` |
+| `push_image` | `dry_run == false` | `true` |
+| `stage_update_feed` | `true` | `false` |
+| `artifact_prefix` | `staged` | `test-staged` |
+| `artifact_retention_days` | 7 | 14 |
+| `run_integration_tests` / `build_windows` | `true` | the dispatch inputs |
+
+To change how ANY component is built or signed, edit the module once; both
+entry points pick it up. To change what a release vs. a test build produces,
+change the input a caller passes.
 
 Nothing is user-visible until `publish`. The build jobs only *stage* artifacts
 and push a *versioned* image tag; if any of them fails, `publish` never runs —

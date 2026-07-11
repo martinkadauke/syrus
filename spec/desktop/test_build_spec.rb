@@ -10,11 +10,21 @@ require "spec_helper"
 # impossible (contents: read, no gh release, :latest untouched). The invariants
 # here are the ones that would quietly turn a test build into a shadow release
 # (or a broken artifact) if broken.
+#
+# test-build.yml is a THIN caller of the shared build spine: it computes the
+# test identifiers (prepare) and calls the reusable _build-app.yml module with
+# test parameters. The build/sign steps themselves live in the module, shared
+# with release.yml — so assertions about HOW a component is built read the
+# module, and assertions about the test-specific inputs read the thin caller.
 RSpec.describe "desktop test-build pipeline" do
   let(:repo_root) { File.expand_path("../..", __dir__) }
   let(:workflow_path) { File.join(repo_root, ".github/workflows/test-build.yml") }
   let(:workflow_text) { File.read(workflow_path, encoding: "UTF-8") }
   let(:workflow) { YAML.safe_load(workflow_text) }
+  # The shared build spine both Release and Test build call.
+  let(:build_path) { File.join(repo_root, ".github/workflows/_build-app.yml") }
+  let(:build_text) { File.read(build_path, encoding: "UTF-8") }
+  let(:build_yaml) { YAML.safe_load(build_text) }
 
   it "is workflow_dispatch-only, with a deliberately small input surface" do
     # `on:` parses as the boolean key true.
@@ -33,16 +43,21 @@ RSpec.describe "desktop test-build pipeline" do
     # if a step tried — the strongest "never publishes" guarantee.
     expect(workflow.dig("permissions", "contents")).to eq("read")
     expect(workflow.dig("permissions", "packages")).to eq("write")
-    # No release surface at all.
+    # No release surface at all in the thin caller.
     expect(workflow_text).not_to include("gh release")
     expect(workflow_text).not_to include("--generate-notes")
-    # The only imagetools targets are the two guarded test tags (sha +
-    # version-named twin) — :latest never moves.
-    expect(workflow_text).to match(/imagetools create -t "\$IMAGE:\$VERSION" -t "\$IMAGE:\$VERSION_TAG"/)
+    # The module tags both the sha-named primary and the version-named twin
+    # (image_extra_tag); :latest never moves — not in the module, not here.
+    expect(build_text).to include('docker buildx imagetools create -t "$IMAGE:$VERSION" ${VERSION_TAG:+-t "$IMAGE:$VERSION_TAG"}')
+    expect(build_text).not_to match(/imagetools create[^\n]*:latest/)
     expect(workflow_text).not_to match(/imagetools create[^\n]*:latest/)
-    # No publish/publish-website jobs — build jobs only.
-    expect(workflow["jobs"].keys).to contain_exactly(
-      "prepare", "build-backend", "merge-backend", "build-cli", "build-mac", "build-windows"
+    # The thin caller passes the version-named twin as the extra tag.
+    expect(workflow.dig("jobs", "build", "with", "image_extra_tag")).to eq("${{ needs.prepare.outputs.version_tag }}")
+    # Thin caller: only prepare + the reusable build call. No publish jobs.
+    expect(workflow["jobs"].keys).to contain_exactly("prepare", "build")
+    # The build spine's jobs live in the shared module.
+    expect(build_yaml["jobs"].keys).to contain_exactly(
+      "build-backend", "merge-backend", "build-cli", "build-mac", "build-windows"
     )
   end
 
@@ -77,8 +92,8 @@ RSpec.describe "desktop test-build pipeline" do
 
   it "disarms auto-update in both directions" do
     # Direction 1: release installs never see a test build — nothing here is
-    # published to the GitHub Releases feed (permissions + artifact tests
-    # above pin that).
+    # published to the GitHub Releases feed (permissions + the stage_update_feed
+    # input pin that below).
     # Direction 2: a test install never replaces ITSELF — a signed test build
     # still carries the baked-in GitHub feed (electron-builder writes
     # app-update.yml regardless of --publish never), and semver orders
@@ -97,126 +112,128 @@ RSpec.describe "desktop test-build pipeline" do
 
   it "builds the backend natively per arch, always pushes by digest, and merges the test tag" do
     # Same native matrix as release.yml — amd64 on ubuntu-latest, arm64 on
-    # ubuntu-24.04-arm, NO QEMU.
-    expect(workflow_text).to include("ubuntu-24.04-arm")
-    expect(workflow_text).not_to include("setup-qemu-action")
-    expect(workflow.dig("jobs", "build-backend", "strategy", "matrix", "include")).to be_an(Array)
+    # ubuntu-24.04-arm, NO QEMU. All in the shared module.
+    expect(build_text).to include("ubuntu-24.04-arm")
+    expect(build_text).not_to include("setup-qemu-action")
+    expect(build_yaml.dig("jobs", "build-backend", "strategy", "matrix", "include")).to be_an(Array)
     # The build goes through bin/publish-image --no-push (integration gate
     # included; run_integration_tests=false maps to its --skip-tests flag).
-    expect(workflow_text).to match(/args=\("\$IMAGE_TAG" --no-push\)/)
-    expect(workflow_text).to include("--skip-tests")
-    # Unlike release.yml there is NO dry_run gate: the by-digest push and the
-    # manifest merge are unconditional — uploading the image is the point.
-    expect(workflow_text).to include("push-by-digest=true")
-    expect(workflow_text).not_to match(/if:.*dry_run/)
-    push_step = workflow_text[/name: Push \$\{\{ matrix\.arch \}\} by digest[\s\S]{0,300}/]
-    expect(push_step).not_to include("if:")
-    expect(workflow.dig("jobs", "merge-backend", "if")).to be_nil
+    expect(build_text).to match(/args=\("\$IMAGE_TAG" --no-push\)/)
+    expect(build_text).to include("--skip-tests")
+    # The by-digest push and the manifest merge are gated on the push_image
+    # input, not a dry_run flag — and the test caller ALWAYS passes true, so
+    # uploading the image is the deterministic outcome this workflow exists for.
+    expect(build_text).to include("push-by-digest=true")
+    expect(build_text).not_to match(/if:.*dry_run/)
+    expect(workflow.dig("jobs", "build", "with", "push_image")).to eq(true)
+    push_step = build_yaml.dig("jobs", "build-backend", "steps").find { |s| s["name"] == "Push ${{ matrix.arch }} by digest" }
+    expect(push_step["if"]).to eq("inputs.push_image")
+    expect(build_yaml.dig("jobs", "merge-backend", "if")).to eq("inputs.push_image")
     # The merged manifest is verified pullable through the shared helper.
-    expect(workflow_text).to include('syrus_verify_pushed "$IMAGE" "$VERSION"')
+    expect(build_text).to include('syrus_verify_pushed "$IMAGE" "$VERSION"')
     # Test builds write their OWN registry cache refs. bin/publish-image's
     # --cache-to mode=max REPLACES the tag it writes, so pointing a test build
     # at release.yml's shared buildcache-<arch> tags would let a divergent
-    # test branch evict the warm cache the next real release depends on.
-    expect(workflow_text.scan("ghcr.io/tkadauke/syrus-backend:buildcache-test-${{ matrix.arch }}").size).to eq(2)
-    expect(workflow_text).not_to include("syrus-backend:buildcache-${{ matrix.arch }}")
+    # test branch evict the warm cache the next real release depends on. The
+    # module appends -<arch> to whatever cache_ref_prefix the caller passes;
+    # the test caller passes the buildcache-test prefix.
+    expect(workflow.dig("jobs", "build", "with", "cache_ref_prefix")).to eq("ghcr.io/tkadauke/syrus-backend:buildcache-test")
+    expect(build_text.scan("${{ inputs.cache_ref_prefix }}-${{ matrix.arch }}").size).to eq(2)
   end
 
   it "derives SYRUS_BUILT_AT from the source, never the wall clock, in both build and push" do
-    # Same deterministic expression as release.yml (HEAD's committer date, UTC)
+    # Same deterministic expression as a release (HEAD's committer date, UTC)
     # in the publish-image build step AND the by-digest push step, so both
-    # arch images and the desktop stamp agree on one instant.
+    # arch images and the desktop stamp agree on one instant. Shared module.
     git_stamp = %q{SYRUS_BUILT_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%SZ' HEAD)"}
-    expect(workflow_text.scan(git_stamp).size).to eq(2)
-    expect(workflow_text).not_to include('SYRUS_BUILT_AT="$(date')
-    expect(workflow_text).not_to include('SYRUS_BUILT_AT=${SYRUS_BUILT_AT:-}')
+    expect(build_text.scan(git_stamp).size).to eq(2)
+    expect(build_text).not_to include('SYRUS_BUILT_AT="$(date')
+    expect(build_text).not_to include('SYRUS_BUILT_AT=${SYRUS_BUILT_AT:-}')
     # The push rebuild must stay a cache hit of the tested build — identical
-    # build args (see release.yml's lockstep rule).
-    expect(workflow_text).to include('--build-arg "GIT_SHA=$(git rev-parse --short HEAD)"')
-    expect(workflow_text).to include('--build-arg "SYRUS_VERSION=$VERSION"')
-    expect(workflow_text).to include('--build-arg "SYRUS_BUILT_AT=$SYRUS_BUILT_AT"')
+    # build args (the lockstep rule, pinned in docker_image_scripts_spec).
+    expect(build_text).to include('--build-arg "GIT_SHA=$(git rev-parse --short HEAD)"')
+    expect(build_text).to include('--build-arg "SYRUS_VERSION=$VERSION"')
+    expect(build_text).to include('--build-arg "SYRUS_BUILT_AT=$SYRUS_BUILT_AT"')
   end
 
   it "pins the pushed test image into both installers and verifies the pin" do
-    # SYRUS_BACKEND_IMAGE overrides stage-backend-assets.mjs's version-derived
-    # pin — without it, SYRUS_RELEASE_BUILD=1 would pin :<app_version>, a tag
-    # that never exists. Both desktop build steps must stage it.
-    # The manifest pins the VERSION-NAMED tag so the in-app badge reads
-    # consistently (app 0.1.4-test.1 · backend test-0.1.4-test.1).
-    stage_ref = "SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}"
-    expect(workflow_text.scan(stage_ref).size).to eq(2)
-    # Desktop builds in parallel with the backend (needs: prepare) — the pin
-    # is a string, not a pull; merge-backend pushes the image concurrently and
-    # it exists by run completion. (Parallelism is pinned in its own example.)
+    # The module reads SYRUS_BACKEND_IMAGE from the backend_image_pin input in
+    # BOTH desktop build steps — overriding stage-backend-assets.mjs's
+    # version-derived pin, which would otherwise be :<app_version>, a tag that
+    # never exists. The test caller pins the VERSION-NAMED tag so the in-app
+    # badge reads consistently (app 0.1.4-test.1 · backend test-0.1.4-test.1).
+    expect(build_text.scan("SYRUS_BACKEND_IMAGE: ${{ inputs.backend_image_pin }}").size).to eq(2)
+    expect(workflow.dig("jobs", "build", "with", "backend_image_pin")).to eq(
+      "ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}"
+    )
+    # Desktop builds in parallel with the backend — the pin is a string, not a
+    # pull; merge-backend pushes the image concurrently and it exists by run
+    # completion. (Parallelism is pinned in its own example.)
     # ...and each verify step asserts the sealed manifest actually carries it.
-    expect(workflow_text).to include('grep -qF "\"image\": \"$BACKEND_IMAGE\"" "$APP/Contents/Resources/backend/manifest.json"')
-    expect(workflow_text).to include("desktop/out/win-unpacked/resources/backend/manifest.json")
+    expect(build_text).to include('grep -qF "\"image\": \"$BACKEND_IMAGE\"" "$APP/Contents/Resources/backend/manifest.json"')
+    expect(build_text).to include("desktop/out/win-unpacked/resources/backend/manifest.json")
   end
 
   it "signs test builds exactly like a release (guards, preflights, forced signing)" do
-    expect(workflow_text.scan("A signed build is required").length).to be >= 2
-    expect(workflow_text.scan("-c.forceCodeSigning=true").length).to be >= 2
-    expect(workflow_text).to include("Preflight: Apple signing credentials")
-    expect(workflow_text).to include("Preflight: Azure credentials")
-    expect(workflow_text).to include("xcrun stapler validate")
+    # All shared with the release through the module.
+    expect(build_text.scan("A signed build is required").length).to be >= 2
+    expect(build_text.scan("-c.forceCodeSigning=true").length).to be >= 2
+    expect(build_text).to include("Preflight: Apple signing credentials")
+    expect(build_text).to include("Preflight: Azure credentials")
+    expect(build_text).to include("xcrun stapler validate")
     # SYRUS_RELEASE_BUILD arms stage-cli's hard-fail and release DMG naming in
     # both desktop jobs, and Go is pinned so the hard-fail never fires.
-    expect(workflow_text.scan('SYRUS_RELEASE_BUILD: "1"').size).to eq(2)
-    setup_go = workflow_text.scan(%r{uses: actions/setup-go@\S+\s+with:\s+go-version-file: cli/go\.mod})
+    expect(build_text.scan('SYRUS_RELEASE_BUILD: "1"').size).to eq(2)
+    setup_go = build_text.scan(%r{uses: actions/setup-go@\S+\s+with:\s+go-version-file: cli/go\.mod})
     expect(setup_go.length).to eq(3) # build-cli + build-mac + build-windows
-    expect(workflow_text.scan("cache-dependency-path: cli/go.sum").size).to eq(3)
-    expect(workflow_text).to include("grep -qF 'stage-cli: Go toolchain not found'")
+    expect(build_text.scan("cache-dependency-path: cli/go.sum").size).to eq(3)
+    expect(build_text).to include("grep -qF 'stage-cli: Go toolchain not found'")
     # Stage only — nothing ever publishes from a build.
-    expect(workflow_text).to include("--publish never")
-    expect(workflow_text).not_to include("--publish always")
+    expect(build_text).to include("--publish never")
+    expect(build_text).not_to include("--publish always")
   end
 
   it "cross-compiles and stages the CLI tarballs like a real release" do
     # The Linux CLI is a shippable component too: bin/release-cli runs
     # `go test ./...`, cross-compiles linux/amd64 + arm64 tarballs, and writes
-    # SHA256SUMS-cli.txt. A test build must prove it builds.
-    expect(workflow.dig("jobs", "build-cli", "needs")).to eq("prepare")
-    expect(workflow_text).to match(%r{run: bin/release-cli "\$TAG"})
-    expect(workflow_text).to include("TAG: v${{ needs.prepare.outputs.app_version }}")
-    expect(workflow_text).to include("path: dist/releases/v${{ needs.prepare.outputs.app_version }}/cli/")
-    # No input gate — release.yml's build-cli is unconditional, so is this.
-    expect(workflow.dig("jobs", "build-cli", "if")).to be_nil
+    # SHA256SUMS-cli.txt. A test build must prove it builds. Shared module.
+    expect(build_yaml.dig("jobs", "build-cli", "steps")).to be_an(Array)
+    expect(build_text).to match(%r{run: bin/release-cli "\$TAG"})
+    expect(build_text).to include("TAG: v${{ inputs.version }}")
+    expect(build_text).to include("path: dist/releases/v${{ inputs.version }}/cli/")
+    # No input gate — release.yml's build-cli is unconditional, so is the module's.
+    expect(build_yaml.dig("jobs", "build-cli", "if")).to be_nil
+    # The test caller feeds the CLI tag off the -test. app version.
+    expect(workflow.dig("jobs", "build", "with", "version")).to eq("${{ needs.prepare.outputs.app_version }}")
   end
 
   it "uploads versioned artifacts to the run only — no permalinks, no update feed" do
     # The versioned .dmg / Setup .exe / CLI tarballs land as workflow-run
     # artifacts with a 14-day retention and hard-fail if the build produced
-    # nothing.
-    mac_upload = workflow_text[/name: test-staged-mac[\s\S]{0,200}/]
-    expect(mac_upload).to include("if-no-files-found: error")
-    expect(mac_upload).to include("retention-days: 14")
-    windows_upload = workflow_text[/name: test-staged-windows[\s\S]{0,200}/]
-    expect(windows_upload).to include("if-no-files-found: error")
-    expect(windows_upload).to include("retention-days: 14")
-    cli_upload = workflow_text[/name: test-staged-cli[\s\S]{0,200}/]
-    expect(cli_upload).to include("if-no-files-found: error")
-    expect(cli_upload).to include("retention-days: 14")
-    expect(workflow_text).to match(%r{cp "desktop/out/Syrus-\$VERSION-universal\.dmg" "\$RUNNER_TEMP/staged/"})
-    expect(workflow_text).to match(%r{cp "desktop/out/Syrus-Setup-\$VERSION-x64\.exe" "\$RUNNER_TEMP/staged/"})
-    # No stable-name aliases (those are the website permalinks — releases only)
-    # and no auto-update feed files: a test build must never feed the channel.
-    # Assert on the code, not the comments that explain the omission.
-    code = workflow_text.lines.reject { |l| l.strip.start_with?("#") }.join
-    expect(code).not_to match(%r{staged/Syrus\.dmg})
-    expect(code).not_to match(%r{staged/Syrus-Setup\.exe})
-    expect(code).not_to include("latest-mac.yml")
-    expect(code).not_to include("latest.yml")
-    expect(code).not_to include(".blockmap")
+    # nothing. Retention + hard-fail are module-level; the test caller sets 14.
+    expect(workflow.dig("jobs", "build", "with", "artifact_retention_days")).to eq(14)
+    expect(workflow.dig("jobs", "build", "with", "artifact_prefix")).to eq("test-staged")
+    expect(build_text.scan("if-no-files-found: error").size).to be >= 3
+    expect(build_text).to include("retention-days: ${{ inputs.artifact_retention_days }}")
+    # A test build stages ONLY the versioned installers (the else branch of the
+    # stage_update_feed gate).
+    expect(build_text).to match(%r{cp "desktop/out/Syrus-\$VERSION-universal\.dmg" "\$RUNNER_TEMP/staged/"})
+    expect(build_text).to match(%r{cp "desktop/out/Syrus-Setup-\$VERSION-x64\.exe" "\$RUNNER_TEMP/staged/"})
+    # The channel-feeding staging (stable-name aliases + latest-mac.yml /
+    # latest.yml / .blockmap) is gated on stage_update_feed, which the test
+    # caller turns OFF — so a test build never feeds the update channel.
+    expect(workflow.dig("jobs", "build", "with", "stage_update_feed")).to eq(false)
   end
 
   it "never inlines the computed tag/version into shell bodies" do
     # Same rule as release.yml: attacker-influenceable values reach run:
     # bodies only via env, never inline ${{ }} interpolation. Walk the parsed
-    # YAML rather than regex-slicing the text so EVERY run: value is covered —
-    # single-line runs and folded scalars included, not just literal
-    # `run: |` blocks.
-    run_bodies = workflow["jobs"].values.flat_map { |job| Array(job["steps"]).map { |step| step["run"] } }.compact
-    expect(run_bodies.length).to be >= 15 # every step in the file, not a lucky regex subset
+    # YAML of BOTH the thin caller and the shared module so EVERY run: value is
+    # covered — the module owns the build bodies that handle the tags/version.
+    run_bodies = [workflow, build_yaml].flat_map do |wf|
+      wf["jobs"].values.flat_map { |job| Array(job["steps"]).map { |step| step["run"] } }
+    end.compact
+    expect(run_bodies.length).to be >= 15 # every step across both files, not a lucky subset
     run_bodies.each do |body|
       expect(body).not_to match(/\$\{\{\s*needs\./)
       expect(body).not_to match(/\$\{\{\s*inputs\./)
@@ -238,26 +255,11 @@ RSpec.describe "desktop test-build pipeline" do
   it "builds desktop in parallel with the backend (no merge-backend gate)" do
     # The manifest pin is a string match, not a docker pull, so the desktop
     # jobs never need the image to exist yet — gating them on merge-backend
-    # serialized ~5 min of pure waiting. Match release.yml: needs: prepare only.
-    expect(workflow.dig("jobs", "build-mac", "needs")).to eq("prepare")
-    expect(workflow.dig("jobs", "build-windows", "needs")).to eq("prepare")
-  end
-
-  # Drift guard: the test build must build every shippable component the SAME
-  # way the real release does, or it is testing a different artifact than it
-  # will ship. This is the cheap insurance for the deliberate duplication —
-  # if a release build step changes, the mirrored test-build step must too.
-  it "uses the same load-bearing build commands as release.yml" do
-    release = File.read(File.join(repo_root, ".github/workflows/release.yml"), encoding: "UTF-8")
-    shared = [
-      "bin/publish-image",   # backend image build + integration gate
-      "bin/release-cli",     # CLI tarballs
-      "npm --prefix desktop run build", # electron-builder DMG/exe
-      "imagetools create",   # multi-arch manifest assembly
-    ]
-    shared.each do |cmd|
-      expect(workflow_text).to include(cmd), "test-build.yml missing #{cmd.inspect}"
-      expect(release).to include(cmd), "release.yml missing #{cmd.inspect}"
-    end
+    # serialized ~5 min of pure waiting. In the module build-mac / build-windows
+    # carry NO needs, so they start immediately alongside build-backend; only
+    # merge-backend waits on the backend. Same posture as release.yml.
+    expect(build_yaml.dig("jobs", "build-mac", "needs")).to be_nil
+    expect(build_yaml.dig("jobs", "build-windows", "needs")).to be_nil
+    expect(build_yaml.dig("jobs", "merge-backend", "needs")).to eq("build-backend")
   end
 end
