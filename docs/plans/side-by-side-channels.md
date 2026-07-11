@@ -44,7 +44,7 @@ the existing `X.Y.Z-test.N` versions and `test-*` image tags:
 | Credentials file       | `~/.syrus/credentials`       | `~/.syrus/credentials.test`       |
 | Global hotkey default  | `⌘⇧S`                        | `⌘⇧T`                             |
 | Versions / image tags  | `X.Y.Z` / `:X.Y.Z`, `:latest`| `X.Y.Z-test.N` / `:test-*` (unchanged) |
-| CLI binary             | owns `~/.local/bin/syrus`    | does not manage the CLI           |
+| CLI binary             | `~/.local/bin/syrus`         | `~/.local/bin/syrus-test`         |
 
 ### What falls out for free once productName + appId fork
 
@@ -135,14 +135,24 @@ in the verify/stage steps become `$PRODUCT`. `release.yml` passes
 `npm --prefix desktop run build` defaults to test unless
 `SYRUS_RELEASE_BUILD=1`.
 
-### CLI story (v1)
+### CLI story (v1) — channel-suffixed binaries, self-aware by name
 
-The stable app keeps owning `~/.local/bin/syrus`; the test app's
-`ensureCliCurrent` is a no-op (prevents the two apps hash-reinstalling over
-each other on every launch). The CLI gains `--profile test` /
-`SYRUS_PROFILE=test`, which reads `~/.syrus/credentials.test` — so one binary
-can talk to either backend. Channel-suffixed binaries are explicitly out of
-scope for v1.
+Working on CLI features and cutting a test build must produce a testable
+CLI, so the test channel DOES manage one: the stable app installs
+`~/.local/bin/syrus`, the test app installs `~/.local/bin/syrus-test` — the
+same content-hash reinstall mechanics, each channel against its own
+filename, so the two apps never reinstall over each other and every test
+build ships its CLI.
+
+One Go binary, no CI build variant: profile resolution is `--profile` flag >
+`SYRUS_PROFILE` env > `argv[0]` basename (`syrus-test` → test) > `stable`
+(BusyBox-style — the identical artifact behaves correctly under either
+name). The profile selects the credentials file
+(`~/.syrus/credentials[.test]`), so `syrus-test jobs` talks to the test
+stack with the test-built CLI, while `syrus --profile test` runs the STABLE
+binary against the test backend when the thing under test is the backend.
+The Claude-skill offer stays stable-only for v1 (the skill invokes
+`syrus`).
 
 ### Migration
 
@@ -172,5 +182,6 @@ scheme simply keep it until the next release install replaces it.)
 `test_build_spec` + `auto_update_spec` (channel input + artifact names),
 `web_container_spec` (manifest key list gains `channel`), `uninstall_spec`
 (`/Syrus.app` leaf), `windows_scaffold_spec` (appId), `cli_install_spec`
-(test-channel no-op), plus new unit coverage for `channel.ts`, the stack
+(channel-suffixed install target), plus Go tests for argv0/env/flag profile
+resolution and new unit coverage for `channel.ts`, the stack
 tuple, and install.sh `--project` (source pins).
