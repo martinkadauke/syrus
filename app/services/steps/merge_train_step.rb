@@ -10,8 +10,13 @@ module Steps
         id = workflow.artifact("merge_train_id")
         raise Base::StepFailed, "merge_train: workflow has no merge_train_id artifact" if id.blank?
 
-        MergeTrain.find_by(id: id) ||
+        train = MergeTrain.find_by(id: id) ||
           raise(Base::StepFailed, "merge_train: MergeTrain ##{id} not found")
+        if train.terminal?
+          raise Base::StepFailed, "merge_train: MergeTrain ##{id} is #{train.state}; rebuild required"
+        end
+
+        train
       end
     end
 

@@ -21,7 +21,7 @@ class RetryFailedStepEnqueuer
 
     failed_step = self.class.failed_step_for(workflow)
     return failure("No failed step to retry.") unless failed_step
-    return rebuild_merge_train if failed_step.kind == "merge_train_land"
+    return rebuild_merge_train if workflow.trigger_kind == "merge_train"
 
     workflow.reopen!
     workflow.save!

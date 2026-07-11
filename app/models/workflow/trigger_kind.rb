@@ -57,11 +57,9 @@ class Workflow
     end
 
     # Returns the UI label for the "retry failed step" button on a workflow of
-    # this trigger kind. merge_train varies by which step failed.
+    # this trigger kind.
     def retry_label_for(trigger_kind, step_kind: nil)
-      if trigger_kind.to_s == "merge_train"
-        return step_kind.to_s == "merge_train_land" ? "Rebuild merge train" : "Retry merge train step"
-      end
+      return "Rebuild merge train" if trigger_kind.to_s == "merge_train"
 
       BY_KIND.fetch(trigger_kind.to_s, nil)&.retry_label || "Retry failed step"
     end

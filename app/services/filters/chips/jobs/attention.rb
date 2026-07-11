@@ -37,14 +37,7 @@ module Filters
           "in_progress"        => -> {
             or_node(
               chip_node("state", "is", "running"),
-              and_node(
-                chip_node("state", "is", "landing"),
-                chip_node("latest_workflow_state", "is", "running")
-              ),
-              and_node(
-                chip_node("latest_workflow_trigger_kind", "is", "rebase"),
-                chip_node("latest_workflow_state", "is", "running")
-              )
+              chip_node("latest_workflow_state", "is", "running")
             )
           },
           "queued"             => -> {
@@ -151,19 +144,14 @@ module Filters
         end
 
         def apply_in_progress
-          # Phase 4 simplification: Job.state is now authoritative.
-          # `:running` covers initial/retry/pr_comment/ci_failure
-          # workflow execution. `:landing` starts before the auto_merge
-          # Workflow leaves :queued, so only count landing work here once
-          # the active Workflow is actually running. Rebase workflows can
-          # run while the Job is deferred back to :approved, so include
-          # those explicitly.
+          # Job.state covers normal execution, but landing and maintenance
+          # workflows can run while the thread is approved/landing after
+          # transient retries. Treat any open thread whose latest workflow
+          # is running as in progress so the dashboard mirrors active work.
           running_workflow_job_ids = latest_workflow_job_ids("running")
-          running_rebase_job_ids = latest_workflow_job_ids("running", trigger_kind: "rebase")
 
           scope.where(state: "running")
-               .or(scope.where(state: "landing", id: running_workflow_job_ids))
-               .or(scope.open_threads.where(id: running_rebase_job_ids))
+               .or(scope.open_threads.where(id: running_workflow_job_ids))
         end
 
         def apply_queued

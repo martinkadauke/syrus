@@ -66,6 +66,22 @@ RSpec.describe "Steps::MergeTrain*" do
         .to raise_error(Steps::Base::StepFailed, /not in :landing/)
     end
 
+    it "refuses to run against a terminal train" do
+      a = member_job(issue_number: 1, state: "approved")
+      train = MergeTrain.create!(
+        epic: epic,
+        repository: repository,
+        base_branch: "master",
+        state: "failed",
+        failure_reason: "merge_train failed",
+        finished_at: 1.minute.ago
+      )
+      MergeTrainMember.create!(merge_train: train, job: a, position: 0, state: "failed")
+
+      expect { step_handler(described_class, "merge_train_assemble", train, a).call }
+        .to raise_error(Steps::Base::StepFailed, /MergeTrain ##{train.id} is failed; rebuild required/)
+    end
+
     it "fails when an epic sibling is open but not yet approved" do
       a = member_job(issue_number: 1)
       train = MergeTrain.create!(epic: epic, repository: repository, base_branch: "master")

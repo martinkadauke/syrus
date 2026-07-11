@@ -17,13 +17,10 @@ RSpec.describe Workflow::TriggerKind do
       end
     end
 
-    it "returns 'Rebuild merge train' for merge_train when the failed step is merge_train_land" do
+    it "returns 'Rebuild merge train' for any merge_train retry" do
       expect(described_class.retry_label_for("merge_train", step_kind: "merge_train_land")).to eq("Rebuild merge train")
-    end
-
-    it "returns 'Retry merge train step' for merge_train when the failed step is not merge_train_land" do
-      expect(described_class.retry_label_for("merge_train", step_kind: "merge_train_build")).to eq("Retry merge train step")
-      expect(described_class.retry_label_for("merge_train")).to eq("Retry merge train step")
+      expect(described_class.retry_label_for("merge_train", step_kind: "merge_train_build")).to eq("Rebuild merge train")
+      expect(described_class.retry_label_for("merge_train")).to eq("Rebuild merge train")
     end
 
     it "falls back to 'Retry failed step' for unknown trigger kinds" do

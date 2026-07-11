@@ -121,6 +121,7 @@ RSpec.describe "Filters::Chips" do
       running_rebase = Factories.job_record(repository: repo, issue_number: 4, state: "approved")
       finished_rebase = Factories.job_record(repository: repo, issue_number: 5, state: "approved")
       landing_queued = Factories.job_record(repository: repo, issue_number: 6, state: "landing")
+      running_merge_train = Factories.job_record(repository: repo, issue_number: 8, state: "approved")
       Factories.job_record(repository: repo, issue_number: 7, state: "approved")
 
       Workflow.create!(job: queued_rebase, trigger_kind: "rebase", state: "queued")
@@ -128,11 +129,13 @@ RSpec.describe "Filters::Chips" do
       Workflow.create!(job: finished_rebase, trigger_kind: "rebase", state: "succeeded")
       Workflow.create!(job: landing_running, trigger_kind: "auto_merge", state: "running")
       Workflow.create!(job: landing_queued, trigger_kind: "auto_merge", state: "queued")
+      Workflow.create!(job: running_merge_train, trigger_kind: "merge_train", state: "running")
 
       expect(run(field: "attention", op: "is", value: "in_progress")).to contain_exactly(
         running,
         landing_running,
-        running_rebase
+        running_rebase,
+        running_merge_train
       )
     end
 
