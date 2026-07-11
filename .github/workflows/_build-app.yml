@@ -1,0 +1,722 @@
+# The shared build spine for BOTH the Release (release.yml) and Test build
+# (test-build.yml) pipelines. Those two entry points were ~90% identical — they
+# build and sign every shippable component (backend image, CLI, macOS + Windows
+# desktop apps) the same way — so that spine lives here ONCE, as a reusable
+# `workflow_call` workflow, and each caller is a thin wrapper that computes its
+# version and passes inputs.
+#
+# What this module owns: build-backend (native per-arch matrix, NO QEMU) →
+# merge-backend (multi-arch manifest) plus build-cli, build-mac, build-windows
+# (all parallel with the backend). What it does NOT own: version computation
+# (the callers' `prepare` job) and publishing (release.yml's `publish` /
+# `publish-website`). It stages artifacts by name; the callers consume them.
+#
+# How the two callers differ — every difference is an input, so there is no
+# drift between what a release and a test build produce:
+#
+#   input                    | Release                       | Test build
+#   -------------------------|-------------------------------|---------------------------
+#   version                  | X.Y.Z                         | X.Y.Z-test.N
+#   image_primary_tag        | X.Y.Z                         | test-<short-sha>
+#   image_extra_tag          | "" (none)                     | test-<X.Y.Z-test.N>
+#   backend_image_pin        | ghcr…syrus-backend:X.Y.Z      | ghcr…syrus-backend:test-<X.Y.Z-test.N>
+#   cache_ref_prefix         | ghcr…syrus-backend:buildcache | ghcr…syrus-backend:buildcache-test
+#   push_image               | dry_run == false              | true (always)
+#   stage_update_feed        | true (feed + stable aliases)  | false (versioned installer only)
+#   artifact_prefix          | staged                        | test-staged
+#   artifact_retention_days  | 7                             | 14
+#   run_integration_tests    | true                          | run_integration_tests input
+#   build_windows            | true                          | build_windows input
+#
+# Signing runs identically on both (guards + preflights included) — rehearsing
+# the fragile part is the whole point of a dry-run release and half the value of
+# a test build. Attacker-influenceable values (version/tags) reach `run:` bodies
+# only through `env:`, never inline `${{ }}` interpolation.
+name: Build app (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "App version (X.Y.Z or X.Y.Z-test.N) — stamped into the desktop apps and the CLI tag v$version."
+        type: string
+        required: true
+      image_primary_tag:
+        description: "Primary GHCR tag for the backend image; also the bin/publish-image build tag and the SYRUS_VERSION build-arg."
+        type: string
+        required: true
+      image_extra_tag:
+        description: "Optional second GHCR tag applied by imagetools (empty string to skip)."
+        type: string
+        default: ""
+      backend_image_pin:
+        description: "Fully-qualified image ref the desktop stages into manifest.json (SYRUS_BACKEND_IMAGE)."
+        type: string
+        required: true
+      cache_ref_prefix:
+        description: "BuildKit registry cache ref PREFIX; each per-arch leg appends -<arch>."
+        type: string
+        required: true
+      push_image:
+        description: "Push each arch by digest and assemble the multi-arch manifest (false = build + integration-test only, push nothing)."
+        type: boolean
+        required: true
+      stage_update_feed:
+        description: "Stage the auto-update feed + stable-name aliases (releases). False stages only the versioned installer (test builds)."
+        type: boolean
+        default: false
+      artifact_prefix:
+        description: "Prefix for staged run artifacts: <prefix>-mac / <prefix>-windows / <prefix>-cli."
+        type: string
+        required: true
+      artifact_retention_days:
+        description: "Retention (days) for the staged run artifacts."
+        type: number
+        default: 7
+      run_integration_tests:
+        description: "Run bin/test-docker against each built arch (false maps to bin/publish-image --skip-tests)."
+        type: boolean
+        default: true
+      build_windows:
+        description: "Also build + sign the Windows installer."
+        type: boolean
+        default: true
+
+# A called workflow can never exceed the caller's granted permissions. Both
+# callers satisfy this (release adds contents: write on top, a superset).
+permissions:
+  contents: read # checkout only
+  packages: write # push the backend image to GHCR
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Build the backend image (ghcr.io/tkadauke/syrus-backend) NATIVELY per
+  # architecture — NO QEMU. Each matrix leg runs on its own CPU (amd64 on
+  # ubuntu-latest, arm64 on ubuntu-24.04-arm — GitHub arm64 runners went GA for
+  # private repos 2026-01-29), builds its arch, runs the integration gate
+  # against it, and — when push_image — pushes THAT arch by digest.
+  # `merge-backend` then assembles the two digests into the multi-arch tag(s).
+  # When push_image is false (a dry-run release) BOTH arches are still built and
+  # integration-tested natively — a faithful rehearsal — but nothing is pushed.
+  # ---------------------------------------------------------------------------
+  build-backend:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            platform: linux/amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            platform: linux/arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      # The fat image (mise ruby/node/python/go toolchain), its mode=max build
+      # cache, and the integration Compose stack overflow the runner's ~14GB
+      # free. Reclaim ~30GB of preinstalled SDKs we don't use — this job runs no
+      # setup-node/go, so the toolcache can go wholesale. Native single-arch
+      # builds need far less than the old QEMU multi-arch fat build, but keep
+      # the reclaim as headroom.
+      - name: Free disk space
+        run: |
+          set -euo pipefail
+          echo "before:"; df -h / | tail -1
+          sudo rm -rf \
+            /usr/share/dotnet /usr/share/swift /usr/share/miniconda \
+            /opt/ghc /usr/local/.ghcup /usr/local/lib/android \
+            /usr/local/share/boost /usr/lib/jvm \
+            /opt/hostedtoolcache "${AGENT_TOOLSDIRECTORY:-/opt/hostedtoolcache}" \
+            2>/dev/null || true
+          sudo docker image prune -af >/dev/null 2>&1 || true
+          echo "after:"; df -h / | tail -1
+
+      # No QEMU emulation here — each arch builds on its own native CPU.
+      - uses: docker/setup-buildx-action@v4
+
+      # Log in so BuildKit's registry cache can read/write and the by-digest
+      # push authenticates (via the ambient docker config, even though
+      # bin/publish-image --no-push skips its own login).
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Build THIS arch natively and run bin/test-docker against it. --no-push
+      # builds + integration-tests, then stops — identical whether or not we
+      # push, so BOTH arches are always exercised. run_integration_tests=false
+      # maps to bin/publish-image's --skip-tests. The per-arch cache ref keeps
+      # the two legs from clobbering each other's mode=max cache.
+      - name: Build + integration-test (native ${{ matrix.arch }})
+        env:
+          IMAGE_TAG: ${{ inputs.image_primary_tag }}
+          RUN_TESTS: ${{ inputs.run_integration_tests }}
+          SYRUS_DOCKER_REGISTRY_CACHE: "1"
+          SYRUS_DOCKER_CACHE_REF: ${{ inputs.cache_ref_prefix }}-${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          # The build timestamp is DERIVED FROM THE SOURCE (HEAD's committer
+          # date, UTC ISO-8601), never the wall clock: both matrix legs and
+          # the push step below check out the same SHA, so every arch image
+          # in the released multi-arch manifest bakes the IDENTICAL
+          # SYRUS_BUILT_AT — and the desktop build stamps the same instant
+          # (stage-backend-assets.mjs), so the BuildBadge's app and backend
+          # tooltips agree on a release. Keep this expression in lockstep with
+          # the push step below (spec/scripts/docker_image_scripts_spec.rb
+          # pins both).
+          SYRUS_BUILT_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%SZ' HEAD)"
+          export SYRUS_BUILT_AT
+          args=("$IMAGE_TAG" --no-push)
+          if [ "$RUN_TESTS" != "true" ]; then
+            echo "::warning::run_integration_tests=false — skipping bin/test-docker for this arch."
+            args+=(--skip-tests)
+          fi
+          bin/publish-image "${args[@]}"
+
+      # push_image only: push THIS arch by digest (a tagless manifest). The
+      # build is a cache hit from the step above, so this is the registry
+      # upload, not a rebuild. No PAT needed — the built-in GITHUB_TOKEN can
+      # push the repo-connected syrus-backend package. merge-backend combines
+      # the digests.
+      - name: Push ${{ matrix.arch }} by digest
+        if: inputs.push_image
+        env:
+          IMAGE: ghcr.io/tkadauke/syrus-backend
+          PLATFORM: ${{ matrix.platform }}
+          CACHE_REF: ${{ inputs.cache_ref_prefix }}-${{ matrix.arch }}
+          VERSION: ${{ inputs.image_primary_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          # Build args must match what bin/publish-image passed above, or this
+          # "cache-hit re-push" silently rebuilds a DIFFERENT image (empty
+          # SYRUS_VERSION / SYRUS_BUILT_AT) than the one the integration gate
+          # tested. SYRUS_BUILT_AT re-derives from HEAD's committer date —
+          # deterministic, so it matches the build step and the other matrix
+          # leg without any GITHUB_ENV hand-off.
+          SYRUS_BUILT_AT="$(TZ=UTC git show -s --format=%cd --date=format-local:'%Y-%m-%dT%H:%M:%SZ' HEAD)"
+          docker buildx build -f Dockerfile --target worker-dev \
+            --build-arg "GIT_SHA=$(git rev-parse --short HEAD)" \
+            --build-arg "SYRUS_VERSION=$VERSION" \
+            --build-arg "SYRUS_BUILT_AT=$SYRUS_BUILT_AT" \
+            --platform "$PLATFORM" --provenance=false \
+            --cache-from "type=registry,ref=$CACHE_REF" \
+            --output "type=image,name=$IMAGE,push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file /tmp/metadata.json .
+          digest="$(jq -r '."containerimage.digest"' /tmp/metadata.json)"
+          echo "pushed $PLATFORM as $digest"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: inputs.push_image
+        uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ---------------------------------------------------------------------------
+  # Assemble the per-arch digests into the multi-arch manifest — the primary
+  # tag always, plus the optional extra tag (a metadata-only registry op, no
+  # rebuild). Skipped when nothing was pushed (push_image false). `:latest`
+  # never moves here — that is release.yml's publish job.
+  # ---------------------------------------------------------------------------
+  merge-backend:
+    needs: build-backend
+    if: inputs.push_image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download per-arch digests
+        uses: actions/download-artifact@v8
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Assemble the multi-arch manifest
+        env:
+          IMAGE: ghcr.io/tkadauke/syrus-backend
+          VERSION: ${{ inputs.image_primary_tag }}
+          VERSION_TAG: ${{ inputs.image_extra_tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          cd /tmp/digests
+          refs=()
+          for d in *; do refs+=("$IMAGE@sha256:$d"); done
+          if [ "${#refs[@]}" -eq 0 ]; then echo "::error::no per-arch digests to merge"; exit 1; fi
+          echo "merging ${#refs[@]} arch(es) into $IMAGE:$VERSION${VERSION_TAG:+ + $IMAGE:$VERSION_TAG}"
+          docker buildx imagetools create -t "$IMAGE:$VERSION" ${VERSION_TAG:+-t "$IMAGE:$VERSION_TAG"} "${refs[@]}"
+
+      - name: Verify the pushed manifest(s) exist
+        env:
+          IMAGE: ghcr.io/tkadauke/syrus-backend
+          VERSION: ${{ inputs.image_primary_tag }}
+          VERSION_TAG: ${{ inputs.image_extra_tag }}
+        run: |
+          set -euo pipefail
+          . ./bin/docker-image-lib
+          syrus_verify_pushed "$IMAGE" "$VERSION"
+          if [ -n "$VERSION_TAG" ]; then syrus_verify_pushed "$IMAGE" "$VERSION_TAG"; fi
+
+  # ---------------------------------------------------------------------------
+  # Cross-compile the CLI and stage the tarballs + checksums.
+  # ---------------------------------------------------------------------------
+  build-cli:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          # setup-go's default cache lookup expects go.sum at the repo ROOT;
+          # ours lives under cli/, so without this the cache step warns and
+          # caches nothing on every run.
+          cache-dependency-path: cli/go.sum
+
+      - name: Build CLI release tarballs
+        env:
+          TAG: v${{ inputs.version }}
+        run: bin/release-cli "$TAG"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-cli
+          path: dist/releases/v${{ inputs.version }}/cli/
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+  # ---------------------------------------------------------------------------
+  # macOS: sign + notarize + staple, then STAGE (never publish). Runs in
+  # PARALLEL with the backend — the manifest pin is a string, not a pull, so the
+  # desktop build never needs the image to exist yet. The signed .app is
+  # verified before its artifacts are uploaded.
+  # ---------------------------------------------------------------------------
+  build-mac:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+
+      # Signing runs on dry runs and test builds too — it's the fragile part
+      # worth rehearsing. push_image never gates the build/sign.
+      - name: "Guard: signing secrets present"
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [[ -z "$CSC_LINK" || -z "$APPLE_API_KEY_P8" ]]; then
+            echo "::error::Signing secrets missing (CSC_LINK / APPLE_API_KEY_P8). A signed build is required — set them in repo secrets (dry runs sign too)."
+            exit 1
+          fi
+
+      # Catch bad Apple credentials in seconds, before the ~15-minute build:
+      # decode the p12, check the password, require a "Developer ID Application"
+      # cert (an "Apple Development" cert signs then FAILS notarization), refuse
+      # expired certs, and prove the notary API key works with a cheap call.
+      - name: "Preflight: Apple signing credentials"
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -euo pipefail
+          P12="$RUNNER_TEMP/preflight.p12"
+          PEM="$RUNNER_TEMP/preflight.pem"
+          if ! printf '%s' "$CSC_LINK" | base64 -d > "$P12" 2>/dev/null; then
+            echo "::error::CSC_LINK is not valid base64 — re-export with: base64 -i cert.p12 (single line)."
+            exit 1
+          fi
+          if ! openssl pkcs12 -in "$P12" -nokeys -passin env:CSC_KEY_PASSWORD -out "$PEM" 2>/dev/null; then
+            if ! openssl pkcs12 -in "$P12" -nokeys -legacy -passin env:CSC_KEY_PASSWORD -out "$PEM" 2>/dev/null; then
+              echo "::error::Could not open the p12 with CSC_KEY_PASSWORD — wrong password or corrupted p12."
+              exit 1
+            fi
+          fi
+          SUBJECT=$(openssl x509 -in "$PEM" -noout -subject)
+          echo "cert subject: $SUBJECT"
+          if ! grep -q "Developer ID Application" <<<"$SUBJECT"; then
+            echo "::error::CSC_LINK is not a 'Developer ID Application' certificate ($SUBJECT). Apple Development / Distribution certs sign locally but FAIL notarization."
+            exit 1
+          fi
+          if ! openssl x509 -in "$PEM" -noout -checkend 0; then
+            echo "::error::The Developer ID certificate has EXPIRED. Create a new one and update CSC_LINK/CSC_KEY_PASSWORD."
+            exit 1
+          fi
+          if ! openssl x509 -in "$PEM" -noout -checkend 2592000; then
+            echo "::warning::The Developer ID certificate expires within 30 days — rotate CSC_LINK soon."
+          fi
+          rm -f "$P12" "$PEM"
+          if [[ ! "$APPLE_API_KEY_ID" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo "::error::APPLE_API_KEY_ID doesn't look like a 10-character key id — is it swapped with APPLE_API_ISSUER?"
+            exit 1
+          fi
+          if [[ ! "$APPLE_API_ISSUER" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+            echo "::error::APPLE_API_ISSUER doesn't look like a UUID — is it swapped with APPLE_API_KEY_ID?"
+            exit 1
+          fi
+          KEY="$RUNNER_TEMP/preflight_key.p8"
+          printf '%s' "$APPLE_API_KEY_P8" > "$KEY"
+          if ! xcrun notarytool history --key "$KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format json > /dev/null; then
+            echo "::error::notarytool rejected the App Store Connect API key. It must be a TEAM key with the Developer role."
+            exit 1
+          fi
+          rm -f "$KEY"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      # The desktop build cross-compiles the Syrus CLI into the app bundle
+      # (desktop/scripts/stage-cli.mjs). macos-15 runners ship NO Go, so
+      # 0.1.1/0.1.2 released with an empty Resources/cli (stage-cli used to
+      # soft-skip) and every in-app CLI/skill install died with ENOENT. The
+      # script now hard-fails under SYRUS_RELEASE_BUILD=1; this pinned
+      # toolchain (same source of truth as build-cli) makes it never trigger.
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          # setup-go's default cache lookup expects go.sum at the repo ROOT;
+          # ours lives under cli/, so without this the cache step warns and
+          # caches nothing on every run.
+          cache-dependency-path: cli/go.sum
+
+      - name: Install dependencies
+        run: npm ci --prefix desktop
+
+      # The caller owns the version: stamp it into package.json before the
+      # build so the produced app carries the release (or -test.) version.
+      - name: Set version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm --prefix desktop version "$VERSION" --no-git-tag-version --allow-same-version
+
+      # notarytool needs the App Store Connect API key (a .p8 secret) as a file.
+      - name: Write App Store Connect API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: printf '%s' "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/apple_api_key.p8"
+
+      # SYRUS_BACKEND_IMAGE pins the exact backend tag into the app's
+      # manifest.json (stage-backend-assets.mjs). Passed explicitly for BOTH
+      # callers: for a release it equals the :<version> tag SYRUS_RELEASE_BUILD=1
+      # would otherwise derive; for a test build it is the pushed test tag
+      # (which SYRUS_RELEASE_BUILD alone could not name). SYRUS_RELEASE_BUILD=1
+      # stays set — it also arms stage-cli's hard-fail and the release DMG
+      # naming. forceCodeSigning turns electron-builder's silent skip-signing
+      # into a hard failure. --publish never: we STAGE, we don't upload. One
+      # retry, but never on a deterministic verdict: a notarization "Invalid" or
+      # a stage-cli hard-fail (no Go toolchain) fails identically on retry.
+      - name: Build, sign, and notarize
+        timeout-minutes: 60
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ runner.temp }}/apple_api_key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          SYRUS_RELEASE_BUILD: "1"
+          SYRUS_BACKEND_IMAGE: ${{ inputs.backend_image_pin }}
+        run: |
+          set -o pipefail
+          build() {
+            npm --prefix desktop run build -- --publish never -c.forceCodeSigning=true 2>&1 | tee "$RUNNER_TEMP/build.log"
+          }
+          if build; then exit 0; fi
+          if grep -q '"status":"Invalid"\|status: Invalid' "$RUNNER_TEMP/build.log"; then
+            echo "::error::Notarization verdict was Invalid — deterministic, not retrying. See the developer log artifact."
+            exit 1
+          fi
+          # stage-cli.mjs hard-fails under SYRUS_RELEASE_BUILD=1 when the Go
+          # toolchain is missing — deterministic, a retry cannot fix it.
+          if grep -qF 'stage-cli: Go toolchain not found' "$RUNNER_TEMP/build.log"; then
+            echo "::error::stage-cli hard-failed: no Go toolchain on the runner — deterministic, not retrying. Fix the actions/setup-go step (go-version-file: cli/go.mod)."
+            exit 1
+          fi
+          echo "::warning::Build/notarization failed with a non-deterministic error — retrying once in 90s."
+          sleep 90
+          build
+
+      - name: Fetch notarytool developer log
+        if: failure()
+        env:
+          APPLE_API_KEY: ${{ runner.temp }}/apple_api_key.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          ID=$(grep -oE '"id"[[:space:]]*:[[:space:]]*"[0-9a-f-]{36}"' "$RUNNER_TEMP/build.log" | tail -1 | grep -oE '[0-9a-f-]{36}') || true
+          if [[ -n "${ID:-}" ]]; then
+            xcrun notarytool log "$ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" "$RUNNER_TEMP/notary_developer_log.json" || true
+          fi
+          cp "$RUNNER_TEMP/build.log" . 2>/dev/null || true
+          cp "$RUNNER_TEMP/notary_developer_log.json" . 2>/dev/null || true
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-mac-diagnostics
+          path: |
+            build.log
+            notary_developer_log.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # stapler runs against the .app — the DMG container carries no ticket of
+      # its own (Error 65 there is expected, not a failure). Verifies the whole
+      # superset both callers rely on: signature + notarization + the CLI inside
+      # the app + the auto-update feed files (electron-builder writes latest-mac.yml
+      # and the .zip regardless of what gets staged) + the backend manifest pin.
+      - name: Verify signature, notarization, update feed, and backend pin
+        env:
+          VERSION: ${{ inputs.version }}
+          BACKEND_IMAGE: ${{ inputs.backend_image_pin }}
+        run: |
+          set -euo pipefail
+          # One universal app that runs on both Apple Silicon and Intel.
+          APP="desktop/out/mac-universal/Syrus.app"
+          codesign --verify --deep --strict "$APP"
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep "Developer ID Application"
+          spctl -a -t exec -vv "$APP" 2>&1 | grep "Notarized Developer ID"
+          xcrun stapler validate "$APP"
+          test -f desktop/out/latest-mac.yml
+          grep -q "Syrus-$VERSION-universal.zip" desktop/out/latest-mac.yml
+          test -f "desktop/out/Syrus-$VERSION-universal.zip"
+          test -f "desktop/out/Syrus-$VERSION-universal.dmg"
+          # The bundled CLI must be INSIDE the built app — 0.1.1/0.1.2 shipped
+          # without Resources/cli (no Go on the runner; stage-cli soft-skipped)
+          # and every in-app CLI/skill install threw ENOENT. Both darwin arches
+          # ride the universal app; ensureCliCurrent installs the matching one.
+          test -x "$APP/Contents/Resources/cli/syrus-darwin-arm64"
+          test -x "$APP/Contents/Resources/cli/syrus-darwin-x64"
+          # The sealed manifest must pin the exact backend tag this run targets.
+          grep -qF "\"image\": \"$BACKEND_IMAGE\"" "$APP/Contents/Resources/backend/manifest.json"
+
+      # What to stage depends on the caller. A release ships the auto-update
+      # feed (Squirrel.Mac rides the versioned .zip + latest-mac.yml, plus the
+      # .zip.blockmap for deltas) and the stable-named Syrus.dmg permalink
+      # humans download; the versioned dmg is a byte-identical twin of Syrus.dmg
+      # and is NOT staged. A test build stages ONLY the versioned dmg — no
+      # stable alias (that name is the website permalink, releases only) and no
+      # feed files (a test build must never feed the update channel).
+      - name: Stage macOS artifacts
+        env:
+          VERSION: ${{ inputs.version }}
+          STAGE_FEED: ${{ inputs.stage_update_feed }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/staged"
+          if [ "$STAGE_FEED" = "true" ]; then
+            cp "desktop/out/Syrus-$VERSION-universal.zip" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            cp "desktop/out/Syrus-$VERSION-universal.zip.blockmap" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            cp desktop/out/latest-mac.yml "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            cp "desktop/out/Syrus-$VERSION-universal.dmg" "$RUNNER_TEMP/staged/Syrus.dmg"
+          else
+            cp "desktop/out/Syrus-$VERSION-universal.dmg" "$RUNNER_TEMP/staged/"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-mac
+          path: ${{ runner.temp }}/staged/
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+  # ---------------------------------------------------------------------------
+  # Windows: Azure Trusted Signing, then STAGE. Runs in parallel with macOS and
+  # the backend. Skippable via the build_windows input.
+  # ---------------------------------------------------------------------------
+  build-windows:
+    if: inputs.build_windows
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+
+      # Azure signing runs on dry runs and test builds too (it's the fragile
+      # part worth rehearsing); push_image only gates the image push.
+      - name: "Guard: Azure signing configuration present"
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT || vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT_NAME: ${{ secrets.AZURE_SIGN_ACCOUNT_NAME || vars.AZURE_SIGN_ACCOUNT_NAME }}
+          AZURE_SIGN_CERT_PROFILE: ${{ secrets.AZURE_SIGN_CERT_PROFILE || vars.AZURE_SIGN_CERT_PROFILE }}
+          AZURE_SIGN_PUBLISHER_NAME: ${{ secrets.AZURE_SIGN_PUBLISHER_NAME || vars.AZURE_SIGN_PUBLISHER_NAME }}
+        run: |
+          missing=()
+          for var in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_SIGN_ENDPOINT AZURE_SIGN_ACCOUNT_NAME AZURE_SIGN_CERT_PROFILE AZURE_SIGN_PUBLISHER_NAME; do
+            if [ -z "${!var}" ]; then missing+=("$var"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::Azure signing configuration missing: ${missing[*]} — see docs/windows-signing.md. A signed build is required — set them in repo secrets/variables (dry runs sign too)."
+            exit 1
+          fi
+
+      # A 401 here is a credential problem; a 403 later at sign time is a
+      # role/profile problem (different fixes — see the runbook).
+      - name: "Preflight: Azure credentials"
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+        run: |
+          $body = @{
+            grant_type    = "client_credentials"
+            client_id     = $env:AZURE_CLIENT_ID
+            client_secret = $env:AZURE_CLIENT_SECRET
+            scope         = "https://codesigning.azure.net/.default"
+          }
+          try {
+            $null = Invoke-RestMethod -Method Post -Uri "https://login.microsoftonline.com/$($env:AZURE_TENANT_ID)/oauth2/v2.0/token" -Body $body
+            Write-Host "Azure token acquisition OK"
+          } catch {
+            Write-Host "::error::Azure credential preflight failed: $($_.Exception.Message). Check AZURE_TENANT_ID/AZURE_CLIENT_ID/AZURE_CLIENT_SECRET (single-tenant app registration; secrets expire)."
+            exit 1
+          }
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      # windows-latest runners usually ship Go, but pin it anyway — parity
+      # with build-mac/build-cli and determinism over runner-image drift. The
+      # desktop build needs it to bundle the CLI (stage-cli.mjs hard-fails
+      # without it under SYRUS_RELEASE_BUILD=1).
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: cli/go.mod
+          # setup-go's default cache lookup expects go.sum at the repo ROOT;
+          # ours lives under cli/, so without this the cache step warns and
+          # caches nothing on every run.
+          cache-dependency-path: cli/go.sum
+
+      - name: Install dependencies
+        run: npm ci --prefix desktop
+
+      - name: Set version
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: npm --prefix desktop version "$VERSION" --no-git-tag-version --allow-same-version
+
+      # electron-builder installs the TrustedSigning module on first use; do it
+      # once here (with retries) to dodge transient gallery failures.
+      - name: "Preflight: TrustedSigning module"
+        shell: pwsh
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          $attempts = 0
+          while ($true) {
+            try {
+              Install-Module -Name TrustedSigning -Force -Scope CurrentUser -ErrorAction Stop
+              break
+            } catch {
+              $attempts += 1
+              if ($attempts -ge 3) { Write-Host "::error::Could not install the TrustedSigning module: $($_.Exception.Message)"; exit 1 }
+              Start-Sleep -Seconds 20
+            }
+          }
+
+      # win.azureSignOptions is intentionally NOT in the checked-in
+      # electron-builder.yml (its mere presence forces signing on every unsigned
+      # dev cross-build). Inject it here, only in a job that has the credentials.
+      # SYRUS_BACKEND_IMAGE pins the backend tag into the installer's
+      # manifest.json (see build-mac's comment).
+      - name: Build and sign
+        timeout-minutes: 45
+        shell: bash
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGN_ENDPOINT: ${{ secrets.AZURE_SIGN_ENDPOINT || vars.AZURE_SIGN_ENDPOINT }}
+          AZURE_SIGN_ACCOUNT_NAME: ${{ secrets.AZURE_SIGN_ACCOUNT_NAME || vars.AZURE_SIGN_ACCOUNT_NAME }}
+          AZURE_SIGN_CERT_PROFILE: ${{ secrets.AZURE_SIGN_CERT_PROFILE || vars.AZURE_SIGN_CERT_PROFILE }}
+          AZURE_SIGN_PUBLISHER_NAME: ${{ secrets.AZURE_SIGN_PUBLISHER_NAME || vars.AZURE_SIGN_PUBLISHER_NAME }}
+          SYRUS_RELEASE_BUILD: "1"
+          SYRUS_BACKEND_IMAGE: ${{ inputs.backend_image_pin }}
+        run: |
+          AZURE_SIGN_ENDPOINT="${AZURE_SIGN_ENDPOINT%/}"
+          npm --prefix desktop run build -- --win --publish never \
+            -c.forceCodeSigning=true \
+            "-c.win.azureSignOptions.publisherName=${AZURE_SIGN_PUBLISHER_NAME}" \
+            "-c.win.azureSignOptions.endpoint=${AZURE_SIGN_ENDPOINT}" \
+            "-c.win.azureSignOptions.certificateProfileName=${AZURE_SIGN_CERT_PROFILE}" \
+            "-c.win.azureSignOptions.codeSigningAccountName=${AZURE_SIGN_ACCOUNT_NAME}"
+
+      - name: Verify signatures, update feed, and backend pin
+        shell: pwsh
+        env:
+          BACKEND_IMAGE: ${{ inputs.backend_image_pin }}
+        run: |
+          $exes = Get-ChildItem -Path desktop/out -Filter "Syrus-Setup-*.exe"
+          if ($exes.Count -eq 0) { throw "No Syrus-Setup-*.exe artifacts found under desktop/out" }
+          foreach ($exe in $exes) {
+            $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
+            Write-Host "$($exe.Name): $($sig.Status) ($($sig.SignerCertificate.Subject))"
+            if ($sig.Status -ne "Valid") { throw "$($exe.Name) is not validly signed (status: $($sig.Status))" }
+          }
+          if (-not (Test-Path "desktop/out/latest.yml")) { throw "latest.yml missing - Windows auto-update feed would be broken" }
+          # The bundled CLI must be in the packaged resources (win-unpacked is
+          # what NSIS wraps). Same 0.1.1/0.1.2 failure mode as macOS: stage-cli
+          # soft-skipping without Go shipped installers with no CLI to install.
+          if (-not (Test-Path "desktop/out/win-unpacked/resources/cli/syrus-win32-x64.exe")) { throw "Bundled CLI missing - desktop/out/win-unpacked/resources/cli/syrus-win32-x64.exe not found (stage-cli must have been skipped)" }
+          # The sealed manifest must pin the exact backend tag this run targets.
+          $manifest = Get-Content "desktop/out/win-unpacked/resources/backend/manifest.json" -Raw | ConvertFrom-Json
+          if ($manifest.image -ne $env:BACKEND_IMAGE) { throw "manifest.json pins '$($manifest.image)' instead of '$($env:BACKEND_IMAGE)'" }
+
+      # A release stages the auto-update feed (the versioned .exe + its blockmap
+      # for deltas + latest.yml) and the stable Syrus-Setup.exe website
+      # permalink. Windows auto-update rides the versioned installer itself, so
+      # unlike macOS the versioned .exe stays either way. A test build stages
+      # ONLY the versioned installer — no stable alias, no latest.yml.
+      - name: Stage Windows artifacts
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          STAGE_FEED: ${{ inputs.stage_update_feed }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/staged"
+          if [ "$STAGE_FEED" = "true" ]; then
+            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe.blockmap" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            cp desktop/out/latest.yml "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            # x64 only — runs natively on x64 and via emulation on arm64 Windows.
+            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/Syrus-Setup.exe"
+          else
+            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/"
+          fi
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ inputs.artifact_prefix }}-windows
+          path: ${{ runner.temp }}/staged/
+          if-no-files-found: error
+          retention-days: ${{ inputs.artifact_retention_days }}
