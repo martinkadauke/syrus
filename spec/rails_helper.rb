@@ -43,7 +43,12 @@ RSpec.configure do |config|
   # Never actually sleep while waiting for GitHub mergeability to
   # settle in the auto_merge step (see Steps::AutoMerge).
   config.before do
+    Current.reset
     Steps::AutoMerge.mergeability_settle_delay = 0
+  end
+
+  config.after do
+    Current.reset
   end
 
   # You can uncomment this line to turn off ActiveRecord support entirely.

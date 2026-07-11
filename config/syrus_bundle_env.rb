@@ -11,15 +11,19 @@ syrus_bundle_config = File.join(deps, "bundle-config")
 syrus_bundle = File.join(deps, "bundle")
 vendor_bundle = File.join(repo_root, "vendor", "bundle")
 bundle_path_empty = ENV["BUNDLE_PATH"].to_s.empty?
+local_ruby_version = RbConfig::CONFIG.fetch("ruby_version")
 
-if ENV["BUNDLE_APP_CONFIG"].to_s.empty? && File.file?(File.join(syrus_bundle_config, "config"))
-  ENV["BUNDLE_APP_CONFIG"] = syrus_bundle_config
+bundle_installed = lambda do |path|
+  pattern = File.join(path, "ruby", local_ruby_version, "specifications", "*.gemspec")
+  !Dir.glob(pattern).empty?
 end
 
-ENV["BUNDLE_PATH"] = syrus_bundle if bundle_path_empty && Dir.exist?(syrus_bundle)
-ENV["BUNDLE_PATH"] = vendor_bundle if bundle_path_empty && ENV["BUNDLE_PATH"].to_s.empty? && Dir.exist?(vendor_bundle)
+prepared_bundle = [ syrus_bundle, vendor_bundle ].find { |path| bundle_installed.call(path) }
+
+ENV["BUNDLE_PATH"] = prepared_bundle if bundle_path_empty && prepared_bundle
 
 if bundle_path_empty && Dir.exist?(deps)
+  ENV["BUNDLE_APP_CONFIG"] ||= syrus_bundle_config
   ENV["BUNDLE_USER_HOME"] ||= File.join(deps, "bundle-home")
   ENV["BUNDLE_USER_CACHE"] ||= File.join(deps, "bundle-cache")
 end
