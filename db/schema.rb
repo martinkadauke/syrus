@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_11_001541) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_11_192118) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -273,7 +273,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_001541) do
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
     t.string "workspace_path"
+    t.index ["cumulative_cost_usd"], name: "idx_chat_sessions_spending_cost"
     t.index ["share_token"], name: "index_chat_sessions_on_share_token", unique: true
+    t.index ["user_id", "cumulative_cost_usd"], name: "idx_chat_sessions_spending_user_cost"
     t.index ["user_id", "hidden_at"], name: "index_chat_sessions_on_user_id_and_hidden_at"
     t.index ["user_id"], name: "index_chat_sessions_on_user_id"
     t.index ["workspace_path"], name: "index_chat_sessions_on_workspace_path"
@@ -635,6 +637,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_001541) do
     t.index ["approved_by_user_id"], name: "index_jobs_on_approved_by_user_id"
     t.index ["claimed_at"], name: "index_jobs_on_claimed_at"
     t.index ["claimed_by_user_id"], name: "index_jobs_on_claimed_by_user_id"
+    t.index ["closure_reason", "id"], name: "idx_jobs_spending_closure"
     t.index ["credential_mode"], name: "index_jobs_on_credential_mode"
     t.index ["dependencies_overridden_by_user_id"], name: "index_jobs_on_dependencies_overridden_by_user_id"
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
@@ -871,12 +874,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_001541) do
     t.string "trigger_kind", null: false
     t.datetime "updated_at", null: false
     t.integer "user_id", null: false
+    t.index ["agent_provider", "cost_usd"], name: "idx_runs_spending_provider_cost"
+    t.index ["agent_provider", "created_at", "cost_usd"], name: "idx_runs_spending_provider_window"
+    t.index ["cost_usd", "created_at"], name: "idx_runs_spending_top_cost"
     t.index ["created_at", "cost_usd"], name: "index_runs_on_created_at_and_cost_usd"
+    t.index ["created_at", "job_id", "cost_usd"], name: "idx_runs_spending_window_jobs"
     t.index ["job_id", "state"], name: "index_runs_on_job_id_and_state"
     t.index ["job_id"], name: "index_runs_on_job_id"
     t.index ["parent_session_id"], name: "index_runs_on_parent_session_id"
     t.index ["state", "last_heartbeat_at"], name: "index_runs_on_state_and_last_heartbeat_at"
     t.index ["step_id"], name: "index_runs_on_step_id"
+    t.index ["user_id", "created_at", "cost_usd"], name: "idx_runs_spending_user_window"
     t.index ["user_id"], name: "index_runs_on_user_id"
   end
 
