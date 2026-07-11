@@ -49,10 +49,10 @@ release (`release.yml` → `publish-website`).
 ## Content
 
 Copy lives in `lib/site.ts` (hero, workflow steps, feature pillars, entry
-points) and `lib/legal.ts` (Impressum + privacy). Pages are under `src/app/`
-(Next.js App Router; the `src/` directory layout is used so that `src/pages/`
-and `src/content/docs/` can hold the source-of-truth markdown docs alongside
-the framework code).
+points). Pages are under `src/app/` (Next.js App Router, `src/` directory
+layout). The markdown under `src/pages/`, `src/content/docs/`, and
+`src/site-pages/` is archived positioning/docs copy that the Next.js build
+does not consume; `_archive-astro/` remains the frozen pre-migration snapshot.
 
 ## Information Architecture
 
@@ -60,8 +60,8 @@ The current static site is intentionally small:
 
 | Page/section | Path | Purpose |
 | --- | --- | --- |
-| Home | `app/page.tsx` | Marketing landing page assembled from hero, workflow, feature, entry-point, and demo sections |
-| Download | `app/download/page.tsx` | Desktop and CLI release downloads |
+| Home | `src/app/page.tsx` | Marketing landing page assembled from hero, workflow, feature, entry-point, and demo sections |
+| Download | `src/app/download/page.tsx` | Desktop and CLI release downloads |
 | Request a demo | `components/demo.tsx` | Demo/contact form with mailto fallback |
 | Product copy | `lib/site.ts` | Source of truth for hero copy, workflow steps, feature pillars, and entry points |
 

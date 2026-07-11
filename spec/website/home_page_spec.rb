@@ -34,5 +34,20 @@ RSpec.describe "website home page" do
     expect(nav).to include('href: "/#entry-points"')
     expect(nav).to include('href="/#demo"')
     expect(nav).to include("<DownloadButton")
+
+    hero = read_website("components/hero.tsx")
+    expect(hero).to include("<DownloadCTA")
+    expect(hero).to include('href="/#demo"')
+    expect(hero).to include("Request a demo")
+
+    expect(read_website("components/footer.tsx")).to include('href: "/download"')
+  end
+
+  it "has a matching section or page for every advertised anchor" do
+    expect(read_website("components/team-workflow.tsx")).to include('section id="how"')
+    expect(read_website("components/features.tsx")).to include('section id="features"')
+    expect(read_website("components/entry-points.tsx")).to include('section id="entry-points"')
+    expect(read_website("components/demo.tsx")).to include('section id="demo"')
+    expect(read_website("src/app/download/page.tsx")).to include("Download Syrus")
   end
 end
