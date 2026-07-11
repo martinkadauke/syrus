@@ -89,6 +89,11 @@ RSpec.describe "desktop auto-update and release pipeline" do
     # Needs write to create the tag/release/commit AND push the image.
     expect(workflow.dig("permissions", "contents")).to eq("write")
     expect(workflow.dig("permissions", "packages")).to eq("write")
+    # publish-website calls deploy-website.yml (a reusable workflow that needs
+    # pages + id-token); a reusable workflow can't exceed the caller's grants,
+    # so release must declare them here or the call fails to start.
+    expect(workflow.dig("permissions", "pages")).to eq("write")
+    expect(workflow.dig("permissions", "id-token")).to eq("write")
     # One coherent pipeline: compute the version (prepare), build everything
     # through the shared reusable module (build), then a single publish job and
     # the website deploy. release.yml is thin — the build/sign jobs live in the
