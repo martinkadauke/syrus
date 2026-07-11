@@ -1,4 +1,4 @@
-# A TEST release: deterministically build every shippable component from any
+# A TEST BUILD: deterministically build every shippable component from any
 # ref — the backend image is PUSHED to GHCR under a collision-proof test tag,
 # and the signed macOS DMG + Windows installer are built with that exact tag
 # manifested in — while making publishing structurally impossible.
@@ -38,7 +38,7 @@
 # Attacker-influenceable values (the computed tag/version) reach `run:` bodies
 # only through `env:`, never inline ${{ }} interpolation — same rule as
 # release.yml.
-name: Test release
+name: Test build
 
 on:
   workflow_dispatch:
@@ -59,7 +59,7 @@ permissions:
 # Separate group from the real release ("release"): test builds never contend
 # with a publish, and a newer test run on the same ref supersedes the old one.
 concurrency:
-  group: test-release-${{ github.ref }}
+  group: test-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -108,7 +108,7 @@ jobs:
             echo "app_version=$app_version"
             echo "version_tag=$version_tag"
           } >> "$GITHUB_OUTPUT"
-          echo "### Test release $app_version (backend image tags: $version_tag + $image_tag, ref: $GITHUB_REF_NAME)" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Test build $app_version (backend image tags: $version_tag + $image_tag, ref: $GITHUB_REF_NAME)" >> "$GITHUB_STEP_SUMMARY"
 
       # A test tag must NEVER be able to collide with (or be mistaken for) a
       # release tag. The regex alone rules out `latest` and semver, but the
@@ -142,7 +142,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Build the backend image NATIVELY per architecture — NO QEMU — exactly like
   # release.yml's build-backend, then ALWAYS push each arch by digest (the
-  # whole point of a test release is that the image lands on GHCR).
+  # whole point of a test build is that the image lands on GHCR).
   # ---------------------------------------------------------------------------
   build-backend:
     needs: prepare
@@ -309,7 +309,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Cross-compile the CLI tarballs (bin/release-cli: linux/amd64 + arm64 +
   # SHA256SUMS-cli.txt, gated on `go test ./...`) and stage them on the run —
-  # the Linux CLI is a shippable component too, so a test release must prove
+  # the Linux CLI is a shippable component too, so a test build must prove
   # it builds. Unconditional, like release.yml's build-cli.
   # ---------------------------------------------------------------------------
   build-cli:
@@ -339,12 +339,15 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # macOS: sign + notarize + staple, exactly like a real release, then upload
-  # the versioned DMG as a workflow-run artifact. Runs AFTER merge-backend so
-  # the backend tag pinned into the app's manifest.json verifiably exists on
-  # GHCR before any installer that references it does.
+  # the versioned DMG as a workflow-run artifact. Runs in PARALLEL with the
+  # backend (needs: prepare only, same as release.yml) — the manifest pin is a
+  # string, not a pull, so the desktop build never needs the image to exist
+  # yet; merge-backend pushes it concurrently and it is present by the time the
+  # run finishes, which is when you download and install the artifact. If
+  # merge-backend fails, the whole run fails and no DMG is delivered.
   # ---------------------------------------------------------------------------
   build-mac:
-    needs: [prepare, merge-backend]
+    needs: prepare
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -555,10 +558,10 @@ jobs:
   # ---------------------------------------------------------------------------
   # Windows: Azure Trusted Signing, exactly like a real release, then upload
   # the versioned installer as a workflow-run artifact. Skippable via the
-  # build_windows input; also gated on merge-backend like build-mac.
+  # build_windows input. Runs in parallel with the backend, same as build-mac.
   # ---------------------------------------------------------------------------
   build-windows:
-    needs: [prepare, merge-backend]
+    needs: prepare
     if: inputs.build_windows
     runs-on: windows-latest
     timeout-minutes: 60

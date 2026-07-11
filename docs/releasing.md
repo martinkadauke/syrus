@@ -115,16 +115,16 @@ the static site under `website/src/` has no in-repo build/host target yet — bu
 whenever one lands, it lands in that one workflow and all three entry points get
 it at once.)
 
-## Test releases
+## Test builds
 
-**Actions → "Test release" → Run workflow** (pick the branch), or from a
+**Actions → "Test build" → Run workflow** (pick the branch), or from a
 terminal:
 
 ```
-gh workflow run test-release.yml --ref <branch>
+gh workflow run test-build.yml --ref <branch>
 ```
 
-A test release ([`.github/workflows/test-release.yml`](../.github/workflows/test-release.yml))
+A test build ([`.github/workflows/test-build.yml`](../.github/workflows/test-build.yml))
 deterministically builds **every** shippable component from any ref — including
 a feature branch — without publishing anything:
 
@@ -173,12 +173,12 @@ is structurally impossible.
 | `run_integration_tests` | Run `bin/test-docker` against each built arch before pushing (default on). Uncheck for a faster untested image. |
 | `build_windows` | Also build + sign the Windows installer (default on). |
 
-**Test release vs. `dry_run`:** a dry-run *release* is a rehearsal — it builds
+**Test build vs. `dry_run`:** a dry-run *release* is a rehearsal — it builds
 and signs everything but pushes **nothing**, so its installers pin an image
-tag that never exists. A *test release* always pushes the test-tagged image,
+tag that never exists. A *test build* always pushes the test-tagged image,
 so its artifacts are actually usable: install the DMG, and the app pulls and
 runs the exact backend built from your branch. Use `dry_run` to validate the
-release pipeline itself; use a test release to hand someone a working build of
+release pipeline itself; use a test build to hand someone a working build of
 unmerged work.
 
 ## Versioning convention

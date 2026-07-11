@@ -3,16 +3,16 @@
 require "yaml"
 require "spec_helper"
 
-# The TEST release pipeline (.github/workflows/test-release.yml). Its contract
+# The TEST BUILD pipeline (.github/workflows/test-build.yml). Its contract
 # is the inverse of release.yml's: every component is DETERMINISTICALLY built —
 # the backend image is pushed to GHCR under a collision-proof test tag, and the
 # signed installers pin that exact tag — while publishing is structurally
 # impossible (contents: read, no gh release, :latest untouched). The invariants
 # here are the ones that would quietly turn a test build into a shadow release
 # (or a broken artifact) if broken.
-RSpec.describe "desktop test-release pipeline" do
+RSpec.describe "desktop test-build pipeline" do
   let(:repo_root) { File.expand_path("../..", __dir__) }
-  let(:workflow_path) { File.join(repo_root, ".github/workflows/test-release.yml") }
+  let(:workflow_path) { File.join(repo_root, ".github/workflows/test-build.yml") }
   let(:workflow_text) { File.read(workflow_path, encoding: "UTF-8") }
   let(:workflow) { YAML.safe_load(workflow_text) }
 
@@ -47,7 +47,7 @@ RSpec.describe "desktop test-release pipeline" do
   end
 
   it "keeps test builds off the release concurrency group and supersedes stale runs" do
-    expect(workflow.dig("concurrency", "group")).to include("test-release-")
+    expect(workflow.dig("concurrency", "group")).to include("test-build-")
     expect(workflow.dig("concurrency", "cancel-in-progress")).to eq(true)
   end
 
@@ -145,10 +145,9 @@ RSpec.describe "desktop test-release pipeline" do
     # consistently (app 0.1.4-test.1 · backend test-0.1.4-test.1).
     stage_ref = "SYRUS_BACKEND_IMAGE: ghcr.io/tkadauke/syrus-backend:${{ needs.prepare.outputs.version_tag }}"
     expect(workflow_text.scan(stage_ref).size).to eq(2)
-    # Both desktop jobs run AFTER merge-backend, so the pinned tag verifiably
-    # exists on GHCR before any installer that references it is built.
-    expect(workflow.dig("jobs", "build-mac", "needs")).to include("merge-backend")
-    expect(workflow.dig("jobs", "build-windows", "needs")).to include("merge-backend")
+    # Desktop builds in parallel with the backend (needs: prepare) — the pin
+    # is a string, not a pull; merge-backend pushes the image concurrently and
+    # it exists by run completion. (Parallelism is pinned in its own example.)
     # ...and each verify step asserts the sealed manifest actually carries it.
     expect(workflow_text).to include('grep -qF "\"image\": \"$BACKEND_IMAGE\"" "$APP/Contents/Resources/backend/manifest.json"')
     expect(workflow_text).to include("desktop/out/win-unpacked/resources/backend/manifest.json")
@@ -175,7 +174,7 @@ RSpec.describe "desktop test-release pipeline" do
   it "cross-compiles and stages the CLI tarballs like a real release" do
     # The Linux CLI is a shippable component too: bin/release-cli runs
     # `go test ./...`, cross-compiles linux/amd64 + arm64 tarballs, and writes
-    # SHA256SUMS-cli.txt. A test release must prove it builds.
+    # SHA256SUMS-cli.txt. A test build must prove it builds.
     expect(workflow.dig("jobs", "build-cli", "needs")).to eq("prepare")
     expect(workflow_text).to match(%r{run: bin/release-cli "\$TAG"})
     expect(workflow_text).to include("TAG: v${{ needs.prepare.outputs.app_version }}")
@@ -224,15 +223,41 @@ RSpec.describe "desktop test-release pipeline" do
     end
   end
 
-  it "documents the test-release runbook next to the release one" do
+  it "documents the test-build runbook next to the release one" do
     runbook = File.read(File.join(repo_root, "docs/releasing.md"), encoding: "UTF-8")
-    expect(runbook).to include("test-release.yml")
-    expect(runbook).to include("gh workflow run test-release.yml --ref")
+    expect(runbook).to include("test-build.yml")
+    expect(runbook).to include("gh workflow run test-build.yml --ref")
     expect(runbook).to include("test-staged-mac")
     expect(runbook).to include("test-staged-windows")
     expect(runbook).to include("test-staged-cli")
     # The tag scheme and retention are the operator-facing contract.
     expect(runbook).to match(/test-<short-sha>|test-<sha>/)
     expect(runbook).to include("14 days")
+  end
+
+  it "builds desktop in parallel with the backend (no merge-backend gate)" do
+    # The manifest pin is a string match, not a docker pull, so the desktop
+    # jobs never need the image to exist yet — gating them on merge-backend
+    # serialized ~5 min of pure waiting. Match release.yml: needs: prepare only.
+    expect(workflow.dig("jobs", "build-mac", "needs")).to eq("prepare")
+    expect(workflow.dig("jobs", "build-windows", "needs")).to eq("prepare")
+  end
+
+  # Drift guard: the test build must build every shippable component the SAME
+  # way the real release does, or it is testing a different artifact than it
+  # will ship. This is the cheap insurance for the deliberate duplication —
+  # if a release build step changes, the mirrored test-build step must too.
+  it "uses the same load-bearing build commands as release.yml" do
+    release = File.read(File.join(repo_root, ".github/workflows/release.yml"), encoding: "UTF-8")
+    shared = [
+      "bin/publish-image",   # backend image build + integration gate
+      "bin/release-cli",     # CLI tarballs
+      "npm --prefix desktop run build", # electron-builder DMG/exe
+      "imagetools create",   # multi-arch manifest assembly
+    ]
+    shared.each do |cmd|
+      expect(workflow_text).to include(cmd), "test-build.yml missing #{cmd.inspect}"
+      expect(release).to include(cmd), "release.yml missing #{cmd.inspect}"
+    end
   end
 end
