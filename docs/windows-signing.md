@@ -3,7 +3,8 @@
 Background and the decision rationale live in
 [`windows-desktop-plan.md`](./windows-desktop-plan.md#code-signing-researched-july-2026).
 This doc is the concrete setup runbook: portal steps once, then the repo
-secrets that make `release.yml`'s `build-windows` job sign real installers.
+secrets that make the shared `_build-app.yml` module's `build-windows` job
+(called by `release.yml` and `test-build.yml`) sign real installers.
 A dry-run release exercises that same job — the build jobs are identical on a
 dry and a real run — so there is no separate signing-test workflow.
 
@@ -135,7 +136,7 @@ The first three (`AZURE_TENANT_ID`/`AZURE_CLIENT_ID`/`AZURE_CLIENT_SECRET`)
 are read directly by the Azure SDK's `EnvironmentCredential` — nothing in
 this repo needs to reference them by name. The other four are threaded
 into `electron-builder`'s `win.azureSignOptions` via CLI dot-path overrides
-in the workflow (see `release.yml`'s `build-windows` job) — **not** committed
+in the workflow (see `_build-app.yml`'s `build-windows` job) — **not** committed
 as static YAML in `desktop/electron-builder.yml`, because the mere presence of
 `azureSignOptions` makes electron-builder attempt Azure signing
 unconditionally (unlike the macOS `CSC_LINK` path, there's no
@@ -189,7 +190,8 @@ no-op on Darwin/Linux so it can't produce a false sense of "signed" here.
 
 ## 9. Going live (done — July 2026)
 
-`release.yml` now carries a `build-windows` job: on every release it
+the shared `_build-app.yml` module carries the `build-windows` job
+(invoked by every release and test build): on every release it
 builds, Azure-signs, and stages the Windows NSIS installers, which the
 final `publish` job ships alongside the mac DMGs in one GitHub release
 (`build-windows` runs in parallel with `build-mac`). The Azure
