@@ -62,6 +62,9 @@ on:
 permissions:
   contents: write # create the git tag and the GitHub Release
   packages: write # push the backend image to GHCR
+  pages: write # publish-website calls deploy-website.yml, which deploys Pages
+  id-token: write # …and mints the Pages OIDC token. A reusable workflow can't
+                  # exceed the caller's grants, so these must be declared here.
 
 # One release at a time; never cancel a half-finished publish.
 concurrency:
