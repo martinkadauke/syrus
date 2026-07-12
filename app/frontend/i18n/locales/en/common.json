@@ -1,5 +1,9 @@
 {
   "app_name": "Syrus",
+  "test_channel_badge": {
+    "label": "Test",
+    "tooltip": "This is a side-by-side test build, isolated from your production Syrus."
+  },
   "loading": "Loading...",
   "show_more": "Show more",
   "show_less": "Show less",

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, shell } from "electron"
-import type { WindowBounds } from "../settings.js"
+import { currentChannel, type WindowBounds } from "../settings.js"
 import { decideWindowOpen } from "./windowOpenPolicy.js"
 
 type WebAppWindowOptions = {
@@ -77,8 +77,12 @@ export const createWebAppWindow = ({
     builtAtDate && !Number.isNaN(builtAtDate.getTime())
       ? ` SyrusDesktopBuiltAt/${builtAtDate.toISOString().slice(0, 19).replace(/[-:]/g, "")}Z`
       : ""
+  // Announce the build channel so the web UI can flag a test build in-app (an
+  // amber TEST pill next to the brand). Emitted only for the test channel —
+  // its absence means the default (stable) channel. See desktopChannel().
+  const channelToken = currentChannel() === "test" ? " SyrusDesktopChannel/test" : ""
   window.webContents.setUserAgent(
-    `${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}${buildToken}${builtAtToken}`
+    `${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}${buildToken}${builtAtToken}${channelToken}`
   )
 
   // Same-origin navigation stays in the window; everything else (GitHub PRs,

@@ -1,5 +1,9 @@
 {
   "app_name": "Syrus",
+  "test_channel_badge": {
+    "label": "Probatio",
+    "tooltip": "Haec est aedificatio probationis, a Syro tuo vero segregata."
+  },
   "loading": "Oneratur...",
   "show_more": "Ostende plus",
   "show_less": "Ostende minus",

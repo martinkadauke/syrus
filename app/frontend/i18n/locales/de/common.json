@@ -1,5 +1,9 @@
 {
   "app_name": "Syrus",
+  "test_channel_badge": {
+    "label": "Test",
+    "tooltip": "Dies ist ein paralleler Test-Build, isoliert von deinem produktiven Syrus."
+  },
   "loading": "Laden...",
   "show_more": "Mehr anzeigen",
   "show_less": "Weniger anzeigen",

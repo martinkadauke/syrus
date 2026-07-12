@@ -18,6 +18,7 @@ import { NotificationsBell } from "../components/Notifications"
 import { PinIcon } from "../components/PinIcon"
 import { ShellNotices } from "../components/ShellNotices"
 import { SyrusBrand } from "../components/SyrusBrand"
+import { TestChannelBadge } from "../components/TestChannelBadge"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { updateChatUnread, updateRecentChatCache } from "../lib/chatCache"
 import { firstUnstartedChat } from "../lib/unstartedChat"
@@ -260,6 +261,7 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
           >
             <SyrusBrand />
           </button>
+          <TestChannelBadge />
           {user ? <NotificationsBell initialUnreadCount={user.notification_unread_count ?? 0} prefix={prefix} /> : null}
         </div>
         <SystemAlertsBanner alerts={data?.system_alerts} prefix={prefix} />
