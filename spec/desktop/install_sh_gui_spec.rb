@@ -84,8 +84,22 @@ RSpec.describe "install.sh GUI interface" do
   end
 
   it "keeps the compose project pinned so the syrus_ volume prefix survives any invocation dir" do
-    expect(script_text).to include("export COMPOSE_PROJECT_NAME=syrus")
-    expect(script_text).to include("docker volume inspect syrus_syrus-data")
+    # The project name is parameterized (default syrus) so a side-by-side test
+    # stack can pass --project syrus-test; the volume guard follows the project.
+    expect(script_text).to include('PROJECT="${PROJECT_OVERRIDE:-syrus}"')
+    expect(script_text).to include('export COMPOSE_PROJECT_NAME="$PROJECT"')
+    expect(script_text).to include('DATA_VOLUME="${PROJECT}_syrus-data"')
+    expect(script_text).to include('docker volume inspect "$DATA_VOLUME"')
+  end
+
+  it "supports side-by-side channels via --project and --pause-polling" do
+    # A test stack isolates its volumes (--project syrus-test) and seeds
+    # repository polling paused so it does not race production to file Jobs.
+    expect(script_text).to include("--project)")
+    expect(script_text).to include("--pause-polling)")
+    expect(script_text).to include("SYRUS_BOOT_POLLING_PAUSED=1")
+    # Both new flags are docker-only, like the other GUI flags.
+    expect(script_text).to include("--project/--pause-polling only apply to --docker")
   end
 
   it "classifies every failure with a distinct exit code" do

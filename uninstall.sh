@@ -49,10 +49,15 @@
 #                     implies --yes (a GUI does its own confirmation)
 #   --app-path=PATH   also remove the app bundle at PATH (the desktop app
 #                     passes where it is actually running from). PATH must be
-#                     absolute, end in /Syrus.app, and resolve (symlinks
-#                     followed) to a real path under /Applications or
-#                     $HOME/Applications — anything else is warned about and
-#                     IGNORED, never removed
+#                     absolute, end in /<bundle>.app for this channel, and
+#                     resolve (symlinks followed) to a real path under
+#                     /Applications or $HOME/Applications — anything else is
+#                     warned about and IGNORED, never removed
+#   --channel NAME    which install to remove: stable (default) or test. The
+#                     test channel is a side-by-side test build with its own
+#                     project (syrus-test), state dir (~/.syrus/local-test),
+#                     credentials (credentials.test), CLI (syrus-test), and app
+#                     (Syrus Test.app). Removing one never touches the other.
 #   --help            show this message
 #
 # Exit codes: 0 ok (including a declined prompt and "nothing left to remove")
@@ -140,6 +145,7 @@ ASSUME_YES=0
 KEEP_DATA=0
 APP_PATH_ARG=""
 APP_PATH_PROVIDED=0
+CHANNEL="stable"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -148,33 +154,59 @@ while [ $# -gt 0 ]; do
     --json)       JSON=1; ASSUME_YES=1 ;;
     --app-path=*) APP_PATH_PROVIDED=1; APP_PATH_ARG="${1#--app-path=}" ;;
     --app-path)   APP_PATH_PROVIDED=1 ;; # bare form carries no value → warned about and ignored
+    --channel=*)  CHANNEL="${1#--channel=}" ;;
+    --channel)    [ $# -ge 2 ] || die "--channel needs a value (stable|test)" 2; CHANNEL="$2"; shift ;;
     --help|-h)    awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;;
     *) die "Unknown flag: $1 (try --help)" 2 ;;
   esac
   shift
 done
 
+case "$CHANNEL" in
+  stable|test) ;;
+  *) die "--channel must be stable or test, got: $CHANNEL" 2 ;;
+esac
+
 OS="$(uname -s)"
-STATE_DIR="$HOME/.syrus/local"
-CREDENTIALS_FILE="$HOME/.syrus/credentials"
-CLI_BIN="$HOME/.local/bin/syrus"
-SKILL_DIR="$HOME/.claude/skills/syrus"
-if [ "$OS" = "Darwin" ]; then
-  APP_PATH="$HOME/Applications/Syrus.app"
-  SETTINGS_DIR="$HOME/Library/Application Support/Syrus"
+# The channel picks a fully separate set of resources so a side-by-side test
+# build's uninstall removes ONLY its own stack, app, CLI, and settings — never
+# the production install's. The stable channel keeps the original names.
+if [ "$CHANNEL" = "test" ]; then
+  PROJECT="syrus-test"
+  STATE_DIR="$HOME/.syrus/local-test"
+  CREDENTIALS_FILE="$HOME/.syrus/credentials.test"
+  CLI_BIN="$HOME/.local/bin/syrus-test"
+  APP_BUNDLE_NAME="Syrus Test.app"
+  SETTINGS_NAME="Syrus Test"
+  # The Claude skill is stable-only (it invokes `syrus`), so a test uninstall
+  # must not remove it. Empty = skip.
+  SKILL_DIR=""
 else
-  APP_PATH="$HOME/.local/bin/Syrus"
-  SETTINGS_DIR="$HOME/.config/Syrus"
+  PROJECT="syrus"
+  STATE_DIR="$HOME/.syrus/local"
+  CREDENTIALS_FILE="$HOME/.syrus/credentials"
+  CLI_BIN="$HOME/.local/bin/syrus"
+  APP_BUNDLE_NAME="Syrus.app"
+  SETTINGS_NAME="Syrus"
+  SKILL_DIR="$HOME/.claude/skills/syrus"
+fi
+if [ "$OS" = "Darwin" ]; then
+  APP_PATH="$HOME/Applications/$APP_BUNDLE_NAME"
+  SETTINGS_DIR="$HOME/Library/Application Support/$SETTINGS_NAME"
+else
+  APP_PATH="$HOME/.local/bin/$SETTINGS_NAME"
+  SETTINGS_DIR="$HOME/.config/$SETTINGS_NAME"
 fi
 
-# Belt-and-braces alongside the compose file's `name: syrus`: keeps the
-# `syrus_` volume prefix stable for docker-compose v1 and odd invocation dirs.
-export COMPOSE_PROJECT_NAME=syrus
+# The Compose project name determines the volume prefix (<PROJECT>_syrus-data)
+# and overrides the compose file's `name: syrus` default, so a test stack tears
+# down its own isolated volumes. Belt-and-braces for docker-compose v1.
+export COMPOSE_PROJECT_NAME="$PROJECT"
 # Compose v1 and v2 both stamp this label on everything they create — it is
 # the reliable way to enumerate the stack regardless of container naming
 # scheme (v1 `syrus_web_1` underscores vs v2 hyphens).
-COMPOSE_LABEL_FILTER="label=com.docker.compose.project=syrus"
-KNOWN_VOLUMES="syrus_syrus-data syrus_syrus-search"
+COMPOSE_LABEL_FILTER="label=com.docker.compose.project=$PROJECT"
+KNOWN_VOLUMES="${PROJECT}_syrus-data ${PROJECT}_syrus-search"
 
 docker_ready=0
 if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
@@ -250,16 +282,20 @@ list_syrus_volumes() { # label-discovered volumes PLUS the known names, deduped
 
 # --app-path validation. The desktop app passes the bundle it is actually
 # running from; a GUI bug or a hand-typed value must never turn this script
-# into `rm -rf <anything>`. Valid means: absolute, ends in /Syrus.app, and
-# resolves (symlinks followed) to a real path under /Applications or
-# $HOME/Applications. Anything else: warn and ignore, never remove.
+# into `rm -rf <anything>`. Valid means: absolute, ends in /<APP_BUNDLE_NAME>
+# (channel-specific: "Syrus.app" or "Syrus Test.app"), and resolves (symlinks
+# followed) to a real path under /Applications or $HOME/Applications. Anything
+# else: warn and ignore, never remove.
 APP_PATH_EXTRA=""
 APP_PATH_EXTRA_RESOLVED=""
 APP_PATH_STATUS="" # "" (not given) | ok | not_present | duplicate | invalid
 if [ "$APP_PATH_PROVIDED" = "1" ]; then
   APP_PATH_STATUS=invalid
+  # The quoted variable is a literal segment (space and all); the leading /* is
+  # still a glob, so only an absolute path ending in the channel's bundle name
+  # matches.
   case "$APP_PATH_ARG" in
-    /*/Syrus.app)
+    /*/"$APP_BUNDLE_NAME")
       if [ ! -e "$APP_PATH_ARG" ] && [ ! -L "$APP_PATH_ARG" ]; then
         # Syntactically fine, nothing there — the removal step will skip it.
         APP_PATH_STATUS=not_present
@@ -293,7 +329,7 @@ if [ "$docker_ready" = "1" ]; then
     info "Docker: stop and remove the syrus containers (volumes KEPT: --keep-data)"
   else
     info "Docker: remove the syrus containers AND the data volumes (found by"
-    info "        compose label; known names syrus_syrus-data, syrus_syrus-search"
+    info "        compose label; known names $KNOWN_VOLUMES"
     info "        as a fallback) — verified by re-listing after teardown"
   fi
   info "Docker images: syrus-backend and syrus-local images (exact repository"
@@ -322,7 +358,7 @@ else
   info "DELETE $(describe_path "$SETTINGS_DIR")"
 fi
 info "DELETE $(describe_path "$CLI_BIN")"
-info "DELETE $(describe_path "$SKILL_DIR")"
+[ -n "$SKILL_DIR" ] && info "DELETE $(describe_path "$SKILL_DIR")"
 info "DELETE $(describe_path "$APP_PATH")"
 case "$APP_PATH_STATUS" in
   ""|duplicate) ;;
@@ -330,14 +366,14 @@ case "$APP_PATH_STATUS" in
     info "DELETE $(describe_path "$APP_PATH_ARG") (--app-path)" ;;
   *)
     info "WARNING: ignoring invalid --app-path: ${APP_PATH_ARG:-<empty>}"
-    info "         it must be an absolute path ending in /Syrus.app that resolves"
+    info "         it must be an absolute path ending in /$APP_BUNDLE_NAME that resolves"
     info "         under /Applications or $HOME/Applications. Nothing will be"
     info "         removed for it." ;;
 esac
-if [ "$OS" = "Darwin" ] && [ -d "/Applications/Syrus.app" ] && \
-   [ "$APP_PATH_EXTRA_RESOLVED" != "/Applications/Syrus.app" ]; then
-  info "Note: /Applications/Syrus.app also exists — this run only removes the"
-  info "      paths above; pass --app-path=/Applications/Syrus.app (or drag it"
+if [ "$OS" = "Darwin" ] && [ -d "/Applications/$APP_BUNDLE_NAME" ] && \
+   [ "$APP_PATH_EXTRA_RESOLVED" != "/Applications/$APP_BUNDLE_NAME" ]; then
+  info "Note: /Applications/$APP_BUNDLE_NAME also exists — this run only removes the"
+  info "      paths above; pass --app-path=/Applications/$APP_BUNDLE_NAME (or drag it"
   info "      to the Trash) to remove that copy."
 fi
 info "NOT touched: Docker Desktop / OrbStack / Colima, Homebrew, rbenv — shared"
@@ -388,13 +424,13 @@ if [ "$docker_ready" = "1" ]; then
     if [ -f "$STATE_DIR/docker-compose.yml" ]; then
       # Run against the desktop install's compose file; --project-directory
       # makes its relative env_file resolve no matter where we were invoked.
-      run_logged docker compose -p syrus -f "$STATE_DIR/docker-compose.yml" \
+      run_logged docker compose -p "$PROJECT" -f "$STATE_DIR/docker-compose.yml" \
         --project-directory "$STATE_DIR" "${down_args[@]}" || true
     else
       # Clone-dir installs keep their compose file elsewhere; newer compose
       # can tear a project down by name alone. Older ones fail harmlessly —
       # the direct removal below finishes the job.
-      run_logged docker compose -p syrus "${down_args[@]}" || true
+      run_logged docker compose -p "$PROJECT" "${down_args[@]}" || true
     fi
   fi
   # Belt and braces for whatever compose couldn't reach (no compose file, no
@@ -510,15 +546,21 @@ else
   remove_step credentials "$CREDENTIALS_FILE" "app/CLI credentials"
 fi
 remove_step cli "$CLI_BIN" "the syrus CLI"
-remove_step skill "$SKILL_DIR" "the Claude Code skill"
+if [ -n "$SKILL_DIR" ]; then
+  remove_step skill "$SKILL_DIR" "the Claude Code skill"
+else
+  # The skill is stable-only (it invokes `syrus`), so a test uninstall leaves
+  # it alone.
+  emit_step skill skipped "not applicable on the test channel"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Desktop app + its settings.
 step "Desktop app"
-if command -v pgrep >/dev/null 2>&1 && pgrep -x Syrus >/dev/null 2>&1; then
+if command -v pgrep >/dev/null 2>&1 && pgrep -x "$SETTINGS_NAME" >/dev/null 2>&1; then
   # Unlinking a running bundle works on macOS — removal proceeds either way.
-  info "Syrus appears to be running — quit it after the uninstall finishes."
-  emit_log files "the Syrus app appears to be running; quit it after the uninstall"
+  info "$SETTINGS_NAME appears to be running — quit it after the uninstall finishes."
+  emit_log files "the $SETTINGS_NAME app appears to be running; quit it after the uninstall"
 fi
 remove_step desktop_app "$APP_PATH" "the desktop app"
 case "$APP_PATH_STATUS" in
@@ -535,11 +577,11 @@ case "$APP_PATH_STATUS" in
     emit_step desktop_app_custom skipped "invalid --app-path ignored"
     ;;
 esac
-if [ "$OS" = "Darwin" ] && [ -d "/Applications/Syrus.app" ] && \
-   [ "$APP_PATH_EXTRA_RESOLVED" != "/Applications/Syrus.app" ]; then
-  info "Note: /Applications/Syrus.app also exists — drag it to the Trash yourself,"
-  info "      or re-run with --app-path=/Applications/Syrus.app."
-  emit_log files "/Applications/Syrus.app exists; not removed (pass --app-path=/Applications/Syrus.app to remove it)"
+if [ "$OS" = "Darwin" ] && [ -d "/Applications/$APP_BUNDLE_NAME" ] && \
+   [ "$APP_PATH_EXTRA_RESOLVED" != "/Applications/$APP_BUNDLE_NAME" ]; then
+  info "Note: /Applications/$APP_BUNDLE_NAME also exists — drag it to the Trash yourself,"
+  info "      or re-run with --app-path=/Applications/$APP_BUNDLE_NAME."
+  emit_log files "/Applications/$APP_BUNDLE_NAME exists; not removed (pass --app-path=/Applications/$APP_BUNDLE_NAME to remove it)"
 fi
 if [ "$OS" != "Darwin" ]; then
   info "If you installed the AppImage, its location is user-chosen — delete it manually."

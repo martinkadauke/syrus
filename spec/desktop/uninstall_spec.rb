@@ -547,11 +547,11 @@ RSpec.describe "uninstall scripts" do
     end
 
     it "accepts --app-path in both scripts — validated on macOS, parsed-and-ignored on Windows" do
-      # sh validation contract: absolute, /Syrus.app leaf, resolved (symlinks
-      # followed) under /Applications or $HOME/Applications; anything else is
-      # ignored, never removed.
+      # sh validation contract: absolute, /<bundle>.app leaf (channel-specific,
+      # matched against $APP_BUNDLE_NAME), resolved (symlinks followed) under
+      # /Applications or $HOME/Applications; anything else is ignored.
       expect(script_text).to include("--app-path=*)")
-      expect(script_text).to include("/*/Syrus.app)")
+      expect(script_text).to include('/*/"$APP_BUNDLE_NAME")')
       expect(script_text).to include("/Applications/*")
       expect(script_text).to include('"$home_apps"/*')
       # ps1 parses the flag so passing it is never a usage error, and ignores
@@ -560,13 +560,39 @@ RSpec.describe "uninstall scripts" do
       expect(ps1).to include('$arg.StartsWith("--app-path=")')
     end
 
+    it "removes only the requested channel's install via --channel" do
+      # A test build's uninstall must touch ONLY the test stack, never
+      # production. Both scripts flip every channel-derived resource off one
+      # --channel flag.
+      expect(script_text).to include("--channel)")
+      expect(script_text).to include('CHANNEL="stable"')
+      expect(script_text).to include('PROJECT="syrus-test"')
+      expect(script_text).to include(".syrus/local-test")
+      expect(script_text).to include(".syrus/credentials.test")
+      expect(script_text).to include(".local/bin/syrus-test")
+      expect(script_text).to include('APP_BUNDLE_NAME="Syrus Test.app"')
+
+      expect(ps1).to include('$script:Channel = "stable"')
+      expect(ps1).to include('$project = "syrus-test"')
+      expect(ps1).to include('"local-test"')
+      expect(ps1).to include('"credentials.test"')
+      expect(ps1).to include("syrus-test.exe")
+      expect(ps1).to include('"Syrus Test\bin"')
+      # The Claude skill is stable-only; a test uninstall must not remove it.
+      expect(script_text).to include("not applicable on the test channel")
+      expect(ps1).to include("not applicable on the test channel")
+    end
+
     it "tears down the same docker inventory — by compose label, verified, exact-basename images" do
-      [
-        "-p", "syrus",
-        "label=com.docker.compose.project=syrus",
-        "syrus_syrus-data", "syrus_syrus-search",
-        "--remove-orphans"
-      ].each do |token|
+      # Project name and volumes are parameterized so a test stack tears down
+      # its own isolated set; the stable default stays "syrus".
+      expect(script_text).to include('-p "$PROJECT"')
+      expect(script_text).to include('COMPOSE_LABEL_FILTER="label=com.docker.compose.project=$PROJECT"')
+      expect(script_text).to include('KNOWN_VOLUMES="${PROJECT}_syrus-data ${PROJECT}_syrus-search"')
+      expect(ps1).to include('@("-p", $project')
+      expect(ps1).to include('"label=com.docker.compose.project=$project"')
+      expect(ps1).to include('@("${project}_syrus-data", "${project}_syrus-search")')
+      ["--remove-orphans"].each do |token|
         expect(script_text).to include(token), "uninstall.sh: missing #{token.inspect}"
         expect(ps1).to include(token), "uninstall.ps1: missing #{token.inspect}"
       end

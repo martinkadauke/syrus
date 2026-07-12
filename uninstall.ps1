@@ -113,6 +113,11 @@ Docker Desktop itself is never touched - it has its own uninstaller.
                    confirmation)
   --app-path=PATH  accepted for parity with uninstall.sh and ignored (the
                    NSIS uninstaller owns app removal on Windows)
+  --channel NAME   which install to remove: stable (default) or test. The test
+                   channel is a side-by-side test build with its own project
+                   (syrus-test), state dir (.syrus\local-test), credentials
+                   (credentials.test), CLI (syrus-test.exe), and settings
+                   (Syrus Test). Removing one never touches the other.
   --help           show this message
 
 Exit codes: 0 ok (including a declined prompt) - 2 usage - 3 partial
@@ -352,6 +357,7 @@ Add-DockerCliPath
 
 $script:AssumeYes = $false
 $script:KeepData = $false
+$script:Channel = "stable"
 
 # Walk the raw arg list by hand (no param() block): exact usage exit codes
 # need manual control - mirrors install.ps1.
@@ -368,18 +374,29 @@ while ($i -lt $argv.Count) {
       # Accepted for parity with uninstall.sh (bare form carries no value
       # there either) and ignored: NSIS owns app removal on Windows.
     }
+    "--channel" {
+      if ($i + 1 -ge $argv.Count) { Fail "--channel needs a value (stable|test)" 2 }
+      $i++
+      $script:Channel = [string]$argv[$i]
+    }
     "--help" { Show-Help; exit 0 }
     "-h" { Show-Help; exit 0 }
     default {
       if ($arg.StartsWith("--app-path=")) {
         # Accepted for parity with uninstall.sh and ignored: the NSIS
         # uninstaller owns app removal on Windows.
+      } elseif ($arg.StartsWith("--channel=")) {
+        $script:Channel = $arg.Substring("--channel=".Length)
       } else {
         Fail "Unknown flag: $arg (try --help)" 2
       }
     }
   }
   $i++
+}
+
+if ($script:Channel -cne "stable" -and $script:Channel -cne "test") {
+  Fail "--channel must be stable or test, got: $($script:Channel)" 2
 }
 
 $userProfile = $env:USERPROFILE
@@ -389,22 +406,41 @@ if (-not $localAppData) { $localAppData = Join-Path $userProfile "AppData\Local"
 $roamingAppData = $env:APPDATA
 if (-not $roamingAppData) { $roamingAppData = Join-Path $userProfile "AppData\Roaming" }
 
+# The channel picks a fully separate set of resources so a side-by-side test
+# build's uninstall removes ONLY its own stack, app, CLI, and settings - never
+# the production install's. The stable channel keeps the original names.
 $syrusDir = Join-Path $userProfile ".syrus"
-$stateDir = Join-Path $syrusDir "local"
-$credentialsFile = Join-Path $syrusDir "credentials"
-$cliDir = Join-Path $localAppData "Syrus\bin"
-$cliExe = Join-Path $cliDir "syrus.exe"
-$cliExeOld = Join-Path $cliDir "syrus.exe.old"
-$skillDir = Join-Path $userProfile ".claude\skills\syrus"
-$settingsDir = Join-Path $roamingAppData "Syrus"
-$nsisDir = Join-Path $localAppData "Programs\syrus-desktop"
+if ($script:Channel -eq "test") {
+  $project = "syrus-test"
+  $stateDir = Join-Path $syrusDir "local-test"
+  $credentialsFile = Join-Path $syrusDir "credentials.test"
+  $cliDir = Join-Path $localAppData "Syrus Test\bin"
+  $cliExe = Join-Path $cliDir "syrus-test.exe"
+  $cliExeOld = Join-Path $cliDir "syrus-test.exe.old"
+  # The Claude skill is stable-only (it invokes `syrus`); a test uninstall
+  # leaves it alone.
+  $skillDir = ""
+  $settingsDir = Join-Path $roamingAppData "Syrus Test"
+  $nsisDir = Join-Path $localAppData "Programs\syrus-test-desktop"
+} else {
+  $project = "syrus"
+  $stateDir = Join-Path $syrusDir "local"
+  $credentialsFile = Join-Path $syrusDir "credentials"
+  $cliDir = Join-Path $localAppData "Syrus\bin"
+  $cliExe = Join-Path $cliDir "syrus.exe"
+  $cliExeOld = Join-Path $cliDir "syrus.exe.old"
+  $skillDir = Join-Path $userProfile ".claude\skills\syrus"
+  $settingsDir = Join-Path $roamingAppData "Syrus"
+  $nsisDir = Join-Path $localAppData "Programs\syrus-desktop"
+}
 $runOncePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
 
-# Belt-and-braces alongside the compose file's `name: syrus`: keeps the
-# `syrus_` volume prefix stable for docker-compose v1 and odd invocation dirs.
-$env:COMPOSE_PROJECT_NAME = "syrus"
-$script:ComposeLabelFilter = "label=com.docker.compose.project=syrus"
-$script:KnownVolumes = @("syrus_syrus-data", "syrus_syrus-search")
+# The Compose project name determines the volume prefix (<PROJECT>_syrus-data)
+# and overrides the compose file's `name: syrus` default. Belt-and-braces for
+# docker-compose v1 and odd invocation dirs.
+$env:COMPOSE_PROJECT_NAME = $project
+$script:ComposeLabelFilter = "label=com.docker.compose.project=$project"
+$script:KnownVolumes = @("${project}_syrus-data", "${project}_syrus-search")
 
 $dockerReady = Test-DockerDaemon
 
@@ -416,7 +452,7 @@ if ($dockerReady) {
     Write-Info "Docker: stop and remove the syrus containers (volumes KEPT: --keep-data)"
   } else {
     Write-Info "Docker: remove the syrus containers AND the data volumes (found by"
-    Write-Info "        compose label; known names syrus_syrus-data, syrus_syrus-search"
+    Write-Info ("        compose label; known names " + ($script:KnownVolumes -join ", "))
     Write-Info "        as a fallback) - verified by re-listing after teardown"
   }
   Write-Info "Docker images: syrus-backend and syrus-local images (exact repository"
@@ -445,7 +481,7 @@ if ($script:KeepData) {
   Write-Info ("DELETE " + (Get-PathDescription $settingsDir))
 }
 Write-Info ("DELETE " + (Get-PathDescription $cliExe))
-Write-Info ("DELETE " + (Get-PathDescription $skillDir))
+if ($skillDir) { Write-Info ("DELETE " + (Get-PathDescription $skillDir)) }
 if (Test-Path -LiteralPath $nsisDir) {
   Write-Info "UNINSTALL the desktop app via its NSIS uninstaller ($nsisDir, silent /S)"
 } else {
@@ -495,12 +531,12 @@ if ($dockerReady) {
     if (Test-Path -LiteralPath $composeFile) {
       # Run against the desktop install's compose file; --project-directory
       # makes its relative env_file resolve no matter where we were invoked.
-      $null = Invoke-LoggedCommand "docker" $composeExe ($composePrefix + @("-p", "syrus", "-f", $composeFile, "--project-directory", $stateDir) + $downArgs)
+      $null = Invoke-LoggedCommand "docker" $composeExe ($composePrefix + @("-p", $project, "-f", $composeFile, "--project-directory", $stateDir) + $downArgs)
     } else {
       # Clone-dir installs keep their compose file elsewhere; newer compose
       # can tear a project down by name alone. Older ones fail harmlessly -
       # the direct removal below finishes the job.
-      $null = Invoke-LoggedCommand "docker" $composeExe ($composePrefix + @("-p", "syrus") + $downArgs)
+      $null = Invoke-LoggedCommand "docker" $composeExe ($composePrefix + @("-p", $project) + $downArgs)
     }
   }
   # Belt and braces for whatever compose couldn't reach (no compose file, no
@@ -649,7 +685,13 @@ if ($pathRemoved) {
   Emit-Step "path_cleanup" "skipped" "no PATH entry"
 }
 
-Remove-PathStep "skill" $skillDir "the Claude Code skill"
+if ($skillDir) {
+  Remove-PathStep "skill" $skillDir "the Claude Code skill"
+} else {
+  # The skill is stable-only (it invokes `syrus`), so a test uninstall leaves
+  # it alone.
+  Emit-Step "skill" "skipped" "not applicable on the test channel"
+}
 
 # ---------------------------------------------------------------------------
 # 3. App settings, the setup-resume RunOnce hook, then the app itself LAST

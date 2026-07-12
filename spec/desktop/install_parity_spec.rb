@@ -93,7 +93,10 @@ RSpec.describe "install.ps1 parity with install.sh" do
       "does not exist in the registry",
       "didn't become healthy",
       "docker compose up failed",
-      "syrus_syrus-data"
+      # The data-volume name in the undecryptable-guard message is now
+      # interpolated (<PROJECT>_syrus-data) so a test stack names its own
+      # volume; both scripts still emit the same stable guard sentence.
+      "exists but .env is missing"
     ].each do |fragment|
       expect(sh).to include(fragment), "install.sh: missing #{fragment.inspect}"
       expect(ps1).to include(fragment), "install.ps1: missing #{fragment.inspect}"
