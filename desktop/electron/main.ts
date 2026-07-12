@@ -386,14 +386,21 @@ const updateTrayBadge = () => {
     return
   }
 
+  // On the test channel, keep a "T" next to the menu-bar icon so the test
+  // app is distinguishable from a production install. It coexists with the
+  // unread badge ("T", or "T 3"). This is set here (not once in createTray)
+  // because setTitle is otherwise cleared on every badge refresh.
+  const testMark = currentChannel() === "test" ? "T" : ""
+  const appName = app.getName()
+
   if (process.platform === "darwin") {
     tray.setImage(plainTrayIcon)
-    tray.setTitle(unreadCount > 0 ? trayBadgeLabel(unreadCount) : "")
+    tray.setTitle([testMark, unreadCount > 0 ? trayBadgeLabel(unreadCount) : ""].filter(Boolean).join(" "))
     return
   }
 
   tray.setImage(unreadCount > 0 ? badgedTrayIcon() : plainTrayIcon)
-  tray.setToolTip(unreadCount > 0 ? `Syrus — ${trayBadgeLabel(unreadCount)} unread` : "Syrus")
+  tray.setToolTip(unreadCount > 0 ? `${appName} — ${trayBadgeLabel(unreadCount)} unread` : appName)
 }
 
 const setUnreadCount = (count: number) => {
@@ -2386,13 +2393,10 @@ const createTray = () => {
   plainTrayIcon = createPlainTrayIcon()
 
   tray = new Tray(plainTrayIcon)
-  // The product name already forks per channel ("Syrus Test"); on macOS also
-  // paint a literal "TEST" next to the menu-bar icon so a test build is
-  // recognizable at a glance next to the production one.
+  // The product name forks per channel ("Syrus Test"), so the hover tooltip
+  // does too; updateTrayBadge() also paints a "T" next to the menu-bar icon
+  // on the test channel (set there because it is cleared on every refresh).
   tray.setToolTip(app.getName())
-  if (currentChannel() === "test" && process.platform === "darwin") {
-    tray.setTitle(" TEST")
-  }
   tray.on("click", (event) => {
     if (event.ctrlKey) {
       showTrayContextMenu()
@@ -2851,6 +2855,16 @@ let takeoverPromptOpen = false
 // never open a window (it would be a session running from the DMG).
 let selfInstallGateActive = false
 app.on("second-instance", (_event, _argv, _cwd, additionalData) => {
+  // A second-instance event can arrive BEFORE app is ready — e.g. the fast
+  // self-install relaunch race, or a double cold-start. dialog, openSyrus, and
+  // focus all require the ready state, so ignore it until then: the second
+  // instance already failed to get the lock and quits itself. Without this
+  // guard the takeover dialog below throws "dialog module can only be used
+  // after app is ready" and crashes the first launch.
+  if (!app.isReady()) {
+    return
+  }
+
   // Re-double-clicking the DMG while the gate's dialog is pending must not
   // open a window from the mounted image — just re-surface the dialog.
   if (selfInstallGateActive) {

@@ -45,6 +45,10 @@ export const createWebAppWindow = ({
 }: WebAppWindowOptions): WebAppWindowHandle => {
   const serverOrigin = new URL(serverUrl).origin
 
+  // The title bar is the one indicator visible on EVERY page (including the
+  // pre-SPA sign-in view), so a test build reads "Syrus Test" here.
+  const windowTitle = currentChannel() === "test" ? "Syrus Test" : "Syrus"
+
   const window = new BrowserWindow({
     width: savedBounds?.width ?? 1280,
     height: savedBounds?.height ?? 860,
@@ -52,7 +56,7 @@ export const createWebAppWindow = ({
     y: savedBounds?.y,
     minWidth: 720,
     minHeight: 480,
-    title: "Syrus",
+    title: windowTitle,
     webPreferences: {
       // The Syrus web app is remote content: full isolation stays on. The
       // only bridge is the shell-notice preload (window.syrusShell) — never
@@ -84,6 +88,16 @@ export const createWebAppWindow = ({
   window.webContents.setUserAgent(
     `${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}${buildToken}${builtAtToken}${channelToken}`
   )
+
+  // The Syrus web app sets its own <title>, which Electron mirrors into the
+  // title bar. On the test channel, hold the title bar at "Syrus Test" so the
+  // marker survives every navigation instead of flickering back to "Syrus".
+  if (currentChannel() === "test") {
+    window.on("page-title-updated", (event) => {
+      event.preventDefault()
+      window.setTitle(windowTitle)
+    })
+  }
 
   // Same-origin navigation stays in the window; everything else (GitHub PRs,
   // issue links, docs) opens in the user's default browser — see
