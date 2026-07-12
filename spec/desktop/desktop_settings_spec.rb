@@ -27,6 +27,21 @@ RSpec.describe "desktop settings and credentials modules" do
     expect(settings_module).to include("localInstall: null")
   end
 
+  it "forks the app name per channel BEFORE the store captures userData" do
+    # Load-bearing: Electron derives userData (and the single-instance lock)
+    # from app.getName(), which reads the bundled package.json ("Syrus") — NOT
+    # the electron-builder-renamed .app bundle. Without app.setName() a test
+    # build's userData/lock collide with the production install, breaking
+    # side-by-side. It MUST run before `new Store(...)`.
+    expect(settings_module).to include("app.setName(channelProductName(currentChannel()))")
+    set_name_at = settings_module.index("app.setName(channelProductName")
+    store_at = settings_module.index("new Store<DesktopStore>")
+    expect(set_name_at).not_to be_nil
+    expect(store_at).not_to be_nil
+    expect(set_name_at).to be < store_at
+    expect(channel_module).to include('channel === "test" ? "Syrus Test" : "Syrus"')
+  end
+
   it "keeps the local install state under ~/.syrus/local, per channel" do
     # localStateDir derives from the channel; the concrete path (local /
     # local-test) is built in channel.ts's stackIdentity so a side-by-side

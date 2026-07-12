@@ -3,7 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { app } from "electron"
 import Store from "electron-store"
-import { resolveChannel, stackIdentity, type Channel, type StackIdentity } from "./channel.js"
+import { channelProductName, resolveChannel, stackIdentity, type Channel, type StackIdentity } from "./channel.js"
 
 export const DEFAULT_GLOBAL_HOTKEY = "CommandOrControl+Shift+S"
 
@@ -14,6 +14,16 @@ export const DEFAULT_GLOBAL_HOTKEY = "CommandOrControl+Shift+S"
 // defaults below use them).
 export const currentChannel = (): Channel =>
   resolveChannel({ env: process.env.SYRUS_CHANNEL, productName: app.getName(), version: app.getVersion() })
+
+// Force the app name to the channel's product name BEFORE the electron-store
+// below is constructed — electron-store captures app.getPath("userData") at
+// construction, and Electron derives userData (and the single-instance lock)
+// from app.getName(). Electron reads getName() from the bundled package.json
+// ("Syrus"), NOT the .app bundle name, so without this a test build's userData
+// and lock would collide with the production install. This module is imported
+// (and evaluated) before main.ts touches userData, and channel resolution
+// leans on the version shape, so it is correct even before setName runs.
+app.setName(channelProductName(currentChannel()))
 
 export const currentStackIdentity = (): StackIdentity => stackIdentity(currentChannel(), os.homedir())
 

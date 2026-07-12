@@ -78,6 +78,15 @@ export const stackIdentity = (channel: Channel, homeDir: string): StackIdentity 
   }
 }
 
+// The display / product name for a channel. This MUST be forced at runtime via
+// app.setName() before anything reads userData, because Electron derives
+// app.getName() (and therefore the userData dir + single-instance lock) from
+// the bundled package.json — which stays "Syrus" even when electron-builder's
+// -c.productName renames the .app bundle to "Syrus Test.app". Without the
+// override a test build's userData/lock collide with the production install.
+export const channelProductName = (channel: Channel): string =>
+  channel === "test" ? "Syrus Test" : "Syrus"
+
 // Classify a backend image tag by channel shape. Release tags are semver /
 // `latest`; test tags are `test-<sha>` or `test-<X.Y.Z-test.N>`. Used by
 // imageCleanup so one channel's update never retires the other channel's

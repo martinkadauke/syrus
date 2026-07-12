@@ -1,18 +1,20 @@
-// Builds desktop/build/icon.ico from desktop/build/icon.png for the Windows
+// Builds desktop/build/<name>.ico from desktop/build/<name>.png for the Windows
 // installer + tray. Modern .ico files may embed PNG-compressed frames
 // (Vista+), so this needs no image library: sips (macOS) produces the
 // resized PNGs and this script packs them into the ICO container.
 //
-//   node scripts/make-ico.mjs
+//   node scripts/make-ico.mjs            # icon.png  -> icon.ico  (stable channel)
+//   node scripts/make-ico.mjs icon-test # icon-test.png -> icon-test.ico (test channel)
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
+const name = process.argv[2] || "icon"
 const buildDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "build")
-const source = path.join(buildDir, "icon.png")
-const out = path.join(buildDir, "icon.ico")
+const source = path.join(buildDir, `${name}.png`)
+const out = path.join(buildDir, `${name}.ico`)
 const sizes = [16, 24, 32, 48, 64, 128, 256]
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "syrus-ico-"))
