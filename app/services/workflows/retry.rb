@@ -7,6 +7,7 @@ module Workflows
   class Retry < Base
     steps :prepare,
           Workflows::RetryUntil.new(repair: [ :implement ], check: [ :grader_fanout, :grader_collect ]),
+          :coverage_analyze,
           :summarize,
           :test_plan,
           :pr_open
@@ -21,10 +22,11 @@ module Workflows
           repair: [ :implement ],
           check: [ :grader_fanout, :grader_collect ]
         ),
+        "coverage_analyze",
         "summarize",
         "test_plan",
         "pr_open"
-      ]
+      ].compact
       prepare_skipped_for?(job) ? chain.reject { |node| node == "prepare" } : chain
     end
 
