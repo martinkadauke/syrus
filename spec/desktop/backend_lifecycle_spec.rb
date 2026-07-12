@@ -4,8 +4,10 @@ require "spec_helper"
 
 # The app manages the local Docker stack it installed: ensure-on-launch, a
 # transition-only watchdog, and explicit Backend-menu controls. Quitting the
-# app must leave the stack running (jobs keep flowing), so nothing here may
-# tear containers down or touch volumes.
+# app must leave the stack running (jobs keep flowing), so the normal lifecycle
+# never tears containers down or touches volumes. The ONE exception is
+# wipeBackendStack — the explicit, test-channel-guarded "Reset Test Setup" — so
+# the "no down" assertion below exempts exactly that helper.
 RSpec.describe "desktop backend lifecycle" do
   let(:desktop_root) { File.expand_path("../../desktop", __dir__) }
 
@@ -26,9 +28,14 @@ RSpec.describe "desktop backend lifecycle" do
     expect(lifecycle).to include("env: execEnv()")
   end
 
-  it "stops with `compose stop` and never destroys containers or volumes" do
+  it "stops with `compose stop` and never destroys containers or volumes (outside the test-only wipe)" do
     expect(lifecycle).to include('compose(["stop"])')
-    expect(lifecycle).not_to include('"down"')
+    # The only `down` in the module is the explicit, test-channel-guarded
+    # wipeBackendStack (Reset Test Setup). Exempt exactly that helper, then
+    # assert the rest of the lifecycle never tears containers down.
+    wipe = lifecycle[/export const wipeBackendStack[\s\S]*?\n\}/]
+    expect(wipe).to include('compose(["down", "-v", "--remove-orphans"])')
+    expect(lifecycle.sub(wipe, "")).not_to include('"down"')
   end
 
   it "never pulls images — updates happen only through the installer" do

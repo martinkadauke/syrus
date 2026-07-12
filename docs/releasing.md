@@ -274,6 +274,16 @@ Consequences worth knowing:
 - **Uninstalling one never touches the other.** `uninstall.sh --channel test`
   removes only the test stack, app, CLI, and settings (and leaves the
   stable-only Claude skill alone).
+- **Reset Test Setup (test builds only).** The app-name menu of a test build
+  has a **Reset Test Setup…** item — a "clean slate" for re-exercising the
+  initial onboarding. It tears down the test backend stack + its data volume,
+  deletes `~/.syrus/local-test` and `~/.syrus/credentials.test`, resets the
+  test app settings, and relaunches into setup. A confirmation dialog spells
+  out exactly what is removed. It is gated to the test channel and never
+  appears on — or touches — a production install; downloaded Docker images are
+  kept so the next setup is fast. This is the heavy complement to **Run Setup
+  Again…** (present on both channels), which only re-picks where Syrus runs and
+  keeps your data and credentials.
 
 ## Versioning convention
 

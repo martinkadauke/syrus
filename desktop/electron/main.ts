@@ -17,7 +17,7 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { clearBackendConfig, currentChannel, defaultGlobalHotkey, getBackendMode, getOnboardingResumeLocal, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
+import { clearBackendConfig, currentChannel, currentStackIdentity, defaultGlobalHotkey, getBackendMode, getOnboardingResumeLocal, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import * as appUpdates from "./appUpdates.js"
 import * as backendLifecycle from "./installer/backendLifecycle.js"
@@ -2295,6 +2295,110 @@ const confirmAndUninstall = async () => {
   child.unref()
 }
 
+// TEST CHANNEL ONLY: wipe this build's slate so the initial setup flow can be
+// exercised again from scratch. Removes the test backend stack + its data
+// volumes, the test state dir + credentials.test, and resets the test app
+// store to defaults. Every target is a TEST-channel resource
+// (currentStackIdentity, the "Syrus Test" electron-store, credentials.test), so
+// production's stack, credentials, and settings are never touched. This is the
+// heavy complement to "Run Setup Again…", which deliberately KEEPS data + creds
+// and only re-picks where Syrus runs.
+const resetTestSetup = async (): Promise<void> => {
+  if (currentChannel() !== "test") {
+    throw new Error("Reset Test Setup is only available on the test channel.")
+  }
+
+  // Quiet local-backend supervision first: `down -v` removes the data volume,
+  // which a watchdog health check would otherwise diagnose as "data-gone" and
+  // pop the data-loss prompt mid-wipe.
+  backendLifecycle.stopWatchdog()
+  stopBackendRecoveryPolling()
+
+  // 1. Tear down the test Docker stack + its data volumes (itself test-guarded).
+  await backendLifecycle.wipeBackendStack()
+
+  // 2. The test state dir (~/.syrus/local-test: .env, docker-compose.yml, logs)
+  //    and the test credentials file — both already channel-scoped.
+  await fs.rm(localStateDir(), { recursive: true, force: true })
+  await deleteCredentialsFile()
+
+  // 3. Reset the test electron-store (userData = "Syrus Test") to defaults:
+  //    clears backendMode (→ onboarding), the onboarding flags, and the
+  //    one-time migrate marker, so the relaunch is a true first run. store is
+  //    the test store; this never touches production's.
+  store.clear()
+}
+
+// "Reset Test Setup…": a native info+confirm dialog that spells out exactly
+// what gets wiped and reassures that production is untouched, then does the
+// wipe and relaunches into onboarding.
+const confirmAndResetTestSetup = async () => {
+  if (currentChannel() !== "test") {
+    return
+  }
+
+  // Refuse while a backend update is in flight. updateBackend spawns a DETACHED
+  // install.sh against the state dir for 1–3 min; wiping under it would race the
+  // installer's compose recreate, delete the .env/compose file it's reading,
+  // and (since it survives our exit) let it re-create the stack AFTER the wipe —
+  // defeating the reset and orphaning the installer. Wait, then reset.
+  if (backendLifecycle.backendBusy()) {
+    void dialog.showMessageBox({
+      type: "info",
+      message: "Finishing backend update…",
+      detail:
+        "Syrus is updating the test backend right now. Try Reset Test Setup again once that finishes — usually a minute or two."
+    })
+    return
+  }
+
+  const identity = currentStackIdentity()
+  const choice = await dialog.showMessageBox({
+    type: "warning",
+    title: "Reset Test Setup",
+    message: "Wipe this test build's setup and start over?",
+    detail: [
+      "This clears the Syrus Test slate so you can run the initial setup again from scratch. It removes:",
+      "",
+      `  •  The test backend and its data volume (Docker project "${identity.project}") — every job, chat, and setting stored in the test instance.`,
+      `  •  The test state folder (${identity.stateDir}) — its .env and Compose file.`,
+      `  •  The test credentials file (${identity.credentialsFile}).`,
+      "  •  This app's saved setup — the backend connection and onboarding progress.",
+      "",
+      "Your production Syrus stays completely untouched: its app, backend, data volume, credentials, and settings are all separate and are NOT removed. Downloaded Docker images are kept, so the next setup is fast.",
+      "",
+      "Syrus Test will relaunch into the setup screen. This can't be undone."
+    ].join("\n"),
+    buttons: ["Cancel", "Reset & Restart"],
+    defaultId: 0,
+    cancelId: 0
+  })
+
+  if (choice.response !== 1) {
+    return
+  }
+
+  try {
+    await resetTestSetup()
+  } catch (error) {
+    dialog.showErrorBox(
+      "Reset didn't finish",
+      `Couldn't fully reset the test setup, so some state may remain.\n\n${
+        error instanceof Error ? error.message : String(error)
+      }\n\nYou can try again, or clean up manually under ${currentStackIdentity().stateDir}.`
+    )
+    return
+  }
+
+  // A true first run: relaunch a fresh process instead of reopening onboarding
+  // in place, so nothing from the wiped session lingers. isQuitting lets the
+  // tray's hide-on-close guard release; exit(0) skips the before-quit cleanup
+  // that would only operate on the stack we just tore down.
+  isQuitting = true
+  app.relaunch()
+  app.exit(0)
+}
+
 // Backend-menu actions return false when refused (busy) or failed; silent
 // no-ops made the menu look dead.
 const reportBackendActionFailure = async (label: string) => {
@@ -2541,6 +2645,19 @@ const createMenu = () => {
           }
         },
         { type: "separator" },
+        // Test builds only: a complete "clean slate" that wipes the test stack,
+        // credentials, and app setup so the initial onboarding can be exercised
+        // again. Hidden on stable — it must never reach a production install.
+        ...(currentChannel() === "test"
+          ? [
+              {
+                label: "Reset Test Setup…",
+                click: () => {
+                  void confirmAndResetTestSetup()
+                }
+              }
+            ]
+          : []),
         {
           label: "Uninstall Syrus…",
           click: () => {

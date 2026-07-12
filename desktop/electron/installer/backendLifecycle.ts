@@ -4,11 +4,12 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import readline from "node:readline"
 import { promisify } from "node:util"
-import { currentStackIdentity, getBackendMode, getLocalInstall, localStateDir } from "../settings.js"
+import { currentChannel, currentStackIdentity, getBackendMode, getLocalInstall, localStateDir } from "../settings.js"
 import {
   composeCommand,
   daemonUp,
   execEnv,
+  findDockerBinary,
   installedRuntimeApp,
   startRuntimeApp,
   syrusHealthy,
@@ -58,6 +59,45 @@ const compose = async (args: string[], timeout = 120_000) => {
     env: execEnv(),
     timeout
   })
+}
+
+// TEST-CHANNEL ONLY "clean slate": tear down this channel's stack AND delete
+// its data volumes. `down -v` is exactly what the `compose` callers above
+// deliberately refuse to do (it destroys data), so it lives behind a hard
+// channel guard — on a stable build `currentStackIdentity().project` is
+// production's `syrus`, which this must never touch. Best-effort throughout: a
+// missing compose file, a stopped daemon, or already-absent volumes must not
+// wedge the reset. Powers "Reset Test Setup…" (main.ts) so the initial setup
+// flow can be exercised again from scratch.
+export const wipeBackendStack = async (): Promise<void> => {
+  if (currentChannel() !== "test") {
+    throw new Error("wipeBackendStack is only available on the test channel")
+  }
+
+  const identity = currentStackIdentity()
+
+  // `down -v` removes the containers + the Compose-managed named volumes, when
+  // the state dir still holds the compose file to read.
+  try {
+    await compose(["down", "-v", "--remove-orphans"])
+  } catch {
+    // No compose file, a stopped daemon, or nothing running — the by-name
+    // volume removal below still gets the slate clean.
+  }
+
+  // Belt-and-braces: remove the named volumes directly, scoped strictly to this
+  // channel's `<project>_` prefix, in case the compose file was already deleted
+  // so `down -v` couldn't enumerate them.
+  const dockerBinary = await findDockerBinary()
+  if (dockerBinary) {
+    for (const volume of [identity.dataVolume, identity.searchVolume]) {
+      try {
+        await execFileAsync(dockerBinary, ["volume", "rm", "-f", volume], { env: execEnv(), timeout: 30_000 })
+      } catch {
+        // Absent or still referenced — best-effort.
+      }
+    }
+  }
 }
 
 export const backendHealthy = () => syrusHealthy(port())
