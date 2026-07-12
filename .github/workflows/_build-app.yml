@@ -537,7 +537,11 @@ jobs:
           spctl -a -t exec -vv "$APP" 2>&1 | grep "Notarized Developer ID"
           xcrun stapler validate "$APP"
           test -f desktop/out/latest-mac.yml
-          grep -q "$PRODUCT-$VERSION-universal.zip" desktop/out/latest-mac.yml
+          # Match on the version+arch suffix, not the full product name:
+          # electron-builder writes the .zip FILE with the product name's
+          # space ("Syrus Test-…") but records a hyphen-sanitized name
+          # ("Syrus-Test-…") inside latest-mac.yml, so a spaced grep would miss.
+          grep -q "$VERSION-universal.zip" desktop/out/latest-mac.yml
           test -f "desktop/out/$PRODUCT-$VERSION-universal.zip"
           test -f "desktop/out/$PRODUCT-$VERSION-universal.dmg"
           # The bundled CLI must be INSIDE the built app — 0.1.1/0.1.2 shipped
