@@ -17,7 +17,7 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { clearBackendConfig, DEFAULT_GLOBAL_HOTKEY, getBackendMode, getOnboardingResumeLocal, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
+import { clearBackendConfig, currentChannel, defaultGlobalHotkey, getBackendMode, getOnboardingResumeLocal, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import * as appUpdates from "./appUpdates.js"
 import * as backendLifecycle from "./installer/backendLifecycle.js"
@@ -893,7 +893,7 @@ const getDesktopSettings = (): DesktopSettings => ({
   lastUsedRepo: store.get("lastUsedRepo", "")
 })
 
-const getGlobalHotkey = () => store.get("globalHotkey", DEFAULT_GLOBAL_HOTKEY).trim()
+const getGlobalHotkey = () => store.get("globalHotkey", defaultGlobalHotkey()).trim()
 
 const saveDesktopSettings = async (settings: DesktopSettingsInput) => {
   const localProjectsRoot = settings.localProjectsRoot.trim()
@@ -2386,7 +2386,13 @@ const createTray = () => {
   plainTrayIcon = createPlainTrayIcon()
 
   tray = new Tray(plainTrayIcon)
-  tray.setToolTip("Syrus")
+  // The product name already forks per channel ("Syrus Test"); on macOS also
+  // paint a literal "TEST" next to the menu-bar icon so a test build is
+  // recognizable at a glance next to the production one.
+  tray.setToolTip(app.getName())
+  if (currentChannel() === "test" && process.platform === "darwin") {
+    tray.setTitle(" TEST")
+  }
   tray.on("click", (event) => {
     if (event.ctrlKey) {
       showTrayContextMenu()
@@ -2910,10 +2916,12 @@ app.whenReady().then(async () => {
   registerScreenCaptureHandler()
 
   if (process.platform === "win32") {
-    // Must match electron-builder.yml appId — NSIS stamps it into the Start
-    // Menu shortcut, and Windows only shows Notification toasts when the
-    // process AUMID matches the shortcut's.
-    app.setAppUserModelId("app.syrus.desktop")
+    // Must match electron-builder's appId for THIS channel — NSIS stamps it
+    // into the Start Menu shortcut, and Windows only shows Notification toasts
+    // when the process AUMID matches the shortcut's. The test build overrides
+    // appId to app.syrus.desktop.test (see _build-app.yml); keep this mapping
+    // in lockstep (pinned by spec/desktop/packaging_spec.rb).
+    app.setAppUserModelId(currentChannel() === "test" ? "app.syrus.desktop.test" : "app.syrus.desktop")
   }
 
   // Running from the mounted DMG (or Downloads, or anywhere that isn't an

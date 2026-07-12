@@ -1,16 +1,18 @@
 import fs from "node:fs/promises"
-import os from "node:os"
 import path from "node:path"
+import { currentStackIdentity } from "./settings.js"
 
 // ~/.syrus/credentials is the shared Bearer-auth home for the tray app and
 // the Syrus CLI — url=/token= lines, 0600. This module owns the file format
 // and I/O; the caller owns caching, server validation, and side effects.
+// Channel-aware: the test build reads/writes ~/.syrus/credentials.test, the
+// same file the `syrus-test` CLI targets.
 export type Credentials = {
   url: string
   token: string
 }
 
-export const credentialsPath = () => path.join(os.homedir(), ".syrus", "credentials")
+export const credentialsPath = () => currentStackIdentity().credentialsFile
 
 export const validateCredentialsShape = (credentials: Credentials) => {
   if (credentials.url.trim() === "" || credentials.token.trim() === "") {

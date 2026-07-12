@@ -4,7 +4,7 @@ import fs from "node:fs/promises"
 import path from "node:path"
 import readline from "node:readline"
 import { promisify } from "node:util"
-import { getBackendMode, getLocalInstall, localStateDir } from "../settings.js"
+import { currentStackIdentity, getBackendMode, getLocalInstall, localStateDir } from "../settings.js"
 import {
   composeCommand,
   daemonUp,
@@ -16,7 +16,6 @@ import {
 } from "./dockerRuntime.js"
 import { removeSupersededSyrusImages } from "./imageCleanup.js"
 import { installerCommand, installerScriptPath } from "./installPaths.js"
-import { DATA_VOLUME_NAME } from "./installerDriver.js"
 import { BackendUpdateProgressTracker, type BackendUpdateProgress } from "./updateProgress.js"
 
 export type { BackendUpdateProgress } from "./updateProgress.js"
@@ -41,7 +40,7 @@ const UPDATE_DEADLINE_MS = 30 * 60_000
 export type BackendDiagnosis = "daemon-down" | "containers-down" | "stopped" | "data-gone"
 
 const stateDir = () => getLocalInstall()?.stateDir ?? localStateDir()
-const port = () => getLocalInstall()?.port ?? 3000
+const port = () => getLocalInstall()?.port ?? currentStackIdentity().defaultPort
 
 // The install copied docker-compose.yml + .env into the state dir, so plain
 // compose invocations from there see the pinned image and the right env.
@@ -54,7 +53,7 @@ const compose = async (args: string[], timeout = 120_000) => {
   }
 
   const [binary, ...prefixArgs] = command
-  await execFileAsync(binary, [...prefixArgs, "-p", "syrus", ...args], {
+  await execFileAsync(binary, [...prefixArgs, "-p", currentStackIdentity().project, ...args], {
     cwd: stateDir(),
     env: execEnv(),
     timeout
@@ -241,6 +240,10 @@ export const updateBackend = async (image: string, deps: UpdateBackendDeps = {})
           "--skip-runtime-install",
           "--target-dir",
           stateDir(),
+          // Pin the update to THIS channel's Compose project so a test-stack
+          // update never recreates the production containers (or vice versa).
+          "--project",
+          currentStackIdentity().project,
           "--image",
           image
         ])
@@ -370,7 +373,7 @@ export const startWatchdog = (deps: WatchdogDeps) => {
         if (!healthy) {
           if (!(await daemonUp())) {
             diagnosis = "daemon-down"
-          } else if (!(await volumeExists(DATA_VOLUME_NAME))) {
+          } else if (!(await volumeExists(currentStackIdentity().dataVolume))) {
             diagnosis = "data-gone"
           } else {
             diagnosis = "containers-down"

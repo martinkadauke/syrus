@@ -18,8 +18,10 @@ RSpec.describe "desktop backend lifecycle" do
   let(:main_process) { read("electron/main.ts") }
   let(:backend_status) { read("src/BackendStatus.tsx") }
 
-  it "runs compose from the state dir with the pinned project name and augmented PATH" do
-    expect(lifecycle).to include('[...prefixArgs, "-p", "syrus", ...args]')
+  it "runs compose from the state dir with the channel's project name and augmented PATH" do
+    # The project name is per-channel (syrus / syrus-test) so a side-by-side
+    # test stack drives its own containers and volumes.
+    expect(lifecycle).to include('[...prefixArgs, "-p", currentStackIdentity().project, ...args]')
     expect(lifecycle).to include("cwd: stateDir()")
     expect(lifecycle).to include("env: execEnv()")
   end
@@ -47,7 +49,7 @@ RSpec.describe "desktop backend lifecycle" do
   it "diagnoses daemon-down vs data-gone vs containers-down without auto-restarting" do
     expect(lifecycle).to include('"daemon-down"')
     expect(lifecycle).to include('"containers-down"')
-    expect(lifecycle).to match(/volumeExists\(DATA_VOLUME_NAME\)[\s\S]{0,80}"data-gone"/)
+    expect(lifecycle).to match(/volumeExists\(currentStackIdentity\(\)\.dataVolume\)[\s\S]{0,80}"data-gone"/)
     expect(lifecycle).not_to match(/onHealthyChanged[\s\S]*startBackend\(\)/)
   end
 

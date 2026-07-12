@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process"
 import { promisify } from "node:util"
+import { tagChannel } from "../channel.js"
 import { execEnv, findDockerBinary } from "./dockerRuntime.js"
 
 const execFileAsync = promisify(execFile)
@@ -72,11 +73,17 @@ export const supersededSyrusImages = (
   }
 
   const pinnedRepository = splitRef(pinnedRef).repository
+  // Both channels pull from the SAME syrus-backend repository (release tags
+  // are semver/latest; test tags are test-<sha>). Retire only same-channel
+  // siblings so a test-stack update never deletes the production image, and
+  // vice versa.
+  const pinnedTagChannel = tagChannel(splitRef(pinnedRef).tag ?? "latest")
   const keep = new Set([pinnedRef, ...inUseRefs].map(normalizeImageRef))
   return imageRefs.filter(
     (ref) =>
       isSyrusManagedImageRef(ref) &&
       splitRef(ref).repository === pinnedRepository &&
+      tagChannel(splitRef(ref).tag ?? "latest") === pinnedTagChannel &&
       !keep.has(normalizeImageRef(ref))
   )
 }

@@ -108,7 +108,9 @@ RSpec.describe "desktop Windows scaffold" do
 
   it "notifies reliably on Windows (AUMID matches the NSIS shortcut identity)" do
     main = read("electron/main.ts")
-    expect(main).to include('app.setAppUserModelId("app.syrus.desktop")')
+    # The AUMID is per-channel and must match electron-builder's appId for the
+    # running channel (the test build overrides appId to app.syrus.desktop.test).
+    expect(main).to include('app.setAppUserModelId(currentChannel() === "test" ? "app.syrus.desktop.test" : "app.syrus.desktop")')
     expect(read("electron-builder.yml")).to include("appId: app.syrus.desktop")
   end
 

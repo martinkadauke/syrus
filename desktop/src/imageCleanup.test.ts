@@ -96,6 +96,37 @@ describe("supersededSyrusImages", () => {
     ])
   })
 
+  it("keeps the OTHER channel's image: a stable update never retires a test tag", () => {
+    // Both channels share the syrus-backend repository. A stable-channel
+    // update (semver pin) must retire old semver siblings but keep the test
+    // build's test-<sha> image, which is a live side-by-side install.
+    const mixed = [
+      "ghcr.io/tkadauke/syrus-backend:0.1.2",
+      "ghcr.io/tkadauke/syrus-backend:0.1.1",
+      "ghcr.io/tkadauke/syrus-backend:test-abc123"
+    ]
+    expect(
+      supersededSyrusImages(mixed, {
+        pinnedRef: "ghcr.io/tkadauke/syrus-backend:0.1.2",
+        inUseRefs: ["ghcr.io/tkadauke/syrus-backend:0.1.2"]
+      })
+    ).toEqual(["ghcr.io/tkadauke/syrus-backend:0.1.1"])
+  })
+
+  it("keeps the OTHER channel's image: a test update never retires a release tag", () => {
+    const mixed = [
+      "ghcr.io/tkadauke/syrus-backend:test-def456",
+      "ghcr.io/tkadauke/syrus-backend:test-abc123",
+      "ghcr.io/tkadauke/syrus-backend:0.1.2"
+    ]
+    expect(
+      supersededSyrusImages(mixed, {
+        pinnedRef: "ghcr.io/tkadauke/syrus-backend:test-def456",
+        inUseRefs: ["ghcr.io/tkadauke/syrus-backend:test-def456"]
+      })
+    ).toEqual(["ghcr.io/tkadauke/syrus-backend:test-abc123"])
+  })
+
   it("regression: never deletes a developer's locally built image in another repository", () => {
     // `syrus-backend:dev-cafe123` shares the basename but NOT the repository
     // with the pinned ghcr.io ref — the old basename-wide rule deleted it on
