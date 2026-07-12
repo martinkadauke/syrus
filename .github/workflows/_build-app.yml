@@ -594,11 +594,16 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     # Channel identity (see build-mac). A test build forks product/appId/icon
-    # + the NSIS shortcut name so Syrus Test installs beside a release.
+    # + the NSIS shortcut name so Syrus Test installs beside a release. PKG_NAME
+    # forks the electron-builder package NAME too: the one-click per-user NSIS
+    # installer derives its install directory (%LocalAppData%\Programs\<name>)
+    # from the package name, NOT productName — without this the test installer
+    # would extract into the production install dir and clobber it.
     env:
       PRODUCT: ${{ inputs.channel == 'test' && 'Syrus Test' || 'Syrus' }}
       APP_ID: ${{ inputs.channel == 'test' && 'app.syrus.desktop.test' || 'app.syrus.desktop' }}
       WIN_ICON: ${{ inputs.channel == 'test' && 'build/icon-test.ico' || 'build/icon.ico' }}
+      PKG_NAME: ${{ inputs.channel == 'test' && 'syrus-test-desktop' || 'syrus-desktop' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -716,6 +721,7 @@ jobs:
             -c.forceCodeSigning=true \
             -c.productName="$PRODUCT" \
             -c.appId="$APP_ID" \
+            -c.extraMetadata.name="$PKG_NAME" \
             -c.win.icon="$WIN_ICON" \
             -c.nsis.shortcutName="$PRODUCT" \
             "-c.win.azureSignOptions.publisherName=${AZURE_SIGN_PUBLISHER_NAME}" \

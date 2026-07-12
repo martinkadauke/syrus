@@ -47,10 +47,18 @@ RSpec.describe "desktop uninstall flow" do
     expect(uninstall_command).to include('"--yes"')
     expect(uninstall_command).to include('keepData ? ["--keep-data"] : []')
     # Checkbox semantics are DELETE, flag semantics are KEEP — the inversion
-    # lives at the single call site.
+    # lives at the single call site, which also scopes the teardown to THIS
+    # app's channel (a test build must never uninstall production).
     expect(main_process).to include(
-      "uninstallCommand(scriptPath, !choice.checkboxChecked, process.platform, uninstallAppPath())"
+      "uninstallCommand(scriptPath, !choice.checkboxChecked, process.platform, uninstallAppPath(), channel)"
     )
+    expect(main_process).to include("const channel = currentChannel()")
+  end
+
+  it "scopes a test build's uninstall to the test channel" do
+    # buildUninstallArgs appends --channel test so uninstall.sh/.ps1 tear down
+    # only the test stack/app/CLI/settings, never production's.
+    expect(uninstall_command).to include('channel === "test" ? ["--channel", "test"] : []')
   end
 
   it "tells uninstall.sh where the running app bundle lives — darwin only, single --app-path= token" do

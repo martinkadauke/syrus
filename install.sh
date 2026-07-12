@@ -301,8 +301,12 @@ run_docker() {
   # writing next to the bundled script would break the code signature.
   if [ -n "$TARGET_DIR" ]; then
     mkdir -p "$TARGET_DIR"
-    # Keep the compose file in sync with this installer's version on every run.
-    cp -f "$ASSETS_DIR/docker-compose.yml" "$TARGET_DIR/docker-compose.yml"
+    # Keep the compose file in sync with this installer's version on every run,
+    # and stamp the channel's project name into it so a plain `docker compose`
+    # run from this state dir resolves to <PROJECT> — NOT the compose file's
+    # default `name: syrus` (which would make a manual command in the test
+    # state dir operate on the PRODUCTION stack).
+    sed "s|^name: syrus\$|name: $PROJECT|" "$ASSETS_DIR/docker-compose.yml" > "$TARGET_DIR/docker-compose.yml"
     cd "$TARGET_DIR"
   fi
 
@@ -336,7 +340,7 @@ run_docker() {
     echo "fresh keys now would make the existing data undecryptable. Do ONE of:" >&2
     echo "  - Restore the original .env (the keys that match this volume), or" >&2
     echo "  - Wipe the old data and start clean:" >&2
-    echo "      docker compose down -v && ./install.sh --docker   (or docker-compose ...)" >&2
+    echo "      docker compose -p $PROJECT down -v && ./install.sh --docker   (or docker-compose ...)" >&2
     die "a data volume ($DATA_VOLUME) exists but .env is missing (see above)" 20
   fi
   emit_step env_check ok
@@ -613,7 +617,7 @@ run_docker() {
   until curl -fs -o /dev/null "http://localhost:${port}/up" 2>/dev/null; do
     tries=$((tries + 1))
     [ "$tries" -gt "${SYRUS_HEALTH_POLLS:-90}" ] && die \
-      "Syrus didn't become healthy within 3 minutes. Check: docker compose logs web worker" 41
+      "Syrus didn't become healthy within 3 minutes. Check: docker compose -p $PROJECT logs web worker" 41
     sleep 2
   done
   emit_step health ok
@@ -626,7 +630,7 @@ run_docker() {
   info "Next steps:"
   info "  1. Open http://localhost:${port} and create the first admin account."
   info "  2. Complete /onboarding: GitHub credentials, agent, first repository."
-  info "  3. Logs: docker compose logs -f web worker   Stop: docker compose down"
+  info "  3. Logs: docker compose -p $PROJECT logs -f web worker   Stop: docker compose -p $PROJECT down"
   info "  4. Read README.md or website docs for next steps."
 }
 

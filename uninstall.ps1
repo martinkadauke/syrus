@@ -588,6 +588,11 @@ if ($dockerReady) {
     # imageCleanup.ts): a user's unrelated my-syrus-backend never matches.
     $repoBasename = ($repo -split "/")[-1]
     if ($repoBasename -ne "syrus-backend" -and $repoBasename -ne "syrus-local") { continue }
+    # Only retire THIS channel's image tags (mirrors channel.ts tagChannel and
+    # uninstall.sh): both channels share the syrus-backend repo, so an unscoped
+    # rmi on the test channel would delete the production image.
+    $tagChannel = if ($tag -match "^test-" -or $tag -match "-test\.\d+$") { "test" } else { "stable" }
+    if ($tagChannel -ne $script:Channel) { continue }
     $ref = "${repo}:${tag}"
     # Plain rmi by repo:tag, never -f: -f would untag EVERY tag sharing the
     # image ID (a user's backup tag included). An image still referenced by
@@ -666,9 +671,10 @@ if ((Test-Path -LiteralPath $cliExe) -or (Test-Path -LiteralPath $cliExeOld)) {
 } else {
   Emit-Step "cli" "skipped" "not present"
 }
-# Empty-only cleanup of the CLI's directory chain (the LocalAppData Syrus dir
-# may be shared if anything else ever lands there - never force it).
-foreach ($dir in @($cliDir, (Join-Path $localAppData "Syrus"))) {
+# Empty-only cleanup of THIS channel's CLI directory chain (bin then its
+# parent - "Syrus" or "Syrus Test"); never the other channel's dir, never
+# forced.
+foreach ($dir in @($cliDir, (Split-Path -Parent $cliDir))) {
   if ((Test-Path -LiteralPath $dir) -and (@(Get-ChildItem -LiteralPath $dir -Force -ErrorAction SilentlyContinue).Count -eq 0)) {
     Remove-Item -LiteralPath $dir -Force -ErrorAction SilentlyContinue
   }

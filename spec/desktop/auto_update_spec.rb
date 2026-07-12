@@ -27,8 +27,13 @@ RSpec.describe "desktop auto-update and release pipeline" do
   let(:build_workflow) { read(repo_root, ".github/workflows/_build-app.yml") }
   let(:ci_workflow) { read(repo_root, ".github/workflows/desktop-ci.yml") }
 
-  it "keeps auto-update inert for unsigned dev builds and test runs" do
-    expect(app_updates).to include("app.isPackaged && !process.env.SYRUS_DISABLE_AUTO_UPDATE")
+  it "keeps auto-update inert for unsigned dev builds, test runs, and the test channel" do
+    expect(app_updates).to include("app.isPackaged &&")
+    expect(app_updates).to include("!process.env.SYRUS_DISABLE_AUTO_UPDATE")
+    # Only the STABLE channel auto-updates — a packaged local dev build (0.0.0,
+    # the test channel) must not download the stable release over itself.
+    expect(app_updates).to include("isStableChannel()")
+    expect(app_updates).to include('resolveChannel({ env: process.env.SYRUS_CHANNEL, productName: app.getName(), version: app.getVersion() }) === "stable"')
   end
 
   it "checks on launch and every six hours, logging errors instead of dialoging" do

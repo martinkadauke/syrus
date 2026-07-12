@@ -253,15 +253,17 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
 
       <main className="min-w-0 flex-1 overflow-auto" onScroll={handleMainScroll} ref={mainRef}>
         <div className="flex w-full items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-950 lg:hidden">
-          <button
-            aria-label={t("nav:open_sidebar")}
-            className="min-w-0 text-left text-lg font-semibold text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-300"
-            onClick={() => setDrawerOpen(true)}
-            type="button"
-          >
-            <SyrusBrand />
-          </button>
-          <TestChannelBadge />
+          <div className="flex min-w-0 items-center gap-2">
+            <button
+              aria-label={t("nav:open_sidebar")}
+              className="min-w-0 text-left text-lg font-semibold text-gray-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-300"
+              onClick={() => setDrawerOpen(true)}
+              type="button"
+            >
+              <SyrusBrand />
+            </button>
+            <TestChannelBadge />
+          </div>
           {user ? <NotificationsBell initialUnreadCount={user.notification_unread_count ?? 0} prefix={prefix} /> : null}
         </div>
         <SystemAlertsBanner alerts={data?.system_alerts} prefix={prefix} />
@@ -450,7 +452,10 @@ function SidebarContent({
     <div className="flex h-full w-full flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
       <div className="shrink-0 border-b border-gray-200 px-4 py-4 dark:border-gray-800">
         <div className="flex items-center justify-between gap-3">
-          <Link className="text-lg font-semibold text-gray-900 dark:text-white" onClick={onCloseDrawer} to={prefix || "/"}><SyrusBrand /></Link>
+          <div className="flex min-w-0 items-center gap-2">
+            <Link className="text-lg font-semibold text-gray-900 dark:text-white" onClick={onCloseDrawer} to={prefix || "/"}><SyrusBrand /></Link>
+            <TestChannelBadge />
+          </div>
           <div className="flex items-center gap-1">
             {user ? <NotificationsBell initialUnreadCount={user.notification_unread_count ?? 0} onNavigate={onCloseDrawer} prefix={prefix} /> : null}
             <button

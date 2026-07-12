@@ -19,6 +19,19 @@ RSpec.describe AppSetting do
     end
 
     it "leaves polling running on the first create by default" do
+      # Pin the env-absent precondition: the suite runs inside a backend
+      # container whose compose env_file may export SYRUS_BOOT_POLLING_PAUSED=1
+      # (a test-channel stack), which would otherwise seed this example paused.
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SYRUS_BOOT_POLLING_PAUSED").and_return(nil)
+
+      expect(AppSetting.current.polling_paused).to be false
+    end
+
+    it "treats an explicitly falsy env value as not paused" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SYRUS_BOOT_POLLING_PAUSED").and_return("no")
+
       expect(AppSetting.current.polling_paused).to be false
     end
 

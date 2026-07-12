@@ -614,7 +614,10 @@ export class OnboardingDriver {
   async locateEnv(parentWindow: BrowserWindow | null) {
     const options: Electron.OpenDialogOptions = {
       title: "Locate your original .env",
-      message: "Choose the .env file from your existing Syrus install (usually next to your Syrus checkout).",
+      message:
+        currentStackIdentity().channel === "test"
+          ? "Choose the .env file from your ORIGINAL Syrus Test install (~/.syrus/local-test). Do not use your production Syrus .env — its keys and port belong to the other stack."
+          : "Choose the .env file from your existing Syrus install (usually next to your Syrus checkout).",
       properties: ["openFile", "showHiddenFiles"]
     }
     const result = parentWindow
@@ -628,7 +631,19 @@ export class OnboardingDriver {
     try {
       const stateDir = localStateDir()
       await fs.mkdir(stateDir, { recursive: true })
-      await fs.copyFile(result.filePaths[0], path.join(stateDir, ".env"))
+      const envTarget = path.join(stateDir, ".env")
+      await fs.copyFile(result.filePaths[0], envTarget)
+      // Defensively re-stamp the port to THIS channel's default: if the user
+      // picked the production .env (port 3000), the test stack would otherwise
+      // try to bind production's port and fail with a compose conflict.
+      const identity = currentStackIdentity()
+      const contents = await fs.readFile(envTarget, "utf8")
+      const restamped = contents
+        .replace(/^SYRUS_PORT=.*$/m, `SYRUS_PORT=${identity.defaultPort}`)
+        .replace(/^SYRUS_APP_HOST=.*$/m, `SYRUS_APP_HOST=localhost:${identity.defaultPort}`)
+      if (restamped !== contents) {
+        await fs.writeFile(envTarget, restamped)
+      }
     } catch (error) {
       // Surface the copy failure on the screen instead of silently
       // re-prechecking into the same state with no explanation.

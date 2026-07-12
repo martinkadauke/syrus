@@ -951,21 +951,39 @@ const commandExists = async (command: string) => {
   }
 }
 
+// The CLI basename forks per channel: a test build installs and runs
+// `syrus-test`, so it lives beside production's `syrus` and the Go CLI's
+// argv[0] profile resolution targets ~/.syrus/credentials.test and the test
+// backend. Without this the test app would overwrite the production binary on
+// every launch AND run it under the stable profile against production. Matches
+// the channel-derived CLI paths uninstall.sh / uninstall.ps1 remove.
+const cliBinaryName = () => (currentChannel() === "test" ? "syrus-test" : "syrus")
+
 // The one-click install target, probed directly because a PATH lookup can
 // miss it: on macOS GUI apps get a minimal PATH (so ~/.local/bin is
 // invisible to `which`), and on Windows the registry PATH entry we add only
 // reaches processes started after this app. Windows installs OUTSIDE the
-// NSIS $INSTDIR (%LocalAppData%\Programs\syrus-desktop) on purpose — the
-// updater replaces that directory wholesale on every auto-update, which
-// would silently delete the CLI.
-const localBinSyrus = () =>
-  process.platform === "win32"
-    ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Syrus", "bin", "syrus.exe")
-    : path.join(os.homedir(), ".local", "bin", "syrus")
+// NSIS $INSTDIR (%LocalAppData%\Programs\syrus[-test]-desktop) on purpose —
+// the updater replaces that directory wholesale on every auto-update, which
+// would silently delete the CLI. The bin dir also forks per channel so the
+// two channels' CLIs never share a directory.
+const localBinSyrus = () => {
+  const name = cliBinaryName()
+  if (process.platform === "win32") {
+    const appDir = currentChannel() === "test" ? "Syrus Test" : "Syrus"
+    return path.join(
+      process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"),
+      appDir,
+      "bin",
+      `${name}.exe`
+    )
+  }
+  return path.join(os.homedir(), ".local", "bin", name)
+}
 
 const syrusCliBinary = async (): Promise<string | null> => {
-  if (await commandExists("syrus")) {
-    return "syrus"
+  if (await commandExists(cliBinaryName())) {
+    return cliBinaryName()
   }
 
   try {
@@ -1109,10 +1127,15 @@ const ensureCliCurrent = async () => {
     return
   }
 
-  const skillPresent = await fs
-    .access(claudeSkillPath())
-    .then(() => true)
-    .catch(() => false)
+  // The Claude skill invokes `syrus` and is stable-only (v1) — a test build
+  // must never rewrite the shared ~/.claude/skills/syrus with unreleased
+  // content. It still installs its own `syrus-test` binary above.
+  const skillPresent =
+    currentChannel() !== "test" &&
+    (await fs
+      .access(claudeSkillPath())
+      .then(() => true)
+      .catch(() => false))
 
   await performCliInstall({ withSkill: skillPresent })
 }
@@ -1227,7 +1250,9 @@ let backendUpdateProgress: backendLifecycle.BackendUpdateProgress | null = null
 
 const shellNoticeState = async (): Promise<ShellNoticeState> => ({
   updateReadyVersion: appUpdates.downloadedUpdateVersion(),
-  claudeDetected: await agentToolPresent(),
+  // The Claude-skill offer is stable-only (v1): the skill invokes `syrus`, so
+  // a test build must not offer to write the shared skill dir.
+  claudeDetected: currentChannel() !== "test" && (await agentToolPresent()),
   skillInstalled: await fs
     .access(claudeSkillPath())
     .then(() => true)
@@ -1340,6 +1365,12 @@ const INERT_SHELL_NOTICE_STATE: ShellNoticeState = {
 // ({ ok: false, message }) for the web UI to render — no error dialog.
 const installSkillFromShell = async (): Promise<{ ok: boolean; message: string | null }> => {
   try {
+    // The skill is stable-only (v1) — refuse on the test channel so a test
+    // build can never rewrite the shared production skill.
+    if (currentChannel() === "test") {
+      return { ok: false, message: "The Claude skill is available from the production Syrus app." }
+    }
+
     // Server-side re-check of the offer's own gates. The sidebar only shows
     // the action while a coding agent is present and the skill is absent,
     // but the renderer's claim is not trusted: no agent tool means no
@@ -2196,13 +2227,19 @@ const uninstallAppPath = (): string | null => {
 }
 
 const confirmAndUninstall = async () => {
+  // Scope the whole teardown to THIS app's channel: a test build must remove
+  // only the test stack/app/CLI/settings, never production's.
+  const channel = currentChannel()
+  const appName = app.getName()
   const choice = await dialog.showMessageBox({
     type: "warning",
-    title: "Uninstall Syrus",
-    message: "Uninstall Syrus from this computer?",
+    title: `Uninstall ${appName}`,
+    message: `Uninstall ${appName} from this computer?`,
     detail:
-      "This removes the Syrus app, the syrus command-line tool, the Claude Code skill, and Syrus's local Docker containers and downloaded images.\n\nSyrus will quit when the uninstall starts. Docker Desktop / OrbStack itself is not removed.",
-    checkboxLabel: "Also delete my Syrus data (jobs, chats, settings — cannot be undone)",
+      channel === "test"
+        ? `This removes the ${appName} app, the syrus-test command-line tool, and the ${appName} test Docker stack (project syrus-test) and its images. Your production Syrus install is left untouched.\n\n${appName} will quit when the uninstall starts.`
+        : "This removes the Syrus app, the syrus command-line tool, the Claude Code skill, and Syrus's local Docker containers and downloaded images.\n\nSyrus will quit when the uninstall starts. Docker Desktop / OrbStack itself is not removed.",
+    checkboxLabel: `Also delete my ${appName} data (jobs, chats, settings — cannot be undone)`,
     checkboxChecked: false,
     buttons: ["Cancel", "Uninstall"],
     defaultId: 0,
@@ -2216,7 +2253,7 @@ const confirmAndUninstall = async () => {
   // The checkbox asks about DELETING data, the scripts' flag asks about
   // KEEPING it — unchecked (the default) maps to --keep-data.
   const scriptPath = uninstallScriptPath()
-  const { command, args } = uninstallCommand(scriptPath, !choice.checkboxChecked, process.platform, uninstallAppPath())
+  const { command, args } = uninstallCommand(scriptPath, !choice.checkboxChecked, process.platform, uninstallAppPath(), channel)
   // detached + unref + ignored stdio: the script keeps running after
   // app.quit(). windowsHide: false gives uninstall.ps1 its own visible
   // console window, where teardown progress (and the final NSIS step)

@@ -39,10 +39,15 @@ class AppSetting < ApplicationRecord
     first || create!(polling_paused: boot_polling_paused_default)
   end
 
-  # Only true when SYRUS_BOOT_POLLING_PAUSED is a truthy env value; otherwise
-  # the column's own `default: false` applies.
+  # Only true when SYRUS_BOOT_POLLING_PAUSED is an explicitly truthy value;
+  # otherwise the column's own `default: false` applies. Whitelisted (not
+  # ActiveModel::Type::Boolean, which casts every unrecognized non-empty
+  # string — including "no"/"off"/"disabled" — to true) so a fresh production
+  # boot cannot be seeded paused by an "obviously falsy" env value.
+  BOOT_TRUTHY_VALUES = %w[1 true yes on].freeze
+
   def self.boot_polling_paused_default
-    ActiveModel::Type::Boolean.new.cast(ENV["SYRUS_BOOT_POLLING_PAUSED"]) || false
+    BOOT_TRUTHY_VALUES.include?(ENV["SYRUS_BOOT_POLLING_PAUSED"].to_s.strip.downcase)
   end
 
   def self.signups_open?

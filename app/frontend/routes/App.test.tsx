@@ -1384,7 +1384,10 @@ describe("App", () => {
 
       await screen.findByRole("navigation", { name: "Primary" })
       const anchoredTrigger = screen.getByRole("button", { name: "Open sidebar" })
-      const mobileTopBar = anchoredTrigger.closest("div")
+      // The brand button is grouped with the TEST-channel badge in an inner
+      // flex wrapper; the mobile top bar is the outer w-full row that also
+      // holds the Notifications bell.
+      const mobileTopBar = anchoredTrigger.closest("div.w-full")
       if (!(mobileTopBar instanceof HTMLElement)) throw new Error("Expected mobile top bar to render")
       expect(mobileTopBar).toHaveClass("w-full")
       expect(anchoredTrigger).not.toHaveClass("fixed")

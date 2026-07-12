@@ -298,8 +298,13 @@ function Run-Docker {
   if ($script:TargetDir) {
     New-Item -ItemType Directory -Force -Path $script:TargetDir | Out-Null
     $resolved = (Resolve-Path -LiteralPath $script:TargetDir).Path
-    # Keep the compose file in sync with this installer's version on every run.
-    Copy-Item -LiteralPath (Join-Path $AssetsDir "docker-compose.yml") -Destination (Join-Path $resolved "docker-compose.yml") -Force
+    # Keep the compose file in sync with this installer's version on every run,
+    # and stamp the channel's project name into it so a plain `docker compose`
+    # from this state dir resolves to <project>, not the file's `name: syrus`
+    # default (which would target the PRODUCTION stack from the test state dir).
+    $composeText = [System.IO.File]::ReadAllText((Join-Path $AssetsDir "docker-compose.yml"))
+    $composeText = [regex]::Replace($composeText, "(?m)^name: syrus$", "name: $project")
+    [System.IO.File]::WriteAllText((Join-Path $resolved "docker-compose.yml"), $composeText)
     Set-Location -LiteralPath $resolved
   }
   # PowerShell's location and .NET's process cwd are separate; align them so
@@ -342,7 +347,7 @@ function Run-Docker {
       [Console]::Error.WriteLine("fresh keys now would make the existing data undecryptable. Do ONE of:")
       [Console]::Error.WriteLine("  - Restore the original .env (the keys that match this volume), or")
       [Console]::Error.WriteLine("  - Wipe the old data and start clean:")
-      [Console]::Error.WriteLine("      docker compose down -v; .\install.ps1 --docker")
+      [Console]::Error.WriteLine("      docker compose -p $project down -v; .\install.ps1 --docker")
       Fail "a data volume ($dataVolume) exists but .env is missing (see above)" 20
     }
   }
@@ -601,7 +606,7 @@ function Run-Docker {
     if ($healthy) { break }
     $tries++
     if ($tries -gt $maxPolls) {
-      Fail "Syrus didn't become healthy within 3 minutes. Check: docker compose logs web worker" 41
+      Fail "Syrus didn't become healthy within 3 minutes. Check: docker compose -p $project logs web worker" 41
     }
     Start-Sleep -Seconds 2
   }
@@ -615,7 +620,7 @@ function Run-Docker {
   Write-Info "Next steps:"
   Write-Info "  1. Open http://localhost:$port and create the first admin account."
   Write-Info "  2. Complete /onboarding: GitHub credentials, agent, first repository."
-  Write-Info "  3. Logs: docker compose logs -f web worker   Stop: docker compose down"
+  Write-Info "  3. Logs: docker compose -p $project logs -f web worker   Stop: docker compose -p $project down"
   Write-Info "  4. Read README.md or website docs for next steps."
 }
 

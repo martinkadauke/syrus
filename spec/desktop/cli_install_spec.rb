@@ -49,14 +49,18 @@ RSpec.describe "desktop CLI install" do
     expect(package.dig("scripts", "build")).to include("stage:cli")
   end
 
-  it "installs per-platform with no login step" do
+  it "installs per-platform with no login step, forked per channel" do
     main = read("electron/main.ts")
-    # The probe/install target: ~/.local/bin on macOS; %LocalAppData%\Syrus\bin
+    # The CLI basename + dir fork per channel so a test build installs
+    # `syrus-test` (which the Go CLI's argv[0] profile resolution targets at
+    # credentials.test) beside production's `syrus`, instead of overwriting it.
+    expect(main).to include('const cliBinaryName = () => (currentChannel() === "test" ? "syrus-test" : "syrus")')
+    # The probe/install target: ~/.local/bin on macOS; %LocalAppData%\<app>\bin
     # on Windows — deliberately OUTSIDE the NSIS $INSTDIR, which the updater
     # replaces wholesale on every auto-update.
-    probe = main[/const localBinSyrus =[\s\S]{0,400}/]
-    expect(probe).to include('path.join(os.homedir(), ".local", "bin", "syrus")')
-    expect(probe).to include('"Syrus", "bin", "syrus.exe"')
+    probe = main[/const localBinSyrus =[\s\S]{0,600}/]
+    expect(probe).to include('path.join(os.homedir(), ".local", "bin", name)')
+    expect(probe).to include('`${name}.exe`')
 
     install = main[/const performCliInstall[\s\S]{0,3600}/]
     # The bundled-source path derivation lives in bundledCliPath so the
@@ -175,7 +179,9 @@ RSpec.describe "desktop CLI install" do
     # another tool's config dir (spec I4) — gated on agent presence.
     expect(main).not_to include("offerSkillIfAgentDetected")
     expect(main).not_to include("Coding agent detected")
-    expect(main).to include("claudeDetected: await agentToolPresent()")
+    # The skill is stable-only (v1): the test channel never reports an agent, so
+    # the offer never surfaces and installSkillFromShell refuses.
+    expect(main).to include('claudeDetected: currentChannel() !== "test" && (await agentToolPresent())')
     detection = main[/const agentToolPresent[\s\S]{0,600}/]
     expect(detection).to include('".claude"')
     expect(detection).to include('".codex"')

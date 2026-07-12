@@ -485,6 +485,16 @@ if [ "$docker_ready" = "1" ]; then
     # imageCleanup.ts): a user's unrelated `my-syrus-backend` never matches.
     case "${repo##*/}" in
       syrus-backend|syrus-local)
+        # Only retire THIS channel's image tags (mirrors the tagChannel filter
+        # in desktop/electron/installer/imageCleanup.ts): release tags are
+        # semver/latest, test tags are test-<sha> / <X.Y.Z-test.N>. Both
+        # channels share the syrus-backend repo, so an unscoped rmi on the test
+        # channel would delete the production image (forcing a multi-GB re-pull).
+        case "$tag" in
+          test-*|*-test.[0-9]*) tag_channel=test ;;
+          *) tag_channel=stable ;;
+        esac
+        [ "$tag_channel" = "$CHANNEL" ] || continue
         ref="$repo:$tag"
         # Plain rmi by repo:tag, never -f: -f would untag EVERY tag sharing
         # the image ID (a user's backup tag included). An image still

@@ -19,6 +19,10 @@ RSpec.describe "desktop channels" do
   release = read(File.join(root, ".github/workflows/release.yml"))
   test_build = read(File.join(root, ".github/workflows/test-build.yml"))
   make_ico = read(File.join(desktop_root, "scripts/make-ico.mjs"))
+  install_sh = read(File.join(root, "install.sh"))
+  install_ps1 = read(File.join(root, "install.ps1"))
+  uninstall_sh = read(File.join(root, "uninstall.sh"))
+  uninstall_ps1 = read(File.join(root, "uninstall.ps1"))
 
   describe "_build-app.yml channel input" do
     it "declares a channel input defaulting to stable" do
@@ -46,6 +50,11 @@ RSpec.describe "desktop channels" do
       expect(build_app).to include('-c.nsis.shortcutName="$PRODUCT"')
     end
 
+    it "forks the Windows install directory via the package name (one-click NSIS derives $INSTDIR from it, not productName)" do
+      expect(build_app).to include("PKG_NAME: ${{ inputs.channel == 'test' && 'syrus-test-desktop' || 'syrus-desktop' }}")
+      expect(build_app).to include('-c.extraMetadata.name="$PKG_NAME"')
+    end
+
     it "names the verify + stage artifacts by the channel product name" do
       expect(build_app).to include('APP="desktop/out/mac-universal/$PRODUCT.app"')
       expect(build_app).to include('"desktop/out/$PRODUCT-$VERSION-universal.dmg"')
@@ -62,6 +71,20 @@ RSpec.describe "desktop channels" do
 
     it "test-build.yml builds the test channel" do
       expect(test_build).to include("channel: test")
+    end
+  end
+
+  describe "stack isolation hardening" do
+    it "stamps the channel project name into the synced compose file so manual `docker compose` from the state dir never hits the production project" do
+      expect(install_sh).to include('sed "s|^name: syrus\\$|name: $PROJECT|"')
+      expect(install_ps1).to include('[regex]::Replace($composeText, "(?m)^name: syrus$", "name: $project")')
+    end
+
+    it "scopes the uninstall image sweep to the channel's tag shape (test-* vs semver), like imageCleanup.ts" do
+      expect(uninstall_sh).to include("test-*|*-test.[0-9]*) tag_channel=test ;;")
+      expect(uninstall_sh).to include('[ "$tag_channel" = "$CHANNEL" ] || continue')
+      expect(uninstall_ps1).to include('if ($tag -match "^test-" -or $tag -match "-test\\.\\d+$") { "test" } else { "stable" }')
+      expect(uninstall_ps1).to include('if ($tagChannel -ne $script:Channel) { continue }')
     end
   end
 
