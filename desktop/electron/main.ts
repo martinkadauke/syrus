@@ -1443,7 +1443,12 @@ const checkoutJob = async ({ jobRef, repoSlug, branchName, extraArgs }: Checkout
   }
 
   try {
-    const cliBinary = (await syrusCliBinary()) ?? "syrus"
+    // Fall back to THIS channel's binary name (never a hardcoded "syrus"): on
+    // the test channel, if the probe momentarily misses (e.g. syrus-test.exe is
+    // renamed mid-reinstall on Windows), running the production `syrus` would
+    // resolve to the stable profile and act against the production instance.
+    // cliBinaryName() fails safe with ENOENT instead.
+    const cliBinary = (await syrusCliBinary()) ?? cliBinaryName()
     await execFileAsync(cliBinary, ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath, windowsHide: true })
     setLastUsedRepo(repoSlug)
     return { branchName }
@@ -1509,7 +1514,9 @@ const localStatus = async (): Promise<LocalStatus | null> => {
         continue
       }
 
-      const statusBinary = (await syrusCliBinary()) ?? "syrus"
+      // Channel-correct fallback (see checkoutJob): never the hardcoded stable
+      // `syrus`, so a test build can't read production's local status.
+      const statusBinary = (await syrusCliBinary()) ?? cliBinaryName()
       const { stdout } = await execFileAsync(statusBinary, ["status", "--json"], { cwd: localPath, windowsHide: true })
       const status = parseLocalStatus(stdout)
       if (status) {
@@ -2645,7 +2652,15 @@ ipcMain.handle("syrus-cli-status", async () => ({
   // install button that can only fail.
   bundledAvailable: await bundledCliAvailable()
 }))
-ipcMain.handle("install-syrus-cli", async (_event, options?: CliInstallOptions) => performCliInstall(options))
+ipcMain.handle("install-syrus-cli", async (_event, options?: CliInstallOptions) =>
+  // The Claude skill invokes `syrus` and is stable-only (v1): force withSkill
+  // off on the test channel so Preferences' "Add Claude Code skill" button can
+  // never rewrite the shared ~/.claude/skills/syrus with a test build's
+  // unreleased content. Mirrors the ensureCliCurrent / shell-bridge gates.
+  performCliInstall(
+    currentChannel() === "test" && options?.withSkill ? { ...options, withSkill: false } : options
+  )
+)
 ipcMain.handle("checkout-availability", async (_event, repoSlug: string) => checkoutAvailability(repoSlug))
 ipcMain.handle("checkout-job", async (_event, request: CheckoutRequest) => checkoutJob(request))
 ipcMain.handle("syrus:local-status", async () => localStatus())

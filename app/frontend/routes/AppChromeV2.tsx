@@ -18,7 +18,7 @@ import { NotificationsBell } from "../components/Notifications"
 import { PinIcon } from "../components/PinIcon"
 import { ShellNotices } from "../components/ShellNotices"
 import { SyrusBrand } from "../components/SyrusBrand"
-import { TestChannelBadge } from "../components/TestChannelBadge"
+import { TestChannelBadge, TestChannelDot } from "../components/TestChannelBadge"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { updateChatUnread, updateRecentChatCache } from "../lib/chatCache"
 import { firstUnstartedChat } from "../lib/unstartedChat"
@@ -225,6 +225,10 @@ export function AppChromeV2({ children, initialBootstrap }: { children?: ReactNo
             type="button"
           >
             <img alt="" aria-hidden="true" className="h-6 w-6 rounded" src={BRAND_ICON_SRC} />
+            {/* The in-flow top-bar TEST badge scrolls away with the bar on
+                mobile; keep the floating trigger distinguishable from a
+                side-by-side production build with an amber corner dot. */}
+            <TestChannelDot />
           </button>
           {user ? (
             <div className="fixed right-3 top-3 z-30 inline-flex h-11 w-11 items-center justify-center rounded border border-gray-200 bg-white shadow-lg dark:border-gray-800 dark:bg-gray-950 lg:hidden">

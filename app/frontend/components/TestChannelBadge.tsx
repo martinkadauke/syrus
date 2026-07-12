@@ -22,3 +22,26 @@ export function TestChannelBadge() {
     </span>
   )
 }
+
+// A compact amber corner dot — the same test-channel signal as TestChannelBadge
+// for space-constrained spots (the floating mobile brand trigger) where the
+// full pill won't fit. Renders nothing off the test channel. Callers place it
+// inside a positioned parent; className overrides the corner offset.
+export function TestChannelDot({ className }: { className?: string }) {
+  const { t } = useT("common")
+  if (!isDesktopTestChannel()) {
+    return null
+  }
+
+  return (
+    <span
+      aria-label={t("test_channel_badge.label")}
+      data-testid="test-channel-dot"
+      title={t("test_channel_badge.tooltip")}
+      className={
+        className ??
+        "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-amber-500 ring-2 ring-white dark:ring-gray-950"
+      }
+    />
+  )
+}

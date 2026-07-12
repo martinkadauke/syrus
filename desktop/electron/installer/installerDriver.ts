@@ -7,6 +7,7 @@ import { promisify } from "node:util"
 import { app, dialog, shell, type BrowserWindow } from "electron"
 import { currentStackIdentity, localStateDir, saveBackendConfig, setOnboardingResumeLocal } from "../settings.js"
 import { downloadDockerDesktopInstaller, runDockerDesktopInstaller } from "./dockerDesktopInstaller.js"
+import { restampEnvPort } from "./envRestamp.js"
 import { clearRunOnceResume, registerRunOnceResume } from "./windowsResume.js"
 import { fingerprintSyrus } from "./fingerprint.js"
 import { analyzeInstanceUrl } from "./instanceUrl.js"
@@ -201,7 +202,7 @@ export class OnboardingDriver {
     }
 
     setOnboardingResumeLocal(true)
-    void registerRunOnceResume()
+    void registerRunOnceResume(currentStackIdentity().channel)
   }
 
   private clearRebootResume() {
@@ -210,7 +211,7 @@ export class OnboardingDriver {
     }
 
     setOnboardingResumeLocal(false)
-    void clearRunOnceResume()
+    void clearRunOnceResume(currentStackIdentity().channel)
   }
 
   backToWelcome() {
@@ -633,16 +634,19 @@ export class OnboardingDriver {
       await fs.mkdir(stateDir, { recursive: true })
       const envTarget = path.join(stateDir, ".env")
       await fs.copyFile(result.filePaths[0], envTarget)
-      // Defensively re-stamp the port to THIS channel's default: if the user
-      // picked the production .env (port 3000), the test stack would otherwise
-      // try to bind production's port and fail with a compose conflict.
+      // TEST channel ONLY: force the port to the test default. If the user
+      // picked the production .env (port 3000), the test stack must still bind
+      // 3001, and restampEnvPort APPENDS the line when the picked .env has none
+      // (else compose falls back to ${SYRUS_PORT:-3000} = production's port).
+      // The STABLE channel copies the .env verbatim — a deliberately non-default
+      // production port must be preserved, so no re-stamp there.
       const identity = currentStackIdentity()
-      const contents = await fs.readFile(envTarget, "utf8")
-      const restamped = contents
-        .replace(/^SYRUS_PORT=.*$/m, `SYRUS_PORT=${identity.defaultPort}`)
-        .replace(/^SYRUS_APP_HOST=.*$/m, `SYRUS_APP_HOST=localhost:${identity.defaultPort}`)
-      if (restamped !== contents) {
-        await fs.writeFile(envTarget, restamped)
+      if (identity.channel === "test") {
+        const contents = await fs.readFile(envTarget, "utf8")
+        const restamped = restampEnvPort(contents, identity.defaultPort)
+        if (restamped !== contents) {
+          await fs.writeFile(envTarget, restamped)
+        }
       }
     } catch (error) {
       // Surface the copy failure on the screen instead of silently

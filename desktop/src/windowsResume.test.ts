@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { runOnceAddArgs, runOnceDeleteArgs } from "../electron/installer/windowsResume"
+import { runOnceAddArgs, runOnceDeleteArgs, runOnceValueName } from "../electron/installer/windowsResume"
 
 // The reboot-resume contract: Docker Desktop / WSL installs can force a
 // Windows reboot mid-onboarding, and HKCU RunOnce is what relaunches Syrus at
@@ -33,5 +33,27 @@ describe("windowsResume RunOnce registration", () => {
     expect(args[1]).toBe("HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\RunOnce")
     expect(args).toContain("SyrusResumeSetup")
     expect(args[args.length - 1]).toBe("/f")
+  })
+
+  // The two channels share one HKCU RunOnce KEY, so the VALUE name must fork —
+  // otherwise a test build mid-onboarding overwrites (or, on uninstall, drops)
+  // production's pending resume hook, and vice versa.
+  it("forks the RunOnce value name by channel", () => {
+    expect(runOnceValueName("stable")).toBe("SyrusResumeSetup")
+    expect(runOnceValueName("test")).toBe("SyrusResumeSetupTest")
+    // Defaults to stable so an un-threaded caller never touches the test value.
+    expect(runOnceValueName()).toBe("SyrusResumeSetup")
+    expect(runOnceValueName("test")).not.toBe(runOnceValueName("stable"))
+  })
+
+  it("registers and deletes the channel-specific value on the test channel", () => {
+    const addArgs = runOnceAddArgs("C:\\Users\\Ada\\AppData\\Local\\Syrus Test\\Syrus Test.exe", "test")
+    expect(addArgs).toContain("SyrusResumeSetupTest")
+    expect(addArgs).not.toContain("SyrusResumeSetup") // exact-match: the stable name is not present
+    expect(addArgs).toContain('"C:\\Users\\Ada\\AppData\\Local\\Syrus Test\\Syrus Test.exe" --resume-setup')
+
+    const deleteArgs = runOnceDeleteArgs("test")
+    expect(deleteArgs).toContain("SyrusResumeSetupTest")
+    expect(deleteArgs).not.toContain("SyrusResumeSetup")
   })
 })

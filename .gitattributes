@@ -9,3 +9,13 @@
 # alone — registration in .git/config is required, by design, since
 # drivers execute arbitrary code).
 db/schema.rb merge=ruby_schema
+
+# Deploy assets that get byte-stamped by the installers must stay LF on every
+# platform. A Windows checkout with core.autocrlf=true (the default on GitHub's
+# windows runners) would otherwise convert these to CRLF, and .NET's (?m)$ in
+# install.ps1 matches only before \n — so the compose project-name stamp would
+# silently no-op and leave `name: syrus` in the test state dir. Pinning at the
+# source protects install.sh and every future consumer, not just the one
+# install.ps1 normalization.
+docker-compose.yml text eol=lf
+compose.env.example text eol=lf

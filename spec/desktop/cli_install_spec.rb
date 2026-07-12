@@ -77,8 +77,13 @@ RSpec.describe "desktop CLI install" do
     # A running syrus.exe can't be overwritten on Windows, but it can be renamed.
     expect(install).to match(/fs\.rename\(target, `\$\{target\}\.old`\)/)
     # The IPC handler delegates so the tray banner, Preferences, and the
-    # post-setup dialog share one install path.
-    expect(main).to match(/ipcMain\.handle\("install-syrus-cli", async \(_event, options\?: CliInstallOptions\) => performCliInstall\(options\)\)/)
+    # post-setup dialog share one install path — forcing the skill off on the
+    # test channel so a test build can't overwrite the shared production skill
+    # (see channels_spec "adversarial-review hardening").
+    expect(main).to include('ipcMain.handle("install-syrus-cli", async (_event, options?: CliInstallOptions) =>')
+    expect(main).to include(
+      'currentChannel() === "test" && options?.withSkill ? { ...options, withSkill: false } : options'
+    )
   end
 
   it "resolves the bundled CLI from desktop/resources in dev builds" do
@@ -215,8 +220,11 @@ RSpec.describe "desktop CLI install" do
     main = read("electron/main.ts")
     expect(main).to include("const localBinSyrus = ()")
     expect(main).to match(/syrusCliBinary[\s\S]{0,400}localBinSyrus\(\)/)
-    # Exec sites must prefer the resolved binary over a bare PATH lookup.
-    expect(main).to match(/const cliBinary = \(await syrusCliBinary\(\)\) \?\? "syrus"/)
+    # Exec sites must prefer the resolved binary over a bare PATH lookup, and
+    # the fallback is THIS channel's binary name (never a hardcoded stable
+    # "syrus") so a test-channel probe miss can't invoke the production CLI.
+    expect(main).to match(/const cliBinary = \(await syrusCliBinary\(\)\) \?\? cliBinaryName\(\)/)
+    expect(main).not_to include('(await syrusCliBinary()) ?? "syrus"')
   end
 
   it "exposes the install through the bridge with the skill option" do

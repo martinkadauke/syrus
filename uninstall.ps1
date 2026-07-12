@@ -434,6 +434,10 @@ if ($script:Channel -eq "test") {
   $nsisDir = Join-Path $localAppData "Programs\syrus-desktop"
 }
 $runOncePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\RunOnce"
+# The RunOnce value name is forked per channel (mirrors windowsResume.ts
+# runOnceValueName) so uninstalling one channel never drops the other channel's
+# pending onboarding-resume hook.
+$runOnceValueName = if ($script:Channel -eq "test") { "SyrusResumeSetupTest" } else { "SyrusResumeSetup" }
 
 # The Compose project name determines the volume prefix (<PROJECT>_syrus-data)
 # and overrides the compose file's `name: syrus` default. Belt-and-braces for
@@ -710,12 +714,12 @@ if ($script:KeepData) {
 }
 
 $runOnceEntry = $null
-try { $runOnceEntry = Get-ItemProperty -Path $runOncePath -Name "SyrusResumeSetup" -ErrorAction SilentlyContinue } catch { $runOnceEntry = $null }
+try { $runOnceEntry = Get-ItemProperty -Path $runOncePath -Name $runOnceValueName -ErrorAction SilentlyContinue } catch { $runOnceEntry = $null }
 if ($runOnceEntry) {
   Emit-Step "runonce" "start"
-  Remove-ItemProperty -Path $runOncePath -Name "SyrusResumeSetup" -ErrorAction SilentlyContinue
-  Write-Info "Removed the SyrusResumeSetup RunOnce entry."
-  Emit-Log "files" "removed the SyrusResumeSetup RunOnce entry"
+  Remove-ItemProperty -Path $runOncePath -Name $runOnceValueName -ErrorAction SilentlyContinue
+  Write-Info "Removed the $runOnceValueName RunOnce entry."
+  Emit-Log "files" "removed the $runOnceValueName RunOnce entry"
   Emit-Step "runonce" "ok"
 } else {
   Emit-Step "runonce" "skipped" "not present"

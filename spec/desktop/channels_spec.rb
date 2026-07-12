@@ -23,6 +23,10 @@ RSpec.describe "desktop channels" do
   install_ps1 = read(File.join(root, "install.ps1"))
   uninstall_sh = read(File.join(root, "uninstall.sh"))
   uninstall_ps1 = read(File.join(root, "uninstall.ps1"))
+  gitattributes = read(File.join(root, ".gitattributes"))
+  main_ts = read(File.join(desktop_root, "electron/main.ts"))
+  installer_driver = read(File.join(desktop_root, "electron/installer/installerDriver.ts"))
+  windows_resume = read(File.join(desktop_root, "electron/installer/windowsResume.ts"))
 
   describe "_build-app.yml channel input" do
     it "declares a channel input defaulting to stable" do
@@ -85,6 +89,57 @@ RSpec.describe "desktop channels" do
       expect(uninstall_sh).to include('[ "$tag_channel" = "$CHANNEL" ] || continue')
       expect(uninstall_ps1).to include('if ($tag -match "^test-" -or $tag -match "-test\\.\\d+$") { "test" } else { "stable" }')
       expect(uninstall_ps1).to include('if ($tagChannel -ne $script:Channel) { continue }')
+    end
+  end
+
+  # Adversarial-review round: cross-channel bugs where a TEST build could reach
+  # into the PRODUCTION stack, and one production-regression the first port
+  # re-stamp introduced.
+  describe "adversarial-review hardening" do
+    it "normalizes the compose file to LF BEFORE the project-name stamp (a CRLF no-op would delete production's volume)" do
+      # .NET's (?m)$ matches only before \n, so on a CRLF docker-compose.yml the
+      # "^name: syrus$" replace silently no-ops — leaving `name: syrus` in the
+      # test state dir where a bare `docker compose down -v` hits production.
+      # The compose read must normalize to LF (like the .env path) immediately
+      # BEFORE the $composeText project-name stamp runs. This match ties the
+      # normalize to the compose stamp specifically (the .env normalize is
+      # followed by a $content SECRET_KEY_BASE stamp, not this one).
+      expect(install_ps1).to match(/-replace "`r`n", "`n"\s*\n\s*\$composeText = \[regex\]::Replace\(\$composeText, "\(\?m\)\^name: syrus\$"/)
+    end
+
+    it "pins the compose + env deploy assets to LF at the source so no consumer sees CRLF" do
+      # Root-cause fix: a Windows checkout (autocrlf=true, GitHub's default) must
+      # not hand the installers CRLF in the first place.
+      expect(gitattributes).to include("docker-compose.yml text eol=lf")
+      expect(gitattributes).to include("compose.env.example text eol=lf")
+    end
+
+    it "gates the Preferences 'Add Claude Code skill' IPC path off on the test channel" do
+      # The three other skill-write paths were gated; this ungated IPC handler
+      # let a test build overwrite the shared production ~/.claude/skills/syrus.
+      expect(main_ts).to include('ipcMain.handle("install-syrus-cli"')
+      expect(main_ts).to include(
+        'currentChannel() === "test" && options?.withSkill ? { ...options, withSkill: false } : options'
+      )
+    end
+
+    it "falls back to the channel's own CLI binary, never a hardcoded stable 'syrus'" do
+      # A momentary probe miss on the test channel must not run production `syrus`
+      # (which resolves to the stable profile + backend).
+      expect(main_ts).to include('(await syrusCliBinary()) ?? cliBinaryName()')
+      expect(main_ts).not_to include('(await syrusCliBinary()) ?? "syrus"')
+    end
+
+    it "re-stamps the adopted .env port ONLY on the test channel (stable keeps a custom port verbatim)" do
+      # The unconditional re-stamp rewrote a stable install's non-default port
+      # back to 3000; gate it, and use restampEnvPort which APPENDS a missing line.
+      expect(installer_driver).to match(/identity\.channel === "test"[\s\S]{0,200}restampEnvPort\(contents, identity\.defaultPort\)/)
+    end
+
+    it "forks the Windows RunOnce value name per channel so an uninstall can't drop the other channel's resume" do
+      expect(windows_resume).to include('channel === "test" ? "SyrusResumeSetupTest" : "SyrusResumeSetup"')
+      expect(uninstall_ps1).to include('if ($script:Channel -eq "test") { "SyrusResumeSetupTest" } else { "SyrusResumeSetup" }')
+      expect(uninstall_ps1).to include("-Name $runOnceValueName")
     end
   end
 

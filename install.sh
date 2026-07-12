@@ -340,7 +340,7 @@ run_docker() {
     echo "fresh keys now would make the existing data undecryptable. Do ONE of:" >&2
     echo "  - Restore the original .env (the keys that match this volume), or" >&2
     echo "  - Wipe the old data and start clean:" >&2
-    echo "      docker compose -p $PROJECT down -v && ./install.sh --docker   (or docker-compose ...)" >&2
+    echo "      docker compose -p $PROJECT down -v && ./install.sh --docker --project $PROJECT   (or docker-compose ...)" >&2
     die "a data volume ($DATA_VOLUME) exists but .env is missing (see above)" 20
   fi
   emit_step env_check ok

@@ -302,7 +302,12 @@ function Run-Docker {
     # and stamp the channel's project name into it so a plain `docker compose`
     # from this state dir resolves to <project>, not the file's `name: syrus`
     # default (which would target the PRODUCTION stack from the test state dir).
-    $composeText = [System.IO.File]::ReadAllText((Join-Path $AssetsDir "docker-compose.yml"))
+    # Normalize to LF FIRST: a checkout with autocrlf hands us CRLF, and .NET's
+    # (?m)$ matches only before \n (never before \r), so on a CRLF compose file
+    # "^name: syrus$" silently no-ops - leaving `name: syrus` in the test state
+    # dir, where a bare `docker compose down -v` would target the PRODUCTION
+    # project and delete its data volume. (Same normalization as the .env below.)
+    $composeText = ([System.IO.File]::ReadAllText((Join-Path $AssetsDir "docker-compose.yml"))) -replace "`r`n", "`n"
     $composeText = [regex]::Replace($composeText, "(?m)^name: syrus$", "name: $project")
     [System.IO.File]::WriteAllText((Join-Path $resolved "docker-compose.yml"), $composeText)
     Set-Location -LiteralPath $resolved
@@ -347,7 +352,7 @@ function Run-Docker {
       [Console]::Error.WriteLine("fresh keys now would make the existing data undecryptable. Do ONE of:")
       [Console]::Error.WriteLine("  - Restore the original .env (the keys that match this volume), or")
       [Console]::Error.WriteLine("  - Wipe the old data and start clean:")
-      [Console]::Error.WriteLine("      docker compose -p $project down -v; .\install.ps1 --docker")
+      [Console]::Error.WriteLine("      docker compose -p $project down -v; .\install.ps1 --docker --project $project")
       Fail "a data volume ($dataVolume) exists but .env is missing (see above)" 20
     }
   }

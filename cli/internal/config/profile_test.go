@@ -15,10 +15,14 @@ func TestProfileFromArgv0(t *testing.T) {
 		"syrus-test":                     "test",
 		"/home/me/.local/bin/syrus-test": "test",
 		"syrus-test.exe":                 "test",
-		"SYRUS-TEST":                     "test", // case-insensitive
-		"config.test":                    "",     // a `go test` binary must not trip it
-		"cmd.test":                       "",
-		"syrus-canary":                   "", // only the exact test name maps today
+		// A full Windows path must resolve to the test profile even on a
+		// non-Windows CI host — filepath.Base wouldn't split the backslashes, so
+		// this case is the regression guard for that portability bug.
+		"C:\\Users\\Ada\\AppData\\Local\\Syrus Test\\bin\\syrus-test.exe": "test",
+		"SYRUS-TEST":  "test", // case-insensitive
+		"config.test": "",     // a `go test` binary must not trip it
+		"cmd.test":    "",
+		"syrus-canary": "", // only the exact test name maps today
 	}
 	for argv0, want := range cases {
 		if got := profileFromArgv0(argv0); got != want {
@@ -85,6 +89,33 @@ func TestProfileResolutionOrder(t *testing.T) {
 	t.Setenv("SYRUS_PROFILE", "")
 	if got := Profile(); got != "test" {
 		t.Errorf("with --profile test, Profile() = %q; want test", got)
+	}
+}
+
+// With no flag and no env, Profile() must fall through to argv[0] — the
+// load-bearing case that routes a `syrus-test` binary to the test credentials.
+// The other resolution-order cases only exercise argv0s that normalize to "",
+// so without this a Profile() that dropped the argv0 fallback would stay green
+// while shipping a cross-channel credential leak.
+func TestProfileFallsBackToArgv0(t *testing.T) {
+	savedFlag := ProfileFlag
+	savedArgs := os.Args
+	t.Cleanup(func() {
+		ProfileFlag = savedFlag
+		os.Args = savedArgs
+	})
+
+	ProfileFlag = ""
+	t.Setenv("SYRUS_PROFILE", "")
+
+	os.Args = []string{"/home/me/.local/bin/syrus-test"}
+	if got := Profile(); got != "test" {
+		t.Errorf("with argv0=syrus-test and nothing else set, Profile() = %q; want test", got)
+	}
+
+	os.Args = []string{"/usr/local/bin/syrus"}
+	if got := Profile(); got != "" {
+		t.Errorf("with argv0=syrus and nothing else set, Profile() = %q; want default", got)
 	}
 }
 

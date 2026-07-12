@@ -2,7 +2,6 @@ package config
 
 import (
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -52,7 +51,17 @@ func normalizeProfile(raw string) string {
 // channel; a `go test` binary such as `config.test` ends in ".test", not
 // "-test", so it correctly stays on the default channel.
 func profileFromArgv0(argv0 string) string {
-	base := strings.ToLower(filepath.Base(argv0))
+	// Strip the directory using BOTH separators. filepath.Base only splits on
+	// the HOST separator, so on a Linux/darwin CI runner it would not split a
+	// Windows-style "C:\...\syrus-test.exe" argv0 — leaving the whole path and
+	// silently missing the test profile on the very platform a test build ships
+	// to. Splitting on / and \ keeps this correct (and portably testable) on
+	// every OS.
+	base := argv0
+	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
+		base = base[i+1:]
+	}
+	base = strings.ToLower(base)
 	base = strings.TrimSuffix(base, ".exe")
 	if base == "syrus-"+TestProfile {
 		return TestProfile
