@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_11_192118) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -58,6 +58,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_192118) do
     t.datetime "github_app_registered_at"
     t.string "github_app_slug"
     t.integer "grade_max_iterations", default: 5, null: false
+    t.integer "main_concern_report_threshold", default: 2, null: false
     t.integer "max_job_failures", default: 3, null: false
     t.boolean "merge_train_enabled", default: false, null: false
     t.integer "merge_train_max_size", default: 20, null: false
@@ -682,6 +683,37 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_192118) do
     t.index ["validity"], name: "index_jobs_on_validity"
   end
 
+  create_table "main_branch_health_checks", force: :cascade do |t|
+    t.datetime "checked_at", null: false
+    t.json "ci_failed_checks"
+    t.string "ci_health", default: "unknown", null: false
+    t.datetime "created_at", null: false
+    t.json "grader_failed_names"
+    t.string "grader_health", default: "unknown", null: false
+    t.integer "repository_id", null: false
+    t.string "sha", null: false
+    t.string "source", null: false
+    t.datetime "updated_at", null: false
+    t.index ["repository_id", "checked_at"], name: "idx_mbhc_repo_checked_at"
+    t.index ["repository_id"], name: "index_main_branch_health_checks_on_repository_id"
+  end
+
+  create_table "main_concern_reports", force: :cascade do |t|
+    t.datetime "created_at", null: false
+    t.json "failing_tests"
+    t.integer "job_id", null: false
+    t.text "reason", null: false
+    t.integer "repository_id", null: false
+    t.integer "run_id", null: false
+    t.datetime "updated_at", null: false
+    t.integer "workflow_id", null: false
+    t.index ["job_id"], name: "index_main_concern_reports_on_job_id"
+    t.index ["repository_id", "created_at"], name: "index_main_concern_reports_on_repository_id_and_created_at"
+    t.index ["repository_id"], name: "index_main_concern_reports_on_repository_id"
+    t.index ["run_id"], name: "index_main_concern_reports_on_run_id"
+    t.index ["workflow_id"], name: "index_main_concern_reports_on_workflow_id"
+  end
+
   create_table "merge_train_members", force: :cascade do |t|
     t.datetime "created_at", null: false
     t.integer "job_id", null: false
@@ -748,13 +780,17 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_192118) do
     t.datetime "archived_at"
     t.string "auto_approve_mode", default: "never", null: false
     t.boolean "auto_merge_enabled", default: false, null: false
+    t.string "ci_health", default: "unknown", null: false
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
     t.string "feedback_policy", default: "confirm", null: false
     t.integer "fork_pr_grace_period_hours", default: 24, null: false
     t.bigint "github_owner_id"
     t.bigint "github_repository_id"
+    t.string "grader_health", default: "unknown", null: false
     t.integer "installation_id"
+    t.boolean "landing_paused", default: false, null: false
+    t.string "last_health_checked_sha"
     t.text "last_poll_error"
     t.datetime "last_poll_started_at"
     t.string "last_poll_status"
@@ -777,6 +813,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_192118) do
     t.index ["github_owner_id"], name: "index_repositories_on_github_owner_id"
     t.index ["github_repository_id"], name: "index_repositories_on_github_repository_id"
     t.index ["installation_id"], name: "index_repositories_on_installation_id"
+    t.index ["landing_paused"], name: "index_repositories_on_landing_paused"
     t.index ["owner", "name"], name: "index_repositories_on_owner_and_name", unique: true
     t.index ["upstream_repository_id"], name: "index_repositories_on_upstream_repository_id"
     t.index ["user_id"], name: "index_repositories_on_user_id"
@@ -1216,6 +1253,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_11_192118) do
   add_foreign_key "jobs", "users", column: "claimed_by_user_id"
   add_foreign_key "jobs", "users", column: "dependencies_overridden_by_user_id"
   add_foreign_key "jobs", "users", column: "owner_user_id"
+  add_foreign_key "main_branch_health_checks", "repositories"
+  add_foreign_key "main_concern_reports", "jobs"
+  add_foreign_key "main_concern_reports", "repositories"
+  add_foreign_key "main_concern_reports", "runs"
+  add_foreign_key "main_concern_reports", "workflows"
   add_foreign_key "merge_train_members", "jobs"
   add_foreign_key "merge_train_members", "merge_trains"
   add_foreign_key "merge_trains", "epics"
