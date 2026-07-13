@@ -36,6 +36,7 @@ module AgentProviders
       BUNDLE_PATH
       BUNDLE_DEPLOYMENT
       BUNDLE_WITHOUT
+      PATH
       TZ
       SYRUS_APP_HOST
       SYRUS_ALLOWED_HOSTS

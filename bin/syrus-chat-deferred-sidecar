@@ -1,4 +1,7 @@
 #!/usr/bin/env ruby
-# Compatibility entrypoint for stale MCP configs. New configs invoke
-# bin/syrus-chat-sidecar directly with --tier deferred.
-exec File.expand_path("syrus-chat-sidecar", __dir__), *ARGV, "--tier", "deferred"
+# Deferred chat MCP launcher. Keep this filename in mcp.json so Claude
+# resumed sessions keep the `mcp__syrus-chat-deferred-sidecar__*` tool prefix
+# distinct from the always-loaded essential sidecar.
+ENV["SYRUS_CHAT_MCP_TOOL_TIER"] = "deferred"
+ENV["SYRUS_CHAT_MCP_SERVER_NAME"] = "syrus-chat-deferred-sidecar" if ENV["SYRUS_CHAT_MCP_SERVER_NAME"].to_s.empty?
+exec File.expand_path("syrus-chat-sidecar", __dir__), "--tier", "deferred", *ARGV

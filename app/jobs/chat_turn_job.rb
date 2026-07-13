@@ -461,19 +461,20 @@ class ChatTurnJob < ApplicationJob
 
   def with_chat_mcp_config
     Tempfile.create([ "syrus-chat-mcp-#{@chat.id}-", ".json" ]) do |f|
+      # Claude resumed sessions derive MCP tool prefixes from the configured
+      # command basename, so the server key and launcher basename must stay
+      # aligned even though the two launchers share implementation code.
       f.write({
         mcpServers: {
           "syrus-chat-sidecar" => {
             type: "stdio",
             command: Rails.root.join("bin/syrus-chat-sidecar").to_s,
-            args: [ "--tier", "essential" ],
             env: sidecar_env(tool_tier: "essential", server_name: "syrus-chat-sidecar"),
             alwaysLoad: true
           },
           "syrus-chat-deferred-sidecar" => {
             type: "stdio",
-            command: Rails.root.join("bin/syrus-chat-sidecar").to_s,
-            args: [ "--tier", "deferred" ],
+            command: Rails.root.join("bin/syrus-chat-deferred-sidecar").to_s,
             env: sidecar_env(tool_tier: "deferred", server_name: "syrus-chat-deferred-sidecar"),
             alwaysLoad: false
           }

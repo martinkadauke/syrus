@@ -33,9 +33,14 @@ SyrusSidecarBootstrap.open_chat_stderr!(
 
 begin
   require_relative "../config/environment"
+  require_relative "../app/services/syrus_chat_mcp/sidecar"
 
   sidecar_class = tier == "deferred" ? SyrusChatMcp::DeferredSidecar : SyrusChatMcp::Sidecar
   sidecar_class.new.run
+rescue SystemExit => e
+  raise unless e.success?
+
+  exit(e.status)
 rescue Exception => e # rubocop:disable Lint/RescueException
   session_id = ENV["SYRUS_CHAT_SESSION_ID"].to_s
   session_id = "(missing)" if session_id.empty?

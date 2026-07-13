@@ -36,6 +36,7 @@ RSpec.describe AgentProviders::Claude do
         "SYRUS_SQLITE" => "1",
         "SYRUS_DATA_ROOT" => "/home/rails/.syrus",
         "BUNDLE_PATH" => "/usr/local/bundle",
+        "PATH" => "/opt/ruby/bin:/usr/local/bin:/usr/bin:/bin",
         "GEM_HOME" => "/usr/local/bundle",
         "GEM_PATH" => "/usr/local/bundle",
         "BUNDLE_DEPLOYMENT" => "1",
@@ -99,6 +100,7 @@ RSpec.describe AgentProviders::Claude do
         "SYRUS_SQLITE" => "1",
         "SYRUS_DATA_ROOT" => "/home/rails/.syrus",
         "DATABASE_URL" => "sqlite3:///home/rails/.syrus/db/production.sqlite3",
+        "PATH" => "/opt/ruby/bin:/usr/local/bin:/usr/bin:/bin",
         "BUNDLE_WITHOUT" => "development:test",
         # Sidecar boots Rails production config; SYRUS_APP_HOST is
         # required at boot now that production has no baked-in host
