@@ -42,12 +42,14 @@ RSpec.describe ChatProviders::Codex do
           "syrus-chat-sidecar" => {
             type: "stdio",
             command: "/app/bin/syrus-chat-sidecar",
+            args: [ "--tier", "essential" ],
             env: { "SYRUS_CHAT_SESSION_ID" => chat.id.to_s },
             alwaysLoad: true
           },
           "syrus-chat-deferred-sidecar" => {
             type: "stdio",
-            command: "/app/bin/syrus-chat-deferred-sidecar",
+            command: "/app/bin/syrus-chat-sidecar",
+            args: [ "--tier", "deferred" ],
             env: { "SYRUS_CHAT_MCP_TOOL_TIER" => "deferred" },
             alwaysLoad: false
           }
@@ -87,11 +89,13 @@ RSpec.describe ChatProviders::Codex do
       expect(received[:mcp_servers]).to include(
         "syrus-chat-sidecar" => include(
           command: "/app/bin/syrus-chat-sidecar",
+          args: [ "--tier", "essential" ],
           env: { "SYRUS_CHAT_SESSION_ID" => chat.id.to_s },
           required: true
         ),
         "syrus-chat-deferred-sidecar" => include(
-          command: "/app/bin/syrus-chat-deferred-sidecar",
+          command: "/app/bin/syrus-chat-sidecar",
+          args: [ "--tier", "deferred" ],
           env: { "SYRUS_CHAT_MCP_TOOL_TIER" => "deferred" },
           required: false
         )

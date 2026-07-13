@@ -284,6 +284,7 @@ RSpec.describe ChatTurnJob do
       essential = config.dig("mcpServers", "syrus-chat-sidecar")
       deferred = config.dig("mcpServers", "syrus-chat-deferred-sidecar")
       expect(essential["command"]).to eq(Rails.root.join("bin/syrus-chat-sidecar").to_s)
+      expect(essential["args"]).to eq([ "--tier", "essential" ])
       expect(essential.dig("env", "SYRUS_CHAT_SESSION_ID")).to eq(chat.id.to_s)
       expect(essential.dig("env", "SYRUS_CHAT_CURRENT_MESSAGE_ID")).to eq(user_message.id.to_s)
       expect(essential.dig("env", "SYRUS_CHAT_MCP_TOOL_TIER")).to eq("essential")
@@ -291,7 +292,8 @@ RSpec.describe ChatTurnJob do
       expect(essential["env"]).to include(host_env)
       expect(essential["env"]).to include("GEM_HOME" => "/usr/local/bundle", "GEM_PATH" => "/usr/local/bundle")
       expect(essential["alwaysLoad"]).to eq(true)
-      expect(deferred["command"]).to eq(Rails.root.join("bin/syrus-chat-deferred-sidecar").to_s)
+      expect(deferred["command"]).to eq(Rails.root.join("bin/syrus-chat-sidecar").to_s)
+      expect(deferred["args"]).to eq([ "--tier", "deferred" ])
       expect(deferred.dig("env", "SYRUS_CHAT_SESSION_ID")).to eq(chat.id.to_s)
       expect(deferred.dig("env", "SYRUS_CHAT_CURRENT_MESSAGE_ID")).to eq(user_message.id.to_s)
       expect(deferred.dig("env", "SYRUS_CHAT_MCP_TOOL_TIER")).to eq("deferred")
@@ -1046,10 +1048,12 @@ RSpec.describe ChatTurnJob do
     expect(received[:mcp_servers]).to include(
       "syrus-chat-sidecar" => include(
         command: Rails.root.join("bin/syrus-chat-sidecar").to_s,
+        args: [ "--tier", "essential" ],
         required: true
       ),
       "syrus-chat-deferred-sidecar" => include(
-        command: Rails.root.join("bin/syrus-chat-deferred-sidecar").to_s,
+        command: Rails.root.join("bin/syrus-chat-sidecar").to_s,
+        args: [ "--tier", "deferred" ],
         required: false
       )
     )

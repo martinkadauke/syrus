@@ -239,13 +239,13 @@ RSpec.describe CodexInvocation do
           mcp_servers: {
             "syrus-chat-sidecar" => {
               command: "/app/bin/syrus-chat-sidecar",
-              args: [],
+              args: [ "--tier", "essential" ],
               env: { "SYRUS_CHAT_MCP_TOOL_TIER" => "essential" },
               required: true
             },
             "syrus-chat-deferred-sidecar" => {
-              command: "/app/bin/syrus-chat-deferred-sidecar",
-              args: [],
+              command: "/app/bin/syrus-chat-sidecar",
+              args: [ "--tier", "deferred" ],
               env: { "SYRUS_CHAT_MCP_TOOL_TIER" => "deferred" },
               required: false
             }
@@ -257,11 +257,13 @@ RSpec.describe CodexInvocation do
         config = File.read(File.join(home, "config.toml"))
         expect(config).to include("[mcp_servers.syrus-chat-sidecar]")
         expect(config).to include('command = "/app/bin/syrus-chat-sidecar"')
+        expect(config).to include('args = ["--tier", "essential"]')
         expect(config).to include("required = true")
         expect(config).to include("[mcp_servers.syrus-chat-sidecar.env]")
         expect(config).to include('SYRUS_CHAT_MCP_TOOL_TIER = "essential"')
         expect(config).to include("[mcp_servers.syrus-chat-deferred-sidecar]")
-        expect(config).to include('command = "/app/bin/syrus-chat-deferred-sidecar"')
+        expect(config).to include('command = "/app/bin/syrus-chat-sidecar"')
+        expect(config).to include('args = ["--tier", "deferred"]')
         expect(config).to include("required = false")
         expect(config).to include("[mcp_servers.syrus-chat-deferred-sidecar.env]")
         expect(config).to include('SYRUS_CHAT_MCP_TOOL_TIER = "deferred"')

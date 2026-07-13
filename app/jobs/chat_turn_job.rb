@@ -466,12 +466,14 @@ class ChatTurnJob < ApplicationJob
           "syrus-chat-sidecar" => {
             type: "stdio",
             command: Rails.root.join("bin/syrus-chat-sidecar").to_s,
+            args: [ "--tier", "essential" ],
             env: sidecar_env(tool_tier: "essential", server_name: "syrus-chat-sidecar"),
             alwaysLoad: true
           },
           "syrus-chat-deferred-sidecar" => {
             type: "stdio",
-            command: Rails.root.join("bin/syrus-chat-deferred-sidecar").to_s,
+            command: Rails.root.join("bin/syrus-chat-sidecar").to_s,
+            args: [ "--tier", "deferred" ],
             env: sidecar_env(tool_tier: "deferred", server_name: "syrus-chat-deferred-sidecar"),
             alwaysLoad: false
           }

@@ -26,6 +26,7 @@ module SyrusChatMcp
   #       "syrus-chat-sidecar": {
   #         "type": "stdio",
   #         "command": "/app/bin/syrus-chat-sidecar",
+  #         "args": ["--tier", "essential"],
   #         "env": {
   #           "SYRUS_CHAT_SESSION_ID": "123",
   #           "SYRUS_CHAT_MCP_TOOL_TIER": "essential",
@@ -35,7 +36,8 @@ module SyrusChatMcp
   #       },
   #       "syrus-chat-deferred-sidecar": {
   #         "type": "stdio",
-  #         "command": "/app/bin/syrus-chat-deferred-sidecar",
+  #         "command": "/app/bin/syrus-chat-sidecar",
+  #         "args": ["--tier", "deferred"],
   #         "env": {
   #           "SYRUS_CHAT_SESSION_ID": "123",
   #           "SYRUS_CHAT_MCP_TOOL_TIER": "deferred",
