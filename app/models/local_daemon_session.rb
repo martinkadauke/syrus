@@ -27,6 +27,16 @@ class LocalDaemonSession < ApplicationRecord
     tool_calls.where(state: "pending").order(:created_at)
   end
 
+  def dispatch_tool_call!(tool_name, arguments)
+    tool_calls.create!(
+      chat_session: chat_session,
+      tool_use_id: SecureRandom.uuid,
+      tool_name: tool_name,
+      tool_input: arguments,
+      state: "pending"
+    )
+  end
+
   def mark_connected!(repo:, branch:)
     now = Time.current
     update!(

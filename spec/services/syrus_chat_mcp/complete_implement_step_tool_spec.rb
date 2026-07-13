@@ -3,7 +3,9 @@ require "rails_helper"
 RSpec.describe SyrusChatMcp::CompleteImplementStepTool do
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user) }
-  let(:chat_session) { ChatSession.create!(user: user, repository: repository) }
+  let(:chat_session) { ChatSession.create!(user: user, repository: repository, mode: "coding") }
+
+  before { allow(StepDispatcher).to receive(:start_workflow) }
 
   def server
     MCP::Server.new(
@@ -27,33 +29,17 @@ RSpec.describe SyrusChatMcp::CompleteImplementStepTool do
     JSON.parse(response.dig(:result, :content, 0, :text), symbolize_names: true)
   end
 
-  it "creates a pending confirmation for a job attached to the chat session" do
-    job = Factories.job_record(repository: repository, state: "open")
-    chat_session.chat_attachments.create!(attachable: job)
+  it "exits local mode and enqueues a handoff workflow for a job with a PR" do
+    job = Factories.job_record(repository: repository, state: "implemented", branch_name: "syrus/job-1", pr_number: 10)
+    job.update_columns(linked_chat_id: chat_session.id, state: "coding")
 
     response = call_tool(job_id: job.id)
-    body = payload(response)
-    pending_action = chat_session.pending_actions.find(body[:pending_action_id])
+    result = payload(response)
 
     expect(response.dig(:result, :isError)).to be_falsey
-    expect(body).to include(state: "pending")
-    expect(body[:message]).to include("pending operator confirmation")
-    expect(pending_action).to have_attributes(
-      action: "complete_implement_step",
-      state: "pending",
-      requested_by: "agent"
-    )
-    expect(pending_action.payload).to eq("job_id" => job.id)
-  end
-
-  it "creates a pending confirmation for a job in the chat repository (not directly attached)" do
-    job = Factories.job_record(repository: repository, state: "open")
-
-    response = call_tool(job_id: job.id)
-    body = payload(response)
-
-    expect(response.dig(:result, :isError)).to be_falsey
-    expect(body[:pending_action_id]).to be_present
+    expect(result[:job_id]).to eq(job.id)
+    expect(job.reload.linked_chat_id).to be_nil
+    expect(StepDispatcher).to have_received(:start_workflow)
   end
 
   it "rejects an unknown job_id" do
@@ -63,22 +49,33 @@ RSpec.describe SyrusChatMcp::CompleteImplementStepTool do
     expect(response.dig(:result, :content, 0, :text)).to include("not found")
   end
 
-  it "dispatches a coding_handoff workflow on confirmation" do
-    feature = Feature.find_or_create_by!(slug: "coding_mode") do |record|
-      record.category = "Labs"
-      record.name = "Coding Mode"
-    end
-    feature.update!(enabled: true)
-    job = Factories.job_record(user: user, repository: repository, state: "coding",
-                               linked_chat_id: chat_session.id)
-    chat_session.chat_attachments.create!(attachable: job)
-    response = call_tool(job_id: job.id)
-    pending_action = chat_session.pending_actions.find(payload(response)[:pending_action_id])
+  it "rejects a job not in coding state" do
+    job = Factories.job_record(repository: repository, state: "implemented")
 
-    allow(StepDispatcher).to receive(:start_workflow)
-    expect { pending_action.confirm!(user: user) }.not_to raise_error
-    expect(pending_action.reload).to be_confirmed
-    expect(pending_action.result).to be_a(Workflow)
-    expect(pending_action.result.trigger_kind).to eq("coding_handoff")
+    response = call_tool(job_id: job.id)
+
+    expect(response.dig(:result, :isError)).to be(true)
+    expect(response.dig(:result, :content, 0, :text)).to include("not in coding state")
+  end
+
+  it "rejects a job linked to a different chat session" do
+    other_chat = ChatSession.create!(user: user, mode: "coding")
+    job = Factories.job_record(repository: repository, state: "implemented", pr_number: 5)
+    job.update_columns(linked_chat_id: other_chat.id, state: "coding")
+
+    response = call_tool(job_id: job.id)
+
+    expect(response.dig(:result, :isError)).to be(true)
+    expect(response.dig(:result, :content, 0, :text)).to include("not linked to this chat session")
+  end
+
+  it "requires branch_name for new jobs without a PR" do
+    job = Factories.job_record(repository: repository, state: "running", kind: "direct", issue_number: nil)
+    job.update_columns(linked_chat_id: chat_session.id, state: "coding", pr_number: nil, branch_name: nil)
+
+    response = call_tool(job_id: job.id)
+
+    expect(response.dig(:result, :isError)).to be(true)
+    expect(response.dig(:result, :content, 0, :text)).to include("branch_name is required")
   end
 end

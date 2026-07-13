@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_13_021344) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -269,7 +269,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
     t.string "local_daemon_branch"
     t.string "local_daemon_repo"
     t.string "local_daemon_state"
-    t.string "mode", default: "planning", null: false
+    t.string "mode"
     t.boolean "onboarding", default: false, null: false
     t.boolean "pinned", default: false, null: false
     t.text "pinned_context"
@@ -625,10 +625,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
     t.string "kind", default: "issue", null: false
     t.text "landing_failure_reason"
     t.string "last_ci_handled_sha"
-    t.bigint "linked_chat_id"
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
     t.datetime "last_seen_fork_review_comment_at"
+    t.bigint "linked_chat_id"
     t.string "local_mergeability_base_sha"
     t.datetime "local_mergeability_checked_at"
     t.string "local_mergeability_head_sha"
@@ -723,7 +723,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
     t.index ["tool_use_id"], name: "index_local_tool_calls_on_tool_use_id"
   end
 
-
   create_table "local_tunnel_sessions", force: :cascade do |t|
     t.string "branch"
     t.integer "chat_session_id"
@@ -768,7 +767,6 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_12_202210) do
     t.index ["run_id"], name: "index_main_concern_reports_on_run_id"
     t.index ["workflow_id"], name: "index_main_concern_reports_on_workflow_id"
   end
-
 
   create_table "merge_train_members", force: :cascade do |t|
     t.datetime "created_at", null: false

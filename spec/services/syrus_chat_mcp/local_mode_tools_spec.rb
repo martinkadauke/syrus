@@ -6,8 +6,7 @@ RSpec.describe "Local Mode MCP tools" do
   let(:daemon_session) do
     chat_session.create_local_daemon_session!(
       user: user,
-      auth_token: "tok",
-      connected_at: Time.current
+      auth_token: "tok"
     )
   end
 
@@ -41,7 +40,8 @@ RSpec.describe "Local Mode MCP tools" do
     end
 
     it "returns an error when the daemon session is not connected" do
-      chat_session.create_local_daemon_session!(user: user, auth_token: "tok")
+      session = chat_session.create_local_daemon_session!(user: user, auth_token: "tok")
+      session.update!(disconnected_at: Time.current)
       server = server_with(described_class)
 
       response = call_tool(server, tool_name, arguments)
