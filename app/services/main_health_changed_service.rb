@@ -10,6 +10,10 @@ class MainHealthChangedService
     new(repository).recovered!
   end
 
+  def self.fix_main_job?(job)
+    job.direct? && job.issue_title == FIX_MAIN_TITLE
+  end
+
   def initialize(repository)
     @repository = repository
   end
