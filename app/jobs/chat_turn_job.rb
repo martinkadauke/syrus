@@ -577,7 +577,14 @@ class ChatTurnJob < ApplicationJob
     content = { text: chunk.to_s }
     return content unless mcp_servers.present?
 
-    content.merge(mcp_health: mcp_health_for(mcp_servers))
+    stderr = mcp_stderr_for(mcp_servers)
+    content = content.merge(mcp_health: mcp_health_for(mcp_servers))
+    return content if stderr.blank?
+
+    content.merge(
+      text: "#{chunk}\n\n[mcp_sidecar_stderr]\n#{stderr}",
+      mcp_sidecar_stderr: stderr
+    )
   end
 
   def mcp_health_for(servers)
@@ -602,6 +609,25 @@ class ChatTurnJob < ApplicationJob
     return SyrusChatMcp::DeferredSidecar.tool_names(@chat) if name == "syrus-chat-deferred-sidecar"
 
     []
+  end
+
+  def mcp_stderr_for(servers)
+    Array(servers).filter_map do |server|
+      status = server["status"].to_s
+      next unless mcp_unavailable?(status)
+
+      name = server["name"].to_s
+      next if name.blank?
+
+      stderr = McpSidecarLog.tail_chat(
+        @chat.id,
+        message_id: @user_message.id,
+        server_name: name
+      )
+      next if stderr.blank?
+
+      "#{name}:\n#{stderr}"
+    end.join("\n\n")
   end
 
   def mcp_available?(status)

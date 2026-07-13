@@ -14,6 +14,12 @@ RSpec.describe McpSidecarLog do
 
       expect(path.to_s).to end_with("/mcp-sidecar-logs/run-42.stderr.log")
     end
+
+    it "returns a sanitized chat sidecar path" do
+      path = described_class.chat_path_for(76, message_id: 24890, server_name: "syrus/chat sidecar")
+
+      expect(path.to_s).to end_with("/mcp-sidecar-logs/chat-76-message-24890-syrus_chat_sidecar.stderr.log")
+    end
   end
 
   describe ".root" do
@@ -41,6 +47,19 @@ RSpec.describe McpSidecarLog do
         result = described_class.tail(1)
 
         expect(result).to eq("sidecar started\nsome output\n")
+      end
+    end
+
+    it "returns chat sidecar log content" do
+      Dir.mktmpdir do |dir|
+        ENV["SYRUS_DATA_ROOT"] = dir
+        log_dir = Pathname.new(dir).join("mcp-sidecar-logs")
+        log_dir.mkpath
+        log_dir.join("chat-76-message-24890-syrus-chat-sidecar.stderr.log").write("chat sidecar failed\n")
+
+        result = described_class.tail_chat(76, message_id: 24890, server_name: "syrus-chat-sidecar")
+
+        expect(result).to eq("chat sidecar failed\n")
       end
     end
 

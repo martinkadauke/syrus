@@ -1388,6 +1388,41 @@ RSpec.describe ChatTurnJob do
     )
   end
 
+  it "attaches failed MCP sidecar stderr to unavailable MCP health messages" do
+    Dir.mktmpdir("syrus-mcp-sidecar-logs") do |dir|
+      saved_data_root = ENV["SYRUS_DATA_ROOT"]
+      ENV["SYRUS_DATA_ROOT"] = dir
+      path = McpSidecarLog.chat_path_for(
+        chat.id,
+        message_id: user_message.id,
+        server_name: "syrus-chat-sidecar"
+      )
+      path.dirname.mkpath
+      path.write("boot failed\nstack line\n")
+
+      ChatTurnJob.agent_runner = ->(log_sink:, **_) {
+        log_sink.call(
+          "[mcp_servers] syrus-chat-sidecar=failed",
+          kind: "system",
+          mcp_servers: [
+            { "name" => "syrus-chat-sidecar", "status" => "failed" }
+          ]
+        )
+        result_fixture(session_id: "chat-session-1", transcript_jsonl: "x")
+      }
+
+      described_class.perform_now(chat.id, user_message.id)
+
+      message = chat.messages.where(role: "system").order(:id).last
+      expect(message.content["text"]).to include("[mcp_sidecar_stderr]")
+      expect(message.content["mcp_sidecar_stderr"]).to include(
+        "syrus-chat-sidecar:\nboot failed\nstack line\n"
+      )
+    ensure
+      ENV["SYRUS_DATA_ROOT"] = saved_data_root
+    end
+  end
+
   it "maps MCP server names to advertised chat tool names" do
     job = described_class.new
     job.instance_variable_set(:@chat, chat)

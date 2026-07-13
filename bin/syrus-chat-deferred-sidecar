@@ -11,6 +11,29 @@ ENV["SYRUS_CHAT_MCP_SIDECAR"] = "1"
 ENV.delete("SYRUS_ROLE")
 %w[BUNDLE_APP_CONFIG BUNDLE_USER_HOME BUNDLE_USER_CACHE BUNDLE_BIN_PATH RUBYOPT].each { |key| ENV.delete(key) }
 
+require "fileutils"
+
+chat_session_id = ENV["SYRUS_CHAT_SESSION_ID"].to_s
+current_message_id = ENV["SYRUS_CHAT_CURRENT_MESSAGE_ID"].to_s
+server_name = ENV["SYRUS_CHAT_MCP_SERVER_NAME"].to_s
+server_name = "syrus-chat-deferred-sidecar" if server_name.empty?
+
+begin
+  if chat_session_id.match?(/\A\d+\z/) && current_message_id.match?(/\A\d+\z/)
+    data_root = ENV["SYRUS_DATA_ROOT"].to_s.empty? ? File.expand_path("~/.syrus") : ENV["SYRUS_DATA_ROOT"]
+    log_dir = File.join(data_root, "mcp-sidecar-logs")
+    FileUtils.mkdir_p(log_dir)
+    safe_server_name = server_name.gsub(/[^A-Za-z0-9_.-]/, "_")
+    stderr_path = File.join(log_dir, "chat-#{chat_session_id}-message-#{current_message_id}-#{safe_server_name}.stderr.log")
+    ENV["SYRUS_CHAT_MCP_SIDECAR_STDERR_LOG"] = stderr_path
+    STDERR.reopen(stderr_path, "w")
+    STDERR.sync = true
+    warn "[#{Time.now.utc.strftime('%Y-%m-%dT%H:%M:%SZ')}] starting #{server_name} pid=#{Process.pid} chat_session_id=#{chat_session_id} message_id=#{current_message_id}"
+  end
+rescue StandardError => e
+  warn "[#{server_name}] failed to open stderr log: #{e.class}: #{e.message}"
+end
+
 begin
   require_relative "../config/environment"
 
