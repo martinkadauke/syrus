@@ -67,9 +67,31 @@ RSpec.describe Workflows::MainGrader do
     let(:workflow) { described_class.instantiate(job: job, artifacts: { "main_sha" => sha }) }
 
     it "updates grader_health to broken" do
+      create_failed_required_grader!(workflow)
+
       described_class.after_fail(workflow)
 
       expect(repository.reload.grader_health).to eq("broken")
+    end
+
+    it "records the failing grader names in the health-check history" do
+      create_failed_required_grader!(workflow, name: "rspec")
+
+      described_class.after_fail(workflow)
+
+      check = MainBranchHealthCheck.last
+      expect(check.source).to eq("grader_workflow")
+      expect(check.grader_health).to eq("broken")
+      expect(check.grader_failed_names).to eq([ "rspec" ])
+    end
+
+    it "does not mark grader_health broken when setup fails before graders run" do
+      repository.update!(grader_health: "healthy", ci_health: "healthy")
+
+      expect(MainHealthChangedService).not_to receive(:on_health_change!)
+      described_class.after_fail(workflow)
+
+      expect(repository.reload.grader_health).to eq("healthy")
     end
 
     it "closes the anchor Job" do
@@ -80,6 +102,7 @@ RSpec.describe Workflows::MainGrader do
 
     it "calls MainHealthChangedService when health transitions to broken" do
       repository.update!(grader_health: "healthy", ci_health: "healthy")
+      create_failed_required_grader!(workflow)
 
       expect(MainHealthChangedService).to receive(:on_health_change!).with(kind_of(Repository))
       described_class.after_fail(workflow)
@@ -87,9 +110,23 @@ RSpec.describe Workflows::MainGrader do
 
     it "does not call MainHealthChangedService when grader_health was already broken" do
       repository.update!(grader_health: "broken")
+      create_failed_required_grader!(workflow)
 
       expect(MainHealthChangedService).not_to receive(:on_health_change!)
       described_class.after_fail(workflow)
     end
+  end
+
+  def create_failed_required_grader!(workflow, name: "rspec")
+    workflow.steps.create!(
+      kind: "grader",
+      position: 1,
+      state: "failed",
+      details: {
+        "name" => name,
+        "required" => true,
+        "exit_code" => 1
+      }
+    )
   end
 end

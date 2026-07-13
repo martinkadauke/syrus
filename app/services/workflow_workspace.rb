@@ -197,6 +197,13 @@ class WorkflowWorkspace
       env: @env
     )
 
+    @git.run("remote", "set-url", "origin", @repository.remote_url, chdir: path.to_s)
+
+    if @job.main_grader?
+      checkout_main_sha!
+      return
+    end
+
     # Check whether the target branch already exists on origin
     # (follow-up Workflows on a Job that already has a branch from
     # a prior Initial). Use the authenticated URL — ls-remote
@@ -207,8 +214,6 @@ class WorkflowWorkspace
       "refs/heads/#{@branch_name}",
       chdir: path.to_s, env: @env
     )
-
-    @git.run("remote", "set-url", "origin", @repository.remote_url, chdir: path.to_s)
 
     if remote_ref.strip.present?
       @git.run(

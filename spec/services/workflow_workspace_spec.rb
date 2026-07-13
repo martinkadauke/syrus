@@ -238,6 +238,28 @@ RSpec.describe WorkflowWorkspace do
         head_branch = `git -C #{ws.path} rev-parse --abbrev-ref HEAD`.strip
         expect(head_branch).to eq("syrus/issue-7-#{job.id}")
       end
+
+      it "checks out a main_grader workflow at the captured default-branch SHA" do
+        main_sha = sh("git --git-dir=#{bare_remote_dir} rev-parse main").strip
+        main_grader_job = Job.create!(
+          user: user,
+          repository: repository,
+          kind: "main_grader",
+          issue_title: "main_grader:#{main_sha}",
+          issue_number: nil
+        )
+        main_grader_workflow = Workflow.create!(
+          job: main_grader_job,
+          trigger_kind: "main_grader",
+          artifacts: { "main_sha" => main_sha }
+        )
+
+        ws = described_class.new(main_grader_workflow)
+        expect { ws.setup }.not_to raise_error
+
+        expect(sh("git -C #{ws.path} rev-parse HEAD").strip).to eq(main_sha)
+        expect(sh("git -C #{ws.path} rev-parse --abbrev-ref HEAD").strip).to eq("HEAD")
+      end
     end
 
     context "idempotent re-setup (retry within a step)" do

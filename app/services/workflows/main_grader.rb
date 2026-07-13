@@ -23,19 +23,50 @@ module Workflows
     end
 
     def self.after_fail(workflow)
-      update_grader_health!(workflow, "broken")
+      failed_names = failed_required_grader_names(workflow)
+
+      if failed_names.any?
+        update_grader_health!(workflow, "broken", failed_names)
+      else
+        Rails.logger.warn(
+          "[Workflows::MainGrader] Workflow ##{workflow.id} failed before required graders reported failures; " \
+          "leaving #{workflow.job.repository.slug} grader_health=#{workflow.job.repository.grader_health}"
+        )
+        close_anchor_job!(workflow)
+      end
     end
 
-    private_class_method def self.update_grader_health!(workflow, health)
+    private_class_method def self.update_grader_health!(workflow, health, failed_names = nil)
       repository = workflow.job.repository
       previous_health = repository.main_health
       repository.update!(grader_health: health)
+      MainBranchHealthCheck.record_grader_workflow(
+        repository: repository,
+        sha: workflow.artifact("main_sha").to_s.presence || "unknown",
+        grader_health: health,
+        grader_failed_names: failed_names
+      )
       repository.reload
 
       if repository.main_health != previous_health
         MainHealthChangedService.on_health_change!(repository)
       end
 
+      close_anchor_job!(workflow)
+    end
+
+    private_class_method def self.failed_required_grader_names(workflow)
+      workflow.steps
+              .where(kind: "grader", state: "failed")
+              .filter_map do |step|
+                details = step.details || {}
+                next unless details["required"]
+
+                details["name"].presence || "unnamed"
+              end
+    end
+
+    private_class_method def self.close_anchor_job!(workflow)
       StateTransition.with_source("system") do
         job = workflow.job
         job.close! if job.may_close?
