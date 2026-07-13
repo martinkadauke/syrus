@@ -24,6 +24,7 @@ module Steps
   # failed, and increments the Workflow's failure_count.
   class Base
     class StepFailed < StandardError; end
+    DEFAULT_AGENT_RESUME = Object.new.freeze
 
     # Shared buffering thresholds — used by buffered_log_sink (agent
     # output) and by Prepare#stream_buffered (shell command output).
@@ -135,17 +136,18 @@ module Steps
     # one is available. Streams transcript chunks into JobLog,
     # captures the new session transcript on success, raises StepFailed
     # on any of the non-success outcomes.
-    def run_agent(prompt:, max_turns: nil)
+    def run_agent(prompt:, max_turns: nil, resume_session_id: DEFAULT_AGENT_RESUME)
       prompt = AgentEnvironmentSnapshot.new(run: run, workspace_path: workspace.path).apply_to(prompt)
       prompt = JobAttachmentContext.new(job: job, workspace_path: workspace.path).apply_to(prompt)
+      adapter = resume_session_id.equal?(DEFAULT_AGENT_RESUME) ? agent_adapter : agent_adapter_for(resume_session_id)
       sink, flush = buffered_log_sink
       begin
-        result = agent_adapter.run(prompt: prompt, log_sink: sink, max_turns: max_turns)
+        result = adapter.run(prompt: prompt, log_sink: sink, max_turns: max_turns)
       ensure
         flush.call
       end
 
-      agent_adapter.record_result!(result, log: ->(message) { log(message) })
+      adapter.record_result!(result, log: ->(message) { log(message) })
       capture_mcp_sidecar_stderr if result.outcome == "mcp_sidecar_failed"
 
       raise StepFailed, "agent timed out"                            if result.timed_out
@@ -162,10 +164,14 @@ module Steps
     end
 
     def agent_adapter
-      @agent_adapter ||= AgentProviders.for(agent_provider).new(
+      @agent_adapter ||= agent_adapter_for(parent_session_id)
+    end
+
+    def agent_adapter_for(resume_session_id)
+      AgentProviders.for(agent_provider).new(
         run: run,
         workspace: workspace,
-        parent_session_id: parent_session_id
+        parent_session_id: resume_session_id
       )
     end
 

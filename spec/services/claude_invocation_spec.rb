@@ -326,11 +326,13 @@ RSpec.describe ClaudeInvocation do
         total_cost_usd: 0.05, usage: {} }.to_json
     end
 
-    def stub_process_runner(runner_result, emit_line: nil)
+    def stub_process_runner(runner_result, emit_line: nil, emit_lines: nil)
       allow(ProcessRunner).to receive(:new) do |**kwargs|
         fake = double("ProcessRunner")
         allow(fake).to receive(:run) do
-          kwargs[:on_output_line]&.call(emit_line) if emit_line
+          Array(emit_lines || emit_line).compact.each do |line|
+            kwargs[:on_output_line]&.call(line)
+          end
           runner_result
         end
         fake
@@ -351,7 +353,7 @@ RSpec.describe ClaudeInvocation do
       )
     end
 
-    let(:null_sink) { ->(_chunk, **) {} }
+    let(:null_sink) { ->(_chunk, **) { } }
 
     it "treats a silent timeout after a successful provider result as cleanup overhead" do
       invocation = described_class.new("/tmp", prompt: "x", oauth_token: "x", log_sink: null_sink)
@@ -399,6 +401,33 @@ RSpec.describe ClaudeInvocation do
       expect(result).not_to be_success
       expect(result.timed_out).to be true
       expect(result.is_error).to be true
+    end
+
+    it "preserves a streamed API error when Claude later emits an error result with subtype success" do
+      api_error_line = {
+        type: "assistant",
+        isApiErrorMessage: true,
+        message: {
+          content: [
+            { type: "text", text: "Prompt is too long" }
+          ]
+        }
+      }.to_json
+      result_line = {
+        type: "result",
+        num_turns: 3,
+        is_error: true,
+        subtype: "success",
+        usage: {}
+      }.to_json
+      invocation = described_class.new("/tmp", prompt: "x", oauth_token: "x", log_sink: null_sink)
+      stub_process_runner(silent_timeout_result, emit_lines: [ api_error_line, result_line ])
+
+      result = invocation.run
+
+      expect(result).not_to be_success
+      expect(result.is_error).to be true
+      expect(result.outcome).to eq("api_error")
     end
   end
 

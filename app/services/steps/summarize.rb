@@ -27,7 +27,19 @@ module Steps
 
       log("invoking agent for summarize step (#{workflow.slug}, --resume from implement)")
 
-      run_agent(prompt: run.prompt, max_turns: SUMMARIZE_TURN_BUDGET)
+      begin
+        run_agent(prompt: run.prompt, max_turns: SUMMARIZE_TURN_BUDGET)
+      rescue StepFailed => e
+        raise unless prompt_too_long_failure?(e)
+
+        log("summarize resume prompt was too large; retrying summary without --resume")
+        run.update!(agent_pr_title: nil, agent_pr_body: nil, agent_summary: nil)
+        run_agent(
+          prompt: fallback_prompt,
+          max_turns: SUMMARIZE_TURN_BUDGET,
+          resume_session_id: nil
+        )
+      end
 
       promote_artifacts!
       rewrite_implement_commit_message!
@@ -57,6 +69,31 @@ module Steps
 
     def missing_required_implement_run?
       workflow.steps.exists?(kind: "implement") && successful_implement_run.blank?
+    end
+
+    def prompt_too_long_failure?(error)
+      return true if error.message.match?(/prompt is too long/i)
+
+      run.job_logs
+        .order(sequence: :desc)
+        .limit(25)
+        .pluck(:chunk)
+        .any? { |chunk| chunk.to_s.match?(/prompt is too long/i) }
+    end
+
+    def fallback_prompt
+      Prompts::SummarizeFallback.new(
+        issue: fallback_issue,
+        diff: fallback_diff
+      ).to_s
+    end
+
+    def fallback_issue
+      job.synthetic_issue || Struct.new(:title, :body).new(job.title, job.issue_body.to_s)
+    end
+
+    def fallback_diff
+      successful_implement_run&.agent_diff.presence || diff_against_default
     end
 
     def promote_artifacts!(from: nil)

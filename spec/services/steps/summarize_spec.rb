@@ -110,6 +110,42 @@ RSpec.describe Steps::Summarize do
   end
 
   describe "commit message rewrite" do
+    it "retries summarize without --resume when the resumed prompt is too large" do
+      implement_step = Step.create!(workflow: workflow, kind: "implement", position: 0, next_step_id: step.id)
+      implement_run = Run.create!(
+        job: job,
+        step: implement_step,
+        trigger_kind: "initial",
+        state: "succeeded",
+        agent_diff: "diff --git a/feature.rb b/feature.rb\n+def greet = 'hi'\n"
+      )
+      ClaudeSession.create!(resumable: implement_run, session_id: "S-implement", transcript_jsonl: "{}\n")
+
+      calls = []
+      allow(handler).to receive(:run_agent) do |prompt:, **kwargs|
+        calls << { prompt: prompt, kwargs: kwargs }
+        if calls.size == 1
+          JobLog.append!(run: run, chunk: "Claude API error: Prompt is too long", kind: "system")
+          raise Steps::Base::StepFailed, "agent reported api_error"
+        end
+
+        expect(kwargs[:resume_session_id]).to be_nil
+        expect(prompt).to include("original agent session was too large to resume")
+        expect(prompt).to include("def greet = 'hi'")
+        run.update!(
+          agent_pr_title: "Add greeting helper",
+          agent_pr_body: "Summarized from the bounded implementation diff.",
+          agent_summary: "Added a greeting helper."
+        )
+      end
+
+      handler.call
+
+      expect(calls.size).to eq(2)
+      expect(workflow.reload.artifact("pr_title")).to eq("Add greeting helper")
+      expect(run.job_logs.pluck(:chunk).join("\n")).to include("retrying summary without --resume")
+    end
+
     it "amends the placeholder commit subject to the agent-authored pr_title" do
       stub_agent(title: "Add greeting helper", body: "Adds a tiny helper.")
       handler.call

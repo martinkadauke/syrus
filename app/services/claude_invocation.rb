@@ -114,7 +114,11 @@ class ClaudeInvocation
         update = process_event(line, log_sink)
         if update
           mcp_server_failed = true if update.delete(:mcp_server_failed)
-          metadata.merge!(update.compact)
+          update = update.compact
+          if update[:is_error] && update[:outcome] == "success"
+            update[:outcome] = metadata[:outcome].presence || "api_error"
+          end
+          metadata.merge!(update)
         end
       end
     ).run
