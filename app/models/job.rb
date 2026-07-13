@@ -203,14 +203,14 @@ class Job < ApplicationRecord
     state :queued
     state :running
     state :implemented
+    # Coding/Local Mode state: the job's implement step is owned by a chat session.
+    # Automation is blocked while this state is active; linked_chat_id identifies
+    # the owning session. Exit via release_from_coding/exit_local_mode (→ implemented) or close.
+    state :coding
     state :failed
     state :approved
     state :landing
     state :closed
-    # Coding Mode state: the job's implement step is owned by a chat session.
-    # Automation is blocked while this state is active; linked_chat_id identifies
-    # the owning session. Exit via release_from_coding (→ implemented) or close.
-    state :coding
 
     event :advance_after_triage do
       transitions from: :triaging, to: :blocked_by_epic, guard: :blocked_by_epic_before_execution?
@@ -265,6 +265,19 @@ class Job < ApplicationRecord
     # Goes back to :queued so a new workflow can be instantiated.
     event :retry_after_failure do
       transitions from: :failed, to: :queued
+    end
+
+    # Operator takes over a Job from the Local Mode chat. Acquires the coding
+    # session on this Job, linking it to the chat so the agent can commit and
+    # trigger graders via complete_implement_step.
+    event :enter_local_mode do
+      transitions from: :implemented, to: :coding
+    end
+
+    # Completes or cancels a local-mode coding session, returning the Job to
+    # :implemented so it can be approved/re-edited normally.
+    event :exit_local_mode do
+      transitions from: :coding, to: :implemented
     end
 
     event :approve, before: :assign_approval_metadata do

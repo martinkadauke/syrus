@@ -92,6 +92,8 @@ Rails.application.routes.draw do
         post "jobs/:job_id/unapprove", to: "job_lifecycle#unapprove", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/reopen", to: "job_lifecycle#reopen", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/open_in_coding_mode", to: "job_coding_mode#open", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        post "jobs/:job_id/open_in_local_mode", to: "job_lifecycle#open_in_local_mode", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
+        post "jobs/:job_id/cancel_local_mode", to: "job_lifecycle#cancel_local_mode", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:id/chat_feedback", to: "jobs#chat_feedback", constraints: { id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:job_id/pending_feedback", to: "pending_feedback#index", constraints: { job_id: /[a-zA-Z0-9_-]+/ }
         post "jobs/:job_id/pending_feedback/:id/apply", to: "pending_feedback#apply", constraints: { job_id: /[a-zA-Z0-9_-]+/, id: /\d+/ }
@@ -153,6 +155,9 @@ Rails.application.routes.draw do
         get "chats/:chat_id/whiteboard_snapshots", to: "whiteboard_snapshots#index", constraints: { chat_id: /\d+/ }
         post "chats/:chat_id/whiteboard_snapshots", to: "whiteboard_snapshots#create", constraints: { chat_id: /\d+/ }
         post "chats/:chat_id/video_walkthroughs", to: "video_walkthroughs#create", constraints: { chat_id: /\d+/ }
+        get  "chats/:chat_id/local_daemon_session", to: "local_daemon_sessions#show",    constraints: { chat_id: /\d+/ }
+        post "chats/:chat_id/local_daemon_session", to: "local_daemon_sessions#create",   constraints: { chat_id: /\d+/ }
+        delete "chats/:chat_id/local_daemon_session", to: "local_daemon_sessions#destroy", constraints: { chat_id: /\d+/ }
         post "video_walkthroughs/:id/retry", to: "video_walkthroughs#retry", constraints: { id: /\d+/ }
         get "chats/:chat_id/whiteboard_snapshots/:id", to: "whiteboard_snapshots#show", constraints: { chat_id: /\d+/, id: /\d+/ }
         patch "chats/:id/mark_read", to: "chats#mark_read", constraints: { id: /\d+/ }
@@ -174,6 +179,7 @@ Rails.application.routes.draw do
         delete "chats/:id/scratchpad_items/:item_id", to: "chats#destroy_scratchpad_item", constraints: { id: /\d+/, item_id: /\d+/ }
         post "chats/:id/agent_questions/:agent_question_id/answer", to: "chats#answer_agent_question", constraints: { id: /\d+/, agent_question_id: /\d+/ }
         post "chats/:id/stop", to: "chats#stop", constraints: { id: /\d+/ }
+        post "chats/:id/daemon_connection", to: "chats#daemon_connection", constraints: { id: /\d+/ }
         post "chats/:id/switch_provider", to: "chats#switch_provider", constraints: { id: /\d+/ }
         post "chats/:id/bookmarks", to: "chats#create_bookmark", constraints: { id: /\d+/ }
         post "chats/:id/attachments", to: "chats#add_attachment", constraints: { id: /\d+/ }

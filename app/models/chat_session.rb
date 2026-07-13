@@ -2,6 +2,8 @@ class ChatSession < ApplicationRecord
   MESSAGE_PAGE_SIZE = 30
   TITLE_MAX_LENGTH = 120
   SUGGESTED_NEXT_STEP_MAX_BYTES = 200
+  MODES = %w[planning coding local].freeze
+  DAEMON_STATES = %w[connected disconnected].freeze
 
   belongs_to :user
 
@@ -51,6 +53,7 @@ class ChatSession < ApplicationRecord
   has_one :claude_session, as: :resumable, dependent: :destroy
   has_one :whiteboard, dependent: :destroy
   has_one :linked_job, class_name: "Job", foreign_key: :linked_chat_id, inverse_of: :linked_chat, dependent: :nullify
+  has_one :local_daemon_session, dependent: :destroy
 
   after_update_commit :broadcast_header, if: :header_previously_changed?
   after_create :attach_initial_repository
@@ -72,14 +75,14 @@ class ChatSession < ApplicationRecord
             numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :cumulative_cost_usd,
             numericality: { greater_than_or_equal_to: 0 }
-  MODES = %w[ planning coding ].freeze
-
-  enum :mode, { planning: "planning", coding: "coding" }, default: "planning"
+  enum :mode, { planning: "planning", coding: "coding", local: "local" }, validate: { allow_nil: true }
 
   validates :chat_provider, inclusion: { in: User::CHAT_PROVIDERS }, allow_nil: true
+  validates :local_daemon_state, inclusion: { in: DAEMON_STATES }, allow_nil: true
   validates :share_token, uniqueness: true, allow_nil: true
 
   normalizes :chat_provider, with: ->(value) { value.to_s.strip.presence }
+  normalizes :mode, with: ->(value) { value.to_s.strip.presence }
 
   scope :attached_to_repository, ->(repository) {
     joins(:chat_attachments)
@@ -226,6 +229,10 @@ class ChatSession < ApplicationRecord
           title_pending: title_pending?,
           pinned_context: pinned_context,
           chat_provider: effective_chat_provider,
+          mode: mode,
+          local_daemon_state: local_daemon_state,
+          local_daemon_repo: local_daemon_repo,
+          local_daemon_branch: local_daemon_branch,
           repository: repository ? { id: repository.id, slug: repository.slug } : nil,
           stop_requested_at: stop_requested_at&.iso8601,
           cumulative_input_tokens: cumulative_input_tokens.to_i,
@@ -255,6 +262,28 @@ class ChatSession < ApplicationRecord
 
     update!(suggested_next_step: nil)
     broadcast_app_suggestion_update
+  end
+
+  def broadcast_daemon_status(status, repo: nil, branch: nil)
+    payload = {
+      action: "update_daemon_status",
+      daemon_connected: daemon_connected?,
+      daemon_status: status,
+      daemon_repo: repo || daemon_repo,
+      daemon_branch: branch || daemon_branch
+    }
+    AppEvents.broadcast(
+      user: user,
+      type: "updated",
+      resource: "chat",
+      id: id,
+      changed: [ "daemon" ],
+      payload: payload
+    )
+  end
+
+  def daemon_connected?
+    daemon_connected
   end
 
   def broadcast_app_suggestion_update
@@ -297,6 +326,9 @@ class ChatSession < ApplicationRecord
       saved_change_to_pinned_context? ||
       saved_change_to_chat_provider? ||
       saved_change_to_mode? ||
+      saved_change_to_local_daemon_state? ||
+      saved_change_to_local_daemon_repo? ||
+      saved_change_to_local_daemon_branch? ||
       saved_change_to_cumulative_input_tokens? ||
       saved_change_to_cumulative_output_tokens? ||
       saved_change_to_cumulative_cost_usd? ||

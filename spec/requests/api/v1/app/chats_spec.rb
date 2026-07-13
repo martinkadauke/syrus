@@ -864,6 +864,65 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(chat.reload.chat_provider).to be_nil
   end
 
+  it "updates chat mode to planning or coding and returns it in the payload" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository)
+    Feature.find_or_create_by!(slug: "coding_mode") { |f| f.category = "Labs"; f.name = "Coding Mode" }.update!(enabled: true)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "planning" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.mode).to eq("planning")
+    expect(parse_body.dig("chat", "mode")).to eq("planning")
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "coding" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.mode).to eq("coding")
+    expect(parse_body.dig("chat", "mode")).to eq("coding")
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.mode).to be_nil
+    expect(parse_body.dig("chat", "mode")).to be_nil
+  end
+
+  it "rejects local mode when the local_mode feature flag is off" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "local" } }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to eq("Local mode is not enabled.")
+    expect(chat.reload.mode).to be_nil
+  end
+
+  it "accepts local mode when the local_mode feature flag is on" do
+    sign_in_as(user)
+    Feature.create!(slug: "local_mode", category: "Labs", name: "Local Mode", enabled: true)
+    chat = ChatSession.create!(user: user, repository: repository)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "local" } }
+
+    expect(response).to have_http_status(:ok)
+    expect(chat.reload.mode).to eq("local")
+    expect(parse_body.dig("chat", "mode")).to eq("local")
+    expect(parse_body["local_mode_enabled"]).to eq(true)
+  end
+
+  it "rejects an unknown mode value" do
+    sign_in_as(user)
+    chat = ChatSession.create!(user: user, repository: repository)
+
+    patch "/api/v1/app/chats/#{chat.id}", params: { chat: { mode: "turbo" } }
+
+    expect(response).to have_http_status(:unprocessable_content)
+    expect(parse_body.dig("error", "message")).to include("Invalid mode")
+    expect(chat.reload.mode).to be_nil
+  end
+
   it "enqueues title generation when an unstarted chat receives its first message" do
     sign_in_as(user)
 
@@ -1189,13 +1248,13 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
     expect(parse_body["walkthroughs_enabled"]).to eq(true)
   end
 
-  it "includes the chat mode in the payload and defaults to planning" do
+  it "includes the chat mode in the payload (nil when not set)" do
     sign_in_as(user)
     chat = ChatSession.create!(user: user)
 
     get "/api/v1/app/chats/#{chat.id}"
 
-    expect(parse_body.dig("chat", "mode")).to eq("planning")
+    expect(parse_body.dig("chat", "mode")).to be_nil
   end
 
   it "reports coding_mode_enabled false by default" do
@@ -1263,7 +1322,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
 
       expect(response).to have_http_status(:unprocessable_entity)
       expect(parse_body.dig("error", "code")).to eq("feature_disabled")
-      expect(chat.reload.mode).to eq("planning")
+      expect(chat.reload.mode).to be_nil
     end
 
     it "rejects unknown mode values" do
@@ -3136,6 +3195,79 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
       post "/api/v1/app/chats/#{chat.id}/switch_provider", params: { provider: "claude" }
 
       expect(response).to have_http_status(:not_found)
+    end
+  end
+
+  describe "POST /api/v1/app/chats/:id/daemon_connection" do
+    let(:chat) { ChatSession.create!(user: user, mode: "local") }
+
+    def enable_local_mode
+      Feature.find_or_initialize_by(slug: "local_mode")
+             .update!(category: "Labs", name: "Local Mode", enabled: true)
+    end
+
+    it "returns 401 when not signed in" do
+      post "/api/v1/app/chats/#{chat.id}/daemon_connection", params: { state: "connected" }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "returns 403 when local mode is not enabled" do
+      sign_in_as(user)
+
+      post "/api/v1/app/chats/#{chat.id}/daemon_connection", params: { state: "connected" }
+
+      expect(response).to have_http_status(:forbidden)
+      expect(parse_body.dig("error", "code")).to eq("forbidden")
+    end
+
+    it "returns 422 when chat is not in local mode" do
+      sign_in_as(user)
+      enable_local_mode
+      other_chat = ChatSession.create!(user: user, mode: "planning")
+
+      post "/api/v1/app/chats/#{other_chat.id}/daemon_connection", params: { state: "connected" }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(parse_body.dig("error", "code")).to eq("validation_failed")
+    end
+
+    it "returns 422 for an invalid state" do
+      sign_in_as(user)
+      enable_local_mode
+
+      post "/api/v1/app/chats/#{chat.id}/daemon_connection", params: { state: "flying" }
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(parse_body.dig("error", "code")).to eq("validation_failed")
+    end
+
+    it "records connected state with repo and branch" do
+      sign_in_as(user)
+      enable_local_mode
+
+      post "/api/v1/app/chats/#{chat.id}/daemon_connection",
+           params: { state: "connected", repo: "acme/widgets", branch: "main" }
+
+      expect(response).to have_http_status(:ok)
+      chat.reload
+      expect(chat.local_daemon_state).to eq("connected")
+      expect(chat.local_daemon_repo).to eq("acme/widgets")
+      expect(chat.local_daemon_branch).to eq("main")
+    end
+
+    it "records disconnected state and clears repo and branch" do
+      sign_in_as(user)
+      enable_local_mode
+      chat.update!(local_daemon_state: "connected", local_daemon_repo: "acme/widgets", local_daemon_branch: "main")
+
+      post "/api/v1/app/chats/#{chat.id}/daemon_connection", params: { state: "disconnected" }
+
+      expect(response).to have_http_status(:ok)
+      chat.reload
+      expect(chat.local_daemon_state).to eq("disconnected")
+      expect(chat.local_daemon_repo).to be_nil
+      expect(chat.local_daemon_branch).to be_nil
     end
   end
 

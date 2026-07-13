@@ -66,6 +66,7 @@ import {
   updateChatPinned,
   updateQueuedChatMessage,
   type ChatAttachmentResult,
+  type ChatMode,
   type ChatAttachmentRow,
   type ChatAgentQuestion,
   type ChatBranchPayload,
@@ -79,7 +80,6 @@ import {
   type ChatMessageItem,
   type ChatPendingAction,
   type ChatPendingActionInline,
-  type ChatMode,
   type ChatPayload,
   type ChatProposal,
   type ChatProposalChild,
@@ -113,6 +113,7 @@ import { StartEpicButton } from "../components/StartEpicButton"
 import { StopIcon } from "../components/StopIcon"
 import { Markdown, PlainText } from "../lib/Markdown"
 import { linkifySlugs } from "../lib/linkifySlugs"
+import { createConsumer, type Subscription } from "@rails/actioncable"
 import { highlightCode, inferToolResultLanguage } from "../lib/syntaxHighlight"
 import {
   filterSlashCommands,
@@ -307,6 +308,7 @@ function sharedChatRenderPayload(payload: SharedChatPayload): ChatPayload {
       app_share_path: "",
       app_enqueue_message_path: "",
       app_stop_path: "",
+      app_daemon_connection_path: "",
       app_bookmarks_path: "",
       app_attachments_path: "",
       app_video_walkthroughs_path: "",
@@ -316,7 +318,9 @@ function sharedChatRenderPayload(payload: SharedChatPayload): ChatPayload {
     },
     gemini_configured: false,
     walkthroughs_enabled: false,
-    coding_mode_enabled: false
+    coding_mode_enabled: false,
+    local_mode_enabled: false,
+    local_tunnel_connected: false
   }
 }
 
@@ -433,6 +437,12 @@ function ChatView({ chatId, payload, prefix, queryKey }: { chatId: string; paylo
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className={`break-words text-3xl font-semibold ${payload.chat.title_pending ? "animate-pulse text-gray-400 dark:text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>{title}</h1>
+            {payload.local_mode_enabled && payload.chat.mode === "local" && payload.chat.local_daemon_state === "connected" ? (
+              <div className="mt-1 flex items-center gap-1.5 text-sm text-emerald-700 dark:text-emerald-400">
+                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-emerald-500" />
+                <span>{t("local_daemon_connected", { repo: payload.chat.local_daemon_repo ?? "", branch: payload.chat.local_daemon_branch ?? "" })}</span>
+              </div>
+            ) : null}
           </div>
           <button
             aria-label={t("chat_settings")}
@@ -3940,7 +3950,7 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
   )
 }
 
-type WorkspaceTab = "whiteboard" | "context" | "media" | "files"
+type WorkspaceTab = "whiteboard" | "context" | "media" | "files" | "diff"
 type MobileChatTab = "chat" | WorkspaceTab
 
 function ChatWorkspace({
@@ -4061,7 +4071,7 @@ function ChatWorkspace({
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-gray-950">
         <nav aria-label="Chat mobile tabs" className="flex shrink-0 overflow-x-auto border-b border-gray-200 px-2 pt-2 text-sm font-medium dark:border-gray-700">
-          {(codingFilesTabVisible(payload) ? (["chat", "files", "whiteboard", "context", "media"] as MobileChatTab[]) : (["chat", "whiteboard", "context", "media"] as MobileChatTab[])).map((tab) => (
+          {(["chat", "whiteboard", "context", "media", ...(codingFilesTabVisible(payload) ? (["files"] as MobileChatTab[]) : []), ...(payload.local_tunnel_connected ? (["diff"] as MobileChatTab[]) : [])] as MobileChatTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeMobileTab === tab)}
               key={tab}
@@ -4247,6 +4257,9 @@ function ChatColumn({ bookmarkTarget, chatId, commandHandlers, payload, prefix, 
       {landing ? (
         <h1 className="text-center text-3xl font-semibold tracking-normal text-gray-950 sm:text-4xl dark:text-gray-100">{t("landing_prompt")}</h1>
       ) : null}
+      {payload.local_mode_enabled && payload.chat.mode === "local" ? (
+        <LocalDaemonBanner payload={payload} />
+      ) : null}
       <div className={`relative min-h-0 overflow-hidden rounded border border-gray-200 bg-white transition-all duration-500 ease-out dark:border-gray-700 dark:bg-gray-950 ${landing ? "h-0 w-full max-w-2xl opacity-0" : "flex-1 opacity-100"}`}>
         <MessageStream bookmarkTarget={bookmarkTarget} payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} />
         <UsageOverlay payload={payload} />
@@ -4254,6 +4267,48 @@ function ChatColumn({ bookmarkTarget, chatId, commandHandlers, payload, prefix, 
       <div className={landing ? "w-full max-w-sm sm:max-w-2xl" : "space-y-3"}>
         {!landing ? <CodingCheckoutBanner payload={payload} queryKey={queryKey} onNotice={onNotice} /> : null}
         <Compose key={chatId} autoFocus={landing} chatId={chatId} commandHandlers={commandHandlers} payload={payload} prefix={prefix} queryKey={queryKey} showAttachedRepositories={landing} onNotice={onNotice} onMessageSent={() => setHasSentFirstMessage(true)} />
+      </div>
+    </section>
+  )
+}
+
+function LocalDaemonBanner({ payload }: { payload: ChatPayload }) {
+  const { t } = useT("chat")
+  const [copied, setCopied] = useState(false)
+
+  function copyCommand() {
+    void navigator.clipboard.writeText(t("local_daemon_command")).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  const daemonState = payload.chat.local_daemon_state ?? null
+
+  if (daemonState === "connected") return null
+
+  if (daemonState === "disconnected") {
+    return (
+      <section className="rounded border border-amber-200 bg-white p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+        <div className="font-semibold">{t("local_daemon_disconnected_title")}</div>
+        <p className="mt-1">{t("local_daemon_disconnected_body")}</p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="rounded border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+      <div className="font-semibold">{t("local_daemon_not_connected_title")}</div>
+      <p className="mt-1">{t("local_daemon_not_connected_body")}</p>
+      <div className="mt-3 flex items-center gap-2">
+        <code className="rounded bg-gray-100 px-2 py-1 font-mono text-xs text-gray-800 dark:bg-gray-800 dark:text-gray-200">{t("local_daemon_command")}</code>
+        <button
+          className="rounded border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-50 hover:text-gray-800 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100"
+          onClick={copyCommand}
+          type="button"
+        >
+          {copied ? t("local_daemon_copied") : t("local_daemon_copy")}
+        </button>
       </div>
     </section>
   )
@@ -4355,7 +4410,7 @@ function ChatWorkspacePanel({
     <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 ${fullscreen ? "" : "h-full w-full"}`}>
       {fullscreen || !showTabs ? null : (
         <nav aria-label="Chat workspace tabs" className="flex items-center border-b border-gray-200 px-3 pt-3 text-sm font-medium dark:border-gray-700">
-          {(codingFilesTabVisible(payload) ? (["files", "whiteboard", "context", "media"] as WorkspaceTab[]) : (["whiteboard", "context", "media"] as WorkspaceTab[])).map((tab) => (
+          {(["whiteboard", "context", "media", ...(codingFilesTabVisible(payload) ? (["files"] as WorkspaceTab[]) : []), ...(payload.local_tunnel_connected ? (["diff"] as WorkspaceTab[]) : [])] as WorkspaceTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeTab === tab)}
               key={tab}
@@ -4391,8 +4446,132 @@ function ChatWorkspacePanel({
         {activeTab === "context" ? <Attachments payload={payload} prefix={prefix} queryKey={queryKey} onNotice={onNotice} /> : null}
         {activeTab === "media" ? <MediaGallery messages={payload.messages} payload={payload} queryKey={queryKey} onNotice={onNotice} /> : null}
         {activeTab === "files" ? <CodingFilesPanel payload={payload} /> : null}
+        {activeTab === "diff" && payload.local_tunnel_connected ? <LocalDiffPanel /> : null}
       </div>
     </aside>
+  )
+}
+
+type DiffMode = "head" | "staged"
+
+type LocalDiffState = {
+  diff: string | null
+  mode: DiffMode
+  loading: boolean
+  error: string | null
+}
+
+function renderUnifiedDiff(diff: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  diff.split("\n").forEach((line, index) => {
+    let className: string
+    if (line.startsWith("+++") || line.startsWith("---")) {
+      className = "text-gray-500 dark:text-gray-400"
+    } else if (line.startsWith("@@")) {
+      className = "text-blue-600 dark:text-blue-400"
+    } else if (line.startsWith("+")) {
+      className = "bg-emerald-50 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+    } else if (line.startsWith("-")) {
+      className = "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-300"
+    } else if (line.startsWith("diff ") || line.startsWith("index ")) {
+      className = "font-semibold text-gray-700 dark:text-gray-300"
+    } else {
+      className = "text-gray-700 dark:text-gray-300"
+    }
+    nodes.push(
+      <div className={`block whitespace-pre ${className}`} key={index}>
+        {line || " "}
+      </div>
+    )
+  })
+  return nodes
+}
+
+function LocalDiffPanel() {
+  const [state, setState] = useState<LocalDiffState>({ diff: null, mode: "head", loading: true, error: null })
+  const subscriptionRef = useRef<Subscription | null>(null)
+
+  useEffect(() => {
+    const sub = createConsumer().subscriptions.create(
+      { channel: "LocalDiffChannel" },
+      {
+        connected() {
+          // Initial diff requested automatically by channel on subscribe.
+        },
+        received(data: { type?: string; diff?: string | null; mode?: string; error?: string | null }) {
+          if (data.type !== "diff_result") return
+          const mode: DiffMode = data.mode === "staged" ? "staged" : "head"
+          setState({ diff: data.diff ?? null, mode, loading: false, error: data.error ?? null })
+        }
+      }
+    )
+    subscriptionRef.current = sub
+    return () => sub.unsubscribe()
+  }, [])
+
+  function refresh(mode: DiffMode) {
+    setState((s) => ({ ...s, loading: true, error: null }))
+    subscriptionRef.current?.perform("receive", { mode })
+  }
+
+  const { diff, mode, loading, error } = state
+  const isEmpty = !loading && !error && (diff === null || diff === "")
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex gap-1 rounded border border-gray-200 p-0.5 dark:border-gray-700">
+          <button
+            className={`rounded px-2 py-0.5 text-xs font-medium transition ${mode === "head" ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900" : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"}`}
+            disabled={loading}
+            onClick={() => refresh("head")}
+            type="button"
+          >
+            HEAD
+          </button>
+          <button
+            className={`rounded px-2 py-0.5 text-xs font-medium transition ${mode === "staged" ? "bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900" : "text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"}`}
+            disabled={loading}
+            onClick={() => refresh("staged")}
+            type="button"
+          >
+            Staged
+          </button>
+        </div>
+        <button
+          aria-label="Refresh diff"
+          className="rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          disabled={loading}
+          onClick={() => refresh(mode)}
+          title="Refresh"
+          type="button"
+        >
+          <svg aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path d="M23 4v6h-6" />
+            <path d="M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+        </button>
+      </div>
+
+      {loading && diff === null ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">Loading diff…</p>
+      ) : error ? (
+        <p className="text-sm text-red-600 dark:text-red-400">
+          {error === "not_connected" ? "Daemon not connected." : `Error: ${error}`}
+        </p>
+      ) : isEmpty ? (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {mode === "staged" ? "No staged changes." : "No uncommitted changes."}
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-950">
+          <code className="block p-3 font-mono text-xs leading-5">
+            {renderUnifiedDiff(diff!)}
+          </code>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -4627,8 +4806,15 @@ function ChatSettingsDialog({ payload, prefix, queryKey, onClose }: { payload: C
       updateRecentChatCache(queryClient, updated.chat)
     }
   })
+
+  const modeOptions: Array<{ value: ChatMode | ""; label: string }> = [
+    { value: "", label: t("mode_default") },
+    { value: "planning", label: t("mode_planning") },
+    ...(payload.coding_mode_enabled ? [{ value: "coding" as ChatMode, label: t("mode_coding") }] : []),
+    ...(payload.local_mode_enabled ? [{ value: "local" as ChatMode, label: t("mode_local") }] : [])
+  ]
   const mode = useMutation({
-    mutationFn: (value: ChatMode) => updateChatMode(payload.chat.id, value),
+    mutationFn: (value: string) => updateChatMode(payload.chat.id, value as ChatMode || null),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
       updateRecentChatCache(queryClient, updated.chat)
@@ -4685,6 +4871,29 @@ function ChatSettingsDialog({ payload, prefix, queryKey, onClose }: { payload: C
             </label>
           ) : null}
           {provider.isError ? <div className="text-xs text-red-700 dark:text-red-300">{errorMessage(provider.error, "Provider could not be updated.")}</div> : null}
+          <label className="block">
+            <span className="mb-1 block text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("mode_label")}</span>
+            <div className="flex rounded border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-950" role="group" aria-label={t("mode_label")}>
+              {modeOptions.map(({ value, label }) => (
+                <button
+                  className={[
+                    "flex-1 px-3 py-2 text-sm first:rounded-l last:rounded-r focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-terracotta-500",
+                    (payload.chat.mode ?? "") === value
+                      ? "bg-terracotta-600 font-medium text-white"
+                      : "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800",
+                    mode.isPending ? "cursor-not-allowed opacity-50" : ""
+                  ].join(" ")}
+                  disabled={mode.isPending}
+                  key={value || "default"}
+                  onClick={() => mode.mutate(value)}
+                  type="button"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </label>
+          {mode.isError ? <div className="text-xs text-red-700 dark:text-red-300">{errorMessage(mode.error, t("mode_update_error"))}</div> : null}
           {payload.chat.repository?.repository_path ? (
             <Link className="block rounded border border-gray-200 px-3 py-2 text-gray-700 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:border-gray-700 dark:text-gray-200 dark:hover:border-blue-800 dark:hover:bg-blue-950 dark:hover:text-blue-200" onClick={onClose} to={withRoutePrefix(`${payload.chat.repository.repository_path}/edit`, prefix)}>
               Repository settings
@@ -5541,6 +5750,7 @@ function workspaceTabLabel(tab: WorkspaceTab) {
   if (tab === "context") return "Context"
   if (tab === "media") return "Media"
   if (tab === "files") return "Files"
+  if (tab === "diff") return "Local Diff"
 
   return "Chats"
 }
@@ -5556,7 +5766,7 @@ function defaultWorkspaceTab(payload: ChatPayload): WorkspaceTab {
 function storedWorkspaceTab(): WorkspaceTab | null {
   try {
     const value = window.localStorage.getItem(CHAT_WORKSPACE_TAB_KEY)
-    return value === "whiteboard" || value === "context" || value === "media" || value === "files" ? value : null
+    return value === "whiteboard" || value === "context" || value === "media" || value === "files" || value === "diff" ? value : null
   } catch (_error) {
     return null
   }

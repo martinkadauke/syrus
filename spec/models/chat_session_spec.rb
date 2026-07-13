@@ -40,6 +40,53 @@ RSpec.describe ChatSession do
     expect(session.errors[:chat_provider]).to be_present
   end
 
+  it "allows valid modes" do
+    %w[planning coding local].each do |mode|
+      session = described_class.new(user: repo.user, mode: mode)
+      expect(session).to be_valid, "expected mode #{mode.inspect} to be valid"
+    end
+  end
+
+  it "allows a nil mode" do
+    session = described_class.new(user: repo.user, mode: nil)
+
+    expect(session).to be_valid
+  end
+
+  it "normalizes blank modes to nil" do
+    session = described_class.create!(user: repo.user, mode: "")
+
+    expect(session.mode).to be_nil
+  end
+
+  it "rejects unknown modes" do
+    session = described_class.new(user: repo.user, mode: "turbo")
+
+    expect(session).not_to be_valid
+    expect(session.errors[:mode]).to be_present
+  end
+
+  it "allows valid daemon states" do
+    %w[connected disconnected].each do |state|
+      session = described_class.new(user: repo.user, local_daemon_state: state)
+      expect(session).to be_valid, "expected local_daemon_state #{state.inspect} to be valid"
+    end
+  end
+
+  it "allows nil daemon state" do
+    session = described_class.new(user: repo.user, local_daemon_state: nil)
+
+    expect(session).to be_valid
+  end
+
+  it "rejects unknown daemon states" do
+    session = described_class.new(user: repo.user, local_daemon_state: "charging")
+
+    expect(session).not_to be_valid
+    expect(session.errors[:local_daemon_state]).to be_present
+  end
+
+
   it "resolves chat provider from the session, user chat provider, then user agent provider" do
     inherited = described_class.new(user: Factories.user(agent_provider: "codex"))
     user_override = described_class.new(user: Factories.user(agent_provider: "codex", chat_provider: "claude"))
@@ -292,6 +339,10 @@ RSpec.describe ChatSession do
             title: "Updated chat",
             title_pending: false,
             pinned_context: nil,
+            mode: nil,
+            local_daemon_state: nil,
+            local_daemon_repo: nil,
+            local_daemon_branch: nil,
             repository: {
               id: repo.id,
               slug: repo.slug
@@ -505,10 +556,16 @@ RSpec.describe ChatSession do
   end
 
   describe "mode" do
-    it "defaults to planning" do
+    it "defaults to nil when no mode is given" do
       session = described_class.create!(user: repo.user)
 
-      expect(session.mode).to eq("planning")
+      expect(session.mode).to be_nil
+    end
+
+    it "accepts planning mode" do
+      session = described_class.new(user: repo.user, mode: "planning")
+
+      expect(session).to be_valid
       expect(session).to be_planning
       expect(session).not_to be_coding
     end
@@ -520,10 +577,11 @@ RSpec.describe ChatSession do
       expect(session).to be_coding
     end
 
-    it "rejects unknown modes" do
-      expect {
-        described_class.new(user: repo.user, mode: "autopilot")
-      }.to raise_error(ArgumentError, /'autopilot' is not a valid mode/)
+    it "rejects unknown modes with a validation error" do
+      session = described_class.new(user: repo.user, mode: "autopilot")
+
+      expect(session).not_to be_valid
+      expect(session.errors[:mode]).to be_present
     end
   end
 
