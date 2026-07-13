@@ -261,7 +261,7 @@ export type JobWorkflow = {
   agent_provider: string | null
   state: string
   failure_count: number
-  artifacts: Record<string, unknown>
+  artifacts: Record<string, unknown> | null
   cleaned_up_at: string | null
   retry_available: boolean
   started_at: string | null

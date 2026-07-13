@@ -67,6 +67,19 @@ describe("JobDetailView", () => {
     expect(screen.queryByRole("link", { name: "View in chat" })).not.toBeInTheDocument()
   })
 
+  it("skips workflows with null artifacts when rendering coverage", () => {
+    renderJobDetail(jobPayload({
+      workflows: [
+        workflow({ id: 1, artifacts: { coverage: { summary: { lines_pct: 92.4, branches_pct: null, functions_pct: null } } } }),
+        workflow({ id: 2, artifacts: null })
+      ],
+      workflows_pagination: workflowPagination(2)
+    }))
+
+    expect(screen.getByTestId("coverage-card")).toBeInTheDocument()
+    expect(screen.getByText("92.4%")).toBeInTheDocument()
+  })
+
   it.each(["implemented", "failed"])("renders the Give feedback button for %s jobs", (state) => {
     renderJobDetail(jobPayload({
       job: { ...baseJob(), state, summary_state: state }

@@ -664,7 +664,8 @@ function NeedsAttentionBanner({ job }: { job: JobDetailPayload["job"] }) {
 
 function latestWorkflowCoverage(workflows: JobWorkflow[]): { workflowId: number; coverage: CoverageArtifact } | null {
   for (let i = workflows.length - 1; i >= 0; i--) {
-    const cov = workflows[i].artifacts["coverage"] as CoverageArtifact | undefined
+    const artifacts = workflows[i].artifacts
+    const cov = artifacts?.["coverage"] as CoverageArtifact | undefined
     if (cov) return { workflowId: workflows[i].id, coverage: cov }
   }
   return null
@@ -903,7 +904,8 @@ export function FeedbackHistoryPanel({ workflows, prefix }: { workflows: JobWork
       <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("section_feedback_history")}</h2>
       <div className="mt-3">
         {feedbackWorkflows.map((workflow) => {
-          const chatFeedback = workflow.artifacts.chat_feedback
+          const artifacts = workflow.artifacts ?? {}
+          const chatFeedback = artifacts.chat_feedback
           return (
             <div className="mt-3 border-t border-gray-100 pt-3 first:mt-0 first:border-t-0 first:pt-0 dark:border-gray-800" key={workflow.id}>
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -920,7 +922,7 @@ export function FeedbackHistoryPanel({ workflows, prefix }: { workflows: JobWork
               </div>
               {workflow.trigger_kind === "chat_feedback" ? (
                 <>
-                  <FeedbackSourceBadge source={workflow.artifacts.feedback_source} />
+                  <FeedbackSourceBadge source={artifacts.feedback_source} />
                   <pre className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">{typeof chatFeedback === "string" ? chatFeedback : ""}</pre>
                 </>
               ) : (
