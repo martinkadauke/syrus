@@ -63,4 +63,20 @@ RSpec.describe "bin/check-thread-budget" do
     expect(stdout).to include("[check-thread-budget] ok")
     expect(stderr).not_to include("undefined method `present?'")
   end
+
+  it "finds gems when BUNDLE_PATH is set to an empty Syrus worker path (main grader scenario)" do
+    # When MainGraderWorkflowJob runs graders, the Syrus worker's env has
+    # BUNDLE_PATH pointing to its own bundle cache (.syrus/deps/bundle), which
+    # has no gems. syrus_bundle_env.rb must detect this as stale and fall back
+    # to vendor/bundle so graders that don't prefix BUNDLE_PATH overrides still work.
+    stdout, stderr, status = spawn_clean(
+      "HOME" => ENV.fetch("HOME"),
+      "PATH" => ENV.fetch("PATH"),
+      "BUNDLE_PATH" => File.join(root, ".syrus", "deps", "bundle"),
+      "BUNDLE_APP_CONFIG" => File.join(root, ".syrus", "deps", "bundle-config")
+    )
+
+    expect(status).to be_success, "expected success with stale BUNDLE_PATH, got #{status.exitstatus}: stdout=#{stdout.inspect} stderr=#{stderr.inspect}"
+    expect(stdout).to include("[check-thread-budget] ok")
+  end
 end
