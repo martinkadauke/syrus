@@ -15,11 +15,20 @@ RSpec.describe Workflows::MainGrader do
   let(:sha) { "abc123def456" }
 
   describe "chain" do
-    it "materializes grader_fanout → grader_collect" do
+    it "materializes prepare → grader_fanout → grader_collect" do
+      workflow = described_class.instantiate(job: job, artifacts: { "main_sha" => sha })
+
+      expect(workflow.steps.order(:position).pluck(:kind)).to eq(%w[ prepare grader_fanout grader_collect ])
+      expect(workflow.trigger_kind).to eq("main_grader")
+    end
+
+    it "honors repository-level prepare disablement" do
+      repository.update!(prepare_enabled: false)
+
       workflow = described_class.instantiate(job: job, artifacts: { "main_sha" => sha })
 
       expect(workflow.steps.order(:position).pluck(:kind)).to eq(%w[ grader_fanout grader_collect ])
-      expect(workflow.trigger_kind).to eq("main_grader")
+      expect(workflow.artifact("prepare_skipped_reason")).to eq("repository_configuration")
     end
 
     it "stores the main_sha in artifacts" do

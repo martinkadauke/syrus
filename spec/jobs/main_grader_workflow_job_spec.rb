@@ -33,11 +33,11 @@ RSpec.describe MainGraderWorkflowJob do
     expect(workflow.artifact("main_sha")).to eq(sha)
   end
 
-  it "materializes grader_fanout → grader_collect steps" do
+  it "materializes prepare → grader_fanout → grader_collect steps" do
     described_class.perform_now(repository.id, sha)
 
     step_kinds = Workflow.last.steps.order(:position).pluck(:kind)
-    expect(step_kinds).to eq(%w[ grader_fanout grader_collect ])
+    expect(step_kinds).to eq(%w[ prepare grader_fanout grader_collect ])
   end
 
   it "calls StepDispatcher.start_workflow" do

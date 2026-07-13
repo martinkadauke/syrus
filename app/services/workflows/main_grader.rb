@@ -4,7 +4,7 @@ module Workflows
   # by MainGraderWorkflowJob when PollMainBranchHealthJob detects a new HEAD
   # SHA.
   #
-  # Chain: grader_fanout → <per-grader steps> → grader_collect
+  # Chain: prepare → grader_fanout → <per-grader steps> → grader_collect
   #
   # The chain has no retry loop: the result is binary — graders pass (healthy)
   # or fail (broken). after_success / after_fail update repository.grader_health
@@ -12,7 +12,7 @@ module Workflows
   # The anchor Job is closed by the hook in both cases; it is excluded from
   # the operator UI (main_grader kind is filtered out of dashboard queries).
   class MainGrader < Base
-    steps :grader_fanout, :grader_collect
+    steps :prepare, :grader_fanout, :grader_collect
 
     def self.trigger_kind = "main_grader"
 
