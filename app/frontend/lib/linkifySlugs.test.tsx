@@ -18,23 +18,25 @@ vi.mock("../components/SlugHoverCard", () => ({
 describe("linkifySlugs", () => {
   it("wraps JOB slugs in SlugHoverCard with kind=job and numeric id", () => {
     const nodes = linkifySlugs("Submit feedback on JOB-42")
-    const card = nodes.find((node) => isValidElement(node) && node.type === SlugHoverCard)
+    const hoverCard = nodes.find((node) => isValidElement(node) && node.type === SlugHoverCard)
 
     expect(nodes[0]).toBe("Submit feedback on ")
-    expect(card).toBeTruthy()
-    const props = isValidElement(card) ? (card as ReactElement<{ kind: string; id: number }>).props : null
-    expect(props?.kind).toBe("job")
-    expect(props?.id).toBe(42)
+    expect(hoverCard).toBeTruthy()
+    const card = hoverCard as ReactElement<{ kind: string; id: number; children: ReactElement<{ to: string }> }>
+    expect(card.props.kind).toBe("job")
+    expect(card.props.id).toBe(42)
+    expect(card.props.children.props.to).toBe("/jobs/42")
   })
 
   it("wraps EPIC slugs in SlugHoverCard with kind=epic and numeric id", () => {
     const nodes = linkifySlugs("See EPIC-7 for context")
-    const card = nodes.find((node) => isValidElement(node) && node.type === SlugHoverCard)
+    const hoverCard = nodes.find((node) => isValidElement(node) && node.type === SlugHoverCard)
 
-    expect(card).toBeTruthy()
-    const props = isValidElement(card) ? (card as ReactElement<{ kind: string; id: number }>).props : null
-    expect(props?.kind).toBe("epic")
-    expect(props?.id).toBe(7)
+    expect(hoverCard).toBeTruthy()
+    const card = hoverCard as ReactElement<{ kind: string; id: number; children: ReactElement<{ to: string }> }>
+    expect(card.props.kind).toBe("epic")
+    expect(card.props.id).toBe(7)
+    expect(card.props.children.props.to).toBe("/epics/7")
   })
 
   it("returns plain text unchanged when there are no slugs", () => {
