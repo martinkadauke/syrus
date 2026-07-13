@@ -144,14 +144,18 @@ RSpec.describe SyrusMcp::Sidecar do
   end
 
   describe ".new(run_id:)" do
-    it "validates the Run id and stores only the id for later tool calls" do
+    it "stores only the id for later tool calls" do
       sidecar = described_class.new(run_id: run.id)
       expect(sidecar.instance_variable_get(:@run_id)).to eq(run.id)
       expect(sidecar.instance_variable_get(:@run)).to be_nil
     end
 
-    it "raises ActiveRecord::RecordNotFound for an unknown run_id" do
-      expect { described_class.new(run_id: 0) }.to raise_error(ActiveRecord::RecordNotFound)
+    it "does not query the database during sidecar initialization" do
+      expect(SyrusMcp).not_to receive(:run_from_context)
+
+      sidecar = described_class.new(run_id: 0)
+
+      expect(sidecar.instance_variable_get(:@run_id)).to eq(0)
     end
   end
 end

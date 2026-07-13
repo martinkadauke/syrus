@@ -8,12 +8,6 @@ module SyrusMcp
   class Sidecar
     def initialize(run_id:)
       @run_id = run_id
-      # Validate the id at boot, but do not keep an ActiveRecord model
-      # instance in the long-lived MCP process. Agent turns can run long
-      # enough for the sidecar's DB connection to go idle before the tool
-      # call arrives; tools re-resolve the Run after verifying the
-      # connection.
-      SyrusMcp.run_from_context(run_id: @run_id)
     end
 
     def run

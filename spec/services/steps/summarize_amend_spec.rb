@@ -129,6 +129,21 @@ RSpec.describe Steps::SummarizeAmend do
   end
 
   describe "commit message rewrite" do
+    it "uses a larger turn budget for the MCP summary handoff" do
+      expect(handler).to receive(:run_agent).with(
+        prompt: kind_of(String),
+        max_turns: described_class::SUMMARIZE_TURN_BUDGET
+      ) do
+        run.update!(
+          agent_pr_title: "Address review feedback: tighten docstring",
+          agent_pr_body: "Tightened the docs.",
+          agent_summary: "Addressed review feedback."
+        )
+      end
+
+      handler.call
+    end
+
     it "amends the placeholder commit subject to the agent-authored title" do
       stub_agent(title: "Address review feedback: tighten docstring", body: "Tightened the docs.")
       handler.call

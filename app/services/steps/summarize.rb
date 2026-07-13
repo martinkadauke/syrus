@@ -10,7 +10,9 @@ module Steps
   # to use the agent-authored pr_title — keeping the GH commit
   # log human-readable.
   class Summarize < Base
-    SUMMARIZE_TURN_BUDGET = 5  # short prompt, no exploration needed
+    # The prompt is short, but Claude may spend turns waiting for the MCP
+    # sidecar/tool list to become available before it can call submit_summary.
+    SUMMARIZE_TURN_BUDGET = 25
 
     def call
       workspace.setup

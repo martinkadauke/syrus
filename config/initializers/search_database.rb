@@ -1,6 +1,8 @@
 require "fileutils"
 
 Rails.application.config.after_initialize do
+  next if SyrusVersion.sidecar_process?
+
   db_config = SearchRecord.connection_db_config
   next unless db_config.adapter.casecmp("sqlite3").zero?
 

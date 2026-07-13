@@ -110,6 +110,21 @@ RSpec.describe Steps::Summarize do
   end
 
   describe "commit message rewrite" do
+    it "uses a larger turn budget for the MCP summary handoff" do
+      expect(handler).to receive(:run_agent).with(
+        prompt: kind_of(String),
+        max_turns: described_class::SUMMARIZE_TURN_BUDGET
+      ) do
+        run.update!(
+          agent_pr_title: "Add greeting helper",
+          agent_pr_body: "Adds a tiny helper.",
+          agent_summary: "Added a greeting helper."
+        )
+      end
+
+      handler.call
+    end
+
     it "retries summarize without --resume when the resumed prompt is too large" do
       implement_step = Step.create!(workflow: workflow, kind: "implement", position: 0, next_step_id: step.id)
       implement_run = Run.create!(
@@ -142,6 +157,10 @@ RSpec.describe Steps::Summarize do
       handler.call
 
       expect(calls.size).to eq(2)
+      expect(calls.map { |call| call[:kwargs][:max_turns] }).to eq([
+        described_class::SUMMARIZE_TURN_BUDGET,
+        described_class::SUMMARIZE_TURN_BUDGET
+      ])
       expect(workflow.reload.artifact("pr_title")).to eq("Add greeting helper")
       expect(run.job_logs.pluck(:chunk).join("\n")).to include("retrying summary without --resume")
     end

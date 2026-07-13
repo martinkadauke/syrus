@@ -9,7 +9,9 @@ module Steps
   # is a follow-up commit, not a fresh PR" — produces a commit
   # message, not a PR title.
   class SummarizeAmend < Base
-    SUMMARIZE_TURN_BUDGET = 5
+    # The prompt is short, but Claude may spend turns waiting for the MCP
+    # sidecar/tool list to become available before it can call submit_summary.
+    SUMMARIZE_TURN_BUDGET = 25
 
     def call
       workspace.setup

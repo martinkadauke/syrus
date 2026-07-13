@@ -3,6 +3,8 @@
 # which is exactly when skills change — no separate watcher needed.
 unless Rails.env.test?
   Rails.application.config.after_initialize do
+    next if SyrusVersion.sidecar_process?
+
     begin
       AgentSkillsSyncer.sync
     rescue StandardError => e

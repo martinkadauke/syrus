@@ -45,6 +45,7 @@ RSpec.describe "production configuration" do
     expect(dockerfile).to include("S3_ENDPOINT=http://127.0.0.1:9000")
     expect(dockerfile).to include("SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile")
     expect(features_initializer).to include("Features::SyncFromYaml.build_time_asset_precompile?")
+    expect(features_initializer).to include("SyrusVersion.sidecar_process?")
   end
 
   it "keeps a grader for production asset-precompile boot safety" do
