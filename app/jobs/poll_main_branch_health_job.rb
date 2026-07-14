@@ -15,15 +15,20 @@ class PollMainBranchHealthJob < ApplicationJob
     return unless sha
 
     sha_changed = sha != repository.last_health_checked_sha
+    previous_health = repository.main_health
 
     # Health is scoped to the default-branch SHA. When main advances, stale
-    # CI/grader states from the prior SHA must not leak onto the new one while
-    # GitHub checks or the main-grader workflow are still running.
+    # healthy states from the prior SHA must not leak onto the new one while
+    # GitHub checks or the main-grader workflow are still running. Broken states
+    # are different: once work has been paused because main is broken, keep the
+    # current signal broken until the replacement SHA gets a conclusive green
+    # signal. Otherwise the UI and queue gate briefly look recovered while the
+    # fix is still being validated.
     if sha_changed
       repository.update_columns(
         last_health_checked_sha: sha,
-        ci_health: "unknown",
-        grader_health: "unknown"
+        ci_health: repository.ci_health_broken? ? "broken" : "unknown",
+        grader_health: repository.grader_health_broken? ? "broken" : "unknown"
       )
       repository.reload
       MainGraderWorkflowJob.perform_later(repository.id, sha)
@@ -32,7 +37,6 @@ class PollMainBranchHealthJob < ApplicationJob
     # Skip when SHA unchanged and health is already known — no new information.
     return if !sha_changed && !repository.main_health_unknown?
 
-    previous_health = repository.main_health
     already_recorded_no_ci = repository.ci_health_not_configured? && repository.last_health_checked_sha == sha
     summary = client.check_runs_summary_for(repository.slug, sha)
 

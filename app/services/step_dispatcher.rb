@@ -68,7 +68,7 @@ class StepDispatcher
     repository = workflow.job.repository
     return false unless repository.main_branch_health_enabled?
 
-    repository.landing_paused? && repository.main_health_broken?
+    repository.landing_paused? && repository.main_health != "healthy"
   end
 
   def self.cancel_unstartable_rebase_workflow!(workflow, reason)

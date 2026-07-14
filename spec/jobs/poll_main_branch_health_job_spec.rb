@@ -45,7 +45,7 @@ RSpec.describe PollMainBranchHealthJob do
     expect(repository.last_health_checked_sha).to eq(sha)
   end
 
-  it "does not carry broken health forward to a new SHA while checks are pending" do
+  it "carries broken health forward to a new SHA while checks are pending" do
     repository.update!(
       last_health_checked_sha: "oldsha",
       ci_health: "broken",
@@ -58,9 +58,9 @@ RSpec.describe PollMainBranchHealthJob do
 
     repository.reload
     expect(repository.last_health_checked_sha).to eq(sha)
-    expect(repository.ci_health).to eq("unknown")
-    expect(repository.grader_health).to eq("unknown")
-    expect(repository.main_health).to eq("unknown")
+    expect(repository.ci_health).to eq("broken")
+    expect(repository.grader_health).to eq("broken")
+    expect(repository.main_health).to eq("broken")
   end
 
   it "marks ci_health not_configured when no checks exist" do
@@ -152,8 +152,18 @@ RSpec.describe PollMainBranchHealthJob do
     }.to have_enqueued_job(MainGraderWorkflowJob).with(repository.id, sha)
   end
 
-  it "resets grader_health while the main grader workflow is pending on a new SHA" do
+  it "keeps broken grader_health while the main grader workflow is pending on a new SHA" do
     repository.update!(last_health_checked_sha: "oldsha", grader_health: "broken")
+    stub_sha(sha)
+    stub_check_runs({ any?: true, pending?: false, any_failed?: false, all_passed?: true })
+
+    described_class.perform_now(repository.id)
+
+    expect(repository.reload.grader_health).to eq("broken")
+  end
+
+  it "resets non-broken grader_health while the main grader workflow is pending on a new SHA" do
+    repository.update!(last_health_checked_sha: "oldsha", grader_health: "healthy")
     stub_sha(sha)
     stub_check_runs({ any?: true, pending?: false, any_failed?: false, all_passed?: true })
 
