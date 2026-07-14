@@ -107,7 +107,9 @@ RSpec.describe "bin/syrus-chat-sidecar" do
     stdin.puts({ jsonrpc: "2.0", id: id, method: method, params: params }.to_json)
     stdin.flush
 
-    Timeout.timeout(10) do
+    # 30s allows for a cold Rails boot (~12s in test) before the sidecar can
+    # start processing messages. Subsequent requests are fast once Rails is up.
+    Timeout.timeout(30) do
       loop do
         line = stdout.gets
         raise "sidecar closed stdout while waiting for #{method}" if line.nil?
