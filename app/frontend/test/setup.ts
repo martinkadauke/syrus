@@ -1,8 +1,13 @@
 import "../i18n"
 import "@testing-library/jest-dom/vitest"
-import { cleanup } from "@testing-library/react"
+import { cleanup, configure } from "@testing-library/react"
 import { afterEach, vi } from "vitest"
 import "../i18n"
+
+// Coverage instrumentation adds ~40% overhead. Raise the default 1000ms
+// asyncUtilTimeout so findBy* queries don't expire before slow components
+// finish rendering their async data under instrumented builds.
+configure({ asyncUtilTimeout: 5000 })
 
 function ensureLocalStorage() {
   if (typeof window === "undefined") return
