@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe Workflows::MainGrader do
+  include ActiveJob::TestHelper
+
   let(:user) { Factories.user(github_token: "ghp_test") }
   let(:repository) { Factories.repository(user: user) }
   let(:job) do
@@ -117,6 +119,23 @@ RSpec.describe Workflows::MainGrader do
       expect(repository.reload.grader_health).to eq("healthy")
     end
 
+    it "leaves grader_health unknown and retries when a required grader is interrupted by worker death" do
+      repository.update!(grader_health: "unknown", ci_health: "healthy")
+      grader_step = create_failed_required_grader!(workflow, name: "rspec")
+      create_failed_run!(grader_step, agent_outcome: "worker_died")
+
+      expect(MainHealthChangedService).not_to receive(:on_health_change!)
+
+      expect {
+        described_class.after_fail(workflow)
+      }.to have_enqueued_job(MainGraderWorkflowJob).with(repository.id, sha)
+
+      expect(repository.reload.grader_health).to eq("unknown")
+      check = MainBranchHealthCheck.last
+      expect(check.grader_health).to eq("unknown")
+      expect(check.grader_failed_names).to eq([ "rspec" ])
+    end
+
     it "closes the anchor Job" do
       described_class.after_fail(workflow)
 
@@ -150,6 +169,17 @@ RSpec.describe Workflows::MainGrader do
         "required" => true,
         "exit_code" => 1
       }
+    )
+  end
+
+  def create_failed_run!(step, agent_outcome:)
+    step.runs.create!(
+      job: job,
+      user: user,
+      trigger_kind: step.workflow.trigger_kind,
+      agent_provider: step.workflow.agent_provider,
+      state: "failed",
+      agent_outcome: agent_outcome
     )
   end
 end

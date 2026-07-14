@@ -6,9 +6,11 @@ module Workflows
   #
   # Chain: prepare → grader_fanout → <per-grader steps> → grader_collect
   #
-  # The chain has no retry loop: the result is binary — graders pass (healthy)
-  # or fail (broken). after_success / after_fail update repository.grader_health
-  # and call MainHealthChangedService when the health signal transitions.
+  # The chain has no repair loop: actual grader failures mark main as broken.
+  # Infrastructure interruptions (for example a worker killed during deploy)
+  # leave health unknown and enqueue a replacement check for the same SHA.
+  # after_success / after_fail update repository.grader_health and call
+  # MainHealthChangedService when the health signal transitions.
   # The anchor Job is closed by the hook in both cases; it is excluded from
   # the operator UI (main_grader kind is filtered out of dashboard queries).
   class MainGrader < Base
@@ -23,10 +25,16 @@ module Workflows
     end
 
     def self.after_fail(workflow)
-      failed_names = failed_required_grader_names(workflow)
+      failed_steps = failed_required_grader_steps(workflow)
+      interrupted_steps, actual_failures = failed_steps.partition { |step| infrastructure_interrupted_grader?(step) }
+      failed_names = failed_required_grader_names(actual_failures)
 
       if failed_names.any?
         update_grader_health!(workflow, "broken", failed_names)
+      elsif interrupted_steps.any?
+        record_interrupted_grader_check!(workflow, interrupted_steps)
+        enqueue_replacement_check!(workflow)
+        close_anchor_job!(workflow)
       else
         Rails.logger.warn(
           "[Workflows::MainGrader] Workflow ##{workflow.id} failed before required graders reported failures; " \
@@ -56,15 +64,50 @@ module Workflows
       close_anchor_job!(workflow)
     end
 
-    private_class_method def self.failed_required_grader_names(workflow)
+    private_class_method def self.failed_required_grader_steps(workflow)
       workflow.steps
               .where(kind: "grader", state: "failed")
-              .filter_map do |step|
+              .select do |step|
                 details = step.details || {}
-                next unless details["required"]
-
-                details["name"].presence || "unnamed"
+                details["required"]
               end
+    end
+
+    private_class_method def self.failed_required_grader_names(steps)
+      steps.map do |step|
+        details = step.details || {}
+        details["name"].presence || "unnamed"
+      end
+    end
+
+    private_class_method def self.infrastructure_interrupted_grader?(step)
+      latest_failed_run = step.runs.where(state: "failed").order(created_at: :desc).first
+      return false unless latest_failed_run
+
+      latest_failed_run.agent_outcome == "worker_died" ||
+        latest_failed_run.run_failure_classification&.classification == "worker_died"
+    end
+
+    private_class_method def self.record_interrupted_grader_check!(workflow, interrupted_steps)
+      repository = workflow.job.repository
+      interrupted_names = failed_required_grader_names(interrupted_steps)
+      MainBranchHealthCheck.record_grader_workflow(
+        repository: repository,
+        sha: workflow.artifact("main_sha").to_s.presence || "unknown",
+        grader_health: "unknown",
+        grader_failed_names: interrupted_names
+      )
+      Rails.logger.warn(
+        "[Workflows::MainGrader] Workflow ##{workflow.id} interrupted while running required graders " \
+        "#{interrupted_names.join(", ")}; leaving #{repository.slug} grader_health=#{repository.grader_health}"
+      )
+    end
+
+    private_class_method def self.enqueue_replacement_check!(workflow)
+      sha = workflow.artifact("main_sha").to_s.presence
+      return unless sha
+
+      MainGraderWorkflowJob.perform_later(workflow.job.repository_id, sha)
     end
 
     private_class_method def self.close_anchor_job!(workflow)
