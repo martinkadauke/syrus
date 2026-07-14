@@ -14,6 +14,7 @@ class MainGraderWorkflowJob < ApplicationJob
     repository = Repository.find_by(id: repository_id)
     return unless repository
     return if repository.archived?
+    return if MainBranchHealthCheck.conclusive_grader_result_exists?(repository: repository, sha: sha)
     return if active_workflow_for_sha?(repository, sha)
 
     user = repository.user

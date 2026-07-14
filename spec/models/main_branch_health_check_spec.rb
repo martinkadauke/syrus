@@ -136,6 +136,32 @@ RSpec.describe MainBranchHealthCheck do
     end
   end
 
+  describe ".conclusive_grader_result_exists?" do
+    it "returns true for a healthy grader result on the same repository and SHA" do
+      described_class.record_grader_workflow(repository: repository, sha: "abc", grader_health: "healthy")
+
+      expect(described_class.conclusive_grader_result_exists?(repository: repository, sha: "abc")).to be(true)
+    end
+
+    it "returns true for a broken grader result on the same repository and SHA" do
+      described_class.record_grader_workflow(repository: repository, sha: "abc", grader_health: "broken")
+
+      expect(described_class.conclusive_grader_result_exists?(repository: repository, sha: "abc")).to be(true)
+    end
+
+    it "returns false for an unknown interrupted grader result" do
+      described_class.record_grader_workflow(repository: repository, sha: "abc", grader_health: "unknown")
+
+      expect(described_class.conclusive_grader_result_exists?(repository: repository, sha: "abc")).to be(false)
+    end
+
+    it "does not match another SHA" do
+      described_class.record_grader_workflow(repository: repository, sha: "abc", grader_health: "healthy")
+
+      expect(described_class.conclusive_grader_result_exists?(repository: repository, sha: "def")).to be(false)
+    end
+  end
+
   describe "association" do
     it "is destroyed when its repository is destroyed" do
       MainBranchHealthCheck.record_ci_poll(repository: repository, sha: "xyz", ci_health: "unknown")

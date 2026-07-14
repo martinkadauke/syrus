@@ -32,6 +32,16 @@ module Workflows
       if failed_names.any?
         update_grader_health!(workflow, "broken", failed_names)
       elsif interrupted_steps.any?
+        if conclusive_grader_result_exists?(workflow)
+          Rails.logger.info(
+            "[Workflows::MainGrader] Workflow ##{workflow.id} interrupted after a conclusive " \
+            "grader result already existed for #{workflow.job.repository.slug}@#{workflow.artifact("main_sha")}; " \
+            "skipping duplicate replacement"
+          )
+          close_anchor_job!(workflow)
+          return
+        end
+
         record_interrupted_grader_check!(workflow, interrupted_steps)
         enqueue_replacement_check!(workflow)
         close_anchor_job!(workflow)
@@ -103,9 +113,20 @@ module Workflows
       )
     end
 
+    private_class_method def self.conclusive_grader_result_exists?(workflow)
+      sha = workflow.artifact("main_sha").to_s.presence
+      return false unless sha
+
+      MainBranchHealthCheck.conclusive_grader_result_exists?(
+        repository: workflow.job.repository,
+        sha: sha
+      )
+    end
+
     private_class_method def self.enqueue_replacement_check!(workflow)
       sha = workflow.artifact("main_sha").to_s.presence
       return unless sha
+      return if conclusive_grader_result_exists?(workflow)
 
       MainGraderWorkflowJob.perform_later(workflow.job.repository_id, sha)
     end

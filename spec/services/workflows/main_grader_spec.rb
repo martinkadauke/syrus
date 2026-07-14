@@ -136,6 +136,24 @@ RSpec.describe Workflows::MainGrader do
       expect(check.grader_failed_names).to eq([ "rspec" ])
     end
 
+    it "does not record another unknown result or retry when the SHA already has a conclusive grader result" do
+      repository.update!(ci_health: "not_configured", grader_health: "healthy")
+      MainBranchHealthCheck.record_grader_workflow(repository: repository, sha: sha, grader_health: "healthy")
+      grader_step = create_failed_required_grader!(workflow, name: "coverage")
+      create_failed_run!(grader_step, agent_outcome: "worker_died")
+
+      expect(MainHealthChangedService).not_to receive(:on_health_change!)
+
+      expect {
+        expect {
+          described_class.after_fail(workflow)
+        }.not_to have_enqueued_job(MainGraderWorkflowJob)
+      }.not_to change(MainBranchHealthCheck, :count)
+
+      expect(repository.reload.grader_health).to eq("healthy")
+      expect(job.reload.state).to eq("closed")
+    end
+
     it "closes the anchor Job" do
       described_class.after_fail(workflow)
 

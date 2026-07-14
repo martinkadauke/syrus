@@ -1,5 +1,6 @@
 class MainBranchHealthCheck < ApplicationRecord
   SOURCES = %w[ ci_poll grader_workflow ].freeze
+  CONCLUSIVE_GRADER_HEALTH = %w[ healthy broken ].freeze
   RETAIN_AFTER = 7.days
 
   belongs_to :repository
@@ -10,6 +11,15 @@ class MainBranchHealthCheck < ApplicationRecord
 
   scope :recent, -> { order(checked_at: :desc) }
   scope :pruneable, -> { where(checked_at: ..RETAIN_AFTER.ago) }
+
+  def self.conclusive_grader_result_exists?(repository:, sha:)
+    where(
+      repository: repository,
+      sha: sha,
+      source: "grader_workflow",
+      grader_health: CONCLUSIVE_GRADER_HEALTH
+    ).exists?
+  end
 
   def self.record_ci_poll(repository:, sha:, ci_health:, ci_failed_checks: nil)
     create!(
