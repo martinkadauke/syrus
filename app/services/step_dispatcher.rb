@@ -470,10 +470,41 @@ class StepDispatcher
     # from anywhere (start_workflow case), look at the first step.
     cursor = @from_step ? @from_step.next_step : @workflow.first_step
     while cursor
-      return cursor if cursor.state == "queued"
+      if cursor.state == "queued"
+        if skippable_queued_step?(cursor)
+          skip_queued_step!(cursor)
+        else
+          return cursor
+        end
+      end
       cursor = cursor.next_step
     end
     nil
+  end
+
+  def skippable_queued_step?(step)
+    step.kind == "test_plan" && @workflow.artifact("test_plan").present?
+  end
+
+  def skip_queued_step!(step)
+    now = Time.current
+    details = step.details.to_h.merge(
+      "skipped" => true,
+      "skip_reason" => "test_plan_already_submitted"
+    )
+
+    step.update_columns(
+      state: "succeeded",
+      started_at: now,
+      finished_at: now,
+      details: details,
+      updated_at: now
+    )
+
+    Rails.logger.info(
+      "[StepDispatcher] workflow #{@workflow.id} skipped step #{step.id} " \
+      "(#{step.kind}): test plan already submitted"
+    )
   end
 
   # Mergeability cached on the Job is now stale post-push (or a

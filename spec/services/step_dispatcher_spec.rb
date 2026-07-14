@@ -201,6 +201,25 @@ RSpec.describe StepDispatcher do
       expect(s3.runs.count).to eq(0)  # not yet
     end
 
+    it "skips test_plan without creating a Run when the plan artifact already exists" do
+      test_plan = Step.create!(workflow: workflow, kind: "test_plan", position: 2)
+      s3.update!(position: 3)
+      s2.update!(next_step_id: test_plan.id)
+      test_plan.update!(next_step_id: s3.id)
+      workflow.set_artifact!("test_plan", { "steps" => [ "Run the tests" ], "notes" => nil })
+
+      expect {
+        described_class.advance_from(s2)
+      }.to change { s3.runs.count }.by(1)
+
+      expect(test_plan.reload).to be_succeeded
+      expect(test_plan.runs.count).to eq(0)
+      expect(test_plan.details).to include(
+        "skipped" => true,
+        "skip_reason" => "test_plan_already_submitted"
+      )
+    end
+
     it "skips cancelled steps and creates a Run on the first queued step beyond them" do
       Step.suppress_cancel_cascade do
         s2.update!(state: "cancelled", started_at: 1.minute.ago, finished_at: Time.current)

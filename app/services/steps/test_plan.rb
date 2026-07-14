@@ -3,7 +3,9 @@ module Steps
   # its implementation context into a reviewer-facing test plan and
   # stores it through the submit_test_plan MCP tool.
   class TestPlan < Base
-    TEST_PLAN_TURN_BUDGET = 5
+    # The prompt is short, but Claude may spend turns waiting for the MCP
+    # sidecar/tool list to become available before it can call submit_test_plan.
+    TEST_PLAN_TURN_BUDGET = 25
 
     def call
       workspace.setup
