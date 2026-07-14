@@ -49,6 +49,8 @@ export type RepositoryFormRecord = {
   pr_cost_footer_enabled: boolean
   auto_merge_enabled: boolean
   trust_clean_rebase_grade: boolean
+  main_branch_health_enabled: boolean
+  main_branch_repair_enabled: boolean
   agent_provider: string
   auto_approve_mode: string
   feedback_policy: string
@@ -89,6 +91,8 @@ export type RepositoryInput = {
   pr_cost_footer_enabled: boolean
   auto_merge_enabled: boolean
   trust_clean_rebase_grade: boolean
+  main_branch_health_enabled: boolean
+  main_branch_repair_enabled: boolean
   agent_provider: string
   auto_approve_mode: string
   feedback_policy: string
@@ -183,6 +187,7 @@ export type RepositoryDetailPayload = {
     app_archive_repository_path: string
     app_retry_failed_jobs_repository_path: string
     app_release_needs_triage_job_repository_path: string
+    app_resume_landing_repository_path: string
     repositories_path: string
     repository_documents_path: string
     repository_scheduled_tasks_path: string
@@ -219,6 +224,8 @@ export type RepositoryDetailRecord = {
   grader_health: string
   main_health: string
   landing_paused: boolean
+  main_branch_health_enabled: boolean
+  main_branch_repair_enabled: boolean
   last_health_checked_sha: string | null
 }
 
@@ -239,6 +246,8 @@ export type RepositoryHealthHistory = {
   grader_health: string
   main_health: string
   landing_paused: boolean
+  main_branch_health_enabled: boolean
+  main_branch_repair_enabled: boolean
   last_health_checked_sha: string | null
   records: RepositoryHealthCheckRecord[]
 }
@@ -400,6 +409,10 @@ export function retryFailedRepositoryJobs(path: string, page: number) {
 
 export function releaseNeedsTriageRepositoryJob(path: string, jobId: number, page: number) {
   return postJson<RepositoryDetailPayload>(path, { job_id: jobId, page })
+}
+
+export function resumeRepositoryLanding(path: string, page: number) {
+  return postJson<RepositoryDetailPayload>(path, { page })
 }
 
 export function archiveRepositoryFromPath(path: string) {

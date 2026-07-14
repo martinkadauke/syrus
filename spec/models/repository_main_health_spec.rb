@@ -42,6 +42,13 @@ RSpec.describe Repository, "#main_health" do
     expect(repo.main_health).to eq("broken")
   end
 
+  it "is unknown when main branch health checking is disabled" do
+    repo.update!(main_branch_health_enabled: false, ci_health: "broken", grader_health: "broken")
+
+    expect(repo.main_health).to eq("unknown")
+    expect(repo).not_to be_main_health_broken
+  end
+
   describe "#main_health_broken?" do
     it "returns true when main_health is broken" do
       repo.update!(ci_health: "broken")
@@ -84,6 +91,34 @@ RSpec.describe Repository, "#main_health" do
     it "rejects invalid health values" do
       repo.ci_health = "invalid"
       expect(repo).not_to be_valid
+    end
+  end
+
+  describe "main branch health defaults" do
+    it "enables health checking and auto-repair for original repositories" do
+      fresh = Factories.repository
+
+      expect(fresh.main_branch_health_enabled).to eq(true)
+      expect(fresh.main_branch_repair_enabled).to eq(true)
+    end
+
+    it "enables health checking but disables auto-repair for fork repositories" do
+      fork = Factories.repository(upstream_owner: "rails", upstream_name: "rails")
+
+      expect(fork.main_branch_health_enabled).to eq(true)
+      expect(fork.main_branch_repair_enabled).to eq(false)
+    end
+
+    it "honors an explicit auto-repair choice for fork repositories" do
+      fork = Factories.repository(
+        upstream_owner: "rails",
+        upstream_name: "rails",
+        main_branch_repair_enabled: true,
+        main_branch_repair_enabled_explicit: true
+      )
+
+      expect(fork.main_branch_health_enabled).to eq(true)
+      expect(fork.main_branch_repair_enabled).to eq(true)
     end
   end
 end

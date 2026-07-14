@@ -5,7 +5,7 @@ class PollAllMainBranchHealthJob < ApplicationJob
 
   def perform
     return if AppSetting.polling_paused?
-    Repository.active.find_each do |repository|
+    Repository.active.where(main_branch_health_enabled: true).find_each do |repository|
       PollMainBranchHealthJob.perform_later(repository.id)
     end
   end

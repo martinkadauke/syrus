@@ -62,6 +62,8 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
       pr_cost_footer_enabled: r.pr_cost_footer_enabled,
       auto_merge_enabled: true,
       trust_clean_rebase_grade: r.trust_clean_rebase_grade,
+      main_branch_health_enabled: r.main_branch_health_enabled,
+      main_branch_repair_enabled: r.main_branch_repair_enabled,
       agent_provider: "",
       auto_approve_mode: r.auto_approve_mode,
       feedback_policy: r.feedback_policy,

@@ -221,6 +221,12 @@
     "health_col_ci": "CI",
     "health_col_graders": "Examinatores",
     "health_col_failures": "Defectus",
+    "health_enforcement_disabled": "Custodia sanitatis rami principalis remota est.",
+    "health_auto_repair_enabled": "Opera reparationis automaticae activa sunt",
+    "health_auto_repair_disabled": "Opera reparationis automaticae remota sunt",
+    "resume_landing_warning": "Descensus suspensus est quia ramus principalis fractus est.",
+    "resume_landing_anyway": "Descensum tamen resume",
+    "resume_landing_confirm": "Ramus principalis adhuc fractus notatur. Descensum resumere potest officia tardare, plura officia idem vitium reparare, conflictus rebase creare, et signa consumere. Descensum tamen resumere?",
     "health_source_ci_poll": "CI",
     "health_source_grader_workflow": "Examinatores"
   },

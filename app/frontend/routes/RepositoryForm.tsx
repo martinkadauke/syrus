@@ -47,6 +47,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
   const { t } = useT("settings")
   const navigate = useNavigate()
   const [values, setValues] = useState<RepositoryInput>(() => inputFromPayload(payload))
+  const [repairTouched, setRepairTouched] = useState(mode === "edit")
   const [ownerMode, setOwnerMode] = useState<"select" | "manual">("manual")
   const [repoMode, setRepoMode] = useState<"select" | "manual">("manual")
   const [branchMode, setBranchMode] = useState<"select" | "manual">("manual")
@@ -75,10 +76,11 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
 
   useEffect(() => {
     setValues(inputFromPayload(payload))
+    setRepairTouched(mode === "edit")
     setRepoOptions([])
     setBranchOptions([])
     setRepoNotice(null)
-  }, [payload])
+  }, [mode, payload])
 
   useEffect(() => {
     if (!owners.isSuccess) return
@@ -197,6 +199,14 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
       default_branch: ""
     })
     setBranchOptions([])
+  }
+
+  function updateUpstream(field: "upstream_owner" | "upstream_name" | "upstream_default_branch", value: string) {
+    const next = { ...values, [field]: value }
+    if (!repairTouched && next.upstream_owner.trim() && next.upstream_name.trim()) {
+      next.main_branch_repair_enabled = false
+    }
+    setValues(next)
   }
 
   const title = mode === "new" ? "Add repository" : `Edit ${payload.repository.slug || `${payload.repository.owner}/${payload.repository.name}`}`
@@ -334,7 +344,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
               <input
                 aria-label="Upstream owner"
                 className={`${inputClass()} font-mono`}
-                onChange={(event) => setValues({ ...values, upstream_owner: event.target.value })}
+                onChange={(event) => updateUpstream("upstream_owner", event.target.value)}
                 type="text"
                 value={values.upstream_owner}
               />
@@ -344,7 +354,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
               <input
                 aria-label="Upstream name"
                 className={`${inputClass()} font-mono`}
-                onChange={(event) => setValues({ ...values, upstream_name: event.target.value })}
+                onChange={(event) => updateUpstream("upstream_name", event.target.value)}
                 type="text"
                 value={values.upstream_name}
               />
@@ -355,7 +365,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             <input
               aria-label="Upstream default branch"
               className={`${inputClass()} font-mono`}
-              onChange={(event) => setValues({ ...values, upstream_default_branch: event.target.value })}
+              onChange={(event) => updateUpstream("upstream_default_branch", event.target.value)}
               type="text"
               value={values.upstream_default_branch}
             />
@@ -404,6 +414,11 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
           <Checkbox label="Add Syrus cost footer to PR descriptions" onChange={(checked) => setValues({ ...values, pr_cost_footer_enabled: checked })} value={values.pr_cost_footer_enabled} />
           <Checkbox label="Auto-merge approved Syrus PRs" onChange={(checked) => setValues({ ...values, auto_merge_enabled: checked })} value={values.auto_merge_enabled} />
           <Checkbox label="Trust clean rebases (skip re-grading after a conflict-free rebase)" onChange={(checked) => setValues({ ...values, trust_clean_rebase_grade: checked })} value={values.trust_clean_rebase_grade} />
+          <Checkbox label="Block landing when the main branch is broken" onChange={(checked) => setValues({ ...values, main_branch_health_enabled: checked })} value={values.main_branch_health_enabled} />
+          <Checkbox label="Automatically create a fix job when main breaks" onChange={(checked) => {
+            setRepairTouched(true)
+            setValues({ ...values, main_branch_repair_enabled: checked })
+          }} value={values.main_branch_repair_enabled} />
 
           <Field label="Feedback policy">
             <select
@@ -466,6 +481,8 @@ function inputFromPayload(payload: RepositoryFormPayload): RepositoryInput {
     pr_cost_footer_enabled: payload.repository.pr_cost_footer_enabled,
     auto_merge_enabled: payload.repository.auto_merge_enabled,
     trust_clean_rebase_grade: payload.repository.trust_clean_rebase_grade,
+    main_branch_health_enabled: payload.repository.main_branch_health_enabled,
+    main_branch_repair_enabled: payload.repository.main_branch_repair_enabled,
     agent_provider: payload.repository.agent_provider,
     auto_approve_mode: payload.repository.auto_approve_mode,
     feedback_policy: payload.repository.feedback_policy,

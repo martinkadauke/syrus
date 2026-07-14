@@ -64,7 +64,11 @@ class StepDispatcher
   def self.main_health_blocking?(workflow)
     return false if MAIN_HEALTH_EXEMPT_TRIGGERS.include?(workflow.trigger_kind)
     return false if MainHealthChangedService.fix_main_job?(workflow.job)
-    workflow.job.repository.main_health_broken?
+
+    repository = workflow.job.repository
+    return false unless repository.main_branch_health_enabled?
+
+    repository.landing_paused? && repository.main_health_broken?
   end
 
   def self.cancel_unstartable_rebase_workflow!(workflow, reason)

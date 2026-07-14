@@ -173,6 +173,16 @@ RSpec.describe LandingQueueProcessor do
     expect(entry.blocked_reason).to eq("landing paused: main branch broken")
   end
 
+  it "does not block approved Jobs when repository health enforcement is disabled" do
+    job = queue_job(issue_number: 1, approved_at: 1.minute.ago)
+    repository.update!(main_branch_health_enabled: false, landing_paused: true)
+
+    workflow = described_class.call
+
+    expect(workflow.job).to eq(job)
+    expect(job.reload).to be_landing
+  end
+
   it "lets a fix-main direct Job land while repository landing is paused for broken main" do
     fix_job = Factories.job_record(
       user: user,

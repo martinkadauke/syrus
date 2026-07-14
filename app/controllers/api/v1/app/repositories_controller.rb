@@ -74,6 +74,7 @@ module Api
           )
 
           if repository.new_record?
+            repository.main_branch_repair_enabled_explicit = repository_param_present?(attrs, :main_branch_repair_enabled)
             repository.assign_attributes(attrs)
             repository.user = Current.user
             unless repository.save
@@ -242,6 +243,18 @@ module Api
           )
         end
 
+        def resume_landing
+          repository = find_repository
+          repository.update!(landing_paused: false)
+          LandingQueueProcessorJob.perform_later
+
+          render json: repository_detail_payload(
+            repository.reload,
+            page: detail_page,
+            message: I18n.t("api.repositories.repository_landing_resumed", slug: repository.slug)
+          )
+        end
+
         def coverage_trend
           repository = find_repository
           days = [ params.fetch(:days, 30).to_i, 1 ].max
@@ -324,6 +337,7 @@ module Api
               app_archive_repository_path: "/api/v1/app/repositories/#{repository.id}/archive",
               app_retry_failed_jobs_repository_path: "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
               app_release_needs_triage_job_repository_path: "/api/v1/app/repositories/#{repository.id}/release_needs_triage_job",
+              app_resume_landing_repository_path: "/api/v1/app/repositories/#{repository.id}/resume_landing",
               repositories_path: repositories_path,
               repository_documents_path: repository_documents_path(repository),
               repository_scheduled_tasks_path: repository_scheduled_tasks_path(repository)
@@ -467,6 +481,8 @@ module Api
             grader_health: repository.grader_health,
             main_health: repository.main_health,
             landing_paused: repository.landing_paused?,
+            main_branch_health_enabled: repository.main_branch_health_enabled?,
+            main_branch_repair_enabled: repository.main_branch_repair_enabled?,
             last_health_checked_sha: repository.last_health_checked_sha
           }
         end
@@ -499,6 +515,8 @@ module Api
             pr_cost_footer_enabled: repository.pr_cost_footer_enabled?,
             auto_merge_enabled: repository.auto_merge_enabled?,
             trust_clean_rebase_grade: repository.trust_clean_rebase_grade?,
+            main_branch_health_enabled: repository.main_branch_health_enabled?,
+            main_branch_repair_enabled: repository.main_branch_repair_enabled?,
             agent_provider: repository.agent_provider.to_s,
             auto_approve_mode: repository.auto_approve_mode,
             feedback_policy: repository.feedback_policy,
@@ -727,6 +745,8 @@ module Api
             grader_health: repository.grader_health,
             main_health: repository.main_health,
             landing_paused: repository.landing_paused?,
+            main_branch_health_enabled: repository.main_branch_health_enabled?,
+            main_branch_repair_enabled: repository.main_branch_repair_enabled?,
             last_health_checked_sha: repository.last_health_checked_sha,
             records: checks.map { |check| health_check_json(check, repository) }
           }
@@ -784,11 +804,17 @@ module Api
             :pr_cost_footer_enabled,
             :auto_merge_enabled,
             :trust_clean_rebase_grade,
+            :main_branch_health_enabled,
+            :main_branch_repair_enabled,
             :auto_approve_mode,
             :feedback_policy,
             :github_repository_id,
             :github_owner_id
           )
+        end
+
+        def repository_param_present?(attrs, key)
+          attrs.key?(key) || attrs.key?(key.to_s)
         end
 
         def issue_state

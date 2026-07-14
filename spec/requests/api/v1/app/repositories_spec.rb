@@ -1,6 +1,8 @@
 require "rails_helper"
 
 RSpec.describe "API: /api/v1/app/repositories", type: :request do
+  include ActiveJob::TestHelper
+
   let(:user) { Factories.user }
 
   def parse_body
@@ -160,6 +162,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "upstream_default_branch")).to eq("")
     expect(body.dig("repository", "trigger_label")).to eq("syrus")
     expect(body.dig("repository", "polling_enabled")).to eq(true)
+    expect(body.dig("repository", "main_branch_health_enabled")).to eq(true)
+    expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
     expect(body["configured_agent_providers"]).to include(
       { "value" => "codex", "label" => "Codex" },
       { "value" => "claude", "label" => "Claude Code" }
@@ -184,6 +188,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       prepare_enabled: false,
       pr_cost_footer_enabled: false,
       auto_merge_enabled: true,
+      main_branch_health_enabled: false,
       agent_provider: "codex",
       auto_approve_mode: "if_graders_pass",
       github_owner_id: 123,
@@ -207,6 +212,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "prepare_enabled" => false,
       "pr_cost_footer_enabled" => false,
       "auto_merge_enabled" => true,
+      "main_branch_health_enabled" => false,
+      "main_branch_repair_enabled" => false,
       "agent_provider" => "codex",
       "auto_approve_mode" => "if_graders_pass",
       "github_owner_id" => 123,
@@ -254,7 +261,11 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "agent_provider_label")).to eq("Codex")
     expect(body.dig("repository", "github_url")).to eq("https://github.com/acme/widgets")
     expect(body.dig("repository", "landing_paused")).to eq(true)
+    expect(body.dig("repository", "main_branch_health_enabled")).to eq(true)
+    expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
     expect(body.dig("health_history", "landing_paused")).to eq(true)
+    expect(body.dig("health_history", "main_branch_health_enabled")).to eq(true)
+    expect(body.dig("health_history", "main_branch_repair_enabled")).to eq(true)
     expect(body["tabs"]).to include(
       { "key" => "overview", "label" => "Overview", "path" => repository_path(repository) },
       { "key" => "github_issues", "label" => "GitHub Issues", "path" => repository_path(repository, tab: "github_issues") },
@@ -291,7 +302,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "edit_repository_path" => edit_repository_path(repository),
       "app_poll_repository_path" => "/api/v1/app/repositories/#{repository.id}/poll",
       "app_archive_repository_path" => "/api/v1/app/repositories/#{repository.id}/archive",
-      "app_retry_failed_jobs_repository_path" => "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs"
+      "app_retry_failed_jobs_repository_path" => "/api/v1/app/repositories/#{repository.id}/retry_failed_jobs",
+      "app_resume_landing_repository_path" => "/api/v1/app/repositories/#{repository.id}/resume_landing"
     )
     expect(body["paths"].keys).not_to include("poll_repository_path", "archive_repository_path", "retry_failed_jobs_repository_path")
   end
@@ -463,11 +475,36 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.prepare_enabled).to eq(false)
     expect(repository.pr_cost_footer_enabled).to eq(false)
     expect(repository.auto_merge_enabled).to eq(true)
+    expect(repository.main_branch_health_enabled).to eq(true)
+    expect(repository.main_branch_repair_enabled).to eq(false)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass")
     expect(repository.github_owner_id).to eq(123)
     expect(repository.github_repository_id).to eq(456)
     expect(parse_body).to include("message" => "Repository acme/widgets added.", "redirect_to" => repositories_path)
+  end
+
+  it "honors explicit main branch repair settings when creating fork repositories" do
+    sign_in_as(user)
+
+    post "/api/v1/app/repositories", params: {
+      repository: {
+        owner: "acme",
+        name: "widgets",
+        default_branch: "main",
+        upstream_owner: "rails",
+        upstream_name: "rails",
+        upstream_default_branch: "main",
+        trigger_label: "syrus",
+        main_branch_health_enabled: "1",
+        main_branch_repair_enabled: "1"
+      }
+    }
+
+    expect(response).to have_http_status(:created)
+    repository = user.repositories.last
+    expect(repository.main_branch_health_enabled).to eq(true)
+    expect(repository.main_branch_repair_enabled).to eq(true)
   end
 
   it "includes the credential status (with a pre-scoped install link) in the create response" do
@@ -529,6 +566,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
         prepare_enabled: "0",
         pr_cost_footer_enabled: "0",
         auto_merge_enabled: "1",
+        main_branch_health_enabled: "0",
+        main_branch_repair_enabled: "0",
         agent_provider: "codex",
         auto_approve_mode: "if_graders_pass_and_tagged_safe",
         github_owner_id: "123",
@@ -546,11 +585,28 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.prepare_enabled).to eq(false)
     expect(repository.pr_cost_footer_enabled).to eq(false)
     expect(repository.auto_merge_enabled).to eq(true)
+    expect(repository.main_branch_health_enabled).to eq(false)
+    expect(repository.main_branch_repair_enabled).to eq(false)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass_and_tagged_safe")
     expect(repository.github_owner_id).to eq(123)
     expect(repository.github_repository_id).to eq(456)
     expect(parse_body).to include("message" => "Repository acme/widgets updated.", "redirect_to" => repositories_path)
+  end
+
+  it "resumes repository landing even when main remains broken" do
+    sign_in_as(user)
+    repository = Factories.repository(user: user, owner: "acme", name: "widgets", landing_paused: true, ci_health: "broken")
+
+    expect {
+      post "/api/v1/app/repositories/#{repository.id}/resume_landing", params: { page: 1 }
+    }.to have_enqueued_job(LandingQueueProcessorJob)
+
+    expect(response).to have_http_status(:ok)
+    expect(repository.reload.landing_paused).to eq(false)
+    expect(parse_body.dig("repository", "landing_paused")).to eq(false)
+    expect(parse_body.dig("repository", "main_health")).to eq("broken")
+    expect(parse_body["message"]).to eq("Landing resumed for acme/widgets.")
   end
 
   it "enqueues a forced poll and returns the refreshed index payload" do

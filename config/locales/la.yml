@@ -73,6 +73,7 @@ la:
       not_triage: "Opus non expectat liberationem ad trianam."
       polling: "Repositorium %{slug} nunc indagatur."
       released_triage: "%{slug} ad trianam liberatum est."
+      repository_landing_resumed: "Descensus pro %{slug} resumptus est."
       no_github_token: "Nullum signum GitHub configuratum — adde unum in rebus compositis."
       github_error: "Error GitHub: %{error}"
       circuit_open: "%{label} aegrotare videtur; iterationes automaticae pausatae sunt."

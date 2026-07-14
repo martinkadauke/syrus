@@ -221,6 +221,12 @@
     "health_col_ci": "CI",
     "health_col_graders": "Graders",
     "health_col_failures": "Fehler",
+    "health_enforcement_disabled": "Hauptzweig-Gesundheitsprüfung ist deaktiviert.",
+    "health_auto_repair_enabled": "Auto-Fix-Jobs aktiviert",
+    "health_auto_repair_disabled": "Auto-Fix-Jobs deaktiviert",
+    "resume_landing_warning": "Landing ist pausiert, weil main defekt ist.",
+    "resume_landing_anyway": "Landing trotzdem fortsetzen",
+    "resume_landing_confirm": "Main ist weiterhin als defekt markiert. Wenn Landing fortgesetzt wird, können Jobs länger dauern, mehrere Jobs dasselbe Problem beheben, Rebase-Konflikte entstehen und Tokens verschwendet werden. Landing trotzdem fortsetzen?",
     "health_source_ci_poll": "CI",
     "health_source_grader_workflow": "Graders"
   },

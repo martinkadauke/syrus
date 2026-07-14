@@ -20,6 +20,7 @@ import {
   fetchRepositoryIssues,
   pollRepositoryDetail,
   releaseNeedsTriageRepositoryJob,
+  resumeRepositoryLanding,
   retryFailedRepositoryJobs,
   type RepositoryDetailJob,
   type RepositoryDetailPayload,
@@ -115,7 +116,16 @@ function RepositoryDetail({ activeTab, payload, prefix, queryKey }: { activeTab:
           <RepositorySummary payload={payload} />
           <Actions payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
           <NeedsTriageJobs payload={payload} prefix={prefix} queryKey={queryKey} onNotice={setNotice} />
-          {payload.health_history ? <MainBranchHealthSection history={payload.health_history} repository={payload.repository} /> : null}
+          {payload.health_history ? (
+            <MainBranchHealthSection
+              history={payload.health_history}
+              onNotice={setNotice}
+              page={payload.pagination.page}
+              queryKey={queryKey}
+              repository={payload.repository}
+              resumePath={payload.paths.app_resume_landing_repository_path}
+            />
+          ) : null}
           <RecentJobs payload={payload} prefix={prefix} setupStatus={setupStatus} />
         </div>
         <div className="space-y-6">
@@ -654,11 +664,40 @@ function healthTone(health: string): HealthTone {
   return "gray"
 }
 
-function MainBranchHealthSection({ history, repository }: { history: RepositoryHealthHistory; repository: RepositoryDetailPayload["repository"] }) {
+function MainBranchHealthSection({
+  history,
+  onNotice,
+  page,
+  queryKey,
+  repository,
+  resumePath
+}: {
+  history: RepositoryHealthHistory
+  onNotice: (message: string | null) => void
+  page: number
+  queryKey: RepositoryDetailQueryKey
+  repository: RepositoryDetailPayload["repository"]
+  resumePath: string
+}) {
   const { t } = useT("settings")
+  const queryClient = useQueryClient()
   const shaUrl = history.last_health_checked_sha
     ? `https://github.com/${repository.slug}/commit/${history.last_health_checked_sha}`
     : null
+  const resumeLanding = useMutation({
+    mutationFn: () => resumeRepositoryLanding(resumePath, page),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(queryKey, updated)
+      onNotice(updated.message || null)
+    }
+  })
+  const canResume = repository.main_branch_health_enabled && repository.landing_paused && repository.main_health === "broken"
+
+  function confirmResume() {
+    if (!window.confirm(t("repository.resume_landing_confirm"))) return
+    onNotice(null)
+    resumeLanding.mutate()
+  }
 
   return (
     <section>
@@ -678,6 +717,28 @@ function MainBranchHealthSection({ history, repository }: { history: RepositoryH
             </div>
           ) : null}
         </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+          {repository.main_branch_health_enabled ? null : <span>{t("repository.health_enforcement_disabled")}</span>}
+          <span>{repository.main_branch_repair_enabled ? t("repository.health_auto_repair_enabled") : t("repository.health_auto_repair_disabled")}</span>
+        </div>
+        {canResume ? (
+          <div className="flex flex-col gap-3 rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-amber-900 dark:text-amber-100">
+              {t("repository.resume_landing_warning")}
+            </p>
+            <button
+              className="rounded border border-amber-300 dark:border-amber-600 bg-white dark:bg-amber-950 px-3 py-1.5 text-sm font-medium text-amber-900 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={resumeLanding.isPending}
+              onClick={confirmResume}
+              type="button"
+            >
+              {t("repository.resume_landing_anyway")}
+            </button>
+          </div>
+        ) : null}
+        {resumeLanding.isError ? (
+          <PanelMessage tone="error">{errorMessage(resumeLanding.error, "Unable to resume landing.")}</PanelMessage>
+        ) : null}
         {history.ci_health === "broken" && history.records.length > 0 ? (
           <FailingChecks checks={history.records[0].ci_failed_checks} />
         ) : null}

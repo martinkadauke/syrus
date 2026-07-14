@@ -221,6 +221,12 @@
     "health_col_ci": "CI",
     "health_col_graders": "Graders",
     "health_col_failures": "Failures",
+    "health_enforcement_disabled": "Main branch health enforcement is disabled.",
+    "health_auto_repair_enabled": "Auto-fix jobs enabled",
+    "health_auto_repair_disabled": "Auto-fix jobs disabled",
+    "resume_landing_warning": "Landing is paused because main is broken.",
+    "resume_landing_anyway": "Resume landing anyway",
+    "resume_landing_confirm": "Main is still marked broken. Resuming landing can make jobs take longer, make multiple jobs fix the same problem, cause rebase conflicts, and waste tokens. Resume landing anyway?",
     "health_source_ci_poll": "CI",
     "health_source_grader_workflow": "Graders"
   },

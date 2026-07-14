@@ -1,11 +1,12 @@
 require "rails_helper"
 
 RSpec.describe PollAllMainBranchHealthJob do
-  it "enqueues PollMainBranchHealthJob for each active repository" do
+  it "enqueues PollMainBranchHealthJob for each active repository with health checks enabled" do
     r1 = Factories.repository
     r2 = Factories.repository
     archived = Factories.repository
     archived.archive!
+    Factories.repository(main_branch_health_enabled: false)
 
     expect {
       described_class.perform_now

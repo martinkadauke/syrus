@@ -212,6 +212,7 @@ Rails.application.routes.draw do
             post :unarchive
             post :retry_failed_jobs
             post :release_needs_triage_job
+            post :resume_landing
             get :coverage_trend
           end
         end

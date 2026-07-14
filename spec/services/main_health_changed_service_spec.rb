@@ -23,6 +23,17 @@ RSpec.describe MainHealthChangedService do
       expect { described_class.on_health_change!(repository) }.not_to raise_error
     end
 
+    it "ignores health changes when main branch health checking is disabled" do
+      repository.update!(main_branch_health_enabled: false, ci_health: "broken")
+      allow(Rails.logger).to receive(:info)
+
+      expect {
+        described_class.on_health_change!(repository)
+      }.not_to change { repository.reload.landing_paused }
+
+      expect(repository.jobs.where(kind: "direct")).to be_empty
+    end
+
     context "when main_health transitions to broken" do
       before { repository.update!(ci_health: "broken") }
 
@@ -94,6 +105,16 @@ RSpec.describe MainHealthChangedService do
           state: "queued"
         )
         expect(fix_job.issue_body).to include("ci_health", "grader_health")
+      end
+
+      it "does not spawn a fix Job when auto-repair is disabled" do
+        repository.update!(main_branch_repair_enabled: false)
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.not_to change { repository.jobs.where(kind: "direct").count }
+
+        expect(repository.reload.landing_paused).to be true
       end
 
       it "does not spawn a second fix Job when one is already open" do

@@ -7,6 +7,7 @@ class PollMainBranchHealthJob < ApplicationJob
     repository = Repository.find_by(id: repository_id)
     return unless repository
     return if repository.archived?
+    return unless repository.main_branch_health_enabled?
 
     client = GithubClient.for(repository: repository, user: repository.user)
 

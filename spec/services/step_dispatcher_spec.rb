@@ -843,10 +843,10 @@ RSpec.describe StepDispatcher, "main_health queue gate" do
   before { s1.update!(next_step_id: s2.id) }
 
   def break_main!
-    job_model.repository.update!(ci_health: "broken")
+    job_model.repository.update!(ci_health: "broken", landing_paused: true)
   end
 
-  it "does not create a Run when the repository main_health is broken" do
+  it "does not create a Run when the repository main_health is broken and landing is paused" do
     break_main!
     expect {
       described_class.start_workflow(workflow)
@@ -858,6 +858,22 @@ RSpec.describe StepDispatcher, "main_health queue gate" do
     break_main!
     expect(Rails.logger).to receive(:warn).with(include("main_branch_broken"))
     described_class.start_workflow(workflow)
+  end
+
+  it "starts the workflow when broken main has been manually unpaused" do
+    job_model.repository.update!(ci_health: "broken", landing_paused: false)
+
+    expect {
+      described_class.start_workflow(workflow)
+    }.to change { s1.runs.count }.by(1)
+  end
+
+  it "starts the workflow when main branch health checking is disabled" do
+    job_model.repository.update!(main_branch_health_enabled: false, ci_health: "broken", landing_paused: true)
+
+    expect {
+      described_class.start_workflow(workflow)
+    }.to change { s1.runs.count }.by(1)
   end
 
   it "starts the workflow normally when main_health is healthy" do

@@ -19,6 +19,11 @@ class MainHealthChangedService
   end
 
   def on_health_change!
+    unless @repository.main_branch_health_enabled?
+      Rails.logger.info("[MainHealthChangedService] #{@repository.slug} main health disabled; ignoring health change")
+      return
+    end
+
     Rails.logger.warn(
       "[MainHealthChangedService] #{@repository.slug} main_health=#{@repository.main_health} " \
       "ci_health=#{@repository.ci_health} grader_health=#{@repository.grader_health}"
@@ -27,7 +32,7 @@ class MainHealthChangedService
     if @repository.main_health_broken?
       pause_landing!
       stamp_active_workflows!
-      spawn_fix_job!
+      spawn_fix_job! if @repository.main_branch_repair_enabled?
       emit_notification!
     elsif @repository.main_health == "healthy"
       self.class.recovered!(@repository)

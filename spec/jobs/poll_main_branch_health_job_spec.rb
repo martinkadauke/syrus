@@ -103,6 +103,13 @@ RSpec.describe PollMainBranchHealthJob do
     described_class.perform_now(repository.id)
   end
 
+  it "returns early when main branch health checking is disabled" do
+    repository.update!(main_branch_health_enabled: false)
+
+    expect_any_instance_of(GithubClient).not_to receive(:branch_head_sha)
+    described_class.perform_now(repository.id)
+  end
+
   it "returns early when the branch has no HEAD SHA" do
     allow_any_instance_of(GithubClient).to receive(:branch_head_sha).and_return(nil)
     expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)

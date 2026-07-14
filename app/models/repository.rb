@@ -22,6 +22,10 @@ class Repository < ApplicationRecord
   attribute :ci_health, :string, default: "unknown"
   attribute :grader_health, :string, default: "unknown"
   attribute :landing_paused, :boolean, default: false
+  attribute :main_branch_health_enabled, :boolean, default: true
+  attribute :main_branch_repair_enabled, :boolean, default: true
+
+  attr_accessor :main_branch_repair_enabled_explicit
 
   enum :ci_health, CI_HEALTH_STATES.index_with(&:itself), prefix: true, validate: true
   enum :grader_health, GRADER_HEALTH_STATES.index_with(&:itself), prefix: true, validate: true
@@ -62,6 +66,7 @@ class Repository < ApplicationRecord
 
   before_validation :normalize_agent_provider
   before_validation :normalize_upstream_metadata
+  before_validation :default_main_branch_repair_for_fork, on: :create
   before_save :link_installation_from_owner
   after_create :seed_owner_membership
   before_destroy :destroy_chat_sessions, prepend: true
@@ -74,6 +79,7 @@ class Repository < ApplicationRecord
   end
 
   def main_health
+    return "unknown" unless main_branch_health_enabled?
     return "broken" if ci_health_broken? || grader_health_broken?
     return "healthy" if grader_health_healthy? && (ci_health_healthy? || ci_health_not_configured?)
     "unknown"
@@ -117,6 +123,10 @@ class Repository < ApplicationRecord
     "#{upstream_owner}/#{upstream_name}"
   end
 
+  def fork?
+    upstream_repository_id.present? || upstream_slug.present?
+  end
+
   def effective_agent_provider(user: nil)
     if user
       membership_provider = repository_memberships.find_by(user_id: user.id)&.agent_provider&.presence
@@ -158,6 +168,12 @@ class Repository < ApplicationRecord
     self.upstream_owner = upstream_owner.presence
     self.upstream_name = upstream_name.presence
     self.upstream_default_branch = upstream_default_branch.presence
+  end
+
+  def default_main_branch_repair_for_fork
+    return if main_branch_repair_enabled_explicit
+
+    self.main_branch_repair_enabled = false if fork?
   end
 
   def upstream_owner_and_name_are_paired
