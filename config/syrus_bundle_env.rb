@@ -11,7 +11,7 @@ syrus_bundle_config = File.join(deps, "bundle-config")
 syrus_bundle = File.join(deps, "bundle")
 vendor_bundle_config = File.join(repo_root, ".bundle")
 vendor_bundle = File.join(repo_root, "vendor", "bundle")
-bundle_path_empty = ENV["BUNDLE_PATH"].to_s.empty?
+current_bundle_path = ENV["BUNDLE_PATH"].to_s
 local_ruby_version = RbConfig::CONFIG.fetch("ruby_version")
 
 bundle_installed = lambda do |path|
@@ -23,14 +23,20 @@ configured_bundle = lambda do |config_dir, path|
   File.file?(File.join(config_dir, "config")) && bundle_installed.call(path)
 end
 
+bundle_path_absent = current_bundle_path.empty?
+# Also override when BUNDLE_PATH is set but points to a location with no gems,
+# which happens when the Syrus worker env is inherited by grader subprocesses
+# that run in a workspace where gems live in vendor/bundle instead.
+bundle_path_stale = !bundle_path_absent && !bundle_installed.call(current_bundle_path)
+
 prepared_bundle = [
   [ syrus_bundle_config, syrus_bundle ],
   [ vendor_bundle_config, vendor_bundle ]
 ].find { |config_dir, path| configured_bundle.call(config_dir, path) }&.last
 
-ENV["BUNDLE_PATH"] = prepared_bundle if bundle_path_empty && prepared_bundle
+ENV["BUNDLE_PATH"] = prepared_bundle if (bundle_path_absent || bundle_path_stale) && prepared_bundle
 
-if bundle_path_empty && prepared_bundle == syrus_bundle
+if (bundle_path_absent || bundle_path_stale) && prepared_bundle == syrus_bundle
   ENV["BUNDLE_APP_CONFIG"] ||= syrus_bundle_config
   ENV["BUNDLE_USER_HOME"] ||= File.join(deps, "bundle-home")
   ENV["BUNDLE_USER_CACHE"] ||= File.join(deps, "bundle-cache")
