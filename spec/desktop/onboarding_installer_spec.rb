@@ -35,6 +35,16 @@ RSpec.describe "desktop onboarding installer" do
     end
   end
 
+  it "forwards the channel's Compose project (and pauses polling for a test stack)" do
+    # The load-bearing cross-channel isolation: without --project, a test-channel
+    # install runs install.sh on the built-in default project "syrus" and adopts
+    # the PRODUCTION stack/volume. --pause-polling keeps a fresh test stack from
+    # racing production to file Jobs. Pinned here so deleting either push fails a
+    # spec (install_sh_gui_spec only proves the SCRIPT accepts the flags).
+    expect(driver).to include('flags.push("--project", identity.project)')
+    expect(driver).to match(/identity\.channel === "test"[\s\S]{0,80}flags\.push\("--pause-polling"\)/)
+  end
+
   it "augments PATH for GUI-spawned docker invocations" do
     expect(docker_runtime).to include('".orbstack", "bin"')
     expect(docker_runtime).to include("/Applications/Docker.app/Contents/Resources/bin")

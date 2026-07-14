@@ -165,4 +165,7 @@ jobs:
       artifact_retention_days: 14
       run_integration_tests: ${{ inputs.run_integration_tests }}
       build_windows: ${{ inputs.build_windows }}
+      # Fork the product name / appId / icon so this installs as "Syrus Test.app"
+      # beside — never over — a production release.
+      channel: test
     secrets: inherit

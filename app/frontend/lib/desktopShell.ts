@@ -10,6 +10,14 @@ export function isDesktopShell(): boolean {
   return /\bSyrusDesktop\//.test(navigator.userAgent)
 }
 
+// The desktop shell announces its build channel as a UA token
+// (SyrusDesktopChannel/test) only for a side-by-side test build; its absence
+// means the default (stable) channel. The web UI uses this to show a TEST
+// badge next to the brand so a test build is unmistakable in-app.
+export function isDesktopTestChannel(): boolean {
+  return /\bSyrusDesktopChannel\/test\b/.test(navigator.userAgent)
+}
+
 // The desktop app announces its build as a UA token
 // (SyrusDesktopBuild/<value>) so the web UI can show which app build is
 // hosting it — see BuildBadge. The value is the release version ("0.1.2")

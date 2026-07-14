@@ -32,7 +32,10 @@ func DefaultCredentialsPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".syrus", "credentials"), nil
+	// The channel/profile picks the file basename: `credentials` for the
+	// default channel, `credentials.test` for a `syrus-test` build. See
+	// profile.go for how the profile is resolved.
+	return filepath.Join(home, ".syrus", credentialsFilename(Profile())), nil
 }
 
 func LoadDefaultCredentials() (Credentials, error) {

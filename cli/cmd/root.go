@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/tkadauke/syrus/cli/internal/config"
 )
 
 const loginMessage = "Run 'syrus login' to set up your Syrus instance URL and API token."
@@ -17,6 +18,9 @@ func Execute() error {
 
 func NewRootCommand() *cobra.Command {
 	chatDebug = false
+	// StringVar below resets this to "" on every build; the explicit clear
+	// mirrors chatDebug and documents that the flag is command-scoped state.
+	config.ProfileFlag = ""
 	rootCmd := &cobra.Command{
 		Use:           "syrus",
 		Short:         "Syrus command line client",
@@ -28,6 +32,8 @@ func NewRootCommand() *cobra.Command {
 	}
 
 	rootCmd.PersistentFlags().BoolVar(&chatDebug, "debug", false, "show raw chat stream diagnostics")
+	rootCmd.PersistentFlags().StringVar(&config.ProfileFlag, "profile", "",
+		`credentials profile to target ("test" for a side-by-side test build; default is stable)`)
 
 	rootCmd.AddCommand(NewLoginCommand())
 	rootCmd.AddCommand(NewChatCommand())

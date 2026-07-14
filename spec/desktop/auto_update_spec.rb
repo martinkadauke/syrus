@@ -27,8 +27,13 @@ RSpec.describe "desktop auto-update and release pipeline" do
   let(:build_workflow) { read(repo_root, ".github/workflows/_build-app.yml") }
   let(:ci_workflow) { read(repo_root, ".github/workflows/desktop-ci.yml") }
 
-  it "keeps auto-update inert for unsigned dev builds and test runs" do
-    expect(app_updates).to include("app.isPackaged && !process.env.SYRUS_DISABLE_AUTO_UPDATE")
+  it "keeps auto-update inert for unsigned dev builds, test runs, and the test channel" do
+    expect(app_updates).to include("app.isPackaged &&")
+    expect(app_updates).to include("!process.env.SYRUS_DISABLE_AUTO_UPDATE")
+    # Only the STABLE channel auto-updates — a packaged local dev build (0.0.0,
+    # the test channel) must not download the stable release over itself.
+    expect(app_updates).to include("isStableChannel()")
+    expect(app_updates).to include('resolveChannel({ env: process.env.SYRUS_CHANNEL, productName: app.getName(), version: app.getVersion() }) === "stable"')
   end
 
   it "checks on launch and every six hours, logging errors instead of dialoging" do
@@ -306,16 +311,17 @@ RSpec.describe "desktop auto-update and release pipeline" do
     expect(build_workflow).to include("codesign --verify --deep --strict")
     expect(build_workflow).to include("xcrun stapler validate")
     # One universal macOS build → one Syrus.dmg permalink (no Intel split);
-    # Windows is x64-only → Syrus-Setup.exe.
-    expect(build_workflow).to match(%r{"desktop/out/Syrus-\$VERSION-universal\.dmg" "\$RUNNER_TEMP/staged/Syrus\.dmg"})
+    # Windows is x64-only → Syrus-Setup.exe. Filenames carry the channel's
+    # product name ($PRODUCT), which is "Syrus" on the release (stable) caller.
+    expect(build_workflow).to match(%r{"desktop/out/\$PRODUCT-\$VERSION-universal\.dmg" "\$RUNNER_TEMP/staged/\$PRODUCT\.dmg"})
     expect(build_workflow).not_to include("Syrus-Intel.dmg")
-    expect(build_workflow).to match(%r{Syrus-Setup-\$VERSION-x64\.exe" "\$RUNNER_TEMP/staged/Syrus-Setup\.exe"})
+    expect(build_workflow).to match(%r{\$PRODUCT-Setup-\$VERSION-x64\.exe" "\$RUNNER_TEMP/staged/\$PRODUCT-Setup\.exe"})
     expect(build_workflow).not_to include("Syrus-Setup-arm64.exe")
     # Parsimony: macOS auto-update rides the .zip (+ blockmap) + latest-mac.yml;
     # the versioned dmg would be a byte-identical twin of Syrus.dmg, so on the
     # release-feed path it is NOT staged under its versioned name. Don't
     # reintroduce the blanket dmg/blockmap copy.
-    expect(build_workflow).to match(%r{cp "desktop/out/Syrus-\$VERSION-universal\.zip"})
+    expect(build_workflow).to match(%r{cp "desktop/out/\$PRODUCT-\$VERSION-universal\.zip"})
     expect(build_workflow).not_to include("cp desktop/out/Syrus-*.dmg")
     expect(build_workflow).not_to match(%r{cp desktop/out/\*\.blockmap})
   end

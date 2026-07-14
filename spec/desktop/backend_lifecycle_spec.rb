@@ -4,8 +4,10 @@ require "spec_helper"
 
 # The app manages the local Docker stack it installed: ensure-on-launch, a
 # transition-only watchdog, and explicit Backend-menu controls. Quitting the
-# app must leave the stack running (jobs keep flowing), so nothing here may
-# tear containers down or touch volumes.
+# app must leave the stack running (jobs keep flowing), so the normal lifecycle
+# never tears containers down or touches volumes. The ONE exception is
+# wipeBackendStack — the explicit, test-channel-guarded "Reset Test Setup" — so
+# the "no down" assertion below exempts exactly that helper.
 RSpec.describe "desktop backend lifecycle" do
   let(:desktop_root) { File.expand_path("../../desktop", __dir__) }
 
@@ -18,15 +20,22 @@ RSpec.describe "desktop backend lifecycle" do
   let(:main_process) { read("electron/main.ts") }
   let(:backend_status) { read("src/BackendStatus.tsx") }
 
-  it "runs compose from the state dir with the pinned project name and augmented PATH" do
-    expect(lifecycle).to include('[...prefixArgs, "-p", "syrus", ...args]')
+  it "runs compose from the state dir with the channel's project name and augmented PATH" do
+    # The project name is per-channel (syrus / syrus-test) so a side-by-side
+    # test stack drives its own containers and volumes.
+    expect(lifecycle).to include('[...prefixArgs, "-p", currentStackIdentity().project, ...args]')
     expect(lifecycle).to include("cwd: stateDir()")
     expect(lifecycle).to include("env: execEnv()")
   end
 
-  it "stops with `compose stop` and never destroys containers or volumes" do
+  it "stops with `compose stop` and never destroys containers or volumes (outside the test-only wipe)" do
     expect(lifecycle).to include('compose(["stop"])')
-    expect(lifecycle).not_to include('"down"')
+    # The only `down` in the module is the explicit, test-channel-guarded
+    # wipeBackendStack (Reset Test Setup). Exempt exactly that helper, then
+    # assert the rest of the lifecycle never tears containers down.
+    wipe = lifecycle[/export const wipeBackendStack[\s\S]*?\n\}/]
+    expect(wipe).to include('compose(["down", "-v", "--remove-orphans"])')
+    expect(lifecycle.sub(wipe, "")).not_to include('"down"')
   end
 
   it "never pulls images — updates happen only through the installer" do
@@ -47,7 +56,7 @@ RSpec.describe "desktop backend lifecycle" do
   it "diagnoses daemon-down vs data-gone vs containers-down without auto-restarting" do
     expect(lifecycle).to include('"daemon-down"')
     expect(lifecycle).to include('"containers-down"')
-    expect(lifecycle).to match(/volumeExists\(DATA_VOLUME_NAME\)[\s\S]{0,80}"data-gone"/)
+    expect(lifecycle).to match(/volumeExists\(currentStackIdentity\(\)\.dataVolume\)[\s\S]{0,80}"data-gone"/)
     expect(lifecycle).not_to match(/onHealthyChanged[\s\S]*startBackend\(\)/)
   end
 

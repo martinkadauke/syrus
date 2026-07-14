@@ -34,8 +34,24 @@ class AppSetting < ApplicationRecord
   encrypts :github_app_private_key_pem
 
   # Singleton row. .current returns the only record, creating it if missing.
+  # On the very first create (fresh database), SYRUS_BOOT_POLLING_PAUSED seeds
+  # polling paused — a side-by-side test stack sets it in its .env so it does
+  # not race the production stack to file Jobs on the same repos. It seeds the
+  # DB row ONCE, so the operator can still unpause from the admin console when
+  # they intend the test stack to work real repositories.
   def self.current
-    first || create!
+    first || create!(polling_paused: boot_polling_paused_default)
+  end
+
+  # Only true when SYRUS_BOOT_POLLING_PAUSED is an explicitly truthy value;
+  # otherwise the column's own `default: false` applies. Whitelisted (not
+  # ActiveModel::Type::Boolean, which casts every unrecognized non-empty
+  # string — including "no"/"off"/"disabled" — to true) so a fresh production
+  # boot cannot be seeded paused by an "obviously falsy" env value.
+  BOOT_TRUTHY_VALUES = %w[1 true yes on].freeze
+
+  def self.boot_polling_paused_default
+    BOOT_TRUTHY_VALUES.include?(ENV["SYRUS_BOOT_POLLING_PAUSED"].to_s.strip.downcase)
   end
 
   def self.signups_open?

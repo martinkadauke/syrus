@@ -225,9 +225,10 @@ RSpec.describe "desktop test-build pipeline" do
     expect(build_text.scan("if-no-files-found: error").size).to be >= 3
     expect(build_text).to include("retention-days: ${{ inputs.artifact_retention_days }}")
     # A test build stages ONLY the versioned installers (the else branch of the
-    # stage_update_feed gate).
-    expect(build_text).to match(%r{cp "desktop/out/Syrus-\$VERSION-universal\.dmg" "\$RUNNER_TEMP/staged/"})
-    expect(build_text).to match(%r{cp "desktop/out/Syrus-Setup-\$VERSION-x64\.exe" "\$RUNNER_TEMP/staged/"})
+    # stage_update_feed gate). Filenames carry the channel product name — the
+    # test caller passes channel: test, so $PRODUCT is "Syrus Test" at runtime.
+    expect(build_text).to match(%r{cp "desktop/out/\$PRODUCT-\$VERSION-universal\.dmg" "\$RUNNER_TEMP/staged/"})
+    expect(build_text).to match(%r{cp "desktop/out/\$PRODUCT-Setup-\$VERSION-x64\.exe" "\$RUNNER_TEMP/staged/"})
     # The channel-feeding staging (stable-name aliases + latest-mac.yml /
     # latest.yml / .blockmap) is gated on stage_update_feed, which the test
     # caller turns OFF — so a test build never feeds the update channel.
@@ -235,11 +236,11 @@ RSpec.describe "desktop test-build pipeline" do
     # …and the module's guard has the right polarity: the permalink aliases +
     # update-feed files are copied ONLY inside the STAGE_FEED=true branch.
     expect(build_text.scan("STAGE_FEED: ${{ inputs.stage_update_feed }}").size).to eq(2)
-    mac_stage = build_text[/if \[ "\$STAGE_FEED" = "true" \]; then[\s\S]{0,600}?else/]
+    mac_stage = build_text[/if \[ "\$STAGE_FEED" = "true" \]; then[\s\S]{0,700}?else/]
     expect(mac_stage).to include("latest-mac.yml")
-    expect(mac_stage).to include('staged/Syrus.dmg"')
+    expect(mac_stage).to include('staged/$PRODUCT.dmg"')
     win_stage = build_text[/latest\.yml[\s\S]{0,400}?else/]
-    expect(win_stage).to include("Syrus-Setup.exe")
+    expect(win_stage).to include("$PRODUCT-Setup.exe")
 
     # The failure-diagnostics artifact must stay OUTSIDE the caller's
     # `<prefix>-*` namespace: release's publish downloads `pattern: staged-*`

@@ -17,7 +17,7 @@ import {
   writeCredentialsFile
 } from "./credentialsStore.js"
 import type { Credentials } from "./credentialsStore.js"
-import { clearBackendConfig, DEFAULT_GLOBAL_HOTKEY, getBackendMode, getOnboardingResumeLocal, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
+import { clearBackendConfig, currentChannel, currentStackIdentity, defaultGlobalHotkey, getBackendMode, getOnboardingResumeLocal, getServerUrl, localStateDir, migrateBackendConfig, saveBackendConfig, store } from "./settings.js"
 import type { DesktopSettings, DesktopSettingsInput } from "./settings.js"
 import * as appUpdates from "./appUpdates.js"
 import * as backendLifecycle from "./installer/backendLifecycle.js"
@@ -386,14 +386,21 @@ const updateTrayBadge = () => {
     return
   }
 
+  // On the test channel, keep a "T" next to the menu-bar icon so the test
+  // app is distinguishable from a production install. It coexists with the
+  // unread badge ("T", or "T 3"). This is set here (not once in createTray)
+  // because setTitle is otherwise cleared on every badge refresh.
+  const testMark = currentChannel() === "test" ? "T" : ""
+  const appName = app.getName()
+
   if (process.platform === "darwin") {
     tray.setImage(plainTrayIcon)
-    tray.setTitle(unreadCount > 0 ? trayBadgeLabel(unreadCount) : "")
+    tray.setTitle([testMark, unreadCount > 0 ? trayBadgeLabel(unreadCount) : ""].filter(Boolean).join(" "))
     return
   }
 
   tray.setImage(unreadCount > 0 ? badgedTrayIcon() : plainTrayIcon)
-  tray.setToolTip(unreadCount > 0 ? `Syrus — ${trayBadgeLabel(unreadCount)} unread` : "Syrus")
+  tray.setToolTip(unreadCount > 0 ? `${appName} — ${trayBadgeLabel(unreadCount)} unread` : appName)
 }
 
 const setUnreadCount = (count: number) => {
@@ -893,7 +900,7 @@ const getDesktopSettings = (): DesktopSettings => ({
   lastUsedRepo: store.get("lastUsedRepo", "")
 })
 
-const getGlobalHotkey = () => store.get("globalHotkey", DEFAULT_GLOBAL_HOTKEY).trim()
+const getGlobalHotkey = () => store.get("globalHotkey", defaultGlobalHotkey()).trim()
 
 const saveDesktopSettings = async (settings: DesktopSettingsInput) => {
   const localProjectsRoot = settings.localProjectsRoot.trim()
@@ -944,21 +951,39 @@ const commandExists = async (command: string) => {
   }
 }
 
+// The CLI basename forks per channel: a test build installs and runs
+// `syrus-test`, so it lives beside production's `syrus` and the Go CLI's
+// argv[0] profile resolution targets ~/.syrus/credentials.test and the test
+// backend. Without this the test app would overwrite the production binary on
+// every launch AND run it under the stable profile against production. Matches
+// the channel-derived CLI paths uninstall.sh / uninstall.ps1 remove.
+const cliBinaryName = () => (currentChannel() === "test" ? "syrus-test" : "syrus")
+
 // The one-click install target, probed directly because a PATH lookup can
 // miss it: on macOS GUI apps get a minimal PATH (so ~/.local/bin is
 // invisible to `which`), and on Windows the registry PATH entry we add only
 // reaches processes started after this app. Windows installs OUTSIDE the
-// NSIS $INSTDIR (%LocalAppData%\Programs\syrus-desktop) on purpose — the
-// updater replaces that directory wholesale on every auto-update, which
-// would silently delete the CLI.
-const localBinSyrus = () =>
-  process.platform === "win32"
-    ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Syrus", "bin", "syrus.exe")
-    : path.join(os.homedir(), ".local", "bin", "syrus")
+// NSIS $INSTDIR (%LocalAppData%\Programs\syrus[-test]-desktop) on purpose —
+// the updater replaces that directory wholesale on every auto-update, which
+// would silently delete the CLI. The bin dir also forks per channel so the
+// two channels' CLIs never share a directory.
+const localBinSyrus = () => {
+  const name = cliBinaryName()
+  if (process.platform === "win32") {
+    const appDir = currentChannel() === "test" ? "Syrus Test" : "Syrus"
+    return path.join(
+      process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"),
+      appDir,
+      "bin",
+      `${name}.exe`
+    )
+  }
+  return path.join(os.homedir(), ".local", "bin", name)
+}
 
 const syrusCliBinary = async (): Promise<string | null> => {
-  if (await commandExists("syrus")) {
-    return "syrus"
+  if (await commandExists(cliBinaryName())) {
+    return cliBinaryName()
   }
 
   try {
@@ -1102,10 +1127,15 @@ const ensureCliCurrent = async () => {
     return
   }
 
-  const skillPresent = await fs
-    .access(claudeSkillPath())
-    .then(() => true)
-    .catch(() => false)
+  // The Claude skill invokes `syrus` and is stable-only (v1) — a test build
+  // must never rewrite the shared ~/.claude/skills/syrus with unreleased
+  // content. It still installs its own `syrus-test` binary above.
+  const skillPresent =
+    currentChannel() !== "test" &&
+    (await fs
+      .access(claudeSkillPath())
+      .then(() => true)
+      .catch(() => false))
 
   await performCliInstall({ withSkill: skillPresent })
 }
@@ -1220,7 +1250,9 @@ let backendUpdateProgress: backendLifecycle.BackendUpdateProgress | null = null
 
 const shellNoticeState = async (): Promise<ShellNoticeState> => ({
   updateReadyVersion: appUpdates.downloadedUpdateVersion(),
-  claudeDetected: await agentToolPresent(),
+  // The Claude-skill offer is stable-only (v1): the skill invokes `syrus`, so
+  // a test build must not offer to write the shared skill dir.
+  claudeDetected: currentChannel() !== "test" && (await agentToolPresent()),
   skillInstalled: await fs
     .access(claudeSkillPath())
     .then(() => true)
@@ -1333,6 +1365,12 @@ const INERT_SHELL_NOTICE_STATE: ShellNoticeState = {
 // ({ ok: false, message }) for the web UI to render — no error dialog.
 const installSkillFromShell = async (): Promise<{ ok: boolean; message: string | null }> => {
   try {
+    // The skill is stable-only (v1) — refuse on the test channel so a test
+    // build can never rewrite the shared production skill.
+    if (currentChannel() === "test") {
+      return { ok: false, message: "The Claude skill is available from the production Syrus app." }
+    }
+
     // Server-side re-check of the offer's own gates. The sidebar only shows
     // the action while a coding agent is present and the skill is absent,
     // but the renderer's claim is not trusted: no agent tool means no
@@ -1405,7 +1443,12 @@ const checkoutJob = async ({ jobRef, repoSlug, branchName, extraArgs }: Checkout
   }
 
   try {
-    const cliBinary = (await syrusCliBinary()) ?? "syrus"
+    // Fall back to THIS channel's binary name (never a hardcoded "syrus"): on
+    // the test channel, if the probe momentarily misses (e.g. syrus-test.exe is
+    // renamed mid-reinstall on Windows), running the production `syrus` would
+    // resolve to the stable profile and act against the production instance.
+    // cliBinaryName() fails safe with ENOENT instead.
+    const cliBinary = (await syrusCliBinary()) ?? cliBinaryName()
     await execFileAsync(cliBinary, ["checkout", jobRef, ...(extraArgs ?? [])], { cwd: localPath, windowsHide: true })
     setLastUsedRepo(repoSlug)
     return { branchName }
@@ -1471,7 +1514,9 @@ const localStatus = async (): Promise<LocalStatus | null> => {
         continue
       }
 
-      const statusBinary = (await syrusCliBinary()) ?? "syrus"
+      // Channel-correct fallback (see checkoutJob): never the hardcoded stable
+      // `syrus`, so a test build can't read production's local status.
+      const statusBinary = (await syrusCliBinary()) ?? cliBinaryName()
       const { stdout } = await execFileAsync(statusBinary, ["status", "--json"], { cwd: localPath, windowsHide: true })
       const status = parseLocalStatus(stdout)
       if (status) {
@@ -2189,13 +2234,19 @@ const uninstallAppPath = (): string | null => {
 }
 
 const confirmAndUninstall = async () => {
+  // Scope the whole teardown to THIS app's channel: a test build must remove
+  // only the test stack/app/CLI/settings, never production's.
+  const channel = currentChannel()
+  const appName = app.getName()
   const choice = await dialog.showMessageBox({
     type: "warning",
-    title: "Uninstall Syrus",
-    message: "Uninstall Syrus from this computer?",
+    title: `Uninstall ${appName}`,
+    message: `Uninstall ${appName} from this computer?`,
     detail:
-      "This removes the Syrus app, the syrus command-line tool, the Claude Code skill, and Syrus's local Docker containers and downloaded images.\n\nSyrus will quit when the uninstall starts. Docker Desktop / OrbStack itself is not removed.",
-    checkboxLabel: "Also delete my Syrus data (jobs, chats, settings — cannot be undone)",
+      channel === "test"
+        ? `This removes the ${appName} app, the syrus-test command-line tool, and the ${appName} test Docker stack (project syrus-test) and its images. Your production Syrus install is left untouched.\n\n${appName} will quit when the uninstall starts.`
+        : "This removes the Syrus app, the syrus command-line tool, the Claude Code skill, and Syrus's local Docker containers and downloaded images.\n\nSyrus will quit when the uninstall starts. Docker Desktop / OrbStack itself is not removed.",
+    checkboxLabel: `Also delete my ${appName} data (jobs, chats, settings — cannot be undone)`,
     checkboxChecked: false,
     buttons: ["Cancel", "Uninstall"],
     defaultId: 0,
@@ -2209,7 +2260,7 @@ const confirmAndUninstall = async () => {
   // The checkbox asks about DELETING data, the scripts' flag asks about
   // KEEPING it — unchecked (the default) maps to --keep-data.
   const scriptPath = uninstallScriptPath()
-  const { command, args } = uninstallCommand(scriptPath, !choice.checkboxChecked, process.platform, uninstallAppPath())
+  const { command, args } = uninstallCommand(scriptPath, !choice.checkboxChecked, process.platform, uninstallAppPath(), channel)
   // detached + unref + ignored stdio: the script keeps running after
   // app.quit(). windowsHide: false gives uninstall.ps1 its own visible
   // console window, where teardown progress (and the final NSIS step)
@@ -2242,6 +2293,110 @@ const confirmAndUninstall = async () => {
   })
 
   child.unref()
+}
+
+// TEST CHANNEL ONLY: wipe this build's slate so the initial setup flow can be
+// exercised again from scratch. Removes the test backend stack + its data
+// volumes, the test state dir + credentials.test, and resets the test app
+// store to defaults. Every target is a TEST-channel resource
+// (currentStackIdentity, the "Syrus Test" electron-store, credentials.test), so
+// production's stack, credentials, and settings are never touched. This is the
+// heavy complement to "Run Setup Again…", which deliberately KEEPS data + creds
+// and only re-picks where Syrus runs.
+const resetTestSetup = async (): Promise<void> => {
+  if (currentChannel() !== "test") {
+    throw new Error("Reset Test Setup is only available on the test channel.")
+  }
+
+  // Quiet local-backend supervision first: `down -v` removes the data volume,
+  // which a watchdog health check would otherwise diagnose as "data-gone" and
+  // pop the data-loss prompt mid-wipe.
+  backendLifecycle.stopWatchdog()
+  stopBackendRecoveryPolling()
+
+  // 1. Tear down the test Docker stack + its data volumes (itself test-guarded).
+  await backendLifecycle.wipeBackendStack()
+
+  // 2. The test state dir (~/.syrus/local-test: .env, docker-compose.yml, logs)
+  //    and the test credentials file — both already channel-scoped.
+  await fs.rm(localStateDir(), { recursive: true, force: true })
+  await deleteCredentialsFile()
+
+  // 3. Reset the test electron-store (userData = "Syrus Test") to defaults:
+  //    clears backendMode (→ onboarding), the onboarding flags, and the
+  //    one-time migrate marker, so the relaunch is a true first run. store is
+  //    the test store; this never touches production's.
+  store.clear()
+}
+
+// "Reset Test Setup…": a native info+confirm dialog that spells out exactly
+// what gets wiped and reassures that production is untouched, then does the
+// wipe and relaunches into onboarding.
+const confirmAndResetTestSetup = async () => {
+  if (currentChannel() !== "test") {
+    return
+  }
+
+  // Refuse while a backend update is in flight. updateBackend spawns a DETACHED
+  // install.sh against the state dir for 1–3 min; wiping under it would race the
+  // installer's compose recreate, delete the .env/compose file it's reading,
+  // and (since it survives our exit) let it re-create the stack AFTER the wipe —
+  // defeating the reset and orphaning the installer. Wait, then reset.
+  if (backendLifecycle.backendBusy()) {
+    void dialog.showMessageBox({
+      type: "info",
+      message: "Finishing backend update…",
+      detail:
+        "Syrus is updating the test backend right now. Try Reset Test Setup again once that finishes — usually a minute or two."
+    })
+    return
+  }
+
+  const identity = currentStackIdentity()
+  const choice = await dialog.showMessageBox({
+    type: "warning",
+    title: "Reset Test Setup",
+    message: "Wipe this test build's setup and start over?",
+    detail: [
+      "This clears the Syrus Test slate so you can run the initial setup again from scratch. It removes:",
+      "",
+      `  •  The test backend and its data volume (Docker project "${identity.project}") — every job, chat, and setting stored in the test instance.`,
+      `  •  The test state folder (${identity.stateDir}) — its .env and Compose file.`,
+      `  •  The test credentials file (${identity.credentialsFile}).`,
+      "  •  This app's saved setup — the backend connection and onboarding progress.",
+      "",
+      "Your production Syrus stays completely untouched: its app, backend, data volume, credentials, and settings are all separate and are NOT removed. Downloaded Docker images are kept, so the next setup is fast.",
+      "",
+      "Syrus Test will relaunch into the setup screen. This can't be undone."
+    ].join("\n"),
+    buttons: ["Cancel", "Reset & Restart"],
+    defaultId: 0,
+    cancelId: 0
+  })
+
+  if (choice.response !== 1) {
+    return
+  }
+
+  try {
+    await resetTestSetup()
+  } catch (error) {
+    dialog.showErrorBox(
+      "Reset didn't finish",
+      `Couldn't fully reset the test setup, so some state may remain.\n\n${
+        error instanceof Error ? error.message : String(error)
+      }\n\nYou can try again, or clean up manually under ${currentStackIdentity().stateDir}.`
+    )
+    return
+  }
+
+  // A true first run: relaunch a fresh process instead of reopening onboarding
+  // in place, so nothing from the wiped session lingers. isQuitting lets the
+  // tray's hide-on-close guard release; exit(0) skips the before-quit cleanup
+  // that would only operate on the stack we just tore down.
+  isQuitting = true
+  app.relaunch()
+  app.exit(0)
 }
 
 // Backend-menu actions return false when refused (busy) or failed; silent
@@ -2386,7 +2541,10 @@ const createTray = () => {
   plainTrayIcon = createPlainTrayIcon()
 
   tray = new Tray(plainTrayIcon)
-  tray.setToolTip("Syrus")
+  // The product name forks per channel ("Syrus Test"), so the hover tooltip
+  // does too; updateTrayBadge() also paints a "T" next to the menu-bar icon
+  // on the test channel (set there because it is cleared on every refresh).
+  tray.setToolTip(app.getName())
   tray.on("click", (event) => {
     if (event.ctrlKey) {
       showTrayContextMenu()
@@ -2487,6 +2645,19 @@ const createMenu = () => {
           }
         },
         { type: "separator" },
+        // Test builds only: a complete "clean slate" that wipes the test stack,
+        // credentials, and app setup so the initial onboarding can be exercised
+        // again. Hidden on stable — it must never reach a production install.
+        ...(currentChannel() === "test"
+          ? [
+              {
+                label: "Reset Test Setup…",
+                click: () => {
+                  void confirmAndResetTestSetup()
+                }
+              }
+            ]
+          : []),
         {
           label: "Uninstall Syrus…",
           click: () => {
@@ -2598,7 +2769,15 @@ ipcMain.handle("syrus-cli-status", async () => ({
   // install button that can only fail.
   bundledAvailable: await bundledCliAvailable()
 }))
-ipcMain.handle("install-syrus-cli", async (_event, options?: CliInstallOptions) => performCliInstall(options))
+ipcMain.handle("install-syrus-cli", async (_event, options?: CliInstallOptions) =>
+  // The Claude skill invokes `syrus` and is stable-only (v1): force withSkill
+  // off on the test channel so Preferences' "Add Claude Code skill" button can
+  // never rewrite the shared ~/.claude/skills/syrus with a test build's
+  // unreleased content. Mirrors the ensureCliCurrent / shell-bridge gates.
+  performCliInstall(
+    currentChannel() === "test" && options?.withSkill ? { ...options, withSkill: false } : options
+  )
+)
 ipcMain.handle("checkout-availability", async (_event, repoSlug: string) => checkoutAvailability(repoSlug))
 ipcMain.handle("checkout-job", async (_event, request: CheckoutRequest) => checkoutJob(request))
 ipcMain.handle("syrus:local-status", async () => localStatus())
@@ -2845,6 +3024,16 @@ let takeoverPromptOpen = false
 // never open a window (it would be a session running from the DMG).
 let selfInstallGateActive = false
 app.on("second-instance", (_event, _argv, _cwd, additionalData) => {
+  // A second-instance event can arrive BEFORE app is ready — e.g. the fast
+  // self-install relaunch race, or a double cold-start. dialog, openSyrus, and
+  // focus all require the ready state, so ignore it until then: the second
+  // instance already failed to get the lock and quits itself. Without this
+  // guard the takeover dialog below throws "dialog module can only be used
+  // after app is ready" and crashes the first launch.
+  if (!app.isReady()) {
+    return
+  }
+
   // Re-double-clicking the DMG while the gate's dialog is pending must not
   // open a window from the mounted image — just re-surface the dialog.
   if (selfInstallGateActive) {
@@ -2910,10 +3099,12 @@ app.whenReady().then(async () => {
   registerScreenCaptureHandler()
 
   if (process.platform === "win32") {
-    // Must match electron-builder.yml appId — NSIS stamps it into the Start
-    // Menu shortcut, and Windows only shows Notification toasts when the
-    // process AUMID matches the shortcut's.
-    app.setAppUserModelId("app.syrus.desktop")
+    // Must match electron-builder's appId for THIS channel — NSIS stamps it
+    // into the Start Menu shortcut, and Windows only shows Notification toasts
+    // when the process AUMID matches the shortcut's. The test build overrides
+    // appId to app.syrus.desktop.test (see _build-app.yml); keep this mapping
+    // in lockstep (pinned by spec/desktop/packaging_spec.rb).
+    app.setAppUserModelId(currentChannel() === "test" ? "app.syrus.desktop.test" : "app.syrus.desktop")
   }
 
   // Running from the mounted DMG (or Downloads, or anywhere that isn't an

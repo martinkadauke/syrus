@@ -1,5 +1,6 @@
 import { app, autoUpdater as nativeAutoUpdater } from "electron"
 import electronUpdater from "electron-updater"
+import { resolveChannel } from "./channel.js"
 import { isPinnedTestBuild } from "./pinnedTestBuild.js"
 
 const { autoUpdater } = electronUpdater
@@ -12,11 +13,20 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1_000
 // inert for unsigned dev builds (!app.isPackaged) and can be switched off
 // with SYRUS_DISABLE_AUTO_UPDATE (CI, tests).
 
-// Test builds are also inert — see pinnedTestBuild.ts: their baked-in feed
-// plus semver ordering (X.Y.Z-test.N < X.Y.Z) would otherwise silently
-// replace a pinned test install with the next published release.
+// Only the STABLE channel auto-updates. Gating on the channel (not just the
+// -test.N version shape) also covers a packaged local dev build (version
+// 0.0.0 — the test channel per resolveChannel), which would otherwise arm the
+// updater against the baked-in stable feed and download the next published
+// release OVER the dev/test install (semver orders 0.0.0 and X.Y.Z-test.N
+// below every release). isPinnedTestBuild stays as a belt-and-braces signal.
+const isStableChannel = () =>
+  resolveChannel({ env: process.env.SYRUS_CHANNEL, productName: app.getName(), version: app.getVersion() }) === "stable"
+
 const updatesEnabled = () =>
-  app.isPackaged && !process.env.SYRUS_DISABLE_AUTO_UPDATE && !isPinnedTestBuild(app.getVersion())
+  app.isPackaged &&
+  !process.env.SYRUS_DISABLE_AUTO_UPDATE &&
+  isStableChannel() &&
+  !isPinnedTestBuild(app.getVersion())
 
 let downloadedVersion: string | null = null
 let checkTimer: NodeJS.Timeout | null = null

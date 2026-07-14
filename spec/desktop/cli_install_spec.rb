@@ -49,14 +49,18 @@ RSpec.describe "desktop CLI install" do
     expect(package.dig("scripts", "build")).to include("stage:cli")
   end
 
-  it "installs per-platform with no login step" do
+  it "installs per-platform with no login step, forked per channel" do
     main = read("electron/main.ts")
-    # The probe/install target: ~/.local/bin on macOS; %LocalAppData%\Syrus\bin
+    # The CLI basename + dir fork per channel so a test build installs
+    # `syrus-test` (which the Go CLI's argv[0] profile resolution targets at
+    # credentials.test) beside production's `syrus`, instead of overwriting it.
+    expect(main).to include('const cliBinaryName = () => (currentChannel() === "test" ? "syrus-test" : "syrus")')
+    # The probe/install target: ~/.local/bin on macOS; %LocalAppData%\<app>\bin
     # on Windows — deliberately OUTSIDE the NSIS $INSTDIR, which the updater
     # replaces wholesale on every auto-update.
-    probe = main[/const localBinSyrus =[\s\S]{0,400}/]
-    expect(probe).to include('path.join(os.homedir(), ".local", "bin", "syrus")')
-    expect(probe).to include('"Syrus", "bin", "syrus.exe"')
+    probe = main[/const localBinSyrus =[\s\S]{0,600}/]
+    expect(probe).to include('path.join(os.homedir(), ".local", "bin", name)')
+    expect(probe).to include('`${name}.exe`')
 
     install = main[/const performCliInstall[\s\S]{0,3600}/]
     # The bundled-source path derivation lives in bundledCliPath so the
@@ -73,8 +77,13 @@ RSpec.describe "desktop CLI install" do
     # A running syrus.exe can't be overwritten on Windows, but it can be renamed.
     expect(install).to match(/fs\.rename\(target, `\$\{target\}\.old`\)/)
     # The IPC handler delegates so the tray banner, Preferences, and the
-    # post-setup dialog share one install path.
-    expect(main).to match(/ipcMain\.handle\("install-syrus-cli", async \(_event, options\?: CliInstallOptions\) => performCliInstall\(options\)\)/)
+    # post-setup dialog share one install path — forcing the skill off on the
+    # test channel so a test build can't overwrite the shared production skill
+    # (see channels_spec "adversarial-review hardening").
+    expect(main).to include('ipcMain.handle("install-syrus-cli", async (_event, options?: CliInstallOptions) =>')
+    expect(main).to include(
+      'currentChannel() === "test" && options?.withSkill ? { ...options, withSkill: false } : options'
+    )
   end
 
   it "resolves the bundled CLI from desktop/resources in dev builds" do
@@ -175,7 +184,9 @@ RSpec.describe "desktop CLI install" do
     # another tool's config dir (spec I4) — gated on agent presence.
     expect(main).not_to include("offerSkillIfAgentDetected")
     expect(main).not_to include("Coding agent detected")
-    expect(main).to include("claudeDetected: await agentToolPresent()")
+    # The skill is stable-only (v1): the test channel never reports an agent, so
+    # the offer never surfaces and installSkillFromShell refuses.
+    expect(main).to include('claudeDetected: currentChannel() !== "test" && (await agentToolPresent())')
     detection = main[/const agentToolPresent[\s\S]{0,600}/]
     expect(detection).to include('".claude"')
     expect(detection).to include('".codex"')
@@ -209,8 +220,11 @@ RSpec.describe "desktop CLI install" do
     main = read("electron/main.ts")
     expect(main).to include("const localBinSyrus = ()")
     expect(main).to match(/syrusCliBinary[\s\S]{0,400}localBinSyrus\(\)/)
-    # Exec sites must prefer the resolved binary over a bare PATH lookup.
-    expect(main).to match(/const cliBinary = \(await syrusCliBinary\(\)\) \?\? "syrus"/)
+    # Exec sites must prefer the resolved binary over a bare PATH lookup, and
+    # the fallback is THIS channel's binary name (never a hardcoded stable
+    # "syrus") so a test-channel probe miss can't invoke the production CLI.
+    expect(main).to match(/const cliBinary = \(await syrusCliBinary\(\)\) \?\? cliBinaryName\(\)/)
+    expect(main).not_to include('(await syrusCliBinary()) ?? "syrus"')
   end
 
   it "exposes the install through the bridge with the skill option" do

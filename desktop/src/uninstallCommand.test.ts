@@ -36,6 +36,20 @@ describe("buildUninstallArgs", () => {
     expect(buildUninstallArgs(true, null)).toEqual(["--yes", "--keep-data"])
     expect(buildUninstallArgs(true)).toEqual(["--yes", "--keep-data"])
   })
+
+  // Load-bearing: without --channel a TEST build's uninstall runs the scripts
+  // on the default stable channel and tears down PRODUCTION.
+  it("appends --channel test only on the test channel, never stable", () => {
+    expect(buildUninstallArgs(true, null, "test")).toEqual(["--yes", "--keep-data", "--channel", "test"])
+    expect(buildUninstallArgs(false, "/Applications/Syrus Test.app", "test")).toEqual([
+      "--yes",
+      "--app-path=/Applications/Syrus Test.app",
+      "--channel",
+      "test"
+    ])
+    expect(buildUninstallArgs(true, null, "stable")).toEqual(["--yes", "--keep-data"])
+    expect(buildUninstallArgs(true, null)).toEqual(["--yes", "--keep-data"])
+  })
 })
 
 describe("uninstallCommand", () => {
@@ -91,5 +105,19 @@ describe("uninstallCommand", () => {
     const windows = uninstallCommand("C:\\s\\uninstall.ps1", true, "win32")
     expect(darwin.args).toContain("--keep-data")
     expect(windows.args).toContain("--keep-data")
+  })
+
+  it("threads --channel test to BOTH the bash and powershell scripts", () => {
+    const darwin = uninstallCommand("/s/uninstall.sh", true, "darwin", "/Applications/Syrus Test.app", "test")
+    expect(darwin.args).toEqual([
+      "/s/uninstall.sh",
+      "--yes",
+      "--keep-data",
+      "--app-path=/Applications/Syrus Test.app",
+      "--channel",
+      "test"
+    ])
+    const windows = uninstallCommand("C:\\s\\uninstall.ps1", true, "win32", null, "test")
+    expect(windows.args.slice(-2)).toEqual(["--channel", "test"])
   })
 })

@@ -11,6 +11,7 @@ RSpec.describe "desktop settings and credentials modules" do
   let(:main_process) { File.read(File.join(desktop_root, "electron/main.ts"), encoding: "UTF-8") }
   let(:settings_module) { File.read(File.join(desktop_root, "electron/settings.ts"), encoding: "UTF-8") }
   let(:credentials_module) { File.read(File.join(desktop_root, "electron/credentialsStore.ts"), encoding: "UTF-8") }
+  let(:channel_module) { File.read(File.join(desktop_root, "electron/channel.ts"), encoding: "UTF-8") }
 
   it "owns the electron-store schema in settings.ts, not main.ts" do
     expect(settings_module).to include("new Store<DesktopStore>")
@@ -26,8 +27,27 @@ RSpec.describe "desktop settings and credentials modules" do
     expect(settings_module).to include("localInstall: null")
   end
 
-  it "keeps the local install state under ~/.syrus/local" do
-    expect(settings_module).to include('path.join(os.homedir(), ".syrus", "local")')
+  it "forks the app name per channel BEFORE the store captures userData" do
+    # Load-bearing: Electron derives userData (and the single-instance lock)
+    # from app.getName(), which reads the bundled package.json ("Syrus") — NOT
+    # the electron-builder-renamed .app bundle. Without app.setName() a test
+    # build's userData/lock collide with the production install, breaking
+    # side-by-side. It MUST run before `new Store(...)`.
+    expect(settings_module).to include("app.setName(channelProductName(currentChannel()))")
+    set_name_at = settings_module.index("app.setName(channelProductName")
+    store_at = settings_module.index("new Store<DesktopStore>")
+    expect(set_name_at).not_to be_nil
+    expect(store_at).not_to be_nil
+    expect(set_name_at).to be < store_at
+    expect(channel_module).to include('channel === "test" ? "Syrus Test" : "Syrus"')
+  end
+
+  it "keeps the local install state under ~/.syrus/local, per channel" do
+    # localStateDir derives from the channel; the concrete path (local /
+    # local-test) is built in channel.ts's stackIdentity so a side-by-side
+    # test build never adopts or clobbers the production stack.
+    expect(settings_module).to include("currentStackIdentity().stateDir")
+    expect(channel_module).to include('test ? "local-test" : "local"')
   end
 
   it "migrates existing users without prompting: credentials mean remote, a local .env means local" do
@@ -52,11 +72,14 @@ RSpec.describe "desktop settings and credentials modules" do
   end
 
   it "owns the credentials file format in credentialsStore.ts, not main.ts" do
-    expect(credentials_module).to include('path.join(os.homedir(), ".syrus", "credentials")')
+    # The credentials path is per-channel (credentials / credentials.test) so
+    # the test build shares its file with the syrus-test CLI, not production's.
+    expect(credentials_module).to include("currentStackIdentity().credentialsFile")
     expect(credentials_module).to include("mode: 0o600")
     expect(main_process).to include('from "./credentialsStore.js"')
     expect(main_process).not_to include("const parseCredentials")
     expect(main_process).not_to include('".syrus", "credentials"')
+    expect(channel_module).to include('test ? "credentials.test" : "credentials"')
   end
 
   it "tolerates a missing credentials file on read and delete" do

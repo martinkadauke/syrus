@@ -10,6 +10,43 @@ RSpec.describe AppSetting do
     expect { AppSetting.current }.not_to change(AppSetting, :count)
   end
 
+  describe "SYRUS_BOOT_POLLING_PAUSED seeding" do
+    it "seeds polling paused on the first create when the env is truthy" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SYRUS_BOOT_POLLING_PAUSED").and_return("1")
+
+      expect(AppSetting.current.polling_paused).to be true
+    end
+
+    it "leaves polling running on the first create by default" do
+      # Pin the env-absent precondition: the suite runs inside a backend
+      # container whose compose env_file may export SYRUS_BOOT_POLLING_PAUSED=1
+      # (a test-channel stack), which would otherwise seed this example paused.
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SYRUS_BOOT_POLLING_PAUSED").and_return(nil)
+
+      expect(AppSetting.current.polling_paused).to be false
+    end
+
+    it "treats an explicitly falsy env value as not paused" do
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SYRUS_BOOT_POLLING_PAUSED").and_return("no")
+
+      expect(AppSetting.current.polling_paused).to be false
+    end
+
+    # It seeds the DB row once; it must not force the value on an existing row,
+    # so the operator can unpause a test stack from the admin console.
+    it "does not re-pause an existing row even when the env is set" do
+      AppSetting.current.update!(polling_paused: false)
+
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SYRUS_BOOT_POLLING_PAUSED").and_return("1")
+
+      expect(AppSetting.current.polling_paused).to be false
+    end
+  end
+
   it ".signups_open? defaults to false" do
     expect(AppSetting.signups_open?).to be false
   end

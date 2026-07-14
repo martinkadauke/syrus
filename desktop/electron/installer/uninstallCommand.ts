@@ -17,10 +17,21 @@
 // in /Syrus.app, under /Applications or ~/Applications). darwin-only by
 // contract: main.ts derives it only there, and the win32 branch never
 // forwards it — on Windows the NSIS uninstaller owns app removal.
-export const buildUninstallArgs = (keepData: boolean, appPath: string | null = null): string[] => [
+import type { Channel } from "../channel.js"
+
+// The channel MUST be threaded through, or a TEST build's "Uninstall Syrus…"
+// runs the scripts with their default stable channel and tears down the
+// PRODUCTION stack, credentials, and settings while leaving the test install
+// untouched. `--channel test` scopes every teardown to the test resources.
+export const buildUninstallArgs = (
+  keepData: boolean,
+  appPath: string | null = null,
+  channel: Channel = "stable"
+): string[] => [
   "--yes",
   ...(keepData ? ["--keep-data"] : []),
-  ...(appPath ? [`--app-path=${appPath}`] : [])
+  ...(appPath ? [`--app-path=${appPath}`] : []),
+  ...(channel === "test" ? ["--channel", "test"] : [])
 ]
 
 export type UninstallCommand = { command: string; args: string[] }
@@ -29,7 +40,8 @@ export const uninstallCommand = (
   scriptPath: string,
   keepData: boolean,
   platform: NodeJS.Platform = process.platform,
-  appPath: string | null = null
+  appPath: string | null = null,
+  channel: Channel = "stable"
 ): UninstallCommand =>
   platform === "win32"
     ? {
@@ -41,6 +53,6 @@ export const uninstallCommand = (
         // No --app-path here: uninstall.ps1 doesn't take it (NSIS removes
         // the app), and forwarding it anyway would trip the script's
         // unknown-flag handling.
-        args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, ...buildUninstallArgs(keepData)]
+        args: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath, ...buildUninstallArgs(keepData, null, channel)]
       }
-    : { command: "/bin/bash", args: [scriptPath, ...buildUninstallArgs(keepData, appPath)] }
+    : { command: "/bin/bash", args: [scriptPath, ...buildUninstallArgs(keepData, appPath, channel)] }

@@ -1,5 +1,5 @@
 import { app, BrowserWindow, shell } from "electron"
-import type { WindowBounds } from "../settings.js"
+import { currentChannel, type WindowBounds } from "../settings.js"
 import { decideWindowOpen } from "./windowOpenPolicy.js"
 
 type WebAppWindowOptions = {
@@ -45,6 +45,10 @@ export const createWebAppWindow = ({
 }: WebAppWindowOptions): WebAppWindowHandle => {
   const serverOrigin = new URL(serverUrl).origin
 
+  // The title bar is the one indicator visible on EVERY page (including the
+  // pre-SPA sign-in view), so a test build reads "Syrus Test" here.
+  const windowTitle = currentChannel() === "test" ? "Syrus Test" : "Syrus"
+
   const window = new BrowserWindow({
     width: savedBounds?.width ?? 1280,
     height: savedBounds?.height ?? 860,
@@ -52,7 +56,7 @@ export const createWebAppWindow = ({
     y: savedBounds?.y,
     minWidth: 720,
     minHeight: 480,
-    title: "Syrus",
+    title: windowTitle,
     webPreferences: {
       // The Syrus web app is remote content: full isolation stays on. The
       // only bridge is the shell-notice preload (window.syrusShell) — never
@@ -77,9 +81,23 @@ export const createWebAppWindow = ({
     builtAtDate && !Number.isNaN(builtAtDate.getTime())
       ? ` SyrusDesktopBuiltAt/${builtAtDate.toISOString().slice(0, 19).replace(/[-:]/g, "")}Z`
       : ""
+  // Announce the build channel so the web UI can flag a test build in-app (an
+  // amber TEST pill next to the brand). Emitted only for the test channel —
+  // its absence means the default (stable) channel. See desktopChannel().
+  const channelToken = currentChannel() === "test" ? " SyrusDesktopChannel/test" : ""
   window.webContents.setUserAgent(
-    `${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}${buildToken}${builtAtToken}`
+    `${window.webContents.getUserAgent()} SyrusDesktop/${app.getVersion()}${buildToken}${builtAtToken}${channelToken}`
   )
+
+  // The Syrus web app sets its own <title>, which Electron mirrors into the
+  // title bar. On the test channel, hold the title bar at "Syrus Test" so the
+  // marker survives every navigation instead of flickering back to "Syrus".
+  if (currentChannel() === "test") {
+    window.on("page-title-updated", (event) => {
+      event.preventDefault()
+      window.setTitle(windowTitle)
+    })
+  }
 
   // Same-origin navigation stays in the window; everything else (GitHub PRs,
   // issue links, docs) opens in the user's default browser — see

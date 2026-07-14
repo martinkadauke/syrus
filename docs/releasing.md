@@ -225,6 +225,66 @@ runs the exact backend built from your branch. Use `dry_run` to validate the
 release pipeline itself; use a test build to hand someone a working build of
 unmerged work.
 
+### Side-by-side with a release (channels)
+
+A test build installs as **`Syrus Test.app`** (Windows: `Syrus Test`) and runs
+**beside** a production release — install one without touching the other. This
+is what makes Syrus-develops-Syrus practical. Every namespaced resource forks
+off a single build-time **channel** bit (`stable` for releases, `test` for a
+test build or a local dev build):
+
+| Resource | Stable (release) | Test build |
+| --- | --- | --- |
+| App bundle / name | `Syrus.app` | `Syrus Test.app` |
+| macOS bundle id / AUMID | `app.syrus.desktop` | `app.syrus.desktop.test` |
+| Settings (userData) | `…/Application Support/Syrus` | `…/Syrus Test` |
+| Backend Compose project | `syrus` | `syrus-test` |
+| Docker volumes | `syrus_syrus-data`, `…-search` | `syrus-test_syrus-data`, `…-search` |
+| Default port | `3000` | `3001` |
+| State dir | `~/.syrus/local` | `~/.syrus/local-test` |
+| Credentials file | `~/.syrus/credentials` | `~/.syrus/credentials.test` |
+| CLI binary | `~/.local/bin/syrus` | `~/.local/bin/syrus-test` |
+| Icon / in-app | terracotta mark | amber TEST-ribbon icon + amber TEST pill + macOS tray `TEST` |
+
+The channel is baked at packaging time: the Release workflow passes
+`channel: stable`, the Test-build workflow passes `channel: test`, and a local
+`npm --prefix desktop run build` (version `0.0.0`) is `test`. The CI threads it
+through the shared [`_build-app.yml`](../.github/workflows/_build-app.yml)
+module to electron-builder overrides (product name, appId, icon, DMG title,
+NSIS shortcut). At runtime the app forks its own userData/lock via
+`app.setName()` before the settings store is created — electron-builder's
+`-c.productName` renames the `.app` bundle but **not** the bundled
+`package.json`, and `app.getName()` (which drives userData and the
+single-instance lock) reads the latter, so the rename alone is not enough.
+
+Consequences worth knowing:
+
+- **Fully isolated backends.** The two stacks are separate Docker Compose
+  projects with separate databases and encryption keys, so a test build cannot
+  corrupt production data. Each channel does credential setup once.
+- **Polling starts paused on a test stack.** So it does not race production to
+  file Jobs on the same repos, a fresh test backend boots with repository
+  polling paused (`SYRUS_BOOT_POLLING_PAUSED`, seeded once). Unpause it from
+  the admin console when you intend the test stack to work real repositories.
+- **The CLI forks too.** A test build installs `syrus-test`, which reads
+  `~/.syrus/credentials.test` — so `syrus-test jobs` talks to the test backend
+  while plain `syrus` stays on production. One Go binary resolves its profile
+  from the flag `--profile test`, `SYRUS_PROFILE=test`, or its own name, so
+  `syrus --profile test` runs the production binary against the test backend.
+- **Uninstalling one never touches the other.** `uninstall.sh --channel test`
+  removes only the test stack, app, CLI, and settings (and leaves the
+  stable-only Claude skill alone).
+- **Reset Test Setup (test builds only).** The app-name menu of a test build
+  has a **Reset Test Setup…** item — a "clean slate" for re-exercising the
+  initial onboarding. It tears down the test backend stack + its data volume,
+  deletes `~/.syrus/local-test` and `~/.syrus/credentials.test`, resets the
+  test app settings, and relaunches into setup. A confirmation dialog spells
+  out exactly what is removed. It is gated to the test channel and never
+  appears on — or touches — a production install; downloaded Docker images are
+  kept so the next setup is fast. This is the heavy complement to **Run Setup
+  Again…** (present on both channels), which only re-picks where Syrus runs and
+  keeps your data and credentials.
+
 ## Versioning convention
 
 Semantic versioning, **tag-driven**. The git tag is the source of truth; the

@@ -80,6 +80,14 @@ RSpec.describe "desktop web-container window" do
     # not valid in UA product-version tokens — desktopBuiltAt() decodes it.
     expect(web_app_window).to include("SyrusDesktopBuiltAt/")
     expect(web_app_window).to include('.toISOString().slice(0, 19).replace(/[-:]/g, "")')
+    # A fourth token flags the TEST channel so the SPA's TestChannelBadge /
+    # TestChannelDot light up. Pin the PRODUCER string here: isDesktopTestChannel
+    # (and its component tests) match /\bSyrusDesktopChannel\/test\b/, so a typo
+    # in this emitter would silently disable the in-app TEST indicator while the
+    # consumer tests keep passing on their own hardcoded UA.
+    expect(web_app_window).to include(
+      'currentChannel() === "test" ? " SyrusDesktopChannel/test" : ""'
+    )
     expect(main_process).to include("builtAt: manifest?.builtAt ?? null")
     # stage-backend-assets stamps the timestamp the token is derived from.
     # Dev builds stamp the wall clock (staging time IS the build moment);

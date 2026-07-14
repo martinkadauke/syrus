@@ -1,9 +1,36 @@
 import fs from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
+import { app } from "electron"
 import Store from "electron-store"
+import { channelProductName, resolveChannel, stackIdentity, type Channel, type StackIdentity } from "./channel.js"
 
 export const DEFAULT_GLOBAL_HOTKEY = "CommandOrControl+Shift+S"
+
+// The electron-aware channel accessors. The pure logic lives in channel.ts;
+// here we feed it the packaging signals. app.getName()/getVersion() are the
+// same values electron-builder forks per channel, and both are available
+// before app.whenReady(), so these are safe to call at module load (the store
+// defaults below use them).
+export const currentChannel = (): Channel =>
+  resolveChannel({ env: process.env.SYRUS_CHANNEL, productName: app.getName(), version: app.getVersion() })
+
+// Force the app name to the channel's product name BEFORE the electron-store
+// below is constructed — electron-store captures app.getPath("userData") at
+// construction, and Electron derives userData (and the single-instance lock)
+// from app.getName(). Electron reads getName() from the bundled package.json
+// ("Syrus"), NOT the .app bundle name, so without this a test build's userData
+// and lock would collide with the production install. This module is imported
+// (and evaluated) before main.ts touches userData, and channel resolution
+// leans on the version shape, so it is correct even before setName runs.
+app.setName(channelProductName(currentChannel()))
+
+export const currentStackIdentity = (): StackIdentity => stackIdentity(currentChannel(), os.homedir())
+
+// The default global hotkey differs per channel so the release and a
+// side-by-side test build do not fight over one accelerator (⌘⇧S vs ⌘⇧T).
+export const defaultGlobalHotkey = (): string =>
+  currentChannel() === "test" ? "CommandOrControl+Shift+T" : DEFAULT_GLOBAL_HOTKEY
 
 // "" means onboarding has not completed yet; "local" is a Docker stack this
 // app installed and manages; "remote" is an existing Syrus instance we only
@@ -68,7 +95,7 @@ export const store = new Store<DesktopStore>({
     localProjectsRoot: "",
     localRepoPaths: {},
     lastUsedRepo: "",
-    globalHotkey: DEFAULT_GLOBAL_HOTKEY,
+    globalHotkey: defaultGlobalHotkey(),
     backendMode: "",
     serverUrl: "",
     localInstall: null,
@@ -95,8 +122,10 @@ export const setOnboardingResumeLocal = (value: boolean) => {
 // migrateBackendConfig's adopt-a-CLI-install semantics identical, and users
 // can still drive it manually with `docker compose` from that directory.
 // Paths are quoted everywhere they reach a shell, so spaces in profile
-// names (C:\Users\First Last) are fine.
-export const localStateDir = () => path.join(os.homedir(), ".syrus", "local")
+// names (C:\Users\First Last) are fine. Channel-aware: the test channel uses
+// ~/.syrus/local-test so a side-by-side test build never adopts or clobbers
+// the production stack.
+export const localStateDir = () => currentStackIdentity().stateDir
 
 export const getBackendMode = (): BackendMode => store.get("backendMode", "")
 
@@ -123,13 +152,14 @@ export const clearBackendConfig = () => {
 }
 
 const parsePortFromEnvFile = (contents: string) => {
+  const fallback = currentStackIdentity().defaultPort
   const match = contents.match(/^SYRUS_PORT=(\d+)$/m)
   if (!match) {
-    return 3000
+    return fallback
   }
 
   const port = Number.parseInt(match[1], 10)
-  return Number.isFinite(port) && port > 0 ? port : 3000
+  return Number.isFinite(port) && port > 0 ? port : fallback
 }
 
 // Zero-prompt adoption for users who already ran Syrus before this app knew

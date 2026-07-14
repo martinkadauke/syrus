@@ -81,6 +81,10 @@ on:
         description: "Also build + sign the Windows installer."
         type: boolean
         default: true
+      channel:
+        description: "Build channel: 'stable' (release) or 'test' (side-by-side test build). Drives the product name, appId, icon, and DMG/shortcut naming so a test build installs beside — never over — a release."
+        type: string
+        default: stable
 
 # A called workflow can never exceed the caller's granted permissions. Both
 # callers satisfy this (release adds contents: write on top, a superset).
@@ -320,6 +324,14 @@ jobs:
   build-mac:
     runs-on: macos-15
     timeout-minutes: 90
+    # Channel identity, resolved once for every step in this job: a test build
+    # forks the product name / appId / icon so its Syrus Test.app installs
+    # beside — never over — a release. PRODUCT also names the output files
+    # (artifactName is ${productName}-...), so the verify + stage steps use it.
+    env:
+      PRODUCT: ${{ inputs.channel == 'test' && 'Syrus Test' || 'Syrus' }}
+      APP_ID: ${{ inputs.channel == 'test' && 'app.syrus.desktop.test' || 'app.syrus.desktop' }}
+      MAC_ICON: ${{ inputs.channel == 'test' && 'build/icon-test.png' || 'build/icon.png' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -448,8 +460,17 @@ jobs:
           SYRUS_BACKEND_IMAGE: ${{ inputs.backend_image_pin }}
         run: |
           set -o pipefail
+          # Per-channel electron-builder overrides (same -c. mechanism as
+          # forceCodeSigning). ${version} stays literal for electron-builder to
+          # expand; the double-quote around $PRODUCT keeps its space inside the
+          # single dmg.title argument.
           build() {
-            npm --prefix desktop run build -- --publish never -c.forceCodeSigning=true 2>&1 | tee "$RUNNER_TEMP/build.log"
+            npm --prefix desktop run build -- --publish never \
+              -c.forceCodeSigning=true \
+              -c.productName="$PRODUCT" \
+              -c.appId="$APP_ID" \
+              -c.mac.icon="$MAC_ICON" \
+              -c.dmg.title="$PRODUCT "'${version}' 2>&1 | tee "$RUNNER_TEMP/build.log"
           }
           if build; then exit 0; fi
           if grep -q '"status":"Invalid"\|status: Invalid' "$RUNNER_TEMP/build.log"; then
@@ -508,16 +529,21 @@ jobs:
           BACKEND_IMAGE: ${{ inputs.backend_image_pin }}
         run: |
           set -euo pipefail
-          # One universal app that runs on both Apple Silicon and Intel.
-          APP="desktop/out/mac-universal/Syrus.app"
+          # One universal app that runs on both Apple Silicon and Intel. The
+          # bundle + artifact names carry the channel's product name.
+          APP="desktop/out/mac-universal/$PRODUCT.app"
           codesign --verify --deep --strict "$APP"
           codesign -dv --verbose=2 "$APP" 2>&1 | grep "Developer ID Application"
           spctl -a -t exec -vv "$APP" 2>&1 | grep "Notarized Developer ID"
           xcrun stapler validate "$APP"
           test -f desktop/out/latest-mac.yml
-          grep -q "Syrus-$VERSION-universal.zip" desktop/out/latest-mac.yml
-          test -f "desktop/out/Syrus-$VERSION-universal.zip"
-          test -f "desktop/out/Syrus-$VERSION-universal.dmg"
+          # Match on the version+arch suffix, not the full product name:
+          # electron-builder writes the .zip FILE with the product name's
+          # space ("Syrus Test-…") but records a hyphen-sanitized name
+          # ("Syrus-Test-…") inside latest-mac.yml, so a spaced grep would miss.
+          grep -q "$VERSION-universal.zip" desktop/out/latest-mac.yml
+          test -f "desktop/out/$PRODUCT-$VERSION-universal.zip"
+          test -f "desktop/out/$PRODUCT-$VERSION-universal.dmg"
           # The bundled CLI must be INSIDE the built app — 0.1.1/0.1.2 shipped
           # without Resources/cli (no Go on the runner; stage-cli soft-skipped)
           # and every in-app CLI/skill install threw ENOENT. Both darwin arches
@@ -542,12 +568,14 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/staged"
           if [ "$STAGE_FEED" = "true" ]; then
-            cp "desktop/out/Syrus-$VERSION-universal.zip" "$RUNNER_TEMP/staged/" 2>/dev/null || true
-            cp "desktop/out/Syrus-$VERSION-universal.zip.blockmap" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            # Feed staging is release-only (stable channel), so $PRODUCT is
+            # "Syrus" here and the alias is the website's Syrus.dmg permalink.
+            cp "desktop/out/$PRODUCT-$VERSION-universal.zip" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            cp "desktop/out/$PRODUCT-$VERSION-universal.zip.blockmap" "$RUNNER_TEMP/staged/" 2>/dev/null || true
             cp desktop/out/latest-mac.yml "$RUNNER_TEMP/staged/" 2>/dev/null || true
-            cp "desktop/out/Syrus-$VERSION-universal.dmg" "$RUNNER_TEMP/staged/Syrus.dmg"
+            cp "desktop/out/$PRODUCT-$VERSION-universal.dmg" "$RUNNER_TEMP/staged/$PRODUCT.dmg"
           else
-            cp "desktop/out/Syrus-$VERSION-universal.dmg" "$RUNNER_TEMP/staged/"
+            cp "desktop/out/$PRODUCT-$VERSION-universal.dmg" "$RUNNER_TEMP/staged/"
           fi
 
       - uses: actions/upload-artifact@v7
@@ -565,6 +593,17 @@ jobs:
     if: inputs.build_windows
     runs-on: windows-latest
     timeout-minutes: 60
+    # Channel identity (see build-mac). A test build forks product/appId/icon
+    # + the NSIS shortcut name so Syrus Test installs beside a release. PKG_NAME
+    # forks the electron-builder package NAME too: the one-click per-user NSIS
+    # installer derives its install directory (%LocalAppData%\Programs\<name>)
+    # from the package name, NOT productName — without this the test installer
+    # would extract into the production install dir and clobber it.
+    env:
+      PRODUCT: ${{ inputs.channel == 'test' && 'Syrus Test' || 'Syrus' }}
+      APP_ID: ${{ inputs.channel == 'test' && 'app.syrus.desktop.test' || 'app.syrus.desktop' }}
+      WIN_ICON: ${{ inputs.channel == 'test' && 'build/icon-test.ico' || 'build/icon.ico' }}
+      PKG_NAME: ${{ inputs.channel == 'test' && 'syrus-test-desktop' || 'syrus-desktop' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -680,6 +719,11 @@ jobs:
           AZURE_SIGN_ENDPOINT="${AZURE_SIGN_ENDPOINT%/}"
           npm --prefix desktop run build -- --win --publish never \
             -c.forceCodeSigning=true \
+            -c.productName="$PRODUCT" \
+            -c.appId="$APP_ID" \
+            -c.extraMetadata.name="$PKG_NAME" \
+            -c.win.icon="$WIN_ICON" \
+            -c.nsis.shortcutName="$PRODUCT" \
             "-c.win.azureSignOptions.publisherName=${AZURE_SIGN_PUBLISHER_NAME}" \
             "-c.win.azureSignOptions.endpoint=${AZURE_SIGN_ENDPOINT}" \
             "-c.win.azureSignOptions.certificateProfileName=${AZURE_SIGN_CERT_PROFILE}" \
@@ -690,8 +734,8 @@ jobs:
         env:
           BACKEND_IMAGE: ${{ inputs.backend_image_pin }}
         run: |
-          $exes = Get-ChildItem -Path desktop/out -Filter "Syrus-Setup-*.exe"
-          if ($exes.Count -eq 0) { throw "No Syrus-Setup-*.exe artifacts found under desktop/out" }
+          $exes = Get-ChildItem -Path desktop/out -Filter "$env:PRODUCT-Setup-*.exe"
+          if ($exes.Count -eq 0) { throw "No $env:PRODUCT-Setup-*.exe artifacts found under desktop/out" }
           foreach ($exe in $exes) {
             $sig = Get-AuthenticodeSignature -FilePath $exe.FullName
             Write-Host "$($exe.Name): $($sig.Status) ($($sig.SignerCertificate.Subject))"
@@ -720,13 +764,15 @@ jobs:
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/staged"
           if [ "$STAGE_FEED" = "true" ]; then
-            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/" 2>/dev/null || true
-            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe.blockmap" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            # Feed staging is release-only (stable channel), so $PRODUCT is
+            # "Syrus" and the alias is the website's Syrus-Setup.exe permalink.
+            cp "desktop/out/$PRODUCT-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/" 2>/dev/null || true
+            cp "desktop/out/$PRODUCT-Setup-$VERSION-x64.exe.blockmap" "$RUNNER_TEMP/staged/" 2>/dev/null || true
             cp desktop/out/latest.yml "$RUNNER_TEMP/staged/" 2>/dev/null || true
             # x64 only — runs natively on x64 and via emulation on arm64 Windows.
-            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/Syrus-Setup.exe"
+            cp "desktop/out/$PRODUCT-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/$PRODUCT-Setup.exe"
           else
-            cp "desktop/out/Syrus-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/"
+            cp "desktop/out/$PRODUCT-Setup-$VERSION-x64.exe" "$RUNNER_TEMP/staged/"
           fi
 
       - uses: actions/upload-artifact@v7

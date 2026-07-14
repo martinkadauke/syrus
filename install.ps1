@@ -64,6 +64,12 @@ Docker-mode flags for driving this script from a GUI (the desktop app):
   --image REF             pin SYRUS_IMAGE; persisted into .env so later plain
                           `docker compose up` runs use the same tag
   --port N                first install only: serve on this port instead of 3000
+  --project NAME          Compose project name (default: syrus); determines the
+                          volume prefix so a test stack (--project syrus-test)
+                          is fully isolated
+  --pause-polling         first install only: seed the instance with repository
+                          polling paused (SYRUS_BOOT_POLLING_PAUSED) so a test
+                          stack does not race production to file Jobs
 
 Exit codes: 0 ok - 2 usage - 10 no runtime - 11 daemon never became ready -
 12 no compose - 20 data volume exists but .env is missing (encryption-key
@@ -279,9 +285,12 @@ function Run-Docker {
   if (-not $image) { $image = $env:SYRUS_IMAGE }
   if (-not $image) { $image = "ghcr.io/tkadauke/syrus-backend:latest" }
   $env:SYRUS_IMAGE = $image
-  # Belt-and-braces alongside the compose file's `name: syrus`: keeps the
-  # `syrus_` volume prefix stable for docker-compose v1 and odd invocation dirs.
-  $env:COMPOSE_PROJECT_NAME = "syrus"
+  # The Compose project name determines the volume prefix (<PROJECT>_syrus-data)
+  # and overrides the compose file's `name: syrus` default. A side-by-side test
+  # stack passes --project syrus-test for fully isolated volumes/containers.
+  $project = if ($script:ProjectOverride) { $script:ProjectOverride } else { "syrus" }
+  $env:COMPOSE_PROJECT_NAME = $project
+  $dataVolume = "${project}_syrus-data"
 
   # The target dir owns mutable state (.env, a synced copy of
   # docker-compose.yml). Default: the script's own directory. The desktop app
@@ -289,8 +298,18 @@ function Run-Docker {
   if ($script:TargetDir) {
     New-Item -ItemType Directory -Force -Path $script:TargetDir | Out-Null
     $resolved = (Resolve-Path -LiteralPath $script:TargetDir).Path
-    # Keep the compose file in sync with this installer's version on every run.
-    Copy-Item -LiteralPath (Join-Path $AssetsDir "docker-compose.yml") -Destination (Join-Path $resolved "docker-compose.yml") -Force
+    # Keep the compose file in sync with this installer's version on every run,
+    # and stamp the channel's project name into it so a plain `docker compose`
+    # from this state dir resolves to <project>, not the file's `name: syrus`
+    # default (which would target the PRODUCTION stack from the test state dir).
+    # Normalize to LF FIRST: a checkout with autocrlf hands us CRLF, and .NET's
+    # (?m)$ matches only before \n (never before \r), so on a CRLF compose file
+    # "^name: syrus$" silently no-ops - leaving `name: syrus` in the test state
+    # dir, where a bare `docker compose down -v` would target the PRODUCTION
+    # project and delete its data volume. (Same normalization as the .env below.)
+    $composeText = ([System.IO.File]::ReadAllText((Join-Path $AssetsDir "docker-compose.yml"))) -replace "`r`n", "`n"
+    $composeText = [regex]::Replace($composeText, "(?m)^name: syrus$", "name: $project")
+    [System.IO.File]::WriteAllText((Join-Path $resolved "docker-compose.yml"), $composeText)
     Set-Location -LiteralPath $resolved
   }
   # PowerShell's location and .NET's process cwd are separate; align them so
@@ -326,15 +345,15 @@ function Run-Docker {
   #    500s with ActiveRecord::Encryption::Errors::Decryption.
   Emit-Step "env_check" "start"
   if (-not (Test-Path -LiteralPath $envFile)) {
-    Invoke-NativeQuiet "docker" @("volume", "inspect", "syrus_syrus-data")
+    Invoke-NativeQuiet "docker" @("volume", "inspect", $dataVolume)
     if ($LASTEXITCODE -eq 0) {
-      [Console]::Error.WriteLine("Error: a data volume (syrus_syrus-data) exists but .env is missing.")
+      [Console]::Error.WriteLine("Error: a data volume ($dataVolume) exists but .env is missing.")
       [Console]::Error.WriteLine("Its database is encrypted with keys that lived in that .env. Generating")
       [Console]::Error.WriteLine("fresh keys now would make the existing data undecryptable. Do ONE of:")
       [Console]::Error.WriteLine("  - Restore the original .env (the keys that match this volume), or")
       [Console]::Error.WriteLine("  - Wipe the old data and start clean:")
-      [Console]::Error.WriteLine("      docker compose down -v; .\install.ps1 --docker")
-      Fail "a data volume (syrus_syrus-data) exists but .env is missing (see above)" 20
+      [Console]::Error.WriteLine("      docker compose -p $project down -v; .\install.ps1 --docker --project $project")
+      Fail "a data volume ($dataVolume) exists but .env is missing (see above)" 20
     }
   }
   Emit-Step "env_check" "ok"
@@ -353,6 +372,14 @@ function Run-Docker {
       $content = [regex]::Replace($content, "(?m)^SYRUS_PORT=.*$", "SYRUS_PORT=" + $script:PortOverride)
       $content = [regex]::Replace($content, "(?m)^SYRUS_APP_HOST=.*$", "SYRUS_APP_HOST=localhost:" + $script:PortOverride)
     }
+    # Seed repository polling paused on a test stack so it does not race
+    # production to file Jobs. The backend reads this only when it first
+    # creates its AppSetting row; the operator can unpause from the admin
+    # console afterwards (see AppSetting.current).
+    if ($script:PausePolling -and ($content -cnotmatch "(?m)^SYRUS_BOOT_POLLING_PAUSED=")) {
+      if ($content.Length -gt 0 -and -not $content.EndsWith("`n")) { $content += "`n" }
+      $content += "SYRUS_BOOT_POLLING_PAUSED=1`n"
+    }
     Write-EnvFile $envFile $content
     Write-Info "Wrote .env (keep it safe - it holds your instance secrets)."
     Emit-Step "env_generate" "ok"
@@ -360,6 +387,9 @@ function Run-Docker {
     Emit-Step "env_generate" "skipped"
     if ($script:PortOverride) {
       Write-Info "(--port is ignored: .env already exists and owns the port.)"
+    }
+    if ($script:PausePolling) {
+      Write-Info "(--pause-polling is ignored: .env already exists.)"
     }
   }
 
@@ -581,7 +611,7 @@ function Run-Docker {
     if ($healthy) { break }
     $tries++
     if ($tries -gt $maxPolls) {
-      Fail "Syrus didn't become healthy within 3 minutes. Check: docker compose logs web worker" 41
+      Fail "Syrus didn't become healthy within 3 minutes. Check: docker compose -p $project logs web worker" 41
     }
     Start-Sleep -Seconds 2
   }
@@ -595,7 +625,7 @@ function Run-Docker {
   Write-Info "Next steps:"
   Write-Info "  1. Open http://localhost:$port and create the first admin account."
   Write-Info "  2. Complete /onboarding: GitHub credentials, agent, first repository."
-  Write-Info "  3. Logs: docker compose logs -f web worker   Stop: docker compose down"
+  Write-Info "  3. Logs: docker compose -p $project logs -f web worker   Stop: docker compose -p $project down"
   Write-Info "  4. Read README.md or website docs for next steps."
 }
 
@@ -622,6 +652,8 @@ $script:SkipRuntimeInstall = $false
 $script:TargetDir = ""
 $script:ImageOverride = ""
 $script:PortOverride = ""
+$script:ProjectOverride = ""
+$script:PausePolling = $false
 
 # Walk the raw arg list by hand (no param() block): GNU-style two-token flags
 # (--target-dir DIR) and exact usage exit codes need manual control.
@@ -659,6 +691,15 @@ while ($i -lt $argv.Count) {
       if ($candidate -cnotmatch "^[0-9]+\z") { Fail "--port must be a number, got: $candidate" 2 }
       $script:PortOverride = $candidate
     }
+    "--project" {
+      if ($i + 1 -ge $argv.Count) { Fail "--project needs a name" 2 }
+      $i++
+      $candidate = [string]$argv[$i]
+      # Compose project names are lowercase [a-z0-9_-], leading alphanumeric.
+      if ($candidate -cnotmatch "^[a-z0-9][a-z0-9_-]*\z") { Fail "--project must be lowercase [a-z0-9_-], got: $candidate" 2 }
+      $script:ProjectOverride = $candidate
+    }
+    "--pause-polling" { $script:PausePolling = $true }
     "--help" { Show-Help; exit 0 }
     "-h" { Show-Help; exit 0 }
     default { Fail "Unknown flag: $arg (try --help)" 2 }

@@ -5,8 +5,9 @@ import path from "node:path"
 import readline from "node:readline"
 import { promisify } from "node:util"
 import { app, dialog, shell, type BrowserWindow } from "electron"
-import { localStateDir, saveBackendConfig, setOnboardingResumeLocal } from "../settings.js"
+import { currentStackIdentity, localStateDir, saveBackendConfig, setOnboardingResumeLocal } from "../settings.js"
 import { downloadDockerDesktopInstaller, runDockerDesktopInstaller } from "./dockerDesktopInstaller.js"
+import { restampEnvPort } from "./envRestamp.js"
 import { clearRunOnceResume, registerRunOnceResume } from "./windowsResume.js"
 import { fingerprintSyrus } from "./fingerprint.js"
 import { analyzeInstanceUrl } from "./instanceUrl.js"
@@ -36,8 +37,18 @@ export const DOCKER_DESKTOP_DOWNLOAD_URL = "https://www.docker.com/products/dock
 // WSL 2 setup). RuntimeSetup.tsx renders the matching copy.
 export const runtimeDownloadUrl = () =>
   process.platform === "win32" ? DOCKER_DESKTOP_DOWNLOAD_URL : ORBSTACK_DOWNLOAD_URL
-export const DATA_VOLUME_NAME = "syrus_syrus-data"
-const DEFAULT_PORT = 3000
+// install.sh's own default when --port is omitted — NOT the channel's default
+// port. The app passes --port only when its desired port differs from this, so
+// a test install (channel default 3001) always forwards its port while a
+// stable install (3000) can omit it.
+const INSTALLER_BUILTIN_DEFAULT_PORT = 3000
+
+// The channel's namespaced backend resources (project, data volume, default
+// port). Recomputed per call — cheap, and always reflects the running build.
+const dataVolumeName = () => currentStackIdentity().dataVolume
+const searchVolumeName = () => currentStackIdentity().searchVolume
+const composeProject = () => currentStackIdentity().project
+const channelDefaultPort = () => currentStackIdentity().defaultPort
 const RUNTIME_START_POLLS = 90 // × 2s = 180s, matches install.sh's own wait
 const RUNTIME_DOWNLOAD_POLLS = 300 // × 2s = 10 minutes for a manual OrbStack install
 // Docker Desktop's FIRST start blocks on user interaction (the service
@@ -119,11 +130,11 @@ const normalizeUrl = (url: string) => url.trim().replace(/\/+$/, "")
 const parsePortFromEnv = (contents: string) => {
   const match = contents.match(/^SYRUS_PORT=(\d+)$/m)
   if (!match) {
-    return DEFAULT_PORT
+    return channelDefaultPort()
   }
 
   const port = Number.parseInt(match[1], 10)
-  return Number.isFinite(port) && port > 0 ? port : DEFAULT_PORT
+  return Number.isFinite(port) && port > 0 ? port : channelDefaultPort()
 }
 
 const portFromUrl = (url: string): number | null => {
@@ -153,7 +164,7 @@ export class OnboardingDriver {
   private cancelRequested = false
   private pollTimer: NodeJS.Timeout | null = null
   private installAbort: AbortController | null = null
-  private port = DEFAULT_PORT
+  private port = channelDefaultPort()
   private logTail: string[] = []
   private lastLogTransient = false
   private lastError: { code: number; step: string | null; message: string } | null = null
@@ -191,7 +202,7 @@ export class OnboardingDriver {
     }
 
     setOnboardingResumeLocal(true)
-    void registerRunOnceResume()
+    void registerRunOnceResume(currentStackIdentity().channel)
   }
 
   private clearRebootResume() {
@@ -200,7 +211,7 @@ export class OnboardingDriver {
     }
 
     setOnboardingResumeLocal(false)
-    void clearRunOnceResume()
+    void clearRunOnceResume(currentStackIdentity().channel)
   }
 
   backToWelcome() {
@@ -301,7 +312,7 @@ export class OnboardingDriver {
       hasEnv = true
       this.port = parsePortFromEnv(contents)
     } catch {
-      this.port = DEFAULT_PORT
+      this.port = channelDefaultPort()
     }
 
     // A healthy Syrus already answering that we don't own: offer to adopt it
@@ -333,7 +344,7 @@ export class OnboardingDriver {
 
     // The encryption-key guard, surfaced before install.sh would exit 20:
     // a data volume encrypted with keys from a .env we don't have.
-    if (!hasEnv && (await volumeExists(DATA_VOLUME_NAME))) {
+    if (!hasEnv && (await volumeExists(dataVolumeName()))) {
       this.setState({ phase: "local.adoptExisting", error: null })
       return
     }
@@ -604,7 +615,10 @@ export class OnboardingDriver {
   async locateEnv(parentWindow: BrowserWindow | null) {
     const options: Electron.OpenDialogOptions = {
       title: "Locate your original .env",
-      message: "Choose the .env file from your existing Syrus install (usually next to your Syrus checkout).",
+      message:
+        currentStackIdentity().channel === "test"
+          ? "Choose the .env file from your ORIGINAL Syrus Test install (~/.syrus/local-test). Do not use your production Syrus .env — its keys and port belong to the other stack."
+          : "Choose the .env file from your existing Syrus install (usually next to your Syrus checkout).",
       properties: ["openFile", "showHiddenFiles"]
     }
     const result = parentWindow
@@ -618,7 +632,22 @@ export class OnboardingDriver {
     try {
       const stateDir = localStateDir()
       await fs.mkdir(stateDir, { recursive: true })
-      await fs.copyFile(result.filePaths[0], path.join(stateDir, ".env"))
+      const envTarget = path.join(stateDir, ".env")
+      await fs.copyFile(result.filePaths[0], envTarget)
+      // TEST channel ONLY: force the port to the test default. If the user
+      // picked the production .env (port 3000), the test stack must still bind
+      // 3001, and restampEnvPort APPENDS the line when the picked .env has none
+      // (else compose falls back to ${SYRUS_PORT:-3000} = production's port).
+      // The STABLE channel copies the .env verbatim — a deliberately non-default
+      // production port must be preserved, so no re-stamp there.
+      const identity = currentStackIdentity()
+      if (identity.channel === "test") {
+        const contents = await fs.readFile(envTarget, "utf8")
+        const restamped = restampEnvPort(contents, identity.defaultPort)
+        if (restamped !== contents) {
+          await fs.writeFile(envTarget, restamped)
+        }
+      }
     } catch (error) {
       // Surface the copy failure on the screen instead of silently
       // re-prechecking into the same state with no explanation.
@@ -655,7 +684,7 @@ export class OnboardingDriver {
     if (compose) {
       try {
         const [command, ...prefixArgs] = compose
-        await execFileAsync(command, [...prefixArgs, "-p", "syrus", "down", "-v"], {
+        await execFileAsync(command, [...prefixArgs, "-p", composeProject(), "down", "-v"], {
           env: execEnv(),
           timeout: 120_000
         })
@@ -665,9 +694,9 @@ export class OnboardingDriver {
     }
 
     const binary = await findDockerBinary()
-    if (binary && (await volumeExists(DATA_VOLUME_NAME))) {
+    if (binary && (await volumeExists(dataVolumeName()))) {
       try {
-        await execFileAsync(binary, ["volume", "rm", DATA_VOLUME_NAME, "syrus_syrus-search"], {
+        await execFileAsync(binary, ["volume", "rm", dataVolumeName(), searchVolumeName()], {
           env: execEnv(),
           timeout: 60_000
         })
@@ -692,11 +721,20 @@ export class OnboardingDriver {
     }
 
     const manifest = await readBackendManifest()
+    const identity = currentStackIdentity()
     const flags = ["--docker", "--non-interactive", "--json", "--skip-runtime-install", "--target-dir", stateDir]
+    // Isolate this channel's Compose project + volumes; a test stack also
+    // seeds repository polling paused so it does not race production to file
+    // Jobs (install.sh applies --pause-polling only when generating a fresh
+    // .env, so re-installs are unaffected).
+    flags.push("--project", identity.project)
+    if (identity.channel === "test") {
+      flags.push("--pause-polling")
+    }
     if (manifest?.image) {
       flags.push("--image", manifest.image)
     }
-    if (this.port !== DEFAULT_PORT) {
+    if (this.port !== INSTALLER_BUILTIN_DEFAULT_PORT) {
       flags.push("--port", String(this.port))
     }
 

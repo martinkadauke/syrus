@@ -44,7 +44,12 @@ RSpec.describe "desktop Electron startup" do
     expect(main_process).to include("const createPlainTrayIcon = () => {")
     expect(main_process).to include('nativeImage.createFromPath(trayIconPath())')
     expect(main_process).to include("image.setTemplateImage(true)")
-    expect(main_process).to include("tray.setTitle(unreadCount > 0 ? trayBadgeLabel(unreadCount) : \"\")")
+    # The menu-bar title carries the unread badge, plus a "T" on the test
+    # channel so a side-by-side test build is distinguishable.
+    expect(main_process).to include(
+      'tray.setTitle([testMark, unreadCount > 0 ? trayBadgeLabel(unreadCount) : ""].filter(Boolean).join(" "))'
+    )
+    expect(main_process).to include('const testMark = currentChannel() === "test" ? "T" : ""')
   end
 
   it "matches the CLI inbox by fetching only actionable states" do

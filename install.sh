@@ -30,6 +30,13 @@
 #   --image REF             pin SYRUS_IMAGE; persisted into .env so later plain
 #                           `docker compose up` runs use the same tag
 #   --port N                first install only: serve on this port instead of 3000
+#   --project NAME          Compose project name (default: syrus). Determines the
+#                           volume prefix (<NAME>_syrus-data) so a side-by-side
+#                           test stack (--project syrus-test) is fully isolated.
+#   --pause-polling         first install only: seed the new instance with
+#                           repository polling paused (SYRUS_BOOT_POLLING_PAUSED).
+#                           A test stack uses this so it does not race production
+#                           to file Jobs; unpause later from the admin console.
 #
 # Exit codes: 0 ok · 2 usage · 10 no runtime (with --skip-runtime-install) ·
 # 11 daemon never became ready · 12 no compose · 20 data volume exists but .env
@@ -205,6 +212,8 @@ SKIP_RUNTIME_INSTALL=0
 TARGET_DIR=""
 IMAGE_OVERRIDE=""
 PORT_OVERRIDE=""
+PROJECT_OVERRIDE=""
+PAUSE_POLLING=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -227,6 +236,16 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || die "--port needs a number" 2
       case "$2" in ''|*[!0-9]*) die "--port must be a number, got: $2" 2 ;; esac
       PORT_OVERRIDE="$2"; shift ;;
+    --project)
+      [ $# -ge 2 ] || die "--project needs a name" 2
+      # Compose project names are lowercase [a-z0-9_-], leading alphanumeric.
+      # Validated because it becomes COMPOSE_PROJECT_NAME and a volume prefix.
+      case "$2" in
+        [a-z0-9]*) case "$2" in *[!a-z0-9_-]*) die "--project must be lowercase [a-z0-9_-], got: $2" 2 ;; esac ;;
+        *) die "--project must start with a lowercase letter or digit, got: $2" 2 ;;
+      esac
+      PROJECT_OVERRIDE="$2"; shift ;;
+    --pause-polling)        PAUSE_POLLING=1 ;;
     --help|-h) awk 'NR>1 && /^#/{sub(/^# ?/,""); print; next} NR>1{exit}' "$0"; exit 0 ;;
     *) die "Unknown flag: $1 (try --help)" 2 ;;
   esac
@@ -255,8 +274,9 @@ fi
 # The GUI flags only make sense for the docker path.
 if [ "$MODE" = "bare-metal" ]; then
   if [ "$JSON" = "1" ] || [ -n "$TARGET_DIR" ] || [ "$SKIP_RUNTIME_INSTALL" = "1" ] \
-     || [ -n "$IMAGE_OVERRIDE" ] || [ -n "$PORT_OVERRIDE" ]; then
-    die "--json/--target-dir/--skip-runtime-install/--image/--port only apply to --docker" 2
+     || [ -n "$IMAGE_OVERRIDE" ] || [ -n "$PORT_OVERRIDE" ] || [ -n "$PROJECT_OVERRIDE" ] \
+     || [ "$PAUSE_POLLING" = "1" ]; then
+    die "--json/--target-dir/--skip-runtime-install/--image/--port/--project/--pause-polling only apply to --docker" 2
   fi
 fi
 
@@ -267,9 +287,13 @@ run_docker() {
   fi
   IMAGE="${IMAGE_OVERRIDE:-${SYRUS_IMAGE:-ghcr.io/tkadauke/syrus-backend:latest}}"
   export SYRUS_IMAGE="$IMAGE"
-  # Belt-and-braces alongside the compose file's `name: syrus`: keeps the
-  # `syrus_` volume prefix stable for docker-compose v1 and odd invocation dirs.
-  export COMPOSE_PROJECT_NAME=syrus
+  # The Compose project name determines the volume prefix (<PROJECT>_syrus-data)
+  # and overrides the compose file's `name: syrus` default. A side-by-side test
+  # stack passes --project syrus-test for a fully isolated set of volumes and
+  # containers. Belt-and-braces for docker-compose v1 and odd invocation dirs.
+  PROJECT="${PROJECT_OVERRIDE:-syrus}"
+  export COMPOSE_PROJECT_NAME="$PROJECT"
+  DATA_VOLUME="${PROJECT}_syrus-data"
 
   # The target dir owns mutable state (.env, a synced copy of docker-compose.yml).
   # Default: the script's own directory — the classic clone workflow. The desktop
@@ -277,8 +301,12 @@ run_docker() {
   # writing next to the bundled script would break the code signature.
   if [ -n "$TARGET_DIR" ]; then
     mkdir -p "$TARGET_DIR"
-    # Keep the compose file in sync with this installer's version on every run.
-    cp -f "$ASSETS_DIR/docker-compose.yml" "$TARGET_DIR/docker-compose.yml"
+    # Keep the compose file in sync with this installer's version on every run,
+    # and stamp the channel's project name into it so a plain `docker compose`
+    # run from this state dir resolves to <PROJECT> — NOT the compose file's
+    # default `name: syrus` (which would make a manual command in the test
+    # state dir operate on the PRODUCTION stack).
+    sed "s|^name: syrus\$|name: $PROJECT|" "$ASSETS_DIR/docker-compose.yml" > "$TARGET_DIR/docker-compose.yml"
     cd "$TARGET_DIR"
   fi
 
@@ -306,14 +334,14 @@ run_docker() {
   #    encrypted with the old keys; new keys can't decrypt it and every page
   #    500s with ActiveRecord::Encryption::Errors::Decryption.
   emit_step env_check start
-  if [ ! -f .env ] && docker volume inspect syrus_syrus-data >/dev/null 2>&1; then
-    echo "Error: a data volume (syrus_syrus-data) exists but .env is missing." >&2
+  if [ ! -f .env ] && docker volume inspect "$DATA_VOLUME" >/dev/null 2>&1; then
+    echo "Error: a data volume ($DATA_VOLUME) exists but .env is missing." >&2
     echo "Its database is encrypted with keys that lived in that .env. Generating" >&2
     echo "fresh keys now would make the existing data undecryptable. Do ONE of:" >&2
     echo "  - Restore the original .env (the keys that match this volume), or" >&2
     echo "  - Wipe the old data and start clean:" >&2
-    echo "      docker compose down -v && ./install.sh --docker   (or docker-compose ...)" >&2
-    die "a data volume (syrus_syrus-data) exists but .env is missing (see above)" 20
+    echo "      docker compose -p $PROJECT down -v && ./install.sh --docker --project $PROJECT   (or docker-compose ...)" >&2
+    die "a data volume ($DATA_VOLUME) exists but .env is missing (see above)" 20
   fi
   emit_step env_check ok
 
@@ -333,12 +361,22 @@ run_docker() {
         -e "s|^SYRUS_APP_HOST=.*|SYRUS_APP_HOST=localhost:$PORT_OVERRIDE|" \
         .env > .env.tmp && mv .env.tmp .env
     fi
+    # Seed repository polling paused on a test stack so it does not race
+    # production to file Jobs. The backend reads this only when it first
+    # creates its AppSetting row; the operator can unpause from the admin
+    # console afterwards (see AppSetting.current).
+    if [ "$PAUSE_POLLING" = "1" ] && ! grep -qE '^SYRUS_BOOT_POLLING_PAUSED=' .env; then
+      printf 'SYRUS_BOOT_POLLING_PAUSED=1\n' >> .env
+    fi
     info "Wrote .env (keep it safe — it holds your instance secrets)."
     emit_step env_generate ok
   else
     emit_step env_generate skipped
     if [ -n "$PORT_OVERRIDE" ]; then
       info "(--port is ignored: .env already exists and owns the port.)"
+    fi
+    if [ "$PAUSE_POLLING" = "1" ]; then
+      info "(--pause-polling is ignored: .env already exists.)"
     fi
   fi
 
@@ -579,7 +617,7 @@ run_docker() {
   until curl -fs -o /dev/null "http://localhost:${port}/up" 2>/dev/null; do
     tries=$((tries + 1))
     [ "$tries" -gt "${SYRUS_HEALTH_POLLS:-90}" ] && die \
-      "Syrus didn't become healthy within 3 minutes. Check: docker compose logs web worker" 41
+      "Syrus didn't become healthy within 3 minutes. Check: docker compose -p $PROJECT logs web worker" 41
     sleep 2
   done
   emit_step health ok
@@ -592,7 +630,7 @@ run_docker() {
   info "Next steps:"
   info "  1. Open http://localhost:${port} and create the first admin account."
   info "  2. Complete /onboarding: GitHub credentials, agent, first repository."
-  info "  3. Logs: docker compose logs -f web worker   Stop: docker compose down"
+  info "  3. Logs: docker compose -p $PROJECT logs -f web worker   Stop: docker compose -p $PROJECT down"
   info "  4. Read README.md or website docs for next steps."
 }
 

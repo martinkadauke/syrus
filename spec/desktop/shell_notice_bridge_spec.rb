@@ -54,7 +54,8 @@ RSpec.describe "desktop shell-notice bridge" do
   it "computes the notice state in the main process from real sources" do
     state = main[/const shellNoticeState[\s\S]{0,700}/]
     expect(state).to include("updateReadyVersion: appUpdates.downloadedUpdateVersion()")
-    expect(state).to include("claudeDetected: await agentToolPresent()")
+    # The Claude-skill offer is stable-only — the test channel never surfaces it.
+    expect(state).to include('claudeDetected: currentChannel() !== "test" && (await agentToolPresent())')
     expect(state).to include("claudeSkillPath()")
     expect(state).to include("skillOfferDismissed: skillOfferDismissed()")
     expect(state).to include("backendUpdate: backendUpdateProgress")
