@@ -49,7 +49,7 @@ module Workflows
       )
       repository.reload
 
-      if repository.main_health != previous_health || (was_landing_paused && repository.grader_health_healthy? && !repository.ci_health_broken?)
+      if repository.main_health != previous_health || (was_landing_paused && repository.main_health == "healthy")
         MainHealthChangedService.on_health_change!(repository)
       end
 

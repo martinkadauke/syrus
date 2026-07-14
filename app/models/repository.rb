@@ -4,7 +4,8 @@ class Repository < ApplicationRecord
   GITHUB_NAME = /\A[a-zA-Z0-9](?:[a-zA-Z0-9._-]*[a-zA-Z0-9])?\z/
   REVIEW_POLICIES = %w[ self two_person final_say ].freeze
   FEEDBACK_POLICIES = %w[ auto confirm ].freeze
-  HEALTH_STATES = %w[ unknown healthy broken ].freeze
+  CI_HEALTH_STATES = %w[ unknown healthy broken not_configured ].freeze
+  GRADER_HEALTH_STATES = %w[ unknown healthy broken ].freeze
 
   attribute :polling_enabled, :boolean, default: true
   attribute :prepare_enabled, :boolean, default: true
@@ -22,8 +23,8 @@ class Repository < ApplicationRecord
   attribute :grader_health, :string, default: "unknown"
   attribute :landing_paused, :boolean, default: false
 
-  enum :ci_health, HEALTH_STATES.index_with(&:itself), prefix: true, validate: true
-  enum :grader_health, HEALTH_STATES.index_with(&:itself), prefix: true, validate: true
+  enum :ci_health, CI_HEALTH_STATES.index_with(&:itself), prefix: true, validate: true
+  enum :grader_health, GRADER_HEALTH_STATES.index_with(&:itself), prefix: true, validate: true
 
   belongs_to :user, optional: true
   belongs_to :installation, optional: true
@@ -74,7 +75,7 @@ class Repository < ApplicationRecord
 
   def main_health
     return "broken" if ci_health_broken? || grader_health_broken?
-    return "healthy" if ci_health_healthy? && grader_health_healthy?
+    return "healthy" if grader_health_healthy? && (ci_health_healthy? || ci_health_not_configured?)
     "unknown"
   end
 

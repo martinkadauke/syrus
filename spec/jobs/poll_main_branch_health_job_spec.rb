@@ -63,13 +63,13 @@ RSpec.describe PollMainBranchHealthJob do
     expect(repository.main_health).to eq("unknown")
   end
 
-  it "updates last_health_checked_sha and skips ci_health update when no checks exist" do
+  it "marks ci_health not_configured when no checks exist" do
     stub_sha(sha)
     stub_check_runs({ any?: false, pending?: false, any_failed?: false, all_passed?: false })
 
     described_class.perform_now(repository.id)
 
-    expect(repository.reload.ci_health).to eq("unknown")
+    expect(repository.reload.ci_health).to eq("not_configured")
     expect(repository.last_health_checked_sha).to eq(sha)
   end
 
@@ -201,7 +201,21 @@ RSpec.describe PollMainBranchHealthJob do
       }.not_to change(MainBranchHealthCheck, :count)
     end
 
-    it "does not record a health check when no CI checks exist" do
+    it "records a health check when no CI checks exist" do
+      stub_sha(sha)
+      stub_check_runs({ any?: false, pending?: false, any_failed?: false, all_passed?: false, failed_checks: [] })
+
+      expect {
+        described_class.perform_now(repository.id)
+      }.to change(MainBranchHealthCheck, :count).by(1)
+
+      check = MainBranchHealthCheck.last
+      expect(check.ci_health).to eq("not_configured")
+    end
+
+    it "does not duplicate no-CI health records for the same SHA" do
+      repository.update!(last_health_checked_sha: sha, ci_health: "not_configured")
+      MainBranchHealthCheck.record_ci_poll(repository: repository, sha: sha, ci_health: "not_configured")
       stub_sha(sha)
       stub_check_runs({ any?: false, pending?: false, any_failed?: false, all_passed?: false, failed_checks: [] })
 

@@ -690,17 +690,19 @@ function MainBranchHealthSection({ history, repository }: { history: RepositoryH
 function HealthBadge({ label, health }: { label: string; health: string }) {
   const { t } = useT("settings")
   const tone = healthTone(health)
-  const labelText = health === "healthy"
-    ? t("repository.health_healthy")
-    : health === "broken"
-      ? t("repository.health_broken")
-      : t("repository.health_unknown")
   return (
     <div className="flex items-center gap-2">
       <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</span>
-      <StatusPill tone={tone}>{labelText}</StatusPill>
+      <StatusPill tone={tone}>{healthLabel(health, t)}</StatusPill>
     </div>
   )
+}
+
+function healthLabel(health: string, t: (key: string) => string) {
+  if (health === "healthy") return t("repository.health_healthy")
+  if (health === "broken") return t("repository.health_broken")
+  if (health === "not_configured") return t("repository.health_not_configured")
+  return t("repository.health_unknown")
 }
 
 function FailingChecks({ checks }: { checks: Array<{ name: string; url: string }> }) {
@@ -764,8 +766,8 @@ function HealthHistoryRow({ record, t }: { record: RepositoryHealthCheckRecord; 
           {record.sha}
         </a>
       </td>
-      <td className="px-3 py-2"><StatusPill tone={healthTone(record.ci_health)}>{record.ci_health}</StatusPill></td>
-      <td className="px-3 py-2"><StatusPill tone={healthTone(record.grader_health)}>{record.grader_health}</StatusPill></td>
+      <td className="px-3 py-2"><StatusPill tone={healthTone(record.ci_health)}>{healthLabel(record.ci_health, t)}</StatusPill></td>
+      <td className="px-3 py-2"><StatusPill tone={healthTone(record.grader_health)}>{healthLabel(record.grader_health, t)}</StatusPill></td>
       <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-400">
         {failureNames.length > 0 ? failureNames.join(", ") : null}
       </td>

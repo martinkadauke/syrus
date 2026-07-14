@@ -212,6 +212,7 @@
     "health_unknown": "Unknown",
     "health_healthy": "Healthy",
     "health_broken": "Broken",
+    "health_not_configured": "No CI",
     "health_checked_sha": "Checked at",
     "health_no_history": "No health checks recorded yet.",
     "health_history_heading": "Recent health checks",

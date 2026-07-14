@@ -17,6 +17,11 @@ RSpec.describe Repository, "#main_health" do
     expect(repo.main_health).to eq("unknown")
   end
 
+  it "is healthy when graders are healthy and CI is explicitly not configured" do
+    repo.update!(ci_health: "not_configured", grader_health: "healthy")
+    expect(repo.main_health).to eq("healthy")
+  end
+
   it "is healthy when both ci_health and grader_health are healthy" do
     repo.update!(ci_health: "healthy", grader_health: "healthy")
     expect(repo.main_health).to eq("healthy")
