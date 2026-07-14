@@ -218,6 +218,7 @@ export type RepositoryDetailRecord = {
   ci_health: string
   grader_health: string
   main_health: string
+  landing_paused: boolean
   last_health_checked_sha: string | null
 }
 
@@ -237,6 +238,7 @@ export type RepositoryHealthHistory = {
   ci_health: string
   grader_health: string
   main_health: string
+  landing_paused: boolean
   last_health_checked_sha: string | null
   records: RepositoryHealthCheckRecord[]
 }

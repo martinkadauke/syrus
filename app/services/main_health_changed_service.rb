@@ -29,7 +29,7 @@ class MainHealthChangedService
       stamp_active_workflows!
       spawn_fix_job!
       emit_notification!
-    elsif @repository.main_health == "healthy"
+    elsif recoverable?
       self.class.recovered!(@repository)
     end
   end
@@ -52,6 +52,10 @@ class MainHealthChangedService
 
   def resume_landing!
     @repository.update!(landing_paused: false) if @repository.landing_paused?
+  end
+
+  def recoverable?
+    @repository.grader_health_healthy? && !@repository.ci_health_broken?
   end
 
   def stamp_active_workflows!

@@ -227,6 +227,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       github_owner_id: 100,
       github_repository_id: 200
     )
+    repository.update!(landing_paused: true)
     failed = Factories.job(repository: repository, issue_number: 1, issue_title: "Fix forum")
     failed.current_run.update!(state: "failed", finished_at: Time.current)
     failed.latest_workflow.update!(
@@ -252,6 +253,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     )
     expect(body.dig("repository", "agent_provider_label")).to eq("Codex")
     expect(body.dig("repository", "github_url")).to eq("https://github.com/acme/widgets")
+    expect(body.dig("repository", "landing_paused")).to eq(true)
+    expect(body.dig("health_history", "landing_paused")).to eq(true)
     expect(body["tabs"]).to include(
       { "key" => "overview", "label" => "Overview", "path" => repository_path(repository) },
       { "key" => "github_issues", "label" => "GitHub Issues", "path" => repository_path(repository, tab: "github_issues") },

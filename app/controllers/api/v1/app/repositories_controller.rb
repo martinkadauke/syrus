@@ -466,6 +466,7 @@ module Api
             ci_health: repository.ci_health,
             grader_health: repository.grader_health,
             main_health: repository.main_health,
+            landing_paused: repository.landing_paused?,
             last_health_checked_sha: repository.last_health_checked_sha
           }
         end
@@ -725,6 +726,7 @@ module Api
             ci_health: repository.ci_health,
             grader_health: repository.grader_health,
             main_health: repository.main_health,
+            landing_paused: repository.landing_paused?,
             last_health_checked_sha: repository.last_health_checked_sha,
             records: checks.map { |check| health_check_json(check, repository) }
           }

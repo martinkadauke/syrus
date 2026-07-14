@@ -229,6 +229,7 @@ module Api
               slug: job.repository.slug,
               default_branch: job.repository.default_branch,
               auto_merge_enabled: job.repository.auto_merge_enabled,
+              landing_paused: job.repository.landing_paused?,
               approval_propagates_to_github: job.repository.approval_propagates_to_github,
               credential_mode: job.repository.credential_mode,
               app_credential_active: job.repository.app_credential_active?,

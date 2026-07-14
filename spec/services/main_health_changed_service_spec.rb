@@ -213,6 +213,13 @@ RSpec.describe MainHealthChangedService do
         expect(described_class).not_to receive(:recovered!)
         described_class.on_health_change!(repository)
       end
+
+      it "resumes repository landing once graders are healthy and CI is not broken" do
+        repository.update!(landing_paused: true, ci_health: "unknown", grader_health: "healthy")
+
+        expect(described_class).to receive(:recovered!).with(repository)
+        described_class.on_health_change!(repository)
+      end
     end
   end
 

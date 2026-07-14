@@ -39,6 +39,7 @@ module Workflows
     private_class_method def self.update_grader_health!(workflow, health, failed_names = nil)
       repository = workflow.job.repository
       previous_health = repository.main_health
+      was_landing_paused = repository.landing_paused?
       repository.update!(grader_health: health)
       MainBranchHealthCheck.record_grader_workflow(
         repository: repository,
@@ -48,7 +49,7 @@ module Workflows
       )
       repository.reload
 
-      if repository.main_health != previous_health
+      if repository.main_health != previous_health || (was_landing_paused && repository.grader_health_healthy? && !repository.ci_health_broken?)
         MainHealthChangedService.on_health_change!(repository)
       end
 

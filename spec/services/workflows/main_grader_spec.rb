@@ -70,6 +70,13 @@ RSpec.describe Workflows::MainGrader do
       expect(MainHealthChangedService).not_to receive(:on_health_change!)
       described_class.after_success(workflow)
     end
+
+    it "calls MainHealthChangedService when graders recover while CI remains unknown and landing is paused" do
+      repository.update!(landing_paused: true, grader_health: "unknown", ci_health: "unknown")
+
+      expect(MainHealthChangedService).to receive(:on_health_change!).with(kind_of(Repository))
+      described_class.after_success(workflow)
+    end
   end
 
   describe ".after_fail" do

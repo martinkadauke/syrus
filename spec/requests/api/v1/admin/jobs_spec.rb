@@ -2,7 +2,7 @@ require "rails_helper"
 require "ostruct"
 
 RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
-  let(:admin) { Factories.user }
+  let(:admin) { Factories.user(admin: true) }
   let(:non_admin) { admin; Factories.user }  # second user → not admin
   let(:admin_token) { admin.generate_api_token! }
   let(:non_admin_token) { non_admin.generate_api_token! }
@@ -207,6 +207,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
         last_feedback_addressed_at: 6.minutes.ago,
         last_ci_handled_sha: "abc123"
       )
+      job.repository.update!(landing_paused: true)
 
       # Initial workflow chain is prepare → implement → … . Set up
       # the implement step with a succeeded Run + captured agent session so
@@ -239,6 +240,7 @@ RSpec.describe "API: /api/v1/admin/jobs/:id", type: :request do
       expect(body["effective_base_branch"]).to eq(job.effective_base_branch)
       expect(body["repository"]["slug"]).to eq(job.repository.slug)
       expect(body["repository"]["credential_mode"]).to eq(job.repository.credential_mode)
+      expect(body["repository"]["landing_paused"]).to eq(true)
       expect(body["pr_mergeable"]).to be true
       expect(body["github_mergeable"]).to be_nil
       expect(body["github_mergeable_state"]).to eq("unknown")
