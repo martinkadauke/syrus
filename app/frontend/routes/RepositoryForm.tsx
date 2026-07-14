@@ -414,7 +414,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
           <Checkbox label="Add Syrus cost footer to PR descriptions" onChange={(checked) => setValues({ ...values, pr_cost_footer_enabled: checked })} value={values.pr_cost_footer_enabled} />
           <Checkbox label="Auto-merge approved Syrus PRs" onChange={(checked) => setValues({ ...values, auto_merge_enabled: checked })} value={values.auto_merge_enabled} />
           <Checkbox label="Trust clean rebases (skip re-grading after a conflict-free rebase)" onChange={(checked) => setValues({ ...values, trust_clean_rebase_grade: checked })} value={values.trust_clean_rebase_grade} />
-          <Checkbox label="Block landing when the main branch is broken" onChange={(checked) => setValues({ ...values, main_branch_health_enabled: checked })} value={values.main_branch_health_enabled} />
+          <Checkbox label="Pause work when the main branch is broken" onChange={(checked) => setValues({ ...values, main_branch_health_enabled: checked })} value={values.main_branch_health_enabled} />
           <Checkbox label="Automatically create a fix job when main breaks" onChange={(checked) => {
             setRepairTouched(true)
             setValues({ ...values, main_branch_repair_enabled: checked })

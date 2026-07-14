@@ -684,7 +684,7 @@ function MainBranchHealthSection({
   const shaUrl = history.last_health_checked_sha
     ? `https://github.com/${repository.slug}/commit/${history.last_health_checked_sha}`
     : null
-  const resumeLanding = useMutation({
+  const resumeWork = useMutation({
     mutationFn: () => resumeRepositoryLanding(resumePath, page),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
@@ -696,7 +696,7 @@ function MainBranchHealthSection({
   function confirmResume() {
     if (!window.confirm(t("repository.resume_landing_confirm"))) return
     onNotice(null)
-    resumeLanding.mutate()
+    resumeWork.mutate()
   }
 
   return (
@@ -728,7 +728,7 @@ function MainBranchHealthSection({
             </p>
             <button
               className="rounded border border-amber-300 dark:border-amber-600 bg-white dark:bg-amber-950 px-3 py-1.5 text-sm font-medium text-amber-900 dark:text-amber-100 hover:bg-amber-100 dark:hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={resumeLanding.isPending}
+              disabled={resumeWork.isPending}
               onClick={confirmResume}
               type="button"
             >
@@ -736,8 +736,8 @@ function MainBranchHealthSection({
             </button>
           </div>
         ) : null}
-        {resumeLanding.isError ? (
-          <PanelMessage tone="error">{errorMessage(resumeLanding.error, "Unable to resume landing.")}</PanelMessage>
+        {resumeWork.isError ? (
+          <PanelMessage tone="error">{errorMessage(resumeWork.error, "Unable to resume work.")}</PanelMessage>
         ) : null}
         {history.ci_health === "broken" && history.records.length > 0 ? (
           <FailingChecks checks={history.records[0].ci_failed_checks} />

@@ -594,7 +594,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(parse_body).to include("message" => "Repository acme/widgets updated.", "redirect_to" => repositories_path)
   end
 
-  it "resumes repository landing even when main remains broken" do
+  it "resumes repository work even when main remains broken" do
     sign_in_as(user)
     repository = Factories.repository(user: user, owner: "acme", name: "widgets", landing_paused: true, ci_health: "broken")
 
@@ -606,7 +606,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.reload.landing_paused).to eq(false)
     expect(parse_body.dig("repository", "landing_paused")).to eq(false)
     expect(parse_body.dig("repository", "main_health")).to eq("broken")
-    expect(parse_body["message"]).to eq("Landing resumed for acme/widgets.")
+    expect(parse_body["message"]).to eq("Work resumed for acme/widgets.")
   end
 
   it "enqueues a forced poll and returns the refreshed index payload" do

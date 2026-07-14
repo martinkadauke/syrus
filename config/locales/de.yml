@@ -73,7 +73,7 @@ de:
       not_triage: "Job wartet nicht auf Triage-Freigabe."
       polling: "Polling von %{slug} gestartet."
       released_triage: "%{slug} für Triage freigegeben."
-      repository_landing_resumed: "Landing für %{slug} fortgesetzt."
+      repository_landing_resumed: "Arbeit für %{slug} fortgesetzt."
       no_github_token: "Kein GitHub-Token konfiguriert — bitte in den Einstellungen hinzufügen."
       github_error: "GitHub-Fehler: %{error}"
       circuit_open: "%{label} scheint beeinträchtigt zu sein; automatische Wiederholungen sind pausiert."

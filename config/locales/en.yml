@@ -106,7 +106,7 @@ en:
       not_triage: "Job is not waiting for triage release."
       polling: "Polling %{slug} now."
       released_triage: "Released %{slug} for triage."
-      repository_landing_resumed: "Landing resumed for %{slug}."
+      repository_landing_resumed: "Work resumed for %{slug}."
       no_github_token: "No GitHub token configured — add one in Settings."
       github_error: "GitHub error: %{error}"
       circuit_open: "%{label} appears degraded; automatic retries are paused."
