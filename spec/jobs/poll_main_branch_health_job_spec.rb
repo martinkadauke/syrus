@@ -34,15 +34,33 @@ RSpec.describe PollMainBranchHealthJob do
     expect(repository.last_health_checked_sha).to eq(sha)
   end
 
-  it "leaves ci_health unchanged when checks are still pending" do
+  it "marks ci_health unknown when checks are still pending on a new SHA" do
     stub_sha(sha)
     stub_check_runs({ any?: true, pending?: true, any_failed?: false, all_passed?: false })
 
     repository.update!(ci_health: "healthy")
     described_class.perform_now(repository.id)
 
-    expect(repository.reload.ci_health).to eq("healthy")
+    expect(repository.reload.ci_health).to eq("unknown")
     expect(repository.last_health_checked_sha).to eq(sha)
+  end
+
+  it "does not carry broken health forward to a new SHA while checks are pending" do
+    repository.update!(
+      last_health_checked_sha: "oldsha",
+      ci_health: "broken",
+      grader_health: "broken"
+    )
+    stub_sha(sha)
+    stub_check_runs({ any?: true, pending?: true, any_failed?: false, all_passed?: false })
+
+    described_class.perform_now(repository.id)
+
+    repository.reload
+    expect(repository.last_health_checked_sha).to eq(sha)
+    expect(repository.ci_health).to eq("unknown")
+    expect(repository.grader_health).to eq("unknown")
+    expect(repository.main_health).to eq("unknown")
   end
 
   it "updates last_health_checked_sha and skips ci_health update when no checks exist" do
@@ -101,16 +119,16 @@ RSpec.describe PollMainBranchHealthJob do
   end
 
   it "does not call MainHealthChangedService when health was already broken" do
-    repository.update!(ci_health: "broken", last_health_checked_sha: "oldsha")
+    repository.update!(ci_health: "broken", last_health_checked_sha: sha)
     stub_sha(sha)
-    stub_check_runs({ any?: true, pending?: false, any_failed?: true, all_passed?: false })
 
+    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
     expect(MainHealthChangedService).not_to receive(:on_health_change!)
     described_class.perform_now(repository.id)
   end
 
-  it "calls MainHealthChangedService when health transitions from broken to healthy" do
-    repository.update!(ci_health: "broken", grader_health: "healthy")
+  it "calls MainHealthChangedService when health transitions from unknown to healthy" do
+    repository.update!(last_health_checked_sha: sha, ci_health: "unknown", grader_health: "healthy")
     stub_sha(sha)
     stub_check_runs({ any?: true, pending?: false, any_failed?: false, all_passed?: true })
 
@@ -125,6 +143,16 @@ RSpec.describe PollMainBranchHealthJob do
     expect {
       described_class.perform_now(repository.id)
     }.to have_enqueued_job(MainGraderWorkflowJob).with(repository.id, sha)
+  end
+
+  it "resets grader_health while the main grader workflow is pending on a new SHA" do
+    repository.update!(last_health_checked_sha: "oldsha", grader_health: "broken")
+    stub_sha(sha)
+    stub_check_runs({ any?: true, pending?: false, any_failed?: false, all_passed?: true })
+
+    described_class.perform_now(repository.id)
+
+    expect(repository.reload.grader_health).to eq("unknown")
   end
 
   it "does not enqueue MainGraderWorkflowJob when the SHA is unchanged and health is known" do

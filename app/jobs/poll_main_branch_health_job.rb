@@ -15,11 +15,21 @@ class PollMainBranchHealthJob < ApplicationJob
 
     sha_changed = sha != repository.last_health_checked_sha
 
+    # Health is scoped to the default-branch SHA. When main advances, stale
+    # CI/grader states from the prior SHA must not leak onto the new one while
+    # GitHub checks or the main-grader workflow are still running.
+    if sha_changed
+      repository.update_columns(
+        last_health_checked_sha: sha,
+        ci_health: "unknown",
+        grader_health: "unknown"
+      )
+      repository.reload
+      MainGraderWorkflowJob.perform_later(repository.id, sha)
+    end
+
     # Skip when SHA unchanged and health is already known — no new information.
     return if !sha_changed && !repository.main_health_unknown?
-
-    # Fire the grader workflow against the new SHA so grader_health stays current.
-    MainGraderWorkflowJob.perform_later(repository.id, sha) if sha_changed
 
     summary = client.check_runs_summary_for(repository.slug, sha)
 
@@ -27,9 +37,8 @@ class PollMainBranchHealthJob < ApplicationJob
     return repository.update_columns(last_health_checked_sha: sha) unless summary[:any?]
 
     if summary[:pending?]
-      # Checks still running; record the SHA so we know where we are but
-      # leave ci_health unchanged until they complete.
-      repository.update_columns(last_health_checked_sha: sha)
+      # Checks still running. Keep ci_health unknown so later polls keep
+      # refreshing this same SHA until GitHub reaches a terminal result.
       return
     end
 
