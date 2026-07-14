@@ -129,10 +129,76 @@ class MainHealthChangedService
   end
 
   def fix_job_prompt
-    "Main branch health is broken. `ci_health`: #{@repository.ci_health}, " \
-    "`grader_health`: #{@repository.grader_health}. " \
-    "Identify the root cause from recent CI failures and/or grader output on the default branch, " \
-    "and push a minimal fix to restore a green main."
+    sha = @repository.last_health_checked_sha.presence || "unknown"
+
+    [
+      "Main branch health is broken for #{@repository.slug}.",
+      "",
+      "Default branch: #{@repository.default_branch}",
+      "Commit: #{sha}",
+      "",
+      "Current health:",
+      "- CI: #{@repository.ci_health}",
+      "- Graders: #{@repository.grader_health}",
+      "",
+      "Known failure context:",
+      *failure_context_lines(sha),
+      "",
+      "Use this context first. Identify the root cause from the default-branch CI and/or grader output, " \
+      "then push a minimal fix to restore a green main. Do not expand scope beyond repairing main."
+    ].join("\n")
+  end
+
+  def failure_context_lines(sha)
+    return [ "- No checked commit is known yet." ] if sha == "unknown"
+
+    lines = []
+    MainBranchHealthCheck
+      .where(repository: @repository, sha: sha)
+      .recent
+      .limit(5)
+      .each do |check|
+        lines.concat(ci_failure_lines(check))
+        lines.concat(grader_failure_lines(check))
+      end
+
+    lines.uniq.presence || [ "- No detailed failure records have been captured yet." ]
+  end
+
+  def ci_failure_lines(check)
+    return [] unless check.ci_health == "broken"
+
+    failed_checks = Array(check.ci_failed_checks)
+    return [ "- CI failed, but GitHub did not provide failing check details." ] if failed_checks.empty?
+
+    failed_checks.map do |failed_check|
+      name = failed_check["name"].presence || failed_check[:name].presence || "unknown check"
+      url = failed_check["url"].presence ||
+        failed_check[:url].presence ||
+        failed_check["html_url"].presence ||
+        failed_check[:html_url].presence
+      if url
+        "- CI failed: #{name} (#{url})"
+      else
+        "- CI failed: #{name}"
+      end
+    end
+  end
+
+  def grader_failure_lines(check)
+    names = Array(check.grader_failed_names).compact_blank
+
+    if check.grader_health == "broken"
+      return [ "- Graders failed, but no grader names were captured." ] if names.empty?
+
+      return [ "- Graders failed: #{names.join(', ')}" ]
+    end
+
+    if check.grader_health == "unknown" && names.any?
+      return [ "- Grader check was interrupted while running: #{names.join(', ')}. This is not a conclusive grader failure." ]
+    end
+
+    []
   end
 
   def emit_notification!

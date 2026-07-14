@@ -104,7 +104,51 @@ RSpec.describe MainHealthChangedService do
           kind: "direct",
           state: "queued"
         )
-        expect(fix_job.issue_body).to include("ci_health", "grader_health")
+        expect(fix_job.issue_body).to include("Current health:", "- CI: broken", "- Graders: unknown")
+      end
+
+      it "includes captured CI failure details in the fix Job prompt" do
+        repository.update!(last_health_checked_sha: "abc123def456")
+        MainBranchHealthCheck.record_ci_poll(
+          repository: repository,
+          sha: "abc123def456",
+          ci_health: "broken",
+          ci_failed_checks: [
+            { name: "RSpec", url: "https://github.com/tkadauke/syrus/actions/runs/42" }
+          ]
+        )
+
+        described_class.on_health_change!(repository)
+
+        fix_job = repository.jobs.where(kind: "direct").last
+        expect(fix_job.issue_body).to include(
+          "Main branch health is broken for #{repository.slug}.",
+          "Default branch: #{repository.default_branch}",
+          "Commit: abc123def456",
+          "- CI failed: RSpec (https://github.com/tkadauke/syrus/actions/runs/42)"
+        )
+      end
+
+      it "includes captured grader failure details in the fix Job prompt" do
+        repository.update!(
+          ci_health: "not_configured",
+          grader_health: "broken",
+          last_health_checked_sha: "def456abc123"
+        )
+        MainBranchHealthCheck.record_grader_workflow(
+          repository: repository,
+          sha: "def456abc123",
+          grader_health: "broken",
+          grader_failed_names: [ "coverage", "rspec" ]
+        )
+
+        described_class.on_health_change!(repository)
+
+        fix_job = repository.jobs.where(kind: "direct").last
+        expect(fix_job.issue_body).to include(
+          "Commit: def456abc123",
+          "- Graders failed: coverage, rspec"
+        )
       end
 
       it "does not spawn a fix Job when auto-repair is disabled" do
