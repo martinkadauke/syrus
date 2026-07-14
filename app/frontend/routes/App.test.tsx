@@ -1783,7 +1783,7 @@ describe("App", () => {
       fetchSpy.mockRestore()
       script.remove()
     }
-  })
+  }, 15000)
 
   it("hides a chat from the v2 recent chats sidebar", async () => {
     const script = document.createElement("script")
@@ -8387,6 +8387,9 @@ describe("App", () => {
       }
       if (path === "/api/v1/app/repositories/owners") {
         return Promise.resolve(new Response(JSON.stringify({ error: "no_token" }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      }
+      if (path.startsWith("/api/v1/app/repositories/branches")) {
+        return Promise.resolve(new Response(JSON.stringify({ branches: ["main"], default_branch: "main" }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
       return Promise.resolve(new Response(JSON.stringify(repositoryFormPayload()), { status: 200, headers: { "Content-Type": "application/json" } }))
