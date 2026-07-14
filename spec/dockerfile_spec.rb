@@ -40,7 +40,7 @@ RSpec.describe "Dockerfile" do
     expect(stage).to include("poetry==${POETRY_VERSION}")
     expect(stage).to include("uv==${UV_VERSION}")
     expect(stage).to include("ln -s /opt/python-tools/bin/poetry /usr/local/bin/poetry")
-    expect(stage).to include("PATH=\"/opt/mise/installs/go/${MISE_GO_VERSION}/bin:/opt/python-tools/bin:/opt/mise/shims:${PATH}\"")
+    expect(stage).to include("PATH=\"/opt/python-tools/bin:/opt/mise/shims:${PATH}\"")
   end
 
   it "pins a Codex CLI version with current model metadata support" do
@@ -80,7 +80,7 @@ RSpec.describe "Dockerfile" do
     expect(runtime_stage).to include("ARG MISE_GO_VERSION=\"1.26.5\"")
     expect(runtime_stage).to include("/usr/local/bin/mise install go@$MISE_GO_VERSION")
     expect(worker_deps).to include("ARG MISE_GO_VERSION=\"1.26.5\"")
-    expect(worker_deps).to include("PATH=\"/opt/mise/installs/go/${MISE_GO_VERSION}/bin:/opt/python-tools/bin:/opt/mise/shims:${PATH}\"")
+    expect(worker_deps).to include("PATH=\"/opt/python-tools/bin:/opt/mise/shims:${PATH}\"")
     expect(worker_dev).to include("RUN go version")
   end
 end
