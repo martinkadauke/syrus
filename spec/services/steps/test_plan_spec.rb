@@ -27,6 +27,14 @@ RSpec.describe Steps::TestPlan do
     handler.call
   end
 
+  it "skips before requiring an implement session when the test plan is already submitted" do
+    implement_run.destroy!
+    workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
+
+    expect(handler).not_to receive(:run_agent)
+    expect { handler.call }.not_to raise_error
+  end
+
   it "sets the test-plan prompt, invokes the agent with a short turn budget, and verifies the artifact" do
     expect(handler).to receive(:run_agent) do |prompt:, max_turns:|
       expect(prompt).to include("submit_test_plan")
