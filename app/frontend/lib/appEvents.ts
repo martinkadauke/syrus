@@ -140,7 +140,7 @@ export function queryKeysFor(event: AppEvent): QueryKey[] {
     case "user":
       return [["bootstrap"]]
     case "job":
-      return event.id == null ? [["dashboard"], ["jobs"], ["job_run_artifacts"]] : [["dashboard"], ["jobs"], ["jobs", String(event.id)], ["job_run_artifacts", String(event.id)]]
+      return jobQueryKeysFor(event)
     case "workflow":
       return event.id == null ? [["dashboard"], ["workflows"]] : [["dashboard"], ["workflows"], ["workflows", String(event.id)]]
     case "epic":
@@ -158,6 +158,19 @@ export function queryKeysFor(event: AppEvent): QueryKey[] {
     default:
       return []
   }
+}
+
+function jobQueryKeysFor(event: AppEvent): QueryKey[] {
+  if (event.id == null) return [["dashboard"], ["jobs"], ["job_run_artifacts"]]
+
+  const id = String(event.id)
+  const detailKey: QueryKey = workflowOnlyJobEvent(event) ? ["jobs", id, "workflows"] : ["jobs", id, "detail"]
+  return [["dashboard"], ["jobs"], detailKey, ["job_run_artifacts", id]]
+}
+
+function workflowOnlyJobEvent(event: AppEvent) {
+  const changed = event.changed || []
+  return changed.some((item) => item.startsWith("run.") || item.startsWith("step.") || item.startsWith("workflow."))
 }
 
 function isDashboardQueryKey(queryKey: QueryKey) {

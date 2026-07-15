@@ -447,6 +447,8 @@ export type JobDetailPayload = {
   paths: JobPaths
 }
 
+export type JobWorkflowsPayload = Pick<JobDetailPayload, "job" | "workflows" | "workflows_pagination" | "feature_flags" | "actions" | "paths">
+
 export type JobTimelinePayload = {
   job_id: number
   events: Array<{
@@ -521,6 +523,10 @@ export type JobRunArtifactsPayload = {
 
 export function fetchJobDetail(id: string, search = "") {
   return getJson<JobDetailPayload>(`/api/v1/app/jobs/${id}${search}`)
+}
+
+export function fetchJobWorkflows(id: string, search = "") {
+  return getJson<JobWorkflowsPayload>(`/api/v1/app/jobs/${id}/workflows${search}`)
 }
 
 export function fetchJobTimeline(id: string) {

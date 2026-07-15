@@ -312,6 +312,24 @@ RSpec.describe "App API job detail", type: :request do
     expect(parse_body.dig("job", "total_cost_usd")).to eq(0.34)
   end
 
+  it "returns a workflow-only job detail payload for live workflow refreshes" do
+    run = job.initial_run
+    run.job_logs.create!(sequence: 0, kind: "stdout", chunk: "digging trench")
+    run.job_logs.create!(sequence: 1, kind: "rate_limited", chunk: "[rate-limited] core quota exhausted")
+
+    get "/api/v1/app/jobs/#{job.id}/workflows"
+
+    expect(response).to have_http_status(:ok)
+    body = parse_body
+    expect(body.keys).to contain_exactly("job", "workflows", "workflows_pagination", "feature_flags", "actions", "paths")
+    expect(body.dig("job", "id")).to eq(job.id)
+    first_run = body["workflows"].flat_map { |workflow| workflow["steps"] }.flat_map { |step| step["runs"] }.find { |payload| payload["id"] == run.id }
+    expect(first_run).to include(
+      "job_log_count" => 2,
+      "rate_limited" => true
+    )
+  end
+
   it "links cron job details back to their scheduled task" do
     task = repo.scheduled_tasks.create!(
       user: user,

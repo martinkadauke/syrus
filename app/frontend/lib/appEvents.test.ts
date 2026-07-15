@@ -9,7 +9,7 @@ afterEach(() => {
 describe("queryKeysFor", () => {
   it("maps resource events to the query keys they invalidate", () => {
     expect(queryKeysFor(event("user", null))).toEqual([["bootstrap"]])
-    expect(queryKeysFor(event("job", 42))).toEqual([["dashboard"], ["jobs"], ["jobs", "42"], ["job_run_artifacts", "42"]])
+    expect(queryKeysFor(event("job", 42))).toEqual([["dashboard"], ["jobs"], ["jobs", "42", "detail"], ["job_run_artifacts", "42"]])
     expect(queryKeysFor(event("workflow", 7))).toEqual([["dashboard"], ["workflows"], ["workflows", "7"]])
     expect(queryKeysFor(event("epic", 5))).toEqual([["dashboard"], ["epics"], ["epics", "5"]])
     expect(queryKeysFor(event("repository", 3))).toEqual([["dashboard"], ["repositories"], ["repositories", "3"]])
@@ -18,11 +18,11 @@ describe("queryKeysFor", () => {
     expect(queryKeysFor(event("unknown", 1))).toEqual([])
   })
 
-  it("maps nested workflow progress job events to the Job detail query prefix", () => {
+  it("maps nested workflow progress job events to the workflows query prefix", () => {
     expect(queryKeysFor({
       ...event("job", 42),
       changed: ["run.updated", "state"]
-    })).toContainEqual(["jobs", "42"])
+    })).toContainEqual(["jobs", "42", "workflows"])
   })
 })
 
@@ -99,7 +99,8 @@ describe("applyAppEvent", () => {
     applyAppEvent(queryClient, event("job", 42))
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs"] })
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs", "42"] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["jobs", "42", "detail"] })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["job_run_artifacts", "42"] })
   })
 
   it("coalesces dashboard invalidations from event bursts", () => {

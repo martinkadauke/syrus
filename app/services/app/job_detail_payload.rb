@@ -7,6 +7,10 @@ module App
       new(job: job, user: user, params: params).payload
     end
 
+    def self.workflows(job:, user:, params: {})
+      new(job: job, user: user, params: params).workflows_payload
+    end
+
     def self.timeline(job:)
       new(job: job, user: job.user).timeline_payload
     end
@@ -36,6 +40,17 @@ module App
         feedback_history: feedback_history_json,
         pending_feedback: pending_feedback_json,
         landing_queue_entry: landing_queue_entry_json,
+        workflows: workflows_json,
+        workflows_pagination: workflows_pagination_json,
+        feature_flags: feature_flags_json,
+        actions: actions_json,
+        paths: paths_json
+      }
+    end
+
+    def workflows_payload
+      {
+        job: job_json,
         workflows: workflows_json,
         workflows_pagination: workflows_pagination_json,
         feature_flags: feature_flags_json,
@@ -517,7 +532,7 @@ module App
 
     def workflows_scope
       @job.workflows
-          .includes(steps: { runs: [ :claude_session, :run_diagnostic, :run_failure_classification, :run_health_snapshots, :job_logs, :spawned_processes ] })
+          .includes(steps: { runs: [ :claude_session, :run_diagnostic, :run_failure_classification, :run_health_snapshots, :spawned_processes ] })
           .reorder(created_at: :desc, id: :desc)
     end
 
@@ -604,8 +619,8 @@ module App
         agent_diff_bytes: run.agent_diff&.bytesize || 0,
         step_agent_diff_present: run.step_agent_diff.present?,
         step_agent_diff_bytes: run.step_agent_diff&.bytesize || 0,
-        job_log_count: run.job_logs.size,
-        rate_limited: run.job_logs.any? { |log| log.kind == "rate_limited" },
+        job_log_count: job_log_counts.fetch(run.id, 0),
+        rate_limited: rate_limited_run_ids.key?(run.id),
         failure_classification: failure_classification_json(run.run_failure_classification),
         run_diagnostic: run_diagnostic_json(run.run_diagnostic),
         health_snapshots: run.run_health_snapshots.ordered.map { |snapshot| health_snapshot_json(snapshot) },
@@ -627,6 +642,26 @@ module App
                     .sort_by { |candidate| candidate.finished_at || candidate.updated_at || candidate.created_at }
                     .last
       failure_classification_json(run&.run_failure_classification)
+    end
+
+    def visible_run_ids
+      @visible_run_ids ||= paginated_workflows.flat_map do |workflow|
+        workflow.steps.flat_map { |step| step.runs.map(&:id) }
+      end.compact
+    end
+
+    def job_log_counts
+      @job_log_counts ||= begin
+        ids = visible_run_ids
+        ids.empty? ? {} : JobLog.where(run_id: ids).group(:run_id).count
+      end
+    end
+
+    def rate_limited_run_ids
+      @rate_limited_run_ids ||= begin
+        ids = visible_run_ids
+        ids.empty? ? {} : JobLog.where(run_id: ids, kind: "rate_limited").distinct.pluck(:run_id).index_with(true)
+      end
     end
 
     def failure_classification_json(classification)

@@ -27,6 +27,7 @@ import {
   fetchJobSource,
   fetchJobSourceDiff,
   fetchJobTimeline,
+  fetchJobWorkflows,
   fetchWorkflowCoverageHitMap,
   ignorePendingFeedback,
   patchJobCommand,
@@ -46,12 +47,14 @@ import {
   type JobStep,
   type JobTestPlan,
   type JobWorkflow,
+  type JobWorkflowsPayload,
   type PendingFeedbackComment
 } from "../api/jobs"
 import { CoverageCard } from "../components/CoverageCard"
 
 type JobTab = "summary" | "workflows" | "attachments" | "source"
 type JobDetailQueryKey = readonly ["jobs", string, "detail", string]
+type JobWorkflowsQueryKey = readonly ["jobs", string, "workflows", string]
 type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
   | { method: "patch"; path: string; body?: unknown; confirm?: string }
@@ -96,11 +99,19 @@ export function JobDetailRoute() {
   const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
   const detailSearch = jobDetailSearch(location.search)
   const queryKey = jobDetailQueryKey(id, detailSearch)
+  const workflowsQueryKey = jobWorkflowsQueryKey(id, detailSearch)
   const detail = useQuery({
     queryKey,
     queryFn: () => fetchJobDetail(id, detailSearch),
     enabled: id.length > 0
   })
+  const workflows = useQuery({
+    queryKey: workflowsQueryKey,
+    queryFn: () => fetchJobWorkflows(id, detailSearch),
+    enabled: id.length > 0 && activeTab === "workflows" && detail.isSuccess,
+    placeholderData: keepPreviousData
+  })
+  const payload = detail.isSuccess ? mergeJobWorkflowsPayload(detail.data, workflows.data) : null
 
   function selectTab(tab: JobTab) {
     const search = new URLSearchParams(location.search)
@@ -115,13 +126,31 @@ export function JobDetailRoute() {
     <main aria-label="Job" className="mx-auto max-w-[96rem] space-y-6 p-6">
       {detail.isPending ? <PanelMessage>{t("loading")}</PanelMessage> : null}
       {detail.isError ? <PanelMessage tone="error">{errorMessage(detail.error, t("load_error"))}</PanelMessage> : null}
-      {detail.isSuccess ? <JobDetailView activeTab={activeTab} onSelectTab={selectTab} payload={detail.data} prefix={prefix} queryKey={queryKey} /> : null}
+      {payload ? <JobDetailView activeTab={activeTab} onSelectTab={selectTab} payload={payload} prefix={prefix} queryKey={queryKey} workflowsQueryKey={workflowsQueryKey} /> : null}
     </main>
   )
 }
 
 function jobDetailQueryKey(id: string | number, search: string): JobDetailQueryKey {
   return ["jobs", String(id), "detail", search] as const
+}
+
+function jobWorkflowsQueryKey(id: string | number, search: string): JobWorkflowsQueryKey {
+  return ["jobs", String(id), "workflows", search] as const
+}
+
+function mergeJobWorkflowsPayload(payload: JobDetailPayload, workflows?: JobWorkflowsPayload): JobDetailPayload {
+  if (!workflows) return payload
+
+  return {
+    ...payload,
+    job: workflows.job,
+    workflows: workflows.workflows,
+    workflows_pagination: workflows.workflows_pagination,
+    feature_flags: workflows.feature_flags,
+    actions: workflows.actions,
+    paths: workflows.paths
+  }
 }
 
 function jobDetailSearch(search: string) {
@@ -140,13 +169,13 @@ function tabFromLocation(pathname: string, search: string): JobTab {
   return value === "workflows" || value === "attachments" || value === "source" ? value : "summary"
 }
 
-export function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefix }: { payload: JobDetailPayload; queryKey: JobDetailQueryKey; activeTab: JobTab; onSelectTab: (tab: JobTab) => void; prefix: string }) {
+export function JobDetailView({ payload, queryKey, workflowsQueryKey, activeTab, onSelectTab, prefix }: { payload: JobDetailPayload; queryKey: JobDetailQueryKey; workflowsQueryKey?: JobWorkflowsQueryKey; activeTab: JobTab; onSelectTab: (tab: JobTab) => void; prefix: string }) {
   const { t } = useT("jobs")
   const location = useLocation()
   const queryClient = useQueryClient()
   const [notice, setNotice] = useState<string | null>(payload.message || null)
   const [feedbackPanelOpen, setFeedbackPanelOpen] = useState(false)
-  const command = useJobCommand(payload.job.id, queryKey, setNotice)
+  const command = useJobCommand(payload.job.id, queryKey, workflowsQueryKey, setNotice)
   const title = payload.job.issue_title || jobSourceLabel(payload, t)
   const workflowAnchor = location.hash.startsWith("#workflow-") ? location.hash.slice(1) : null
   const renderedWorkflowIds = payload.workflows.map((workflow) => workflow.id).join(",")
@@ -155,8 +184,8 @@ export function JobDetailView({ payload, queryKey, activeTab, onSelectTab, prefi
     onSuccess: () => {
       setFeedbackPanelOpen(false)
       setNotice(t("feedback_submitted"))
-      void queryClient.invalidateQueries({ queryKey: ["jobs", String(payload.job.id)] })
       void queryClient.invalidateQueries({ queryKey })
+      if (workflowsQueryKey) void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
     }
   })
 
@@ -261,7 +290,7 @@ function ChatBubbleIcon() {
   )
 }
 
-function useJobCommand(jobId: number, queryKey: JobDetailQueryKey, onNotice: (message: string | null) => void) {
+function useJobCommand(jobId: number, queryKey: JobDetailQueryKey, workflowsQueryKey: JobWorkflowsQueryKey | undefined, onNotice: (message: string | null) => void) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
 
@@ -275,8 +304,9 @@ function useJobCommand(jobId: number, queryKey: JobDetailQueryKey, onNotice: (me
     onSuccess: (payload) => {
       if (payload.redirect_to) navigate(payload.redirect_to)
       onNotice(payload.message || null)
-      void queryClient.invalidateQueries({ queryKey: ["jobs", String(jobId)] })
       void queryClient.invalidateQueries({ queryKey })
+      if (workflowsQueryKey) void queryClient.invalidateQueries({ queryKey: workflowsQueryKey })
+      void queryClient.invalidateQueries({ queryKey: ["jobs"], exact: true })
     }
   })
 }

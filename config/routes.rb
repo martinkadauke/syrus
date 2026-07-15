@@ -66,6 +66,7 @@ Rails.application.routes.draw do
         get "jobs/:id/source", to: "jobs#source", constraints: { id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:id/source_diff", to: "jobs#source_diff", constraints: { id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:id/timeline", to: "jobs#timeline", constraints: { id: /[a-zA-Z0-9_-]+/ }
+        get "jobs/:id/workflows", to: "jobs#workflows", constraints: { id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:id/transcript", to: "jobs#transcript", constraints: { id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:id/diff", to: "jobs#diff", constraints: { id: /[a-zA-Z0-9_-]+/ }
         get "jobs/:job_id/runs/:run_id/artifacts", to: "jobs#run_artifacts", constraints: { job_id: /[a-zA-Z0-9_-]+/, run_id: /\d+/ }

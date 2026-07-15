@@ -30,6 +30,10 @@ module Api
           render json: ::App::JobDetailPayload.build(job: find_job, user: Current.user, params: params)
         end
 
+        def workflows
+          render json: ::App::JobDetailPayload.workflows(job: find_job, user: Current.user, params: params)
+        end
+
         def chat_feedback
           job = find_job
           result = ChatFeedbackSubmission.call(
@@ -235,7 +239,7 @@ module Api
                                 job_attachments: { file_attachment: :blob },
                                 dependencies: [ :created_by_user, depends_on_job: :repository ],
                                 dependent_links: [ job: :repository ],
-                                runs: [ :job_logs, :run_health_snapshots, :claude_session, :run_diagnostic, :run_failure_classification ]
+                                runs: [ :run_health_snapshots, :claude_session, :run_diagnostic, :run_failure_classification ]
                               )
           find_job_by_ref(scope, params[key])
         end
