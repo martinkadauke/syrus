@@ -43,9 +43,14 @@ class StepDispatcher
     end
 
     if main_health_blocking?(workflow)
-      warn_if_stuck_queued(workflow, "main_branch_broken")
+      reason = MAIN_HEALTH_BLOCK_REASON
+      return if start_blocked_backoff_active?(workflow, reason)
+
+      record_start_blocked!(workflow, reason, backoff: START_BLOCKED_BACKOFF)
+      warn_if_stuck_queued(workflow, reason)
       return
     end
+    clear_start_blocked!(workflow, MAIN_HEALTH_BLOCK_REASON)
 
     run = create_run_and_enqueue(first, workflow,
                                  parent_session_id: parent_session_id,
@@ -60,6 +65,8 @@ class StepDispatcher
   # workflow, so it must never be blocked by the state it is trying to measure.
   # The fix-main direct job must also be exempt: it IS the recovery agent.
   MAIN_HEALTH_EXEMPT_TRIGGERS = %w[ rebase stack_rebase main_grader ].freeze
+  MAIN_HEALTH_BLOCK_REASON = "main_branch_broken"
+  START_BLOCKED_BACKOFF = 5.minutes
 
   def self.main_health_blocking?(workflow)
     return false if MAIN_HEALTH_EXEMPT_TRIGGERS.include?(workflow.trigger_kind)
@@ -69,6 +76,45 @@ class StepDispatcher
     return false unless repository.main_branch_health_enabled?
 
     repository.landing_paused? && repository.main_health != "healthy"
+  end
+
+  def self.start_blocked_backoff_active?(workflow, reason)
+    return false unless workflow.artifact("start_blocked_reason") == reason
+
+    next_check_at = parse_artifact_time(workflow.artifact("start_blocked_next_check_at"))
+    next_check_at.present? && next_check_at.future?
+  end
+
+  def self.record_start_blocked!(workflow, reason, backoff:)
+    now = Time.current
+    current = workflow.artifacts || {}
+    blocked_since = current["start_blocked_reason"] == reason ? current["start_blocked_at"] : nil
+    workflow.update!(
+      artifacts: current.merge(
+        "start_blocked_reason" => reason,
+        "start_blocked_at" => blocked_since.presence || now.iso8601,
+        "start_blocked_last_seen_at" => now.iso8601,
+        "start_blocked_next_check_at" => (now + backoff).iso8601
+      )
+    )
+  end
+
+  def self.clear_start_blocked!(workflow, reason)
+    return unless workflow.artifact("start_blocked_reason") == reason
+
+    cleared = (workflow.artifacts || {}).except(
+      "start_blocked_reason",
+      "start_blocked_at",
+      "start_blocked_last_seen_at",
+      "start_blocked_next_check_at"
+    )
+    workflow.update!(artifacts: cleared)
+  end
+
+  def self.parse_artifact_time(value)
+    Time.iso8601(value.to_s)
+  rescue ArgumentError, TypeError
+    nil
   end
 
   def self.cancel_unstartable_rebase_workflow!(workflow, reason)

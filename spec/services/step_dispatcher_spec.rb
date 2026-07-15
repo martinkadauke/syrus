@@ -860,6 +860,21 @@ RSpec.describe StepDispatcher, "main_health queue gate" do
     described_class.start_workflow(workflow)
   end
 
+  it "backs off repeated main-health blocked starts" do
+    break_main!
+    travel_to(Time.zone.parse("2026-07-15 12:00:00 UTC")) do
+      expect(Rails.logger).to receive(:warn).once.with(include("main_branch_broken"))
+
+      described_class.start_workflow(workflow)
+      next_check_at = workflow.reload.artifact("start_blocked_next_check_at")
+
+      described_class.start_workflow(workflow)
+
+      expect(workflow.reload.artifact("start_blocked_reason")).to eq("main_branch_broken")
+      expect(workflow.artifact("start_blocked_next_check_at")).to eq(next_check_at)
+    end
+  end
+
   it "starts the workflow when broken main has been manually unpaused" do
     job_model.repository.update!(ci_health: "broken", landing_paused: false)
 
