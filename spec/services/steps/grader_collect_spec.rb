@@ -48,4 +48,27 @@ RSpec.describe Steps::GraderCollect do
       "head_sha" => "abc123"
     )
   end
+
+  it "copies timeout metadata into iteration artifacts" do
+    workflow.steps.find_by!(kind: "grader").update!(
+      state: "failed",
+      details: {
+        "name" => "react-tests",
+        "required" => true,
+        "exit_code" => 1,
+        "duration_s" => 5.0,
+        "timed_out" => false,
+        "output" => "Error: Test timed out in 5000ms."
+      }
+    )
+
+    expect { handler.call }.to raise_error(Steps::Base::StepFailed, /required graders failed/)
+
+    iteration = workflow.reload.artifact("iterations").first
+    expect(iteration.first).to include(
+      "name" => "react-tests",
+      "timed_out" => false,
+      "output" => "Error: Test timed out in 5000ms."
+    )
+  end
 end

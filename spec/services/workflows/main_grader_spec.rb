@@ -177,6 +177,29 @@ RSpec.describe Workflows::MainGrader do
       expect(check.grader_failed_names).to eq([ "coverage" ])
     end
 
+    it "marks test-runner timeout output inconclusive instead of broken" do
+      repository.update!(grader_health: "unknown", ci_health: "not_configured")
+      create_failed_required_grader!(
+        workflow,
+        name: "react-tests",
+        details: {
+          "exit_code" => 1,
+          "timed_out" => false,
+          "output" => "Error: Test timed out in 5000ms."
+        }
+      )
+
+      expect(MainHealthChangedService).to receive(:on_health_change!).with(kind_of(Repository))
+
+      described_class.after_fail(workflow)
+
+      expect(repository.reload.grader_health).to eq("inconclusive")
+
+      check = MainBranchHealthCheck.last
+      expect(check.grader_health).to eq("inconclusive")
+      expect(check.grader_failed_names).to eq([ "react-tests" ])
+    end
+
     it "does not treat an explicit 124 exit as inconclusive when timeout metadata is false" do
       repository.update!(grader_health: "unknown", ci_health: "not_configured")
       create_failed_required_grader!(

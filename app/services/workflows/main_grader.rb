@@ -105,10 +105,7 @@ module Workflows
     end
 
     private_class_method def self.inconclusive_grader?(step)
-      details = step.details || {}
-      return true if details["timed_out"]
-
-      !details.key?("timed_out") && details["exit_code"].to_i == Steps::Grader::TIMEOUT_EXIT_CODE
+      GraderFailureSignal.timeout_like_step?(step)
     end
 
     private_class_method def self.record_interrupted_grader_check!(workflow, interrupted_steps)

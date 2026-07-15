@@ -77,6 +77,26 @@ RSpec.describe SyrusMcp::ReportMainConcernTool do
     expect(report.reason.encoding).to eq(Encoding::UTF_8)
   end
 
+  it "rejects timeout-only latest grader failures as inconclusive" do
+    run.workflow.set_artifact!("iterations", [
+      [
+        {
+          "name" => "react-tests",
+          "status" => "failed",
+          "required" => true,
+          "exit_code" => 1,
+          "output" => "Error: Test timed out in 5000ms."
+        }
+      ]
+    ])
+
+    response = call(reason: "React tests timed out on main", failing_tests: [ "react-tests" ])
+
+    expect(response).to be_error
+    expect(response.content.first[:text]).to include("timeout-only")
+    expect(MainConcernReport.count).to eq(0)
+  end
+
   it "accepts a run_id-only sidecar context" do
     expect {
       described_class.call(

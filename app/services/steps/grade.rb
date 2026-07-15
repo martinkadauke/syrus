@@ -60,6 +60,7 @@ module Steps
       log("[grade] $ #{grader.command}")
       started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       exit_code = nil
+      timed_out = false
       log_path = grader_log_path(grader)
       absolute_log_path = workspace.path.join(log_path)
       FileUtils.mkdir_p(absolute_log_path.dirname)
@@ -80,9 +81,10 @@ module Steps
           end
         ).run
 
-        exit_code = result.timed_out ? TIMEOUT_EXIT_CODE : result.exit_status
+        timed_out = result.timed_out
+        exit_code = timed_out ? TIMEOUT_EXIT_CODE : result.exit_status
 
-        if result.timed_out
+        if timed_out
           file.write("\n[timed out after #{grader.timeout_minutes} minutes]\n")
           log("[grade] #{grader.name} timed out after #{grader.timeout_minutes} minutes")
         end
@@ -95,6 +97,7 @@ module Steps
                  status: status,
                  exit_code: exit_code,
                  duration_s: duration_s,
+                 timed_out: timed_out,
                  log_path: log_path)
     end
 
@@ -109,10 +112,11 @@ module Steps
                  exit_code: nil,
                  duration_s: 0.0,
                  log_path: log_path,
+                 timed_out: false,
                  reason: reason)
     end
 
-    def result_for(grader, status:, exit_code:, duration_s:, log_path:, reason: nil)
+    def result_for(grader, status:, exit_code:, duration_s:, log_path:, timed_out: false, reason: nil)
       absolute_log_path = workspace.path.join(log_path)
       {
         "name" => grader.name,
@@ -120,6 +124,7 @@ module Steps
         "status" => status,
         "exit_code" => exit_code,
         "duration_s" => duration_s.round(1),
+        "timed_out" => timed_out,
         "log_path" => log_path.to_s,
         "log_bytes" => absolute_log_path.size,
         "output" => grader_output_excerpt(absolute_log_path)

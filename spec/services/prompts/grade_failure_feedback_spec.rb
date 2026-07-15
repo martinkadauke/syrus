@@ -119,6 +119,21 @@ RSpec.describe Prompts::GradeFailureFeedback do
     expect(out).to include("files you did not touch")
   end
 
+  it "does not advise report_main_concern for timeout-only latest grader failures" do
+    iterations = [
+      [
+        { "name" => "react-tests", "status" => "failed", "required" => true, "exit_code" => 1, "output" => "Error: Test timed out in 5000ms." }
+      ]
+    ]
+
+    out = described_class.new(iterations: iterations).to_s
+
+    expect(out).to include("timeout-only")
+    expect(out).to include("inconclusive")
+    expect(out).to include("do not call `report_main_concern` solely because")
+    expect(out).not_to include("files you did not touch")
+  end
+
   it "does not include report_main_concern guidance when no iterations exist" do
     out = described_class.new(iterations: []).to_s
 

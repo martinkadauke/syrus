@@ -68,6 +68,7 @@ module Steps
           "status" => g.state == "succeeded" ? "passed" : "failed",
           "exit_code" => details["exit_code"],
           "duration_s" => details["duration_s"],
+          "timed_out" => details["timed_out"],
           "log_path" => details["log_path"],
           "log_bytes" => details["log_bytes"],
           "output" => details["output"]

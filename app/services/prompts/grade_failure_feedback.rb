@@ -35,9 +35,7 @@ module Prompts
         graders without regressing the passing ones. Inspect the full log
         file directly if the head+tail excerpt isn't sufficient.
 
-        If CI or graders are failing in files you did not touch, call
-        `report_main_concern` with your reasoning before retrying. Do not
-        burn retries on a systemic failure.
+        #{failure_guidance}
       PROMPT
     end
 
@@ -153,6 +151,23 @@ module Prompts
       return "#{bytes} B" if bytes < 1024
 
       "#{(bytes / 1024.0).ceil} KB"
+    end
+
+    def failure_guidance
+      if GraderFailureSignal.timeout_only_latest_failure?(@iterations)
+        <<~PROMPT.strip
+          The latest required grader failure looks timeout-only. Treat that as
+          inconclusive: do not call `report_main_concern` solely because a test
+          or command timed out. Inspect the timeout, reduce the slow path, or
+          ask the operator to raise the relevant timeout.
+        PROMPT
+      else
+        <<~PROMPT.strip
+          If CI or graders are failing in files you did not touch, call
+          `report_main_concern` with your reasoning before retrying. Do not
+          burn retries on a systemic failure.
+        PROMPT
+      end
     end
 
     def value(entry, key)
