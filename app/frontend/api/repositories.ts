@@ -51,6 +51,7 @@ export type RepositoryFormRecord = {
   trust_clean_rebase_grade: boolean
   main_branch_health_enabled: boolean
   main_branch_repair_enabled: boolean
+  treat_grader_timeouts_as_failures: boolean
   agent_provider: string
   auto_approve_mode: string
   feedback_policy: string
@@ -93,6 +94,7 @@ export type RepositoryInput = {
   trust_clean_rebase_grade: boolean
   main_branch_health_enabled: boolean
   main_branch_repair_enabled: boolean
+  treat_grader_timeouts_as_failures: boolean
   agent_provider: string
   auto_approve_mode: string
   feedback_policy: string
@@ -227,6 +229,7 @@ export type RepositoryDetailRecord = {
   landing_paused: boolean
   main_branch_health_enabled: boolean
   main_branch_repair_enabled: boolean
+  treat_grader_timeouts_as_failures: boolean
   last_health_checked_sha: string | null
 }
 
@@ -250,6 +253,7 @@ export type RepositoryHealthHistory = {
   landing_paused: boolean
   main_branch_health_enabled: boolean
   main_branch_repair_enabled: boolean
+  treat_grader_timeouts_as_failures: boolean
   last_health_checked_sha: string | null
   records: RepositoryHealthCheckRecord[]
 }

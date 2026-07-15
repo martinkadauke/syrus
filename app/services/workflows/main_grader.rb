@@ -29,7 +29,7 @@ module Workflows
     def self.after_fail(workflow)
       failed_steps = failed_required_grader_steps(workflow)
       interrupted_steps, remaining_failures = failed_steps.partition { |step| infrastructure_interrupted_grader?(step) }
-      inconclusive_steps, actual_failures = remaining_failures.partition { |step| inconclusive_grader?(step) }
+      inconclusive_steps, actual_failures = remaining_failures.partition { |step| inconclusive_grader?(workflow, step) }
       failed_names = failed_required_grader_names(actual_failures)
 
       if failed_names.any?
@@ -104,7 +104,9 @@ module Workflows
         latest_failed_run.run_failure_classification&.classification == "worker_died"
     end
 
-    private_class_method def self.inconclusive_grader?(step)
+    private_class_method def self.inconclusive_grader?(workflow, step)
+      return false if workflow.job.repository.treat_grader_timeouts_as_failures?
+
       GraderFailureSignal.timeout_like_step?(step)
     end
 

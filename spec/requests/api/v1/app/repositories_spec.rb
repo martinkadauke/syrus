@@ -164,6 +164,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "polling_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_health_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
+    expect(body.dig("repository", "treat_grader_timeouts_as_failures")).to eq(false)
     expect(body["configured_agent_providers"]).to include(
       { "value" => "codex", "label" => "Codex" },
       { "value" => "claude", "label" => "Claude Code" }
@@ -189,6 +190,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       pr_cost_footer_enabled: false,
       auto_merge_enabled: true,
       main_branch_health_enabled: false,
+      treat_grader_timeouts_as_failures: true,
       agent_provider: "codex",
       auto_approve_mode: "if_graders_pass",
       github_owner_id: 123,
@@ -214,6 +216,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "auto_merge_enabled" => true,
       "main_branch_health_enabled" => false,
       "main_branch_repair_enabled" => false,
+      "treat_grader_timeouts_as_failures" => true,
       "agent_provider" => "codex",
       "auto_approve_mode" => "if_graders_pass",
       "github_owner_id" => 123,
@@ -265,9 +268,11 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "landing_paused")).to eq(true)
     expect(body.dig("repository", "main_branch_health_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
+    expect(body.dig("repository", "treat_grader_timeouts_as_failures")).to eq(false)
     expect(body.dig("health_history", "landing_paused")).to eq(true)
     expect(body.dig("health_history", "main_branch_health_enabled")).to eq(true)
     expect(body.dig("health_history", "main_branch_repair_enabled")).to eq(true)
+    expect(body.dig("health_history", "treat_grader_timeouts_as_failures")).to eq(false)
     expect(body["tabs"]).to include(
       { "key" => "overview", "label" => "Overview", "path" => repository_path(repository) },
       { "key" => "github_issues", "label" => "GitHub Issues", "path" => repository_path(repository, tab: "github_issues") },
@@ -489,6 +494,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
           prepare_enabled: "0",
           pr_cost_footer_enabled: "0",
           auto_merge_enabled: "1",
+          treat_grader_timeouts_as_failures: "1",
           agent_provider: "codex",
           auto_approve_mode: "if_graders_pass",
           github_owner_id: "123",
@@ -508,6 +514,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.auto_merge_enabled).to eq(true)
     expect(repository.main_branch_health_enabled).to eq(true)
     expect(repository.main_branch_repair_enabled).to eq(false)
+    expect(repository.treat_grader_timeouts_as_failures).to eq(true)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass")
     expect(repository.github_owner_id).to eq(123)
@@ -599,6 +606,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
         auto_merge_enabled: "1",
         main_branch_health_enabled: "0",
         main_branch_repair_enabled: "0",
+        treat_grader_timeouts_as_failures: "1",
         agent_provider: "codex",
         auto_approve_mode: "if_graders_pass_and_tagged_safe",
         github_owner_id: "123",
@@ -618,6 +626,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.auto_merge_enabled).to eq(true)
     expect(repository.main_branch_health_enabled).to eq(false)
     expect(repository.main_branch_repair_enabled).to eq(false)
+    expect(repository.treat_grader_timeouts_as_failures).to eq(true)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass_and_tagged_safe")
     expect(repository.github_owner_id).to eq(123)

@@ -64,6 +64,7 @@ export function AddRepositoryModal({ onClose, onSaved }: { onClose: () => void; 
       trust_clean_rebase_grade: r.trust_clean_rebase_grade,
       main_branch_health_enabled: r.main_branch_health_enabled,
       main_branch_repair_enabled: r.main_branch_repair_enabled,
+      treat_grader_timeouts_as_failures: r.treat_grader_timeouts_as_failures,
       agent_provider: "",
       auto_approve_mode: r.auto_approve_mode,
       feedback_policy: r.feedback_policy,

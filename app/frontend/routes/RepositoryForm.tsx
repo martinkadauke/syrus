@@ -419,6 +419,14 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             setRepairTouched(true)
             setValues({ ...values, main_branch_repair_enabled: checked })
           }} value={values.main_branch_repair_enabled} />
+          <Checkbox
+            label="Treat grader timeouts as failures"
+            onChange={(checked) => setValues({ ...values, treat_grader_timeouts_as_failures: checked })}
+            value={values.treat_grader_timeouts_as_failures}
+          />
+          <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">
+            When off, timeout-only grader results mark main branch health inconclusive instead of broken.
+          </p>
 
           <Field label="Feedback policy">
             <select
@@ -483,6 +491,7 @@ function inputFromPayload(payload: RepositoryFormPayload): RepositoryInput {
     trust_clean_rebase_grade: payload.repository.trust_clean_rebase_grade,
     main_branch_health_enabled: payload.repository.main_branch_health_enabled,
     main_branch_repair_enabled: payload.repository.main_branch_repair_enabled,
+    treat_grader_timeouts_as_failures: payload.repository.treat_grader_timeouts_as_failures,
     agent_provider: payload.repository.agent_provider,
     auto_approve_mode: payload.repository.auto_approve_mode,
     feedback_policy: payload.repository.feedback_policy,

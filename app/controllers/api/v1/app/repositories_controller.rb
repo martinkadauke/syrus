@@ -502,6 +502,7 @@ module Api
             landing_paused: repository.landing_paused?,
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
+            treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             last_health_checked_sha: repository.last_health_checked_sha
           }
         end
@@ -536,6 +537,7 @@ module Api
             trust_clean_rebase_grade: repository.trust_clean_rebase_grade?,
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
+            treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             agent_provider: repository.agent_provider.to_s,
             auto_approve_mode: repository.auto_approve_mode,
             feedback_policy: repository.feedback_policy,
@@ -766,6 +768,7 @@ module Api
             landing_paused: repository.landing_paused?,
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
+            treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             last_health_checked_sha: repository.last_health_checked_sha,
             records: checks.map { |check| health_check_json(check, repository) }
           }
@@ -826,6 +829,7 @@ module Api
             :trust_clean_rebase_grade,
             :main_branch_health_enabled,
             :main_branch_repair_enabled,
+            :treat_grader_timeouts_as_failures,
             :auto_approve_mode,
             :feedback_policy,
             :github_repository_id,

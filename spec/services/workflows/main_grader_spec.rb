@@ -177,6 +177,32 @@ RSpec.describe Workflows::MainGrader do
       expect(check.grader_failed_names).to eq([ "coverage" ])
     end
 
+    it "marks timed-out required graders broken when the repository opts in" do
+      repository.update!(
+        grader_health: "unknown",
+        ci_health: "not_configured",
+        treat_grader_timeouts_as_failures: true
+      )
+      create_failed_required_grader!(
+        workflow,
+        name: "coverage",
+        details: {
+          "exit_code" => Steps::Grader::TIMEOUT_EXIT_CODE,
+          "timed_out" => true
+        }
+      )
+
+      expect(MainHealthChangedService).to receive(:on_health_change!).with(kind_of(Repository))
+
+      described_class.after_fail(workflow)
+
+      expect(repository.reload.grader_health).to eq("broken")
+
+      check = MainBranchHealthCheck.last
+      expect(check.grader_health).to eq("broken")
+      expect(check.grader_failed_names).to eq([ "coverage" ])
+    end
+
     it "marks test-runner timeout output inconclusive instead of broken" do
       repository.update!(grader_health: "unknown", ci_health: "not_configured")
       create_failed_required_grader!(

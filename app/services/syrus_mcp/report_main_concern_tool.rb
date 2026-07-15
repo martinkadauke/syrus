@@ -38,13 +38,13 @@ module SyrusMcp
 
         normalized_tests = Array(failing_tests).map { |t| SyrusMcp.utf8(t).strip }.reject(&:empty?)
 
-        if GraderFailureSignal.timeout_only_latest_failure?(run.workflow.artifact("iterations"))
+        repository = run.job.repository
+
+        if timeout_only_failure?(repository, run)
           return SyrusMcp.invalid(
             "latest grader failures are timeout-only and inconclusive; do not report main broken solely from timeout output"
           )
         end
-
-        repository = run.job.repository
 
         MainConcernReport.create!(
           repository: repository,
@@ -64,6 +64,13 @@ module SyrusMcp
       rescue StandardError => e
         Rails.logger.error("[SyrusMcp::ReportMainConcernTool] #{e.class}: #{e.message}")
         MCP::Tool::Response.new([ { type: "text", text: "Error: #{e.class}: #{e.message}" } ], error: true)
+      end
+
+      private
+
+      def timeout_only_failure?(repository, run)
+        !repository.treat_grader_timeouts_as_failures? &&
+          GraderFailureSignal.timeout_only_latest_failure?(run.workflow.artifact("iterations"))
       end
     end
   end
