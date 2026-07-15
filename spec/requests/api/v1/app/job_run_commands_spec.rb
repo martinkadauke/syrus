@@ -227,6 +227,35 @@ RSpec.describe "App API job run commands", type: :request do
     expect(parse_body.dig("workflow", "id")).to eq(workflow.id)
   end
 
+  it "queues branch replacement from a diverged workflow" do
+    workflow = Workflow.create!(
+      job: job,
+      trigger_kind: "retry",
+      agent_provider: job.agent_provider,
+      state: "failed",
+      started_at: 2.minutes.ago,
+      finished_at: 1.minute.ago
+    )
+    workflow.set_artifact!("branch_divergence", {
+      "branch" => "syrus/issue-42-#{job.id}",
+      "remote_sha" => "remote-sha",
+      "local_sha" => "local-sha"
+    })
+    job.update!(state: "failed", pr_number: 42)
+
+    expect {
+      post app_job_path("/workflows/#{workflow.id}/force_push_branch"), as: :json
+    }.to have_enqueued_job(BranchDivergenceRecoveryJob).with(workflow.id, user.id)
+
+    expect(response).to have_http_status(:ok)
+    expect(workflow.reload.artifact("branch_divergence_recovery_pending")).to include(
+      "action" => "force_push",
+      "user_id" => user.id
+    )
+    expect(parse_body).to include("message" => "Replacing PR branch from the workflow workspace...")
+    expect(parse_body.dig("workflow", "id")).to eq(workflow.id)
+  end
+
   it "queues a diagnostic for an active run" do
     run = job.initial_run
 

@@ -152,13 +152,14 @@ module Api
           workflow = find_workflow(job)
           return unless workflow
 
-          result = BranchDivergenceRecovery.force_push!(workflow: workflow, user: Current.user)
+          result = BranchDivergenceRecovery.mark_force_push_pending!(workflow: workflow, user: Current.user)
           unless result.success?
             render_error("validation_failed", result.error, status: :unprocessable_content)
             return
           end
 
-          render_job(job.reload, message: "PR branch replaced with this workflow's output.", changed: [ "workflows", "runs", "state" ], workflow: workflow.reload, tab: "workflows")
+          BranchDivergenceRecoveryJob.perform_later(workflow.id, Current.user.id)
+          render_job(job.reload, message: "Replacing PR branch from the workflow workspace...", changed: [ "workflows", "runs", "state" ], workflow: workflow.reload, tab: "workflows")
         end
 
         def discard_branch_output

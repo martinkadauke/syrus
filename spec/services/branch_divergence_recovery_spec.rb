@@ -50,6 +50,37 @@ RSpec.describe BranchDivergenceRecovery do
     end
   end
 
+  it "records a queued force-push without needing the workspace locally" do
+    result = described_class.mark_force_push_pending!(workflow: workflow, user: user)
+
+    expect(result).to be_success
+    expect(workflow.reload.artifact("branch_divergence_recovery_pending")).to include(
+      "action" => "force_push",
+      "user_id" => user.id
+    )
+    expect(workflow.artifact("branch_divergence_recovery_error")).to be_nil
+  end
+
+  it "records worker-side force-push failures" do
+    result = described_class.record_failure!(workflow: workflow, user: user, message: "workspace vanished")
+
+    expect(result).to be_success
+    expect(workflow.reload.artifact("branch_divergence_recovery_pending")).to be_nil
+    expect(workflow.artifact("branch_divergence_recovery_error")).to include(
+      "message" => "workspace vanished",
+      "user_id" => user.id
+    )
+  end
+
+  it "reports unavailable workspaces without claiming they were cleaned up" do
+    allow(WorkflowWorkspace).to receive(:path_for).with(workflow).and_return(Pathname.new("/tmp/syrus-missing-workspace"))
+
+    result = described_class.force_push!(workflow: workflow, user: user)
+
+    expect(result).not_to be_success
+    expect(result.error).to eq("Workflow workspace is not available on this worker - retry from the current PR branch instead.")
+  end
+
   it "does not force-push approved jobs" do
     job.update!(state: "approved")
 

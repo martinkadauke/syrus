@@ -71,6 +71,13 @@ type BranchDivergence = {
   local_sha: string | null
   detected_at: string | null
   message: string | null
+  recovery_pending: BranchDivergenceRecoveryStatus | null
+  recovery_error: BranchDivergenceRecoveryStatus | null
+}
+type BranchDivergenceRecoveryStatus = {
+  message?: string
+  action?: string
+  at?: string
 }
 type PrepareFailure = {
   command?: string
@@ -1434,8 +1441,21 @@ function workflowBranchDivergence(workflow: JobWorkflow): BranchDivergence | nul
     remote_sha: typeof row.remote_sha === "string" ? row.remote_sha : null,
     local_sha: typeof row.local_sha === "string" ? row.local_sha : null,
     detected_at: typeof row.detected_at === "string" ? row.detected_at : null,
-    message: typeof row.message === "string" ? row.message : null
+    message: typeof row.message === "string" ? row.message : null,
+    recovery_pending: workflowBranchRecoveryStatus(artifacts.branch_divergence_recovery_pending),
+    recovery_error: workflowBranchRecoveryStatus(artifacts.branch_divergence_recovery_error)
   }
+}
+
+function workflowBranchRecoveryStatus(raw: unknown): BranchDivergenceRecoveryStatus | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+
+  const row = raw as Record<string, unknown>
+  const status: BranchDivergenceRecoveryStatus = {}
+  if (typeof row.message === "string") status.message = row.message
+  if (typeof row.action === "string") status.action = row.action
+  if (typeof row.at === "string") status.at = row.at
+  return Object.keys(status).length > 0 ? status : null
 }
 
 function BranchDivergencePanel({
@@ -1466,14 +1486,24 @@ function BranchDivergencePanel({
         <div><dt className="font-semibold uppercase tracking-wide">{t("workflow_divergence_remote")}</dt><dd className="font-mono">{shortSha(divergence.remote_sha)}</dd></div>
         <div><dt className="font-semibold uppercase tracking-wide">{t("workflow_divergence_local")}</dt><dd className="font-mono">{shortSha(divergence.local_sha)}</dd></div>
       </dl>
+      {divergence.recovery_pending ? (
+        <p className="mt-2 text-xs font-medium text-blue-700 dark:text-blue-300">{t("workflow_replace_pending")}</p>
+      ) : null}
+      {divergence.recovery_error?.message ? (
+        <p className="mt-2 text-xs font-medium text-red-700 dark:text-red-300">{t("workflow_replace_failed", { message: divergence.recovery_error.message })}</p>
+      ) : null}
       <div className="mt-3 flex flex-wrap gap-2">
         <Link className={buttonClass("secondary")} to={sourcePath}>{t("workflow_open_source")}</Link>
         <CommandButton command={command} input={{ method: "post", path: payload.paths.app_run_again_path }} tone="secondary">
           {t("workflow_retry_from_pr")}
         </CommandButton>
-        <CommandButton command={command} input={{ method: "post", path: workflow.app_force_push_branch_path, confirm: t("workflow_replace_confirm", { branch }) }} tone="danger">
-          {t("workflow_replace_pr_branch")}
-        </CommandButton>
+        {divergence.recovery_pending ? (
+          <button className={buttonClass("secondary")} disabled type="button">{t("workflow_replace_queued")}</button>
+        ) : (
+          <CommandButton command={command} input={{ method: "post", path: workflow.app_force_push_branch_path, confirm: t("workflow_replace_confirm", { branch }) }} tone="danger">
+            {t("workflow_replace_pr_branch")}
+          </CommandButton>
+        )}
         <CommandButton command={command} input={{ method: "post", path: workflow.app_discard_branch_output_path }} tone="secondary">
           {t("workflow_discard_stale")}
         </CommandButton>
