@@ -147,8 +147,7 @@ module Workflows
     private_class_method def self.close_anchor_job!(workflow)
       StateTransition.with_source("system") do
         job = workflow.job
-        job.close! if job.may_close?
-        job.save!
+        job.close_with_reason!(Job::MAIN_GRADER_CLOSURE_REASON) if job.may_close?
       end
     end
   end

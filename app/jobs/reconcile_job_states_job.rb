@@ -23,9 +23,37 @@ class ReconcileJobStatesJob < ApplicationJob
   RECONCILABLE_STATES = %w[ queued running implemented failed ].freeze
 
   def perform
+    close_completed_main_grader_jobs
+
     Job.where(state: RECONCILABLE_STATES).find_each do |job|
       reconcile_one(job)
     end
+  end
+
+  def close_completed_main_grader_jobs
+    Job.where(kind: "main_grader").where.not(state: "closed").find_each do |job|
+      latest_workflow = job.latest_workflow
+      next unless job.implemented? || terminal_workflow?(latest_workflow)
+
+      Rails.logger.info(
+        "[ReconcileJobStates] closing completed main grader #{job.slug} " \
+        "(job=#{job.state}, workflow=#{latest_workflow&.state || 'none'})"
+      )
+
+      StateTransition.with_source("reconciler") do
+        job.close_with_reason!(Job::MAIN_GRADER_CLOSURE_REASON) if job.may_close?
+      end
+      audit_main_grader_close!(job, latest_workflow)
+    rescue StandardError => e
+      Rails.logger.warn(
+        "[ReconcileJobStates] #{job.slug} main_grader close failed: " \
+        "#{e.class}: #{e.message}"
+      )
+    end
+  end
+
+  def terminal_workflow?(workflow)
+    workflow && %w[ succeeded failed cancelled ].include?(workflow.state)
   end
 
   def reconcile_one(job)
@@ -59,6 +87,19 @@ class ReconcileJobStatesJob < ApplicationJob
   rescue StandardError
     # Audit logging is best-effort. A missing/locked JobLog row is
     # not a reason to rethrow and skip the actual reconciliation.
+  end
+
+  def audit_main_grader_close!(job, latest_workflow)
+    run = job.runs.order(:created_at).last
+    return unless run
+
+    JobLog.append!(
+      run: run,
+      chunk: "[reconciler] Closed completed main grader Job (workflow=#{latest_workflow&.state || 'none'})",
+      kind: "system"
+    )
+  rescue StandardError
+    # Same contract as audit!: best-effort only.
   end
 
   # Detection + transition plan for one Job. Returns nil when the

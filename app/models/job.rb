@@ -3,6 +3,7 @@ class Job < ApplicationRecord
   include RecordsStateTransitions
 
   KINDS = %w[ issue cron direct main_grader ].freeze
+  MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
   CREDENTIAL_MODES = %w[ app pat ].freeze
   PREPARE_SKIP_LABEL = "syrus-skip-prepare".freeze
 
@@ -251,6 +252,7 @@ class Job < ApplicationRecord
     # didn't open a new PR), Workflow#succeed's after-callback
     # transitions :running → :implemented since the PR already exists.
     event :mark_implemented do
+      transitions from: [ :queued, :running ], to: :closed, guard: :main_grader?, after: :mark_main_grader_closed
       transitions from: [ :queued, :running ], to: :implemented, after: :notify_job_implemented
     end
 
@@ -996,6 +998,11 @@ class Job < ApplicationRecord
       pr_url: notification_pr_url,
       body: "Syrus opened PR ##{pr_number} for #{slug}: #{title.truncate(80)}"
     )
+  end
+
+  def mark_main_grader_closed
+    self.closure_reason = MAIN_GRADER_CLOSURE_REASON
+    self.finished_at ||= Time.current
   end
 
   def purge_coverage_hit_maps_on_close

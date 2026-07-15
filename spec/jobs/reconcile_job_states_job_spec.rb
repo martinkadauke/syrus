@@ -126,6 +126,65 @@ RSpec.describe ReconcileJobStatesJob do
     end
   end
 
+  describe "main_grader anchor jobs" do
+    def main_grader_job(state:)
+      user = Factories.user
+      repository = Factories.repository(user: user)
+      Job.create!(
+        user: user,
+        owner_user: user,
+        repository: repository,
+        kind: "main_grader",
+        issue_title: "main_grader:abc123",
+        issue_number: nil,
+        state: state
+      )
+    end
+
+    it "closes an implemented main_grader Job" do
+      main_grader = main_grader_job(state: "implemented")
+
+      expect { described_class.new.perform }
+        .to change { main_grader.reload.state }.from("implemented").to("closed")
+
+      expect(main_grader.closure_reason).to eq(Job::MAIN_GRADER_CLOSURE_REASON)
+    end
+
+    it "closes a main_grader Job whose workflow already finished" do
+      main_grader = main_grader_job(state: "running")
+      workflow = Workflow.create!(
+        job: main_grader,
+        trigger_kind: "main_grader",
+        state: "succeeded",
+        started_at: 5.minutes.ago,
+        finished_at: 1.minute.ago
+      )
+      step = Step.create!(workflow: workflow, kind: "grader_collect", position: 0, state: "succeeded")
+      run = Run.create!(job: main_grader, step: step, trigger_kind: "main_grader", state: "succeeded")
+
+      expect { described_class.new.perform }
+        .to change { main_grader.reload.state }.from("running").to("closed")
+
+      expect(main_grader.closure_reason).to eq(Job::MAIN_GRADER_CLOSURE_REASON)
+      expect(run.job_logs.where(kind: "system").pluck(:chunk))
+        .to include(match(/\[reconciler\] Closed completed main grader Job/))
+    end
+
+    it "leaves an active main_grader Job alone" do
+      main_grader = main_grader_job(state: "running")
+      Workflow.create!(
+        job: main_grader,
+        trigger_kind: "main_grader",
+        state: "running",
+        started_at: 1.minute.ago,
+        finished_at: nil
+      )
+
+      expect { described_class.new.perform }
+        .not_to change { main_grader.reload.state }
+    end
+  end
+
   describe "out-of-scope Job states" do
     %w[ triaging blocked_by_epic approved landing closed ].each do |state|
       it "leaves :#{state} Jobs alone (owned by other code paths)" do

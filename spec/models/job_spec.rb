@@ -313,6 +313,28 @@ RSpec.describe Job do
       expect(job.closure_reason).to eq("manual")
     end
 
+    it "closes main_grader jobs instead of leaving them implemented" do
+      user = Factories.user
+      repository = Factories.repository(user: user)
+      job = Job.create!(
+        user: user,
+        owner_user: user,
+        repository: repository,
+        kind: "main_grader",
+        issue_title: "main_grader:abc123",
+        issue_number: nil,
+        state: "running"
+      )
+
+      freeze_time do
+        expect { job.mark_implemented! }
+          .to change(job, :state).from("running").to("closed")
+
+        expect(job.closure_reason).to eq(Job::MAIN_GRADER_CLOSURE_REASON)
+        expect(job.finished_at).to eq(Time.current)
+      end
+    end
+
     it "may_close? is false for an already-closed job" do
       job = Factories.job
       job.close!
