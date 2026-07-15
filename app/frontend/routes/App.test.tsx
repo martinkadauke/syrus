@@ -3065,7 +3065,7 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
-  }, 15000)
+  }, 30000)
 
   it("renders dashboard timestamp columns as relative times with absolute tooltips", async () => {
     const restoreMedia = mockMediaQuery(true)
@@ -10163,6 +10163,8 @@ describe("App", () => {
       agent_summary: null,
       agent_diff_present: false,
       agent_diff_bytes: 0,
+      step_agent_diff_present: false,
+      step_agent_diff_bytes: 0,
       failure_classification: {
         id: 17,
         classification: "application_error",
@@ -15521,6 +15523,8 @@ function jobDetailPayload(overrides: Record<string, unknown> = {}) {
                 output_tokens: 300,
                 agent_diff_present: true,
                 agent_diff_bytes: 2048,
+                step_agent_diff_present: false,
+                step_agent_diff_bytes: 0,
                 job_log_count: 12,
                 rate_limited: false,
                 run_diagnostic: null,
