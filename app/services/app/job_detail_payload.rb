@@ -624,6 +624,7 @@ module App
         failure_classification: failure_classification_json(run.run_failure_classification),
         run_diagnostic: run_diagnostic_json(run.run_diagnostic),
         health_snapshots: run.run_health_snapshots.ordered.map { |snapshot| health_snapshot_json(snapshot) },
+        active_process: active_process_json(run),
         agent_session: agent_session_json(session),
         can_stop: run.may_cancel?,
         can_diagnose: run.queued? || run.running?,
@@ -633,6 +634,26 @@ module App
         app_diagnose_path: "/api/v1/app/jobs/#{@job.id}/runs/#{run.id}/diagnose",
         app_resume_path: "/api/v1/app/jobs/#{@job.id}/resume",
         app_grade_log_path: app_grade_log_path(run, workflow: workflow)
+      }
+    end
+
+    def active_process_json(run)
+      process = run.spawned_processes
+                   .select { |candidate| candidate.finished_at.nil? }
+                   .max_by { |candidate| candidate.started_at || candidate.created_at }
+      return unless process
+
+      {
+        id: process.id,
+        kind: process.kind,
+        command: process.command,
+        workdir: process.workdir,
+        hostname: process.hostname,
+        pid: process.pid,
+        started_at: iso8601(process.started_at),
+        last_heartbeat_at: iso8601(process.last_chunk_at),
+        wall_timeout_s: process.wall_timeout_s,
+        silent_timeout_s: process.silent_timeout_s
       }
     end
 

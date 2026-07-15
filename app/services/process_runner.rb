@@ -162,6 +162,7 @@ class ProcessRunner
         }
 
         stream_output(output, wait_thread, silent_check) do
+          heartbeat!
           next if timed_out
 
           if @stop_requested.call
@@ -251,8 +252,15 @@ class ProcessRunner
     return if last && (now - last) < HEARTBEAT_INTERVAL_SECONDS
 
     @spawned_process.update_column(:last_chunk_at, now)
+    heartbeat_run!(now)
   rescue StandardError => e
     Rails.logger.warn("[ProcessRunner] heartbeat failed: #{e.class}: #{e.message}")
+  end
+
+  def heartbeat_run!(now)
+    return unless @run
+
+    Run.where(id: @run.id, finished_at: nil).update_all(last_heartbeat_at: now)
   end
 
   # Conditional UPDATE races safely with SpawnedProcessSupervisor#tick,

@@ -330,6 +330,7 @@ export type JobRun = {
   failure_classification?: RunFailureClassification | null
   run_diagnostic: { id: number; present: boolean; created_at: string | null; error_class?: string; error_message?: string } | null
   health_snapshots: Array<{ id: number; health_status: string | null; hint: string | null; run_state: string | null; last_log_preview: string | null; created_at: string | null }>
+  active_process?: JobRunActiveProcess | null
   agent_session: { session_id: string; provider: string | null; transcript_pruned: boolean; transcript_bytes: number | null; transcript_lines: number | null } | null
   can_stop: boolean
   can_diagnose: boolean
@@ -339,6 +340,19 @@ export type JobRun = {
   app_diagnose_path: string
   app_resume_path: string
   app_grade_log_path: string | null
+}
+
+export type JobRunActiveProcess = {
+  id: number
+  kind: string
+  command: string | null
+  workdir: string | null
+  hostname: string | null
+  pid: number | null
+  started_at: string | null
+  last_heartbeat_at: string | null
+  wall_timeout_s: number | null
+  silent_timeout_s: number | null
 }
 
 export type RunFailureClassification = {

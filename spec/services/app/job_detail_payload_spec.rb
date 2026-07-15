@@ -214,6 +214,60 @@ RSpec.describe App::JobDetailPayload do
     end
   end
 
+  describe "#workflows_json" do
+    it "includes the active spawned process for running runs" do
+      job = Factories.job_record(repository: repo)
+      workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "running")
+      step = Step.create!(workflow: workflow, kind: "prepare", position: 0, state: "running")
+      run = Run.create!(
+        job: job,
+        step: step,
+        trigger_kind: "initial",
+        agent_provider: "claude",
+        state: "running",
+        started_at: 2.minutes.ago,
+        last_heartbeat_at: 1.minute.ago
+      )
+      finished = SpawnedProcess.create!(
+        kind: "prepare",
+        command: "old command",
+        workdir: "/tmp/old",
+        hostname: "worker-1",
+        started_at: 3.minutes.ago,
+        finished_at: 2.minutes.ago,
+        run: run,
+        workflow: workflow
+      )
+      active = SpawnedProcess.create!(
+        kind: "prepare",
+        command: "bundle exec rspec",
+        workdir: "/tmp/repo",
+        hostname: "worker-2",
+        pid: 1234,
+        started_at: 1.minute.ago,
+        last_chunk_at: 30.seconds.ago,
+        wall_timeout_s: 600,
+        silent_timeout_s: 120,
+        run: run,
+        workflow: workflow
+      )
+
+      active_process = payload_for(job).dig(:workflows, 0, :steps, 0, :runs, 0, :active_process)
+
+      expect(active_process).to include(
+        id: active.id,
+        kind: "prepare",
+        command: "bundle exec rspec",
+        workdir: "/tmp/repo",
+        hostname: "worker-2",
+        pid: 1234,
+        wall_timeout_s: 600,
+        silent_timeout_s: 120
+      )
+      expect(active_process[:id]).not_to eq(finished.id)
+    end
+  end
+
   describe "#feedback_history_json" do
     it "returns chat feedback workflow artifacts in chronological order" do
       job = Factories.job_record(repository: repo)

@@ -3162,6 +3162,14 @@ function ActiveRunBanner({ run }: { run: JobRun }) {
   const now = useNow(true)
   const sinceIso = queued ? run.created_at : run.started_at
   const elapsed = sinceIso ? formatElapsed((now - new Date(sinceIso).getTime()) / 1000) : null
+  const activeProcess = run.active_process
+  const budgetParts: string[] = []
+  if (activeProcess?.wall_timeout_s) {
+    budgetParts.push(t("run_active_process_wall_budget", { duration: formatElapsed(activeProcess.wall_timeout_s) }))
+  }
+  if (activeProcess?.silent_timeout_s) {
+    budgetParts.push(t("run_active_process_silent_budget", { duration: formatElapsed(activeProcess.silent_timeout_s) }))
+  }
 
   if (queued) {
     return (
@@ -3179,6 +3187,15 @@ function ActiveRunBanner({ run }: { run: JobRun }) {
     <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-200">
       <span className="font-semibold">{t("run_running", { id: run.id })}{elapsed ? ` · ${elapsed}` : ""}</span>
       <span> {t("run_running_suffix", { date: formatDate(run.started_at) })}</span>
+      {activeProcess ? (
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-blue-700 dark:text-blue-300">
+          <span>{t("run_active_process", { kind: humanize(activeProcess.kind) })}</span>
+          <code className="max-w-full truncate rounded bg-white/75 px-1.5 py-0.5 font-mono text-[11px] text-blue-950 dark:bg-blue-900/40 dark:text-blue-100">
+            {activeProcess.command || t("run_active_process_unknown_command")}
+          </code>
+          {budgetParts.length > 0 ? <span>{t("run_active_process_budget", { budget: budgetParts.join(" · ") })}</span> : null}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -118,6 +118,34 @@ RSpec.describe ProcessRunner do
     expect(spawned_processes.first.reload).to be_finished
   end
 
+  it "heartbeats a run while a silent spawned process is still alive" do
+    job = Factories.job_record
+    workflow = Workflow.create!(job: job, trigger_kind: "initial", state: "running")
+    step = Step.create!(workflow: workflow, kind: "prepare", position: 0, state: "running")
+    run = Run.create!(
+      job: job,
+      step: step,
+      trigger_kind: "initial",
+      agent_provider: "claude",
+      state: "running",
+      started_at: Time.current
+    )
+
+    result = described_class.new(
+      env: {},
+      command: [ ruby, "-e", "sleep 0.2" ],
+      chdir: @dir,
+      timeout: 5,
+      kind: "prepare",
+      run: run,
+      workflow: workflow
+    ).run
+
+    expect(result).to be_success
+    expect(run.reload.last_heartbeat_at).to be_within(2.seconds).of(Time.current)
+    expect(SpawnedProcess.find(result.spawned_process_id).last_chunk_at).to be_present
+  end
+
   it "reconciles a stopped chat turn when the process exits before output" do
     user = Factories.user(claude_oauth_token: "oat-test")
     chat = ChatSession.create!(user: user, workspace_path: @dir, stop_requested_at: Time.current)
