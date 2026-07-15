@@ -1647,6 +1647,7 @@ function StepCard({ step, payload, command, numberLabel, displayName, metadataLa
             {activeRun && step.state !== activeRun.state ? <SmallPill>{t("step_state_display", { state: step.state.replaceAll("_", " ") })}</SmallPill> : null}
             {step.latest ? <SmallPill>{t("step_latest")}</SmallPill> : null}
             <span>{formatDate(step.started_at || step.created_at)}</span>
+            {step.finished_at ? <span>{formatDuration(step.started_at, step.finished_at)}</span> : null}
           </div>
           {activeRun ? <ActiveRunBanner run={activeRun} /> : null}
           {prepareFailure ? <PrepareFailurePanel failure={prepareFailure} /> : null}
@@ -2716,6 +2717,19 @@ function jobSlug(id: number) {
 function formatDate(value: string | null) {
   if (!value) return "-"
   return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+}
+
+function formatDuration(startedAt: string | null, finishedAt: string | null): string {
+  if (!startedAt || !finishedAt) return "-"
+  const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime()
+  if (ms < 0) return "-"
+  const totalSeconds = Math.floor(ms / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  if (hours >= 1) return `${hours}h ${minutes}m`
+  return `${minutes}m ${seconds}s`
 }
 
 function formatCurrency(value: number) {
