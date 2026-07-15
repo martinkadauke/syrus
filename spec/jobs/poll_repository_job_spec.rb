@@ -560,6 +560,37 @@ RSpec.describe PollRepositoryJob do
       end
     end
 
+    it "uses the previous poll start time for recurring incremental polls" do
+      since = Time.zone.parse("2026-07-15 12:00:00 UTC")
+      repository.update_columns(last_poll_started_at: since)
+      calls = []
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label) do |_client, slug, label, **kwargs|
+        calls << [ slug, label, kwargs ]
+        []
+      end
+
+      described_class.perform_now(repository.id)
+
+      expect(calls).to include([ repository.slug, repository.trigger_label, { state: "open", since: since } ])
+      expect(calls).to include([ repository.slug, repository.trigger_label, { state: "closed", since: since } ])
+    end
+
+    it "does a full reconciliation poll when force is true" do
+      since = Time.zone.parse("2026-07-15 12:00:00 UTC")
+      repository.update_columns(last_poll_started_at: since)
+      calls = []
+      allow_any_instance_of(GithubClient).to receive(:issues_with_label) do |_client, slug, label, **kwargs|
+        calls << [ slug, label, kwargs ]
+        []
+      end
+
+      described_class.perform_now(repository.id, force: true)
+
+      expect(calls).to include([ repository.slug, repository.trigger_label, { state: "open" } ])
+      expect(calls).to include([ repository.slug, repository.trigger_label, { state: "closed" } ])
+      expect(calls.any? { |_slug, _label, kwargs| kwargs.key?(:since) }).to be(false)
+    end
+
     it "sets last_poll_status to 'failed' with the error message when GitHub raises" do
       allow_any_instance_of(GithubClient).to receive(:issues_with_label)
         .and_raise(RuntimeError, "401 Bad credentials")

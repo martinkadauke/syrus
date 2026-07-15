@@ -135,8 +135,10 @@ class GithubClient
 
   # Returns Sawyer::Resource enumerable. Includes pull_request items —
   # IngestPolicy filters those.
-  def issues_with_label(repo_slug, label, state: "open")
-    track_rate_limits { @client.list_issues(repo_slug, state: state, labels: label) }
+  def issues_with_label(repo_slug, label, state: "open", since: nil)
+    options = { state: state, labels: label }
+    options[:since] = since.iso8601 if since.present?
+    track_rate_limits { @client.list_issues(repo_slug, **options) }
   rescue Octokit::TooManyRequests => e
     Rails.logger.warn("[GithubClient] #{@user.email_address} rate-limited on #{repo_slug}: #{e.message}")
     raise

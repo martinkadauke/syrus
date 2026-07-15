@@ -13,19 +13,23 @@ class PollRepositoryJob < ApplicationJob
     return if repository.archived?
     return unless force || repository.polling_enabled?
 
+    previous_poll_started_at = repository.last_poll_started_at
+    incremental_since = force ? nil : previous_poll_started_at
     repository.update_columns(last_poll_started_at: Time.current, last_poll_status: nil, last_poll_error: nil)
 
     begin
       client = GithubClient.for(repository: repository, user: repository.user)
-      issues = client.issues_with_label(repository.slug, repository.trigger_label)
-      closed_issues = client.issues_with_label(repository.slug, repository.trigger_label, state: "closed")
+      issues = list_labeled_issues(client, repository, since: incremental_since)
+      closed_issues = list_labeled_issues(client, repository, state: "closed", since: incremental_since)
 
+      stats = Hash.new(0)
       issues.each do |issue|
-        ingest(issue, repository)
+        stats[ingest(issue, repository, client: client)] += 1
       end
-      close_jobs_for_closed_issues!(repository, closed_issues)
+      closed_jobs = close_jobs_for_closed_issues!(repository, closed_issues)
       repository.jobs.open_threads.find_each(&:start_pending_workflows_if_dependencies_satisfied!)
 
+      log_poll_summary(repository, issues: issues, closed_issues: closed_issues, closed_jobs: closed_jobs, stats: stats, incremental_since: incremental_since)
       repository.update_columns(last_poll_status: "ok", last_poll_error: nil)
     rescue => e
       repository.update_columns(last_poll_status: "failed", last_poll_error: e.message)
@@ -35,11 +39,34 @@ class PollRepositoryJob < ApplicationJob
 
   private
 
-  def ingest(issue, repository)
+  def list_labeled_issues(client, repository, state: "open", since: nil)
+    if since.present?
+      client.issues_with_label(repository.slug, repository.trigger_label, state: state, since: since)
+    else
+      client.issues_with_label(repository.slug, repository.trigger_label, state: state)
+    end
+  end
+
+  def log_poll_summary(repository, issues:, closed_issues:, closed_jobs:, stats:, incremental_since:)
+    counts = {
+      seen: Array(issues).size,
+      closed_seen: Array(closed_issues).size,
+      created: stats[:created],
+      deduped: stats[:deduped],
+      skipped: stats[:skipped],
+      epics: stats[:epic],
+      preempted: stats[:preempted],
+      preempt_attached: stats[:preempt_attached],
+      closed_jobs: closed_jobs
+    }
+    mode = incremental_since.present? ? "incremental since=#{incremental_since.iso8601}" : "full"
+    Rails.logger.info("[PollRepositoryJob] #{repository.slug} #{mode} poll: #{counts.map { |key, value| "#{key}=#{value}" }.join(" ")}")
+  end
+
+  def ingest(issue, repository, client:)
     decision = IngestPolicy.evaluate(issue, repository)
     unless decision.allow
-      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} skipped: #{decision.reason}")
-      return
+      return :skipped
     end
 
     marker = EpicMarkerParser.parse(text: issue_body(issue), default_repository: repository)
@@ -54,7 +81,7 @@ class PollRepositoryJob < ApplicationJob
     # immediately. Skip only fully-closed Jobs (they're terminal and
     # the lookup would be wasted).
     needs_lookup = prior.nil? || prior.open?
-    linked = needs_lookup ? GithubClient.for(repository: repository, user: repository.user).linked_open_pr_for_issue(repository.slug, issue.number) : nil
+    linked = needs_lookup ? client.linked_open_pr_for_issue(repository.slug, issue.number) : nil
     # Filter out our OWN PR — `closedByPullRequestsReferences` returns
     # every PR that closes this issue, including the one Syrus opened.
     # If the linked PR is ours, it's not "external preemption", just us.
@@ -75,10 +102,10 @@ class PollRepositoryJob < ApplicationJob
         if prior.open? && prior.pr_number.blank? && !prior.any_active_run?
           prior.cancel_active_runs_and_close!("preempted")
         end
+        return :preempt_attached
       else
-        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior #{prior.slug} exists")
+        return :deduped
       end
-      return
     end
 
     # Brand-new issue — preempted at first sight: record the Job in
@@ -97,7 +124,7 @@ class PollRepositoryJob < ApplicationJob
         finished_at: Time.current
       )
       enqueue_issue_image_ingest(job)
-      return
+      return :preempted
     end
 
     job = Job.create!(
@@ -112,6 +139,7 @@ class PollRepositoryJob < ApplicationJob
     )
     classify_if_available(job)
     enqueue_issue_image_ingest(job)
+    :created
   end
 
   def close_jobs_for_closed_issues!(repository, issues)
@@ -121,17 +149,21 @@ class PollRepositoryJob < ApplicationJob
       .map(&:number)
       .compact
       .uniq
-    return if issue_numbers.empty?
+    return 0 if issue_numbers.empty?
 
-    repository.jobs
+    jobs = repository.jobs
       .issue_kind
       .open_threads
       .without_pr
       .where(issue_number: issue_numbers)
-      .find_each do |job|
-        Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{job.issue_number} closed upstream; closing #{job.slug}")
-        job.cancel_active_runs_and_close!("issue_closed")
-      end
+
+    closed = 0
+    jobs.find_each do |job|
+      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{job.issue_number} closed upstream; closing #{job.slug}")
+      job.cancel_active_runs_and_close!("issue_closed")
+      closed += 1
+    end
+    closed
   end
 
   def pull_request_issue?(issue)
@@ -151,6 +183,7 @@ class PollRepositoryJob < ApplicationJob
         epic.description = issue_body(issue)
       end
       Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} ingested as Epic")
+      :epic
     when :child_of_epic
       ingest_child_of_epic!(marker, issue, repository)
     end
@@ -160,8 +193,7 @@ class PollRepositoryJob < ApplicationJob
     prior = latest_job_for_issue(repository, issue.number)
     if prior
       sync_issue_label_state!(prior, issue)
-      Rails.logger.info("[PollRepositoryJob] #{repository.slug}##{issue.number} dedup: prior #{prior.slug} exists")
-      return
+      return :deduped
     end
 
     epic_url = issue_url_for_reference(marker)
@@ -181,6 +213,7 @@ class PollRepositoryJob < ApplicationJob
     )
     job.advance_after_triage! if job.epic && job.may_advance_after_triage?
     enqueue_issue_image_ingest(job)
+    :created
   end
 
   # Hand off to a background job rather than running the classifier
