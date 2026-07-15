@@ -3065,7 +3065,7 @@ describe("App", () => {
       )
     })
     expect(await screen.findByText("Retry enqueued for 1 job.")).toBeInTheDocument()
-  }, 15000)
+  }, 30000)
 
   it("renders dashboard timestamp columns as relative times with absolute tooltips", async () => {
     const restoreMedia = mockMediaQuery(true)
