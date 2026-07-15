@@ -160,12 +160,15 @@ module Filters
         end
 
         def apply_inbox
-          open = scope.open_threads.without_active_workflows
-          open.where(id: actionable_unread_feedback_ids)
+          return scope.none unless user
+
+          owner_jobs = Job.where(owner_user_id: user.id)
+          open = scope.where(owner_user_id: user.id).open_threads.without_active_workflows
+          open.where(id: actionable_unread_feedback_ids(owner_jobs))
               .or(open.where(state: "failed"))
               .or(open.where.not(landing_failure_reason: nil))
-              .or(open.where(id: needs_review_ids))
-              .or(open.where(id: awaiting_approval_ids))
+              .or(open.where(id: needs_review_ids(owner_jobs)))
+              .or(open.where(id: awaiting_approval_ids(owner_jobs)))
         end
 
         def apply_awaiting_approval
@@ -251,24 +254,24 @@ module Filters
           Job.triaging.where(triaging_reason: "pending_epic_ref").select(:id)
         end
 
-        def needs_review_ids
-          Job.where(validity: %w[ duplicate already_implemented ]).select(:id)
+        def needs_review_ids(base = Job.all)
+          base.where(validity: %w[ duplicate already_implemented ]).select(:id)
         end
 
-        def awaiting_approval_ids
-          Job.where(state: "implemented").without_active_workflows.select(:id)
+        def awaiting_approval_ids(base = Job.all)
+          base.where(state: "implemented").without_active_workflows.select(:id)
         end
 
-        def unread_feedback_ids
-          Job.where.not(last_seen_comment_at: nil)
-             .where("last_feedback_addressed_at IS NULL OR last_seen_comment_at > last_feedback_addressed_at")
-             .select(:id)
+        def unread_feedback_ids(base = Job.all)
+          base.where.not(last_seen_comment_at: nil)
+              .where("last_feedback_addressed_at IS NULL OR last_seen_comment_at > last_feedback_addressed_at")
+              .select(:id)
         end
 
-        def actionable_unread_feedback_ids
-          Job.where(id: unread_feedback_ids)
-             .where.not(state: %w[ triaging queued running landing ])
-             .select(:id)
+        def actionable_unread_feedback_ids(base = Job.all)
+          base.where(id: unread_feedback_ids(base))
+              .where.not(state: %w[ triaging queued running landing ])
+              .select(:id)
         end
 
         def blocked_dependency_ids

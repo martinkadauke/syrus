@@ -8,14 +8,14 @@ RSpec.describe "Filters::Chips" do
   let(:user) { Factories.user }
   let(:repo) { Factories.repository(user: user, owner: "acme", name: "widgets") }
 
-  def run(field:, op:, value:)
+  def run(field:, op:, value:, scope: Job.where(user: user))
     # Scope to the test's user so leakage from prior specs in the same
     # suite (or before(:context) seeds for unrelated users) doesn't
     # pollute results. The Repository chip still sees multiple repos
     # within the user's scope.
     Filters::Compiler.call(
       Filters::Ast.parse("field" => field, "op" => op, "value" => value),
-      scope: Job.where(user: user),
+      scope: scope,
       user: user
     )
   end
@@ -198,6 +198,15 @@ RSpec.describe "Filters::Chips" do
         landing_failed,
         unread_feedback
       )
+    end
+
+    it "inbox: excludes jobs owned by other users even from a team-wide scope" do
+      other_user = Factories.user
+      other_repo = Factories.repository(user: other_user, owner: "acme", name: "other-widgets")
+      mine = Factories.job_record(repository: repo, issue_number: 51, state: "implemented")
+      Factories.job_record(repository: other_repo, issue_number: 52, state: "implemented", owner_user: other_user)
+
+      expect(run(field: "attention", op: "is", value: "inbox", scope: Job.all)).to contain_exactly(mine)
     end
 
     it "awaiting_approval: excludes jobs with any active workflows" do

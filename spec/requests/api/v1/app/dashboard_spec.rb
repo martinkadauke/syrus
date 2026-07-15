@@ -943,7 +943,10 @@ RSpec.describe "App API dashboard commands", type: :request do
     end
 
     it "defaults the plain jobs list dashboard to Inbox and keeps All jobs addressable" do
+      teammate = Factories.user(email_address: "teammate@example.com")
+      teammate_repo = Factories.repository(user: teammate, owner: "acme", name: "teammate-widgets")
       inbox_job = Factories.job_record(repository: repo, owner_user: user, issue_number: 41, issue_title: "Ready for review", state: "implemented")
+      other_inbox_job = Factories.job_record(user: teammate, repository: teammate_repo, owner_user: teammate, issue_number: 43, issue_title: "Someone else's review", state: "implemented")
       closed_job = Factories.job_record(repository: repo, owner_user: user, issue_number: 42, issue_title: "Already merged", state: "closed", closure_reason: "pr_merged", finished_at: 1.day.ago)
 
       get "/api/v1/app/dashboard", params: { subject: "job", view: "list" }
@@ -958,6 +961,7 @@ RSpec.describe "App API dashboard commands", type: :request do
         ]
       )
       expect(body["items"].map { |item| item.fetch("id") }).to eq([ inbox_job.id ])
+      expect(body["items"].map { |item| item.fetch("id") }).not_to include(other_inbox_job.id)
 
       get "/api/v1/app/dashboard", params: { subject: "job", view: "list", smart_folder_id: "all" }
 
