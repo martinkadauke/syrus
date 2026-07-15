@@ -4,6 +4,7 @@ module App
 
     SUBJECTS = %w[job epic workflow].freeze
     VIEWS = %w[list kanban].freeze
+    SECTIONS = %w[full chrome rows].freeze
     OWNERSHIP_SCOPES = %w[mine team claimable user].freeze
     DEFAULT_SUBJECT = "epic"
     DEFAULT_VIEW = "list"
@@ -92,31 +93,56 @@ module App
       PerformanceLogging.phase("dashboard_payload", subject: subject, view: view, ownership_scope: ownership_scope) do
         SmartFolder.ensure_builtins_for_subject!(subject)
 
-        {
-          subject: subject,
-          view: view,
-          page: page,
-          per_page: PER_PAGE,
-          total: current_result.fetch(:total),
-          total_pages: total_pages(current_result.fetch(:total)),
-          counts: counts,
-          ownership_scope: ownership_scope_json,
-          preferences: preferences_json,
-          controls: controls_json,
-          ownership: ownership_json,
-          filter: current_filter.to_h,
-          landing_queue: landing_queue_json,
-          broken_repositories: health_blocked_repositories_json,
-          health_blocked_repositories: health_blocked_repositories_json,
-          smart_folders: smart_folders_json,
-          active_smart_folder_id: active_smart_folder&.id,
-          items: current_result.fetch(:items),
-          lanes: lanes_json,
-          kanban_limit: view == "kanban" ? kanban_limit : nil,
-          setup: ::App::SetupStatus.call(user: user),
-          paths: paths_json
-        }
+        case section
+        when "chrome"
+          chrome_payload
+        when "rows"
+          rows_payload
+        else
+          chrome_payload.merge(rows_payload)
+        end
       end
+    end
+
+    def chrome_payload
+      {
+        subject: subject,
+        view: view,
+        page: page,
+        per_page: PER_PAGE,
+        counts: counts,
+        ownership_scope: ownership_scope_json,
+        preferences: preferences_json,
+        controls: controls_json,
+        ownership: ownership_json,
+        filter: current_filter.to_h,
+        landing_queue: landing_queue_chrome_json,
+        broken_repositories: health_blocked_repositories_json,
+        health_blocked_repositories: health_blocked_repositories_json,
+        smart_folders: smart_folders_json,
+        active_smart_folder_id: active_smart_folder&.id,
+        setup: ::App::SetupStatus.call(user: user),
+        paths: paths_json
+      }
+    end
+
+    def rows_payload
+      {
+        subject: subject,
+        view: view,
+        page: page,
+        per_page: PER_PAGE,
+        total: current_result.fetch(:total),
+        total_pages: total_pages(current_result.fetch(:total)),
+        landing_queue: landing_queue_json,
+        items: current_result.fetch(:items),
+        lanes: lanes_json,
+        kanban_limit: view == "kanban" ? kanban_limit : nil
+      }
+    end
+
+    def section
+      @section ||= params[:section].to_s.presence_in(SECTIONS) || "full"
     end
 
     private
@@ -1080,6 +1106,14 @@ module App
       }
       json[:entries] = landing_queue_entries_json if landing_queue_visible?
       json
+    end
+
+    def landing_queue_chrome_json
+      {
+        visible: landing_queue_visible?,
+        paused: user.landing_paused?,
+        toggle_path: "/api/v1/app/dashboard/landing_pause"
+      }
     end
 
     def health_blocked_repositories_json

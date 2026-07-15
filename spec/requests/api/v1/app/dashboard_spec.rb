@@ -151,6 +151,38 @@ RSpec.describe "App API dashboard commands", type: :request do
       expect(body.dig("paths", "new_job_path")).to eq(new_job_path)
     end
 
+    it "can split dashboard chrome from row data" do
+      Factories.job_record(repository: repo, issue_number: 1, issue_title: "Build aqueduct", state: "queued", owner_user: user)
+
+      get "/api/v1/app/dashboard", params: { subject: "job", section: "chrome" }
+
+      expect(response).to have_http_status(:ok)
+      chrome = parse_body
+      expect(chrome).to include(
+        "subject" => "job",
+        "counts" => include("jobs" => 1),
+        "controls" => include("views" => %w[list kanban]),
+        "smart_folders" => be_an(Array)
+      )
+      expect(chrome).not_to have_key("items")
+      expect(chrome).not_to have_key("lanes")
+      expect(chrome).not_to have_key("total")
+
+      get "/api/v1/app/dashboard", params: { subject: "job", section: "rows" }
+
+      expect(response).to have_http_status(:ok)
+      rows = parse_body
+      expect(rows).to include(
+        "subject" => "job",
+        "total" => 1,
+        "items" => contain_exactly(include("title" => "Build aqueduct")),
+        "lanes" => []
+      )
+      expect(rows).not_to have_key("counts")
+      expect(rows).not_to have_key("controls")
+      expect(rows).not_to have_key("smart_folders")
+    end
+
     it "presents deferred auto-merge workflows as postponed dashboard state" do
       job = Factories.job_record(repository: repo, owner_user: user, issue_number: 30, issue_title: "Land after GitHub settles")
       workflow = Workflow.create!(job: job, trigger_kind: "auto_merge", state: "cancelled")

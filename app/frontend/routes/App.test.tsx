@@ -203,10 +203,7 @@ describe("App", () => {
 
       expect(await screen.findByRole("main", { name: "Dashboard" })).toBeInTheDocument()
       expect(screen.queryByRole("main", { name: "Syrus SPA" })).not.toBeInTheDocument()
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/dashboard",
-        expect.objectContaining({ credentials: "same-origin" })
-      )
+      expectDashboardFetch(fetchSpy, "/api/v1/app/dashboard", expect.objectContaining({ credentials: "same-origin" }))
     } finally {
       script.remove()
     }
@@ -594,10 +591,7 @@ describe("App", () => {
 
       expect(await screen.findByRole("main", { name: "Dashboard" })).toBeInTheDocument()
       expect(screen.queryByRole("main", { name: "Syrus public landing" })).not.toBeInTheDocument()
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/dashboard",
-        expect.objectContaining({ credentials: "same-origin" })
-      )
+      expectDashboardFetch(fetchSpy, "/api/v1/app/dashboard", expect.objectContaining({ credentials: "same-origin" }))
     } finally {
       fetchSpy.mockRestore()
       script.remove()
@@ -1440,7 +1434,7 @@ describe("App", () => {
       if (path === "/api/v1/app/chats") {
         return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
-      if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=3&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&smart_folder_id=3&subject=job")) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -2682,10 +2676,7 @@ describe("App", () => {
         expect(screen.getByTestId("location")).toHaveTextContent("/app-shell/dashboard/jobs")
       })
       expect(screen.getByTestId("location")).not.toHaveTextContent("view=")
-      expect(fetchSpy).toHaveBeenCalledWith(
-        "/api/v1/app/dashboard?subject=job",
-        expect.objectContaining({ credentials: "same-origin" })
-      )
+      expectDashboardFetch(fetchSpy, "/api/v1/app/dashboard?subject=job", expect.objectContaining({ credentials: "same-origin" }))
     } finally {
       script.remove()
     }
@@ -2791,9 +2782,9 @@ describe("App", () => {
       }
 
       if (
-        path === "/api/v1/app/dashboard?view=list&subject=job" ||
-        path.startsWith("/api/v1/app/dashboard?view=list&q=") ||
-        path === "/api/v1/app/dashboard?smart_folder_id=11&subject=job"
+        dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&subject=job") ||
+        dashboardPathStartsWith(path, "/api/v1/app/dashboard?view=list&q=") ||
+        dashboardPathMatches(path, "/api/v1/app/dashboard?smart_folder_id=11&subject=job")
       ) {
         const q = new URL(path, "https://syrus.test").searchParams.get("q")
         if (q) latestFilterTree = decodeFilterQ(q)
@@ -2890,7 +2881,8 @@ describe("App", () => {
     expect(screen.getByText("Showing 11-20 of 25")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Previous" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=1")
     expect(screen.getByRole("link", { name: "Next" })).toHaveAttribute("href", "/app-shell/dashboard/jobs?view=list&page=3")
-    expect(fetchSpy).toHaveBeenCalledWith(
+    expectDashboardFetch(
+      fetchSpy,
       "/api/v1/app/dashboard?view=list&subject=job",
       expect.objectContaining({
         credentials: "same-origin",
@@ -3072,7 +3064,7 @@ describe("App", () => {
     const dateNowSpy = vi.spyOn(Date, "now").mockReturnValue(new Date("2026-05-30T12:01:00Z").getTime())
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
-      if (path === "/api/v1/app/dashboard?view=list&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&subject=job")) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -3131,7 +3123,7 @@ describe("App", () => {
     document.body.appendChild(script)
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
-      if (path === "/api/v1/app/dashboard?view=list&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&subject=job")) {
         return Promise.resolve(new Response(JSON.stringify(dashboardPayload({ subject: "job", view: "list" })), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
 
@@ -3157,29 +3149,22 @@ describe("App", () => {
 
   it("uses the indigo trigger badge for chat feedback workflows", async () => {
     const restoreMedia = mockMediaQuery(true)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            preferences: {
-              sort: { column: "created_at", direction: "desc" },
-              visible_columns: ["issue", "state", "latest"],
-              kanban_lanes: ["queued", "running", "succeeded"],
-              raw: {}
-            },
-            items: [
-              dashboardJobItem({
-                active_workflow_trigger_kind: "chat_feedback",
-                latest_workflow_trigger_kind: "chat_feedback"
-              })
-            ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      preferences: {
+        sort: { column: "created_at", direction: "desc" },
+        visible_columns: ["issue", "state", "latest"],
+        kanban_lanes: ["queued", "running", "succeeded"],
+        raw: {}
+      },
+      items: [
+        dashboardJobItem({
+          active_workflow_trigger_kind: "chat_feedback",
+          latest_workflow_trigger_kind: "chat_feedback"
+        })
+      ]
+    }))
 
     try {
       render(
@@ -3200,29 +3185,22 @@ describe("App", () => {
 
   it("renders postponed auto-merge attempts from dashboard job state", async () => {
     const restoreMedia = mockMediaQuery(true)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            preferences: {
-              sort: { column: "created_at", direction: "desc" },
-              visible_columns: ["issue", "state", "latest"],
-              kanban_lanes: ["queued", "running", "succeeded"],
-              raw: {}
-            },
-            items: [
-              dashboardJobItem({
-                latest_workflow_trigger_kind: "auto_merge",
-                latest_workflow_state: "postponed"
-              })
-            ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      preferences: {
+        sort: { column: "created_at", direction: "desc" },
+        visible_columns: ["issue", "state", "latest"],
+        kanban_lanes: ["queued", "running", "succeeded"],
+        raw: {}
+      },
+      items: [
+        dashboardJobItem({
+          latest_workflow_trigger_kind: "auto_merge",
+          latest_workflow_state: "postponed"
+        })
+      ]
+    }))
 
     try {
       render(
@@ -3245,7 +3223,7 @@ describe("App", () => {
   it("leaves the latest workflow cell empty for dashboard jobs with no workflows", async () => {
     const fetchSpy = vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
-      if (path === "/api/v1/app/dashboard?view=list&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&subject=job")) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -3300,35 +3278,28 @@ describe("App", () => {
 
   it("disambiguates GitHub issue numbers from Syrus Job ids on the dashboard", async () => {
     const clipboardWrite = mockClipboardWrite()
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            items: [
-              dashboardJobItem({
-                id: 594,
-                kind: "direct",
-                title: "Navigate to Epic",
-                issue_number: null,
-                issue_url: null,
-                pr_number: null,
-                pr_url: null,
-                epic: {
-                  id: 7,
-                  number: 7,
-                  display_number: "EPIC-7",
-                  path: "/epics/7"
-                }
-              }),
-              dashboardJobItem({ id: 595, kind: "issue", title: "GitHub issue", issue_number: 123, issue_url: "https://github.com/acme/widgets/issues/123", pr_number: null, pr_url: null })
-            ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      items: [
+        dashboardJobItem({
+          id: 594,
+          kind: "direct",
+          title: "Navigate to Epic",
+          issue_number: null,
+          issue_url: null,
+          pr_number: null,
+          pr_url: null,
+          epic: {
+            id: 7,
+            number: 7,
+            display_number: "EPIC-7",
+            path: "/epics/7"
+          }
+        }),
+        dashboardJobItem({ id: 595, kind: "issue", title: "GitHub issue", issue_number: 123, issue_url: "https://github.com/acme/widgets/issues/123", pr_number: null, pr_url: null })
+      ]
+    }))
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -3350,50 +3321,43 @@ describe("App", () => {
 
   it("renders dashboard job metadata with middot separators and copyable direct job slugs", async () => {
     const clipboardWrite = mockClipboardWrite()
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            items: [
-              dashboardJobItem({
-                id: 602,
-                kind: "direct",
-                title: "Direct chat repair",
-                issue_number: null,
-                issue_url: null,
-                pr_number: 44,
-                pr_url: "https://github.com/acme/widgets/pull/44",
-                tags: [],
-                source_chat: {
-                  chat_id: 9,
-                  chat_title: "Review",
-                  proposal_id: 6,
-                  proposal_kind: "job",
-                  message_id: 3,
-                  path: "/chats/9",
-                  display_name: "Chat",
-                  profile_path: "/profiles/2"
-                }
-              }),
-              dashboardJobItem({
-                id: 603,
-                kind: "direct",
-                title: "Direct standalone",
-                issue_number: null,
-                issue_url: null,
-                pr_number: null,
-                pr_url: null,
-                tags: [],
-                source_chat: null
-              })
-            ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      items: [
+        dashboardJobItem({
+          id: 602,
+          kind: "direct",
+          title: "Direct chat repair",
+          issue_number: null,
+          issue_url: null,
+          pr_number: 44,
+          pr_url: "https://github.com/acme/widgets/pull/44",
+          tags: [],
+          source_chat: {
+            chat_id: 9,
+            chat_title: "Review",
+            proposal_id: 6,
+            proposal_kind: "job",
+            message_id: 3,
+            path: "/chats/9",
+            display_name: "Chat",
+            profile_path: "/profiles/2"
+          }
+        }),
+        dashboardJobItem({
+          id: 603,
+          kind: "direct",
+          title: "Direct standalone",
+          issue_number: null,
+          issue_url: null,
+          pr_number: null,
+          pr_url: null,
+          tags: [],
+          source_chat: null
+        })
+      ]
+    }))
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -3448,9 +3412,7 @@ describe("App", () => {
       }
     }))
     document.body.appendChild(script)
-    const fetchSpy = vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(JSON.stringify(dashboardPayload({ subject: "job", view: "list", items: [dashboardJobItem()] })), { status: 200, headers: { "Content-Type": "application/json" } })
-    )
+    const fetchSpy = mockDashboardFetch(dashboardPayload({ subject: "job", view: "list", items: [dashboardJobItem()] }))
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -3464,16 +3426,13 @@ describe("App", () => {
     expect(screen.getByText("No Solid Queue worker processes are registered.")).toBeInTheDocument()
     expect(screen.getByText("Start the worker process with bin/jobs and confirm it can connect to the queue database.")).toBeInTheDocument()
     expect(screen.queryByText("GitHub accepted the configured personal access token.")).not.toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
-      "/api/v1/app/dashboard?view=list&subject=job",
-      expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } })
-    )
+    expectDashboardFetch(fetchSpy, "/api/v1/app/dashboard?view=list&subject=job", expect.objectContaining({ credentials: "same-origin", headers: { Accept: "application/json" } }))
   })
 
   it("renders useful owner badges on the jobs dashboard", async () => {
     vi.spyOn(window, "fetch").mockImplementation((input) => {
       const path = String(input)
-      if (path === "/api/v1/app/dashboard?view=list&ownership_scope=team&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&ownership_scope=team&subject=job")) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -3525,18 +3484,11 @@ describe("App", () => {
 
   it("keeps dashboard folders and filters collapsed on mobile", async () => {
     const restoreMedia = mockMediaQuery(false)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            items: [dashboardJobItem()]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      items: [dashboardJobItem()]
+    }))
 
     try {
       render(
@@ -3568,23 +3520,16 @@ describe("App", () => {
 
   it("renders mobile Job dashboard rows as consolidated cards", async () => {
     const restoreMedia = mockMediaQuery(false)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            items: [
-              dashboardJobItem({
-                summary_state: "implemented",
-                total_cost_usd: 0.1234
-              })
-            ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      items: [
+        dashboardJobItem({
+          summary_state: "implemented",
+          total_cost_usd: 0.1234
+        })
+      ]
+    }))
 
     try {
       render(
@@ -3613,18 +3558,11 @@ describe("App", () => {
 
   it("omits mobile Job dashboard cost before any billed run", async () => {
     const restoreMedia = mockMediaQuery(false)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            items: [dashboardJobItem({ total_cost_usd: null })]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      items: [dashboardJobItem({ total_cost_usd: null })]
+    }))
 
     try {
       render(
@@ -3645,32 +3583,25 @@ describe("App", () => {
 
   it("renders mobile Epic dashboard rows as consolidated cards", async () => {
     const restoreMedia = mockMediaQuery(false)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "epic",
-            view: "list",
-            preferences: {
-              sort: { column: "updated_at", direction: "desc" },
-              visible_columns: ["epic", "state", "repository", "updated"],
-              kanban_lanes: ["backlog", "ready", "in_progress", "done"],
-              raw: {}
-            },
-            controls: {
-              ...dashboardPayload().controls,
-              sort_columns: ["title", "state", "repository", "updated_at"]
-            },
-            items: [
-              dashboardEpicItem({
-                description: "Epic: Extend filter framework to Epics Make Syrus's chip-bar filter framework work for Epics."
-              })
-            ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "epic",
+      view: "list",
+      preferences: {
+        sort: { column: "updated_at", direction: "desc" },
+        visible_columns: ["epic", "state", "repository", "updated"],
+        kanban_lanes: ["backlog", "ready", "in_progress", "done"],
+        raw: {}
+      },
+      controls: {
+        ...dashboardPayload().controls,
+        sort_columns: ["title", "state", "repository", "updated_at"]
+      },
+      items: [
+        dashboardEpicItem({
+          description: "Epic: Extend filter framework to Epics Make Syrus's chip-bar filter framework work for Epics."
+        })
+      ]
+    }))
 
     try {
       render(
@@ -3699,41 +3630,34 @@ describe("App", () => {
 
   it("renders mobile Workflow dashboard rows as consolidated cards", async () => {
     const restoreMedia = mockMediaQuery(false)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "workflow",
-            view: "list",
-            preferences: {
-              sort: { column: "started_at", direction: "desc" },
-              visible_columns: ["workflow", "job", "trigger", "state", "started", "finished", "agent"],
-              kanban_lanes: ["queued", "running", "done"],
-              raw: {}
-            },
-            controls: {
-              ...dashboardPayload().controls,
-              columns: {
-                required: [
-                  { key: "workflow", title: "Workflow" },
-                  { key: "job", title: "Job" }
-                ],
-                optional: [
-                  { key: "trigger", title: "Trigger" },
-                  { key: "state", title: "State" },
-                  { key: "started", title: "Started" },
-                  { key: "finished", title: "Finished" },
-                  { key: "agent", title: "Agent" }
-                ]
-              },
-              sort_columns: ["title", "state", "started_at", "finished_at"]
-            },
-            items: [dashboardWorkflowItem()]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "workflow",
+      view: "list",
+      preferences: {
+        sort: { column: "started_at", direction: "desc" },
+        visible_columns: ["workflow", "job", "trigger", "state", "started", "finished", "agent"],
+        kanban_lanes: ["queued", "running", "done"],
+        raw: {}
+      },
+      controls: {
+        ...dashboardPayload().controls,
+        columns: {
+          required: [
+            { key: "workflow", title: "Workflow" },
+            { key: "job", title: "Job" }
+          ],
+          optional: [
+            { key: "trigger", title: "Trigger" },
+            { key: "state", title: "State" },
+            { key: "started", title: "Started" },
+            { key: "finished", title: "Finished" },
+            { key: "agent", title: "Agent" }
+          ]
+        },
+        sort_columns: ["title", "state", "started_at", "finished_at"]
+      },
+      items: [dashboardWorkflowItem()]
+    }))
 
     try {
       render(
@@ -3765,41 +3689,34 @@ describe("App", () => {
 
   it("renders desktop Workflow dashboard slugs as links", async () => {
     const restoreMedia = mockMediaQuery(true)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "workflow",
-            view: "list",
-            preferences: {
-              sort: { column: "started_at", direction: "desc" },
-              visible_columns: ["workflow", "job", "state", "started"],
-              kanban_lanes: ["queued", "running", "done"],
-              raw: {}
-            },
-            controls: {
-              ...dashboardPayload().controls,
-              columns: {
-                required: [
-                  { key: "workflow", title: "Workflow" },
-                  { key: "job", title: "Job" }
-                ],
-                optional: [
-                  { key: "trigger", title: "Trigger" },
-                  { key: "state", title: "State" },
-                  { key: "started", title: "Started" },
-                  { key: "finished", title: "Finished" },
-                  { key: "agent", title: "Agent" }
-                ]
-              },
-              sort_columns: ["title", "state", "started_at", "finished_at"]
-            },
-            items: [dashboardWorkflowItem()]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "workflow",
+      view: "list",
+      preferences: {
+        sort: { column: "started_at", direction: "desc" },
+        visible_columns: ["workflow", "job", "state", "started"],
+        kanban_lanes: ["queued", "running", "done"],
+        raw: {}
+      },
+      controls: {
+        ...dashboardPayload().controls,
+        columns: {
+          required: [
+            { key: "workflow", title: "Workflow" },
+            { key: "job", title: "Job" }
+          ],
+          optional: [
+            { key: "trigger", title: "Trigger" },
+            { key: "state", title: "State" },
+            { key: "started", title: "Started" },
+            { key: "finished", title: "Finished" },
+            { key: "agent", title: "Agent" }
+          ]
+        },
+        sort_columns: ["title", "state", "started_at", "finished_at"]
+      },
+      items: [dashboardWorkflowItem()]
+    }))
 
     try {
       render(
@@ -3924,64 +3841,57 @@ describe("App", () => {
 
   it("renders expandable landing queue blocker rows in dependency order", async () => {
     const restoreMedia = mockMediaQuery(true)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            active_smart_folder_id: 7,
-            preferences: {
-              ...dashboardPayload().preferences,
-              sort: { column: "landing_queue_position", direction: "asc" }
-            },
-            controls: {
-              ...dashboardPayload().controls,
-              columns: {
-                required: [
-                  { key: "checkbox", title: "Checkbox" },
-                  { key: "landing_queue_position", title: "Queue" },
-                  { key: "issue", title: "Issue" },
-                  { key: "state", title: "State" }
-                ],
-                optional: dashboardPayload().controls.columns.optional
-              }
-            },
-            landing_queue: {
-              visible: true,
-              paused: false,
-              toggle_path: "/api/v1/app/dashboard/landing_pause",
-              entries: [
-                {
-                  key: "epic:10",
-                  position: 1,
-                  job_ids: [1],
-                  blocker_jobs: [
-                    { id: 2, title: "Prepare data layer", job_path: "/jobs/2", state: "open", pr_number: 22, pr_path: "https://github.com/acme/widgets/pull/22", epic_id: 20, epic_title: "Data Layer" },
-                    { id: 3, title: "Document rollout", job_path: "/jobs/3", state: "open", pr_number: null, pr_path: null, epic_id: null, epic_title: null }
-                  ],
-                  dependency_edges: [
-                    { from_job_id: 2, to_job_id: 1 },
-                    { from_job_id: 1, to_job_id: 3 }
-                  ]
-                }
-              ]
-            },
-            items: [
-              dashboardJobItem({
-                id: 1,
-                title: "Land API surface",
-                landing_queue_position: 1,
-                landing_queue_entry_key: "epic:10",
-                epic: { id: 10, number: 10, display_number: "EPIC-10", path: "/epics/10" },
-                approved_at: "2026-06-01T10:00:00Z"
-              })
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      active_smart_folder_id: 7,
+      preferences: {
+        ...dashboardPayload().preferences,
+        sort: { column: "landing_queue_position", direction: "asc" }
+      },
+      controls: {
+        ...dashboardPayload().controls,
+        columns: {
+          required: [
+            { key: "checkbox", title: "Checkbox" },
+            { key: "landing_queue_position", title: "Queue" },
+            { key: "issue", title: "Issue" },
+            { key: "state", title: "State" }
+          ],
+          optional: dashboardPayload().controls.columns.optional
+        }
+      },
+      landing_queue: {
+        visible: true,
+        paused: false,
+        toggle_path: "/api/v1/app/dashboard/landing_pause",
+        entries: [
+          {
+            key: "epic:10",
+            position: 1,
+            job_ids: [1],
+            blocker_jobs: [
+              { id: 2, title: "Prepare data layer", job_path: "/jobs/2", state: "open", pr_number: 22, pr_path: "https://github.com/acme/widgets/pull/22", epic_id: 20, epic_title: "Data Layer" },
+              { id: 3, title: "Document rollout", job_path: "/jobs/3", state: "open", pr_number: null, pr_path: null, epic_id: null, epic_title: null }
+            ],
+            dependency_edges: [
+              { from_job_id: 2, to_job_id: 1 },
+              { from_job_id: 1, to_job_id: 3 }
             ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+          }
+        ]
+      },
+      items: [
+        dashboardJobItem({
+          id: 1,
+          title: "Land API surface",
+          landing_queue_position: 1,
+          landing_queue_entry_key: "epic:10",
+          epic: { id: 10, number: 10, display_number: "EPIC-10", path: "/epics/10" },
+          approved_at: "2026-06-01T10:00:00Z"
+        })
+      ]
+    }))
 
     try {
       render(
@@ -4016,44 +3926,37 @@ describe("App", () => {
 
   it("hides landing queue blocker expanders when not sorted by queue position", async () => {
     const restoreMedia = mockMediaQuery(true)
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            preferences: {
-              ...dashboardPayload().preferences,
-              sort: { column: "title", direction: "asc" }
-            },
-            landing_queue: {
-              visible: true,
-              paused: false,
-              toggle_path: "/api/v1/app/dashboard/landing_pause",
-              entries: [
-                {
-                  key: "job:1",
-                  position: 1,
-                  job_ids: [1],
-                  blocker_jobs: [{ id: 2, title: "Hidden blocker", job_path: "/jobs/2", state: "open", pr_number: null, pr_path: null }],
-                  dependency_edges: [{ from_job_id: 2, to_job_id: 1 }]
-                }
-              ]
-            },
-            items: [
-              dashboardJobItem({
-                id: 1,
-                title: "Visible approved job",
-                landing_queue_position: 1,
-                landing_queue_entry_key: "job:1",
-                approved_at: "2026-06-01T10:00:00Z"
-              })
-            ]
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      preferences: {
+        ...dashboardPayload().preferences,
+        sort: { column: "title", direction: "asc" }
+      },
+      landing_queue: {
+        visible: true,
+        paused: false,
+        toggle_path: "/api/v1/app/dashboard/landing_pause",
+        entries: [
+          {
+            key: "job:1",
+            position: 1,
+            job_ids: [1],
+            blocker_jobs: [{ id: 2, title: "Hidden blocker", job_path: "/jobs/2", state: "open", pr_number: null, pr_path: null }],
+            dependency_edges: [{ from_job_id: 2, to_job_id: 1 }]
+          }
+        ]
+      },
+      items: [
+        dashboardJobItem({
+          id: 1,
+          title: "Visible approved job",
+          landing_queue_position: 1,
+          landing_queue_entry_key: "job:1",
+          approved_at: "2026-06-01T10:00:00Z"
+        })
+      ]
+    }))
 
     try {
       render(
@@ -4163,21 +4066,14 @@ describe("App", () => {
     script.textContent = JSON.stringify(bootstrapPayload({ setupStatus: null }))
     document.body.appendChild(script)
 
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            total: 0,
-            counts: { jobs: 0, epics: 0, workflows: 0 },
-            items: [],
-            setup: setupStatusPayload()
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      total: 0,
+      counts: { jobs: 0, epics: 0, workflows: 0 },
+      items: [],
+      setup: setupStatusPayload()
+    }))
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -4193,20 +4089,13 @@ describe("App", () => {
   })
 
   it("does not mention finishing setup on a completed empty dashboard", async () => {
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "list",
-            total: 0,
-            counts: { jobs: 0, epics: 0, workflows: 0 },
-            items: []
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "list",
+      total: 0,
+      counts: { jobs: 0, epics: 0, workflows: 0 },
+      items: []
+    }))
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -4236,7 +4125,7 @@ describe("App", () => {
       if (path === "/api/v1/app/chats") {
         return Promise.resolve(new Response(JSON.stringify({ groups: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
-      if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=3&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&smart_folder_id=3&subject=job")) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -4453,10 +4342,7 @@ describe("App", () => {
         )
       })
       await waitFor(() => {
-        expect(fetchSpy).toHaveBeenCalledWith(
-          "/api/v1/app/dashboard?smart_folder_id=11&subject=job",
-          expect.objectContaining({ credentials: "same-origin" })
-        )
+        expectDashboardFetch(fetchSpy, "/api/v1/app/dashboard?smart_folder_id=11&subject=job", expect.objectContaining({ credentials: "same-origin" }))
       })
     } finally {
       script.remove()
@@ -4476,7 +4362,7 @@ describe("App", () => {
       if (path === "/api/v1/app/chats") {
         return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
-      if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job")) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -4540,7 +4426,7 @@ describe("App", () => {
       if (path === "/api/v1/app/chats") {
         return Promise.resolve(new Response(JSON.stringify({ chats: [], repositories: [] }), { status: 200, headers: { "Content-Type": "application/json" } }))
       }
-      if (path === "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job") {
+      if (dashboardPathMatches(path, "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job")) {
         return Promise.resolve(
           new Response(
             JSON.stringify(
@@ -4875,10 +4761,7 @@ describe("App", () => {
         )
       })
       await waitFor(() => {
-        expect(fetchSpy).toHaveBeenCalledWith(
-          "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job",
-          expect.objectContaining({ credentials: "same-origin" })
-        )
+        expectDashboardFetch(fetchSpy, "/api/v1/app/dashboard?view=list&smart_folder_id=7&subject=job", expect.objectContaining({ credentials: "same-origin" }))
       })
     } finally {
       script.remove()
@@ -4936,7 +4819,8 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "Repair aqueduct" })).toHaveAttribute("href", "/app-shell/jobs/42")
     expect(screen.getByRole("link", { name: "PR #34" })).toHaveAttribute("href", "https://github.com/acme/widgets/pull/34")
     expect(screen.queryByText(/Showing/)).not.toBeInTheDocument()
-    expect(fetchSpy).toHaveBeenCalledWith(
+    expectDashboardFetch(
+      fetchSpy,
       "/api/v1/app/dashboard?view=kanban&subject=job",
       expect.objectContaining({
         credentials: "same-origin",
@@ -4986,24 +4870,17 @@ describe("App", () => {
       paths: { job_path: `/jobs/${index + 1}`, source_path: `/jobs/${index + 1}/source` }
     }))
 
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "job",
-            view: "kanban",
-            total: 25,
-            lanes: [
-              { key: "queued", title: "Queued", count: 0, items: [] },
-              { key: "running", title: "Running", count: 25, items: runningJobs },
-              { key: "succeeded", title: "Succeeded", count: 0, items: [] }
-            ],
-            kanban_limit: 100
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "job",
+      view: "kanban",
+      total: 25,
+      lanes: [
+        { key: "queued", title: "Queued", count: 0, items: [] },
+        { key: "running", title: "Running", count: 25, items: runningJobs },
+        { key: "succeeded", title: "Succeeded", count: 0, items: [] }
+      ],
+      kanban_limit: 100
+    }))
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -5024,37 +4901,30 @@ describe("App", () => {
   })
 
   it("shows a needs attention badge on stuck Epic kanban cards", async () => {
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "epic",
-            view: "kanban",
-            preferences: {
-              sort: { column: "updated_at", direction: "desc" },
-              visible_columns: ["epic", "state", "repository", "updated"],
-              kanban_lanes: ["in_progress"],
-              raw: {}
-            },
-            controls: {
-              ...dashboardPayload().controls,
-              sort_columns: ["title", "state", "repository", "updated_at"],
-              kanban_lanes: [{ key: "in_progress", title: "In progress" }]
-            },
-            lanes: [
-              {
-                key: "in_progress",
-                title: "In progress",
-                count: 1,
-                items: [dashboardEpicItem({ state: "in_progress", stuck: true, landed_jobs_count: 0 })]
-              }
-            ],
-            kanban_limit: 100
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "epic",
+      view: "kanban",
+      preferences: {
+        sort: { column: "updated_at", direction: "desc" },
+        visible_columns: ["epic", "state", "repository", "updated"],
+        kanban_lanes: ["in_progress"],
+        raw: {}
+      },
+      controls: {
+        ...dashboardPayload().controls,
+        sort_columns: ["title", "state", "repository", "updated_at"],
+        kanban_lanes: [{ key: "in_progress", title: "In progress" }]
+      },
+      lanes: [
+        {
+          key: "in_progress",
+          title: "In progress",
+          count: 1,
+          items: [dashboardEpicItem({ state: "in_progress", stuck: true, landed_jobs_count: 0 })]
+        }
+      ],
+      kanban_limit: 100
+    }))
     const clipboardWrite = mockClipboardWrite()
 
     render(
@@ -5075,37 +4945,30 @@ describe("App", () => {
   })
 
   it("hides the needs attention badge on non-stuck Epic kanban cards", async () => {
-    vi.spyOn(window, "fetch").mockResolvedValue(
-      new Response(
-        JSON.stringify(
-          dashboardPayload({
-            subject: "epic",
-            view: "kanban",
-            preferences: {
-              sort: { column: "updated_at", direction: "desc" },
-              visible_columns: ["epic", "state", "repository", "updated"],
-              kanban_lanes: ["in_progress"],
-              raw: {}
-            },
-            controls: {
-              ...dashboardPayload().controls,
-              sort_columns: ["title", "state", "repository", "updated_at"],
-              kanban_lanes: [{ key: "in_progress", title: "In progress" }]
-            },
-            lanes: [
-              {
-                key: "in_progress",
-                title: "In progress",
-                count: 1,
-                items: [dashboardEpicItem({ state: "in_progress", stuck: false, landed_jobs_count: 0 })]
-              }
-            ],
-            kanban_limit: 100
-          })
-        ),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
-    )
+    mockDashboardFetch(dashboardPayload({
+      subject: "epic",
+      view: "kanban",
+      preferences: {
+        sort: { column: "updated_at", direction: "desc" },
+        visible_columns: ["epic", "state", "repository", "updated"],
+        kanban_lanes: ["in_progress"],
+        raw: {}
+      },
+      controls: {
+        ...dashboardPayload().controls,
+        sort_columns: ["title", "state", "repository", "updated_at"],
+        kanban_lanes: [{ key: "in_progress", title: "In progress" }]
+      },
+      lanes: [
+        {
+          key: "in_progress",
+          title: "In progress",
+          count: 1,
+          items: [dashboardEpicItem({ state: "in_progress", stuck: false, landed_jobs_count: 0 })]
+        }
+      ],
+      kanban_limit: 100
+    }))
 
     render(
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -14990,6 +14853,76 @@ function dashboardPayload(overrides: Record<string, unknown> = {}) {
     ...payload,
     ...overrides
   }
+}
+
+function dashboardPathMatches(input: unknown, expectedPath: string) {
+  const actual = new URL(String(input), "http://example.test")
+  const expected = new URL(expectedPath, "http://example.test")
+  actual.searchParams.delete("section")
+
+  return actual.pathname === expected.pathname && actual.searchParams.toString() === expected.searchParams.toString()
+}
+
+function dashboardPathStartsWith(input: unknown, expectedPrefix: string) {
+  const actual = new URL(String(input), "http://example.test")
+  actual.searchParams.delete("section")
+
+  return `${actual.pathname}${actual.search}`.startsWith(expectedPrefix)
+}
+
+function expectDashboardFetch(
+  fetchSpy: { mock: { calls: Array<[unknown, unknown?]> } },
+  expectedPath: string,
+  expectedOptions?: unknown
+) {
+  const matchingCall = fetchSpy.mock.calls.find(([input]) => dashboardPathMatches(input, expectedPath))
+  expect(matchingCall).toBeTruthy()
+  if (expectedOptions) expect(matchingCall?.[1]).toEqual(expectedOptions)
+}
+
+function dashboardSectionPayload(payload: ReturnType<typeof dashboardPayload>, input: unknown) {
+  const url = new URL(String(input), "http://example.test")
+  const section = url.searchParams.get("section")
+
+  if (section === "chrome") {
+    const {
+      total: _total,
+      total_pages: _totalPages,
+      items: _items,
+      lanes: _lanes,
+      kanban_limit: _kanbanLimit,
+      ...chrome
+    } = payload
+
+    return chrome
+  }
+
+  if (section === "rows") {
+    const {
+      subject,
+      view,
+      page,
+      per_page,
+      total,
+      total_pages,
+      landing_queue,
+      items,
+      lanes,
+      kanban_limit
+    } = payload
+
+    return { subject, view, page, per_page, total, total_pages, landing_queue, items, lanes, kanban_limit }
+  }
+
+  return payload
+}
+
+function dashboardResponse(payload: ReturnType<typeof dashboardPayload>, input: unknown) {
+  return jsonResponse(dashboardSectionPayload(payload, input))
+}
+
+function mockDashboardFetch(payload: ReturnType<typeof dashboardPayload>) {
+  return vi.spyOn(window, "fetch").mockImplementation((input) => Promise.resolve(dashboardResponse(payload, input)))
 }
 
 function decodeFilterQueryParam(q: string) {

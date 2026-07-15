@@ -6,7 +6,6 @@ import { useT } from "../hooks/useT"
 import { useBackendOutage } from "../hooks/useBackendUpdate"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { ApiError } from "../api/client"
-import { dashboardApiSearch } from "../api/dashboard"
 import { CopyableSlug } from "../components/CopyableSlug"
 import { SlugHoverCard } from "../components/SlugHoverCard"
 import { DashboardSmartFolderNav } from "../components/DashboardSmartFolderNav"
@@ -17,7 +16,7 @@ import { StatusPill, TonePill } from "../components/StatusPill"
 import { FilterBar } from "../components/FilterBar"
 import { workflowSlug } from "../lib/slugs"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
-import { bulkDashboardEpics, bulkDashboardJobs, fetchDashboard, recordDashboardFilterUsage, updateDashboardEpicState, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLandingQueueEntry, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardEpics, bulkDashboardJobs, dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, mergeDashboardPayload, recordDashboardFilterUsage, updateDashboardEpicState, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLandingQueueEntry, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 import type { LandingQueueBlockerJob } from "../api/jobs"
 
 const KANBAN_CARDS_PER_PAGE = 20
@@ -25,17 +24,29 @@ const KANBAN_CARDS_PER_PAGE = 20
 export function DashboardRoute() {
   const location = useLocation()
   const search = dashboardApiSearch(location.pathname, location.search)
-  const dashboard = useQuery({
-    queryKey: ["dashboard", search],
-    queryFn: ({ signal }) => fetchDashboard(search, { signal }),
+  const dashboardChrome = useQuery({
+    queryKey: ["dashboard", "chrome", search],
+    queryFn: ({ signal }) => fetchDashboardChrome(search, { signal }),
     placeholderData: (previousData) => previousData
   })
+  const dashboardRows = useQuery({
+    queryKey: ["dashboard", "rows", search],
+    queryFn: ({ signal }) => fetchDashboardRows(search, { signal }),
+    placeholderData: (previousData) => previousData
+  })
+  const payload = useMemo(() => {
+    if (!dashboardChrome.data || !dashboardRows.data) return null
+
+    return mergeDashboardPayload(dashboardChrome.data, dashboardRows.data)
+  }, [dashboardChrome.data, dashboardRows.data])
 
   const { t } = useT("dashboard")
-  if (dashboard.isPending) return <main aria-label={t("title")} className="p-6 text-sm text-gray-600 dark:text-gray-300">{t("loading")}</main>
-  if (dashboard.isError) return <DashboardError error={dashboard.error} />
+  if (!payload && (dashboardChrome.isPending || dashboardRows.isPending)) return <main aria-label={t("title")} className="p-6 text-sm text-gray-600 dark:text-gray-300">{t("loading")}</main>
+  if (dashboardChrome.isError) return <DashboardError error={dashboardChrome.error} />
+  if (dashboardRows.isError) return <DashboardError error={dashboardRows.error} />
+  if (!payload) return <main aria-label={t("title")} className="p-6 text-sm text-gray-600 dark:text-gray-300">{t("loading")}</main>
 
-  return <DashboardView pathname={location.pathname} search={location.search} payload={dashboard.data} />
+  return <DashboardView pathname={location.pathname} search={location.search} payload={payload} />
 }
 
 function DashboardView({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {

@@ -316,6 +316,16 @@ export type DashboardPayload = {
   }
 }
 
+export type DashboardChromePayload = Omit<DashboardPayload, "total" | "total_pages" | "items" | "lanes" | "kanban_limit"> & {
+  total?: number
+  total_pages?: number
+  items?: DashboardItem[]
+  lanes?: DashboardLane[]
+  kanban_limit?: number | null
+}
+
+export type DashboardRowsPayload = Pick<DashboardPayload, "subject" | "view" | "page" | "per_page" | "total" | "total_pages" | "landing_queue" | "items" | "lanes" | "kanban_limit">
+
 export type DashboardPreferencesInput = {
   subject: DashboardSubject
   active_smart_folder_id?: number | null
@@ -400,11 +410,49 @@ export function fetchDashboard(search = "", options: { signal?: AbortSignal } = 
   return getJson<DashboardPayload>(`/api/v1/app/dashboard${search}`, options)
 }
 
+export function fetchDashboardChrome(search = "", options: { signal?: AbortSignal } = {}) {
+  return getJson<DashboardChromePayload>(`/api/v1/app/dashboard${dashboardSectionSearch(search, "chrome")}`, options)
+}
+
+export function fetchDashboardRows(search = "", options: { signal?: AbortSignal } = {}) {
+  return getJson<DashboardRowsPayload>(`/api/v1/app/dashboard${dashboardSectionSearch(search, "rows")}`, options)
+}
+
+export function mergeDashboardPayload(chrome: DashboardChromePayload, rows: DashboardRowsPayload): DashboardPayload {
+  return {
+    ...chrome,
+    ...rows,
+    counts: chrome.counts,
+    controls: chrome.controls,
+    ownership_scope: chrome.ownership_scope,
+    preferences: chrome.preferences,
+    ownership: chrome.ownership,
+    filter: chrome.filter,
+    landing_queue: {
+      ...chrome.landing_queue,
+      ...rows.landing_queue
+    },
+    broken_repositories: chrome.broken_repositories,
+    health_blocked_repositories: chrome.health_blocked_repositories,
+    smart_folders: chrome.smart_folders,
+    active_smart_folder_id: chrome.active_smart_folder_id,
+    setup: chrome.setup,
+    paths: chrome.paths
+  }
+}
+
 export function dashboardApiSearch(pathname: string, search: string) {
   const params = new URLSearchParams(search)
   const subject = dashboardSubjectFromPath(pathname)
   if (subject) params.set("subject", subject)
 
+  const next = params.toString()
+  return next ? `?${next}` : ""
+}
+
+function dashboardSectionSearch(search: string, section: "chrome" | "rows") {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search)
+  params.set("section", section)
   const next = params.toString()
   return next ? `?${next}` : ""
 }

@@ -12,7 +12,9 @@ import { NoticeToast } from "./NoticeToast"
 
 const dashboardFilterOverrideKeys = ["q", "state", "repository_id", "kind", "trigger_kind", "job_id", "attention", "tag_ids", "pr", "age"]
 
-export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: DashboardPayload; prefix: string; search: string }) {
+type DashboardSmartFolderPayload = Pick<DashboardPayload, "active_smart_folder_id" | "broken_repositories" | "filter" | "health_blocked_repositories" | "landing_queue" | "smart_folders" | "subject" | "view">
+
+export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: DashboardSmartFolderPayload; prefix: string; search: string }) {
   const { t } = useT("nav")
   const queryClient = useQueryClient()
   const navigate = useNavigate()

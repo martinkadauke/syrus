@@ -7,7 +7,7 @@ import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-d
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { cancelCodingCheckout, createEmptyChat, deleteChat, fetchChat, fetchChats, fetchMoreChatsForGroup, fetchNewChat, hideChat, markChatRead, markChatUnread, renameChat, updateChatPinned, type ChatGroupRecord, type ChatNavRecord, type ChatPayload, type ChatsIndexPayload } from "../api/chats"
 import { ApiError, patchJson } from "../api/client"
-import { dashboardApiSearch, fetchDashboard, type DashboardPayload, type DashboardSubject } from "../api/dashboard"
+import { dashboardApiSearch, fetchDashboardChrome, type DashboardChromePayload, type DashboardSubject } from "../api/dashboard"
 import { fetchTerminalSessions } from "../api/terminal"
 import { BugReportButton } from "../components/BugReportButton"
 import { BuildBadge } from "../components/BuildBadge"
@@ -612,10 +612,10 @@ function SidebarDashboardNav({ expanded, onCloseDrawer, prefix, showSubjects }: 
   const location = useLocation()
   const isDashboard = location.pathname.includes("/dashboard")
   const search = dashboardApiSearch(location.pathname, location.search)
-  const [renderedPayload, setRenderedPayload] = useState<DashboardPayload | null>(null)
+  const [renderedPayload, setRenderedPayload] = useState<DashboardChromePayload | null>(null)
   const dashboard = useQuery({
-    queryKey: ["dashboard", search],
-    queryFn: ({ signal }) => fetchDashboard(search, { signal }),
+    queryKey: ["dashboard", "chrome", search],
+    queryFn: ({ signal }) => fetchDashboardChrome(search, { signal }),
     enabled: isDashboard,
     placeholderData: (previousData) => previousData
   })
@@ -645,7 +645,7 @@ function SidebarDashboardNav({ expanded, onCloseDrawer, prefix, showSubjects }: 
   )
 }
 
-function SidebarDashboardSubjects({ onCloseDrawer, payload, prefix }: { onCloseDrawer: () => void; payload: DashboardPayload; prefix: string }) {
+function SidebarDashboardSubjects({ onCloseDrawer, payload, prefix }: { onCloseDrawer: () => void; payload: DashboardChromePayload; prefix: string }) {
   const { t } = useTranslation(["epics", "jobs", "common"])
   const subjects: Array<{ key: DashboardSubject; label: string; path: string }> = [
     { key: "epic", label: t("epics:title"), path: "/dashboard/epics" },
