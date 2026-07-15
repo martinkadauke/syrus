@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_15_175715) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_15_201012) do
 
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
@@ -641,6 +641,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_175715) do
     t.string "issue_title"
     t.string "kind", default: "issue", null: false
     t.text "landing_failure_reason"
+    t.string "landing_queue_blocked_reason"
+    t.json "landing_queue_blocker_job_ids"
+    t.datetime "landing_queue_cached_at"
+    t.json "landing_queue_dependency_edges"
+    t.string "landing_queue_entry_key"
+    t.integer "landing_queue_entry_position"
+    t.integer "landing_queue_position"
+    t.json "landing_queue_waiting_job_ids"
     t.string "last_ci_handled_sha"
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
@@ -692,6 +700,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_175715) do
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
     t.index ["grace_period_expires_at"], name: "index_jobs_on_grace_period_expires_at"
     t.index ["input_source_id"], name: "index_jobs_on_input_source_id"
+    t.index ["landing_queue_entry_key"], name: "index_jobs_on_landing_queue_entry_key"
     t.index ["linked_chat_id"], name: "index_jobs_on_linked_chat_id"
     t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
@@ -704,6 +713,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_175715) do
     t.index ["slug"], name: "index_jobs_on_slug", unique: true
     t.index ["stack_base"], name: "index_jobs_on_stack_base"
     t.index ["state", "approved_at", "id"], name: "index_jobs_on_state_and_approved_at_and_id"
+    t.index ["state", "landing_queue_entry_position", "id"], name: "index_jobs_on_state_and_landing_queue_entry_position_and_id"
+    t.index ["state", "landing_queue_position", "id"], name: "index_jobs_on_state_and_landing_queue_position_and_id"
     t.index ["target_repository_id"], name: "index_jobs_on_target_repository_id"
     t.index ["triaging_reason"], name: "index_jobs_on_triaging_reason"
     t.index ["user_id"], name: "index_jobs_on_user_id"

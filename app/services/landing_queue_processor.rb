@@ -34,6 +34,10 @@ class LandingQueueProcessor
     new.landing_units(scope)
   end
 
+  def self.refresh_snapshot!(scope = Job.landing_queue)
+    new.refresh_snapshot!(scope)
+  end
+
   # Is this Job within the first `depth` of its repository's landing
   # queue order? Used by PollMergeStateJob to limit proactive rebases
   # to the Jobs about to land.
@@ -90,7 +94,8 @@ class LandingQueueProcessor
 
     dispatch_merge_trains!(occupied_repo_ids, landed_workflows) if AppSetting.merge_train_enabled?
 
-    entries(Job.approved.includes(:user, :repository, :epic, :parent_job, dependencies: [ :depends_on_job, :depends_on_epic ])).each do |entry|
+    queue_entries = refresh_snapshot!(Job.landing_queue)
+    queue_entries.each do |entry|
       next if occupied_repo_ids.include?(entry.job.repository_id)
       next unless entry.eligible?
 
@@ -100,6 +105,8 @@ class LandingQueueProcessor
       landed_workflows << workflow
       occupied_repo_ids << entry.job.repository_id
     end
+
+    refresh_snapshot!(Job.landing_queue) if landed_workflows.any?
 
     landed_workflows.first
   end
@@ -139,6 +146,12 @@ class LandingQueueProcessor
     end
   end
 
+  def refresh_snapshot!(scope = Job.landing_queue)
+    queue_entries = entries(scope)
+    persist_snapshot!(scope, queue_entries)
+    queue_entries
+  end
+
   def landing_units(scope = Job.all)
     chronological = queue_candidates(scope)
     next_position = 1
@@ -169,6 +182,54 @@ class LandingQueueProcessor
   end
 
   private
+
+  def persist_snapshot!(scope, queue_entries)
+    now = Time.current
+    cached_ids = []
+    eligible_position = 0
+
+    queue_entries.each do |entry|
+      cached_ids << entry.job_id
+      position = if entry.eligible?
+        eligible_position += 1
+      end
+
+      entry.job.update_columns(
+        landing_queue_position: position,
+        landing_queue_entry_position: entry.position,
+        landing_queue_blocked_reason: entry.blocked_reason,
+        landing_queue_entry_key: entry.landing_unit_key,
+        landing_queue_blocker_job_ids: entry.blocker_jobs.map(&:id),
+        landing_queue_waiting_job_ids: landing_queue_waiting_job_ids(entry),
+        landing_queue_dependency_edges: entry.dependency_edges,
+        landing_queue_cached_at: now
+      )
+    end
+
+    clear_stale_snapshot!(scope, cached_ids)
+  end
+
+  def landing_queue_waiting_job_ids(entry)
+    ids = entry.waiting_for_jobs.map(&:id)
+    ids << entry.waiting_for.id if entry.waiting_for.is_a?(Job)
+    ids.uniq
+  end
+
+  def clear_stale_snapshot!(scope, cached_ids)
+    clear_values = {
+      landing_queue_position: nil,
+      landing_queue_entry_position: nil,
+      landing_queue_blocked_reason: nil,
+      landing_queue_entry_key: nil,
+      landing_queue_blocker_job_ids: nil,
+      landing_queue_waiting_job_ids: nil,
+      landing_queue_dependency_edges: nil,
+      landing_queue_cached_at: nil
+    }
+
+    scope.where.not(id: cached_ids).where.not(landing_queue_cached_at: nil).update_all(clear_values)
+    Job.where.not(state: %w[ approved landing ]).where.not(landing_queue_cached_at: nil).update_all(clear_values)
+  end
 
   def ordered_queue(scope)
     chronological = queue_candidates(scope)

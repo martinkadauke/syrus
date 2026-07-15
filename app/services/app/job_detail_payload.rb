@@ -401,16 +401,38 @@ module App
     end
 
     def landing_queue_entry_json
-      entry = LandingQueueProcessor.entries(@user.jobs).find { |candidate| candidate.job_id == @job.id }
-      return unless entry
+      ensure_landing_queue_snapshot!
+      return if @job.landing_queue_cached_at.blank?
 
       {
-        position: entry.position,
-        blocked_reason: entry.blocked_reason,
-        waiting_for_jobs: entry.waiting_for_jobs.map { |job| landing_queue_waiting_job_json(job) },
-        blocker_jobs: entry.blocker_jobs.map { |job| landing_queue_blocker_job_json(job, entry) },
-        dependency_edges: entry.dependency_edges
+        position: @job.landing_queue_entry_position,
+        blocked_reason: @job.landing_queue_blocked_reason,
+        waiting_for_jobs: landing_queue_waiting_jobs.map { |job| landing_queue_waiting_job_json(job) },
+        blocker_jobs: landing_queue_blocker_jobs.map { |job| landing_queue_blocker_job_json(job, @job.landing_queue_entry_key) },
+        dependency_edges: Array(@job.landing_queue_dependency_edges)
       }
+    end
+
+    def ensure_landing_queue_snapshot!
+      return unless @job.approved? || @job.landing?
+      return if @job.landing_queue_cached_at.present?
+
+      LandingQueueProcessor.refresh_snapshot!(@user.jobs)
+      @job.reload
+    end
+
+    def landing_queue_waiting_jobs
+      ids = Array(@job.landing_queue_waiting_job_ids)
+      return [] if ids.empty?
+
+      Job.where(id: ids).index_by(&:id).values_at(*ids).compact
+    end
+
+    def landing_queue_blocker_jobs
+      ids = Array(@job.landing_queue_blocker_job_ids)
+      return [] if ids.empty?
+
+      Job.where(id: ids).includes(:epic).index_by(&:id).values_at(*ids).compact
     end
 
     def landing_queue_waiting_job_json(job)
@@ -422,7 +444,7 @@ module App
       }
     end
 
-    def landing_queue_blocker_job_json(job, entry)
+    def landing_queue_blocker_job_json(job, entry_key)
       json = {
         id: job.id,
         title: job.issue_title.presence || job.slug,
@@ -431,15 +453,15 @@ module App
         pr_number: job.pr_number || job.external_pr_number,
         pr_path: App::Presentation.job_pr_url(job) || App::Presentation.external_pr_url(job)
       }
-      if job.epic_id != landing_queue_entry_epic_id(entry)
+      if job.epic_id != landing_queue_entry_epic_id(entry_key)
         json[:epic_id] = job.epic_id
         json[:epic_title] = job.epic&.title
       end
       json
     end
 
-    def landing_queue_entry_epic_id(entry)
-      match = entry.landing_unit_key.to_s.match(/\Aepic:(\d+)\z/)
+    def landing_queue_entry_epic_id(entry_key)
+      match = entry_key.to_s.match(/\Aepic:(\d+)\z/)
       match ? match[1].to_i : nil
     end
 

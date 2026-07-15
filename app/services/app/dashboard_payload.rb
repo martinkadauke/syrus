@@ -467,10 +467,13 @@ module App
     end
 
     def jobs_result
+      ensure_landing_queue_snapshot! if landing_queue_visible?
       scope = filtered_jobs_scope
       total = scope.count
       scope = scope.with_latest_workflow_snapshot.preload(:repository, :user, :owner_user, :claimed_by_user, :tags, :workflows, :runs, chat_proposals: [ :chat_session, :messages ], epic: { chat_proposals: [ :chat_session, :messages ] })
-      items = sorted_jobs(scope).map { |job| job_json(job) }
+      jobs = sorted_jobs(scope).to_a
+      @current_jobs = jobs
+      items = jobs.map { |job| job_json(job) }
 
       { total: total, items: items }
     end
@@ -589,13 +592,13 @@ module App
     end
 
     def landing_queue_sorted_jobs(scope)
-      direction = sort_value(dashboard_sort(:job), "direction") == "asc" ? 1 : -1
-      positions = landing_queue_positions
-      sorted = scope.to_a.sort_by do |job|
-        position = positions[job.id]
-        position ? [ 0, position * direction, job.id * direction ] : [ 1, 0, job.id ]
-      end
-      sorted.slice((page - 1) * PER_PAGE, PER_PAGE) || []
+      direction = sort_value(dashboard_sort(:job), "direction") == "asc" ? :asc : :desc
+      sorted = scope.reorder(
+        Arel.sql("CASE WHEN jobs.landing_queue_position IS NULL THEN 1 ELSE 0 END ASC"),
+        Job.arel_table[:landing_queue_position].public_send(direction),
+        Job.arel_table[:id].public_send(direction)
+      )
+      paginate(sorted)
     end
 
     def default_sort(scope, subject_name, direction)
@@ -1080,7 +1083,7 @@ module App
     end
 
     def health_blocked_repositories_json
-      user.repositories.active.select { |repo| repo.main_health_broken? || repo.main_health_inconclusive? }.map do |repo|
+      @health_blocked_repositories_json ||= user.repositories.active.select { |repo| repo.main_health_broken? || repo.main_health_inconclusive? }.map do |repo|
         {
           id: repo.id,
           slug: repo.slug,
@@ -1097,75 +1100,64 @@ module App
       subject == "job" && active_smart_folder&.attention_preset == "landing_queue"
     end
 
+    def ensure_landing_queue_snapshot!
+      return if @landing_queue_snapshot_checked
+
+      @landing_queue_snapshot_checked = true
+      candidates = jobs_base_scope.where(state: %w[ approved landing ])
+      return unless candidates.where(landing_queue_cached_at: nil).exists?
+
+      LandingQueueProcessor.refresh_snapshot!(jobs_base_scope)
+    end
+
     def landing_queue_position_for(job)
-      landing_queue_positions[job.id] if landing_queue_visible?
+      job.landing_queue_position if landing_queue_visible?
     end
 
     def landing_queue_blocked_reason_for(job)
-      landing_queue_blocked_reasons[job.id] if landing_queue_visible?
+      job.landing_queue_blocked_reason if landing_queue_visible?
     end
 
     def landing_queue_entry_key_for(job)
-      landing_queue_entry_keys[job.id] if landing_queue_visible?
-    end
-
-    def landing_queue_job_entries
-      return [] unless landing_queue_visible?
-
-      @landing_queue_job_entries ||= LandingQueueProcessor.entries(jobs_base_scope)
-    end
-
-    def landing_queue_positions
-      return {} unless landing_queue_visible?
-
-      @landing_queue_positions ||= begin
-        position = 0
-        landing_queue_job_entries.each_with_object({}) do |entry, positions|
-          next unless entry.eligible?
-
-          position += 1
-          positions[entry.job_id] = position
-        end
-      end
-    end
-
-    def landing_queue_blocked_reasons
-      return {} unless landing_queue_visible?
-
-      @landing_queue_blocked_reasons ||= landing_queue_job_entries.each_with_object({}) do |entry, reasons|
-        next if entry.eligible?
-
-        reasons[entry.job_id] = entry.blocked_reason
-      end
-    end
-
-    def landing_queue_entry_keys
-      return {} unless landing_queue_visible?
-
-      @landing_queue_entry_keys ||= landing_queue_entries.each_with_object({}) do |entry, keys|
-        entry.jobs.each { |job| keys[job.id] = entry.key }
+      if landing_queue_visible?
+        job.landing_queue_entry_key.presence || "job:#{job.id}"
       end
     end
 
     def landing_queue_entries
       return [] unless landing_queue_visible?
 
-      @landing_queue_entries ||= LandingQueueProcessor.landing_units(jobs_base_scope)
+      @landing_queue_entries ||= current_landing_queue_jobs.group_by { |job| job.landing_queue_entry_key.presence || "job:#{job.id}" }
     end
 
     def landing_queue_entries_json
-      landing_queue_entries.map do |entry|
+      blocker_jobs_by_id = landing_queue_blocker_jobs_by_id
+
+      landing_queue_entries.map do |key, jobs|
+        blocker_ids = jobs.flat_map { |job| Array(job.landing_queue_blocker_job_ids) }.uniq
         {
-          key: entry.key,
-          position: entry.position,
-          job_ids: entry.job_ids,
-          blocker_jobs: entry.blocker_jobs.map { |job| landing_queue_blocker_job_json(job, entry) },
-          dependency_edges: entry.dependency_edges
+          key: key,
+          position: jobs.filter_map(&:landing_queue_entry_position).min,
+          job_ids: jobs.map(&:id),
+          blocker_jobs: blocker_ids.filter_map { |id| blocker_jobs_by_id[id] }.map { |job| landing_queue_blocker_job_json(job, key) },
+          dependency_edges: jobs.flat_map { |job| Array(job.landing_queue_dependency_edges) }.uniq
         }
       end
     end
 
-    def landing_queue_blocker_job_json(job, entry)
+    def current_landing_queue_jobs
+      current_result if @current_jobs.nil?
+      @current_jobs || []
+    end
+
+    def landing_queue_blocker_jobs_by_id
+      ids = current_landing_queue_jobs.flat_map { |job| Array(job.landing_queue_blocker_job_ids) }.uniq
+      return {} if ids.empty?
+
+      Job.where(id: ids).includes(:epic).index_by(&:id)
+    end
+
+    def landing_queue_blocker_job_json(job, entry_key)
       json = {
         id: job.id,
         title: job.issue_title.presence || job.slug,
@@ -1174,15 +1166,15 @@ module App
         pr_number: job.pr_number || job.external_pr_number,
         pr_path: App::Presentation.job_pr_url(job) || App::Presentation.external_pr_url(job)
       }
-      if job.epic_id != landing_queue_entry_epic_id(entry)
+      if job.epic_id != landing_queue_entry_epic_id(entry_key)
         json[:epic_id] = job.epic_id
         json[:epic_title] = job.epic&.title
       end
       json
     end
 
-    def landing_queue_entry_epic_id(entry)
-      match = entry.key.match(/\Aepic:(\d+)\z/)
+    def landing_queue_entry_epic_id(entry_key)
+      match = entry_key.to_s.match(/\Aepic:(\d+)\z/)
       match ? match[1].to_i : nil
     end
 
