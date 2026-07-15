@@ -323,6 +323,8 @@ export type JobRun = {
   output_tokens: number | null
   agent_diff_present: boolean
   agent_diff_bytes: number
+  step_agent_diff_present: boolean
+  step_agent_diff_bytes: number
   job_log_count: number
   rate_limited: boolean
   failure_classification?: RunFailureClassification | null
@@ -506,6 +508,7 @@ export type JobRunArtifactsPayload = {
   run_id: number
   agent_diff: string | null
   agent_diff_bytes: number
+  step_agent_diff: string | null
   logs_count: number
   logs: Array<{
     id: number
