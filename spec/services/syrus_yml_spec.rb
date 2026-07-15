@@ -198,16 +198,16 @@ RSpec.describe SyrusYml do
   end
 
   it "clamps timeout_minutes above the hard ceiling with a warning" do
-    expect(Rails.logger).to receive(:warn).with(/timeout_minutes 45 exceeds 30; clamping/)
+    expect(Rails.logger).to receive(:warn).with(/timeout_minutes 90 exceeds 60; clamping/)
 
     config = parse(<<~YAML)
       grade:
         - name: tests
           run: bin/rspec
-          timeout_minutes: 45
+          timeout_minutes: 90
     YAML
 
-    expect(config.grade.steps.first.timeout_minutes).to eq(30)
+    expect(config.grade.steps.first.timeout_minutes).to eq(60)
   end
 
   it "clamps max_iterations below the lower bound with a warning" do

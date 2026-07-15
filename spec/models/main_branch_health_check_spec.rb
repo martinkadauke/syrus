@@ -155,6 +155,12 @@ RSpec.describe MainBranchHealthCheck do
       expect(described_class.conclusive_grader_result_exists?(repository: repository, sha: "abc")).to be(false)
     end
 
+    it "returns false for an inconclusive grader result" do
+      described_class.record_grader_workflow(repository: repository, sha: "abc", grader_health: "inconclusive")
+
+      expect(described_class.conclusive_grader_result_exists?(repository: repository, sha: "abc")).to be(false)
+    end
+
     it "does not match another SHA" do
       described_class.record_grader_workflow(repository: repository, sha: "abc", grader_health: "healthy")
 

@@ -144,6 +144,7 @@ module App
         feedback_policy: repository.feedback_policy,
         credential_mode: repository.credential_mode,
         main_health: repository.main_health,
+        landing_paused: repository.landing_paused?,
         repository_path: repository_path(repository)
       }
     end

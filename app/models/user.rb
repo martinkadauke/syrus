@@ -117,6 +117,7 @@ class User < ApplicationRecord
     "epic_completed" => false,
     "upstream_pr_closed" => true,
     "main_broken" => true,
+    "main_inconclusive" => true,
     "main_recovered" => true
   }.freeze
   DASHBOARD_VIEWS = %w[list kanban].freeze

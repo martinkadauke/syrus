@@ -656,11 +656,12 @@ function NeedsTriageJobs({ payload, prefix, queryKey, onNotice }: { payload: Rep
   )
 }
 
-type HealthTone = "green" | "red" | "gray"
+type HealthTone = "green" | "red" | "gray" | "amber"
 
 function healthTone(health: string): HealthTone {
   if (health === "healthy") return "green"
   if (health === "broken") return "red"
+  if (health === "inconclusive") return "amber"
   return "gray"
 }
 
@@ -691,7 +692,7 @@ function MainBranchHealthSection({
       onNotice(updated.message || null)
     }
   })
-  const canResume = repository.main_branch_health_enabled && repository.landing_paused && repository.main_health === "broken"
+  const canResume = repository.main_branch_health_enabled && repository.landing_paused && repository.main_health !== "healthy"
 
   function confirmResume() {
     if (!window.confirm(t("repository.resume_landing_confirm"))) return
@@ -762,6 +763,7 @@ function HealthBadge({ label, health }: { label: string; health: string }) {
 function healthLabel(health: string, t: (key: string) => string) {
   if (health === "healthy") return t("repository.health_healthy")
   if (health === "broken") return t("repository.health_broken")
+  if (health === "inconclusive") return t("repository.health_inconclusive")
   if (health === "not_configured") return t("repository.health_not_configured")
   return t("repository.health_unknown")
 }

@@ -7,8 +7,10 @@ module Workflows
   # Chain: prepare → grader_fanout → <per-grader steps> → grader_collect
   #
   # The chain has no repair loop: actual grader failures mark main as broken.
-  # Infrastructure interruptions (for example a worker killed during deploy)
-  # leave health unknown and enqueue a replacement check for the same SHA.
+  # Timeouts mark the grader signal inconclusive so operators can inspect or
+  # tune the timeout without spawning a speculative repair job. Infrastructure
+  # interruptions (for example a worker killed during deploy) leave health
+  # unknown and enqueue a replacement check for the same SHA.
   # after_success / after_fail update repository.grader_health and call
   # MainHealthChangedService when the health signal transitions.
   # The anchor Job is closed by the hook in both cases; it is excluded from
@@ -26,11 +28,14 @@ module Workflows
 
     def self.after_fail(workflow)
       failed_steps = failed_required_grader_steps(workflow)
-      interrupted_steps, actual_failures = failed_steps.partition { |step| infrastructure_interrupted_grader?(step) }
+      interrupted_steps, remaining_failures = failed_steps.partition { |step| infrastructure_interrupted_grader?(step) }
+      inconclusive_steps, actual_failures = remaining_failures.partition { |step| inconclusive_grader?(step) }
       failed_names = failed_required_grader_names(actual_failures)
 
       if failed_names.any?
         update_grader_health!(workflow, "broken", failed_names)
+      elsif inconclusive_steps.any?
+        update_grader_health!(workflow, "inconclusive", failed_required_grader_names(inconclusive_steps))
       elsif interrupted_steps.any?
         if conclusive_grader_result_exists?(workflow)
           Rails.logger.info(
@@ -96,6 +101,13 @@ module Workflows
 
       latest_failed_run.agent_outcome == "worker_died" ||
         latest_failed_run.run_failure_classification&.classification == "worker_died"
+    end
+
+    private_class_method def self.inconclusive_grader?(step)
+      details = step.details || {}
+      return true if details["timed_out"]
+
+      !details.key?("timed_out") && details["exit_code"].to_i == Steps::Grader::TIMEOUT_EXIT_CODE
     end
 
     private_class_method def self.record_interrupted_grader_check!(workflow, interrupted_steps)

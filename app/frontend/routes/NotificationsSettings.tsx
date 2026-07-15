@@ -17,7 +17,8 @@ const notificationPreferenceLabels: Array<{ kind: NotificationPreferenceKind; la
   { kind: "job_implemented", label: "Notify me when a PR is ready for review" },
   { kind: "pr_comment_addressed", label: "Notify me when Syrus addresses my PR comments" },
   { kind: "pr_merged", label: "Notify me when a job is merged" },
-  { kind: "epic_completed", label: "Notify me when an epic completes" }
+  { kind: "epic_completed", label: "Notify me when an epic completes" },
+  { kind: "main_inconclusive", label: "Notify me when main branch health needs review" }
 ]
 
 const desktopNotificationPreferenceLabels: Array<{ kind: NotificationPreferenceKind; label: string; description: string }> = [

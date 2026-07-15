@@ -136,6 +136,49 @@ RSpec.describe Workflows::MainGrader do
       expect(check.grader_failed_names).to eq([ "rspec" ])
     end
 
+    it "marks timed-out required graders inconclusive instead of broken" do
+      repository.update!(grader_health: "unknown", ci_health: "not_configured")
+      create_failed_required_grader!(
+        workflow,
+        name: "coverage",
+        details: {
+          "exit_code" => Steps::Grader::TIMEOUT_EXIT_CODE,
+          "timed_out" => true
+        }
+      )
+
+      expect(MainHealthChangedService).to receive(:on_health_change!).with(kind_of(Repository))
+
+      expect {
+        described_class.after_fail(workflow)
+      }.not_to have_enqueued_job(MainGraderWorkflowJob)
+
+      expect(repository.reload.grader_health).to eq("inconclusive")
+      expect(repository.main_health).to eq("inconclusive")
+
+      check = MainBranchHealthCheck.last
+      expect(check.grader_health).to eq("inconclusive")
+      expect(check.grader_failed_names).to eq([ "coverage" ])
+    end
+
+    it "does not treat an explicit 124 exit as inconclusive when timeout metadata is false" do
+      repository.update!(grader_health: "unknown", ci_health: "not_configured")
+      create_failed_required_grader!(
+        workflow,
+        name: "tests",
+        details: {
+          "exit_code" => Steps::Grader::TIMEOUT_EXIT_CODE,
+          "timed_out" => false
+        }
+      )
+
+      expect(MainHealthChangedService).to receive(:on_health_change!).with(kind_of(Repository))
+
+      described_class.after_fail(workflow)
+
+      expect(repository.reload.grader_health).to eq("broken")
+    end
+
     it "does not record another unknown result or retry when the SHA already has a conclusive grader result" do
       repository.update!(ci_health: "not_configured", grader_health: "healthy")
       MainBranchHealthCheck.record_grader_workflow(repository: repository, sha: sha, grader_health: "healthy")
@@ -177,7 +220,7 @@ RSpec.describe Workflows::MainGrader do
     end
   end
 
-  def create_failed_required_grader!(workflow, name: "rspec")
+  def create_failed_required_grader!(workflow, name: "rspec", details: {})
     workflow.steps.create!(
       kind: "grader",
       position: 1,
@@ -186,7 +229,7 @@ RSpec.describe Workflows::MainGrader do
         "name" => name,
         "required" => true,
         "exit_code" => 1
-      }
+      }.merge(details)
     )
   end
 

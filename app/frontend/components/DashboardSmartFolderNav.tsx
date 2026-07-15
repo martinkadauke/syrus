@@ -216,8 +216,8 @@ export function DashboardSmartFolderNav({ payload, prefix, search }: { payload: 
           >
             {payload.landing_queue.paused ? t("smart_folder.resume_landing") : t("smart_folder.pause_landing")}
           </button>
-          {payload.landing_queue.paused && (payload.broken_repositories?.length ?? 0) > 0 ? (
-            <p className="text-xs text-red-700 dark:text-red-300">{t("smart_folder.landing_paused_broken_main")}</p>
+          {payload.landing_queue.paused && ((payload.health_blocked_repositories ?? payload.broken_repositories)?.length ?? 0) > 0 ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">{t("smart_folder.landing_paused_main_health")}</p>
           ) : null}
           <NoticeToast message={landingPause.isSuccess ? landingPause.data.message : null} onDismiss={() => landingPause.reset()} />
           {landingPause.isError ? <p className="text-xs text-red-700 dark:text-red-300" role="alert">{errorMessage(landingPause.error, t("smart_folder.unable_to_update_landing"))}</p> : null}

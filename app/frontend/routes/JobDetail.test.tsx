@@ -560,7 +560,8 @@ function jobPayload(overrides: Partial<JobDetailPayload> = {}): JobDetailPayload
       review_policy: "self",
       feedback_policy: "confirm",
       repository_path: "/repositories/2",
-      main_health: "unknown"
+      main_health: "unknown",
+      landing_paused: false
     },
     epic: null,
     origin_chat: null,

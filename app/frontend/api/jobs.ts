@@ -9,6 +9,7 @@ export type JobRepository = {
   review_policy: "self" | "two_person" | "final_say"
   feedback_policy: "auto" | "confirm"
   main_health: string
+  landing_paused: boolean
   repository_path: string
 }
 

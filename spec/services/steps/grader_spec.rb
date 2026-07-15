@@ -81,4 +81,24 @@ RSpec.describe Steps::Grader do
     log_entries = run.reload.job_logs.where(kind: "grade_log").order(:sequence).pluck(:chunk)
     expect(log_entries.map(&:strip).join).to include("no newline at end")
   end
+
+  it "records timed-out grader runs explicitly" do
+    fake_result = ProcessRunner::Result.new(
+      exit_status: nil, timed_out: true, stopped: false,
+      silent_timed_out: false, operator_killed: false,
+      aliveness_failed: false, duration_s: 60.0, spawned_process_id: nil
+    )
+
+    allow(ProcessRunner).to receive(:new) do |**kwargs|
+      kwargs[:on_output_chunk]&.call("still running")
+      instance_double(ProcessRunner, run: fake_result)
+    end
+
+    expect { handler.call }.to raise_error(Steps::Base::StepFailed, /grader tests failed/)
+
+    details = step.reload.details
+    expect(details["timed_out"]).to be true
+    expect(details["exit_code"]).to eq(Steps::Grader::TIMEOUT_EXIT_CODE)
+    expect(@ws_path.join(details["log_path"]).read).to include("[timed out after 1 minutes]")
+  end
 end

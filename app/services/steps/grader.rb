@@ -33,6 +33,7 @@ module Steps
 
       started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
       exit_code = nil
+      timed_out = false
 
       line_buffer = +""
 
@@ -55,9 +56,10 @@ module Steps
           end
         ).run
 
-        exit_code = result.timed_out ? TIMEOUT_EXIT_CODE : result.exit_status
+        timed_out = result.timed_out
+        exit_code = timed_out ? TIMEOUT_EXIT_CODE : result.exit_status
 
-        if result.timed_out
+        if timed_out
           file.write("\n[timed out after #{timeout_minutes} minutes]\n")
           log("[grader:#{name}] timed out after #{timeout_minutes} minutes")
         end
@@ -76,6 +78,7 @@ module Steps
       step.update!(details: definition.merge(
         "exit_code" => exit_code,
         "duration_s" => duration_s.round(1),
+        "timed_out" => timed_out,
         "log_path" => log_path.to_s,
         "log_bytes" => absolute_log_path.size,
         "output" => output_excerpt

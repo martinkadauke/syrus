@@ -69,7 +69,8 @@
     "pause_landing": "Descensum pausa",
     "unable_to_rename": "Scrinium renominare non potuit.",
     "unable_to_delete": "Scrinium delere non potuit.",
-    "landing_paused_broken_main": "Opera suspensa — ramus principalis fractus est."
+    "landing_paused_broken_main": "Opera suspensa — ramus principalis fractus est.",
+    "landing_paused_main_health": "Opera suspensa — sanitas receptaculi recognoscenda est."
   },
   "filters_layout": {
     "folders_and_filters": "Scrinia et colandra",

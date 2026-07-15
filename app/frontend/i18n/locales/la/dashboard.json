@@ -128,6 +128,7 @@
     "cleaned_up_at": "Purgatum"
   },
   "broken_main_banner": "Ramus principalis fractus est — officia expectantia tenentur.",
+  "main_health_inconclusive_banner": "Sanitas rami principalis incerta est — officia expectantia recognoscenda tenentur.",
   "broken_main_view_details": "Vide details",
   "broken_main_dismiss": "Dimitte"
 }

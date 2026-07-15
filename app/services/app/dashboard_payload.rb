@@ -106,7 +106,8 @@ module App
           ownership: ownership_json,
           filter: current_filter.to_h,
           landing_queue: landing_queue_json,
-          broken_repositories: broken_repositories_json,
+          broken_repositories: health_blocked_repositories_json,
+          health_blocked_repositories: health_blocked_repositories_json,
           smart_folders: smart_folders_json,
           active_smart_folder_id: active_smart_folder&.id,
           items: current_result.fetch(:items),
@@ -1078,8 +1079,8 @@ module App
       json
     end
 
-    def broken_repositories_json
-      user.repositories.active.select(&:main_health_broken?).map do |repo|
+    def health_blocked_repositories_json
+      user.repositories.active.select { |repo| repo.main_health_broken? || repo.main_health_inconclusive? }.map do |repo|
         {
           id: repo.id,
           slug: repo.slug,

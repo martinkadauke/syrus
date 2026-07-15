@@ -34,6 +34,9 @@ class MainHealthChangedService
       stamp_active_workflows!
       spawn_fix_job! if @repository.main_branch_repair_enabled?
       emit_notification!
+    elsif @repository.main_health_inconclusive?
+      pause_landing!
+      emit_inconclusive_notification!
     elsif @repository.main_health == "healthy"
       self.class.recovered!(@repository)
     end
@@ -198,6 +201,10 @@ class MainHealthChangedService
       return [ "- Grader check was interrupted while running: #{names.join(', ')}. This is not a conclusive grader failure." ]
     end
 
+    if check.grader_health == "inconclusive" && names.any?
+      return [ "- Grader check was inconclusive: #{names.join(', ')} timed out or did not produce a conclusive result." ]
+    end
+
     []
   end
 
@@ -216,6 +223,20 @@ class MainHealthChangedService
       user: user,
       kind: "main_broken",
       body: body
+    )
+  end
+
+  def emit_inconclusive_notification!
+    user = @repository.user
+    return unless user
+
+    sha = @repository.last_health_checked_sha.presence || "unknown"
+    sha_short = sha.length > 8 ? sha[0, 8] : sha
+
+    NotificationService.create_for(
+      user: user,
+      kind: "main_inconclusive",
+      body: "Main branch health is inconclusive on #{@repository.slug}: graders need operator review at #{sha_short}."
     )
   end
 

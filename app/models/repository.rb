@@ -5,7 +5,7 @@ class Repository < ApplicationRecord
   REVIEW_POLICIES = %w[ self two_person final_say ].freeze
   FEEDBACK_POLICIES = %w[ auto confirm ].freeze
   CI_HEALTH_STATES = %w[ unknown healthy broken not_configured ].freeze
-  GRADER_HEALTH_STATES = %w[ unknown healthy broken ].freeze
+  GRADER_HEALTH_STATES = %w[ unknown healthy broken inconclusive ].freeze
 
   attribute :polling_enabled, :boolean, default: true
   attribute :prepare_enabled, :boolean, default: true
@@ -82,11 +82,17 @@ class Repository < ApplicationRecord
     return "unknown" unless main_branch_health_enabled?
     return "broken" if ci_health_broken? || grader_health_broken?
     return "healthy" if grader_health_healthy? && (ci_health_healthy? || ci_health_not_configured?)
+    return "inconclusive" if grader_health_inconclusive?
+
     "unknown"
   end
 
   def main_health_broken?
     main_health == "broken"
+  end
+
+  def main_health_inconclusive?
+    main_health == "inconclusive"
   end
 
   def main_health_unknown?

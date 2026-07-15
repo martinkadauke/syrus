@@ -42,6 +42,14 @@ RSpec.describe Repository, "#main_health" do
     expect(repo.main_health).to eq("broken")
   end
 
+  it "is inconclusive when graders need operator review" do
+    repo.update!(ci_health: "not_configured", grader_health: "inconclusive")
+
+    expect(repo.main_health).to eq("inconclusive")
+    expect(repo).to be_main_health_inconclusive
+    expect(repo).not_to be_main_health_broken
+  end
+
   it "is unknown when main branch health checking is disabled" do
     repo.update!(main_branch_health_enabled: false, ci_health: "broken", grader_health: "broken")
 
@@ -62,6 +70,18 @@ RSpec.describe Repository, "#main_health" do
 
     it "returns false when main_health is unknown" do
       expect(repo).not_to be_main_health_broken
+    end
+  end
+
+  describe "#main_health_inconclusive?" do
+    it "returns true when grader health is inconclusive" do
+      repo.update!(ci_health: "not_configured", grader_health: "inconclusive")
+      expect(repo).to be_main_health_inconclusive
+    end
+
+    it "returns false when main_health is broken" do
+      repo.update!(ci_health: "broken", grader_health: "inconclusive")
+      expect(repo).not_to be_main_health_inconclusive
     end
   end
 

@@ -11,7 +11,7 @@ export type DashboardRepository = {
   repository_path: string
 }
 
-export type DashboardBrokenRepository = {
+export type DashboardHealthBlockedRepository = {
   id: number
   slug: string
   main_health: string
@@ -290,7 +290,8 @@ export type DashboardPayload = {
     toggle_path: string
     entries?: DashboardLandingQueueEntry[]
   }
-  broken_repositories?: DashboardBrokenRepository[]
+  broken_repositories?: DashboardHealthBlockedRepository[]
+  health_blocked_repositories?: DashboardHealthBlockedRepository[]
   ownership: {
     scope: string
     owner_id: number | null

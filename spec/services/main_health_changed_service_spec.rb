@@ -293,6 +293,40 @@ RSpec.describe MainHealthChangedService do
         described_class.on_health_change!(repository)
       end
     end
+
+    context "when main_health is inconclusive" do
+      before { repository.update!(ci_health: "not_configured", grader_health: "inconclusive") }
+
+      it "pauses landing without spawning an auto-fix Job" do
+        expect {
+          described_class.on_health_change!(repository)
+        }.to change { repository.reload.landing_paused }.from(false).to(true)
+
+        expect(repository.jobs.where(kind: "direct")).to be_empty
+      end
+
+      it "emits a main_inconclusive notification" do
+        repository.update!(last_health_checked_sha: "abc123def456")
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.to change { Notification.count }.by(1)
+
+        notification = Notification.last
+        expect(notification).to have_attributes(user: user, kind: "main_inconclusive")
+        expect(notification.body).to include(repository.slug, "abc123de", "inconclusive")
+      end
+
+      it "does not stamp active workflows as main_broken" do
+        job = Factories.job(repository: repository)
+        workflow = job.latest_workflow
+        workflow.update_columns(state: "running")
+
+        described_class.on_health_change!(repository)
+
+        expect(workflow.reload.artifact("main_broken")).to be_nil
+      end
+    end
   end
 
   describe ".recovered!" do
