@@ -5,8 +5,12 @@ RSpec.describe SyrusMcp::ReportMainConcernTool do
 
   let(:run) { Factories.job.initial_run }
   let(:repository) { run.job.repository }
+  let(:sha) { "abc123" }
 
-  before { AppSetting.current.update!(main_concern_report_threshold: 2) }
+  before do
+    AppSetting.current.update!(main_concern_report_threshold: 2)
+    repository.update!(last_health_checked_sha: sha)
+  end
 
   def call(reason: "Tests in files I did not touch are failing", failing_tests: nil)
     described_class.call(reason: reason, failing_tests: failing_tests, server_context: { run: run })
@@ -26,6 +30,7 @@ RSpec.describe SyrusMcp::ReportMainConcernTool do
       job: run.job,
       workflow: run.workflow,
       run: run,
+      observed_sha: sha,
       reason: "Tests in files I did not touch are failing"
     )
   end
@@ -88,6 +93,7 @@ RSpec.describe SyrusMcp::ReportMainConcernTool do
       MainConcernReport.create!(
         repository: repository, job: other_job,
         workflow: other_run.workflow, run: other_run,
+        observed_sha: sha,
         reason: "also failing"
       )
 

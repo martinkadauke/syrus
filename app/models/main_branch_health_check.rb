@@ -1,5 +1,5 @@
 class MainBranchHealthCheck < ApplicationRecord
-  SOURCES = %w[ ci_poll grader_workflow ].freeze
+  SOURCES = %w[ ci_poll grader_workflow concern_quorum ].freeze
   CONCLUSIVE_GRADER_HEALTH = %w[ healthy broken ].freeze
   RETAIN_AFTER = 7.days
 
@@ -46,6 +46,19 @@ class MainBranchHealthCheck < ApplicationRecord
       ci_failed_checks: nil,
       grader_failed_names: grader_failed_names,
       source: "grader_workflow"
+    )
+  end
+
+  def self.record_concern_quorum(repository:, sha:, grader_failed_names: nil)
+    create!(
+      repository: repository,
+      sha: sha,
+      checked_at: Time.current,
+      ci_health: repository.ci_health,
+      grader_health: "broken",
+      ci_failed_checks: nil,
+      grader_failed_names: grader_failed_names,
+      source: "concern_quorum"
     )
   end
 end

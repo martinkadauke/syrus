@@ -10,7 +10,8 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_15_165748) do
+
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -483,6 +484,20 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
     t.index ["user_id"], name: "index_filter_usages_on_user_id"
   end
 
+  create_table "input_sources", force: :cascade do |t|
+    t.json "config", null: false
+    t.datetime "created_at", null: false
+    t.text "credentials"
+    t.boolean "polling_enabled", default: true, null: false
+    t.integer "repository_id", null: false
+    t.string "type", null: false
+    t.datetime "updated_at", null: false
+    t.integer "user_id", null: false
+    t.index ["repository_id", "type"], name: "index_input_sources_on_repository_and_type", unique: true
+    t.index ["repository_id"], name: "index_input_sources_on_repository_id"
+    t.index ["user_id"], name: "index_input_sources_on_user_id"
+  end
+
   create_table "installations", force: :cascade do |t|
     t.bigint "account_id", null: false
     t.string "account_login", null: false
@@ -611,12 +626,14 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
     t.integer "epic_id"
     t.string "epic_title"
     t.integer "external_pr_number"
+    t.string "external_ref"
     t.integer "failure_count", default: 0, null: false
     t.datetime "finished_at"
     t.integer "fork_review_pr_number"
     t.boolean "github_mergeable"
     t.string "github_mergeable_state"
     t.datetime "grace_period_expires_at"
+    t.integer "input_source_id"
     t.json "invalidation_evidence", null: false
     t.text "invalidation_reason"
     t.text "issue_body"
@@ -628,7 +645,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
     t.datetime "last_feedback_addressed_at"
     t.datetime "last_seen_comment_at"
     t.datetime "last_seen_fork_review_comment_at"
-    t.bigint "linked_chat_id"
+    t.integer "linked_chat_id"
     t.string "local_mergeability_base_sha"
     t.datetime "local_mergeability_checked_at"
     t.string "local_mergeability_head_sha"
@@ -674,6 +691,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
     t.index ["epic_id"], name: "index_jobs_on_epic_id"
     t.index ["external_pr_number"], name: "index_jobs_on_external_pr_number"
     t.index ["grace_period_expires_at"], name: "index_jobs_on_grace_period_expires_at"
+    t.index ["input_source_id"], name: "index_jobs_on_input_source_id"
     t.index ["linked_chat_id"], name: "index_jobs_on_linked_chat_id"
     t.index ["needs_attention"], name: "index_jobs_on_needs_attention"
     t.index ["owner_user_id"], name: "index_jobs_on_owner_user_id"
@@ -761,6 +779,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
     t.datetime "created_at", null: false
     t.json "failing_tests"
     t.integer "job_id", null: false
+    t.string "observed_sha"
     t.text "reason", null: false
     t.integer "repository_id", null: false
     t.integer "run_id", null: false
@@ -1293,6 +1312,8 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
   add_foreign_key "epics", "users", column: "owner_id"
   add_foreign_key "epics", "users", column: "owner_user_id"
   add_foreign_key "filter_usages", "users"
+  add_foreign_key "input_sources", "repositories"
+  add_foreign_key "input_sources", "users"
   add_foreign_key "installations", "users"
   add_foreign_key "invitations", "users", column: "invited_by_id"
   add_foreign_key "job_approvals", "jobs"
@@ -1307,6 +1328,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_024907) do
   add_foreign_key "job_pins", "users"
   add_foreign_key "jobs", "chat_sessions", column: "linked_chat_id"
   add_foreign_key "jobs", "epics"
+  add_foreign_key "jobs", "input_sources"
   add_foreign_key "jobs", "jobs", column: "parent_job_id"
   add_foreign_key "jobs", "repositories"
   add_foreign_key "jobs", "repositories", column: "pr_repository_id"

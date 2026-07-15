@@ -56,6 +56,13 @@ RSpec.describe MainBranchHealthCheck do
       )
       expect(check).to be_valid
     end
+
+    it "accepts concern_quorum as a valid source" do
+      check = MainBranchHealthCheck.new(
+        repository: repository, sha: "abc123", checked_at: Time.current, source: "concern_quorum"
+      )
+      expect(check).to be_valid
+    end
   end
 
   describe ".recent scope" do
@@ -148,6 +155,26 @@ RSpec.describe MainBranchHealthCheck do
         repository: repository, sha: "abc", grader_health: "healthy"
       )
       expect(check.workflow).to be_nil
+    end
+  end
+
+  describe ".record_concern_quorum" do
+    it "creates a broken grader record with the current ci_health" do
+      repository.update!(ci_health: "healthy")
+
+      check = MainBranchHealthCheck.record_concern_quorum(
+        repository: repository,
+        sha: "deadbeef",
+        grader_failed_names: [ "rspec", "react-tests" ]
+      )
+
+      expect(check).to be_persisted
+      expect(check.source).to eq("concern_quorum")
+      expect(check.sha).to eq("deadbeef")
+      expect(check.ci_health).to eq("healthy")
+      expect(check.grader_health).to eq("broken")
+      expect(check.grader_failed_names).to eq([ "rspec", "react-tests" ])
+      expect(check.ci_failed_checks).to be_nil
     end
   end
 

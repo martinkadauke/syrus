@@ -5,6 +5,7 @@ RSpec.describe MainConcernAggregator do
 
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user) }
+  let(:sha) { "abc123" }
 
   def create_report(repo: repository, **overrides)
     # Use job_record + bare Workflow/Run rows to avoid StepDispatcher's
@@ -24,11 +25,14 @@ RSpec.describe MainConcernAggregator do
       job: job,
       workflow: workflow,
       run: run,
+      observed_sha: repo.last_health_checked_sha,
       reason: "graders failing in files I did not touch"
     }.merge(overrides))
   end
 
   describe ".check!" do
+    before { repository.update!(last_health_checked_sha: sha) }
+
     context "when below threshold" do
       before { AppSetting.current.update!(main_concern_report_threshold: 2) }
 
@@ -68,6 +72,47 @@ RSpec.describe MainConcernAggregator do
         expect {
           described_class.check!(repository)
         }.to change { repository.reload.landing_paused }.to(true)
+      end
+
+      it "records an auditable concern-quorum health check" do
+        create_report(failing_tests: [ "rspec" ])
+        create_report(failing_tests: [ "react-tests", "rspec" ])
+
+        expect {
+          described_class.check!(repository)
+        }.to change { MainBranchHealthCheck.where(repository: repository, source: "concern_quorum").count }.by(1)
+
+        check = MainBranchHealthCheck.where(repository: repository, source: "concern_quorum").last
+        expect(check).to have_attributes(
+          sha: sha,
+          ci_health: repository.ci_health,
+          grader_health: "broken"
+        )
+        expect(check.grader_failed_names).to contain_exactly("rspec", "react-tests")
+      end
+
+      it "does not override a conclusive healthy grader result for the same SHA" do
+        repository.update!(ci_health: "healthy", grader_health: "healthy")
+        MainBranchHealthCheck.record_grader_workflow(
+          repository: repository,
+          sha: sha,
+          grader_health: "healthy"
+        )
+        2.times { create_report }
+
+        expect(MainHealthChangedService).not_to receive(:on_health_change!)
+        expect {
+          described_class.check!(repository)
+        }.not_to change { repository.reload.grader_health }
+      end
+
+      it "only counts reports observed against the current checked SHA" do
+        create_report(observed_sha: "old-sha")
+        create_report
+
+        expect {
+          described_class.check!(repository)
+        }.not_to change { repository.reload.grader_health }
       end
     end
 

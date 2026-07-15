@@ -50,6 +50,15 @@ RSpec.describe MainConcernReport do
       )
       expect(report.reload.failing_tests).to be_nil
     end
+
+    it "allows recording the observed main SHA" do
+      report = MainConcernReport.create!(
+        repository: repository, job: job, workflow: workflow, run: run,
+        reason: "unrelated failures",
+        observed_sha: "abc123"
+      )
+      expect(report.reload.observed_sha).to eq("abc123")
+    end
   end
 
   describe ".for_repository_since" do
@@ -79,6 +88,23 @@ RSpec.describe MainConcernReport do
         reason: "other repo failure"
       )
       expect(MainConcernReport.for_repository_since(repository, 1.hour.ago)).to be_empty
+    end
+  end
+
+  describe ".for_observed_sha" do
+    it "filters reports by the observed SHA" do
+      matching = MainConcernReport.create!(
+        repository: repository, job: job, workflow: workflow, run: run,
+        reason: "recent failure",
+        observed_sha: "abc123"
+      )
+      MainConcernReport.create!(
+        repository: repository, job: job, workflow: workflow, run: run,
+        reason: "old SHA failure",
+        observed_sha: "def456"
+      )
+
+      expect(MainConcernReport.for_observed_sha("abc123")).to contain_exactly(matching)
     end
   end
 end

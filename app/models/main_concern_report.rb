@@ -9,4 +9,8 @@ class MainConcernReport < ApplicationRecord
   scope :for_repository_since, ->(repository, since) {
     where(repository: repository).where("created_at >= ?", since)
   }
+
+  scope :for_observed_sha, ->(sha) {
+    where(observed_sha: sha)
+  }
 end

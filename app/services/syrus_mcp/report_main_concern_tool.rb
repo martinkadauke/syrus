@@ -45,6 +45,7 @@ module SyrusMcp
           job: run.job,
           workflow: run.workflow,
           run: run,
+          observed_sha: repository.last_health_checked_sha.presence,
           reason: normalized_reason,
           failing_tests: normalized_tests.presence
         )
