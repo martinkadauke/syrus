@@ -232,7 +232,9 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       trigger_label: "syrus",
       agent_provider: "codex",
       github_owner_id: 100,
-      github_repository_id: 200
+      github_repository_id: 200,
+      ci_health: "not_configured",
+      grader_health: "healthy"
     )
     repository.update!(landing_paused: true)
     failed = Factories.job(repository: repository, issue_number: 1, issue_title: "Fix forum")
