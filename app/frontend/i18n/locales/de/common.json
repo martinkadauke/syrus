@@ -7,7 +7,7 @@
   "loading": "Laden...",
   "show_more": "Mehr anzeigen",
   "show_less": "Weniger anzeigen",
-  "workflows": "Workflows",
+  "workflows": "Arbeitsabläufe",
   "onboarding": {
     "loading": "Setup-Status wird geladen...",
     "setup_label": "Ersteinrichtung",
@@ -15,7 +15,7 @@
     "complete_badge": "Abgeschlossen",
     "ready_heading": "Bereit für den Normalbetrieb",
     "ready_description": "Ihr erstes Epic ist gelandet — Syrus ist eingerichtet. Der Einrichtungs-Tab wird aus der Navigation verschwinden.",
-    "open_dashboard": "Dashboard öffnen"
+    "open_dashboard": "Übersicht öffnen"
   },
   "search": {
     "heading": "Suche",
@@ -40,25 +40,25 @@
     "unprocessable_description": "Der Server hat diese Eingabe in der vorliegenden Form als unzulässig befunden. Überprüfen Sie Ihre Eingabe und versuchen Sie es erneut. Falls Sie der Anwendungsbesitzer sind, prüfen Sie die Protokolle.",
     "bad_request_heading": "Der Server konnte die Anfrage nicht lesen.",
     "bad_request_description": "Diese Anfrage war fehlerhaft oder konnte nicht verarbeitet werden. Bitte prüfen Sie die Adresse und versuchen Sie es erneut.",
-    "return_to_dashboard": "Zurück zum Dashboard"
+    "return_to_dashboard": "Zurück zur Übersicht"
   },
   "bug_report": {
     "title": "Fehler melden",
     "close": "Schließen",
     "field_title": "Titel",
     "field_description": "Beschreibung",
-    "screenshot": "Screenshot",
-    "screenshot_failed": "Screenshot fehlgeschlagen. Sie können den Fehlerbericht auch ohne Screenshot erstellen.",
-    "full_page_failed": "Ganzseitiger Screenshot fehlgeschlagen. Der Viewport-Screenshot ist weiterhin verfügbar.",
-    "viewport": "Viewport",
+    "screenshot": "Bildschirmfoto",
+    "screenshot_failed": "Bildschirmfoto fehlgeschlagen. Sie können den Fehlerbericht auch ohne Bildschirmfoto erstellen.",
+    "full_page_failed": "Ganzseitiges Bildschirmfoto fehlgeschlagen. Das Bildschirmfoto des Ansichtsbereichs ist weiterhin verfügbar.",
+    "viewport": "Ansichtsbereich",
     "capturing": "Aufnehmen...",
     "full_page": "Ganze Seite",
-    "no_screenshot": "Kein Screenshot",
+    "no_screenshot": "Kein Bildschirmfoto",
     "none": "Keiner",
     "unavailable": "Nicht verfügbar",
     "error": "Fehlerbericht konnte nicht in die Warteschlange gestellt werden.",
     "cancel": "Abbrechen",
-    "submit": "Job erstellen",
+    "submit": "Aufgabe erstellen",
     "submitting": "Wird erstellt...",
     "queued": "Fehlerbericht in die Warteschlange gestellt."
   },
@@ -88,7 +88,7 @@
   },
   "epic_start": {
     "in_progress": "In Bearbeitung",
-    "notice": "Epic auf In Bearbeitung verschoben — die Jobs werden gestartet.",
+    "notice": "Epic auf In Bearbeitung verschoben — die Aufgaben werden gestartet.",
     "starting": "Wird gestartet…",
     "start": "Starten",
     "error": "Epic konnte nicht gestartet werden."

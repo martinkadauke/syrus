@@ -68,9 +68,9 @@ de:
       archived_first: "%{slug} ist archiviert — bitte zuerst de-archivieren."
       archived: "%{slug} archiviert."
       unarchived: "%{slug} de-archiviert. Polling wieder aktivieren, um die Aufnahme zu starten."
-      no_failed_jobs: "Keine fehlgeschlagenen Jobs zum Wiederholen."
+      no_failed_jobs: "Keine fehlgeschlagenen Aufgaben zum Wiederholen."
       developer_required: "Entwickler- oder Administrator-Zugriff erforderlich."
-      not_triage: "Job wartet nicht auf Triage-Freigabe."
+      not_triage: "Aufgabe wartet nicht auf Triage-Freigabe."
       polling: "Polling von %{slug} gestartet."
       released_triage: "%{slug} für Triage freigegeben."
       repository_landing_resumed: "Arbeit für %{slug} fortgesetzt."
@@ -79,8 +79,8 @@ de:
       circuit_open: "%{label} scheint beeinträchtigt zu sein; automatische Wiederholungen sind pausiert."
       circuit_open_until: "%{label} scheint beeinträchtigt zu sein bis %{until}; automatische Wiederholungen sind pausiert."
       retry_enqueued:
-        one: "Wiederholung für 1 fehlgeschlagenen Job mit %{provider} eingereiht."
-        other: "Wiederholung für %{count} fehlgeschlagene Jobs mit %{provider} eingereiht."
+        one: "Wiederholung für 1 fehlgeschlagene Aufgabe mit %{provider} eingereiht."
+        other: "Wiederholung für %{count} fehlgeschlagene Aufgaben mit %{provider} eingereiht."
       bulk_delegated:
         one: "1 Issue an Syrus delegiert."
         other: "%{count} Issues an Syrus delegiert."
@@ -93,8 +93,8 @@ de:
       no_sha_to_grade: "Noch kein Branch-SHA erfasst — bitte zuerst das Repository abfragen."
 
     job_pins:
-      pinned: "Job angeheftet."
-      unpinned: "Job losgelöst."
+      pinned: "Aufgabe angeheftet."
+      unpinned: "Aufgabe losgelöst."
 
     tags:
       created: "Tag erstellt."
@@ -121,11 +121,11 @@ de:
       unknown_state: "Unbekannter Epic-Zustand."
       transition_not_allowed: "Dieser Epic-Übergang ist nicht verfügbar."
       product_owner_forbidden: "Product Owner können Epics nicht über Backlog hinaus voranbringen."
-      started: "Epic gestartet — bereite Kind-Jobs werden gestartet."
-      created_and_started: "Epic erstellt und gestartet — Kind-Jobs starten, sobald sie hinzugefügt werden."
+      started: "Epic gestartet — bereite Kind-Aufgaben werden gestartet."
+      created_and_started: "Epic erstellt und gestartet — Kind-Aufgaben starten, sobald sie hinzugefügt werden."
       not_startable: "Epic kann aus dem Zustand %{state} nicht mit der Umsetzung beginnen."
       start_blocked_by_dependencies: "Epic kann noch nicht mit der Umsetzung beginnen — wartet auf Epic-Abhängigkeiten: %{names}."
-      start_children_unconfirmed: "Epic kann erst mit der Umsetzung beginnen, wenn seine Kind-Jobs bestätigt sind."
+      start_children_unconfirmed: "Epic kann erst mit der Umsetzung beginnen, wenn seine Kind-Aufgaben bestätigt sind."
       start_claimed_by_other: "Epic ist von einem anderen Benutzer beansprucht."
       access_forbidden: "Du hast keinen Zugriff auf das Ziel-Repository."
       owner_not_found: "Eigentümer-Benutzer nicht gefunden."
@@ -154,7 +154,7 @@ de:
       invalid_priority: "Priorität muss eine der folgenden sein: %{priorities}."
       epic_not_found: "Epic nicht in diesem Repository gefunden."
       owner_not_found: "Eigentümer-Benutzer nicht gefunden."
-      created: "Direkter Job erstellt."
+      created: "Direkte Aufgabe erstellt."
 
     admin_workflows:
       not_failed: "%{slug} hat den Zustand `%{state}`, nicht `failed`."

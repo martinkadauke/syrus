@@ -1,16 +1,14 @@
 {
   "title": "Epics",
-
   "detail_label": "Epic",
   "job_progress_label": "Epic-Aufgabenfortschritt",
   "loading": "Epic wird geladen...",
   "load_error": "Epic konnte nicht geladen werden.",
-  "form_loading": "Epicformular wird geladen...",
-  "form_load_error": "Epicformular konnte nicht geladen werden.",
+  "form_loading": "Epic-Formular wird geladen...",
+  "form_load_error": "Epic-Formular konnte nicht geladen werden.",
   "command_error": "Epic-Befehl fehlgeschlagen.",
   "dependency_error": "Abhängigkeiten konnten nicht aktualisiert werden.",
   "save_error": "Epic konnte nicht gespeichert werden.",
-
   "claim": "Beanspruchen",
   "unclaim": "Freigeben",
   "edit": "Bearbeiten",
@@ -18,10 +16,8 @@
   "add_button": "Hinzufügen",
   "add_job": "+ Aufgabe hinzufügen",
   "more_actions": "Weitere Aktionen",
-
   "description": "Beschreibung",
   "blocked": "Blockiert",
-
   "dependencies": "Abhängigkeiten",
   "depends_on": "Abhängig von",
   "depended_on_by": "Wird benötigt von",
@@ -31,7 +27,6 @@
   "no_matches": "Keine Treffer",
   "remove_dependency": "Abhängigkeit von {{title}} entfernen",
   "none": "Keine",
-
   "no_external_dependencies": "Keine externen Abhängigkeiten",
   "dependency_graph": "Abhängigkeitsgraph",
   "rendering_graph": "Abhängigkeitsgraph wird gerendert...",
@@ -40,7 +35,6 @@
   "epic_dep_other": "{{count}} Epic-Abhängigkeiten",
   "job_blocker_one": "{{count}} Aufgaben-Blocker",
   "job_blocker_other": "{{count}} Aufgaben-Blocker",
-
   "history": "Verlauf",
   "no_history": "Noch keine Titel- oder Beschreibungsänderungen.",
   "title_before": "Titel vorher",
@@ -48,11 +42,9 @@
   "description_before": "Beschreibung vorher",
   "description_after": "Beschreibung nachher",
   "empty_value": "(leer)",
-
   "jobs_section": "Aufgaben",
   "no_jobs": "Keine Aufgaben in diesem Epic.",
-
-  "details": "Details",
+  "details": "Einzelheiten",
   "owner": "Inhaber",
   "owner_label": "Inhaber {{email}}",
   "unclaimed": "Nicht beansprucht",
@@ -64,15 +56,12 @@
   "jobs_count_other": "{{count}} Aufgaben",
   "dep_one": "{{count}} Abhängigkeit",
   "dep_other": "{{count}} Abhängigkeiten",
-
   "needs_attention": "Aufmerksamkeit erforderlich",
   "needs_attention_title": "Alle Aufgaben geschlossen – Epic als erledigt markieren oder Folgeaufgabe erstellen.",
-
   "state_chip": {
     "merged": "Gelandet",
     "blocked_by_epic": "Blockiert"
   },
-
   "new_epic": "Neues Epic",
   "edit_epic": "Epic bearbeiten",
   "back_to_epic": "Zurück zum Epic",
@@ -87,6 +76,5 @@
   "start_implementing": "Umsetzung starten",
   "waiting_on_dependencies": "Wartet auf {{names}}",
   "starting": "Wird gestartet...",
-
   "preview_see_more": "Mehr anzeigen"
 }
