@@ -22,6 +22,7 @@ RSpec.describe PollMainBranchHealthJob do
 
     expect(repository.reload.ci_health).to eq("healthy")
     expect(repository.last_health_checked_sha).to eq(sha)
+    expect(repository.last_ci_evaluated_sha).to eq(sha)
   end
 
   it "sets ci_health to broken when any check fails" do
@@ -74,11 +75,68 @@ RSpec.describe PollMainBranchHealthJob do
   end
 
   it "skips the job early when SHA matches last checked, health is known, and SHA has been graded" do
-    repository.update!(last_health_checked_sha: sha, last_graded_sha: sha, ci_health: "healthy", grader_health: "healthy")
+    repository.update!(last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha, ci_health: "healthy", grader_health: "healthy")
     stub_sha(sha)
 
     expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
     described_class.perform_now(repository.id)
+  end
+
+  it "does not re-poll once CI is conclusively measured broken for the SHA" do
+    # A genuinely broken SHA (measured, so last_ci_evaluated_sha == sha) should
+    # not re-poll every tick — it waits for a replacement SHA. Guards against
+    # row spam / redundant API calls.
+    repository.update!(last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha, ci_health: "broken", grader_health: "healthy")
+    stub_sha(sha)
+
+    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
+    described_class.perform_now(repository.id)
+  end
+
+  it "re-evaluates a carried-forward broken CI signal once the new SHA's checks pass" do
+    # Regression: main advanced off a broken SHA, so ci_health was carried
+    # forward as "broken" and last_health_checked_sha advanced to `sha` while
+    # its checks were still pending. last_ci_evaluated_sha still points at the
+    # OLD sha, so a later poll must re-read the now-green checks and recover —
+    # rather than early-returning because main_health isn't "unknown".
+    repository.update!(
+      last_health_checked_sha: sha,
+      last_graded_sha: sha,
+      last_ci_evaluated_sha: "oldsha",
+      ci_health: "broken",
+      grader_health: "healthy"
+    )
+    stub_sha(sha)
+    stub_check_runs({ any?: true, pending?: false, any_failed?: false, all_passed?: true })
+
+    described_class.perform_now(repository.id)
+
+    repository.reload
+    expect(repository.ci_health).to eq("healthy")
+    expect(repository.last_ci_evaluated_sha).to eq(sha)
+    expect(repository.main_health).to eq("healthy")
+  end
+
+  it "keeps re-polling a carried-forward broken CI signal while checks stay pending" do
+    repository.update!(
+      last_health_checked_sha: sha,
+      last_graded_sha: sha,
+      last_ci_evaluated_sha: "oldsha",
+      ci_health: "broken",
+      grader_health: "healthy"
+    )
+    stub_sha(sha)
+
+    # The job must PROCEED to re-poll (not early-return); assert the call happens.
+    expect_any_instance_of(GithubClient).to receive(:check_runs_summary_for)
+      .and_return({ any?: true, pending?: true, any_failed?: false, all_passed?: false })
+    described_class.perform_now(repository.id)
+
+    repository.reload
+    # Still pending → stays broken, and last_ci_evaluated_sha is NOT advanced,
+    # so the next tick will re-poll again until CI is conclusive.
+    expect(repository.ci_health).to eq("broken")
+    expect(repository.last_ci_evaluated_sha).to eq("oldsha")
   end
 
   it "re-checks CI even when SHA matches if health is unknown" do
@@ -126,7 +184,7 @@ RSpec.describe PollMainBranchHealthJob do
   end
 
   it "does not call MainHealthChangedService when health was already broken" do
-    repository.update!(ci_health: "broken", last_health_checked_sha: sha, last_graded_sha: sha)
+    repository.update!(ci_health: "broken", last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha)
     stub_sha(sha)
 
     expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
@@ -173,7 +231,7 @@ RSpec.describe PollMainBranchHealthJob do
   end
 
   it "does not enqueue MainGraderWorkflowJob when the SHA has already been graded" do
-    repository.update!(last_health_checked_sha: sha, last_graded_sha: sha, ci_health: "healthy", grader_health: "healthy")
+    repository.update!(last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha, ci_health: "healthy", grader_health: "healthy")
     stub_sha(sha)
 
     expect {

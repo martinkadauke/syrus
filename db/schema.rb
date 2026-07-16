@@ -10,8 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_15_201012) do
-
+ActiveRecord::Schema[8.1].define(version: 2026_07_16_161312) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -879,6 +878,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_15_201012) do
     t.string "grader_health", default: "unknown", null: false
     t.integer "installation_id"
     t.boolean "landing_paused", default: false, null: false
+    t.string "last_ci_evaluated_sha"
     t.string "last_graded_sha"
     t.string "last_health_checked_sha"
     t.text "last_poll_error"

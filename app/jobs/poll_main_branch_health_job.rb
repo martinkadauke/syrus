@@ -42,8 +42,16 @@ class PollMainBranchHealthJob < ApplicationJob
     MainGraderWorkflowJob.perform_later(repository.id, sha) if grading_needed
 
     # Skip CI health check when SHA unchanged, health is already known, and
-    # grading is also up to date — nothing new to evaluate.
-    return if !sha_changed && !repository.main_health_unknown? && !grading_needed
+    # grading is also up to date — nothing new to evaluate. `ci_evaluated`
+    # guards against a stale carried-forward signal: when main advances off a
+    # broken SHA, `ci_health` is carried forward as "broken" (and
+    # `last_health_checked_sha` advances) BEFORE the new SHA's checks are read.
+    # `last_ci_evaluated_sha` only advances when CI is *conclusively* measured
+    # for a SHA, so until it matches we must keep re-polling — otherwise a
+    # carried-forward "broken" that has since turned green never gets corrected
+    # (the guard would early-return because main_health isn't "unknown").
+    ci_evaluated = repository.last_ci_evaluated_sha == sha
+    return if !sha_changed && !repository.main_health_unknown? && !grading_needed && ci_evaluated
 
 
     already_recorded_no_ci = repository.ci_health_not_configured? && repository.last_health_checked_sha == sha
@@ -53,7 +61,8 @@ class PollMainBranchHealthJob < ApplicationJob
     unless summary[:any?]
       repository.update_columns(
         ci_health: "not_configured",
-        last_health_checked_sha: sha
+        last_health_checked_sha: sha,
+        last_ci_evaluated_sha: sha
       )
       repository.reload
       unless already_recorded_no_ci
@@ -83,7 +92,8 @@ class PollMainBranchHealthJob < ApplicationJob
     if new_ci_health
       repository.update_columns(
         ci_health: new_ci_health,
-        last_health_checked_sha: sha
+        last_health_checked_sha: sha,
+        last_ci_evaluated_sha: sha
       )
       MainBranchHealthCheck.record_ci_poll(
         repository: repository,
