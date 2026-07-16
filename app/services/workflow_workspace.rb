@@ -138,11 +138,17 @@ class WorkflowWorkspace
   #
   # Restore semantics on retry: committed work survives, uncommitted
   # edits don't.
+  #
+  # Fresh-clone path sweeps all sibling workflows' workspaces before
+  # cloning. Per-Job SQ concurrency guarantees the siblings are terminal
+  # so no live workspace is touched. This caps disk at one workspace
+  # per Job — the largest contributor to PVC fill on wedged stacks.
   def setup
     if path.exist?
       ensure_exclude_entry
       ensure_clean_working_tree
     else
+      sweep_sibling_workspaces!
       clone_and_checkout
       ensure_exclude_entry
     end
@@ -154,6 +160,21 @@ class WorkflowWorkspace
   end
 
   private
+
+  # Delete every other terminal workflow's workspace on this Job before
+  # cloning a fresh one. Per-Job SQ concurrency ensures nothing else is
+  # running, so all siblings are guaranteed to be terminal. Stamping
+  # cleaned_up_at on each sibling lets retry_available? return false for
+  # them immediately, preventing stale "Retry from failed step" buttons.
+  def sweep_sibling_workspaces!
+    @job.workflows.where.not(id: @workflow.id).find_each do |sibling|
+      next unless sibling.terminal?
+      Rails.logger.info("[WorkflowWorkspace] eager sweep of sibling Workflow ##{sibling.id} for Job ##{@job.id}")
+      self.class.cleanup_for(sibling)
+    end
+  rescue StandardError => e
+    Rails.logger.warn("[WorkflowWorkspace] sweep_sibling_workspaces! failed for Job ##{@job.id}: #{e.class}: #{e.message}")
+  end
 
   def initial_branch_name
     if @job.cron?

@@ -469,6 +469,56 @@ RSpec.describe Workflow do
     end
   end
 
+  describe "#retry_available? and #reopen: latest-workflow guard" do
+    it "retry_available? is true for the only (latest) failed workflow" do
+      wf = described_class.create!(job: job, trigger_kind: "initial")
+      wf.update_columns(state: "failed", finished_at: Time.current)
+      expect(wf.retry_available?).to eq(true)
+    end
+
+    it "retry_available? is false for a non-latest failed workflow" do
+      old_wf = described_class.create!(job: job, trigger_kind: "initial")
+      new_wf = described_class.create!(job: job, trigger_kind: "retry")
+      old_wf.update_columns(state: "failed", finished_at: 5.minutes.ago)
+      new_wf.update_columns(state: "failed", finished_at: 1.minute.ago)
+
+      expect(old_wf.retry_available?).to eq(false)
+      expect(new_wf.retry_available?).to eq(true)
+    end
+
+    it "latest_for_job? returns true when this is the only workflow" do
+      wf = described_class.create!(job: job, trigger_kind: "initial")
+      expect(wf.latest_for_job?).to eq(true)
+    end
+
+    it "latest_for_job? returns false when a newer workflow exists" do
+      old_wf = described_class.create!(job: job, trigger_kind: "initial")
+      _new_wf = described_class.create!(job: job, trigger_kind: "retry")
+      old_wf.update_columns(state: "failed", finished_at: 5.minutes.ago)
+      expect(old_wf.latest_for_job?).to eq(false)
+    end
+
+    it "reopen is blocked for a non-latest workflow (guard prevents the transition)" do
+      old_wf = described_class.create!(job: job, trigger_kind: "initial")
+      new_wf = described_class.create!(job: job, trigger_kind: "retry")
+      old_wf.update_columns(state: "failed", finished_at: 5.minutes.ago)
+      new_wf.update_columns(state: "failed", finished_at: 1.minute.ago)
+
+      old_wf.reopen!
+      expect(old_wf.reload).to be_failed
+    end
+
+    it "reopen succeeds for the latest workflow" do
+      wf = described_class.create!(job: job, trigger_kind: "initial", state: "running", started_at: 1.minute.ago)
+      wf.fail!
+      wf.save!
+
+      wf.reopen!
+      wf.save!
+      expect(wf.reload).to be_running
+    end
+  end
+
   describe "artifacts" do
     let(:wf) { described_class.create!(job: job, trigger_kind: "initial") }
 

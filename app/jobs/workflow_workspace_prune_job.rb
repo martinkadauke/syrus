@@ -54,25 +54,48 @@ class WorkflowWorkspacePruneJob < ApplicationJob
       n += 1
     end
 
-    # Failed non-infrastructure: longer retention for the retry UI.
-    f_cutoff = RETAIN_AFTER_FAILURE.ago
+    # Failed non-infrastructure: two tiers based on whether this is the
+    # Job's latest workflow.
+    #
+    # Non-latest: the operator can no longer retry this workflow (reopen is
+    # blocked by latest_for_job?). The eager sweep in
+    # WorkflowWorkspace#setup should have cleaned these already; this is
+    # the backstop for cases where no successor workflow ever started (e.g.
+    # the Job was closed before a retry).
+    #
+    # Latest + job closed: no retry is coming. Short window, same as
+    # succeeded/cancelled.
+    #
+    # Latest + job open: operator may retry. Keep up to RETAIN_AFTER_FAILURE
+    # as a backstop.
     Workflow.where(state: "failed")
             .where.not(trigger_kind: Workflow::INFRASTRUCTURE_TRIGGER_KINDS)
             .where(cleaned_up_at: nil)
-            .where("finished_at IS NOT NULL AND finished_at < ?", f_cutoff)
+            .where("finished_at IS NOT NULL")
             .find_each do |wf|
-      WorkflowWorkspace.cleanup_for(wf)
-      n += 1
-
       job = wf.job
-      if job.closed? && job.branch_name.present? && job.branch_deleted_at.nil?
-        begin
-          deleted = GithubClient.for(repository: job.repository, user: job.user)
-                                .delete_branch(job.repository.slug, job.branch_name)
-          job.update_column(:branch_deleted_at, Time.current) if deleted
-        rescue => e
-          Rails.logger.warn("[WorkflowWorkspacePrune] failed to delete branch #{job.repository.slug}@#{job.branch_name}: #{e.class}: #{e.message}")
+      is_latest = job.workflows.maximum(:id) == wf.id
+
+      if !is_latest
+        WorkflowWorkspace.cleanup_for(wf)
+        n += 1
+      elsif job.closed?
+        next unless wf.finished_at < RETAIN_AFTER_SUCCESS_OR_CANCEL.ago
+        WorkflowWorkspace.cleanup_for(wf)
+        n += 1
+        if job.branch_name.present? && job.branch_deleted_at.nil?
+          begin
+            deleted = GithubClient.for(repository: job.repository, user: job.user)
+                                  .delete_branch(job.repository.slug, job.branch_name)
+            job.update_column(:branch_deleted_at, Time.current) if deleted
+          rescue => e
+            Rails.logger.warn("[WorkflowWorkspacePrune] failed to delete branch #{job.repository.slug}@#{job.branch_name}: #{e.class}: #{e.message}")
+          end
         end
+      else
+        next unless wf.finished_at < RETAIN_AFTER_FAILURE.ago
+        WorkflowWorkspace.cleanup_for(wf)
+        n += 1
       end
     end
 
@@ -108,6 +131,15 @@ class WorkflowWorkspacePruneJob < ApplicationJob
 
       retention = if wf.succeeded? || wf.cancelled? || wf.infrastructure_workflow?
         RETAIN_AFTER_SUCCESS_OR_CANCEL
+      elsif wf.failed?
+        job = wf.job
+        if job.workflows.maximum(:id) != wf.id
+          0.seconds
+        elsif job.closed?
+          RETAIN_AFTER_SUCCESS_OR_CANCEL
+        else
+          RETAIN_AFTER_FAILURE
+        end
       else
         RETAIN_AFTER_FAILURE
       end

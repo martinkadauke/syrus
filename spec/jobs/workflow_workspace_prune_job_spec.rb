@@ -109,6 +109,53 @@ RSpec.describe WorkflowWorkspacePruneJob do
     described_class.perform_now
   end
 
+  # ---- db_sweep: failed non-latest pruned immediately ----
+
+  it "db_sweep cleans a non-latest failed workflow immediately (regardless of finished_at)" do
+    job = Factories.job
+    older_wf = Workflow.create!(job: job, trigger_kind: "initial")
+    newer_wf = Workflow.create!(job: job, trigger_kind: "retry")
+    # finished_at just 5 minutes ago — well inside any retry window
+    older_wf.update_columns(state: "failed", finished_at: 5.minutes.ago)
+    newer_wf.update_columns(state: "failed", finished_at: 1.minute.ago)
+
+    # older_wf is non-latest (newer_wf has higher finished_at); must be swept immediately.
+    expect(WorkflowWorkspace).to receive(:cleanup_for).with(older_wf)
+    # newer_wf is latest, job is not closed, within 7-day window — must NOT be swept.
+    expect(WorkflowWorkspace).not_to receive(:cleanup_for).with(newer_wf)
+    described_class.perform_now
+  end
+
+  it "db_sweep cleans the latest failed workflow when the job is closed, past the short window" do
+    job = Factories.job
+    wf = Workflow.create!(job: job, trigger_kind: "initial")
+    wf.update_columns(state: "failed", finished_at: (described_class::RETAIN_AFTER_SUCCESS_OR_CANCEL + 1.minute).ago)
+    job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "pr_merged")
+
+    expect(WorkflowWorkspace).to receive(:cleanup_for).with(wf)
+    described_class.perform_now
+  end
+
+  it "db_sweep leaves the latest failed workflow alone when the job is closed but within the short window" do
+    job = Factories.job
+    wf = Workflow.create!(job: job, trigger_kind: "initial")
+    wf.update_columns(state: "failed", finished_at: 30.minutes.ago)
+    job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "pr_merged")
+
+    expect(WorkflowWorkspace).not_to receive(:cleanup_for).with(wf)
+    described_class.perform_now
+  end
+
+  it "db_sweep leaves the latest failed workflow when the job is open, within the 7-day window" do
+    job = Factories.job
+    wf = Workflow.create!(job: job, trigger_kind: "initial")
+    wf.update_columns(state: "failed", finished_at: (described_class::RETAIN_AFTER_SUCCESS_OR_CANCEL + 1.hour).ago)
+    # job is in "running" (open) state — the operator may still retry
+
+    expect(WorkflowWorkspace).not_to receive(:cleanup_for).with(wf)
+    described_class.perform_now
+  end
+
   # ---- db_sweep: failed infrastructure uses short retention -------
 
   it "db_sweep cleans a failed infrastructure workflow past RETAIN_AFTER_SUCCESS_OR_CANCEL" do
@@ -191,6 +238,40 @@ RSpec.describe WorkflowWorkspacePruneJob do
     described_class.perform_now
 
     expect(wf_path).to exist
+  end
+
+  it "filesystem_sweep removes a non-latest failed workflow dir immediately" do
+    allow(WorkflowWorkspace).to receive(:cleanup_for).and_call_original
+
+    job = Factories.job
+    older_wf = Workflow.create!(job: job, trigger_kind: "initial")
+    newer_wf = Workflow.create!(job: job, trigger_kind: "retry")
+    older_wf.update_columns(state: "failed", finished_at: 5.minutes.ago)
+    newer_wf.update_columns(state: "failed", finished_at: 1.minute.ago)
+
+    older_path = Pathname.new(data_root).join("workflows", older_wf.id.to_s)
+    FileUtils.mkdir_p(older_path.to_s)
+
+    described_class.perform_now
+
+    expect(older_path).not_to exist
+    expect(older_wf.reload.cleaned_up_at).to be_present
+  end
+
+  it "filesystem_sweep removes the latest failed workflow dir when the job is closed, past the short window" do
+    allow(WorkflowWorkspace).to receive(:cleanup_for).and_call_original
+
+    job = Factories.job
+    wf = Workflow.create!(job: job, trigger_kind: "initial")
+    wf.update_columns(state: "failed", finished_at: (described_class::RETAIN_AFTER_SUCCESS_OR_CANCEL + 1.minute).ago)
+    job.update_columns(state: "closed", finished_at: Time.current, closure_reason: "pr_merged")
+
+    wf_path = Pathname.new(data_root).join("workflows", wf.id.to_s)
+    FileUtils.mkdir_p(wf_path.to_s)
+
+    described_class.perform_now
+
+    expect(wf_path).not_to exist
   end
 
   it "filesystem_sweep is a no-op when the workflows/ dir does not exist" do
