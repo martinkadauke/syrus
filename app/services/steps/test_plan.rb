@@ -21,10 +21,17 @@ module Steps
 
       log("invoking agent for test_plan step (#{workflow.slug}, --resume from implement)")
 
-      run_agent(prompt: run.prompt, max_turns: TEST_PLAN_TURN_BUDGET)
+      run_agent(
+        prompt: run.prompt,
+        max_turns: TEST_PLAN_TURN_BUDGET,
+        required_mcp_tools: %w[submit_test_plan]
+      )
 
       workflow.reload
-      raise StepFailed, "agent didn't call submit_test_plan" if workflow.artifact("test_plan").blank?
+      if workflow.artifact("test_plan").blank?
+        capture_mcp_sidecar_stderr
+        raise StepFailed, "agent didn't call submit_test_plan"
+      end
     end
 
     private

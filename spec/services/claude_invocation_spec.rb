@@ -282,6 +282,61 @@ RSpec.describe ClaudeInvocation do
       )
     end
 
+    it "marks pending MCP sidecar init as a failure when a tool is required" do
+      invocation = described_class.new(
+        "/tmp",
+        prompt: "x",
+        oauth_token: "x",
+        required_mcp_tools: %w[submit_adversarial_review]
+      )
+      events = []
+      event = {
+        type: "system",
+        subtype: "init",
+        session_id: "abc-123-xyz",
+        mcp_servers: [
+          { "name" => "syrus-mcp-sidecar", "status" => "pending" }
+        ]
+      }.to_json
+
+      update = invocation.send(:process_event, event, ->(line, **kwargs) { events << [ line, kwargs ] })
+
+      expect(update).to eq(
+        session_id: "abc-123-xyz",
+        mcp_server_failed: true,
+        is_error: true,
+        outcome: "mcp_sidecar_failed",
+        final_text: nil
+      )
+      expect(events).to include(
+        [
+          "[mcp_required] syrus-mcp-sidecar=pending; required tools unavailable: submit_adversarial_review",
+          { kind: "system" }
+        ]
+      )
+    end
+
+    it "accepts connected MCP sidecar init when a tool is required" do
+      invocation = described_class.new(
+        "/tmp",
+        prompt: "x",
+        oauth_token: "x",
+        required_mcp_tools: %w[submit_summary]
+      )
+      event = {
+        type: "system",
+        subtype: "init",
+        session_id: "abc-123-xyz",
+        mcp_servers: [
+          { "name" => "syrus-mcp-sidecar", "status" => "connected" }
+        ]
+      }.to_json
+
+      update = invocation.send(:process_event, event, ->(_line, **_) { })
+
+      expect(update).to eq(session_id: "abc-123-xyz")
+    end
+
     it "marks failed MCP server init as an MCP sidecar failure" do
       events = []
       event = {

@@ -11,6 +11,7 @@ class ClaudeInvocation
                  file_paths: nil,
                  resume_session_id: nil,
                  disallowed_tools: nil,
+                 required_mcp_tools: nil,
                  env: nil,
                  stop_requested: -> { false },
                  process_started: ->(_process) { })
@@ -26,6 +27,7 @@ class ClaudeInvocation
     @file_paths = Array(file_paths).compact
     @resume_session_id = resume_session_id
     @disallowed_tools = Array(disallowed_tools).compact
+    @required_mcp_tools = Array(required_mcp_tools).compact_blank.map(&:to_s)
     @env = env || {}
     @stop_requested = stop_requested
     @process_started = process_started
@@ -245,6 +247,7 @@ class ClaudeInvocation
       # init carries the session_id we'll need to resume later. Other
       # system subtypes are noise.
       if event["subtype"] == "init"
+        servers = nil
         # Log MCP server registration state so failed runs (esp.
         # `--resume`d ones) can be diagnosed: status=pending or
         # missing-from-list = the tool won't be callable. Logged
@@ -260,7 +263,9 @@ class ClaudeInvocation
         end
         updates = {}
         updates[:session_id] = event["session_id"] if event["session_id"]
-        if servers&.any? { |server| server["status"] == "failed" }
+        if (required_update = required_mcp_tools_update(servers, log_sink))
+          updates.merge!(required_update)
+        elsif servers&.any? { |server| server["status"] == "failed" }
           updates.merge!(
             mcp_server_failed: true,
             is_error: true,
@@ -300,6 +305,25 @@ class ClaudeInvocation
 
   def api_error_event?(event)
     event["isApiErrorMessage"] == true || event["apiErrorStatus"].present? || event["error"].present?
+  end
+
+  def required_mcp_tools_update(servers, log_sink)
+    return if @required_mcp_tools.empty?
+
+    sidecar = servers&.find { |server| server["name"] == "syrus-mcp-sidecar" }
+    status = sidecar&.fetch("status", nil).presence || "missing"
+    return if status == "connected"
+
+    log_sink.call(
+      "[mcp_required] syrus-mcp-sidecar=#{status}; required tools unavailable: #{@required_mcp_tools.join(', ')}",
+      kind: "system"
+    )
+    {
+      mcp_server_failed: true,
+      is_error: true,
+      outcome: "mcp_sidecar_failed",
+      final_text: nil
+    }
   end
 
   def assistant_text_for(event)

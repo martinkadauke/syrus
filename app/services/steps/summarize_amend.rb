@@ -26,7 +26,11 @@ module Steps
       run.update!(prompt: Prompts::SummarizeAmend.new.to_s) if run.prompt.blank?
 
       log("invoking agent for summarize_amend step (#{workflow.slug}, --resume)")
-      run_agent(prompt: run.prompt, max_turns: SUMMARIZE_TURN_BUDGET)
+      run_agent(
+        prompt: run.prompt,
+        max_turns: SUMMARIZE_TURN_BUDGET,
+        required_mcp_tools: %w[submit_summary]
+      )
 
       promote_artifacts!
       rewrite_amend_commit_message!
@@ -47,7 +51,10 @@ module Steps
         run.reload
       end
       source = from || run
-      raise StepFailed, "agent didn't call submit_summary" if source.agent_pr_title.blank?
+      if source.agent_pr_title.blank?
+        capture_mcp_sidecar_stderr
+        raise StepFailed, "agent didn't call submit_summary"
+      end
 
       # Each round overwrites — the artifact represents the most
       # recent commit message / body for THIS workflow.

@@ -66,7 +66,7 @@ class AgentEnvironmentSnapshot
       "- Agent provider: #{run.agent_provider.presence || workflow&.agent_provider || job.agent_provider}",
       "- Workspace: #{workspace_path || '(not available)'}",
       "- Branch/base: #{branch_summary(job)}",
-      "- MCP/tools: run sidecar `syrus-mcp-sidecar` is configured with `submit_summary` and `submit_test_plan`; implement/respond turns normally do not need them, summarize/summarize_amend/test_plan turns do."
+      "- MCP/tools: #{mcp_tool_summary(step)}"
     ]
 
     lines.concat(admin_links(job, workflow, run))
@@ -108,6 +108,29 @@ class AgentEnvironmentSnapshot
     bits << "remote_head=#{run.head_sha}" if run.head_sha.present?
     bits << "pr_mergeable=#{job.pr_mergeable.inspect}" unless job.pr_mergeable.nil?
     bits.join(", ")
+  end
+
+  def mcp_tool_summary(step)
+    required_tools = required_mcp_tools_for(step)
+    if required_tools.any?
+      tool_list = required_tools.map { |tool| "`#{tool}`" }.join(", ")
+      "run sidecar `syrus-mcp-sidecar` must be connected; this step must call #{tool_list}."
+    else
+      "run sidecar `syrus-mcp-sidecar` is configured; this step has no required MCP submission tool."
+    end
+  end
+
+  def required_mcp_tools_for(step)
+    case step&.kind
+    when "summarize", "summarize_amend"
+      %w[submit_summary]
+    when "test_plan"
+      %w[submit_test_plan]
+    when "adversarial_review"
+      %w[submit_adversarial_review]
+    else
+      []
+    end
   end
 
   def admin_links(job, workflow, run)

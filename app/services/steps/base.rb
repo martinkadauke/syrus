@@ -136,13 +136,18 @@ module Steps
     # one is available. Streams transcript chunks into JobLog,
     # captures the new session transcript on success, raises StepFailed
     # on any of the non-success outcomes.
-    def run_agent(prompt:, max_turns: nil, resume_session_id: DEFAULT_AGENT_RESUME)
+    def run_agent(prompt:, max_turns: nil, resume_session_id: DEFAULT_AGENT_RESUME, required_mcp_tools: nil)
       prompt = AgentEnvironmentSnapshot.new(run: run, workspace_path: workspace.path).apply_to(prompt)
       prompt = JobAttachmentContext.new(job: job, workspace_path: workspace.path).apply_to(prompt)
       adapter = resume_session_id.equal?(DEFAULT_AGENT_RESUME) ? agent_adapter : agent_adapter_for(resume_session_id)
       sink, flush = buffered_log_sink
       begin
-        result = adapter.run(prompt: prompt, log_sink: sink, max_turns: max_turns)
+        result = adapter.run(
+          prompt: prompt,
+          log_sink: sink,
+          max_turns: max_turns,
+          required_mcp_tools: required_mcp_tools
+        )
       ensure
         flush.call
       end

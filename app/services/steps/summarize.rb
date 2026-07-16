@@ -30,7 +30,11 @@ module Steps
       log("invoking agent for summarize step (#{workflow.slug}, --resume from implement)")
 
       begin
-        run_agent(prompt: run.prompt, max_turns: SUMMARIZE_TURN_BUDGET)
+        run_agent(
+          prompt: run.prompt,
+          max_turns: SUMMARIZE_TURN_BUDGET,
+          required_mcp_tools: %w[submit_summary]
+        )
       rescue StepFailed => e
         raise unless prompt_too_long_failure?(e)
 
@@ -39,7 +43,8 @@ module Steps
         run_agent(
           prompt: fallback_prompt,
           max_turns: SUMMARIZE_TURN_BUDGET,
-          resume_session_id: nil
+          resume_session_id: nil,
+          required_mcp_tools: %w[submit_summary]
         )
       end
 
@@ -103,7 +108,10 @@ module Steps
         run.reload  # MCP sidecar writes here mid-run
       end
       source = from || run
-      raise StepFailed, "agent didn't call submit_summary" if source.agent_pr_title.blank?
+      if source.agent_pr_title.blank?
+        capture_mcp_sidecar_stderr
+        raise StepFailed, "agent didn't call submit_summary"
+      end
 
       workflow.set_artifact!("pr_title", utf8(source.agent_pr_title))
       workflow.set_artifact!("pr_body",  utf8(source.agent_pr_body)) if source.agent_pr_body.present?

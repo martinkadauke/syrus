@@ -36,9 +36,10 @@ RSpec.describe Steps::TestPlan do
   end
 
   it "sets the test-plan prompt, invokes the agent with a short turn budget, and verifies the artifact" do
-    expect(handler).to receive(:run_agent) do |prompt:, max_turns:|
+    expect(handler).to receive(:run_agent) do |prompt:, max_turns:, required_mcp_tools:|
       expect(prompt).to include("submit_test_plan")
       expect(max_turns).to eq(described_class::TEST_PLAN_TURN_BUDGET)
+      expect(required_mcp_tools).to eq(%w[submit_test_plan])
       workflow.set_artifact!("test_plan", { steps: [ "Run bin/rspec" ], notes: nil })
     end
 

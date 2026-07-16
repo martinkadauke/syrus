@@ -113,7 +113,8 @@ RSpec.describe Steps::Summarize do
     it "uses a larger turn budget for the MCP summary handoff" do
       expect(handler).to receive(:run_agent).with(
         prompt: kind_of(String),
-        max_turns: described_class::SUMMARIZE_TURN_BUDGET
+        max_turns: described_class::SUMMARIZE_TURN_BUDGET,
+        required_mcp_tools: %w[submit_summary]
       ) do
         run.update!(
           agent_pr_title: "Add greeting helper",

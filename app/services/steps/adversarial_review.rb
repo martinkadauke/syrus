@@ -7,11 +7,12 @@ module Steps
       before_count = review_iterations.size
       log("invoking agent for adversarial_review step (#{workflow.slug}, step ##{step.id}, iteration #{step.iteration})")
 
-      run_agent(prompt: run.prompt)
+      run_agent(prompt: run.prompt, required_mcp_tools: %w[submit_adversarial_review])
       discard_reviewer_workspace_changes
 
       workflow.reload
       if review_iterations.size <= before_count
+        capture_mcp_sidecar_stderr
         raise StepFailed, "agent didn't call submit_adversarial_review"
       end
     end
