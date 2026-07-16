@@ -102,14 +102,21 @@ class WorkflowWorkspace
   # remove the directory (e.g. permissions), we log a warning and
   # leave `cleaned_up_at` nil so WorkflowWorkspacePruneJob retries
   # rather than treating a still-present dir as already gone.
-  # A workspace lives on the local disk of the worker pod that ran the
-  # workflow. Only that pod (or a pod that never recorded a hostname — legacy /
-  # single-worker / dev) may clean it. Cleaning it elsewhere is wrong under
-  # local-disk multi-worker: the local rm_rf is a no-op but would still stamp
-  # cleaned_up_at, hiding the real workspace that's still on the owning pod.
+  # A workspace lives on the local disk of the worker that ran the workflow.
+  # Skip cleaning it here ONLY when another *live* worker pod owns it — under
+  # local-disk multi-worker its disk is unreachable from here, and cleaning
+  # would falsely stamp cleaned_up_at while the real workspace persists on the
+  # owning pod. Everything else is cleanable here:
+  #   - no recorded host (legacy / not stamped),
+  #   - it ran on this host,
+  #   - the recorded host is not a live worker (single-host Docker where the
+  #     container was recreated with a new hostname but the shared volume — and
+  #     the workspace — persist; or a dead pod whose disk is already gone).
   def self.cleanable_here?(workflow)
     host = workflow.worker_hostname
-    host.blank? || host == SyrusVersion.hostname
+    return true if host.blank? || host == SyrusVersion.hostname
+
+    !InstanceVersion.worker_live?(host)
   end
 
   def self.cleanup_for(workflow)

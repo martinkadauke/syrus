@@ -89,18 +89,41 @@ module SystemAlerts
     who = hostname.present? ? "Worker <code>#{ERB::Util.html_escape(hostname)}</code>" : "The worker"
     title = hostname.present? ? "Worker #{hostname} data volume usage is #{level_label}." : "Worker data volume usage is #{level_label}."
     path_html = ERB::Util.html_escape(path.to_s)
+    # Single-host Docker (Compose / the desktop apps) runs one worker container on
+    # a shared Docker volume, so the actionable advice differs from K8s per-pod:
+    # the volume competes with everything on the Docker host, and stale images are
+    # a common culprit. On K8s each worker fills its own volume, so name the pod.
+    single_host = ENV["SYRUS_SQLITE"].present?
+    message =
+      if single_host
+        "The worker's SYRUS_DATA_ROOT (<code>#{path_html}</code>) is #{used_percent}% full " \
+          "with #{format_bytes(available_bytes)} available. On single-host Docker this volume " \
+          "shares the Docker host's disk."
+      else
+        "#{who}'s SYRUS_DATA_ROOT (<code>#{path_html}</code>) is #{used_percent}% full " \
+          "with #{format_bytes(available_bytes)} available. Each worker fills its own data " \
+          "volume, so this is the most-full worker."
+      end
+    action_steps =
+      if single_host
+        [
+          "Inspect retained workflow workspaces under <code>#{path_html}/workflows</code> and clean up old terminal Workflow workspaces.",
+          "Reclaim Docker host disk with <code>docker image prune -f</code> (and <code>docker system prune</code> if safe) — old backend images accumulate across updates.",
+          "If this recurs, confirm per-Job workspace pruning is running and that stuck/looping Jobs aren't churning retries."
+        ]
+      else
+        [
+          "Inspect retained workflow workspaces under <code>#{path_html}/workflows</code> on that worker and clean up old terminal Workflow workspaces.",
+          "If this recurs, confirm per-Job workspace pruning is running and that stuck/looping Jobs aren't churning retries.",
+          "If cleanup is not enough, resize that worker's data volume before clone, prepare, or landing jobs start failing."
+        ]
+      end
     Alert.new(
       id: "data_root_disk_usage",
       severity: severity,
       title: title,
-      message: "#{who}'s SYRUS_DATA_ROOT (<code>#{path_html}</code>) is #{used_percent}% full " \
-               "with #{format_bytes(available_bytes)} available. Each worker fills its own data " \
-               "volume, so this is the most-full worker.",
-      action_steps: [
-        "Inspect retained workflow workspaces under <code>#{path_html}/workflows</code> on that worker and clean up old terminal Workflow workspaces.",
-        "If this recurs, confirm per-Job workspace pruning is running and that stuck/looping Jobs aren't churning retries.",
-        "If cleanup is not enough, resize that worker's data volume before clone, prepare, or landing jobs start failing."
-      ],
+      message: message,
+      action_steps: action_steps,
       cta: { text: "Open admin overview", path: "/admin" }
     )
   end

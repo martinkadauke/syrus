@@ -45,10 +45,13 @@ just not optimal. Keying on node name would tighten that later.
 A workspace lives on the local disk of the pod that ran the workflow, so one pod
 can't clean another's. Two safeguards make pruning worker-local:
 
-- `WorkflowWorkspace.cleanup_for` skips any workflow that ran on a **different**
-  pod (`worker_hostname`), so a prune pass can't false-stamp `cleaned_up_at` on a
-  workspace that's still on another pod. Legacy / single-worker workflows (no
-  recorded hostname) clean normally.
+- `WorkflowWorkspace.cleanup_for` skips a workflow only when a **live** worker
+  pod (`InstanceVersion.worker_live?`) still owns it, so a prune pass can't
+  false-stamp `cleaned_up_at` on a workspace that's still on another pod. It
+  cleans normally when the recorded host is this pod, is blank (legacy /
+  single-worker), or is no longer a live worker — the last case covers
+  single-host Docker, where a backend update recreates the worker container with
+  a new hostname but the shared volume (and its leftover workspaces) persist.
 - `WorkflowWorkspacePruneJob` (recurring) is a coordinator: it runs the
   cluster-wide DB/branch and chat sweeps once, then **fans the local filesystem
   sweep out to every live worker** via each pod's `resume-<hostname>` queue. With
@@ -61,6 +64,8 @@ Worker pods stamp their own `SYRUS_DATA_ROOT` usage onto their `InstanceVersion`
 row every heartbeat (`df`, worker role only — web pods don't mount the volume).
 The "Worker data volume usage" banner and the admin overview surface the
 **most-full** worker (`InstanceVersion.worst_data_root`), naming the pod, and
-fall back to the single cached snapshot on single-worker / dev. (The old
-single-host-Docker / `docker image prune` guidance was a red herring on K8s and
-was removed.)
+fall back to the single cached snapshot on single-worker / dev. The banner's
+remediation copy branches on deployment: single-host Docker (Compose / the
+desktop apps, detected via `SYRUS_SQLITE`) gets `docker image prune` guidance
+because the volume shares the Docker host's disk; K8s gets per-pod workspace and
+volume-resize guidance instead.

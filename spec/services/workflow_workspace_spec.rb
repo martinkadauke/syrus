@@ -641,6 +641,11 @@ RSpec.describe WorkflowWorkspace do
   end
 
   describe ".cleanable_here? / worker affinity" do
+    def live_worker!(hostname)
+      InstanceVersion.create!(hostname: hostname, role: "worker", version: "x",
+                              started_at: Time.current, last_heartbeat_at: Time.current)
+    end
+
     it "is cleanable when no worker hostname was recorded (legacy / single-worker)" do
       expect(described_class.cleanable_here?(workflow)).to be(true)
     end
@@ -652,16 +657,27 @@ RSpec.describe WorkflowWorkspace do
       expect(described_class.cleanable_here?(workflow)).to be(true)
     end
 
-    it "is NOT cleanable on a different pod" do
+    it "is NOT cleanable when another LIVE worker pod owns it (local-disk multi-worker)" do
       allow(SyrusVersion).to receive(:hostname).and_return("worker-me")
       workflow.update_column(:worker_hostname, "worker-other")
+      live_worker!("worker-other")
 
       expect(described_class.cleanable_here?(workflow)).to be(false)
     end
 
-    it "cleanup_for skips (no rm_rf, no cleaned_up_at stamp) for another pod's workflow" do
+    it "IS cleanable when the recorded host is not a live worker (single-host recreate / dead pod)" do
+      # Docker-compose: the worker container is recreated on update with a new
+      # hostname, but the shared volume + workspace persist and must be cleaned.
+      allow(SyrusVersion).to receive(:hostname).and_return("worker-new")
+      workflow.update_column(:worker_hostname, "worker-old-container")
+
+      expect(described_class.cleanable_here?(workflow)).to be(true)
+    end
+
+    it "cleanup_for skips (no rm_rf, no cleaned_up_at stamp) only for another live pod's workflow" do
       allow(SyrusVersion).to receive(:hostname).and_return("worker-me")
       workflow.update_column(:worker_hostname, "worker-other")
+      live_worker!("worker-other")
       dir = described_class.path_for(workflow)
       FileUtils.mkdir_p(dir)
 

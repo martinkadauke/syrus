@@ -77,10 +77,24 @@ RSpec.describe SystemAlerts do
       steps = alert.action_steps.join
       expect(steps).to include("/syrus-home/.syrus/workflows")
       expect(steps).to include("resize that worker's data volume")
-      # The single-host-Docker / image-prune story was a red herring on K8s and
-      # is gone.
+      # On K8s (SYRUS_SQLITE unset) the per-pod story stands; the single-host
+      # Docker image-prune advice is a red herring here and stays out.
       expect(alert.message).not_to match(/Docker/i)
       expect(steps).not_to match(/docker image prune/i)
+    end
+
+    it "gives single-host Docker (SYRUS_SQLITE) the image-prune guidance instead" do
+      user = Factories.user(admin: true)
+      allow(ENV).to receive(:[]).and_call_original
+      allow(ENV).to receive(:[]).with("SYRUS_SQLITE").and_return("1")
+      allow(DataRootDiskUsage).to receive(:current).and_return(disk_snapshot(used_percent: 92, available_bytes: 4.gigabytes, level: :critical))
+
+      alert = described_class.active_for(user: user).first
+
+      steps = alert.action_steps.join
+      expect(alert.message).to include("single-host Docker")
+      expect(steps).to include("docker image prune")
+      expect(steps).to include("/syrus-home/.syrus/workflows")
     end
 
     it "prefers the most-full worker's own reported usage (multi-worker) and names the pod" do
