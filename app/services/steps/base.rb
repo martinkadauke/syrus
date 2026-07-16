@@ -219,7 +219,10 @@ module Steps
     end
 
     def default_branch_ref
-      "origin/#{repository.default_branch}"
+      # For fork→upstream Jobs this resolves to the fetched upstream tip
+      # (`upstream/<default>`) so the agent diff and the branch-history check
+      # are measured against the upstream base, not the fork's default.
+      workspace.base_ref
     end
 
     def head_sha

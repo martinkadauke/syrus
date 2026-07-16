@@ -21,7 +21,7 @@ RSpec.describe Steps::CoverageAnalyze do
   end
 
   before do
-    fake_ws = instance_double(WorkflowWorkspace, setup: nil, path: @ws_path)
+    fake_ws = instance_double(WorkflowWorkspace, setup: nil, path: @ws_path, base_ref: WorkflowWorkspace.base_ref_for(job))
     allow(handler).to receive(:workspace).and_return(fake_ws)
     # Default: no diff changes so annotations are empty
     allow(GitRunner).to receive(:new).and_return(

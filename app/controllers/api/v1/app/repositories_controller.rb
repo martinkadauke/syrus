@@ -235,6 +235,17 @@ module Api
           render json: repository_command_payload(repository, message: message)
         end
 
+        def sync_fork
+          repository = find_repository
+          unless repository.fork_syncable?
+            render_error("validation_failed", I18n.t("api.repositories.not_fork_syncable", slug: repository.slug), status: :unprocessable_content)
+            return
+          end
+
+          SyncForkJob.perform_later(repository.id)
+          render json: repository_command_payload(repository, message: I18n.t("api.repositories.fork_sync_enqueued", slug: repository.slug))
+        end
+
         def release_needs_triage_job
           repository = find_repository
           unless can_release_triage_jobs?
@@ -538,6 +549,8 @@ module Api
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
             treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
+            fork_syncable: repository.fork_syncable?,
+            fork_auto_sync_enabled: repository.fork_auto_sync_enabled?,
             agent_provider: repository.agent_provider.to_s,
             auto_approve_mode: repository.auto_approve_mode,
             feedback_policy: repository.feedback_policy,
@@ -830,6 +843,7 @@ module Api
             :main_branch_health_enabled,
             :main_branch_repair_enabled,
             :treat_grader_timeouts_as_failures,
+            :fork_auto_sync_enabled,
             :auto_approve_mode,
             :feedback_policy,
             :github_repository_id,

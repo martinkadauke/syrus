@@ -32,7 +32,10 @@ module Steps
 
     def call
       workspace.setup
-      sync_fork_with_upstream! if repository.upstream_repository_id.present?
+      # Fork base handling is no longer per-Job: fork Jobs branch off the
+      # upstream's default directly (Job#base_on_upstream_default?), and keeping
+      # the fork's own default fresh is a standalone scheduled concern
+      # (ForkSyncService / SyncForkJob), not something prepare does.
       plan = RepoPrepPlan.for(workspace.path)
 
       log("[prepare] source: #{plan.source}")
@@ -212,96 +215,6 @@ module Steps
       deadlines << LOG_FLUSH_MIN_GAP if buffer.bytesize >= LOG_FLUSH_BYTES
       timeout = deadlines.min - elapsed
       timeout.positive? ? timeout : 0
-    end
-
-    # Syncs the fork's default branch with its upstream before running
-    # prepare commands so the agent works against up-to-date code.
-    # Uses merge (not rebase) to preserve the fork's commit history.
-    # On conflict, raises StepFailed with manual-sync instructions.
-    def sync_fork_with_upstream!
-      upstream = repository.upstream_repository
-      upstream_branch = upstream.default_branch
-      fork_default = repository.default_branch
-      syrus_branch = workspace.branch_name
-      chdir = workspace.path.to_s
-
-      log("[prepare] fork sync: syncing #{repository.slug} with upstream #{upstream.slug}@#{upstream_branch}")
-
-      git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
-
-      # Fetch upstream branch without adding a persistent remote; FETCH_HEAD
-      # holds the result so we avoid writing to .git/config.
-      git.run("fetch", upstream.remote_url, upstream_branch, chdir: chdir)
-
-      git.run("checkout", fork_default, chdir: chdir)
-      sha_before = GitRunner.new.run("rev-parse", "HEAD", chdir: chdir).strip
-
-      begin
-        git.run("merge", "--no-edit", "FETCH_HEAD", chdir: chdir)
-      rescue GitRunner::GitError => e
-        abort_fork_merge(git, chdir)
-        git.run("checkout", syrus_branch, chdir: chdir)
-        record_fork_sync_conflict!(upstream, upstream_branch, e.output)
-        raise StepFailed, fork_sync_conflict_message(upstream, upstream_branch)
-      end
-
-      sha_after = GitRunner.new.run("rev-parse", "HEAD", chdir: chdir).strip
-
-      if sha_before == sha_after
-        log("[prepare] fork sync: #{repository.slug} is already up-to-date with #{upstream.slug}")
-      else
-        push_user = job.owner_user || job.user
-        fork_push_url = repository.authenticated_push_url(
-          GithubClient.for(repository: repository, user: push_user).access_token
-        )
-        log("[prepare] fork sync: pushing synced #{fork_default} to #{repository.slug}")
-        git.run("push", fork_push_url, "HEAD:refs/heads/#{fork_default}", chdir: chdir)
-      end
-
-      git.run("checkout", syrus_branch, chdir: chdir)
-      begin
-        git.run("merge", "--ff-only", fork_default, chdir: chdir)
-      rescue GitRunner::GitError
-        # Follow-up workflow: syrus branch has prior agent commits that diverge
-        # from the upstream merge commit. Keep the branch as-is; the agent
-        # continues from the existing tip.
-        log("[prepare] fork sync: #{syrus_branch} has existing commits; not fast-forwarding")
-      end
-
-      workflow.set_artifact!("fork_sync", {
-        "upstream_slug" => upstream.slug,
-        "upstream_branch" => upstream_branch,
-        "fork_default_branch" => fork_default,
-        "synced_at" => Time.current.iso8601,
-        "already_up_to_date" => sha_before == sha_after
-      })
-    end
-
-    def abort_fork_merge(git, chdir)
-      git.run("merge", "--abort", chdir: chdir)
-    rescue GitRunner::GitError
-      nil
-    end
-
-    def record_fork_sync_conflict!(upstream, upstream_branch, git_output)
-      failure = {
-        "upstream_slug" => upstream.slug,
-        "upstream_branch" => upstream_branch,
-        "git_output" => git_output.to_s.safe_byteslice(0, 4096)
-      }
-      workflow.set_artifact!("fork_sync_failure", failure)
-      log("[prepare] fork sync: merge conflict with upstream #{upstream.slug}@#{upstream_branch}")
-    end
-
-    def fork_sync_conflict_message(upstream, upstream_branch)
-      <<~MSG.strip
-        [fork sync] #{repository.slug} has merge conflicts with upstream #{upstream.slug}@#{upstream_branch}. \
-        Manually sync your fork before retrying this Job:
-          git fetch upstream #{upstream_branch}
-          git checkout #{repository.default_branch}
-          git merge upstream/#{upstream_branch}
-          git push origin #{repository.default_branch}
-      MSG
     end
 
     def env

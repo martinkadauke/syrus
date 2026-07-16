@@ -1058,4 +1058,39 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       expect(response).to have_http_status(:not_found)
     end
   end
+
+  describe "POST sync_fork" do
+    it "enqueues a SyncForkJob for a fork with an in-instance upstream" do
+      sign_in_as(user)
+      upstream = Factories.repository(user: user, owner: "upstream-org", name: "project")
+      fork_repo = Factories.repository(user: user, owner: "fork-user", name: "project", upstream_repository: upstream)
+
+      expect {
+        post "/api/v1/app/repositories/#{fork_repo.id}/sync_fork"
+      }.to have_enqueued_job(SyncForkJob).with(fork_repo.id)
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "422s for a repository without an in-instance upstream" do
+      sign_in_as(user)
+      plain = Factories.repository(user: user, owner: "solo", name: "app")
+
+      post "/api/v1/app/repositories/#{plain.id}/sync_fork"
+
+      expect(response).to have_http_status(:unprocessable_content)
+      expect(parse_body.dig("error", "code")).to eq("validation_failed")
+    end
+
+    it "updates fork_auto_sync_enabled through the update endpoint" do
+      sign_in_as(user)
+      upstream = Factories.repository(user: user, owner: "upstream-org", name: "project")
+      fork_repo = Factories.repository(user: user, owner: "fork-user", name: "project", upstream_repository: upstream)
+
+      patch "/api/v1/app/repositories/#{fork_repo.id}", params: { repository: { fork_auto_sync_enabled: true } }
+
+      expect(response).to have_http_status(:ok)
+      expect(fork_repo.reload.fork_auto_sync_enabled).to be(true)
+    end
+  end
 end

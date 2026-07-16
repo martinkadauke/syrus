@@ -28,6 +28,9 @@ default: &default
   poll_scheduled_tasks:
     class: PollScheduledTasksJob
     schedule: every minute
+  sync_enabled_forks:
+    class: SyncEnabledForksJob
+    schedule: every 15 minutes
   reap_stale_runs:
     class: ReapStaleRunsJob
     schedule: every minute

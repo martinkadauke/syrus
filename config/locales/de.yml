@@ -90,6 +90,8 @@ de:
       bulk_delegate_failed: "Issues konnten nicht delegiert werden: %{error}"
       bulk_close_failed: "Issues konnten nicht geschlossen werden: %{error}"
       run_main_branch_graders_enqueued: "Graders für %{sha} auf %{slug} in die Warteschlange gestellt."
+      fork_sync_enqueued: "%{slug} wird mit seinem Upstream synchronisiert."
+      not_fork_syncable: "%{slug} ist kein Fork mit einem Upstream in dieser Instanz."
       no_sha_to_grade: "Noch kein Branch-SHA erfasst — bitte zuerst das Repository abfragen."
 
     job_pins:

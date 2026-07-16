@@ -745,7 +745,7 @@ class Job < ApplicationRecord
   end
 
   def effective_base_branch
-    return repository.default_branch if stack_base_forces_main?
+    return base_default_branch if stack_base_forces_main?
 
     parent = dependencies.includes(:depends_on_job).map(&:depends_on_job).compact.find do |dependency_job|
       dependency_job.open? &&
@@ -754,7 +754,28 @@ class Job < ApplicationRecord
         !dependency_job.dependency_succeeded?
     end
 
-    parent&.branch_name.presence || repository.default_branch
+    parent&.branch_name.presence || base_default_branch
+  end
+
+  # The repository whose default branch is this Job's base. For a fork with an
+  # in-instance upstream, that's the upstream; otherwise the Job's repository.
+  def base_repository
+    repository&.base_repository
+  end
+
+  def base_default_branch
+    repository&.base_default_branch
+  end
+
+  # True when the work branch (and diff, and PR base) should be based on the
+  # in-instance upstream's default branch — a fork contributing to upstream.
+  # False for non-forks, forks without an in-instance upstream, and stacked
+  # children (which base on their parent branch, not the upstream default).
+  def base_on_upstream_default?
+    return false unless repository&.fork_syncable?
+    return false if in_fork_review_mode?  # staging fork-review keeps its own base
+
+    effective_base_branch == base_default_branch
   end
 
   def stack_ready_for_execution?

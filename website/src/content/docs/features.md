@@ -408,5 +408,14 @@ maps to a `product_owner` account, polling creates the Job in
 `needs_triage`. Developers and admins release those held Jobs from the
 repository overview before classifier triage or implementation can start.
 
+When a repository is registered as a fork of an upstream that also lives in
+the instance, Jobs on the fork branch off — and open their pull request
+against — the upstream's default branch (head = the fork's branch, base =
+the upstream's main). A fork can also keep its own default branch in sync
+with the upstream on a schedule: toggle **Auto-sync this fork's default
+branch from its upstream** in the repository settings, or click **Sync now**
+at any time. Auto-sync keeps main-branch health detection on the fork from
+going stale and is independent of the per-Job base branch.
+
 For command examples, continue to [Recipes](/docs/recipes). For failure
 paths, use [Troubleshooting](/docs/troubleshooting).

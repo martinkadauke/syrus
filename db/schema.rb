@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_16_161312) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_16_165510) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -872,6 +872,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_16_161312) do
     t.datetime "created_at", null: false
     t.string "default_branch", default: "main", null: false
     t.string "feedback_policy", default: "confirm", null: false
+    t.boolean "fork_auto_sync_enabled", default: false, null: false
     t.integer "fork_pr_grace_period_hours", default: 24, null: false
     t.bigint "github_owner_id"
     t.bigint "github_repository_id"

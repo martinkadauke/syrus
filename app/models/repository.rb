@@ -24,6 +24,12 @@ class Repository < ApplicationRecord
   attribute :landing_paused, :boolean, default: false
   attribute :main_branch_health_enabled, :boolean, default: true
   attribute :main_branch_repair_enabled, :boolean, default: true
+  # When on, a scheduled job keeps this fork's default branch in sync with
+  # its in-instance upstream (via GitHub's merge-upstream API) so main-branch
+  # health/grader detection runs against current code even when no Jobs run.
+  # Independent of the per-Job base branch (fork Jobs branch off the upstream
+  # directly — see Job#base_on_upstream_default?).
+  attribute :fork_auto_sync_enabled, :boolean, default: false
 
   attr_accessor :main_branch_repair_enabled_explicit
 
@@ -131,6 +137,23 @@ class Repository < ApplicationRecord
 
   def fork?
     upstream_repository_id.present? || upstream_slug.present?
+  end
+
+  # The repository whose default branch is the base for Jobs and diffs.
+  # For a fork whose upstream is registered in this instance, that's the
+  # upstream; otherwise the repository itself. (An external upstream known
+  # only by `upstream_slug`, with no in-instance record, falls back to self.)
+  def base_repository
+    upstream_repository || self
+  end
+
+  def base_default_branch
+    base_repository.default_branch
+  end
+
+  # A fork we can auto-sync: it has an in-instance upstream to merge from.
+  def fork_syncable?
+    upstream_repository_id.present?
   end
 
   def effective_agent_provider(user: nil)

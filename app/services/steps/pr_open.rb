@@ -42,6 +42,9 @@ module Steps
 
       if cross_fork?
         open_fork_review_pr
+      elsif fork_to_upstream?
+        open_upstream_pr
+        post_coverage_comment_if_present
       else
         open_pr
         post_coverage_comment_if_present
@@ -49,6 +52,34 @@ module Steps
     end
 
     private
+
+    # Fork → in-instance upstream: open a single PR directly on the upstream
+    # (head = fork branch, base = upstream default). The work branch was based
+    # off the upstream's default tip (see Job#base_on_upstream_default?), so the
+    # diff and PR line up. No staging PR on the fork.
+    def open_upstream_pr
+      title, body = pr_title_and_body
+      upstream = job.base_repository
+      upstream_client = GithubClient.for(repository: upstream, user: job.user)
+      pr_number = PullRequestOpener.new(
+        upstream,
+        client: upstream_client,
+        head_repository: repository
+      ).open(
+        branch: workspace.branch_name,
+        title: title,
+        body: body,
+        job: job
+      )
+      log("pr_open: opened upstream PR #{upstream.slug}##{pr_number} from #{repository.slug} (#{title.inspect})")
+      job.update!(
+        pr_number: pr_number,
+        pr_repository_id: upstream.id,
+        branch_name: workspace.branch_name
+      )
+      transition_job_to_implemented!
+      refresh_stack_footer
+    end
 
     # Opens a staging review PR on the fork (feature branch → fork default branch).
     # The operator (or any reviewer) approves this PR; PollForkReviewPrJob detects
@@ -275,6 +306,10 @@ module Steps
 
     def cross_fork?
       job.in_fork_review_mode?
+    end
+
+    def fork_to_upstream?
+      job.base_on_upstream_default?
     end
 
     def refresh_stack_footer

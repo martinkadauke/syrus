@@ -286,6 +286,18 @@ class GithubClient
     raise
   end
 
+  # Sync a fork's branch with its upstream via GitHub's merge-upstream API.
+  # Returns the Sawyer::Resource ({ merge_type:, base_branch:, message: }).
+  # Raises Octokit::Conflict (409) on merge conflict and
+  # Octokit::UnprocessableEntity (422) when the repo can't be synced (not a
+  # GitHub fork, unknown branch, etc.).
+  def merge_upstream(repo_slug, branch)
+    track_rate_limits { @client.post("repos/#{repo_slug}/merge-upstream", branch: branch) }
+  rescue Octokit::TooManyRequests => e
+    Rails.logger.warn("[GithubClient] #{@user&.email_address} rate-limited on #{repo_slug} merge-upstream: #{e.message}")
+    raise
+  end
+
   def pull_request_diff(repo_slug, pr_number)
     track_rate_limits do
       @client.get(

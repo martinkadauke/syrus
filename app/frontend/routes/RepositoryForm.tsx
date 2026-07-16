@@ -13,6 +13,7 @@ import {
   type GitHubRepositoryOption,
   type RepositoryFormPayload,
   type RepositoryInput,
+  syncFork,
   updateRepository
 } from "../api/repositories"
 import { useT } from "../hooks/useT"
@@ -62,6 +63,10 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
       return updateRepository(Number(payload.repository.id), values)
     },
     onSuccess: (saved) => navigate(withRoutePrefix(saved.redirect_to, prefix))
+  })
+
+  const syncNow = useMutation({
+    mutationFn: () => syncFork(Number(payload.repository.id))
   })
 
   const owners = useQuery({
@@ -428,6 +433,33 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             When off, timeout-only grader results mark main branch health inconclusive instead of broken.
           </p>
 
+          {mode === "edit" && payload.repository.fork_syncable ? (
+            <div className="space-y-2 rounded border border-gray-200 dark:border-gray-700 p-3">
+              <Checkbox
+                label={t('repository_form.fork_auto_sync_label')}
+                onChange={(checked) => setValues({ ...values, fork_auto_sync_enabled: checked })}
+                value={values.fork_auto_sync_enabled}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('repository_form.fork_auto_sync_hint')}</p>
+              <div className="flex items-center gap-3">
+                <button
+                  className="rounded border border-gray-300 px-3 py-1 text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-800"
+                  disabled={syncNow.isPending}
+                  onClick={() => syncNow.mutate()}
+                  type="button"
+                >
+                  {syncNow.isPending ? t('repository_form.fork_sync_syncing') : t('repository_form.fork_sync_now')}
+                </button>
+                {syncNow.isSuccess ? (
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400">{syncNow.data?.message || t('repository_form.fork_sync_started')}</span>
+                ) : null}
+                {syncNow.isError ? (
+                  <span className="text-xs text-red-600 dark:text-red-400">{t('repository_form.fork_sync_failed')}</span>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
           <Field label="Feedback policy">
             <select
               aria-label="Feedback policy"
@@ -492,6 +524,7 @@ function inputFromPayload(payload: RepositoryFormPayload): RepositoryInput {
     main_branch_health_enabled: payload.repository.main_branch_health_enabled,
     main_branch_repair_enabled: payload.repository.main_branch_repair_enabled,
     treat_grader_timeouts_as_failures: payload.repository.treat_grader_timeouts_as_failures,
+    fork_auto_sync_enabled: payload.repository.fork_auto_sync_enabled,
     agent_provider: payload.repository.agent_provider,
     auto_approve_mode: payload.repository.auto_approve_mode,
     feedback_policy: payload.repository.feedback_policy,

@@ -624,4 +624,19 @@ RSpec.describe WorkflowWorkspace do
     raise "shell failed: #{cmd}\n#{out}\n#{err}" unless status.success?
     out
   end
+
+  describe ".base_ref_for" do
+    it "uses origin/<default> for a non-fork job" do
+      expect(described_class.base_ref_for(job)).to eq("origin/main")
+    end
+
+    it "uses the fetched upstream ref for a fork job basing on its upstream" do
+      upstream = Factories.repository(user: user, owner: "upstream-org", name: "widgets", default_branch: "main")
+      fork_repo = Factories.repository(user: user, owner: "fork-user", name: "widgets", default_branch: "main", upstream_repository: upstream)
+      fork_job = Factories.job_record(repository: fork_repo)
+
+      expect(fork_job.base_on_upstream_default?).to be(true)
+      expect(described_class.base_ref_for(fork_job)).to eq("upstream/main")
+    end
+  end
 end

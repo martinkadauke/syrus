@@ -448,7 +448,7 @@ RSpec.describe Steps::Base do
     # `git merge-base master HEAD` choked on in production.
     let(:workspace_dir) { Pathname.new(Dir.mktmpdir("syrus-history-check")) }
     let(:bare_remote) { Pathname.new(Dir.mktmpdir("syrus-history-bare")) }
-    let(:fake_ws) { instance_double(WorkflowWorkspace, path: workspace_dir) }
+    let(:fake_ws) { instance_double(WorkflowWorkspace, path: workspace_dir, base_ref: "origin/master") }
 
     before do
       # Seed a bare remote with one commit on master.

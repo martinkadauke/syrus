@@ -51,7 +51,7 @@ class WorkflowWorkspace
     return nil unless path.exist? && workflow.failed? && workflow.cleaned_up_at.nil?
 
     git = GitRunner.new
-    default_ref = "origin/#{workflow.job.repository.default_branch}"
+    default_ref = base_ref_for(workflow.job)
     committed   = git.run("diff", "#{default_ref}...HEAD", chdir: path.to_s).strip
     uncommitted = git.run("status", "--short", chdir: path.to_s).strip
 
@@ -159,6 +159,24 @@ class WorkflowWorkspace
     self.class.cleanup_for(@workflow)
   end
 
+  # The git ref for this Job's base branch inside the workspace. For fork→
+  # upstream Jobs it's the fetched upstream tip (`upstream/<default>`);
+  # otherwise the fork's own `origin/<default>`. Used for branch creation and
+  # for the three-dot diff base.
+  def base_ref
+    self.class.base_ref_for(@job)
+  end
+
+  # SHA/ref-agnostic form usable without an instance (class method used by
+  # local_diff_for on a failed workflow's on-disk workspace).
+  def self.base_ref_for(job)
+    if job.base_on_upstream_default?
+      "upstream/#{job.base_default_branch}"
+    else
+      "origin/#{job.repository.default_branch}"
+    end
+  end
+
   private
 
   # Delete every other terminal workflow's workspace on this Job before
@@ -213,7 +231,7 @@ class WorkflowWorkspace
 
     @git.run(
       "clone",
-      "--branch", base_branch,
+      "--branch", clone_checkout_branch,
       "--no-tags", authenticated_url, path.to_s,
       env: @env
     )
@@ -224,6 +242,10 @@ class WorkflowWorkspace
       checkout_main_sha!
       return
     end
+
+    # Fork → upstream: fetch the in-instance upstream's default branch so the
+    # work branch bases off (and diffs against) the upstream, not the fork.
+    fetch_upstream_base! if base_on_upstream_default?
 
     # Check whether the target branch already exists on origin
     # (follow-up Workflows on a Job that already has a branch from
@@ -243,6 +265,9 @@ class WorkflowWorkspace
         chdir: path.to_s, env: @env
       )
       @git.run("checkout", @branch_name, chdir: path.to_s)
+    elsif base_on_upstream_default?
+      # New branch based on the upstream's default tip, not the fork's default.
+      @git.run("checkout", "-b", @branch_name, base_ref, chdir: path.to_s)
     else
       @git.run("checkout", "-b", @branch_name, chdir: path.to_s)
     end
@@ -264,6 +289,35 @@ class WorkflowWorkspace
 
   def base_branch
     @base_branch ||= RebaseTarget.branch_for(job: @job, workflow: @workflow)
+  end
+
+  def base_on_upstream_default?
+    @job.base_on_upstream_default?
+  end
+
+  # Branch checked out from origin (the fork) at clone time. For fork→upstream
+  # jobs the work branch is re-based off the upstream tip afterwards, so clone
+  # the fork's own default here (guaranteed to exist even when it differs from
+  # the upstream's default branch name).
+  def clone_checkout_branch
+    return @repository.default_branch if base_on_upstream_default?
+
+    base_branch
+  end
+
+  # Fetch the in-instance upstream's default branch into a remote-tracking ref
+  # (`upstream/<default>`) so the work branch bases off it and diffs reference
+  # it. Anonymous fetch — private-upstream credentials are intentionally out of
+  # scope for now.
+  def fetch_upstream_base!
+    upstream = @job.base_repository
+    branch = upstream.default_branch
+    @git.run("remote", "add", "upstream", upstream.remote_url, chdir: path.to_s)
+    @git.run(
+      "fetch", "--no-tags", "upstream",
+      "+refs/heads/#{branch}:refs/remotes/upstream/#{branch}",
+      chdir: path.to_s, env: @env
+    )
   end
 
   def clone_local_source

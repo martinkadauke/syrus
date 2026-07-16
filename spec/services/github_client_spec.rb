@@ -681,4 +681,28 @@ RSpec.describe GithubClient do
       expect(client.delete_branch("acme/widgets", "syrus/issue-42-1")).to be(false)
     end
   end
+
+  describe "#merge_upstream" do
+    it "POSTs to the merge-upstream endpoint with the branch" do
+      stub = stub_request(:post, "https://api.github.com/repos/acme/widgets/merge-upstream")
+        .with(body: { branch: "main" })
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: { merge_type: "fast-forward", base_branch: "main", message: "ok" }.to_json)
+
+      result = GithubClient.for(repository: repository, user: user).merge_upstream("acme/widgets", "main")
+
+      expect(stub).to have_been_requested
+      expect(result.merge_type).to eq("fast-forward")
+    end
+
+    it "propagates a conflict (409) as Octokit::Conflict" do
+      stub_request(:post, "https://api.github.com/repos/acme/widgets/merge-upstream")
+        .to_return(status: 409, headers: { "Content-Type" => "application/json" },
+                   body: { message: "merge conflict" }.to_json)
+
+      expect {
+        GithubClient.for(repository: repository, user: user).merge_upstream("acme/widgets", "main")
+      }.to raise_error(Octokit::Conflict)
+    end
+  end
 end

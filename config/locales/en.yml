@@ -123,6 +123,8 @@ en:
       bulk_delegate_failed: "Failed to delegate issues: %{error}"
       bulk_close_failed: "Failed to close issues: %{error}"
       run_main_branch_graders_enqueued: "Graders enqueued for %{sha} on %{slug}."
+      fork_sync_enqueued: "Syncing %{slug} with its upstream."
+      not_fork_syncable: "%{slug} is not a fork with an in-instance upstream."
       no_sha_to_grade: "No branch SHA tracked yet — poll the repository first."
 
     job_pins:

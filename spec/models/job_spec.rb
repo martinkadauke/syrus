@@ -66,6 +66,40 @@ RSpec.describe Job do
     end
   end
 
+  describe "fork base branch (fork -> upstream)" do
+    let(:repo_owner) { Factories.user }
+    let(:upstream) { Factories.repository(user: repo_owner, owner: "upstream-org", name: "project", default_branch: "main") }
+    let(:fork_repo) do
+      Factories.repository(user: repo_owner, owner: "fork-user", name: "project", default_branch: "main", upstream_repository: upstream)
+    end
+
+    it "bases a fork Job on the in-instance upstream's default branch" do
+      job = Factories.job_record(repository: fork_repo)
+
+      expect(job.base_repository).to eq(upstream)
+      expect(job.base_default_branch).to eq("main")
+      expect(job.effective_base_branch).to eq("main")
+      expect(job.base_on_upstream_default?).to be(true)
+    end
+
+    it "does not upstream-base a non-fork Job" do
+      plain = Factories.repository(user: repo_owner, owner: "solo", name: "app", default_branch: "main")
+      job = Factories.job_record(repository: plain)
+
+      expect(job.base_repository).to eq(plain)
+      expect(job.base_on_upstream_default?).to be(false)
+    end
+
+    it "does not upstream-base a fork whose upstream is only an external slug (not in-instance)" do
+      external = Factories.repository(user: repo_owner, owner: "fork-user", name: "ext", upstream_owner: "someone", upstream_name: "ext")
+      job = Factories.job_record(repository: external)
+
+      expect(external.fork?).to be(true)
+      expect(external.fork_syncable?).to be(false)
+      expect(job.base_on_upstream_default?).to be(false)
+    end
+  end
+
   describe "search indexing" do
     it "enqueues indexing when created" do
       repo = Factories.repository
