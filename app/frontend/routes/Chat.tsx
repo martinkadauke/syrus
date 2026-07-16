@@ -5820,7 +5820,7 @@ function formatCurrency(value: number, digits = 4) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
 }
 
-function renderChatMessages(messages: ChatMessageItem[]): ChatRenderItem[] {
+export function renderChatMessages(messages: ChatMessageItem[]): ChatRenderItem[] {
   const items: ChatRenderItem[] = []
   let currentGroup: ChatToolGroupItem | null = null
 
@@ -5845,7 +5845,7 @@ function renderChatMessages(messages: ChatMessageItem[]): ChatRenderItem[] {
       const lastCall = currentGroup?.calls.at(-1)
       if (lastCall && lastCall.result_body === "") {
         const content = contentRecord(message.content)
-        lastCall.result_body = shortenWorkspacePaths(content ? fullResultBody(content.result) : String(message.content ?? message.text))
+        lastCall.result_body = shortenWorkspacePaths(content ? fullResultBody(content.content ?? content.result) : String(message.content ?? message.text))
         lastCall.result_error = content?.is_error === true
         lastCall.result_summary = toolResultSummary(currentGroup?.tool || "", lastCall.result_body)
       } else {
