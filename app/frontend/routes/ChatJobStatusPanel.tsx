@@ -153,7 +153,7 @@ export function ChatJobStatusPanel({ chatId }: { chatId: string | number }) {
     return <p className="text-sm text-red-600 dark:text-red-400">{t("job_status_error")}</p>
   }
 
-  const items: ChatJobStatusItem[] = data ?? []
+  const items: ChatJobStatusItem[] = Array.isArray(data) ? data : []
 
   if (items.length === 0) {
     return <p className="text-sm text-gray-500 dark:text-gray-400">{t("job_status_empty")}</p>

@@ -221,6 +221,7 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
       { queryKey: ["chats", String(event.id)] },
       (current) => {
         if (!current) return current
+        if (!Array.isArray(current.messages)) return current
         patched = true
 
         return {
@@ -276,11 +277,12 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
       { queryKey: ["chats", String(event.id)] },
       (current) => {
         if (!current) return current
+        const recentChats = Array.isArray(current.recent_chats) ? current.recent_chats : []
         patched = true
         return {
           ...current,
           chat: { ...current.chat, ...header.chat },
-          recent_chats: current.recent_chats.map((chat) => (
+          recent_chats: recentChats.map((chat) => (
             chat.id === current.chat.id ? { ...chat, ...header.chat } : chat
           ))
         }
@@ -296,8 +298,9 @@ function applyChatPayloadEvent(queryClient: QueryClient, event: AppEvent) {
       { queryKey: ["chats", String(event.id)] },
       (current) => {
         if (!current) return current
+        const bookmarks = Array.isArray(current.bookmarks) ? current.bookmarks : []
         patched = true
-        return { ...current, bookmarks: upsertBookmark(current.bookmarks, bookmark.bookmark) }
+        return { ...current, bookmarks: upsertBookmark(bookmarks, bookmark.bookmark) }
       }
     )
     return patched

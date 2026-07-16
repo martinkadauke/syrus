@@ -81,6 +81,14 @@ describe("ChatJobStatusPanel empty state", () => {
 
     expect(await screen.findByText("No confirmed proposals yet.")).toBeInTheDocument()
   })
+
+  it("shows the empty state when the API returns a non-array payload", async () => {
+    vi.spyOn(window, "fetch").mockResolvedValue(jsonResponse({ items: [] }))
+
+    renderPanel()
+
+    expect(await screen.findByText("No confirmed proposals yet.")).toBeInTheDocument()
+  })
 })
 
 describe("ChatJobStatusPanel job cards", () => {

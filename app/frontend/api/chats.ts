@@ -827,6 +827,7 @@ export type ChatJobStatusEpicItem = {
 
 export type ChatJobStatusItem = ChatJobStatusEpicItem | ChatJobStatusJobItem
 
-export function fetchChatJobStatus(chatId: string | number) {
-  return getJson<ChatJobStatusItem[]>(`/api/v1/app/chats/${encodeURIComponent(String(chatId))}/job_status`)
+export async function fetchChatJobStatus(chatId: string | number) {
+  const payload = await getJson<unknown>(`/api/v1/app/chats/${encodeURIComponent(String(chatId))}/job_status`)
+  return Array.isArray(payload) ? (payload as ChatJobStatusItem[]) : []
 }
