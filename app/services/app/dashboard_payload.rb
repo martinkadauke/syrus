@@ -310,11 +310,15 @@ module App
       when "claimable"
         case subject_name.to_s
         when "workflow"
-          scope.where(jobs: { owner_user_id: nil })
+          # Epicless jobs are never claimable — they default to their creator
+          # as owner. Only an unowned Epic child is claimable (by claiming its
+          # Epic). Requiring epic_id keeps legacy NULL-owner epicless jobs out
+          # of the pool even before the ownership backfill runs.
+          scope.where(jobs: { owner_user_id: nil }).where.not(jobs: { epic_id: nil })
         when "epic"
           scope.where(owner_id: nil, owner_user_id: nil, state: %w[backlog ready])
         else
-          scope.where(owner_user_id: nil)
+          scope.where(owner_user_id: nil).where.not(epic_id: nil)
         end
       end
     end

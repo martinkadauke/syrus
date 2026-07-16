@@ -162,8 +162,13 @@ module Filters
         def apply_inbox
           return scope.none unless user
 
-          owner_jobs = Job.where(owner_user_id: user.id)
-          open = scope.where(owner_user_id: user.id).open_threads.without_active_workflows
+          # Scope to the current user's *effective* ownership. A raw
+          # `owner_user_id = user.id` silently excludes NULL-owner jobs
+          # (NULL = id is never true), which dropped the operator's own
+          # unowned jobs out of the inbox. effectively_owned_by falls
+          # back to the creator, matching the rest of the codebase.
+          owner_jobs = Job.effectively_owned_by(user)
+          open = scope.effectively_owned_by(user).open_threads.without_active_workflows
           open.where(id: actionable_unread_feedback_ids(owner_jobs))
               .or(open.where(state: "failed"))
               .or(open.where.not(landing_failure_reason: nil))

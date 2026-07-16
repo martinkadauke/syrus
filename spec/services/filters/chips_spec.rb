@@ -209,6 +209,23 @@ RSpec.describe "Filters::Chips" do
       expect(run(field: "attention", op: "is", value: "inbox", scope: Job.all)).to contain_exactly(mine)
     end
 
+    it "inbox: includes the operator's own NULL-owner jobs but not other users' (effective ownership)" do
+      # Legacy data: jobs created before owner_user_id was populated have a
+      # NULL owner. The inbox must still surface the operator's own unowned
+      # jobs (fall back to creator) while excluding other users' unowned jobs.
+      mine = Factories.job_record(repository: repo, issue_number: 53, state: "implemented")
+      mine.update_column(:owner_user_id, nil)
+
+      other_user = Factories.user
+      other_repo = Factories.repository(user: other_user, owner: "acme", name: "other-nulls")
+      theirs = Factories.job_record(repository: other_repo, issue_number: 54, state: "implemented", user: other_user)
+      theirs.update_column(:owner_user_id, nil)
+
+      result = run(field: "attention", op: "is", value: "inbox", scope: Job.all)
+      expect(result).to include(mine)
+      expect(result).not_to include(theirs)
+    end
+
     it "awaiting_approval: excludes jobs with any active workflows" do
       ready = Factories.job_record(repository: repo, issue_number: 31, state: "implemented")
       queued_feedback = Factories.job_record(repository: repo, issue_number: 32, state: "implemented")

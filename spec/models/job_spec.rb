@@ -15,6 +15,57 @@ RSpec.describe Job do
     end
   end
 
+  describe "owner defaulting on create" do
+    it "defaults owner_user to the creating user when none is given" do
+      creator = Factories.user
+      repo = Factories.repository(user: creator)
+
+      job = Job.create!(user: creator, repository: repo, issue_number: 4242)
+
+      expect(job.owner_user_id).to eq(creator.id)
+    end
+
+    it "keeps an explicitly assigned owner_user (e.g. Epic assignment)" do
+      creator = Factories.user
+      assignee = Factories.user
+      repo = Factories.repository(user: creator)
+
+      job = Job.create!(user: creator, repository: repo, issue_number: 4243, owner_user: assignee)
+
+      expect(job.owner_user_id).to eq(assignee.id)
+    end
+
+    it "leaves Epic children unowned so ownership can follow the Epic" do
+      creator = Factories.user
+      repo = Factories.repository(user: creator)
+      epic = Factories.epic(user: creator, repository: repo)
+
+      job = Job.create!(user: creator, repository: repo, epic: epic, issue_number: 4244)
+
+      expect(job.owner_user_id).to be_nil
+    end
+  end
+
+  describe ".effectively_owned_by" do
+    it "matches jobs owned by the user and the user's own NULL-owner jobs, not others'" do
+      me = Factories.user
+      other = Factories.user
+      repo = Factories.repository(user: me)
+      other_repo = Factories.repository(user: other)
+
+      owned = Factories.job_record(repository: repo, issue_number: 1, owner_user: me)
+      legacy_mine = Factories.job_record(repository: repo, issue_number: 2, user: me)
+      legacy_mine.update_column(:owner_user_id, nil)
+      legacy_theirs = Factories.job_record(repository: other_repo, issue_number: 3, user: other)
+      legacy_theirs.update_column(:owner_user_id, nil)
+
+      result = Job.effectively_owned_by(me)
+
+      expect(result).to include(owned, legacy_mine)
+      expect(result).not_to include(legacy_theirs)
+    end
+  end
+
   describe "search indexing" do
     it "enqueues indexing when created" do
       repo = Factories.repository

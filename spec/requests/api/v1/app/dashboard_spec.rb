@@ -713,12 +713,15 @@ RSpec.describe "App API dashboard commands", type: :request do
 
     it "filters dashboard records by ownership scope" do
       teammate = Factories.user(email_address: "teammate@example.com")
-      mine = Factories.job_record(repository: repo, issue_number: 11, issue_title: "My aqueduct", owner_user: user)
-      teammate_job = Factories.job_record(repository: repo, issue_number: 12, issue_title: "Their forum", owner_user: teammate)
-      claimable = Factories.job_record(repository: repo, issue_number: 13, issue_title: "Loose road", owner_user: nil)
       owned_epic = Factories.epic(user: user, repository: repo, title: "Owned epic", owner_user: user)
       unowned_epic = Factories.epic(user: user, repository: repo, title: "Unowned epic", owner_user: nil)
       unowned_done_epic = Factories.epic(user: user, repository: repo, title: "Unowned done epic", owner_user: nil, state: "done")
+      mine = Factories.job_record(repository: repo, issue_number: 11, issue_title: "My aqueduct", owner_user: user)
+      teammate_job = Factories.job_record(repository: repo, issue_number: 12, issue_title: "Their forum", owner_user: teammate)
+      # Epicless jobs are never claimable (they own to their creator at
+      # creation). A claimable job is an unowned Epic child — claimed by
+      # claiming its Epic.
+      claimable = Factories.job_record(repository: repo, issue_number: 13, issue_title: "Loose road", owner_user: nil, epic: unowned_epic)
       mine_workflow = Workflow.create!(job: mine, trigger_kind: "initial", state: "queued")
       unowned_workflow = Workflow.create!(job: claimable, trigger_kind: "initial", state: "queued")
 
@@ -767,6 +770,18 @@ RSpec.describe "App API dashboard commands", type: :request do
 
       expect(response).to have_http_status(:ok)
       expect(parse_body["items"].map { |item| item.fetch("id") }).to eq([ unowned_workflow.id ])
+    end
+
+    it "excludes epicless NULL-owner jobs from the claimable pool (legacy data)" do
+      # A pre-backfill epicless job can still have a NULL owner. It must not
+      # appear as claimable — epicless jobs belong to their creator.
+      legacy = Factories.job_record(repository: repo, issue_number: 41, issue_title: "Orphan road", owner_user: user)
+      legacy.update_column(:owner_user_id, nil)
+
+      get "/api/v1/app/dashboard", params: { subject: "job", scope: "claimable" }
+
+      expect(response).to have_http_status(:ok)
+      expect(parse_body["items"].map { |item| item.fetch("id") }).not_to include(legacy.id)
     end
 
     it "defaults job and workflow dashboards to team work" do

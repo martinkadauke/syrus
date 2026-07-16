@@ -81,6 +81,7 @@ class Job < ApplicationRecord
   validate  :issue_number_blank_for_direct, if: :direct?
   validate  :issue_number_blank_for_main_grader, if: :main_grader?
   validate  :epic_belongs_to_same_user_and_repository
+  before_validation :default_owner_user, on: :create
   before_validation :default_agent_provider, on: :create
   before_validation :default_credential_mode, on: :create
   before_validation :default_lifecycle_metadata, on: :create
@@ -96,6 +97,14 @@ class Job < ApplicationRecord
 
   scope :open_threads, -> { where.not(state: "closed") }
   scope :closed_threads, -> { where(state: "closed") }
+  # Effective ownership: owner_user_id when set, else the creating user.
+  # Mirrors the `owner_user_id.presence || user_id` convention so a job
+  # with a NULL owner still counts as its creator's for owner-scoped
+  # views. Defensive against any residual NULL owners; new jobs default
+  # owner_user_id at creation (see default_owner_user).
+  scope :effectively_owned_by, ->(user) {
+    where("jobs.owner_user_id = :id OR (jobs.owner_user_id IS NULL AND jobs.user_id = :id)", id: user.id)
+  }
   scope :landing_queue, -> { where(state: %w[ approved landing ]) }
   scope :issue_kind, -> { where(kind: "issue") }
   scope :cron_kind,  -> { where(kind: "cron") }
@@ -1291,6 +1300,22 @@ class Job < ApplicationRecord
       chunk: "dependencies: #{user.email_address} overrode unsatisfied dependencies",
       kind: "system"
     )
+  end
+
+  def default_owner_user
+    # owner_user_id is the durable assignee that owner-scoped dashboard
+    # views (notably the inbox) filter on. Non-Epic jobs (issue/cron/direct)
+    # had no code populating it, so they were created with a NULL owner and
+    # silently dropped out of those views. Default it from the creating user.
+    #
+    # Epic children are deliberately left alone: their ownership follows the
+    # Epic (cascaded on claim via Epic#assign_owner), and an unowned Epic's
+    # children are legitimately unowned until it is claimed. The effective-
+    # owner query convention (owner_user_id.presence || user_id) still counts
+    # a NULL-owner Epic child as its creator's for read scopes.
+    return if epic_id.present?
+
+    self.owner_user_id ||= user_id
   end
 
   def default_agent_provider
