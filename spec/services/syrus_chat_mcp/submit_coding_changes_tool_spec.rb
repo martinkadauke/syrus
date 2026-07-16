@@ -35,7 +35,21 @@ RSpec.describe SyrusChatMcp::SubmitCodingChangesTool do
     JSON.parse(response.dig(:result, :content, 0, :text), symbolize_names: true)
   end
 
-  before { enable_coding_mode! }
+  before do
+    enable_coding_mode!
+    allow(CodingHandoffCapture).to receive(:capture!) do |chat_session:, repository:, user:, source_branch:, handoff_branch:|
+      {
+        "source_branch" => source_branch,
+        "handoff_branch" => handoff_branch,
+        "head_sha" => "abc123",
+        "base_sha" => "def456",
+        "default_branch" => repository.default_branch,
+        "changed_files" => [ "app/frontend/App.tsx" ],
+        "captured_at" => Time.current.iso8601,
+        "chat_session_id" => chat_session.id
+      }
+    end
+  end
 
   it "creates a pending action for the chat session's repository" do
     response = call_tool(branch: "feature/my-work", title: "Add user profile page", description: "Adds a user profile page with avatar and bio fields.")
@@ -157,8 +171,12 @@ RSpec.describe SyrusChatMcp::SubmitCodingChangesTool do
     expect(pending_action.result.trigger_kind).to eq("coding_handoff")
     expect(pending_action.result.job).to have_attributes(
       kind: "direct",
-      branch_name: "feature/my-work",
       linked_chat_id: chat_session.id
+    )
+    expect(pending_action.result.job.branch_name).to match(%r{\Asyrus/chat-#{chat_session.id}-handoff-\d+\z})
+    expect(pending_action.result.artifact("coding_handoff")).to include(
+      "source_branch" => "feature/my-work",
+      "head_sha" => "abc123"
     )
   end
 end

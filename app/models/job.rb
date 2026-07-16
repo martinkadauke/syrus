@@ -498,14 +498,14 @@ class Job < ApplicationRecord
   # runs graders and (on pass) opens the PR. linked_chat_id is kept so the
   # workflow's after_success/after_fail hooks can route results back to chat.
   # Returns the new Workflow on success, false otherwise.
-  def start_coding_handoff!
+  def start_coding_handoff!(artifacts: nil)
     return false unless Feature.coding_mode_enabled?
     return false unless coding?
 
     release_from_coding!
     save!
 
-    workflow = Workflows::CodingHandoff.instantiate(job: self, agent_provider: agent_provider)
+    workflow = Workflows::CodingHandoff.instantiate(job: self, artifacts: artifacts, agent_provider: agent_provider)
     StepDispatcher.start_workflow(workflow)
     workflow
   end

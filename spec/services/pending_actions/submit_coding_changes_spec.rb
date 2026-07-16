@@ -28,7 +28,21 @@ RSpec.describe PendingActions::SubmitCodingChanges do
     }.merge(overrides))
   end
 
-  before { enable_coding_mode! }
+  before do
+    enable_coding_mode!
+    allow(CodingHandoffCapture).to receive(:capture!) do |chat_session:, repository:, user:, source_branch:, handoff_branch:|
+      {
+        "source_branch" => source_branch,
+        "handoff_branch" => handoff_branch,
+        "head_sha" => "abc123",
+        "base_sha" => "def456",
+        "default_branch" => repository.default_branch,
+        "changed_files" => [ "app/frontend/App.tsx" ],
+        "captured_at" => Time.current.iso8601,
+        "chat_session_id" => chat_session.id
+      }
+    end
+  end
 
   it "creates a direct Job linked to the chat session" do
     action = pending_action
@@ -39,12 +53,12 @@ RSpec.describe PendingActions::SubmitCodingChanges do
     job = Job.order(:created_at).last
     expect(job).to have_attributes(
       kind: "direct",
-      branch_name: "feature/my-work",
       issue_title: "User Profile Page",
       issue_body: "Add user profile page",
       linked_chat_id: chat_session.id,
       repository: repository
     )
+    expect(job.branch_name).to match(%r{\Asyrus/chat-#{chat_session.id}-handoff-\d+\z})
   end
 
   it "dispatches a coding_handoff workflow and stores it as the result" do
@@ -68,13 +82,38 @@ RSpec.describe PendingActions::SubmitCodingChanges do
     expect(job.reload).to be_implemented
   end
 
-  it "sets the Job's branch_name from the payload" do
+  it "captures and stores an immutable handoff branch instead of reusing the mutable chat branch" do
     action = pending_action
 
     allow(StepDispatcher).to receive(:start_workflow)
     action.confirm!(user: user)
 
-    expect(action.result.job.branch_name).to eq("feature/my-work")
+    expect(CodingHandoffCapture).to have_received(:capture!).with(
+      chat_session: chat_session,
+      repository: repository,
+      user: user,
+      source_branch: "feature/my-work",
+      handoff_branch: action.result.job.branch_name
+    )
+    expect(action.result.job.branch_name).to match(%r{\Asyrus/chat-#{chat_session.id}-handoff-\d+\z})
+    expect(action.result.artifact("coding_handoff")).to include(
+      "source_branch" => "feature/my-work",
+      "handoff_branch" => action.result.job.branch_name,
+      "head_sha" => "abc123"
+    )
+  end
+
+  it "seeds PR summary and empty test-plan artifacts from the handoff" do
+    action = pending_action
+
+    allow(StepDispatcher).to receive(:start_workflow)
+    action.confirm!(user: user)
+
+    workflow = action.result.reload
+    expect(workflow.artifact("pr_title")).to eq("User Profile Page")
+    expect(workflow.artifact("pr_body")).to include("Captured chat workspace commit `abc123`")
+    expect(workflow.artifact("pr_body")).to include("- `app/frontend/App.tsx`")
+    expect(workflow.artifact("test_plan")).to eq("steps" => [], "notes" => nil)
   end
 
   it "sets issue_title from the payload and does not enqueue GenerateJobTitleJob" do

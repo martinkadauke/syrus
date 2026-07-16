@@ -15,6 +15,8 @@ module Steps
         return
       end
 
+      raise StepFailed, "#{workflow.slug} is missing coding handoff test plan artifacts" if workflow.trigger_kind == "coding_handoff"
+
       raise StepFailed, "#{workflow.slug} has no completed implement run for test_plan" if missing_required_implement_run?
 
       run.update!(prompt: Prompts::TestPlan.new.to_s) if run.prompt.blank?

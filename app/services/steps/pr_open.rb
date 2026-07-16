@@ -29,6 +29,7 @@ module Steps
 
     def call
       workspace.setup
+      verify_coding_handoff_snapshot!
       log("pr_open: pushing branch and opening PR (#{workflow.slug})")
 
       push_branch
@@ -52,6 +53,26 @@ module Steps
     end
 
     private
+
+    def verify_coding_handoff_snapshot!
+      return unless workflow.trigger_kind == "coding_handoff"
+
+      snapshot = workflow.artifact("coding_handoff")
+      raise StepFailed, "coding handoff metadata is missing" unless snapshot.is_a?(Hash)
+
+      expected_branch = snapshot["handoff_branch"].to_s
+      expected_sha = snapshot["head_sha"].to_s
+      raise StepFailed, "coding handoff branch is missing from metadata" if expected_branch.blank?
+      raise StepFailed, "coding handoff head SHA is missing from metadata" if expected_sha.blank?
+      raise StepFailed, "coding handoff branch mismatch: workflow has #{workspace.branch_name}, expected #{expected_branch}" unless workspace.branch_name == expected_branch
+
+      git = streaming_git(env: { "GIT_TERMINAL_PROMPT" => "0" })
+      actual_sha = current_head_sha(git)
+      raise StepFailed, "coding handoff checkout is stale: HEAD is #{actual_sha}, expected #{expected_sha}" unless actual_sha == expected_sha
+
+      diff = git.run("diff", "--name-only", "#{workspace.base_ref}...HEAD", chdir: workspace.path.to_s).strip
+      raise StepFailed, "coding handoff branch has no changes against #{workspace.base_ref}" if diff.blank?
+    end
 
     # Fork → in-instance upstream: open a single PR directly on the upstream
     # (head = fork branch, base = upstream default). The work branch was based

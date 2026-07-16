@@ -61,4 +61,31 @@ RSpec.describe Steps::TestPlan do
 
     expect(handler.parent_session_id).to eq("implement-thread")
   end
+
+  context "for coding handoff workflows" do
+    let(:workflow) do
+      Workflow.create!(
+        job: job,
+        trigger_kind: "coding_handoff",
+        artifacts: { "test_plan" => { "steps" => [], "notes" => nil } }
+      )
+    end
+    let!(:implement_run) { nil }
+    let(:test_plan_step) { Step.create!(workflow: workflow, kind: "test_plan", position: 0) }
+
+    it "uses captured artifacts instead of invoking a fresh test-plan agent" do
+      expect(handler).not_to receive(:run_agent)
+
+      handler.call
+    end
+
+    it "fails loudly if the coding handoff did not capture test-plan artifacts" do
+      workflow.update!(artifacts: {})
+
+      expect(handler).not_to receive(:run_agent)
+      expect {
+        handler.call
+      }.to raise_error(Steps::Base::StepFailed, /missing coding handoff test plan artifacts/)
+    end
+  end
 end

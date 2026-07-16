@@ -17,6 +17,13 @@ module Steps
     def call
       workspace.setup
 
+      if coding_handoff?
+        raise StepFailed, "#{workflow.slug} is missing coding handoff summary artifacts" if workflow.artifact("pr_title").blank? || workflow.artifact("pr_body").blank?
+
+        log("coding handoff supplied PR summary artifacts — skipping agent call")
+        return
+      end
+
       if (impl_run = implement_run_with_summary)
         log("implement step already called submit_summary — skipping agent call")
         promote_artifacts!(from: impl_run)
@@ -53,6 +60,10 @@ module Steps
     end
 
     private
+
+    def coding_handoff?
+      workflow.trigger_kind == "coding_handoff"
+    end
 
     def implement_run_with_summary
       impl_run = successful_implement_run

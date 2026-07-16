@@ -262,6 +262,80 @@ RSpec.describe Steps::PrOpen do
     expect(git).not_to have_received(:run).with("push", anything, anything, chdir: anything)
   end
 
+  context "for coding handoff workflows" do
+    let(:workflow) do
+      Workflow.create!(
+        job: job,
+        trigger_kind: "coding_handoff",
+        agent_provider: workflow_provider,
+        artifacts: {
+          "coding_handoff" => {
+            "handoff_branch" => "syrus/chat-1-handoff-99",
+            "head_sha" => "expected-sha"
+          },
+          "pr_title" => "Captured title",
+          "pr_body" => "Captured body",
+          "test_plan" => { "steps" => [], "notes" => nil }
+        }
+      )
+    end
+
+    it "refuses to open a PR when the checkout is not the captured handoff commit" do
+      pr_open_run = Run.create!(
+        job: job,
+        step: pr_open_step,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: workflow.agent_provider
+      )
+      handler = described_class.new(pr_open_run)
+      workspace = instance_double(
+        WorkflowWorkspace,
+        setup: true,
+        branch_name: "syrus/chat-1-handoff-99",
+        path: Pathname.new("/tmp/syrus-coding-handoff"),
+        base_ref: "origin/main"
+      )
+      git = instance_double(GitRunner)
+
+      allow(handler).to receive(:workspace).and_return(workspace)
+      allow(handler).to receive(:streaming_git).and_return(git)
+      allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: "/tmp/syrus-coding-handoff").and_return("actual-sha\n")
+
+      expect(handler).not_to receive(:push_branch)
+      expect {
+        handler.call
+      }.to raise_error(Steps::Base::StepFailed, /checkout is stale/)
+    end
+
+    it "refuses to open a PR when the captured handoff commit has no diff against base" do
+      pr_open_run = Run.create!(
+        job: job,
+        step: pr_open_step,
+        trigger_kind: workflow.trigger_kind,
+        agent_provider: workflow.agent_provider
+      )
+      handler = described_class.new(pr_open_run)
+      workspace = instance_double(
+        WorkflowWorkspace,
+        setup: true,
+        branch_name: "syrus/chat-1-handoff-99",
+        path: Pathname.new("/tmp/syrus-coding-handoff"),
+        base_ref: "origin/main"
+      )
+      git = instance_double(GitRunner)
+
+      allow(handler).to receive(:workspace).and_return(workspace)
+      allow(handler).to receive(:streaming_git).and_return(git)
+      allow(git).to receive(:run).with("rev-parse", "HEAD", chdir: "/tmp/syrus-coding-handoff").and_return("expected-sha\n")
+      allow(git).to receive(:run).with("diff", "--name-only", "origin/main...HEAD", chdir: "/tmp/syrus-coding-handoff").and_return("\n")
+
+      expect(handler).not_to receive(:push_branch)
+      expect {
+        handler.call
+      }.to raise_error(Steps::Base::StepFailed, /no changes/)
+    end
+  end
+
   context "when falling back to the second-shot summarizer" do
     let(:user) { Factories.user(agent_provider: "codex", codex_api_key: "sk-test") }
     let(:workflow_provider) { "codex" }

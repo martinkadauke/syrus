@@ -54,6 +54,39 @@ RSpec.describe Steps::Summarize do
     `git -C #{@ws_path} log -1 --format='%B'`.strip
   end
 
+  describe "coding handoff workflows" do
+    let(:workflow) do
+      Workflow.create!(
+        job: job,
+        trigger_kind: "coding_handoff",
+        artifacts: {
+          "pr_title" => "Use captured chat title",
+          "pr_body" => "Use captured chat body.",
+          "summary" => "Captured from chat handoff."
+        }
+      )
+    end
+
+    it "uses captured artifacts instead of invoking a fresh summarizer agent" do
+      original_message = commit_message
+
+      expect(handler).not_to receive(:run_agent)
+      handler.call
+
+      expect(commit_message).to eq(original_message)
+      expect(workflow.reload.artifact("pr_title")).to eq("Use captured chat title")
+    end
+
+    it "fails loudly if the coding handoff did not capture summary artifacts" do
+      workflow.update!(artifacts: {})
+
+      expect(handler).not_to receive(:run_agent)
+      expect {
+        handler.call
+      }.to raise_error(Steps::Base::StepFailed, /missing coding handoff summary artifacts/)
+    end
+  end
+
   describe "skipping agent when implement step already submitted summary" do
     let(:implement_step) do
       Step.create!(workflow: workflow, kind: "implement", position: 0, next_step_id: step.id)
