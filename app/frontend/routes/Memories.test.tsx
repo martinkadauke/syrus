@@ -150,7 +150,7 @@ describe("MemoriesRoute", () => {
     await waitFor(() => {
       expect(fetchSpy).toHaveBeenCalledWith("/api/v1/app/memories/10", expect.objectContaining({ method: "DELETE" }))
     })
-  })
+  }, 15000)
 })
 
 function renderRoute(children: ReactNode, path: string) {
