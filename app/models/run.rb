@@ -234,11 +234,25 @@ class Run < ApplicationRecord
     current_workflow_id = Thread.current[:syrus_current_run]&.workflow_id
     return if current_workflow_id && current_workflow_id == workflow_id
 
-    queue = workflow_template_class.queue_name
+    queue = resume_worker_queue || workflow_template_class.queue_name
     RunJob.set(queue: queue, priority: job.solid_queue_priority).perform_later(id)
   end
 
   def workflow_template_class
     Workflows.for(trigger_kind: workflow&.trigger_kind || trigger_kind)
+  end
+
+  # When this workflow already ran on a specific worker pod that is still
+  # alive, route the run back to that pod's per-worker resume queue so it
+  # resumes on the existing on-disk workspace ("Retry from failed step", and
+  # ReapStaleRunsJob re-enqueues). Returns nil — falling back to the normal
+  # queue — when no worker was recorded or the pod is gone (its local workspace
+  # is lost, so any worker just re-clones fresh).
+  def resume_worker_queue
+    host = workflow&.worker_hostname
+    return nil if host.blank?
+    return nil unless InstanceVersion.worker_live?(host)
+
+    Workflow.resume_queue_name(host)
   end
 end

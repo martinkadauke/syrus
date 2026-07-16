@@ -1,3 +1,7 @@
+<%# `Socket` (used below for the per-worker resume queue) isn't autoloaded when
+    this file is rendered outside Rails — e.g. bin/check-thread-budget. Require
+    it here so the ERB is self-contained everywhere. %>
+<% require "socket" %>
 default: &default
   dispatchers:
     - polling_interval: 1
@@ -6,8 +10,13 @@ default: &default
     # Long-running RunJobs (agent invocations, ~5-10 min each)
     # get their own worker so they can't starve maintenance and
     # broadcast work. JOB_CONCURRENCY caps the simultaneous agent
-    # invocations system-wide.
-    - queues: "runs"
+    # invocations per pod (a global cap lives in
+    # AppSetting.max_concurrent_agent_runs). This worker ALSO consumes its
+    # own per-pod `resume-<hostname>` queue — "Retry from failed step" and
+    # post-crash re-enqueues are routed there so they land on the pod holding
+    # the Job's local workspace (see Run#resume_worker_queue). Listed first so
+    # operator-initiated resumes are picked up ahead of fresh work.
+    - queues: "resume-<%= Socket.gethostname %> runs"
       threads: <%= ENV.fetch("JOB_CONCURRENCY", 3) %>
       processes: 1
       polling_interval: 0.1
@@ -49,7 +58,7 @@ development:
   workers:
     # SQLite has a single writer. Keep the production queue separation,
     # but avoid the high local thread fanout that can wedge the dev queue DB.
-    - queues: "runs"
+    - queues: "resume-<%= Socket.gethostname %> runs"
       threads: <%= ENV.fetch("DEV_RUN_CONCURRENCY", 1) %>
       processes: 1
       polling_interval: 0.5

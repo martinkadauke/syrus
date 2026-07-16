@@ -368,4 +368,51 @@ RSpec.describe Run do
       end
     end
   end
+
+  describe "resume-worker queue routing (#enqueue_run_job)" do
+    include ActiveJob::TestHelper
+
+    let(:run) { job.initial_run }
+    let(:workflow) { run.workflow }
+
+    def fresh_worker!(hostname)
+      InstanceVersion.create!(hostname: hostname, role: "worker", version: "test-sha",
+                              started_at: Time.current, last_heartbeat_at: Time.current)
+    end
+
+    it "uses the normal :runs queue when no worker hostname is recorded" do
+      run  # force Job/Run creation before clearing so factory noise is excluded
+      clear_enqueued_jobs
+      expect { run.reenqueue! }.to have_enqueued_job(RunJob).on_queue("runs")
+    end
+
+    it "routes to the pod's resume queue when the recorded worker is live" do
+      workflow.update_column(:worker_hostname, "syrus-worker-1")
+      fresh_worker!("syrus-worker-1")
+
+      clear_enqueued_jobs
+      expect { run.reenqueue! }.to have_enqueued_job(RunJob).on_queue("resume-syrus-worker-1")
+    end
+
+    it "falls back to :runs when the recorded worker is gone (no fresh instance)" do
+      workflow.update_column(:worker_hostname, "syrus-worker-dead")
+
+      clear_enqueued_jobs
+      expect { run.reenqueue! }.to have_enqueued_job(RunJob).on_queue("runs")
+    end
+  end
+
+  describe "Workflow#record_worker_hostname!" do
+    it "stamps the current worker hostname exactly once" do
+      workflow = job.initial_run.workflow
+      allow(SyrusVersion).to receive(:hostname).and_return("syrus-worker-7")
+
+      workflow.record_worker_hostname!
+      expect(workflow.reload.worker_hostname).to eq("syrus-worker-7")
+
+      # Idempotent: no redundant write when already stamped for this host.
+      expect(workflow).not_to receive(:update_column)
+      workflow.record_worker_hostname!
+    end
+  end
 end

@@ -77,6 +77,11 @@ class RunJob < ApplicationJob
     @workflow = @step&.workflow
     @job = @run.job
 
+    # Record the worker pod driving this workflow so a later reopen ("Retry
+    # from failed step") or post-crash re-enqueue can be routed back to the
+    # pod holding the on-disk workspace (see Run#resume_worker_queue).
+    @workflow&.record_worker_hostname!
+
     loop do
       perform_step
       next_run = next_inline_run
@@ -100,12 +105,15 @@ class RunJob < ApplicationJob
 
   private
 
-  # Re-enqueue this Run after a delay, preserving its Job's SolidQueue
-  # priority. Used by the runs-paused and agent-concurrency gates.
+  # Re-enqueue this Run after a delay, preserving its Job's SolidQueue priority
+  # AND the current queue. Preserving the queue matters for the per-worker
+  # resume queue: a deferred resume run must stay pinned to the worker holding
+  # the workspace, not fall back to the class-default `:runs` queue on any pod.
+  # Used by the runs-paused and agent-concurrency gates.
   def defer_run(run_id, delay)
     sq_priority = ::Run.joins(:job).where(id: run_id).pick("jobs.priority")
     sq_num = ::Job::PRIORITY_TO_SQ.fetch(sq_priority.to_s, ::Job::PRIORITY_TO_SQ["medium"])
-    self.class.set(wait: delay, priority: sq_num).perform_later(run_id)
+    self.class.set(queue: queue_name, wait: delay, priority: sq_num).perform_later(run_id)
   end
 
   # Global, cluster-wide cap on concurrent agent Runs (the `:runs` queue),

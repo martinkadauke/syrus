@@ -395,6 +395,26 @@ class Workflow < ApplicationRecord
     end.freeze
   end
 
+  # Per-worker SolidQueue queue that only the pod with this hostname consumes
+  # (declared in config/queue.yml). Used to route a "Retry from failed step"
+  # resume back to the worker that holds this Job's single on-disk workspace
+  # (workspaces are per-Job local disk under multi-worker). The format must
+  # match the queue.yml entry.
+  def self.resume_queue_name(hostname)
+    "resume-#{hostname}"
+  end
+
+  # Record the worker pod that ran this workflow so a later reopen can be
+  # routed back to it (the workspace lives on that pod's local disk). Uses the
+  # same hostname source InstanceVersion records (SyrusVersion.hostname), so the
+  # liveness check lines up. Cheap update_column — no callbacks/validation.
+  def record_worker_hostname!
+    host = SyrusVersion.hostname
+    return if host.blank? || worker_hostname == host
+
+    update_column(:worker_hostname, host)
+  end
+
   def landing_workflow?
     LANDING_TRIGGER_KINDS.include?(trigger_kind)
   end

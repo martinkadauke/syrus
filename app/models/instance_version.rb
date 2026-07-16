@@ -24,6 +24,18 @@ class InstanceVersion < ApplicationRecord
     running.where("last_heartbeat_at IS NULL AND started_at > :t OR last_heartbeat_at > :t", t: threshold.ago)
   }
 
+  # True when a worker pod with this hostname is currently alive (fresh
+  # heartbeat). Used to decide whether a "Retry from failed step" can be routed
+  # back to the worker that holds the Job's workspace; if the pod is gone, the
+  # caller falls back to a fresh clone on any worker. Returns false when
+  # instance tracking is inactive (local/dev, where SYRUS_ROLE is unset and no
+  # rows exist), so resume routing degrades to the normal queue.
+  def self.worker_live?(hostname)
+    return false if hostname.blank?
+
+    fresh.where(hostname: hostname, role: "worker").exists?
+  end
+
   def seconds_since_heartbeat
     return nil if last_heartbeat_at.nil?
     (Time.current - last_heartbeat_at).round
