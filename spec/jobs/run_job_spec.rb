@@ -1049,4 +1049,52 @@ RSpec.describe RunJob do
     raise "shell failed: #{cmd}\n#{out}\n#{err}" unless status.success?
     out
   end
+
+  describe "global agent concurrency cap" do
+    include ActiveJob::TestHelper
+
+    let(:other_job) { Factories.job(repository: repository, issue_number: 43) }
+
+    def running_agent_run!
+      run = other_job.initial_run
+      run.start!
+      run.save!
+      run
+    end
+
+    it "does not defer when the cap is 0 (unlimited)" do
+      AppSetting.current.update!(max_concurrent_agent_runs: 0)
+      running_agent_run!
+
+      expect(RunJob.new.send(:defer_for_agent_concurrency?, job.initial_run.id)).to be(false)
+    end
+
+    it "does not defer when running agent Runs are below the cap" do
+      AppSetting.current.update!(max_concurrent_agent_runs: 2)
+      running_agent_run!  # 1 running < 2
+
+      expect(RunJob.new.send(:defer_for_agent_concurrency?, job.initial_run.id)).to be(false)
+    end
+
+    it "defers and re-enqueues when the cap is met, leaving the Run queued" do
+      AppSetting.current.update!(max_concurrent_agent_runs: 1)
+      running_agent_run!  # 1 running >= cap 1
+
+      clear_enqueued_jobs
+      deferred = nil
+      expect {
+        deferred = RunJob.new.send(:defer_for_agent_concurrency?, job.initial_run.id)
+      }.to have_enqueued_job(RunJob).with(job.initial_run.id)
+      expect(deferred).to be(true)
+      expect(job.initial_run.reload.state).to eq("queued")
+    end
+
+    it "classifies only :runs-queue (agent) trigger kinds, excluding landing/merges/grader" do
+      kinds = Workflow.runs_queue_trigger_kinds
+
+      expect(kinds).to include("initial", "pr_comment", "retry", "ci_failure")
+      expect(kinds).not_to include("auto_merge", "merge_train", "rebase", "stack_rebase", "main_grader")
+      expect(job.initial_run.agent_queue?).to be(true)
+    end
+  end
 end

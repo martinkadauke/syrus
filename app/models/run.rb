@@ -49,6 +49,14 @@ class Run < ApplicationRecord
   scope :active, -> { where(state: %w[ queued running ]) }
   scope :terminal, -> { where(state: %w[ succeeded failed cancelled ]) }
   scope :ordered, -> { order(:created_at) }
+  # Currently-executing agent Runs across the cluster — the `:runs`-queue
+  # workflows subject to the global agent-concurrency cap. App-DB counted, so
+  # it holds across worker pods and is testable without SolidQueue tables.
+  scope :running_agent_runs, -> {
+    where(state: "running")
+      .joins(step: :workflow)
+      .where(workflows: { trigger_kind: Workflow.runs_queue_trigger_kinds })
+  }
   scope :stale, -> {
     t = STALE_HEARTBEAT_THRESHOLD.ago
     where(state: "running")
@@ -163,6 +171,14 @@ class Run < ApplicationRecord
       output_tokens.present? ||
       cache_creation_input_tokens.present? ||
       cache_read_input_tokens.present?
+  end
+
+  # True when this Run's workflow runs on the `:runs` queue — an agent-invoking
+  # workflow subject to the global agent-concurrency cap
+  # (AppSetting.max_concurrent_agent_runs). Landing/merges and main_grader runs
+  # are not capped.
+  def agent_queue?
+    workflow_template_class.queue_name == :runs
   end
 
   # Sanctioned re-dispatch for a non-terminal Run that lost its

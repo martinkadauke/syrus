@@ -98,11 +98,13 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
   const [signupsOpen, setSignupsOpen] = useState(payload.settings.signups_open)
   const [videoRetentionDays, setVideoRetentionDays] = useState(String(payload.settings.video_retention_days))
   const [videoBudgetMb, setVideoBudgetMb] = useState(String(payload.settings.video_storage_budget_mb))
+  const [maxConcurrentAgentRuns, setMaxConcurrentAgentRuns] = useState(String(payload.settings.max_concurrent_agent_runs))
   const update = useMutation({
     mutationFn: () => updateAdminSettings({
       signups_open: signupsOpen,
       video_retention_days: Number(videoRetentionDays),
-      video_storage_budget_mb: Number(videoBudgetMb)
+      video_storage_budget_mb: Number(videoBudgetMb),
+      max_concurrent_agent_runs: Number(maxConcurrentAgentRuns)
     }),
     onSuccess: (updated) => {
       queryClient.setQueryData(queryKey, updated)
@@ -114,7 +116,8 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
     setSignupsOpen(payload.settings.signups_open)
     setVideoRetentionDays(String(payload.settings.video_retention_days))
     setVideoBudgetMb(String(payload.settings.video_storage_budget_mb))
-  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb])
+    setMaxConcurrentAgentRuns(String(payload.settings.max_concurrent_agent_runs))
+  }, [payload.settings.signups_open, payload.settings.video_retention_days, payload.settings.video_storage_budget_mb, payload.settings.max_concurrent_agent_runs])
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -163,6 +166,19 @@ function SettingsForm({ payload, onNotice }: { payload: AdminSettingsPayload; on
           onChange={(event) => setVideoBudgetMb(event.target.value)}
           type="number"
           value={videoBudgetMb}
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="admin-settings-max-agent-runs">{t("settings.max_concurrent_agent_runs_label")}</label>
+        <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">{t("settings.max_concurrent_agent_runs_help")}</span>
+        <input
+          id="admin-settings-max-agent-runs"
+          className="mt-1 w-32 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100 px-2 py-1 text-sm"
+          min={0}
+          onChange={(event) => setMaxConcurrentAgentRuns(event.target.value)}
+          type="number"
+          value={maxConcurrentAgentRuns}
         />
       </div>
 

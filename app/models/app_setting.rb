@@ -30,6 +30,15 @@ class AppSetting < ApplicationRecord
     only_integer: true,
     greater_than_or_equal_to: 1
   }
+  # Global cluster-wide cap on concurrently-executing agent Runs (the `:runs`
+  # queue). Enforced by RunJob (defer-and-re-enqueue). 0 = unlimited — the only
+  # bound is then each worker's per-pod `JOB_CONCURRENCY` thread pool. Set this
+  # when running multiple worker pods so total Claude/Codex concurrency (and
+  # cost / rate-limit exposure) doesn't scale with pod count.
+  validates :max_concurrent_agent_runs, numericality: {
+    only_integer: true,
+    greater_than_or_equal_to: 0
+  }
 
   encrypts :github_app_private_key_pem
 
@@ -56,6 +65,11 @@ class AppSetting < ApplicationRecord
 
   def self.signups_open?
     current.signups_open
+  end
+
+  # 0 = unlimited.
+  def self.max_concurrent_agent_runs
+    current.max_concurrent_agent_runs
   end
 
   def self.max_job_failures

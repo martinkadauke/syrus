@@ -11,6 +11,7 @@ export type AdminSettingsPayload = {
     signups_open: boolean
     video_retention_days: number
     video_storage_budget_mb: number
+    max_concurrent_agent_runs: number
     clearable_secrets: ClearableSecret[]
   }
   message?: string
@@ -20,6 +21,7 @@ export type AdminSettingsUpdate = {
   signups_open: boolean
   video_retention_days?: number
   video_storage_budget_mb?: number
+  max_concurrent_agent_runs?: number
 }
 
 export function fetchAdminSettings() {

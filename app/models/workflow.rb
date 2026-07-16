@@ -384,6 +384,17 @@ class Workflow < ApplicationRecord
   LANDING_TRIGGER_KINDS = %w[ auto_merge merge_train ].freeze
   INFRASTRUCTURE_TRIGGER_KINDS = %w[ main_grader ].freeze
 
+  # Trigger kinds whose workflow template dispatches to the `:runs` queue —
+  # the agent-invoking workflows subject to the global agent-concurrency cap
+  # (AppSetting.max_concurrent_agent_runs). Derived from the template registry
+  # so new trigger kinds are classified automatically. Memoized (registry is
+  # static at boot).
+  def self.runs_queue_trigger_kinds
+    @runs_queue_trigger_kinds ||= Workflow::TriggerKind.values.select do |kind|
+      Workflow::TriggerKind.template_for(kind).queue_name == :runs
+    end.freeze
+  end
+
   def landing_workflow?
     LANDING_TRIGGER_KINDS.include?(trigger_kind)
   end

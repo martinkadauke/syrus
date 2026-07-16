@@ -139,6 +139,8 @@
     "video_retention_help": "How long uploaded walkthrough videos are kept before removal. The analysis and its screenshots always stay in the chat.",
     "video_budget_label": "Walkthrough video storage budget (MB)",
     "video_budget_help": "Instance-wide cap on total stored walkthrough videos. When exceeded, the oldest videos are removed first. Set 0 for no cap.",
+    "max_concurrent_agent_runs_label": "Max concurrent agent runs (global)",
+    "max_concurrent_agent_runs_help": "Cluster-wide cap on how many agent Runs execute at once, across all worker pods. Set this when running multiple workers so total agent concurrency (and cost / rate-limit exposure) doesn't scale with pod count. 0 = unlimited (bounded only by each pod's JOB_CONCURRENCY). Landing and main-branch grader runs are not counted.",
     "settings_updated": "Settings updated."
   },
   "github_app": {

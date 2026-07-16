@@ -57,15 +57,16 @@ class RunJob < ApplicationJob
   # which is fine for a kill-switch state that's typically minutes,
   # not days.
   RUNS_PAUSED_RETRY_DELAY = 30.seconds
+  AGENT_CONCURRENCY_RETRY_DELAY = 15.seconds
 
   def perform(run_id)
     if AppSetting.runs_paused?
       Rails.logger.info("[RunJob] runs paused — deferring Run ##{run_id} by #{RUNS_PAUSED_RETRY_DELAY}")
-      sq_priority = ::Run.joins(:job).where(id: run_id).pick("jobs.priority")
-      sq_num = ::Job::PRIORITY_TO_SQ.fetch(sq_priority.to_s, ::Job::PRIORITY_TO_SQ["medium"])
-      self.class.set(wait: RUNS_PAUSED_RETRY_DELAY, priority: sq_num).perform_later(run_id)
+      defer_run(run_id, RUNS_PAUSED_RETRY_DELAY)
       return
     end
+
+    return if defer_for_agent_concurrency?(run_id)
 
     @run = ::Run.find(run_id)
     Thread.current[:syrus_current_run] = @run
@@ -98,6 +99,39 @@ class RunJob < ApplicationJob
   end
 
   private
+
+  # Re-enqueue this Run after a delay, preserving its Job's SolidQueue
+  # priority. Used by the runs-paused and agent-concurrency gates.
+  def defer_run(run_id, delay)
+    sq_priority = ::Run.joins(:job).where(id: run_id).pick("jobs.priority")
+    sq_num = ::Job::PRIORITY_TO_SQ.fetch(sq_priority.to_s, ::Job::PRIORITY_TO_SQ["medium"])
+    self.class.set(wait: delay, priority: sq_num).perform_later(run_id)
+  end
+
+  # Global, cluster-wide cap on concurrent agent Runs (the `:runs` queue),
+  # admin-configured via AppSetting.max_concurrent_agent_runs. SolidQueue's
+  # per-job concurrency key (job:<id>) is already used for per-Job
+  # serialization, so this is a best-effort DB-counted gate rather than a
+  # second SolidQueue semaphore: if the cap is already met, this Run bounces
+  # back to the queue with a short delay. DB-counted so it holds across worker
+  # pods (per-pod JOB_CONCURRENCY only bounds a single pod). Best-effort — a
+  # couple extra may slip through under contention; it's a cost/rate ceiling,
+  # not a hard lock. 0 = unlimited. Landing/merges and main_grader Runs are not
+  # capped (different queues, isolated pools).
+  def defer_for_agent_concurrency?(run_id)
+    limit = AppSetting.max_concurrent_agent_runs
+    return false if limit <= 0
+
+    run = ::Run.find_by(id: run_id)
+    return false unless run && !run.terminal? && run.agent_queue?
+
+    active = ::Run.running_agent_runs.where.not(id: run_id).count
+    return false if active < limit
+
+    Rails.logger.info("[RunJob] agent concurrency #{active}/#{limit} reached — deferring Run ##{run_id} by #{AGENT_CONCURRENCY_RETRY_DELAY.inspect}")
+    defer_run(run_id, AGENT_CONCURRENCY_RETRY_DELAY)
+    true
+  end
 
   def perform_step
     if @workflow.nil? || @step.nil?

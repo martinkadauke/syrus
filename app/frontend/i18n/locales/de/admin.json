@@ -139,6 +139,8 @@
     "video_retention_help": "Wie lange hochgeladene Walkthrough-Videos aufbewahrt werden. Die Analyse und ihre Bildschirmfotos bleiben immer im Chat.",
     "video_budget_label": "Speicherbudget für Walkthrough-Videos (MB)",
     "video_budget_help": "Instanzweite Obergrenze für gespeicherte Walkthrough-Videos. Bei Überschreitung werden die ältesten zuerst entfernt. 0 = kein Limit.",
+    "max_concurrent_agent_runs_label": "Max. gleichzeitige Agent-Runs (global)",
+    "max_concurrent_agent_runs_help": "Clusterweite Obergrenze, wie viele Agent-Runs gleichzeitig über alle Worker-Pods hinweg laufen. Setze dies bei mehreren Workern, damit die gesamte Agent-Parallelität (und Kosten / Rate-Limit) nicht mit der Pod-Anzahl wächst. 0 = unbegrenzt (nur durch JOB_CONCURRENCY pro Pod begrenzt). Landing- und Main-Grader-Runs zählen nicht mit.",
     "settings_updated": "Einstellungen aktualisiert."
   },
   "github_app": {
