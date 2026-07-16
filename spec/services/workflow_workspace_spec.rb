@@ -310,6 +310,84 @@ RSpec.describe WorkflowWorkspace do
     end
   end
 
+  describe "#setup — sibling workspace sweep" do
+    it "deletes a prior failed workflow's workspace when starting a fresh clone" do
+      prior_workflow = Workflow.create!(job: job, trigger_kind: "initial")
+      prior_ws = described_class.new(prior_workflow)
+      prior_ws.setup
+      prior_workflow.start!; prior_workflow.fail!; prior_workflow.save!
+      expect(prior_ws.path).to exist
+
+      # Starting the next workflow should sweep the prior one's workspace.
+      new_workflow = Workflow.create!(job: job, trigger_kind: "retry")
+      new_ws = described_class.new(new_workflow)
+      new_ws.setup
+
+      expect(prior_ws.path).not_to exist
+      expect(prior_workflow.reload.cleaned_up_at).to be_present
+    end
+
+    it "does not sweep sibling workspaces when the workspace already exists (retry-within-step path)" do
+      prior_workflow = Workflow.create!(job: job, trigger_kind: "initial")
+      prior_ws = described_class.new(prior_workflow)
+      prior_ws.setup
+      prior_workflow.start!; prior_workflow.fail!; prior_workflow.save!
+
+      new_workflow = Workflow.create!(job: job, trigger_kind: "retry")
+      new_ws = described_class.new(new_workflow)
+      new_ws.setup  # fresh clone — sweeps prior
+
+      # Simulate a retry-within-step: the workspace already exists.
+      # Setting up again must NOT try to re-sweep (and re-stamp) siblings.
+      prior_workflow.update_columns(cleaned_up_at: nil)  # reset to test idempotency
+      expect(WorkflowWorkspace).not_to receive(:cleanup_for)
+      new_ws.setup
+    end
+
+    it "does not sweep the current workflow's own workspace" do
+      ws = described_class.new(workflow)
+      expect(WorkflowWorkspace).not_to receive(:cleanup_for).with(workflow)
+      ws.setup
+    end
+
+    it "stamps cleaned_up_at on swept siblings so retry_available? becomes false" do
+      prior_workflow = Workflow.create!(job: job, trigger_kind: "initial")
+      prior_ws = described_class.new(prior_workflow)
+      prior_ws.setup
+      prior_workflow.start!; prior_workflow.fail!; prior_workflow.save!
+      expect(prior_workflow.retry_available?).to eq(true)
+
+      new_workflow = Workflow.create!(job: job, trigger_kind: "retry")
+      described_class.new(new_workflow).setup
+
+      expect(prior_workflow.reload.retry_available?).to eq(false)
+    end
+
+    it "sweeps multiple sibling workspaces (e.g. several failed retries)" do
+      prior1 = Workflow.create!(job: job, trigger_kind: "initial")
+      prior2 = Workflow.create!(job: job, trigger_kind: "retry")
+
+      described_class.new(prior1).setup
+      prior1.start!; prior1.fail!; prior1.save!
+
+      # prior2's setup sweeps prior1 eagerly
+      described_class.new(prior2).setup
+      prior2.start!; prior2.fail!; prior2.save!
+
+      expect(prior1.reload.cleaned_up_at).to be_present  # swept by prior2's setup
+
+      # prior2's workspace still on disk; only swept when new_workflow starts
+      prior2_path = described_class.path_for(prior2)
+      expect(prior2_path).to exist
+
+      new_workflow = Workflow.create!(job: job, trigger_kind: "retry")
+      described_class.new(new_workflow).setup
+
+      # prior2's path now gone too
+      expect(prior2_path).not_to exist
+    end
+  end
+
   describe "#cleanup" do
     it "removes the workflow's path" do
       ws = described_class.new(workflow)

@@ -107,12 +107,15 @@ class Workflow < ApplicationRecord
 
     # Operator-initiated reopen via "Retry from failed step." Lets
     # the failed Step (and a fresh Run on it) pick up where the
-    # workflow left off, reusing the still-on-disk workspace.
+    # workflow left off, reusing the still-on-disk workspace. Guard:
+    # only the Job's latest workflow may be reopened — a superseded
+    # workflow's workspace was swept by the next workflow's setup.
     event :reopen do
-      transitions from: :failed, to: :running, after: -> {
-        self.finished_at = nil
-        propagate_reopen_to_job!
-      }
+      transitions from: :failed, to: :running, guard: :latest_for_job?,
+        after: -> {
+          self.finished_at = nil
+          propagate_reopen_to_job!
+        }
     end
   end
 
@@ -306,8 +309,16 @@ class Workflow < ApplicationRecord
   # succeed/cancel callback above OR via WorkflowWorkspacePruneJob's
   # daily sweep), retry is no longer possible because committed-but-
   # unpushed work from prior succeeded steps is gone.
+  #
+  # Also requires this to be the Job's latest workflow: once a newer
+  # workflow has started, this one's workspace was eagerly swept and
+  # "Retry from this step" would base work on stale state anyway.
   def retry_available?
-    failed? && cleaned_up_at.nil?
+    failed? && cleaned_up_at.nil? && latest_for_job?
+  end
+
+  def latest_for_job?
+    job.workflows.maximum(:id) == id
   end
 
   # Read-or-default convenience for artifact access. Nil-safe

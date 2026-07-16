@@ -114,9 +114,19 @@ Like `coding_handoff`, requires operator confirmation before the workflow dispat
 
 This trigger kind is infrastructure-facing and not surfaced in the operator Job state machine. It does not produce a PR or appear in the normal Job workflow list.
 
-**Workspace lifecycle:** Infrastructure workflows (those in `Workflow::INFRASTRUCTURE_TRIGGER_KINDS`) clean their workspace immediately on both success and failure — they do not hold the workspace for the 7-day "Retry from failed step" window that normal failed workflows retain. This is enforced at two layers:
+**Workspace lifecycle:** Infrastructure workflows (those in `Workflow::INFRASTRUCTURE_TRIGGER_KINDS`) clean their workspace immediately on both success and failure — they do not participate in the normal failed-workflow workspace retention. This is enforced at two layers:
 
 1. The `fail` AASM event in `Workflow` calls `cleanup_workspace!` immediately for infrastructure workflows.
-2. `WorkflowWorkspacePruneJob#db_sweep` and `#filesystem_sweep` apply `RETAIN_AFTER_SUCCESS_OR_CANCEL` (2 hours) as a backstop for infrastructure failed workflows instead of the normal `RETAIN_AFTER_FAILURE` (7 days).
+2. `WorkflowWorkspacePruneJob#db_sweep` and `#filesystem_sweep` apply `RETAIN_AFTER_SUCCESS_OR_CANCEL` (2 hours) as a backstop for infrastructure failed workflows instead of the normal tiered retention logic.
+
+**Normal (non-infrastructure) failed workflow workspace retention:** Syrus keeps at most one workspace per Job on disk at a time. When a new workflow's first run starts, it eagerly sweeps all sibling workflows' workspace directories (`WorkflowWorkspace#sweep_sibling_workspaces!`), stamping `cleaned_up_at` on each so the "Retry from failed step" button is immediately disabled for superseded workflows.
+
+`WorkflowWorkspacePruneJob` applies a three-tier backstop for any workspaces not caught by the eager sweep:
+
+1. **Non-latest workflow:** pruned immediately on the next prune pass. The eager sweep should have handled these; this is the defense-in-depth backstop.
+2. **Latest workflow + job is closed:** pruned after `RETAIN_AFTER_SUCCESS_OR_CANCEL` (2 hours). The job is done; no retry is coming.
+3. **Latest workflow + job is open:** retained up to `RETAIN_AFTER_FAILURE` (7 days). The operator may still use "Retry from failed step."
+
+Only the Job's latest workflow is eligible for "Retry from failed step" (`Workflow#retry_available?` checks `latest_for_job?`). The `reopen` AASM event also carries this guard, so a superseded workflow cannot be reopened even by direct API calls.
 
 **Retry/Reopen suppression:** Infrastructure Jobs and their anchor workflows are not operator-retryable. The "Retry from failed step", "Retry implementation", and "Reopen" UI actions are suppressed for infrastructure jobs in `App::JobDetailPayload` and `App::JobRetryActions`.
