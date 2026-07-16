@@ -639,4 +639,36 @@ RSpec.describe WorkflowWorkspace do
       expect(described_class.base_ref_for(fork_job)).to eq("upstream/main")
     end
   end
+
+  describe ".cleanable_here? / worker affinity" do
+    it "is cleanable when no worker hostname was recorded (legacy / single-worker)" do
+      expect(described_class.cleanable_here?(workflow)).to be(true)
+    end
+
+    it "is cleanable on the pod that ran the workflow" do
+      allow(SyrusVersion).to receive(:hostname).and_return("worker-me")
+      workflow.update_column(:worker_hostname, "worker-me")
+
+      expect(described_class.cleanable_here?(workflow)).to be(true)
+    end
+
+    it "is NOT cleanable on a different pod" do
+      allow(SyrusVersion).to receive(:hostname).and_return("worker-me")
+      workflow.update_column(:worker_hostname, "worker-other")
+
+      expect(described_class.cleanable_here?(workflow)).to be(false)
+    end
+
+    it "cleanup_for skips (no rm_rf, no cleaned_up_at stamp) for another pod's workflow" do
+      allow(SyrusVersion).to receive(:hostname).and_return("worker-me")
+      workflow.update_column(:worker_hostname, "worker-other")
+      dir = described_class.path_for(workflow)
+      FileUtils.mkdir_p(dir)
+
+      described_class.cleanup_for(workflow)
+
+      expect(dir).to exist
+      expect(workflow.reload.cleaned_up_at).to be_nil
+    end
+  end
 end

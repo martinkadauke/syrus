@@ -65,27 +65,43 @@ RSpec.describe SystemAlerts do
       expect(alert.cta).to eq(text: "Open admin overview", path: "/admin")
     end
 
-    it "explains the shared Docker disk and offers the image-prune remedy with its caveat" do
-      # Real incident: SYRUS_DATA_ROOT sat on the Docker VM's disk, which was
-      # 97% consumed by superseded backend images from repeated updates while
-      # Syrus's own data was 28MB. Workspace-cleanup guidance alone was
-      # useless — the copy must name the actual most-common consumer.
+    it "surfaces a critical disk alert with workspace + resize guidance, without the misleading Docker copy" do
       user = Factories.user(admin: true)
       allow(DataRootDiskUsage).to receive(:current).and_return(disk_snapshot(used_percent: 99, available_bytes: 576.megabytes, level: :critical))
 
       alert = described_class.active_for(user: user).first
 
-      expect(alert.message).to include("shares a disk with Docker's own image store")
-      expect(alert.message).to include("superseded Syrus backend images")
+      expect(alert.severity).to eq(:alarm)
+      expect(alert.title).to include("critical")
+      expect(alert.message).to include("99% full")
       steps = alert.action_steps.join
-      expect(steps).to include("<code>docker image prune -a</code>")
-      # The remedy's caveat: prune -a removes ALL unused images, not just ours.
-      expect(steps).to match(/<strong>all<\/strong> images not used by a container/)
-      # The prune remedy comes first — it addresses the most common cause —
-      # while the original workspace-cleanup and volume-resize guidance stays.
-      expect(alert.action_steps.first).to include("docker image prune -a")
       expect(steps).to include("/syrus-home/.syrus/workflows")
-      expect(steps).to include("resize the worker data volume")
+      expect(steps).to include("resize that worker's data volume")
+      # The single-host-Docker / image-prune story was a red herring on K8s and
+      # is gone.
+      expect(alert.message).not_to match(/Docker/i)
+      expect(steps).not_to match(/docker image prune/i)
+    end
+
+    it "prefers the most-full worker's own reported usage (multi-worker) and names the pod" do
+      user = Factories.user(admin: true)
+      InstanceVersion.create!(hostname: "worker-a", role: "worker", version: "x", started_at: Time.current,
+                              last_heartbeat_at: Time.current, data_root_used_percent: 70,
+                              data_root_available_bytes: 40.gigabytes, data_root_total_bytes: 100.gigabytes,
+                              data_root_path: "/syrus-home/.syrus")
+      InstanceVersion.create!(hostname: "worker-b", role: "worker", version: "x", started_at: Time.current,
+                              last_heartbeat_at: Time.current, data_root_used_percent: 96,
+                              data_root_available_bytes: 3.gigabytes, data_root_total_bytes: 100.gigabytes,
+                              data_root_path: "/syrus-home/.syrus")
+      # Cached single-snapshot must NOT be used when per-pod data exists.
+      allow(DataRootDiskUsage).to receive(:current).and_return(nil)
+
+      alert = described_class.active_for(user: user).first
+
+      expect(alert.severity).to eq(:alarm)
+      expect(alert.title).to include("worker-b")
+      expect(alert.message).to include("96% full")
+      expect(alert.message).to include("<code>worker-b</code>")
     end
 
     it "surfaces critical disk usage when free space is below 5GB" do

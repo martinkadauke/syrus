@@ -18,6 +18,7 @@ module Admin
         provider_circuits: provider_circuits,
         agent_session_capture_rate: capture_rate_payload,
         data_root_disk_usage: data_root_disk_usage_payload,
+        worker_data_root_usages: InstanceVersion.worker_data_root_usages,
         stuck: stuck_items
       }
 
@@ -84,7 +85,9 @@ module Admin
     end
 
     def data_root_disk_usage_payload
-      DataRootDiskUsage.current&.as_json
+      # Prefer the most-full worker's own reported usage (multi-worker aware);
+      # fall back to the single cached snapshot on single-worker / dev.
+      InstanceVersion.worst_data_root&.data_root_usage_json || DataRootDiskUsage.current&.as_json
     end
 
     def workers_payload

@@ -18,13 +18,39 @@ class WorkflowWorkspacePruneJob < ApplicationJob
 
   RETAIN_CHAT_WORKSPACES = 7.days
 
-  def perform
+  # Recurring (no args): the coordinator runs the cluster-wide DB/branch and
+  # chat sweeps, then fans the local-disk filesystem sweep out to every live
+  # worker — each worker's workspaces live on its own local disk, so a single
+  # pod can't sweep them all. `mode == "filesystem"` is the per-worker leg,
+  # enqueued to that pod's resume queue (see fan_out_filesystem_prune). Passing
+  # an arg also bypasses SkipIfPending's no-arg dedup, so the fan-out isn't
+  # collapsed into one.
+  def perform(mode = nil)
+    if mode == "filesystem"
+      filesystem_sweep
+      return
+    end
+
     db_sweep
-    filesystem_sweep
     chat_workspace_sweep
+    fan_out_filesystem_prune
   end
 
   private
+
+  def fan_out_filesystem_prune
+    hostnames = InstanceVersion.fresh.where(role: "worker").distinct.pluck(:hostname)
+
+    # No tracked worker pods (single-host / dev): sweep the local disk directly.
+    if hostnames.empty?
+      filesystem_sweep
+      return
+    end
+
+    hostnames.each do |host|
+      self.class.set(queue: Workflow.resume_queue_name(host)).perform_later("filesystem")
+    end
+  end
 
   def db_sweep
     n = 0

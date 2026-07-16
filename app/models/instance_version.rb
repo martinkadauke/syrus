@@ -36,6 +36,55 @@ class InstanceVersion < ApplicationRecord
     fresh.where(hostname: hostname, role: "worker").exists?
   end
 
+  # ----- per-pod SYRUS_DATA_ROOT usage --------------------------------------
+  # Stamped by the heartbeat on worker pods (InstanceVersionSupervisor). Under
+  # local-disk multi-worker each pod fills independently, so disk health is
+  # per-pod rather than a single shared reading.
+
+  # The worker pod with the most-alarming data-root usage right now (fresh
+  # heartbeat, usage recorded). Critical / near-full sorts first.
+  def self.worst_data_root
+    fresh.where(role: "worker").where.not(data_root_used_percent: nil)
+         .order(data_root_used_percent: :desc, data_root_available_bytes: :asc)
+         .first
+  end
+
+  def self.worker_data_root_usages
+    fresh.where(role: "worker").where.not(data_root_used_percent: nil)
+         .order(data_root_used_percent: :desc)
+         .map(&:data_root_usage_json)
+  end
+
+  def data_root_alert_level
+    return nil if data_root_used_percent.nil?
+    if data_root_used_percent >= DataRootDiskUsage::CRITICAL_USED_PERCENT ||
+       (data_root_available_bytes && data_root_available_bytes < DataRootDiskUsage::CRITICAL_AVAILABLE_BYTES)
+      return :critical
+    end
+    return :warning if data_root_used_percent >= DataRootDiskUsage::WARNING_USED_PERCENT
+
+    :ok
+  end
+
+  def data_root_alert?
+    level = data_root_alert_level
+    !level.nil? && level != :ok
+  end
+
+  def data_root_usage_json
+    return nil if data_root_used_percent.nil?
+
+    {
+      hostname: hostname,
+      path: data_root_path,
+      used_percent: data_root_used_percent,
+      available_bytes: data_root_available_bytes,
+      total_bytes: data_root_total_bytes,
+      level: data_root_alert_level.to_s,
+      observed_at: last_heartbeat_at&.iso8601
+    }
+  end
+
   def seconds_since_heartbeat
     return nil if last_heartbeat_at.nil?
     (Time.current - last_heartbeat_at).round

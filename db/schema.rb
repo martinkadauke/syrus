@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_16_223120) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_16_230123) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -516,6 +516,10 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_16_223120) do
 
   create_table "instance_versions", force: :cascade do |t|
     t.datetime "created_at", null: false
+    t.bigint "data_root_available_bytes"
+    t.string "data_root_path"
+    t.bigint "data_root_total_bytes"
+    t.integer "data_root_used_percent"
     t.datetime "finished_at"
     t.string "hostname", null: false
     t.datetime "last_heartbeat_at"

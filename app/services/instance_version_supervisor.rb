@@ -43,8 +43,9 @@ class InstanceVersionSupervisor
         return
       end
 
+      attrs = { last_heartbeat_at: now }.merge(data_root_usage_attrs)
       rows = InstanceVersion.where(id: instance.id, finished_at: nil)
-                            .update_all(last_heartbeat_at: now)
+                            .update_all(attrs)
       return if rows == 1
 
       # Reaper finalized us between heartbeats — re-register a fresh
@@ -64,6 +65,27 @@ class InstanceVersionSupervisor
 
     def disabled?
       Rails.env.test? || !SyrusVersion.server_process?
+    end
+
+    # Worker pods measure their own SYRUS_DATA_ROOT usage each heartbeat so the
+    # disk-health banner is per-pod under local-disk multi-worker. Web pods
+    # don't mount the workspace volume, so they report nothing. `df` is cheap
+    # (unlike `du`); failures are swallowed so a heartbeat never breaks.
+    def data_root_usage_attrs
+      return {} unless SyrusVersion.role == "worker"
+
+      snapshot = DataRootDiskUsage.read(WorkflowWorkspace.data_root.to_s)
+      return {} unless snapshot
+
+      {
+        data_root_used_percent: snapshot.used_percent,
+        data_root_available_bytes: snapshot.available_bytes,
+        data_root_total_bytes: snapshot.total_bytes,
+        data_root_path: snapshot.path
+      }
+    rescue StandardError => e
+      Rails.logger.warn("[InstanceVersionSupervisor] data-root measure failed: #{e.class}: #{e.message}")
+      {}
     end
 
     def register_instance_safely(now: Time.current)

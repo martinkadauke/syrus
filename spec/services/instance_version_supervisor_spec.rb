@@ -11,6 +11,36 @@ RSpec.describe InstanceVersionSupervisor do
       expect(sp.reload.last_heartbeat_at).to be_within(2.seconds).of(Time.current)
     end
 
+    it "stamps the worker's data-root usage on each heartbeat (worker role only)" do
+      allow(SyrusVersion).to receive(:role).and_return("worker")
+      snapshot = DataRootDiskUsage::Snapshot.new(
+        path: "/syrus-home/.syrus", filesystem: "/dev/x", total_bytes: 100.gigabytes,
+        used_bytes: 94.gigabytes, available_bytes: 6.gigabytes, used_percent: 94,
+        mounted_on: "/syrus-home", observed_at: Time.current
+      )
+      allow(DataRootDiskUsage).to receive(:read).and_return(snapshot)
+      sp = InstanceVersion.create!(hostname: "syrus-worker-1", role: "worker", version: "abc",
+                                    started_at: 1.minute.ago, last_heartbeat_at: 30.seconds.ago)
+
+      described_class.heartbeat(sp)
+
+      sp.reload
+      expect(sp.data_root_used_percent).to eq(94)
+      expect(sp.data_root_available_bytes).to eq(6.gigabytes)
+      expect(sp.data_root_alert_level).to eq(:warning)
+    end
+
+    it "does not measure disk on a web pod" do
+      allow(SyrusVersion).to receive(:role).and_return("web")
+      expect(DataRootDiskUsage).not_to receive(:read)
+      sp = InstanceVersion.create!(hostname: "syrus-web-1", role: "web", version: "abc",
+                                    started_at: 1.minute.ago, last_heartbeat_at: 30.seconds.ago)
+
+      described_class.heartbeat(sp)
+
+      expect(sp.reload.data_root_used_percent).to be_nil
+    end
+
     it "is a no-op when the row has already been finalized" do
       sp = InstanceVersion.create!(hostname: "syrus-web-abc", role: "web", version: "abc",
                                     started_at: 1.minute.ago, last_heartbeat_at: 30.seconds.ago,

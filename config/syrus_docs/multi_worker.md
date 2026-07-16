@@ -39,3 +39,28 @@ Note: affinity is keyed on the **pod hostname**. A pod restarting on the same
 node with a `hostPath` workspace volume gets a new hostname, so a pending reopen
 degrades to a fresh clone even though the files are still on the node — correct,
 just not optimal. Keying on node name would tighten that later.
+
+## Per-worker workspace pruning
+
+A workspace lives on the local disk of the pod that ran the workflow, so one pod
+can't clean another's. Two safeguards make pruning worker-local:
+
+- `WorkflowWorkspace.cleanup_for` skips any workflow that ran on a **different**
+  pod (`worker_hostname`), so a prune pass can't false-stamp `cleaned_up_at` on a
+  workspace that's still on another pod. Legacy / single-worker workflows (no
+  recorded hostname) clean normally.
+- `WorkflowWorkspacePruneJob` (recurring) is a coordinator: it runs the
+  cluster-wide DB/branch and chat sweeps once, then **fans the local filesystem
+  sweep out to every live worker** via each pod's `resume-<hostname>` queue. With
+  no tracked workers (single-host / dev) it sweeps the local disk directly.
+
+## Per-worker disk health
+
+Each worker fills its own data volume independently, so disk health is per-pod.
+Worker pods stamp their own `SYRUS_DATA_ROOT` usage onto their `InstanceVersion`
+row every heartbeat (`df`, worker role only — web pods don't mount the volume).
+The "Worker data volume usage" banner and the admin overview surface the
+**most-full** worker (`InstanceVersion.worst_data_root`), naming the pod, and
+fall back to the single cached snapshot on single-worker / dev. (The old
+single-host-Docker / `docker image prune` guidance was a red herring on K8s and
+was removed.)

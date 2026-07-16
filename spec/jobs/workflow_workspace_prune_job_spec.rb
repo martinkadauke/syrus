@@ -395,4 +395,43 @@ RSpec.describe WorkflowWorkspacePruneJob do
     expect(live_workspace).to exist
     expect(live_home).to exist
   end
+
+  describe "per-worker filesystem fan-out" do
+    include ActiveJob::TestHelper
+
+    def fresh_worker!(hostname)
+      InstanceVersion.create!(hostname: hostname, role: "worker", version: "x",
+                              started_at: Time.current, last_heartbeat_at: Time.current)
+    end
+
+    it "fans the local filesystem sweep out to each live worker's resume queue" do
+      fresh_worker!("worker-a")
+      fresh_worker!("worker-b")
+      clear_enqueued_jobs
+
+      described_class.new.perform
+
+      enqueued = enqueued_jobs.select { |j| j["job_class"] == "WorkflowWorkspacePruneJob" }
+      expect(enqueued.map { |j| j["queue_name"] }).to contain_exactly("resume-worker-a", "resume-worker-b")
+      expect(enqueued.map { |j| j["arguments"] }).to all(eq(["filesystem"]))
+    end
+
+    it "sweeps the local disk directly when no worker pods are tracked" do
+      clear_enqueued_jobs
+      handler = described_class.new
+      expect(handler).to receive(:filesystem_sweep)
+
+      handler.perform
+
+      expect(enqueued_jobs.select { |j| j["job_class"] == "WorkflowWorkspacePruneJob" }).to be_empty
+    end
+
+    it "runs only the local filesystem sweep in the per-worker (filesystem) leg" do
+      handler = described_class.new
+      expect(handler).to receive(:filesystem_sweep)
+      expect(handler).not_to receive(:db_sweep)
+
+      handler.perform("filesystem")
+    end
+  end
 end

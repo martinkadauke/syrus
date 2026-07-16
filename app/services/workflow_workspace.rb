@@ -102,7 +102,22 @@ class WorkflowWorkspace
   # remove the directory (e.g. permissions), we log a warning and
   # leave `cleaned_up_at` nil so WorkflowWorkspacePruneJob retries
   # rather than treating a still-present dir as already gone.
+  # A workspace lives on the local disk of the worker pod that ran the
+  # workflow. Only that pod (or a pod that never recorded a hostname — legacy /
+  # single-worker / dev) may clean it. Cleaning it elsewhere is wrong under
+  # local-disk multi-worker: the local rm_rf is a no-op but would still stamp
+  # cleaned_up_at, hiding the real workspace that's still on the owning pod.
+  def self.cleanable_here?(workflow)
+    host = workflow.worker_hostname
+    host.blank? || host == SyrusVersion.hostname
+  end
+
   def self.cleanup_for(workflow)
+    unless cleanable_here?(workflow)
+      Rails.logger.debug("[WorkflowWorkspace] skip cleanup for Workflow ##{workflow.id}: ran on #{workflow.worker_hostname}, not #{SyrusVersion.hostname}")
+      return
+    end
+
     p = path_for(workflow)
     agent_home = data_root.join("agent_homes", "jobs", workflow.job_id.to_s)
     Rails.logger.info("[WorkflowWorkspace] cleanup start for Workflow ##{workflow.id} at #{p}")

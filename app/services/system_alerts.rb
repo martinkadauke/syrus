@@ -58,34 +58,53 @@ module SystemAlerts
   end
   private_class_method :github_token_blocked
 
+  # Per-pod under multi-worker: prefer the most-full worker's own reported
+  # usage (stamped on its InstanceVersion heartbeat). Falls back to the single
+  # cached snapshot (DataRootDiskUsage) on single-worker / dev, where no
+  # per-pod instance rows exist.
   def self.data_root_disk_usage
-    snapshot = DataRootDiskUsage.current
-    return unless snapshot&.alert?
+    worst = InstanceVersion.worst_data_root
+    if worst
+      return unless worst.data_root_alert?
 
-    critical = snapshot.level == :critical
+      build_disk_alert(used_percent: worst.data_root_used_percent,
+                       available_bytes: worst.data_root_available_bytes,
+                       path: worst.data_root_path, level: worst.data_root_alert_level,
+                       hostname: worst.hostname)
+    else
+      snapshot = DataRootDiskUsage.current
+      return unless snapshot&.alert?
+
+      build_disk_alert(used_percent: snapshot.used_percent,
+                       available_bytes: snapshot.available_bytes,
+                       path: snapshot.path, level: snapshot.level, hostname: nil)
+    end
+  end
+  private_class_method :data_root_disk_usage
+
+  def self.build_disk_alert(used_percent:, available_bytes:, path:, level:, hostname:)
+    critical = level == :critical
     severity = critical ? :alarm : :warn
     level_label = critical ? "critical" : "high"
+    who = hostname.present? ? "Worker <code>#{ERB::Util.html_escape(hostname)}</code>" : "The worker"
+    title = hostname.present? ? "Worker #{hostname} data volume usage is #{level_label}." : "Worker data volume usage is #{level_label}."
+    path_html = ERB::Util.html_escape(path.to_s)
     Alert.new(
       id: "data_root_disk_usage",
       severity: severity,
-      title: "Worker data volume usage is #{level_label}.",
-      message: "SYRUS_DATA_ROOT is #{snapshot.used_percent}% full with " \
-               "#{format_bytes(snapshot.available_bytes)} available. " \
-               "Data root: <code>#{ERB::Util.html_escape(snapshot.path)}</code>. " \
-               "On single-host Docker installs this volume shares a disk with Docker's " \
-               "own image store, so the space is often consumed by old, unused Docker " \
-               "images — superseded Syrus backend images left behind by updates are the " \
-               "most common culprit — rather than by Syrus data.",
+      title: title,
+      message: "#{who}'s SYRUS_DATA_ROOT (<code>#{path_html}</code>) is #{used_percent}% full " \
+               "with #{format_bytes(available_bytes)} available. Each worker fills its own data " \
+               "volume, so this is the most-full worker.",
       action_steps: [
-        "Check Docker's image store first: run <code>docker image prune -a</code> on the Docker host to delete unused images. " \
-          "Caution: it removes <strong>all</strong> images not used by a container, not just Syrus ones.",
-        "Inspect retained workflow workspaces under <code>#{ERB::Util.html_escape(snapshot.path)}/workflows</code> and clean up old terminal Workflow workspaces.",
-        "If cleanup is not enough, resize the worker data volume before clone, prepare, or landing jobs start failing."
+        "Inspect retained workflow workspaces under <code>#{path_html}/workflows</code> on that worker and clean up old terminal Workflow workspaces.",
+        "If this recurs, confirm per-Job workspace pruning is running and that stuck/looping Jobs aren't churning retries.",
+        "If cleanup is not enough, resize that worker's data volume before clone, prepare, or landing jobs start failing."
       ],
       cta: { text: "Open admin overview", path: "/admin" }
     )
   end
-  private_class_method :data_root_disk_usage
+  private_class_method :build_disk_alert
 
   def self.format_bytes(bytes)
     units = [ [ 1.terabyte, "TB" ], [ 1.gigabyte, "GB" ], [ 1.megabyte, "MB" ] ]
