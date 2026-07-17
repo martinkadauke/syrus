@@ -33,7 +33,12 @@ default: &default
     # JOB_CONCURRENCY × (compute pod count); a cluster-wide ceiling lives in
     # AppSetting.max_concurrent_agent_runs. Listed first with this pod's
     # `resume-<hostname>` queue so operator resumes land ahead of fresh work.
-    - queues: "resume-<%= Socket.gethostname %> runs"
+    # Multi-queue workers MUST be a YAML array: Solid Queue 1.4 does NOT split a
+    # space-joined string (`Array("resume-x runs")` is one literal queue), so a
+    # string here would claim zero agent jobs.
+    - queues:
+        - "resume-<%= Socket.gethostname %>"
+        - "runs"
       threads: <%= ENV.fetch("JOB_CONCURRENCY", 3) %>
       processes: 1
       polling_interval: 0.1

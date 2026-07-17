@@ -30,7 +30,12 @@ default: &default
     # Maintenance + search-write + broadcast pool. Listed first with this pod's
     # per-pod `resume-<hostname>` queue so an operator resume that landed here
     # (e.g. a reopened main_grader) is picked up ahead of routine default work.
-    - queues: "resume-<%= Socket.gethostname %> default"
+    # Multi-queue workers MUST be a YAML array: Solid Queue 1.4 does NOT split a
+    # space-joined string (`Array("resume-x default")` is one literal queue), so
+    # a string here would claim zero jobs and back up the recurring scheduler.
+    - queues:
+        - "resume-<%= Socket.gethostname %>"
+        - "default"
       threads: <%= ENV.fetch("DEFAULT_CONCURRENCY", 3) %>
       processes: 1
       polling_interval: 0.1

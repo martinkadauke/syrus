@@ -16,7 +16,13 @@ default: &default
     # post-crash re-enqueues are routed there so they land on the pod holding
     # the Job's local workspace (see Run#resume_worker_queue). Listed first so
     # operator-initiated resumes are picked up ahead of fresh work.
-    - queues: "resume-<%= Socket.gethostname %> runs"
+    # NOTE: multi-queue workers MUST use a YAML array. Solid Queue 1.4 does
+    # NOT split a space- or comma-separated string — `Array("resume-x runs")`
+    # is one literal queue name, so a space-joined string silently claims zero
+    # jobs (SolidQueue::Worker#initialize: `Array(options[:queues])`).
+    - queues:
+        - "resume-<%= Socket.gethostname %>"
+        - "runs"
       threads: <%= ENV.fetch("JOB_CONCURRENCY", 3) %>
       processes: 1
       polling_interval: 0.1
@@ -58,7 +64,11 @@ development:
   workers:
     # SQLite has a single writer. Keep the production queue separation,
     # but avoid the high local thread fanout that can wedge the dev queue DB.
-    - queues: "resume-<%= Socket.gethostname %> runs"
+    # Multi-queue workers MUST be a YAML array (Solid Queue 1.4 doesn't split
+    # a space-joined string — see the note in the default section above).
+    - queues:
+        - "resume-<%= Socket.gethostname %>"
+        - "runs"
       threads: <%= ENV.fetch("DEV_RUN_CONCURRENCY", 1) %>
       processes: 1
       polling_interval: 0.5

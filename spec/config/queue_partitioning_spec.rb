@@ -35,9 +35,31 @@ RSpec.describe "queue partitioning" do
   # declared in the `default` section, split into resume vs the rest.
   def queues_for(relative)
     workers = Array(load_config(relative).dig("default", "workers"))
-    tokens = workers.flat_map { |w| w["queues"].to_s.split }
+    # Each worker's `queues` is a YAML array (multi-queue) or a bare string
+    # (single queue). Array() normalizes both to a clean token list — do NOT
+    # split on whitespace, since a queue name never contains a space and a
+    # space-joined string is itself the bug this spec guards against.
+    tokens = workers.flat_map { |w| Array(w["queues"]).map(&:to_s) }
     resume, regular = tokens.partition { |q| q.start_with?("resume-") }
     { resume: resume, regular: regular }
+  end
+
+  it "declares every multi-queue worker as a YAML array, not a space/comma-joined string" do
+    # Solid Queue 1.4 does not split a space- or comma-separated queue string:
+    # `Array("resume-x runs")` is one literal phantom queue, so the worker
+    # claims zero jobs. Every queue token must be one clean queue name.
+    %w[config/queue.yml config/queue.home.yml config/queue.compute.yml].each do |config|
+      load_config(config).each_value do |section|
+        next unless section.is_a?(Hash)
+
+        Array(section["workers"]).each do |worker|
+          Array(worker["queues"]).each do |queue|
+            expect(queue.to_s).not_to match(/[,\s]/),
+              "#{config}: queue #{queue.inspect} must be one clean name — use a YAML array for multiple queues"
+          end
+        end
+      end
+    end
   end
 
   it "keeps queue.yml a complete single-worker config (Compose / single-host)" do
