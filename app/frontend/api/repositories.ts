@@ -259,7 +259,23 @@ export type RepositoryHealthHistory = {
   main_branch_repair_enabled: boolean
   treat_grader_timeouts_as_failures: boolean
   last_health_checked_sha: string | null
+  main_branch_repair: RepositoryMainBranchRepairStatus
   records: RepositoryHealthCheckRecord[]
+}
+
+export type RepositoryMainBranchRepairStatus = {
+  enabled: boolean
+  failed_open_jobs_count: number
+  max_open_failed_jobs: number
+  blocked_reason: string | null
+  can_spawn: boolean
+  blocking_job: {
+    id: number
+    slug: string
+    state: string
+    title: string
+    job_path: string
+  } | null
 }
 
 export type RepositoryOwnerUser = {

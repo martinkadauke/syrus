@@ -801,7 +801,32 @@ module Api
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
             treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             last_health_checked_sha: repository.last_health_checked_sha,
+            main_branch_repair: main_branch_repair_json(repository),
             records: checks.map { |check| health_check_json(check, repository) }
+          }
+        end
+
+        def main_branch_repair_json(repository)
+          status = MainHealthChangedService.new(repository).repair_status
+          {
+            enabled: status[:enabled],
+            failed_open_jobs_count: status[:failed_open_jobs_count],
+            max_open_failed_jobs: status[:max_open_failed_jobs],
+            blocked_reason: status[:blocked_reason],
+            can_spawn: status[:can_spawn],
+            blocking_job: repair_job_json(status[:blocking_job])
+          }
+        end
+
+        def repair_job_json(job)
+          return nil unless job
+
+          {
+            id: job.id,
+            slug: job.slug,
+            state: job.state,
+            title: job.title,
+            job_path: job_path(job)
           }
         end
 

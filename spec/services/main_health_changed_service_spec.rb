@@ -100,6 +100,7 @@ RSpec.describe MainHealthChangedService do
         fix_job = repository.jobs.where(kind: "direct").last
         expect(fix_job).to have_attributes(
           issue_title: MainHealthChangedService::FIX_MAIN_TITLE,
+          system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
           priority: "high",
           kind: "direct",
           state: "queued"
@@ -161,8 +162,7 @@ RSpec.describe MainHealthChangedService do
         expect(repository.reload.landing_paused).to be true
       end
 
-      it "does not spawn a second fix Job when one is already open" do
-        # Create an open fix job
+      it "does not spawn a second fix Job when a legacy title-matched fix Job is already open" do
         repository.jobs.create!(
           user: user,
           kind: "direct",
@@ -175,6 +175,82 @@ RSpec.describe MainHealthChangedService do
         expect {
           described_class.on_health_change!(repository)
         }.not_to change { repository.jobs.where(kind: "direct").count }
+      end
+
+      it "does not spawn a second fix Job when an active repair Job already exists" do
+        repository.jobs.create!(
+          user: user,
+          kind: "direct",
+          system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+          issue_title: "repair in flight",
+          issue_body: "fixing main",
+          agent_provider: "claude",
+          priority: "high",
+          state: "running"
+        )
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.not_to change { repository.jobs.where(kind: "direct").count }
+      end
+
+      it "does not spawn a second fix Job when a repair Job is waiting for review" do
+        repository.jobs.create!(
+          user: user,
+          kind: "direct",
+          system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+          issue_title: "repair awaiting review",
+          issue_body: "fixing main",
+          agent_provider: "claude",
+          priority: "high",
+          state: "implemented"
+        )
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.not_to change { repository.jobs.where(kind: "direct").count }
+      end
+
+      it "spawns another fix Job while failed repair Jobs are below the cap" do
+        repository.jobs.create!(
+          user: user,
+          kind: "direct",
+          system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+          issue_title: "failed repair",
+          issue_body: "fixing main",
+          agent_provider: "claude",
+          priority: "high",
+          state: "failed"
+        )
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.to change { repository.jobs.where(kind: "direct").count }.by(1)
+      end
+
+      it "does not spawn another fix Job once failed repair Jobs hit the cap" do
+        MainHealthChangedService::MAX_OPEN_FAILED_FIX_JOBS.times do |index|
+          repository.jobs.create!(
+            user: user,
+            kind: "direct",
+            system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+            issue_title: "failed repair #{index}",
+            issue_body: "fixing main",
+            agent_provider: "claude",
+            priority: "high",
+            state: "failed"
+          )
+        end
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.not_to change { repository.jobs.where(kind: "direct").count }
+
+        status = MainHealthChangedService.new(repository).repair_status
+        expect(status).to include(
+          failed_open_jobs_count: MainHealthChangedService::MAX_OPEN_FAILED_FIX_JOBS,
+          blocked_reason: "failed_open_cap"
+        )
       end
 
       it "spawns a new fix Job when the previous one is closed" do
@@ -191,6 +267,38 @@ RSpec.describe MainHealthChangedService do
         expect {
           described_class.on_health_change!(repository)
         }.to change { repository.jobs.where(kind: "direct").count }.by(1)
+      end
+
+      it "spawns a replacement fix Job when a repair Job is closed while main is still broken" do
+        failed_repair = repository.jobs.create!(
+          user: user,
+          kind: "direct",
+          system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+          issue_title: "failed repair",
+          issue_body: "fixing main",
+          agent_provider: "claude",
+          priority: "high",
+          state: "failed"
+        )
+
+        expect {
+          failed_repair.update!(state: "closed")
+        }.to change { repository.jobs.where(kind: "direct").count }.by(1)
+
+        replacement = repository.jobs.where(system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR).order(:id).last
+        expect(replacement).to have_attributes(
+          issue_title: MainHealthChangedService::FIX_MAIN_TITLE,
+          state: "queued",
+          priority: "high"
+        )
+      end
+
+      it "does not spawn a replacement when an unrelated Job is closed" do
+        unrelated = Factories.job_record(repository: repository, user: user, state: "failed")
+
+        expect {
+          unrelated.update!(state: "closed")
+        }.not_to change { repository.jobs.where(kind: "direct").count }
       end
 
       it "emits a main_broken notification to the repository owner" do

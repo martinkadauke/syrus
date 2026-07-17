@@ -4,6 +4,9 @@ class Job < ApplicationRecord
 
   KINDS = %w[ issue cron direct main_grader ].freeze
   MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
+  SYSTEM_KIND_MAIN_BRANCH_REPAIR = "main_branch_repair".freeze
+  SYSTEM_KINDS = [ SYSTEM_KIND_MAIN_BRANCH_REPAIR ].freeze
+  MAIN_BRANCH_REPAIR_TITLE = "Fix broken main branch".freeze
   CREDENTIAL_MODES = %w[ app pat ].freeze
   PREPARE_SKIP_LABEL = "syrus-skip-prepare".freeze
 
@@ -72,6 +75,7 @@ class Job < ApplicationRecord
   validates :validity, presence: true, inclusion: { in: VALIDITIES }
   validates :triaging_reason, presence: true, inclusion: { in: TRIAGING_REASONS }
   validates :approved_via, inclusion: { in: APPROVAL_VIAS }, allow_nil: true
+  validates :system_kind, inclusion: { in: SYSTEM_KINDS }, allow_nil: true
   validates :issue_number,
             presence: true,
             numericality: { only_integer: true, greater_than: 0 },
@@ -169,6 +173,11 @@ class Job < ApplicationRecord
 
   def main_grader?
     kind == "main_grader"
+  end
+
+  def main_branch_repair?
+    system_kind == SYSTEM_KIND_MAIN_BRANCH_REPAIR ||
+      (system_kind.blank? && direct? && issue_title == MAIN_BRANCH_REPAIR_TITLE)
   end
 
   def infrastructure?
@@ -401,6 +410,7 @@ class Job < ApplicationRecord
   after_update_commit :promote_queued_chat_pending_actions, if: :saved_change_to_implemented?
   after_update_commit :cancel_queued_chat_pending_actions, if: :saved_change_to_closed?
   after_update_commit :purge_coverage_hit_maps_on_close, if: :saved_change_to_closed?
+  after_update_commit :ensure_main_branch_repair_after_close, if: :saved_change_to_closed_main_branch_repair?
   after_update_commit :start_dependent_jobs_after_approval, if: :saved_change_to_approved?
   after_update_commit :cancel_queued_retry_workflows_after_approval, if: :saved_change_to_approved?
   after_update_commit :enqueue_landing_queue_processor, if: :saved_change_needs_landing_queue_processor?
@@ -1003,8 +1013,16 @@ class Job < ApplicationRecord
     saved_change_to_state? && closed?
   end
 
+  def saved_change_to_closed_main_branch_repair?
+    saved_change_to_closed? && main_branch_repair?
+  end
+
   def saved_change_to_approved?
     saved_change_to_state? && approved?
+  end
+
+  def ensure_main_branch_repair_after_close
+    MainHealthChangedService.ensure_repair_job!(repository)
   end
 
   def cancel_queued_retry_workflows_after_approval

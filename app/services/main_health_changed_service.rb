@@ -1,6 +1,8 @@
 class MainHealthChangedService
-  FIX_MAIN_TITLE = "Fix broken main branch".freeze
+  FIX_MAIN_TITLE = Job::MAIN_BRANCH_REPAIR_TITLE
   MAX_RECOVERY_RETRIES = 10
+  MAX_OPEN_FAILED_FIX_JOBS = 3
+  BLOCKING_FIX_JOB_STATES = %w[needs_triage triaging queued running coding implemented approved landing].freeze
 
   def self.on_health_change!(repository)
     new(repository).on_health_change!
@@ -10,8 +12,12 @@ class MainHealthChangedService
     new(repository).recovered!
   end
 
+  def self.ensure_repair_job!(repository)
+    new(repository).ensure_repair_job!
+  end
+
   def self.fix_main_job?(job)
-    job.direct? && job.issue_title == FIX_MAIN_TITLE
+    job.main_branch_repair?
   end
 
   def initialize(repository)
@@ -32,7 +38,7 @@ class MainHealthChangedService
     if @repository.main_health_broken?
       pause_landing!
       stamp_active_workflows!
-      spawn_fix_job! if @repository.main_branch_repair_enabled?
+      ensure_repair_job!
       emit_notification!
     elsif @repository.main_health_inconclusive?
       pause_landing!
@@ -50,6 +56,43 @@ class MainHealthChangedService
     start_blocked_queued_workflows!
     retried_count = retry_held_jobs!
     emit_recovery_notification!(retried_count)
+  end
+
+  def ensure_repair_job!
+    return unless @repository.main_branch_health_enabled?
+    return unless @repository.main_branch_repair_enabled?
+    return unless @repository.main_health_broken?
+    return if blocking_fix_job
+
+    failed_count = open_failed_fix_jobs.count
+    if failed_count >= MAX_OPEN_FAILED_FIX_JOBS
+      Rails.logger.warn(
+        "[MainHealthChangedService] #{@repository.slug} not spawning main repair job; " \
+        "#{failed_count}/#{MAX_OPEN_FAILED_FIX_JOBS} failed repair jobs remain open"
+      )
+      return
+    end
+
+    spawn_fix_job!
+  end
+
+  def repair_status
+    blocking = blocking_fix_job
+    failed_count = open_failed_fix_jobs.count
+    blocked_reason = if blocking
+      blocking_fix_job_reason(blocking)
+    elsif failed_count >= MAX_OPEN_FAILED_FIX_JOBS
+      "failed_open_cap"
+    end
+
+    {
+      enabled: @repository.main_branch_repair_enabled?,
+      max_open_failed_jobs: MAX_OPEN_FAILED_FIX_JOBS,
+      failed_open_jobs_count: failed_count,
+      blocked_reason: blocked_reason,
+      blocking_job: blocking,
+      can_spawn: blocked_reason.blank? && @repository.main_branch_health_enabled? && @repository.main_branch_repair_enabled? && @repository.main_health_broken?
+    }
   end
 
   private
@@ -128,14 +171,13 @@ class MainHealthChangedService
   end
 
   def spawn_fix_job!
-    return if open_fix_job_exists?
-
     user = @repository.user
     return unless user
 
     job = user.jobs.create!(
       repository: @repository,
       kind: "direct",
+      system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
       issue_number: nil,
       issue_title: FIX_MAIN_TITLE,
       issue_body: fix_job_prompt,
@@ -145,11 +187,33 @@ class MainHealthChangedService
     job.advance_after_triage! if job.may_advance_after_triage?
   end
 
-  def open_fix_job_exists?
+  def repair_jobs
     @repository.jobs
-               .where(kind: "direct", issue_title: FIX_MAIN_TITLE)
-               .where.not(state: "closed")
-               .exists?
+               .where(kind: "direct")
+               .where(
+                 "jobs.system_kind = :system_kind OR (jobs.system_kind IS NULL AND jobs.issue_title = :title)",
+                 system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+                 title: FIX_MAIN_TITLE
+               )
+  end
+
+  def open_failed_fix_jobs
+    repair_jobs.where(state: "failed")
+  end
+
+  def blocking_fix_job
+    repair_jobs
+      .where(state: BLOCKING_FIX_JOB_STATES)
+      .order(updated_at: :desc, id: :desc)
+      .first
+  end
+
+  def blocking_fix_job_reason(job)
+    if job.needs_triage? || job.triaging? || job.queued? || job.running? || job.coding?
+      "active"
+    else
+      "waiting"
+    end
   end
 
   def fix_job_prompt

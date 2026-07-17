@@ -735,6 +735,24 @@ function MainBranchHealthSection({ history, payload, prefix, queryKey, onNotice 
           {repository.main_branch_health_enabled ? null : <span>{t("repository.health_enforcement_disabled")}</span>}
           <span>{repository.main_branch_repair_enabled ? t("repository.health_auto_repair_enabled") : t("repository.health_auto_repair_disabled")}</span>
         </div>
+        {history.main_branch_repair.blocked_reason === "failed_open_cap" ? (
+          <div className="rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-100">
+            {t("repository.health_repair_failed_cap", {
+              count: history.main_branch_repair.failed_open_jobs_count,
+              max: history.main_branch_repair.max_open_failed_jobs
+            })}
+          </div>
+        ) : history.main_branch_repair.blocking_job ? (
+          <div className="rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 text-sm text-gray-600 dark:text-gray-300">
+            {t(
+              history.main_branch_repair.blocked_reason === "active" ? "repository.health_repair_active" : "repository.health_repair_waiting",
+              { slug: history.main_branch_repair.blocking_job.slug }
+            )}{" "}
+            <a className="font-medium text-blue-600 dark:text-blue-400 hover:underline" href={history.main_branch_repair.blocking_job.job_path}>
+              {history.main_branch_repair.blocking_job.title}
+            </a>
+          </div>
+        ) : null}
         {canResume ? (
           <div className="flex flex-col gap-3 rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-amber-900 dark:text-amber-100">
