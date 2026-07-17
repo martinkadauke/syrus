@@ -51,7 +51,10 @@ class PollMainBranchHealthJob < ApplicationJob
     # carried-forward "broken" that has since turned green never gets corrected
     # (the guard would early-return because main_health isn't "unknown").
     ci_evaluated = repository.last_ci_evaluated_sha == sha
-    return if !sha_changed && !repository.main_health_unknown? && !grading_needed && ci_evaluated
+    if !sha_changed && !repository.main_health_unknown? && !grading_needed && ci_evaluated
+      MainHealthChangedService.ensure_repair_job!(repository) if repository.main_health_broken?
+      return
+    end
 
 
     already_recorded_no_ci = repository.ci_health_not_configured? && repository.last_health_checked_sha == sha

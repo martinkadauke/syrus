@@ -192,6 +192,15 @@ RSpec.describe PollMainBranchHealthJob do
     described_class.perform_now(repository.id)
   end
 
+  it "reconciles repair jobs when health is already broken" do
+    repository.update!(ci_health: "broken", last_health_checked_sha: sha, last_graded_sha: sha, last_ci_evaluated_sha: sha)
+    stub_sha(sha)
+
+    expect_any_instance_of(GithubClient).not_to receive(:check_runs_summary_for)
+    expect(MainHealthChangedService).to receive(:ensure_repair_job!).with(kind_of(Repository))
+    described_class.perform_now(repository.id)
+  end
+
   it "calls MainHealthChangedService when health transitions from unknown to healthy" do
     repository.update!(last_health_checked_sha: sha, ci_health: "unknown", grader_health: "healthy")
     stub_sha(sha)
