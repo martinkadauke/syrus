@@ -531,6 +531,7 @@ module Api
             landing_paused: repository.landing_paused?,
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
+            main_branch_repair_auto_approve: repository.main_branch_repair_auto_approve?,
             treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             last_health_checked_sha: repository.last_health_checked_sha
           }
@@ -566,6 +567,7 @@ module Api
             trust_clean_rebase_grade: repository.trust_clean_rebase_grade?,
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
+            main_branch_repair_auto_approve: repository.main_branch_repair_auto_approve?,
             treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             fork_syncable: repository.fork_syncable?,
             fork_auto_sync_enabled: repository.fork_auto_sync_enabled?,
@@ -799,6 +801,7 @@ module Api
             landing_paused: repository.landing_paused?,
             main_branch_health_enabled: repository.main_branch_health_enabled?,
             main_branch_repair_enabled: repository.main_branch_repair_enabled?,
+            main_branch_repair_auto_approve: repository.main_branch_repair_auto_approve?,
             treat_grader_timeouts_as_failures: repository.treat_grader_timeouts_as_failures?,
             last_health_checked_sha: repository.last_health_checked_sha,
             main_branch_repair: main_branch_repair_json(repository),
@@ -885,6 +888,7 @@ module Api
             :trust_clean_rebase_grade,
             :main_branch_health_enabled,
             :main_branch_repair_enabled,
+            :main_branch_repair_auto_approve,
             :treat_grader_timeouts_as_failures,
             :fork_auto_sync_enabled,
             :auto_approve_mode,

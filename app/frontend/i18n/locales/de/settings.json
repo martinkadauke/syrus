@@ -225,6 +225,7 @@
     "health_enforcement_disabled": "Haupt-Branch-Gesundheitsprüfung ist deaktiviert.",
     "health_auto_repair_enabled": "Auto-Fix-Aufgaben aktiviert",
     "health_auto_repair_disabled": "Auto-Fix-Aufgaben deaktiviert",
+    "health_auto_repair_approval_enabled": "Auto-Fix-Aufgaben werden auto-genehmigt",
     "health_repair_active": "Auto-Fix wartet auf die aktive Reparatur-Aufgabe {{slug}}.",
     "health_repair_waiting": "Auto-Fix wartet darauf, dass Reparatur-Aufgabe {{slug}} geprüft oder gelandet wird.",
     "health_repair_failed_cap": "Auto-Fix ist pausiert, weil {{count}} fehlgeschlagene Reparatur-Aufgaben noch offen sind. Schließe eine nach der Prüfung, um eine weitere Reparatur-Aufgabe zu erlauben. Maximale offene fehlgeschlagene Reparatur-Aufgaben: {{max}}.",

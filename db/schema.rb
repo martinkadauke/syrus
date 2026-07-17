@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_170347) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_17_192619) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -894,6 +894,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_170347) do
     t.datetime "last_poll_started_at"
     t.string "last_poll_status"
     t.boolean "main_branch_health_enabled", default: true, null: false
+    t.boolean "main_branch_repair_auto_approve", default: false, null: false
     t.boolean "main_branch_repair_enabled", default: true, null: false
     t.string "name", null: false
     t.string "owner", null: false

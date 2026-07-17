@@ -164,6 +164,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "polling_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_health_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
+    expect(body.dig("repository", "main_branch_repair_auto_approve")).to eq(false)
     expect(body.dig("repository", "treat_grader_timeouts_as_failures")).to eq(false)
     expect(body["configured_agent_providers"]).to include(
       { "value" => "codex", "label" => "Codex" },
@@ -190,6 +191,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       pr_cost_footer_enabled: false,
       auto_merge_enabled: true,
       main_branch_health_enabled: false,
+      main_branch_repair_auto_approve: true,
       treat_grader_timeouts_as_failures: true,
       agent_provider: "codex",
       auto_approve_mode: "if_graders_pass",
@@ -216,6 +218,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
       "auto_merge_enabled" => true,
       "main_branch_health_enabled" => false,
       "main_branch_repair_enabled" => false,
+      "main_branch_repair_auto_approve" => true,
       "treat_grader_timeouts_as_failures" => true,
       "agent_provider" => "codex",
       "auto_approve_mode" => "if_graders_pass",
@@ -268,10 +271,12 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(body.dig("repository", "landing_paused")).to eq(true)
     expect(body.dig("repository", "main_branch_health_enabled")).to eq(true)
     expect(body.dig("repository", "main_branch_repair_enabled")).to eq(true)
+    expect(body.dig("repository", "main_branch_repair_auto_approve")).to eq(false)
     expect(body.dig("repository", "treat_grader_timeouts_as_failures")).to eq(false)
     expect(body.dig("health_history", "landing_paused")).to eq(true)
     expect(body.dig("health_history", "main_branch_health_enabled")).to eq(true)
     expect(body.dig("health_history", "main_branch_repair_enabled")).to eq(true)
+    expect(body.dig("health_history", "main_branch_repair_auto_approve")).to eq(false)
     expect(body.dig("health_history", "treat_grader_timeouts_as_failures")).to eq(false)
     expect(body["tabs"]).to include(
       { "key" => "overview", "label" => "Overview", "path" => repository_path(repository) },
@@ -495,6 +500,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
           prepare_enabled: "0",
           pr_cost_footer_enabled: "0",
           auto_merge_enabled: "1",
+          main_branch_repair_auto_approve: "1",
           treat_grader_timeouts_as_failures: "1",
           agent_provider: "codex",
           auto_approve_mode: "if_graders_pass",
@@ -515,6 +521,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.auto_merge_enabled).to eq(true)
     expect(repository.main_branch_health_enabled).to eq(true)
     expect(repository.main_branch_repair_enabled).to eq(false)
+    expect(repository.main_branch_repair_auto_approve).to eq(true)
     expect(repository.treat_grader_timeouts_as_failures).to eq(true)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass")
@@ -536,7 +543,8 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
         upstream_default_branch: "main",
         trigger_label: "syrus",
         main_branch_health_enabled: "1",
-        main_branch_repair_enabled: "1"
+        main_branch_repair_enabled: "1",
+        main_branch_repair_auto_approve: "1"
       }
     }
 
@@ -544,6 +552,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     repository = user.repositories.last
     expect(repository.main_branch_health_enabled).to eq(true)
     expect(repository.main_branch_repair_enabled).to eq(true)
+    expect(repository.main_branch_repair_auto_approve).to eq(true)
   end
 
   it "includes the credential status (with a pre-scoped install link) in the create response" do
@@ -607,6 +616,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
         auto_merge_enabled: "1",
         main_branch_health_enabled: "0",
         main_branch_repair_enabled: "0",
+        main_branch_repair_auto_approve: "1",
         treat_grader_timeouts_as_failures: "1",
         agent_provider: "codex",
         auto_approve_mode: "if_graders_pass_and_tagged_safe",
@@ -627,6 +637,7 @@ RSpec.describe "API: /api/v1/app/repositories", type: :request do
     expect(repository.auto_merge_enabled).to eq(true)
     expect(repository.main_branch_health_enabled).to eq(false)
     expect(repository.main_branch_repair_enabled).to eq(false)
+    expect(repository.main_branch_repair_auto_approve).to eq(true)
     expect(repository.treat_grader_timeouts_as_failures).to eq(true)
     expect(repository.agent_provider).to eq("codex")
     expect(repository.auto_approve_mode).to eq("if_graders_pass_and_tagged_safe")

@@ -408,6 +408,7 @@ class Job < ApplicationRecord
   after_update_commit :rebase_stack_children_after_successful_parent_close, if: :saved_change_to_stack_parent_resolved_terminal?
   after_update_commit :start_dependent_jobs_after_implementation, if: :saved_change_to_implemented?
   after_update_commit :promote_queued_chat_pending_actions, if: :saved_change_to_implemented?
+  after_update_commit :auto_approve_main_branch_repair_after_implementation, if: :saved_change_to_implemented_main_branch_repair?
   after_update_commit :cancel_queued_chat_pending_actions, if: :saved_change_to_closed?
   after_update_commit :purge_coverage_hit_maps_on_close, if: :saved_change_to_closed?
   after_update_commit :ensure_main_branch_repair_after_close, if: :saved_change_to_closed_main_branch_repair?
@@ -1017,6 +1018,10 @@ class Job < ApplicationRecord
     saved_change_to_closed? && main_branch_repair?
   end
 
+  def saved_change_to_implemented_main_branch_repair?
+    saved_change_to_implemented? && main_branch_repair?
+  end
+
   def saved_change_to_approved?
     saved_change_to_state? && approved?
   end
@@ -1038,6 +1043,10 @@ class Job < ApplicationRecord
 
   def promote_queued_chat_pending_actions
     ChatPendingAction.promote_queued_for_job!(self)
+  end
+
+  def auto_approve_main_branch_repair_after_implementation
+    MainBranchRepairAutoApprover.call(self)
   end
 
   def notify_job_implemented

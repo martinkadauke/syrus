@@ -734,6 +734,7 @@ function MainBranchHealthSection({ history, payload, prefix, queryKey, onNotice 
         <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
           {repository.main_branch_health_enabled ? null : <span>{t("repository.health_enforcement_disabled")}</span>}
           <span>{repository.main_branch_repair_enabled ? t("repository.health_auto_repair_enabled") : t("repository.health_auto_repair_disabled")}</span>
+          {repository.main_branch_repair_auto_approve ? <span>{t("repository.health_auto_repair_approval_enabled")}</span> : null}
         </div>
         {history.main_branch_repair.blocked_reason === "failed_open_cap" ? (
           <div className="rounded border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 p-3 text-sm text-amber-900 dark:text-amber-100">

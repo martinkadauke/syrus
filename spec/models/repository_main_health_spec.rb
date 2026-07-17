@@ -120,6 +120,7 @@ RSpec.describe Repository, "#main_health" do
 
       expect(fresh.main_branch_health_enabled).to eq(true)
       expect(fresh.main_branch_repair_enabled).to eq(true)
+      expect(fresh.main_branch_repair_auto_approve).to eq(false)
     end
 
     it "enables health checking but disables auto-repair for fork repositories" do
@@ -127,6 +128,7 @@ RSpec.describe Repository, "#main_health" do
 
       expect(fork.main_branch_health_enabled).to eq(true)
       expect(fork.main_branch_repair_enabled).to eq(false)
+      expect(fork.main_branch_repair_auto_approve).to eq(false)
     end
 
     it "honors an explicit auto-repair choice for fork repositories" do
