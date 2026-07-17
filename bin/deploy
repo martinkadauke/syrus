@@ -32,7 +32,11 @@ PRODUCTION_KUBECONFIG="$HOME/.kube/config-production"
 
 NAMESPACE_STAGING="syrus-staging"
 NAMESPACE_PRODUCTION="syrus-production"
-DEPLOYMENTS=(deployment/syrus-web deployment/syrus-worker)
+# Rollout targets across the multi-worker split: web + the single home worker
+# (Deployment) + the per-node compute workers (DaemonSet). Each entry carries
+# its resource type so `kubectl rollout restart/status` works for Deployments
+# and the DaemonSet alike.
+DEPLOYMENTS=(deployment/syrus-web deployment/syrus-worker-home daemonset/syrus-worker-compute)
 
 # --- argv parsing ----------------------------------------------------
 DEPLOY_STAGING=true
@@ -139,16 +143,10 @@ fi
 # grace period before the new pod becomes ready. 15m gives us ~5m
 # of headroom.
 ROLLOUT_TIMEOUT="${ROLLOUT_TIMEOUT:-15m}"
-SEARCH_DATABASE_PATH="${SEARCH_DATABASE_PATH:-/home/rails/.syrus-search/search.sqlite3}"
-SEARCH_PVC_NAME="${SEARCH_PVC_NAME:-syrus-search}"
-SEARCH_PVC_STORAGE_CLASS="${SEARCH_PVC_STORAGE_CLASS:-local-path}"
-SEARCH_PVC_SIZE="${SEARCH_PVC_SIZE:-10Gi}"
-SEARCH_PVC_ACCESS_MODE="${SEARCH_PVC_ACCESS_MODE:-ReadWriteOnce}"
 
 rollout() {
   local label="$1" kubeconfig="$2" namespace="$3"
   flux_suspend_with_watchdog "$kubeconfig" "$label"
-  ensure_search_storage "$label" "$kubeconfig" "$namespace"
   echo "→ ${label}: rollout restart in ${namespace}"
   KUBECONFIG="$kubeconfig" kubectl rollout restart -n "$namespace" "${DEPLOYMENTS[@]}"
   for dep in "${DEPLOYMENTS[@]}"; do
@@ -157,72 +155,6 @@ rollout() {
   verify_sha "$label" "$kubeconfig" "$namespace"
   flux_resume_now "$kubeconfig" "$label"
   echo "✓ ${label} rolled to ${SHA}"
-}
-
-ensure_search_storage() {
-  local label="$1" kubeconfig="$2" namespace="$3"
-  echo "→ ${label}: applying search PVC and deployment mounts"
-  KUBECONFIG="$kubeconfig" kubectl apply -n "$namespace" -f - >/dev/null <<EOF
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: ${SEARCH_PVC_NAME}
-spec:
-  accessModes:
-    - ${SEARCH_PVC_ACCESS_MODE}
-  storageClassName: ${SEARCH_PVC_STORAGE_CLASS}
-  resources:
-    requests:
-      storage: ${SEARCH_PVC_SIZE}
-EOF
-
-  patch_search_mount "$kubeconfig" "$namespace" "syrus-web" "false"
-  patch_search_mount "$kubeconfig" "$namespace" "syrus-worker" "false"
-}
-
-patch_search_mount() {
-  local kubeconfig="$1" namespace="$2" deployment="$3" read_only="$4"
-  KUBECONFIG="$kubeconfig" kubectl patch deployment "$deployment" -n "$namespace" --type strategic -p "$(cat <<EOF
-{
-  "spec": {
-    "template": {
-      "spec": {
-        "securityContext": {
-          "fsGroup": 1000,
-          "fsGroupChangePolicy": "OnRootMismatch"
-        },
-        "containers": [
-          {
-            "name": "${deployment}",
-            "env": [
-              {
-                "name": "SEARCH_DATABASE_PATH",
-                "value": "${SEARCH_DATABASE_PATH}"
-              }
-            ],
-            "volumeMounts": [
-              {
-                "name": "syrus-search",
-                "mountPath": "/home/rails/.syrus-search",
-                "readOnly": ${read_only}
-              }
-            ]
-          }
-        ],
-        "volumes": [
-          {
-            "name": "syrus-search",
-            "persistentVolumeClaim": {
-              "claimName": "${SEARCH_PVC_NAME}"
-            }
-          }
-        ]
-      }
-    }
-  }
-}
-EOF
-)" >/dev/null
 }
 
 # Flux's apps Kustomization reconciles every 10min and re-applies
@@ -392,9 +324,11 @@ verify_sha() {
   local label="$1" kubeconfig="$2" namespace="$3"
   local mismatch=0
   for dep in "${DEPLOYMENTS[@]}"; do
-    local container="${dep#deployment/}"
     local actual
-    actual="$(KUBECONFIG="$kubeconfig" kubectl exec -n "$namespace" "$dep" -c "$container" -- printenv GIT_SHA 2>/dev/null || true)"
+    # Don't pass -c: the resource name is not the container name (both workers'
+    # container is "syrus-worker", and the resource prefix varies deployment/
+    # vs daemonset/), so let kubectl default to each pod's single app container.
+    actual="$(KUBECONFIG="$kubeconfig" kubectl exec -n "$namespace" "$dep" -- printenv GIT_SHA 2>/dev/null || true)"
     actual="${actual//[$'\r\n']}"
     if [ "$actual" != "$SHA" ]; then
       echo "✗ ${label}/${dep}: pods running '${actual:-<empty>}' but expected ${SHA}" >&2
