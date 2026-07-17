@@ -9,6 +9,14 @@ class ChatWorkspace
   CLONE_DEPTH = 50
   EXCLUDE_ENTRY = ".syrus/".freeze
   CODING_CHECKOUT_BRANCH_PREFIX = "syrus-chat-".freeze
+  # Remote tag ref that safely backs up a reclaimed coding checkout's
+  # uncommitted work (see reclaim/restore below). Deterministic per chat, so
+  # its existence on the remote — not a DB column — is the source of truth.
+  CODING_WIP_TAG_PREFIX = "syrus-wip/chat-".freeze
+  # A Coding-Mode checkout (writable full clone + installed deps, ~1-2 GB) is
+  # reclaimed after this much inactivity; resume re-materializes it
+  # transparently from the pushed branch (+ WIP tag).
+  RECLAIM_IDLE_CODING_AFTER = 48.hours
   EXCLUDED_DIR_NAMES = %w[.git .syrus node_modules].to_set.freeze
   MAX_FILE_BYTES = 500.kilobytes
 
@@ -147,11 +155,16 @@ class ChatWorkspace
     candidate
   end
 
+  # Fully destroys idle chat workspaces (workspace dir + agent homes) and
+  # resets the session. Skips Coding-Mode checkouts: those hold committable
+  # work and are reclaimed (with a git backup) by reclaim_idle_coding_checkouts!
+  # instead of being blindly deleted.
   def self.prune_idle!(older_than:)
     cutoff = older_than.ago
     n = 0
 
     ChatSession.where.not(workspace_path: nil)
+               .where(coding_checkout_branch: nil)
                .where("COALESCE(last_message_at, updated_at) < ?", cutoff)
                .find_each do |chat_session|
       destroy!(chat_session)
@@ -160,6 +173,84 @@ class ChatWorkspace
     end
 
     n
+  end
+
+  # Reclaims Coding-Mode checkouts idle longer than `older_than`, backing up
+  # any un-pushed / uncommitted work to the remote first. Returns bytes freed.
+  def self.reclaim_idle_coding_checkouts!(older_than:)
+    cutoff = older_than.ago
+    freed = 0
+
+    ChatSession.where.not(coding_checkout_branch: nil)
+               .where.not(workspace_path: nil)
+               .where("COALESCE(last_message_at, updated_at) < ?", cutoff)
+               .find_each do |chat_session|
+      freed += reclaim_coding_checkout!(chat_session)
+    rescue StandardError => e
+      Rails.logger.warn("[ChatWorkspace] idle coding reclaim failed for chat #{chat_session.id}: #{e.class}: #{e.message}")
+    end
+
+    freed
+  end
+
+  # Enforces the instance-wide byte budget on retained Coding-Mode checkouts by
+  # LRU-evicting the least-recently-active ones (each safely backed up first)
+  # until total on-disk size is under budget. 0/negative budget = disabled.
+  # Returns bytes freed.
+  def self.reclaim_coding_over_budget!(budget_bytes:)
+    return 0 if budget_bytes.to_i <= 0
+
+    entries = ChatSession.where.not(coding_checkout_branch: nil)
+                         .where.not(workspace_path: nil)
+                         .find_each.filter_map do |chat_session|
+      repository = chat_session.repository
+      next unless repository
+
+      path = repo_path_for(chat_session, repository)
+      next unless path.join(".git").directory?
+
+      {
+        chat_session: chat_session,
+        repository: repository,
+        bytes: du_bytes(path),
+        active_at: chat_session.last_message_at || chat_session.updated_at
+      }
+    end
+
+    total = entries.sum { |e| e[:bytes] }
+    return 0 if total <= budget_bytes
+
+    freed = 0
+    entries.sort_by { |e| e[:active_at] }.each do |entry|
+      break if (total - freed) <= budget_bytes
+
+      freed += new(entry[:chat_session]).reclaim_coding_checkout!(entry[:repository])
+    rescue StandardError => e
+      Rails.logger.warn("[ChatWorkspace] budget coding reclaim failed for chat #{entry[:chat_session].id}: #{e.class}: #{e.message}")
+    end
+
+    freed
+  end
+
+  # Reclaims one chat's Coding-Mode checkout (backup + delete). Returns bytes freed.
+  def self.reclaim_coding_checkout!(chat_session, repository = nil)
+    repository ||= chat_session.repository
+    return 0 unless repository
+
+    new(chat_session).reclaim_coding_checkout!(repository)
+  end
+
+  # On-disk size of a path in bytes. Uses `du -sk` (KB) for portability across
+  # GNU (Linux worker) and BSD (macOS dev) — `du -sb` is GNU-only.
+  def self.du_bytes(path)
+    return 0 unless File.exist?(path.to_s)
+
+    out, status = Open3.capture2e("du", "-sk", path.to_s)
+    return 0 unless status.success?
+
+    out.to_i * 1024
+  rescue StandardError
+    0
   end
 
   # Walks chat-workspaces/ and agent_homes/chats/ and removes any
@@ -221,10 +312,24 @@ class ChatWorkspace
   # On first call, removes any existing shallow read-only clone and replaces
   # it with a full (unshallow) clone on a new coding branch.
   def ensure_coding_checkout!(repository)
-    return if @chat_session.coding_checkout_branch.present?
+    path = self.class.repo_path_for(@chat_session, repository)
+    existing_branch = @chat_session.coding_checkout_branch
+
+    if existing_branch.present?
+      # Already initialized. If the checkout is on disk, this is the normal
+      # no-op. If it's gone, it was reclaimed to free disk (see
+      # reclaim_coding_checkout!) — transparently re-materialize it, restoring
+      # any uncommitted work, before the agent runs this turn. The agent must
+      # never be able to tell the workspace was deleted.
+      return path if path.join(".git").directory?
+
+      ensure_root!
+      restore_coding_checkout!(repository, path, existing_branch)
+      @chat_session.chat_attachments.find_or_create_by!(attachable: repository)
+      return path
+    end
 
     ensure_root!
-    path = self.class.repo_path_for(@chat_session, repository)
     branch = "#{self.class::CODING_CHECKOUT_BRANCH_PREFIX}#{@chat_session.id}"
 
     # Remove any existing shallow checkout so the full clone gets a clean slate.
@@ -236,6 +341,26 @@ class ChatWorkspace
     @chat_session.chat_attachments.find_or_create_by!(attachable: repository)
     ChatWorkspacePrepareJob.perform_later(@chat_session.id, repository.id)
     path
+  end
+
+  # Frees a Coding-Mode checkout's disk (the ~1-2 GB clone + installed deps)
+  # while losing nothing: any unpushed commits are pushed to the coding branch,
+  # and any uncommitted work is snapshotted into a WIP commit pushed to a tag
+  # ref (keeping the branch itself clean). Only after the backup pushes succeed
+  # is the on-disk checkout removed — a failed push preserves the checkout so
+  # code is never lost. `coding_checkout_branch` stays set so a later turn
+  # re-materializes the checkout via ensure_coding_checkout!. Returns bytes freed.
+  def reclaim_coding_checkout!(repository)
+    branch = @chat_session.coding_checkout_branch
+    return 0 if branch.blank?
+
+    path = self.class.repo_path_for(@chat_session, repository)
+    return 0 unless path.join(".git").directory?
+
+    bytes = self.class.du_bytes(path)
+    backup_coding_checkout!(repository, path, branch)
+    FileUtils.rm_rf(path.to_s)
+    bytes
   end
 
   # Sets up a writable coding checkout on an existing Job branch.
@@ -279,6 +404,15 @@ class ChatWorkspace
         )
       rescue StandardError
         # Remote branch may not exist; silently continue
+      end
+      # Drop any WIP backup tag left by a prior reclaim (best-effort).
+      begin
+        @git.run(
+          "push", authenticated_url(repository), "--delete", "refs/tags/#{wip_tag}",
+          chdir: path.to_s, env: @env
+        )
+      rescue StandardError
+        # Tag may not exist; silently continue
       end
     end
 
@@ -384,6 +518,76 @@ class ChatWorkspace
 
   def create_coding_branch!(path, branch)
     @git.run("checkout", "-b", branch, chdir: path.to_s, env: @env)
+  end
+
+  def wip_tag
+    "#{self.class::CODING_WIP_TAG_PREFIX}#{@chat_session.id}"
+  end
+
+  # Pushes everything needed to reproduce the checkout to the remote:
+  #   1. the coding branch (any commits not yet pushed), and
+  #   2. if the working tree is dirty, a WIP commit capturing tracked +
+  #      untracked (non-ignored) changes, pushed to a tag ref so the branch
+  #      history stays clean.
+  # Raises if a push fails, so the caller keeps the on-disk checkout.
+  def backup_coding_checkout!(repository, path, branch)
+    url = authenticated_url(repository)
+
+    # 1. Preserve any unpushed real commits on the branch.
+    @git.run("push", url, "#{branch}:refs/heads/#{branch}", chdir: path.to_s, env: @env)
+
+    # 2. Snapshot uncommitted work (git status --porcelain includes untracked;
+    #    .gitignored files like node_modules are excluded, so deps aren't backed
+    #    up — they're re-installed on restore).
+    return unless self.class.uncommitted_changes?(path)
+
+    @git.run("add", "-A", chdir: path.to_s, env: @env)
+    @git.run(
+      "-c", "user.email=syrus@localhost", "-c", "user.name=Syrus",
+      "commit", "-m", "syrus wip backup", "--no-verify",
+      chdir: path.to_s, env: @env
+    )
+    wip_sha, = Open3.capture2e(@env, "git", "rev-parse", "HEAD", chdir: path.to_s)
+    @git.run("push", url, "#{wip_sha.strip}:refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
+  end
+
+  # Re-materializes a reclaimed coding checkout from the remote, transparently
+  # restoring any uncommitted work backed up as a WIP tag. Afterwards the
+  # working tree looks exactly as it did before reclaim.
+  def restore_coding_checkout!(repository, path, branch)
+    FileUtils.rm_rf(path.to_s) if path.exist?
+    full_clone_at_branch!(repository, path, branch)
+
+    if remote_wip_tag_exists?(repository)
+      url = authenticated_url(repository)
+      @git.run("fetch", url, "+refs/tags/#{wip_tag}:refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
+      # The WIP commit's parent is the branch tip we just cloned, so applying it
+      # is a clean patch. `-n` leaves it staged; `reset` unstages so it reads as
+      # ordinary uncommitted work (new files become untracked again).
+      @git.run("cherry-pick", "-n", wip_tag, chdir: path.to_s, env: @env)
+      @git.run("reset", chdir: path.to_s, env: @env)
+      # `cherry-pick -n` leaves CHERRY_PICK_HEAD set; clear the sequencer state
+      # so the agent's next `git commit` behaves normally (no reused WIP message).
+      @git.run("cherry-pick", "--quit", chdir: path.to_s, env: @env) rescue nil
+      # The backup has served its purpose; drop the tag (best-effort).
+      begin
+        @git.run("push", url, "--delete", "refs/tags/#{wip_tag}", chdir: path.to_s, env: @env)
+      rescue StandardError
+      end
+      @git.run("tag", "-d", wip_tag, chdir: path.to_s, env: @env) rescue nil
+    end
+
+    GitInfoExclude.ensure_entry!(path, EXCLUDE_ENTRY)
+    ChatWorkspacePrepareJob.perform_later(@chat_session.id, repository.id)
+  end
+
+  def remote_wip_tag_exists?(repository)
+    out, status = Open3.capture2e(
+      @env, "git", "ls-remote", "--tags", authenticated_url(repository), "refs/tags/#{wip_tag}"
+    )
+    status.success? && out.strip.present?
+  rescue StandardError
+    false
   end
 
   def fast_forward!(repository, path)

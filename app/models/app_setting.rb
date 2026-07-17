@@ -26,6 +26,12 @@ class AppSetting < ApplicationRecord
     only_integer: true,
     greater_than_or_equal_to: 0
   }
+  # Instance-wide ceiling on total retained Coding-Mode chat checkout bytes.
+  # 0 = unlimited (LRU eviction disabled); the idle-reclaim window still applies.
+  validates :chat_coding_workspace_budget_mb, numericality: {
+    only_integer: true,
+    greater_than_or_equal_to: 0
+  }
   validates :main_concern_report_threshold, numericality: {
     only_integer: true,
     greater_than_or_equal_to: 1
@@ -109,6 +115,16 @@ class AppSetting < ApplicationRecord
   # the size cap (time-based retention still applies).
   def self.video_storage_budget_bytes
     mb = current.video_storage_budget_mb
+    mb.to_i.positive? ? mb * 1024 * 1024 : 0
+  end
+
+  # Instance-wide ceiling on total retained Coding-Mode chat checkout bytes
+  # (the writable full clone + installed deps, ~1-2 GB each). 0 disables the
+  # size cap; the idle-reclaim window (ChatWorkspace::RECLAIM_IDLE_CODING_AFTER)
+  # still applies. Enforced by ChatWorkspace.reclaim_coding_over_budget! via
+  # LRU eviction of the least-recently-active checkouts.
+  def self.chat_coding_workspace_budget_bytes
+    mb = current.chat_coding_workspace_budget_mb
     mb.to_i.positive? ? mb * 1024 * 1024 : 0
   end
 

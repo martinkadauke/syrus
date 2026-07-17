@@ -69,6 +69,12 @@ RSpec.describe Workflows::CodingHandoff do
       job.update!(linked_chat_id: nil)
       expect { described_class.after_success(workflow) }.not_to raise_error
     end
+
+    it "enqueues a coding-workspace reclaim on the chat queue (branch is pushed)" do
+      expect {
+        described_class.after_success(workflow)
+      }.to have_enqueued_job(ChatCodingWorkspaceReclaimJob).with(chat.id).on_queue("chat")
+    end
   end
 
   describe ".after_fail" do

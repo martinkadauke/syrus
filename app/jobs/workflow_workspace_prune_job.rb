@@ -184,6 +184,15 @@ class WorkflowWorkspacePruneJob < ApplicationJob
     n = ChatWorkspace.prune_idle!(older_than: RETAIN_CHAT_WORKSPACES)
     Rails.logger.info("[WorkflowWorkspacePrune] chat_workspace_sweep removed #{n} chat workspaces") if n > 0
 
+    # Coding-Mode checkouts are the expensive tier (writable clone + deps).
+    # Reclaim idle ones (backing up any work to the remote first), then enforce
+    # the instance-wide byte budget by LRU-evicting the rest.
+    idle = ChatWorkspace.reclaim_idle_coding_checkouts!(older_than: ChatWorkspace::RECLAIM_IDLE_CODING_AFTER)
+    Rails.logger.info("[WorkflowWorkspacePrune] chat_workspace_sweep reclaimed #{idle} bytes of idle coding checkouts") if idle > 0
+
+    over_budget = ChatWorkspace.reclaim_coding_over_budget!(budget_bytes: AppSetting.chat_coding_workspace_budget_bytes)
+    Rails.logger.info("[WorkflowWorkspacePrune] chat_workspace_sweep reclaimed #{over_budget} bytes of coding checkouts over budget") if over_budget > 0
+
     # Orphan sweep: chat-workspaces/<id> and agent_homes/chats/<id>
     # directories whose ChatSession no longer exists. Heals leaks from
     # deletions that ran on a pod without the workspace PVC (and the

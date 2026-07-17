@@ -522,6 +522,151 @@ RSpec.describe ChatWorkspace do
     end
   end
 
+  describe "coding checkout reclaim + restore lifecycle" do
+    def coding_path
+      described_class.repo_path_for(chat_session, repository)
+    end
+
+    def wip_tag_ref
+      "refs/tags/syrus-wip/chat-#{chat_session.id}"
+    end
+
+    def remote_has_ref?(ref)
+      sh("git ls-remote #{bare_remote_dir} #{ref}").strip.present?
+    end
+
+    it "reclaims disk, pushes the branch, and leaves the session resumable" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      # A committed-but-unpushed change on the coding branch.
+      File.write(coding_path.join("feature.rb"), "puts 1\n")
+      sh("git -C #{coding_path} add feature.rb")
+      sh("git -C #{coding_path} commit -q -m 'add feature'")
+      branch = chat_session.reload.coding_checkout_branch
+
+      freed = described_class.reclaim_coding_checkout!(chat_session)
+
+      expect(freed).to be > 0
+      expect(coding_path.join(".git")).not_to exist
+      # Branch preserved on the remote, session still points at it.
+      expect(remote_has_ref?("refs/heads/#{branch}")).to be(true)
+      expect(chat_session.reload.coding_checkout_branch).to eq(branch)
+    end
+
+    it "backs up uncommitted work to a WIP tag before deleting" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("README.md"), "# Widgets\nLOCAL WIP\n")
+      File.write(coding_path.join("scratch.txt"), "untracked note\n")
+
+      described_class.reclaim_coding_checkout!(chat_session)
+
+      expect(coding_path.join(".git")).not_to exist
+      expect(remote_has_ref?(wip_tag_ref)).to be(true)
+    end
+
+    it "does not back up a WIP tag when the working tree is clean" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      described_class.reclaim_coding_checkout!(chat_session)
+
+      expect(remote_has_ref?(wip_tag_ref)).to be(false)
+    end
+
+    it "transparently re-materializes a reclaimed checkout on the next turn" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("feature.rb"), "puts 1\n")
+      sh("git -C #{coding_path} add feature.rb")
+      sh("git -C #{coding_path} commit -q -m 'add feature'")
+      described_class.reclaim_coding_checkout!(chat_session)
+      expect(coding_path.join(".git")).not_to exist
+
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      expect(coding_path.join(".git")).to exist
+      expect(`git -C #{coding_path} rev-parse --abbrev-ref HEAD`.strip)
+        .to eq("syrus-chat-#{chat_session.id}")
+      # Committed work is back from the pushed branch.
+      expect(coding_path.join("feature.rb")).to exist
+    end
+
+    it "restores uncommitted work exactly on re-materialize, then drops the tag" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("README.md"), "# Widgets\nLOCAL WIP\n")
+      File.write(coding_path.join("scratch.txt"), "untracked note\n")
+      described_class.reclaim_coding_checkout!(chat_session)
+
+      described_class.ensure_coding_checkout!(chat_session, repository)
+
+      expect(File.read(coding_path.join("README.md"))).to include("LOCAL WIP")
+      expect(coding_path.join("scratch.txt")).to exist
+      expect(File.read(coding_path.join("scratch.txt"))).to eq("untracked note\n")
+      # The backup tag is consumed once restored.
+      expect(remote_has_ref?(wip_tag_ref)).to be(false)
+      # No leftover cherry-pick sequencer state — the agent's next commit is normal.
+      expect(coding_path.join(".git", "CHERRY_PICK_HEAD")).not_to exist
+      # The restored changes read as ordinary uncommitted work (unstaged / untracked).
+      expect(`git -C #{coding_path} status --porcelain`.strip).to include("README.md")
+    end
+
+    it "preserves the checkout (no data loss) when the backup push fails" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      File.write(coding_path.join("feature.rb"), "puts 1\n")
+      allow(repository).to receive(:authenticated_push_url).and_return("file:///nonexistent/repo.git")
+      allow_any_instance_of(Repository).to receive(:authenticated_push_url).and_return("file:///nonexistent/repo.git")
+
+      expect {
+        described_class.reclaim_coding_checkout!(chat_session)
+      }.to raise_error(GitRunner::GitError)
+
+      # The on-disk checkout survives so the uncommitted change isn't lost.
+      expect(coding_path.join(".git")).to exist
+      expect(coding_path.join("feature.rb")).to exist
+    end
+
+    it "reclaim_idle_coding_checkouts! only reclaims sessions idle past the window" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      chat_session.update_columns(last_message_at: 3.days.ago)
+
+      fresh = ChatSession.create!(user: user)
+      fresh.update!(repository: repository)
+      described_class.ensure_coding_checkout!(fresh, repository)
+      fresh.update_columns(last_message_at: 1.hour.ago)
+      fresh_path = described_class.repo_path_for(fresh, repository)
+
+      described_class.reclaim_idle_coding_checkouts!(older_than: 48.hours)
+
+      expect(coding_path.join(".git")).not_to exist   # idle → reclaimed
+      expect(fresh_path.join(".git")).to exist          # recent → kept
+    end
+
+    it "reclaim_coding_over_budget! LRU-evicts the least-recently-active first" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      chat_session.update_columns(last_message_at: 10.days.ago)
+
+      newer = ChatSession.create!(user: user)
+      newer.update!(repository: repository)
+      described_class.ensure_coding_checkout!(newer, repository)
+      newer.update_columns(last_message_at: 1.hour.ago)
+      newer_path = described_class.repo_path_for(newer, repository)
+
+      # Budget below the combined size but above one checkout → evict exactly one.
+      allow(described_class).to receive(:du_bytes).and_return(10_000_000)
+      described_class.reclaim_coding_over_budget!(budget_bytes: 15_000_000)
+
+      expect(coding_path.join(".git")).not_to exist   # oldest evicted
+      expect(newer_path.join(".git")).to exist          # newest kept
+    end
+
+    it "prune_idle! never touches a coding checkout (no blind deletion)" do
+      described_class.ensure_coding_checkout!(chat_session, repository)
+      chat_session.update_columns(last_message_at: 30.days.ago)
+
+      described_class.prune_idle!(older_than: 7.days)
+
+      expect(coding_path.join(".git")).to exist
+      expect(chat_session.reload.coding_checkout_branch).to be_present
+    end
+  end
+
   def seed_remote(bare_path)
     Dir.mktmpdir("syrus-chatws-seed") do |seed|
       sh("git init -q -b main #{seed}")

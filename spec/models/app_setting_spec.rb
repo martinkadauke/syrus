@@ -110,6 +110,24 @@ RSpec.describe AppSetting do
     expect(AppSetting.video_storage_budget_bytes).to eq(0)
   end
 
+  it ".chat_coding_workspace_budget_bytes converts the MB column to bytes (default unlimited)" do
+    expect(AppSetting.chat_coding_workspace_budget_bytes).to eq(0)
+
+    AppSetting.current.update!(chat_coding_workspace_budget_mb: 20_000)
+
+    expect(AppSetting.chat_coding_workspace_budget_bytes).to eq(20_000 * 1024 * 1024)
+  end
+
+  it "rejects a negative chat_coding_workspace_budget_mb but allows 0 (unlimited)" do
+    setting = AppSetting.current
+
+    setting.chat_coding_workspace_budget_mb = -1
+    expect(setting).not_to be_valid
+
+    setting.chat_coding_workspace_budget_mb = 0
+    expect(setting).to be_valid
+  end
+
   # Guard against the destructive-cutoff footgun: retention 0/negative would
   # make the prune cutoff land at/after now and purge every stored video.
   it "rejects a video_retention_days below 1" do

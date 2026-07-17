@@ -34,6 +34,12 @@ module Workflows
       return unless chat
 
       GraderChatReporter.report_success(workflow: workflow, chat: chat)
+
+      # The branch is pushed and the PR is open, so the chat's coding checkout
+      # is now fully reproducible from the remote — reclaim its disk. This
+      # after_success runs on a compute pod, so hop to the `chat` queue where
+      # the workspace actually lives (ChatCodingWorkspaceReclaimJob).
+      ChatCodingWorkspaceReclaimJob.perform_later(chat.id)
     end
 
     def self.after_fail(workflow)

@@ -378,6 +378,16 @@ RSpec.describe WorkflowWorkspacePruneJob do
     expect(chat.reload.workspace_path).to be_nil
   end
 
+  it "reclaims idle coding checkouts and enforces the coding byte budget" do
+    allow(WorkflowWorkspace).to receive(:cleanup_for).and_call_original
+    expect(ChatWorkspace).to receive(:reclaim_idle_coding_checkouts!)
+      .with(older_than: ChatWorkspace::RECLAIM_IDLE_CODING_AFTER).and_return(0)
+    expect(ChatWorkspace).to receive(:reclaim_coding_over_budget!)
+      .with(budget_bytes: AppSetting.chat_coding_workspace_budget_bytes).and_return(0)
+
+    described_class.perform_now
+  end
+
   it "removes orphaned chat workspace and agent home directories whose ChatSession is gone" do
     allow(WorkflowWorkspace).to receive(:cleanup_for).and_call_original
     root = Pathname.new(data_root)
