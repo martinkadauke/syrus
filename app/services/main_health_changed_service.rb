@@ -86,16 +86,21 @@ class MainHealthChangedService
 
   def retry_held_jobs!
     retried = 0
+    attempted_job_ids = {}
+
     Workflow
       .joins(:job)
       .where(jobs: { repository_id: @repository.id })
       .where.not(jobs: { state: "closed" })
       .where(state: "failed")
       .includes(:job)
+      .order(id: :desc)
       .each do |workflow|
         break if retried >= MAX_RECOVERY_RETRIES
-        next unless workflow.artifact("main_broken")
+        next if attempted_job_ids[workflow.job_id]
+        next unless recoverable_main_broken_workflow?(workflow)
 
+        attempted_job_ids[workflow.job_id] = true
         result = RetryWorkflowEnqueuer.call(
           job: workflow.job,
           provider_validation: :none,
@@ -104,6 +109,22 @@ class MainHealthChangedService
         retried += 1 if result.success?
       end
     retried
+  end
+
+  def recoverable_main_broken_workflow?(workflow)
+    return false unless workflow.artifact("main_broken")
+    return false if workflow.job.implemented? || workflow.job.approved? || workflow.job.landing?
+    return false if newer_workflow_exists?(workflow)
+
+    true
+  end
+
+  def newer_workflow_exists?(workflow)
+    workflow
+      .job
+      .workflows
+      .where("id > ?", workflow.id)
+      .exists?
   end
 
   def spawn_fix_job!

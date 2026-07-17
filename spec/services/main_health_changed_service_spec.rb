@@ -421,6 +421,74 @@ RSpec.describe MainHealthChangedService do
         described_class.recovered!(repository)
       end
 
+      it "skips stale failed workflows after a newer workflow has succeeded" do
+        Workflow.create!(
+          job: held_job,
+          user: user,
+          trigger_kind: "retry",
+          agent_provider: "claude",
+          state: "succeeded"
+        )
+
+        expect(RetryWorkflowEnqueuer).not_to receive(:call)
+        described_class.recovered!(repository)
+      end
+
+      it "skips stale failed workflows while a newer workflow is active" do
+        Workflow.create!(
+          job: held_job,
+          user: user,
+          trigger_kind: "retry",
+          agent_provider: "claude",
+          state: "running"
+        )
+
+        expect(RetryWorkflowEnqueuer).not_to receive(:call)
+        described_class.recovered!(repository)
+      end
+
+      it "skips stale failed workflows after any newer workflow exists" do
+        Workflow.create!(
+          job: held_job,
+          user: user,
+          trigger_kind: "retry",
+          agent_provider: "claude",
+          state: "failed"
+        )
+
+        expect(RetryWorkflowEnqueuer).not_to receive(:call)
+        described_class.recovered!(repository)
+      end
+
+      it "skips failed workflows whose job has already been implemented" do
+        held_job.update_columns(state: "implemented")
+
+        expect(RetryWorkflowEnqueuer).not_to receive(:call)
+        described_class.recovered!(repository)
+      end
+
+      it "attempts only the newest recoverable failed workflow per job" do
+        newer_failed = Workflow.create!(
+          job: held_job,
+          user: user,
+          trigger_kind: "retry",
+          agent_provider: "claude",
+          state: "failed"
+        )
+        newer_failed.set_artifact!("main_broken", true)
+
+        allow(RetryWorkflowEnqueuer).to receive(:call).and_return(
+          RetryWorkflowEnqueuer::Result.new(workflow: newer_failed, error: nil, circuit: nil)
+        )
+        described_class.recovered!(repository)
+
+        expect(RetryWorkflowEnqueuer).to have_received(:call).once.with(
+          job: held_job,
+          provider_validation: :none,
+          automatic: true
+        )
+      end
+
       it "does not retry workflows for other repositories" do
         other_repo = Factories.repository(user: user)
         other_job = Factories.job(repository: other_repo)
