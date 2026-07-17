@@ -3,7 +3,46 @@
 Syrus can run more than one worker pod. Per-Job concurrency is enforced with a
 DB-backed SolidQueue semaphore (`RunJob` keyed on `job:<id>`), and recurring
 pollers/reapers de-duplicate cluster-wide, so most of the system is already
-safe across pods. Two things are specific to multi-worker:
+safe across pods. Running workers on more than one node additionally needs the
+queue split below; a few behaviors are specific to multi-worker after that.
+
+## Spreading workers across nodes (queue partitioning)
+
+The search index is SQLite FTS5 on a single-node RWO volume, so the queues that
+touch it can't spread. To run agent compute on multiple nodes anyway, split the
+queues across two worker configs and select one per pod with the
+`SOLID_QUEUE_CONFIG` env var:
+
+| Config | Queues | Where |
+| --- | --- | --- |
+| `config/queue.home.yml` | `chat`, `default`, `videos` (+ its `resume-<host>`) | one pod, on the node holding the search PVC / with the web pods |
+| `config/queue.compute.yml` | `runs`, `merges` (+ its `resume-<host>`) | one pod per worker node; local disk, no search mount |
+
+- **The home worker** runs everything bound to the single-node search index or
+  co-located with it: `default` (Index\*Job = search **writes**, pollers,
+  reapers, broadcasts, `main_grader`), `chat` (search **reads** via the
+  `search_chats` MCP tool), and `videos`. It consumes `default`, so it is the
+  tier that **schedules recurring tasks** — leave `SOLID_QUEUE_SKIP_RECURRING`
+  unset here.
+- **The compute worker** runs the heavy, search-free queues — `runs` (agent
+  RunJobs) and `merges` (landing / rebase) — which enqueue their search updates
+  onto `default` rather than touching the index directly. Spread it one-per-node
+  on fast local disk. Set `SOLID_QUEUE_SKIP_RECURRING=1` so only the home worker
+  schedules recurring jobs.
+- Both configs consume this pod's own `resume-<hostname>` queue, so
+  retry-from-failed-step affinity (below) works on whichever pod holds the
+  workspace.
+
+`SOLID_QUEUE_CONFIG` is a path relative to the Rails root; if it points at a
+missing file SolidQueue silently falls back to its *own* built-in default (not
+`config/queue.yml`), so set it exactly. **Single-host and docker-compose
+deployments (including the desktop apps) do not set `SOLID_QUEUE_CONFIG`** — they
+run the full `config/queue.yml`, where one worker consumes every queue. That file
+is deliberately kept complete; never trim it to match the split. `bin/check-thread-budget`
+validates all three configs against the DB pool, and `spec/config/queue_partitioning_spec.rb`
+guards that the split stays a clean partition of `queue.yml`'s queues.
+
+Two things are specific to multi-worker:
 
 ## Global agent-concurrency cap
 

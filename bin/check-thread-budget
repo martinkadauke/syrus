@@ -65,19 +65,20 @@ def render(path)
   YAML.safe_load(ERB.new(raw).result, aliases: true, permitted_classes: [ Symbol ])
 end
 
-queue_yaml = render("config/queue.yml")
+# Every queue config a pod might boot with must fit the pool:
+#   - queue.yml         the full single-worker config (Compose / single-host,
+#                       and SolidQueue's default when SOLID_QUEUE_CONFIG is unset)
+#   - queue.home.yml    multi-node "home" worker (chat + default + videos)
+#   - queue.compute.yml multi-node "compute" worker (runs + merges)
+# A pod is pinned to one of these via SOLID_QUEUE_CONFIG, so each is checked
+# independently against the same DB pool.
+QUEUE_CONFIGS = %w[
+  config/queue.yml
+  config/queue.home.yml
+  config/queue.compute.yml
+].freeze
+
 database_yaml = render("config/database.yml")
-
-# All envs inherit from `default`; checking that one is enough.
-workers = Array(queue_yaml.dig("default", "workers"))
-abort "[check-thread-budget] no workers found in config/queue.yml" if workers.empty?
-
-# Find the worker with the highest thread count. Each worker config
-# becomes a process at boot, but the pool budget per worker is what
-# matters because each process has its own pool.
-worst = workers.max_by { |w| w["threads"].to_i }
-worker_threads = worst["threads"].to_i
-required_pool = worker_threads + OVERHEAD
 
 # Database.yml has multiple stanzas — production primary, test, etc.
 # The default block + production block both inherit `pool`. Find the
@@ -90,13 +91,36 @@ pool_value =
 pool = pool_value.to_i
 abort "[check-thread-budget] could not determine pool size from config/database.yml" if pool.zero?
 
-if pool < required_pool
-  warn "[check-thread-budget] DB pool too small for SolidQueue worker"
-  warn "    Worst worker: queues=#{worst['queues']} threads=#{worker_threads}"
-  warn "    Required pool: #{required_pool} (#{worker_threads} threads + #{OVERHEAD} overhead)"
-  warn "    Actual pool:   #{pool}"
-  warn "    Fix:           bump `pool` in config/database.yml (or set RAILS_MAX_THREADS)"
-  exit 1
+failed = false
+QUEUE_CONFIGS.each do |config|
+  queue_yaml = render(config)
+
+  # All envs inherit from `default`; checking that one is enough.
+  workers = Array(queue_yaml.dig("default", "workers"))
+  if workers.empty?
+    warn "[check-thread-budget] no workers found in #{config}"
+    failed = true
+    next
+  end
+
+  # Find the worker with the highest thread count. Each worker config becomes a
+  # process at boot, but the pool budget per worker is what matters because each
+  # process has its own pool.
+  worst = workers.max_by { |w| w["threads"].to_i }
+  worker_threads = worst["threads"].to_i
+  required_pool = worker_threads + OVERHEAD
+
+  if pool < required_pool
+    warn "[check-thread-budget] DB pool too small for SolidQueue worker (#{config})"
+    warn "    Worst worker: queues=#{worst['queues']} threads=#{worker_threads}"
+    warn "    Required pool: #{required_pool} (#{worker_threads} threads + #{OVERHEAD} overhead)"
+    warn "    Actual pool:   #{pool}"
+    warn "    Fix:           bump `pool` in config/database.yml (or set RAILS_MAX_THREADS)"
+    failed = true
+    next
+  end
+
+  puts "[check-thread-budget] ok #{config} (worst worker: queues=#{worst['queues']} threads=#{worker_threads}, pool: #{pool}, required: #{required_pool})"
 end
 
-puts "[check-thread-budget] ok (worst worker: queues=#{worst['queues']} threads=#{worker_threads}, pool: #{pool}, required: #{required_pool})"
+exit 1 if failed

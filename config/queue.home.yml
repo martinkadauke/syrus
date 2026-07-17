@@ -1,0 +1,59 @@
+<%# "Home" worker config for a multi-node k3s deployment. Selected per pod with
+    SOLID_QUEUE_CONFIG=config/queue.home.yml. Do NOT point single-host / Compose
+    deployments at this file — they use the full config/queue.yml so one worker
+    covers every queue. This split only makes sense when a SEPARATE compute
+    worker (config/queue.compute.yml) consumes `runs` + `merges` elsewhere.
+
+    The home worker runs the queues that are bound to the single-node search
+    index (SQLite FTS5, an RWO PVC) or that must stay co-located with the web
+    pods and the search volume:
+      - `default`  — pollers, reapers, app-event broadcasts, Index*Job (search
+                     WRITES), and main_grader Workflows.
+      - `chat`     — ChatTurnJob / chat workspace maintenance (search READS via
+                     the search_chats MCP tool).
+      - `videos`   — walkthrough-video analysis (local disk + Active Storage).
+    Heavy agent compute (`runs`) and landing (`merges`) live on the compute
+    tier, which never touches the search index and can spread across nodes.
+
+    Because this worker consumes `default`, it is also the tier that SCHEDULES
+    recurring tasks — leave SOLID_QUEUE_SKIP_RECURRING unset here and set it to
+    `1` on compute pods so recurring jobs are scheduled exactly once.
+
+    `Socket` isn't autoloaded when this file is rendered outside Rails
+    (bin/check-thread-budget); require it so the ERB is self-contained. %>
+<% require "socket" %>
+default: &default
+  dispatchers:
+    - polling_interval: 1
+      batch_size: 500
+  workers:
+    # Maintenance + search-write + broadcast pool. Listed first with this pod's
+    # per-pod `resume-<hostname>` queue so an operator resume that landed here
+    # (e.g. a reopened main_grader) is picked up ahead of routine default work.
+    - queues: "resume-<%= Socket.gethostname %> default"
+      threads: <%= ENV.fetch("DEFAULT_CONCURRENCY", 3) %>
+      processes: 1
+      polling_interval: 0.1
+    # User-facing chat turns + chat workspace maintenance. Kept off the default
+    # pool so an app-event broadcast storm can't delay a chat reply, and vice
+    # versa. Reads the search index via the search_chats MCP tool.
+    - queues: "chat"
+      threads: <%= ENV.fetch("CHAT_CONCURRENCY", 2) %>
+      processes: 1
+      polling_interval: 0.1
+    # Walkthrough-video analysis pins a thread for many minutes (streamed Gemini
+    # upload + ACTIVE polling + a long generateContent). Isolated so a few
+    # simultaneous analyses can't starve pollers or broadcasts.
+    - queues: "videos"
+      threads: <%= ENV.fetch("VIDEO_CONCURRENCY", 2) %>
+      processes: 1
+      polling_interval: 0.5
+
+development:
+  <<: *default
+
+test:
+  <<: *default
+
+production:
+  <<: *default
