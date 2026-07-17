@@ -250,11 +250,20 @@ class StepDispatcher
   def cancel_and_skip_to_next!(implement_step:)
     return unless implement_step
     continuation = implement_step.next_step
-    if implement_step.may_cancel?
-      implement_step.cancel!
-      implement_step.save!
+
+    Step.transaction do
+      Step.suppress_cancel_cascade do
+        if implement_step.may_cancel?
+          implement_step.cancellation_reason = "adversarial_review_approved"
+          implement_step.cancel!
+          implement_step.save!
+        end
+      end
+
+      if continuation&.queued? && continuation.runs.none?
+        self.class.create_run_and_enqueue(continuation, @workflow)
+      end
     end
-    self.class.create_run_and_enqueue(continuation, @workflow) if continuation
   end
 
   def handle_loop_iteration

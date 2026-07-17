@@ -695,6 +695,10 @@ RSpec.describe StepDispatcher do
 
       expect(review_workflow.reload.steps.count).to eq(original_step_count)
       expect(final_implement.reload).to be_cancelled
+      expect(final_implement.cancellation_reason).to eq("adversarial_review_approved")
+      expect(grader_fanout.reload).to be_queued
+      expect(review_workflow.steps.find_by!(kind: "grader_collect")).to be_queued
+      expect(review_workflow.reload).not_to be_cancelled
       expect(review_workflow.steps.where(loop_id: review.loop_id, iteration: 2)).to be_empty
     end
 
@@ -728,6 +732,10 @@ RSpec.describe StepDispatcher do
 
       expect(review_workflow.reload.steps.count).to eq(original_step_count)
       expect(final_implement.reload).to be_cancelled
+      expect(final_implement.cancellation_reason).to eq("adversarial_review_approved")
+      expect(grader_fanout.reload).to be_queued
+      expect(review_workflow.steps.find_by!(kind: "grader_collect")).to be_queued
+      expect(review_workflow.reload).not_to be_cancelled
     end
 
     it "does not skip final implement when verdict is needs_work with iterations remaining" do

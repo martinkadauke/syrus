@@ -191,6 +191,38 @@ RSpec.describe RunJob, "step-dispatch path" do
       expect(observed_parents).not_to include([ "adversarial_review", 2, "implement-2" ])
     end
 
+    it "skips only the final implement when the reviewer approves and still completes the workflow" do
+      AppSetting.current.update!(adversarial_review_rounds: 2)
+      review_job = Factories.job_record(issue_number: 81, state: "queued")
+      review_workflow = Workflows::Initial.instantiate(job: review_job)
+      observed_parents = []
+
+      install_adversarial_loop_handlers(observed_parents, review_verdicts: { 1 => "approved" })
+
+      StepDispatcher.start_workflow(review_workflow)
+      described_class.perform_now(review_workflow.first_step.runs.last.id)
+
+      expect(review_workflow.reload).to be_succeeded
+      expect(review_workflow.steps.order(:position).pluck(:kind, :state)).to eq([
+        [ "prepare", "succeeded" ],
+        [ "implement", "succeeded" ],
+        [ "adversarial_review", "succeeded" ],
+        [ "implement", "cancelled" ],
+        [ "grader_fanout", "succeeded" ],
+        [ "grader_collect", "succeeded" ],
+        [ "coverage_analyze", "succeeded" ],
+        [ "summarize", "succeeded" ],
+        [ "test_plan", "succeeded" ],
+        [ "pr_open", "succeeded" ]
+      ])
+      expect(review_workflow.steps.where(loop_id: review_workflow.steps.find_by!(kind: "adversarial_review").loop_id, iteration: 2)).to be_empty
+      expect(observed_parents).to include(
+        [ "implement_review", 1, nil ],
+        [ "adversarial_review", 1, nil ]
+      )
+      expect(observed_parents.any? { |role, _iteration, _parent| role == "implement_final" }).to be(false)
+    end
+
     it "hard-fails when the adversarial reviewer crashes and does not loop" do
       AppSetting.current.update!(adversarial_review_rounds: 2)
       review_job = Factories.job_record(issue_number: 79, state: "queued")
@@ -392,7 +424,7 @@ RSpec.describe RunJob, "step-dispatch path" do
     end
   end
 
-  def install_adversarial_loop_handlers(observed_parents, fail_role: nil)
+  def install_adversarial_loop_handlers(observed_parents, fail_role: nil, review_verdicts: {})
     noop_handler = Class.new(Steps::Base) do
       def call; nil; end
     end
@@ -421,6 +453,16 @@ RSpec.describe RunJob, "step-dispatch path" do
           session_id: "review-#{step.iteration}",
           transcript_jsonl: "{}\n"
         )
+        verdict = review_verdicts[step.iteration]
+        if verdict
+          iterations = Array(workflow.artifact("adversarial_review_iterations"))
+          iterations << {
+            "iteration" => step.iteration,
+            "critique" => verdict == "approved" ? "No blocking issues." : "Needs work.",
+            "verdict" => verdict
+          }
+          workflow.set_artifact!("adversarial_review_iterations", iterations)
+        end
       end
     end
 
