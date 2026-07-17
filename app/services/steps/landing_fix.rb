@@ -26,14 +26,7 @@ module Steps
         epic: job.epic
       ).to_s
 
-      return prompt unless run.iteration > 1
-
-      [
-        prompt,
-        Prompts::GradeFailureFeedback.new(
-          iterations: (workflow.artifacts || {}).fetch("iterations", [])
-        ).to_s
-      ].join("\n\n")
+      append_grade_failure_feedback(prompt)
     end
 
     def fetch_issue

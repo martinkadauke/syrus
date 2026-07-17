@@ -89,14 +89,7 @@ module Steps
         user: job.user,
         repository_ids: [ job.repository_id ]
       ).to_s
-      return prompt unless run.iteration > 1
-
-      [
-        prompt,
-        Prompts::GradeFailureFeedback.new(
-          iterations: workflow.artifacts.fetch("iterations", [])
-        ).to_s
-      ].join("\n\n")
+      append_grade_failure_feedback(prompt)
     end
 
     def prior_implement_session_id

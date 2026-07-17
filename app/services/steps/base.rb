@@ -196,6 +196,16 @@ module Steps
       run.parent_session_id.presence || step.upstream_session_id
     end
 
+    def append_grade_failure_feedback(prompt)
+      iterations = Array((workflow.artifacts || {})["iterations"])
+      return prompt if iterations.empty?
+
+      [
+        prompt,
+        Prompts::GradeFailureFeedback.new(iterations: iterations).to_s
+      ].join("\n\n")
+    end
+
     # ---- Workspace + git helpers ----
 
     # `git diff origin/<default>...HEAD` for what THIS branch

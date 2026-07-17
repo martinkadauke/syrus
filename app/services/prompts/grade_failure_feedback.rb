@@ -4,8 +4,11 @@ module Prompts
     HEAD_BYTES = 4 * 1024
     TAIL_BYTES = 8 * 1024
 
-    def initialize(iterations:)
+    def initialize(iterations:, intro: nil, include_guidance: true, include_git_safety: true)
       @iterations = iterations || []
+      @intro = intro
+      @include_guidance = include_guidance
+      @include_git_safety = include_git_safety
     end
 
     def to_s
@@ -17,7 +20,9 @@ module Prompts
       # artifact churn bloats the workflow's artifacts column. The
       # dedicated summarize / summarize_amend step (after the loop
       # terminates) is the one that calls submit_summary.
-      [ body, GitSafety::TEXT ].join("\n\n")
+      parts = [body]
+      parts << GitSafety::TEXT if @include_git_safety
+      parts.join("\n\n")
     end
 
     private
@@ -25,17 +30,22 @@ module Prompts
     def body
       return empty_body if @iterations.empty?
 
+      guidance = if @include_guidance
+        <<~GUIDANCE
+
+          Pick the smallest correct change that resolves the failing required
+          graders without regressing the passing ones. Inspect the full log
+          file directly if the head+tail excerpt isn't sufficient.
+
+          #{failure_guidance}
+        GUIDANCE
+      end
+
       <<~PROMPT.strip
-        The previous iteration's quality graders flagged issues. Here are
-        the results from every iteration so far:
+        #{@intro || "The previous iteration's quality graders flagged issues. Here are\nthe results from every iteration so far:"}
 
         #{render_iterations}
-
-        Pick the smallest correct change that resolves the failing required
-        graders without regressing the passing ones. Inspect the full log
-        file directly if the head+tail excerpt isn't sufficient.
-
-        #{failure_guidance}
+        #{guidance}
       PROMPT
     end
 

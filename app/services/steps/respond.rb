@@ -22,14 +22,7 @@ module Steps
     def compose_prompt
       prompt = workflow.trigger_kind == "chat_feedback" ? compose_chat_feedback_prompt : compose_pr_feedback_prompt
 
-      return prompt unless run.iteration > 1
-
-      [
-        prompt,
-        Prompts::GradeFailureFeedback.new(
-          iterations: workflow.artifacts.fetch("iterations", [])
-        ).to_s
-      ].join("\n\n")
+      append_grade_failure_feedback(prompt)
     end
 
     def compose_pr_feedback_prompt

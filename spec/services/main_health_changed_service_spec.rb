@@ -136,8 +136,31 @@ RSpec.describe MainHealthChangedService do
           grader_health: "broken",
           last_health_checked_sha: "def456abc123"
         )
+        grader_job = Job.create!(
+          user: user,
+          repository: repository,
+          kind: "main_grader",
+          issue_title: "main_grader:def456abc123",
+          issue_number: nil
+        )
+        grader_workflow = Workflows::MainGrader.instantiate(
+          job: grader_job,
+          artifacts: { "main_sha" => "def456abc123" }
+        )
+        grader_workflow.set_artifact!("iterations", [
+          [
+            {
+              "name" => "rspec",
+              "status" => "failed",
+              "required" => true,
+              "exit_code" => 1,
+              "output" => "expected docker script to pass"
+            }
+          ]
+        ])
         MainBranchHealthCheck.record_grader_workflow(
           repository: repository,
+          workflow: grader_workflow,
           sha: "def456abc123",
           grader_health: "broken",
           grader_failed_names: [ "coverage", "rspec" ]
@@ -149,6 +172,11 @@ RSpec.describe MainHealthChangedService do
         expect(fix_job.issue_body).to include(
           "Commit: def456abc123",
           "- Graders failed: coverage, rspec"
+        )
+        expect(fix_job.issue_body).to include(
+          "- Grader output from #{grader_workflow.slug}:",
+          "The main-branch health graders captured these results:",
+          "expected docker script to pass"
         )
       end
 

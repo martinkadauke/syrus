@@ -117,7 +117,7 @@ RSpec.describe Steps::Implement do
       expect(run.reload.prompt).not_to include("Syrus internal bookkeeping")
     end
 
-    it "appends grade failure feedback on later loop iterations" do
+    it "appends recorded grade failure feedback to the prompt" do
       workflow.set_artifact!("iterations", [
         [
           {
@@ -130,7 +130,6 @@ RSpec.describe Steps::Implement do
           }
         ]
       ])
-      run.update!(iteration: 2)
 
       handler.call
 

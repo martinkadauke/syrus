@@ -157,7 +157,7 @@ RSpec.describe Steps::Respond do
     expect(run.reload.prompt).not_to include("Recent commits on the working branch")
   end
 
-  it "appends grade failure feedback on later loop iterations" do
+  it "appends recorded grade failure feedback to the prompt" do
     workflow.set_artifact!("iterations", [
       [
         {
@@ -170,7 +170,6 @@ RSpec.describe Steps::Respond do
         }
       ]
     ])
-    run.update!(iteration: 2)
 
     handler.call
 

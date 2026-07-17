@@ -2,6 +2,9 @@ class MainHealthChangedService
   FIX_MAIN_TITLE = Job::MAIN_BRANCH_REPAIR_TITLE
   MAX_RECOVERY_RETRIES = 10
   MAX_OPEN_FAILED_FIX_JOBS = 3
+  MAX_GRADER_OUTPUT_CONTEXT_BYTES = 48 * 1024
+  GRADER_OUTPUT_HEAD_BYTES = 16 * 1024
+  GRADER_OUTPUT_TAIL_BYTES = 24 * 1024
   BLOCKING_FIX_JOB_STATES = %w[needs_triage triaging queued running coding implemented approved landing].freeze
 
   def self.on_health_change!(repository)
@@ -275,22 +278,67 @@ class MainHealthChangedService
 
   def grader_failure_lines(check)
     names = Array(check.grader_failed_names).compact_blank
+    lines = []
 
     if check.grader_health == "broken"
-      return [ "- Graders failed, but no grader names were captured." ] if names.empty?
+      lines << if names.empty?
+        "- Graders failed, but no grader names were captured."
+      else
+        "- Graders failed: #{names.join(', ')}"
+      end
 
-      return [ "- Graders failed: #{names.join(', ')}" ]
+      return lines.concat(grader_output_context_lines(check))
     end
 
     if check.grader_health == "unknown" && names.any?
-      return [ "- Grader check was interrupted while running: #{names.join(', ')}. This is not a conclusive grader failure." ]
+      lines << "- Grader check was interrupted while running: #{names.join(', ')}. This is not a conclusive grader failure."
+    elsif check.grader_health == "inconclusive" && names.any?
+      lines << "- Grader check was inconclusive: #{names.join(', ')} timed out or did not produce a conclusive result."
     end
 
-    if check.grader_health == "inconclusive" && names.any?
-      return [ "- Grader check was inconclusive: #{names.join(', ')} timed out or did not produce a conclusive result." ]
-    end
+    lines.concat(grader_output_context_lines(check))
+  end
 
-    []
+  def grader_output_context_lines(check)
+    workflow = check.workflow
+    return [] unless workflow
+
+    iterations = Array(workflow.artifact("iterations")).compact
+    return [] if iterations.empty?
+
+    rendered = Prompts::GradeFailureFeedback.new(
+      iterations: iterations,
+      intro: "The main-branch health graders captured these results:",
+      include_guidance: false,
+      include_git_safety: false
+    ).to_s
+    return [] if rendered.blank?
+
+    [
+      "- Grader output from #{workflow_label(workflow)}:",
+      indent(truncate_grader_output_context(rendered), by: 4)
+    ]
+  end
+
+  def workflow_label(workflow)
+    workflow.respond_to?(:slug) ? workflow.slug : "workflow ##{workflow.id}"
+  end
+
+  def truncate_grader_output_context(rendered)
+    text = rendered.to_s
+    return text if text.bytesize <= MAX_GRADER_OUTPUT_CONTEXT_BYTES
+
+    omitted = text.bytesize - GRADER_OUTPUT_HEAD_BYTES - GRADER_OUTPUT_TAIL_BYTES
+    [
+      text.safe_byteslice(0, GRADER_OUTPUT_HEAD_BYTES),
+      "... [truncated #{omitted} bytes of grader output context] ...",
+      text.safe_byteslice(-GRADER_OUTPUT_TAIL_BYTES, GRADER_OUTPUT_TAIL_BYTES)
+    ].join("\n")
+  end
+
+  def indent(text, by:)
+    pad = " " * by
+    text.to_s.lines.map { |line| pad + line }.join.chomp
   end
 
   def emit_notification!

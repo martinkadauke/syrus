@@ -58,7 +58,7 @@ RSpec.describe Steps::LandingFix do
     expect(run.prompt).to include("Do not implement the entire Epic")
   end
 
-  it "appends grade failure feedback on later loop iterations" do
+  it "appends recorded grade failure feedback to the prompt" do
     workflow.set_artifact!("iterations", [
       [
         {
