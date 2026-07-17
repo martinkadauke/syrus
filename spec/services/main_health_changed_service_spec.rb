@@ -35,7 +35,7 @@ RSpec.describe MainHealthChangedService do
     end
 
     context "when main_health transitions to broken" do
-      before { repository.update!(ci_health: "broken") }
+      before { settle_main_health!(repository) }
 
       it "sets repository.landing_paused to true" do
         expect {
@@ -105,17 +105,52 @@ RSpec.describe MainHealthChangedService do
           kind: "direct",
           state: "queued"
         )
-        expect(fix_job.issue_body).to include("Current health:", "- CI: broken", "- Graders: unknown")
+        expect(fix_job.issue_body).to include(
+          "Current health:",
+          "- CI: broken",
+          "- Graders: healthy",
+          "Diagnostic logs are attached to this Job"
+        )
       end
 
-      it "includes captured CI failure details in the fix Job prompt" do
-        repository.update!(last_health_checked_sha: "abc123def456")
+      it "waits for both CI and grader signal before spawning a fix Job" do
+        repository.update!(
+          last_health_checked_sha: "wait123def456",
+          last_ci_evaluated_sha: "wait123def456",
+          ci_health: "broken",
+          grader_health: "unknown"
+        )
         MainBranchHealthCheck.record_ci_poll(
           repository: repository,
-          sha: "abc123def456",
+          sha: "wait123def456",
           ci_health: "broken",
           ci_failed_checks: [
             { name: "RSpec", url: "https://github.com/tkadauke/syrus/actions/runs/42" }
+          ]
+        )
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.not_to change { repository.jobs.where(kind: "direct").count }
+
+        status = MainHealthChangedService.new(repository.reload).repair_status
+        expect(status).to include(blocked_reason: "waiting_for_health_signals", can_spawn: false)
+      end
+
+      it "attaches captured CI failure details to the fix Job" do
+        settle_main_health!(
+          repository,
+          sha: "abc123def456",
+          ci_health: "broken",
+          grader_health: "healthy",
+          ci_failed_checks: [
+            {
+              name: "RSpec",
+              conclusion: "failure",
+              summary: "RSpec failed",
+              log: "expected status 200",
+              url: "https://github.com/tkadauke/syrus/actions/runs/42"
+            }
           ]
         )
 
@@ -125,17 +160,22 @@ RSpec.describe MainHealthChangedService do
         expect(fix_job.issue_body).to include(
           "Main branch health is broken for #{repository.slug}.",
           "Default branch: #{repository.default_branch}",
-          "Commit: abc123def456",
-          "- CI failed: RSpec (https://github.com/tkadauke/syrus/actions/runs/42)"
+          "Commit: abc123def456"
+        )
+        expect(fix_job.issue_body).not_to include("expected status 200")
+
+        summary = fix_job.job_attachments.find { |attachment| attachment.filename == "main-health-abc123def456-summary.md" }
+        ci_logs = fix_job.job_attachments.find { |attachment| attachment.filename == "main-health-abc123def456-ci.md" }
+        expect(summary.file.download).to include("CI failed: RSpec")
+        expect(ci_logs.file.download).to include(
+          "RSpec",
+          "RSpec failed",
+          "expected status 200",
+          "https://github.com/tkadauke/syrus/actions/runs/42"
         )
       end
 
-      it "includes captured grader failure details in the fix Job prompt" do
-        repository.update!(
-          ci_health: "not_configured",
-          grader_health: "broken",
-          last_health_checked_sha: "def456abc123"
-        )
+      it "attaches captured grader failure details to the fix Job" do
         grader_job = Job.create!(
           user: user,
           repository: repository,
@@ -158,10 +198,11 @@ RSpec.describe MainHealthChangedService do
             }
           ]
         ])
-        MainBranchHealthCheck.record_grader_workflow(
-          repository: repository,
+        settle_main_health!(
+          repository,
           workflow: grader_workflow,
           sha: "def456abc123",
+          ci_health: "not_configured",
           grader_health: "broken",
           grader_failed_names: [ "coverage", "rspec" ]
         )
@@ -171,10 +212,14 @@ RSpec.describe MainHealthChangedService do
         fix_job = repository.jobs.where(kind: "direct").last
         expect(fix_job.issue_body).to include(
           "Commit: def456abc123",
-          "- Graders failed: coverage, rspec"
+          "tmp/attachments/main-health-def456abc123-graders.md"
         )
-        expect(fix_job.issue_body).to include(
-          "- Grader output from #{grader_workflow.slug}:",
+        expect(fix_job.issue_body).not_to include("expected docker script to pass")
+
+        grader_logs = fix_job.job_attachments.find { |attachment| attachment.filename == "main-health-def456abc123-graders.md" }
+        expect(grader_logs.file.download).to include(
+          grader_workflow.slug,
+          "coverage, rspec",
           "The main-branch health graders captured these results:",
           "expected docker script to pass"
         )
@@ -695,5 +740,36 @@ RSpec.describe MainHealthChangedService do
         }.not_to change { Notification.count }
       end
     end
+  end
+
+  def settle_main_health!(
+    repository,
+    sha: "abc123def456",
+    ci_health: "broken",
+    grader_health: "healthy",
+    ci_failed_checks: [],
+    grader_failed_names: nil,
+    workflow: nil
+  )
+    repository.update!(
+      last_health_checked_sha: sha,
+      last_ci_evaluated_sha: sha,
+      ci_health: ci_health,
+      grader_health: grader_health
+    )
+    MainBranchHealthCheck.record_ci_poll(
+      repository: repository,
+      sha: sha,
+      ci_health: ci_health,
+      ci_failed_checks: ci_failed_checks
+    )
+    MainBranchHealthCheck.record_grader_workflow(
+      repository: repository,
+      workflow: workflow,
+      sha: sha,
+      grader_health: grader_health,
+      grader_failed_names: grader_failed_names
+    )
+    repository.reload
   end
 end

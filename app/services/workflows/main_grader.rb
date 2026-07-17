@@ -75,6 +75,8 @@ module Workflows
 
       if repository.main_health != previous_health || (was_landing_paused && repository.main_health == "healthy")
         MainHealthChangedService.on_health_change!(repository)
+      elsif repository.main_health_broken?
+        MainHealthChangedService.ensure_repair_job!(repository)
       end
 
       close_anchor_job!(workflow)

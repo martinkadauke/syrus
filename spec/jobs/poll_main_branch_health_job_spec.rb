@@ -201,6 +201,26 @@ RSpec.describe PollMainBranchHealthJob do
     described_class.perform_now(repository.id)
   end
 
+  it "reconciles repair jobs when CI settles after graders already broke main" do
+    repository.update!(
+      last_health_checked_sha: sha,
+      last_graded_sha: sha,
+      ci_health: "unknown",
+      grader_health: "broken"
+    )
+    MainBranchHealthCheck.record_grader_workflow(
+      repository: repository,
+      sha: sha,
+      grader_health: "broken",
+      grader_failed_names: [ "rspec" ]
+    )
+    stub_sha(sha)
+    stub_check_runs({ any?: true, pending?: false, any_failed?: true, all_passed?: false, failed_checks: [] })
+
+    expect(MainHealthChangedService).to receive(:ensure_repair_job!).with(kind_of(Repository))
+    described_class.perform_now(repository.id)
+  end
+
   it "calls MainHealthChangedService when health transitions from unknown to healthy" do
     repository.update!(last_health_checked_sha: sha, ci_health: "unknown", grader_health: "healthy")
     stub_sha(sha)

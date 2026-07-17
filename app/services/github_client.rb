@@ -485,7 +485,16 @@ class GithubClient
     failed_runs = runs.select { |cr| cr.status == "completed" && FAILED_CONCLUSIONS.include?(cr.conclusion) }
     any_failed = failed_runs.any?
     all_passed = !pending && runs.all? { |cr| PASSING_CONCLUSIONS.include?(cr.conclusion) }
-    failed_checks = failed_runs.map { |cr| { name: cr.name.to_s, url: cr.html_url.to_s } }
+    failed_checks = failed_runs.map do |cr|
+      {
+        name: cr.name.to_s,
+        conclusion: cr.conclusion.to_s,
+        summary: cr.output&.summary.to_s.presence,
+        log: cr.output&.text.to_s.presence,
+        url: cr.html_url.to_s.presence,
+        html_url: cr.html_url.to_s.presence
+      }.compact
+    end
 
     { any?: true, pending?: pending, any_failed?: any_failed, all_passed?: all_passed, failed_checks: failed_checks }
   rescue Octokit::TooManyRequests => e

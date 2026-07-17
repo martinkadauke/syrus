@@ -276,6 +276,25 @@ RSpec.describe Workflows::MainGrader do
       described_class.after_fail(workflow)
     end
 
+    it "reconciles repair jobs when graders settle after CI already broke main" do
+      repository.update!(
+        last_health_checked_sha: sha,
+        last_ci_evaluated_sha: sha,
+        ci_health: "broken",
+        grader_health: "unknown"
+      )
+      MainBranchHealthCheck.record_ci_poll(
+        repository: repository,
+        sha: sha,
+        ci_health: "broken",
+        ci_failed_checks: [ { name: "RSpec", url: "https://github.com/check/1" } ]
+      )
+      create_failed_required_grader!(workflow)
+
+      expect(MainHealthChangedService).to receive(:ensure_repair_job!).with(kind_of(Repository))
+      described_class.after_fail(workflow)
+    end
+
     it "does not call MainHealthChangedService when grader_health was already broken" do
       repository.update!(grader_health: "broken")
       create_failed_required_grader!(workflow)

@@ -76,7 +76,11 @@ class PollMainBranchHealthJob < ApplicationJob
           ci_failed_checks: []
         )
       end
-      MainHealthChangedService.on_health_change!(repository) if repository.main_health != previous_health
+      if repository.main_health != previous_health
+        MainHealthChangedService.on_health_change!(repository)
+      elsif repository.main_health_broken?
+        MainHealthChangedService.ensure_repair_job!(repository)
+      end
       return
     end
 
@@ -109,6 +113,8 @@ class PollMainBranchHealthJob < ApplicationJob
     repository.reload
     if repository.main_health != previous_health
       MainHealthChangedService.on_health_change!(repository)
+    elsif repository.main_health_broken?
+      MainHealthChangedService.ensure_repair_job!(repository)
     end
   end
 end
