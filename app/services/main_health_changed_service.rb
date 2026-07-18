@@ -73,7 +73,12 @@ class MainHealthChangedService
     return unless @repository.main_health_broken?
     return if blocking_fix_job
 
-    return unless repair_target_sha_current?
+    # The stale-SHA guard keeps AUTOMATIC repairs from firing on a health signal
+    # for a commit main has already moved past. An explicit operator repair
+    # (force: true) is an intentional override — the same override that skips the
+    # settled-signals wait below — so it bypasses this guard too (and can't be
+    # blocked when the live default-branch SHA is momentarily unfetchable).
+    return unless force || repair_target_sha_current?
 
     unless force || repair_signals_ready?
       Rails.logger.info(
