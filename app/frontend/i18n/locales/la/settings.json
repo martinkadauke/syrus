@@ -339,7 +339,9 @@
     "adding": "Adiungitur...",
     "add_google_doc": "Documentum Googli addere",
     "no_file_attached": "Nullus fasciculus adiunctus",
-    "unknown": "Ignotum"
+    "unknown": "Ignotum",
+    "placeholder_optional_filename": "Optionale; praedefinitum est nomen fasciculi",
+    "placeholder_optional": "Optionale"
   },
   "tags": {
     "heading": "Pittacia",

@@ -339,7 +339,9 @@
     "adding": "Adding...",
     "add_google_doc": "Add Google Doc",
     "no_file_attached": "No file attached",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "placeholder_optional_filename": "Optional; defaults to filename",
+    "placeholder_optional": "Optional"
   },
   "tags": {
     "heading": "Tags",

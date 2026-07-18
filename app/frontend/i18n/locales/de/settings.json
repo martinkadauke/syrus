@@ -339,7 +339,9 @@
     "adding": "Wird hinzugefügt...",
     "add_google_doc": "Google Doc hinzufügen",
     "no_file_attached": "Keine Datei angehängt",
-    "unknown": "Unbekannt"
+    "unknown": "Unbekannt",
+    "placeholder_optional_filename": "Optional; Standard ist der Dateiname",
+    "placeholder_optional": "Optional"
   },
   "tags": {
     "heading": "Schlagwörter",
