@@ -1,8 +1,9 @@
+import { EpicStuckBadge, ExternalMetadataLink, MetadataLine, NeutralStatePill, OwnerBadge, PendingJobTitle, RepositorySlugLink, WorkflowBadges, workflowLabel } from "./dashboard/components"
 import { bulkButtonClass, columnAriaSort, compactText, dashboardColumnLabel, dashboardLinkFromSearch, dashboardVisibleColumns, epicDateValue, epicTableColumns, formatCurrency, formatDate, formatRelativeDate, humanizeOption, jobDateValue, pageLink, pluralize, sortValue, sortableColumnFor, subjectLabel, uniqueValue, withRoutePrefix, workflowDateValue } from "./dashboard/helpers"
 import type { DashboardSortState } from "./dashboard/helpers"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import type { DragEvent, ReactNode } from "react"
-import { Children, useEffect, useMemo, useState } from "react"
+import type { DragEvent } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useT } from "../hooks/useT"
 import { useBackendOutage } from "../hooks/useBackendUpdate"
@@ -16,9 +17,8 @@ import { NoticeToast } from "../components/NoticeToast"
 import { CloseIcon } from "../components/CloseIcon"
 import { StatusPill, TonePill } from "../components/StatusPill"
 import { FilterBar } from "../components/FilterBar"
-import { workflowSlug } from "../lib/slugs"
 import { useDismissiblePopup } from "../lib/useDismissiblePopup"
-import { bulkDashboardEpics, bulkDashboardJobs, dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardEpicState, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLandingQueueEntry, type DashboardLane, type DashboardPayload, type DashboardRepository, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
+import { bulkDashboardEpics, bulkDashboardJobs, dashboardApiSearch, fetchDashboardChrome, fetchDashboardRows, mergeDashboardPayload, recordDashboardFilterUsage, requestDashboardMainBranchRepair, updateDashboardEpicState, updateDashboardPreferences, type DashboardHealthBlockedRepository, type DashboardBulkEpicAction, type DashboardBulkJobAction, type DashboardEpicItem, type DashboardItem, type DashboardJobItem, type DashboardLandingQueueEntry, type DashboardLane, type DashboardPayload, type DashboardSubject, type DashboardWorkflowItem } from "../api/dashboard"
 import type { LandingQueueBlockerJob } from "../api/jobs"
 import { errorMessage } from "../lib/errorMessage"
 
@@ -1467,65 +1467,12 @@ function JobSlugMetadata({ job, prefix }: { job: DashboardJobItem; prefix: strin
   return <IssueMetadata job={job} />
 }
 
-function WorkflowBadges({ state, triggerAriaPrefix, triggerKind }: { state: string; triggerAriaPrefix: string; triggerKind: string | null }) {
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1">
-      {triggerKind ? <WorkflowTriggerPill ariaPrefix={triggerAriaPrefix} triggerKind={triggerKind} /> : null}
-      <StatusPill state={state} />
-    </span>
-  )
-}
-
-function PendingJobTitle({ pending, title }: { pending: boolean; title: string }) {
-  const { t } = useT("dashboard")
-  if (!pending) return <>{title}</>
-
-  return (
-    <span className="inline-flex min-w-0 items-center gap-1 italic text-gray-500 dark:text-gray-400">
-      <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-gray-300 border-t-gray-500 dark:border-gray-700 dark:border-t-gray-300" />
-      <span>{t("generating_title")}</span>
-    </span>
-  )
-}
-
-function WorkflowTriggerPill({ ariaPrefix, triggerKind }: { ariaPrefix: string; triggerKind: string }) {
-  const className = workflowTriggerClassName(triggerKind)
-
-  return (
-    <span aria-label={`${ariaPrefix}: ${triggerKind}`} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ${className}`} data-status-pill="true">
-      <span>{triggerKind.replaceAll("_", " ")}</span>
-    </span>
-  )
-}
-
-function workflowTriggerClassName(triggerKind: string) {
-  if (triggerKind === "chat_feedback") {
-    return "bg-indigo-100 text-indigo-700 ring-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-800"
-  }
-
-  return "bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700"
-}
-
 function IssueMetadata({ job }: { job: DashboardJobItem }) {
   if (!job.issue_number) return <CopyableSlug slug={`JOB-${job.id}`} />
 
   const label = `#${job.issue_number}`
 
   return <ExternalMetadataLink href={job.issue_url}>{label}</ExternalMetadataLink>
-}
-
-function MetadataLine({ children, className }: { children: ReactNode; className: string }) {
-  const items = Children.toArray(children)
-  return (
-    <div className={className}>
-      {items.map((item, index) => (
-        <span className="inline-flex items-center gap-x-1.5" key={index}>
-          {index > 0 ? <span aria-hidden="true" className="select-none">·</span> : null}
-          {item}
-        </span>
-      ))}
-    </div>
-  )
 }
 
 function JobSourceChatLink({ job, prefix }: { job: DashboardJobItem; prefix: string }) {
@@ -1554,16 +1501,6 @@ function RetryStateInline({ job }: { job: DashboardJobItem }) {
   const tone = retry.auto_retry_exhausted ? "red" : retry.provider_circuit_open ? "amber" : "gray"
 
   return <TonePill title={details} tone={tone}>{retry.state_label}</TonePill>
-}
-
-function ExternalMetadataLink({ children, className = "text-gray-500 hover:text-blue-700 hover:underline dark:text-gray-400 dark:hover:text-blue-300", href }: { children: ReactNode; className?: string; href: string | null }) {
-  if (!href) return <span className={className}>{children}</span>
-
-  return <a className={className} href={href} rel="noopener noreferrer" target="_blank">{children}</a>
-}
-
-function RepositorySlugLink({ className = "font-mono text-xs text-gray-500 hover:text-blue-700 hover:underline dark:text-gray-400 dark:hover:text-blue-300", prefix, repository }: { className?: string; prefix: string; repository: DashboardRepository }) {
-  return <Link className={className} to={withRoutePrefix(repository.repository_path, prefix)}>{repository.slug}</Link>
 }
 
 function EpicsTable({ items, columns, prefix, sortState }: { items: DashboardEpicItem[]; columns: string[]; prefix: string; sortState: DashboardSortState }) {
@@ -1798,21 +1735,6 @@ export function EpicProgressBar({ epic, fullWidth = false }: { epic: DashboardEp
   )
 }
 
-function EpicStuckBadge({ stuck }: { stuck: boolean }) {
-  const { t } = useT("dashboard")
-  if (!stuck) return null
-
-  return (
-    <span
-      aria-label={t("needs_attention")}
-      className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:ring-amber-800"
-      title={t("needs_attention_title")}
-    >
-      {t("needs_attention")}
-    </span>
-  )
-}
-
 function MobileWorkflowsList({ items, prefix }: { items: DashboardWorkflowItem[]; prefix: string }) {
   return (
     <div className="rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
@@ -1912,10 +1834,6 @@ function TimestampCell({ value }: { value: string | null }) {
   )
 }
 
-function workflowLabel(workflow: Pick<DashboardWorkflowItem, "id" | "slug">) {
-  return workflow.slug || workflowSlug(workflow.id)
-}
-
 function Pagination({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
   const { t } = useT("dashboard")
   if (payload.total_pages <= 1) return null
@@ -1940,21 +1858,6 @@ function Pagination({ payload, pathname, search }: { payload: DashboardPayload; 
       </div>
     </div>
   )
-}
-
-function NeutralStatePill({ state }: { state: string }) {
-  return <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700">{state.replace(/_/g, " ")}</span>
-}
-
-function OwnerBadge({ badge, fallback = null }: { badge: { label: string; kind: string } | null; fallback?: string | null }) {
-  if (!badge && !fallback) return null
-
-  const label = badge?.label || fallback
-  const className = badge?.kind === "claimable"
-    ? "rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800"
-    : "rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
-
-  return <span className={className}>{label}</span>
 }
 
 function DashboardError({ error }: { error: Error }) {

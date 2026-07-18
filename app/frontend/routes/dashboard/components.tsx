@@ -1,0 +1,112 @@
+import { withRoutePrefix } from "./helpers"
+import type { ReactNode } from "react"
+import { Children } from "react"
+import { Link } from "react-router-dom"
+import { useT } from "../../hooks/useT"
+import { StatusPill } from "../../components/StatusPill"
+import { workflowSlug } from "../../lib/slugs"
+import { type DashboardRepository, type DashboardWorkflowItem } from "../../api/dashboard"
+
+
+// Shared dashboard presentational primitives extracted from Dashboard.tsx:
+// small pills/badges/links/labels reused across the kanban board and the
+// job/epic tables. A leaf so the clusters can share them without importing
+// back from the route file.
+
+export function WorkflowBadges({ state, triggerAriaPrefix, triggerKind }: { state: string; triggerAriaPrefix: string; triggerKind: string | null }) {
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      {triggerKind ? <WorkflowTriggerPill ariaPrefix={triggerAriaPrefix} triggerKind={triggerKind} /> : null}
+      <StatusPill state={state} />
+    </span>
+  )
+}
+
+export function PendingJobTitle({ pending, title }: { pending: boolean; title: string }) {
+  const { t } = useT("dashboard")
+  if (!pending) return <>{title}</>
+
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1 italic text-gray-500 dark:text-gray-400">
+      <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-gray-300 border-t-gray-500 dark:border-gray-700 dark:border-t-gray-300" />
+      <span>{t("generating_title")}</span>
+    </span>
+  )
+}
+
+export function WorkflowTriggerPill({ ariaPrefix, triggerKind }: { ariaPrefix: string; triggerKind: string }) {
+  const className = workflowTriggerClassName(triggerKind)
+
+  return (
+    <span aria-label={`${ariaPrefix}: ${triggerKind}`} className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ${className}`} data-status-pill="true">
+      <span>{triggerKind.replaceAll("_", " ")}</span>
+    </span>
+  )
+}
+
+export function workflowTriggerClassName(triggerKind: string) {
+  if (triggerKind === "chat_feedback") {
+    return "bg-indigo-100 text-indigo-700 ring-indigo-200 dark:bg-indigo-950/50 dark:text-indigo-200 dark:ring-indigo-800"
+  }
+
+  return "bg-gray-100 text-gray-700 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700"
+}
+
+export function MetadataLine({ children, className }: { children: ReactNode; className: string }) {
+  const items = Children.toArray(children)
+  return (
+    <div className={className}>
+      {items.map((item, index) => (
+        <span className="inline-flex items-center gap-x-1.5" key={index}>
+          {index > 0 ? <span aria-hidden="true" className="select-none">·</span> : null}
+          {item}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+export function ExternalMetadataLink({ children, className = "text-gray-500 hover:text-blue-700 hover:underline dark:text-gray-400 dark:hover:text-blue-300", href }: { children: ReactNode; className?: string; href: string | null }) {
+  if (!href) return <span className={className}>{children}</span>
+
+  return <a className={className} href={href} rel="noopener noreferrer" target="_blank">{children}</a>
+}
+
+export function RepositorySlugLink({ className = "font-mono text-xs text-gray-500 hover:text-blue-700 hover:underline dark:text-gray-400 dark:hover:text-blue-300", prefix, repository }: { className?: string; prefix: string; repository: DashboardRepository }) {
+  return <Link className={className} to={withRoutePrefix(repository.repository_path, prefix)}>{repository.slug}</Link>
+}
+
+export function EpicStuckBadge({ stuck }: { stuck: boolean }) {
+  const { t } = useT("dashboard")
+  if (!stuck) return null
+
+  return (
+    <span
+      aria-label={t("needs_attention")}
+      className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/60 dark:text-amber-200 dark:ring-amber-800"
+      title={t("needs_attention_title")}
+    >
+      {t("needs_attention")}
+    </span>
+  )
+}
+
+export function workflowLabel(workflow: Pick<DashboardWorkflowItem, "id" | "slug">) {
+  return workflow.slug || workflowSlug(workflow.id)
+}
+
+export function NeutralStatePill({ state }: { state: string }) {
+  return <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize text-gray-700 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:ring-gray-700">{state.replace(/_/g, " ")}</span>
+}
+
+export function OwnerBadge({ badge, fallback = null }: { badge: { label: string; kind: string } | null; fallback?: string | null }) {
+  if (!badge && !fallback) return null
+
+  const label = badge?.label || fallback
+  const className = badge?.kind === "claimable"
+    ? "rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:ring-amber-800"
+    : "rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600 ring-1 ring-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:ring-gray-700"
+
+  return <span className={className}>{label}</span>
+}
+
