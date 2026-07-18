@@ -38,3 +38,7 @@ export function numericArg(value: string) {
 export function errorAsError(error: unknown) {
   return error instanceof Error ? error : new Error(String(error))
 }
+
+export function formatCurrency(value: number, digits = 4) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value)
+}
