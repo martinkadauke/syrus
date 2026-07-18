@@ -358,7 +358,7 @@ class PollPullRequestJob < ApplicationJob
   end
 
   def feedback_iteration_number
-    @job.workflows.where(trigger_kind: %w[ pr_comment chat_feedback ]).count + 1
+    @job.workflows.where(trigger_kind: Workflow::TriggerKind.feedback_values).count + 1
   end
 
   def clear_stale_approval!

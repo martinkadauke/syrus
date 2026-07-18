@@ -47,4 +47,17 @@ RSpec.describe Workflow::TriggerKind do
       expect(described_class.feedback_kind_for("unknown")).to be_nil
     end
   end
+
+  describe ".feedback_values" do
+    it "returns the current feedback trigger kinds" do
+      expect(described_class.feedback_values).to eq(%w[pr_comment chat_feedback])
+    end
+
+    it "stays derived from feedback_kind so a new feedback kind is included automatically" do
+      described_class.values.each do |kind|
+        expect(described_class.feedback_values.include?(kind))
+          .to eq(described_class.feedback_kind_for(kind).present?)
+      end
+    end
+  end
 end

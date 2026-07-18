@@ -169,7 +169,7 @@ class PollForkReviewPrJob < ApplicationJob
   end
 
   def enqueue_fork_review_followup(all_comments:, new_comments:, qualifying_records:)
-    iteration = @job.workflows.where(trigger_kind: %w[ pr_comment chat_feedback ]).count + 1
+    iteration = @job.workflows.where(trigger_kind: Workflow::TriggerKind.feedback_values).count + 1
     source_handle = qualifying_records.first&.github_handle
 
     artifacts = {

@@ -18,7 +18,7 @@ class ChatFeedbackSubmission
       return Result.new(workflow: nil, error: "a chat_feedback workflow is already queued or running for this job")
     end
 
-    iteration = job.workflows.where(trigger_kind: %w[ pr_comment chat_feedback ]).count + 1
+    iteration = job.workflows.where(trigger_kind: Workflow::TriggerKind.feedback_values).count + 1
     base_artifacts = {
       "chat_feedback" => feedback,
       "pr_feedback_iteration" => iteration,

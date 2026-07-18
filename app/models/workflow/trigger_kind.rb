@@ -70,5 +70,12 @@ class Workflow
     def feedback_kind_for(trigger_kind)
       BY_KIND.fetch(trigger_kind.to_s, nil)&.feedback_kind
     end
+
+    # Trigger kinds that address feedback on an existing PR/chat (those with a
+    # feedback_kind). Single source of truth so a new feedback kind can't be
+    # missed by hand-maintained %w[pr_comment chat_feedback] lists.
+    def feedback_values
+      @feedback_values ||= ENTRIES.select(&:feedback_kind).map(&:kind).freeze
+    end
   end
 end

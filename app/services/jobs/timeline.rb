@@ -297,7 +297,7 @@ module Jobs
     # Uses pr_feedback_iteration from workflow artifacts; falls back to ordinal position.
     def feedback_workflow_iteration_events
       @job.workflows
-          .where(trigger_kind: %w[ pr_comment chat_feedback ])
+          .where(trigger_kind: Workflow::TriggerKind.feedback_values)
           .order(:created_at, :id)
           .map.with_index(1) do |wf, ordinal|
         iteration = wf.artifact("pr_feedback_iteration") || ordinal
