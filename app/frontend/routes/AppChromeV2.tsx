@@ -1,5 +1,6 @@
 import { PUBLILIUS_SYRUS_QUOTES } from "./appChromeV2/quotes"
 import { ChevronDownIcon, DashboardIcon, HideIcon, MoonIcon, PlusIcon, RepositoryIcon, ScheduleIcon, SearchIcon, SetupIcon, SpendingIcon, SunIcon, TeamIcon, TerminalIcon, UserIcon } from "./appChromeV2/icons"
+import { SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, activeChatIdFromPath, adminNavItemActive, adminSubnavLinkClass, bugReportContext, chatSectionsFromPayload, clampSidebarWidth, isAdminPath, isAuthPath, normalizedAppPath, popupButtonClass, popupLinkClass, recentChatLinkClass, redirectsToSetup, sidebarChatTitle, sidebarLinkClass, storeSidebarWidth, storedSidebarWidth, updateBootstrapTheme, withRoutePrefix } from "./appChromeV2/helpers"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { BRAND_ICON_SRC } from "../lib/brandIcon"
 import { type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react"
@@ -7,7 +8,7 @@ import { createPortal } from "react-dom"
 import { useTranslation } from "react-i18next"
 import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom"
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
-import { cancelCodingCheckout, createEmptyChat, deleteChat, fetchChat, fetchChats, fetchMoreChatsForGroup, fetchNewChat, hideChat, markChatRead, markChatUnread, renameChat, updateChatPinned, type ChatGroupRecord, type ChatNavRecord, type ChatPayload, type ChatsIndexPayload } from "../api/chats"
+import { cancelCodingCheckout, createEmptyChat, deleteChat, fetchChat, fetchChats, fetchMoreChatsForGroup, fetchNewChat, hideChat, markChatRead, markChatUnread, renameChat, updateChatPinned, type ChatNavRecord, type ChatPayload, type ChatsIndexPayload } from "../api/chats"
 import { ApiError, patchJson } from "../api/client"
 import { dashboardApiSearch, fetchDashboardChrome, type DashboardChromePayload, type DashboardSubject } from "../api/dashboard"
 import { fetchTerminalSessions } from "../api/terminal"
@@ -25,11 +26,6 @@ import { useDismissiblePopup } from "../lib/useDismissiblePopup"
 import { updateChatUnread, updateRecentChatCache } from "../lib/chatCache"
 import { firstUnstartedChat } from "../lib/unstartedChat"
 import { chatQueryKey } from "./Chat"
-
-const SIDEBAR_WIDTH_KEY = "syrus.sidebar.width"
-const SIDEBAR_DEFAULT_WIDTH = 240
-const SIDEBAR_MIN_WIDTH = 208
-const SIDEBAR_MAX_WIDTH = 420
 
 export const PUBLILIUS_SYRUS_WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/Publilius_Syrus"
 
@@ -1242,180 +1238,6 @@ function SettingsPopup({ csrfToken, onCloseDrawer, prefix, showTeamProfile, user
       ) : null}
     </div>
   )
-}
-
-function updateBootstrapTheme(payload: BootstrapPayload | undefined, theme: "light" | "dark") {
-  if (!payload?.current_user) return payload
-
-  return {
-    ...payload,
-    current_user: {
-      ...payload.current_user,
-      theme
-    }
-  }
-}
-
-function normalizedAppPath(pathname: string) {
-  return pathname.replace(/^\/app-shell/, "") || "/"
-}
-
-function redirectsToSetup(data: BootstrapPayload | null | undefined, normalizedPath: string) {
-  if (!data?.setup || data.setup.complete) return false
-  if (data.setup.chat_started) return false
-  return normalizedPath === "/" || normalizedPath.startsWith("/dashboard")
-}
-
-function isAdminPath(pathname: string) {
-  return pathname === "/admin" ||
-    pathname.startsWith("/admin/") ||
-    pathname === "/invitations" ||
-    pathname === "/settings/edit"
-}
-
-function isAuthPath(pathname: string) {
-  return pathname === "/session/new" ||
-    pathname === "/users/new" ||
-    pathname === "/passwords/new" ||
-    pathname.startsWith("/passwords/")
-}
-
-function adminNavItemActive(pathname: string, navPath: string) {
-  if (navPath === "/admin") return pathname === navPath
-
-  return pathname === navPath || pathname.startsWith(`${navPath}/`)
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  if (!path.startsWith("/")) return path
-
-  return `${prefix}${path}`
-}
-
-function dashboardLink(path: string, params: Record<string, string | number | null | undefined>) {
-  const search = new URLSearchParams()
-  for (const [key, value] of Object.entries(params)) {
-    if (value != null && String(value).length > 0) search.set(key, String(value))
-  }
-
-  const query = search.toString()
-  return query ? `${path}?${query}` : path
-}
-
-function activeChatIdFromPath(pathname: string) {
-  const match = normalizedAppPath(pathname).match(/^\/chats\/(\d+)(?:\/|$)/)
-  return match ? Number(match[1]) : null
-}
-
-function bugReportContext(pathname: string) {
-  const normalized = normalizedAppPath(pathname)
-  if (normalized === "/" || normalized === "/dashboard") return "Dashboard"
-
-  const label = normalized
-    .split("/")
-    .filter(Boolean)
-    .filter((segment) => !/^\d+$/.test(segment))
-    .map((segment) => segment.replace(/_/g, " "))
-    .join(" ")
-
-  return label ? titleize(label) : "Syrus"
-}
-
-function titleize(value: string) {
-  return value.replace(/\b\w/g, (letter) => letter.toUpperCase())
-}
-
-export function chatSectionsFromPayload(groups: ChatGroupRecord[], loadedSections: Record<string, { chats: ChatNavRecord[]; has_more: boolean }>) {
-  return groups.map((group) => {
-    const loaded = loadedSections[group.key]
-    const seen = new Set<number>()
-    const chats = [...group.chats, ...(loaded?.chats || [])]
-      .filter((chat) => {
-        if (seen.has(chat.id)) return false
-
-        seen.add(chat.id)
-        return true
-      })
-      .sort(compareChatsByLastMessage)
-    return {
-      key: group.key,
-      label: group.label,
-      repository_id: group.repository_id,
-      chats,
-      has_more: loaded?.has_more ?? group.has_more,
-      activeAt: Math.max(...chats.map(chatActivityTime))
-    }
-  })
-    .sort((left, right) => right.activeAt - left.activeAt)
-    .map(({ activeAt: _activeAt, ...group }) => group)
-}
-
-function compareChatsByLastMessage(left: ChatNavRecord, right: ChatNavRecord) {
-  if (left.pinned !== right.pinned) return left.pinned ? -1 : 1
-
-  return chatActivityTime(right) - chatActivityTime(left) || right.id - left.id
-}
-
-function chatLastMessageTime(chat: ChatNavRecord) {
-  return timestampValue(chat.last_message_at)
-}
-
-function chatActivityTime(chat: ChatNavRecord) {
-  return chatLastMessageTime(chat) || timestampValue(chat.created_at)
-}
-
-function timestampValue(value?: string | null) {
-  if (!value) return 0
-
-  const timestamp = Date.parse(value)
-  return Number.isNaN(timestamp) ? 0 : timestamp
-}
-
-function sidebarChatTitle(chat: Pick<ChatNavRecord, "title" | "title_pending">, newChatTitle: string) {
-  if (chat.title_pending) return newChatTitle
-  return chat.title?.trim() || newChatTitle
-}
-
-function storedSidebarWidth() {
-  try {
-    return clampSidebarWidth(Number.parseInt(window.localStorage.getItem(SIDEBAR_WIDTH_KEY) || "", 10) || SIDEBAR_DEFAULT_WIDTH)
-  } catch (_error) {
-    return SIDEBAR_DEFAULT_WIDTH
-  }
-}
-
-function storeSidebarWidth(width: number) {
-  try {
-    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(width))
-  } catch (_error) {
-    // Local storage can be unavailable in hardened browser modes; the
-    // sidebar still resizes for the current session.
-  }
-}
-
-function clampSidebarWidth(width: number) {
-  return Math.min(Math.max(width, SIDEBAR_MIN_WIDTH), SIDEBAR_MAX_WIDTH)
-}
-
-function sidebarLinkClass(active: boolean) {
-  return `inline-flex w-full items-center gap-2 rounded px-2.5 py-2 font-medium ${active ? "text-blue-700 dark:text-blue-300 sm:bg-blue-50 dark:sm:bg-blue-900/30" : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"}`
-}
-
-function recentChatLinkClass(active: boolean) {
-  return `flex min-w-0 w-full items-start gap-2 rounded px-2 py-1.5 text-xs ${active ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200" : "text-gray-700 hover:bg-gray-100 hover:text-blue-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-blue-300"}`
-}
-
-function adminSubnavLinkClass(active: boolean) {
-  return `block whitespace-nowrap rounded px-3 py-2 font-medium ${active ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200" : "text-gray-700 hover:bg-gray-100 hover:text-blue-700 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-blue-300"}`
-}
-
-function popupLinkClass() {
-  return "block px-4 py-2 text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800"
-}
-
-function popupButtonClass() {
-  return "block w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-200 dark:hover:bg-gray-800"
 }
 
 export function useTerminalSessionCount(enabled: boolean) {

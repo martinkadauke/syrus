@@ -6,7 +6,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { BootstrapPayload } from "../api/bootstrap"
 import * as chatsApi from "../api/chats"
 import type { ChatGroupRecord, ChatNavRecord, ChatsIndexPayload, MoreChatsPayload } from "../api/chats"
-import { AppChromeV2, chatSectionsFromPayload } from "./AppChromeV2"
+import { AppChromeV2 } from "./AppChromeV2"
+import { chatSectionsFromPayload } from "./appChromeV2/helpers"
 
 describe("AppChromeV2", () => {
   beforeEach(() => {
