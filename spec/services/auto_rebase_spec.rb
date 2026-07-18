@@ -260,5 +260,12 @@ RSpec.describe AutoRebase do
       end
       @delegate.run(*args, **kwargs)
     end
+
+    # Mirror GitRunner#configure_author via the recording run so the config
+    # commands are captured (and executed) just like before it was extracted.
+    def configure_author(identity, chdir:)
+      run("config", "--local", "user.name", identity.git_name, chdir: chdir)
+      run("config", "--local", "user.email", identity.git_email, chdir: chdir)
+    end
   end
 end

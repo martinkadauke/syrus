@@ -108,4 +108,12 @@ class GitRunner
 
     output
   end
+
+  # Sets the local commit author for the checkout at `chdir`. `identity` is any
+  # object responding to #git_name / #git_email (e.g. BotIdentity). Centralizes
+  # the two `git config --local user.*` calls the git services each repeated.
+  def configure_author(identity, chdir:)
+    run("config", "--local", "user.name", identity.git_name, chdir: chdir)
+    run("config", "--local", "user.email", identity.git_email, chdir: chdir)
+  end
 end

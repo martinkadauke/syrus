@@ -176,9 +176,7 @@ class AutoRebase
   end
 
   def configure_git_author
-    identity = BotIdentity.for(@job)
-    @git.run("config", "--local", "user.name", identity.git_name, chdir: clone_path.to_s)
-    @git.run("config", "--local", "user.email", identity.git_email, chdir: clone_path.to_s)
+    @git.configure_author(BotIdentity.for(@job), chdir: clone_path.to_s)
   end
 
   def rebase_succeeded?

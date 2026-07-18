@@ -143,4 +143,17 @@ RSpec.describe GitRunner do
       expect(lines.first.encoding).to eq(Encoding::UTF_8)
     end
   end
+
+  describe "#configure_author" do
+    it "sets local user.name and user.email from the identity" do
+      git = described_class.new
+      allow(git).to receive(:run)
+      identity = instance_double("BotIdentity", git_name: "Syrus", git_email: "syrus@noreply.invalid")
+
+      git.configure_author(identity, chdir: "/tmp/checkout")
+
+      expect(git).to have_received(:run).with("config", "--local", "user.name", "Syrus", chdir: "/tmp/checkout")
+      expect(git).to have_received(:run).with("config", "--local", "user.email", "syrus@noreply.invalid", chdir: "/tmp/checkout")
+    end
+  end
 end

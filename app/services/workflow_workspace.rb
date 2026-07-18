@@ -374,9 +374,7 @@ class WorkflowWorkspace
   end
 
   def configure_git_author
-    identity = BotIdentity.for(@job)
-    @git.run("config", "--local", "user.name", identity.git_name, chdir: path.to_s)
-    @git.run("config", "--local", "user.email", identity.git_email, chdir: path.to_s)
+    @git.configure_author(BotIdentity.for(@job), chdir: path.to_s)
   end
 
   def ensure_exclude_entry
