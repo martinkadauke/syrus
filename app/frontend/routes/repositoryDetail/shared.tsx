@@ -46,3 +46,9 @@ export function buttonClass(tone: "green" | "blue" | "amber" | "gray", extra = "
   }
   return `rounded px-3 py-1.5 text-sm font-medium ${colors[tone]} ${extra}`.trim()
 }
+
+export function appendSearch(path: string, search: string) {
+  return search ? `${path}${search}` : path
+}
+
+export type RepositoryDetailQueryKey = readonly ["repositories", string, "detail", string]
