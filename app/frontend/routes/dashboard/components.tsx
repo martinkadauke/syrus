@@ -1,11 +1,11 @@
-import { withRoutePrefix } from "./helpers"
+import { humanizeOption, withRoutePrefix } from "./helpers"
 import type { ReactNode } from "react"
 import { Children } from "react"
 import { Link } from "react-router-dom"
 import { useT } from "../../hooks/useT"
 import { StatusPill } from "../../components/StatusPill"
 import { workflowSlug } from "../../lib/slugs"
-import { type DashboardRepository, type DashboardWorkflowItem } from "../../api/dashboard"
+import { type DashboardEpicItem, type DashboardRepository, type DashboardWorkflowItem } from "../../api/dashboard"
 
 
 // Shared dashboard presentational primitives extracted from Dashboard.tsx:
@@ -110,3 +110,37 @@ export function OwnerBadge({ badge, fallback = null }: { badge: { label: string;
   return <span className={className}>{label}</span>
 }
 
+const EPIC_PROGRESS_SEGMENTS = [
+  { state: "merged", barColor: "bg-emerald-700" },
+  { state: "approved", barColor: "bg-green-500" },
+  { state: "implemented", barColor: "bg-cyan-500" },
+  { state: "blocked_by_epic", barColor: "bg-amber-400" },
+]
+
+export function EpicProgressBar({ epic, fullWidth = false }: { epic: DashboardEpicItem; fullWidth?: boolean }) {
+  const { t } = useT("dashboard")
+  if (epic.state !== "in_progress" || epic.jobs_count === 0) return null
+
+  const segments = EPIC_PROGRESS_SEGMENTS.map(({ state, barColor }) => {
+    const count = epic.job_state_counts[state] ?? 0
+    return { state, barColor, count, percent: (count / epic.jobs_count) * 100 }
+  })
+
+  const titleText = segments
+    .filter(s => s.count > 0)
+    .map(s => `${s.count} ${humanizeOption(s.state)}`)
+    .join(", ") || undefined
+
+  return (
+    <div
+      aria-label={t("epic_progress_label")}
+      className={fullWidth ? "flex h-1.5 w-full bg-gray-200 dark:bg-gray-700" : "flex h-1.5 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"}
+      role="progressbar"
+      title={titleText}
+    >
+      {segments.map(({ state, barColor, percent }) =>
+        percent > 0 ? <div className={`h-1.5 transition-[width] ${barColor}`} key={state} style={{ width: `${percent}%` }} /> : null
+      )}
+    </div>
+  )
+}

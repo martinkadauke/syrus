@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 import type { DashboardEpicItem } from "../api/dashboard"
-import { EpicProgressBar } from "./Dashboard"
+import { EpicProgressBar } from "./dashboard/components"
 
 function epicItem(overrides: Partial<DashboardEpicItem> = {}): DashboardEpicItem {
   return {

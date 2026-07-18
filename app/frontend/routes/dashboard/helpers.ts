@@ -213,3 +213,34 @@ export function formatRelativeDate(date: Date) {
 
   return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(value, unit)
 }
+
+export function dashboardEmptyFallbackPath(payload: DashboardPayload) {
+  return payload.subject === "epic" ? payload.paths.new_epic_path : payload.paths.new_job_path
+}
+
+export function dashboardEmptyState(payload: DashboardPayload, t: (key: string, opts?: Record<string, unknown>) => string) {
+  const subject = subjectLabel(payload.subject, 2)
+  if (payload.setup && !payload.setup.complete) {
+    const setupDescription = payload.setup.next_step === "credentials"
+      ? t("setup_credentials_description")
+      : t("setup_description")
+
+    return {
+      title: t("empty_title", { subject: capitalizeLabel(subject) }),
+      description: setupDescription,
+      actionPath: payload.setup.paths.setup_path,
+      actionText: t("open_setup")
+    }
+  }
+
+  return {
+    title: t("empty_title", { subject: capitalizeLabel(subject) }),
+    description: t("empty_description", { subject }),
+    actionPath: dashboardEmptyFallbackPath(payload),
+    actionText: payload.subject === "epic" ? t("create_epic") : t("create_direct_job")
+  }
+}
+
+export function capitalizeLabel(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1)
+}

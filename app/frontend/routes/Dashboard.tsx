@@ -1,5 +1,5 @@
-import { EpicStuckBadge, ExternalMetadataLink, MetadataLine, NeutralStatePill, OwnerBadge, PendingJobTitle, RepositorySlugLink, WorkflowBadges, workflowLabel } from "./dashboard/components"
-import { bulkButtonClass, columnAriaSort, compactText, dashboardColumnLabel, dashboardLinkFromSearch, dashboardVisibleColumns, epicDateValue, epicTableColumns, formatCurrency, formatDate, formatRelativeDate, humanizeOption, jobDateValue, pageLink, pluralize, sortValue, sortableColumnFor, subjectLabel, uniqueValue, withRoutePrefix, workflowDateValue } from "./dashboard/helpers"
+import { EpicProgressBar, EpicStuckBadge, ExternalMetadataLink, MetadataLine, NeutralStatePill, OwnerBadge, PendingJobTitle, RepositorySlugLink, WorkflowBadges, workflowLabel } from "./dashboard/components"
+import { dashboardEmptyState, bulkButtonClass, columnAriaSort, compactText, dashboardColumnLabel, dashboardLinkFromSearch, dashboardVisibleColumns, epicDateValue, epicTableColumns, formatCurrency, formatDate, formatRelativeDate, humanizeOption, jobDateValue, pageLink, pluralize, sortValue, sortableColumnFor, subjectLabel, uniqueValue, withRoutePrefix, workflowDateValue } from "./dashboard/helpers"
 import type { DashboardSortState } from "./dashboard/helpers"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { DragEvent } from "react"
@@ -727,37 +727,6 @@ function DashboardKanban({ payload, prefix, setupStatus }: { payload: DashboardP
       </div>
     </>
   )
-}
-
-function dashboardEmptyFallbackPath(payload: DashboardPayload) {
-  return payload.subject === "epic" ? payload.paths.new_epic_path : payload.paths.new_job_path
-}
-
-function dashboardEmptyState(payload: DashboardPayload, t: (key: string, opts?: Record<string, unknown>) => string) {
-  const subject = subjectLabel(payload.subject, 2)
-  if (payload.setup && !payload.setup.complete) {
-    const setupDescription = payload.setup.next_step === "credentials"
-      ? t("setup_credentials_description")
-      : t("setup_description")
-
-    return {
-      title: t("empty_title", { subject: capitalizeLabel(subject) }),
-      description: setupDescription,
-      actionPath: payload.setup.paths.setup_path,
-      actionText: t("open_setup")
-    }
-  }
-
-  return {
-    title: t("empty_title", { subject: capitalizeLabel(subject) }),
-    description: t("empty_description", { subject }),
-    actionPath: dashboardEmptyFallbackPath(payload),
-    actionText: payload.subject === "epic" ? t("create_epic") : t("create_direct_job")
-  }
-}
-
-function capitalizeLabel(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 function KanbanLane({
@@ -1696,41 +1665,6 @@ function WorkflowsTable({ items, columns, prefix, sortState }: { items: Dashboar
           ))}
         </tbody>
       </table>
-    </div>
-  )
-}
-
-const EPIC_PROGRESS_SEGMENTS = [
-  { state: "merged", barColor: "bg-emerald-700" },
-  { state: "approved", barColor: "bg-green-500" },
-  { state: "implemented", barColor: "bg-cyan-500" },
-  { state: "blocked_by_epic", barColor: "bg-amber-400" },
-]
-
-export function EpicProgressBar({ epic, fullWidth = false }: { epic: DashboardEpicItem; fullWidth?: boolean }) {
-  const { t } = useT("dashboard")
-  if (epic.state !== "in_progress" || epic.jobs_count === 0) return null
-
-  const segments = EPIC_PROGRESS_SEGMENTS.map(({ state, barColor }) => {
-    const count = epic.job_state_counts[state] ?? 0
-    return { state, barColor, count, percent: (count / epic.jobs_count) * 100 }
-  })
-
-  const titleText = segments
-    .filter(s => s.count > 0)
-    .map(s => `${s.count} ${humanizeOption(s.state)}`)
-    .join(", ") || undefined
-
-  return (
-    <div
-      aria-label={t("epic_progress_label")}
-      className={fullWidth ? "flex h-1.5 w-full bg-gray-200 dark:bg-gray-700" : "flex h-1.5 w-20 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700"}
-      role="progressbar"
-      title={titleText}
-    >
-      {segments.map(({ state, barColor, percent }) =>
-        percent > 0 ? <div className={`h-1.5 transition-[width] ${barColor}`} key={state} style={{ width: `${percent}%` }} /> : null
-      )}
     </div>
   )
 }
