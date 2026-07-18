@@ -159,6 +159,15 @@ import {
   WHITEBOARD_MAX_ELEMENTS,
   WHITEBOARD_SAVE_DEBOUNCE_MS
 } from "./chat/constants"
+import {
+  findChatMessageAnchor,
+  isMessageStreamAtBottom,
+  isMessageStreamNearTop,
+  messageIdFromHash,
+  messageStreamNeedsOlderMessages,
+  scrollChatMessageIntoView,
+  scrollMessageStreamToBottom
+} from "./chat/messageStream"
 
 
 type ChatPendingActionStreamItem = {
@@ -985,29 +994,6 @@ function isAgentActive(payload: ChatPayload) {
   return payload.agent_busy || payload.turn_in_flight || payload.switching_provider
 }
 
-function isMessageStreamAtBottom(element: HTMLElement) {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= CHAT_BOTTOM_THRESHOLD_PX
-}
-
-function isMessageStreamNearTop(element: HTMLElement) {
-  return element.scrollTop <= CHAT_TOP_LOAD_THRESHOLD_PX
-}
-
-function messageStreamNeedsOlderMessages(element: HTMLElement) {
-  return element.clientHeight > 0 && element.scrollHeight <= element.clientHeight + CHAT_INITIAL_FILL_MARGIN_PX
-}
-
-function scrollMessageStreamToBottom(element: HTMLElement | null, options: { smooth?: boolean } = {}) {
-  if (!element) return
-  // Smooth only for explicit user gestures under chat_polish; auto-follow
-  // during streaming stays instant so the viewport never chases animations.
-  const reduceMotion = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches
-  if (options.smooth && !reduceMotion && typeof element.scrollTo === "function") {
-    element.scrollTo({ top: element.scrollHeight, behavior: "smooth" })
-    return
-  }
-  element.scrollTop = element.scrollHeight
-}
 
 // chat_polish: only messages that ARRIVE while the thread is open animate in —
 // the initially loaded history must render at rest (and older pages prepend
@@ -1017,23 +1003,6 @@ export function shouldAnimateMessageEntrance(polish: boolean, messageId: number 
   return messageId > initialMaxId
 }
 
-function findChatMessageAnchor(stream: HTMLElement, messageId: number) {
-  return stream.querySelector<HTMLElement>(`#message-${messageId}`)
-}
-
-function scrollChatMessageIntoView(element: HTMLElement) {
-  if (typeof element.scrollIntoView === "function") {
-    element.scrollIntoView({ block: "start", behavior: "smooth" })
-  }
-}
-
-function messageIdFromHash(hash: string) {
-  const match = hash.match(/^#message-(\d+)$/)
-  if (!match) return null
-
-  const messageId = Number.parseInt(match[1], 10)
-  return Number.isFinite(messageId) && messageId > 0 ? messageId : null
-}
 
 function countIncomingVisibleMessages(messages: ChatMessageItem[], previousMaxMessageId: number, showSystemMessages: boolean) {
   return messages.filter((message) => {
