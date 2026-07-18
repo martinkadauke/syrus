@@ -168,6 +168,16 @@ import {
   scrollChatMessageIntoView,
   scrollMessageStreamToBottom
 } from "./chat/messageStream"
+import {
+  contentInput,
+  contentRecord,
+  errorAsError,
+  firstLine,
+  humanize,
+  numericArg,
+  stringArray,
+  stringValue
+} from "./chat/utils"
 
 
 type ChatPendingActionStreamItem = {
@@ -5989,10 +5999,6 @@ function mcpHealthFromContent(content: unknown): ChatMcpHealth[] {
   }).filter((item): item is ChatMcpHealth => item != null && item.name.length > 0)
 }
 
-function stringArray(value: unknown) {
-  return Array.isArray(value) ? value.map(stringValue).filter(Boolean) : []
-}
-
 function systemResultMessage(fields: Record<string, string>): ChatSystemMessage {
   const error = fields.is_error === "true"
   const subtype = fields.subtype || ""
@@ -6151,27 +6157,6 @@ function fullResultBody(content: unknown): string {
   return String(content)
 }
 
-function contentInput(content: unknown) {
-  return contentRecord(contentRecord(content)?.input) || {}
-}
-
-function contentRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null
-}
-
-function firstLine(value: string) {
-  return value.split(/\r?\n/, 1)[0].trim()
-}
-
-function stringValue(value: unknown) {
-  return typeof value === "string" ? value : value == null ? "" : String(value)
-}
-
-function humanize(value: string) {
-  const normalized = value.replace(/_id$/, "").replace(/_/g, " ").toLowerCase()
-  return normalized ? normalized[0].toUpperCase() + normalized.slice(1) : ""
-}
-
 function routePrefix(pathname: string) {
   return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
@@ -6181,11 +6166,6 @@ function withRoutePrefix(path: string, prefix: string) {
   if (!path.startsWith("/")) return path
 
   return `${prefix}${path}`
-}
-
-function numericArg(value: string) {
-  const match = value.trim().match(/^\d+$/)
-  return match ? match[0] : null
 }
 
 function findProposalBySlug(payload: ChatPayload, slug: string): { app_reject_path: string } | null {
@@ -6263,6 +6243,3 @@ function maxMessageId(messages: ChatMessageItem[]) {
 }
 
 
-function errorAsError(error: unknown) {
-  return error instanceof Error ? error : new Error(String(error))
-}
