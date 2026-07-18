@@ -459,4 +459,91 @@ RSpec.describe SyrusYml do
       end
     end
   end
+
+  describe "formatters: key" do
+    it "parses formatters, normalizing a string or array of file globs" do
+      config = parse(<<~YAML)
+        formatters:
+          - command: bin/rubocop -a
+            files: "**/*.rb"
+          - command: npx prettier --write
+            files:
+              - "**/*.ts"
+              - "**/*.tsx"
+      YAML
+
+      expect(config.formatters.size).to eq(2)
+      expect(config.formatters.first.command).to eq("bin/rubocop -a")
+      expect(config.formatters.first.files).to eq([ "**/*.rb" ])
+      expect(config.formatters.last.files).to eq([ "**/*.ts", "**/*.tsx" ])
+    end
+
+    it "defaults to an empty array when absent" do
+      expect(parse("grade: []").formatters).to eq([])
+    end
+
+    it "requires a command and files" do
+      expect { parse("formatters:\n  - files: '**/*.rb'\n") }
+        .to raise_error(SyrusYml::ParseError, /command: is required/)
+      expect { parse("formatters:\n  - command: bin/rubocop -a\n") }
+        .to raise_error(SyrusYml::ParseError, /files: is required/)
+    end
+
+    it "rejects a non-array formatters value" do
+      expect { parse("formatters: bin/rubocop") }
+        .to raise_error(SyrusYml::ParseError, /formatters: must be an array/)
+    end
+  end
+
+  describe "generated: key" do
+    it "parses generated entries with sources, generates, and codegen_ignore" do
+      config = parse(<<~YAML)
+        generated:
+          - command: buf generate
+            sources: "proto/**/*.proto"
+            generates:
+              - "lib/proto/**/*.rb"
+          - command: bin/rails db:schema:dump
+            generates: "db/schema.rb"
+            codegen_ignore: true
+      YAML
+
+      expect(config.generated.size).to eq(2)
+      buf = config.generated.first
+      expect(buf.command).to eq("buf generate")
+      expect(buf.sources).to eq([ "proto/**/*.proto" ])
+      expect(buf.generates).to eq([ "lib/proto/**/*.rb" ])
+      expect(buf.codegen_ignore).to be(false)
+
+      schema = config.generated.last
+      expect(schema.generates).to eq([ "db/schema.rb" ])
+      expect(schema.sources).to eq([])
+      expect(schema.codegen_ignore).to be(true)
+    end
+
+    it "defaults to an empty array when absent" do
+      expect(parse("grade: []").generated).to eq([])
+    end
+
+    it "requires command and generates but allows omitting sources" do
+      expect { parse("generated:\n  - generates: 'x.rb'\n") }
+        .to raise_error(SyrusYml::ParseError, /command: is required/)
+      expect { parse("generated:\n  - command: buf generate\n") }
+        .to raise_error(SyrusYml::ParseError, /generates: is required/)
+
+      config = parse("generated:\n  - command: buf generate\n    generates: 'x.rb'\n")
+      expect(config.generated.first.sources).to eq([])
+    end
+
+    it "coerces codegen_ignore through Rails boolean semantics" do
+      config = parse(<<~YAML)
+        generated:
+          - command: gen
+            generates: "x.rb"
+            codegen_ignore: "yes"
+      YAML
+
+      expect(config.generated.first.codegen_ignore).to be(true)
+    end
+  end
 end

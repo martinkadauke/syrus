@@ -21,9 +21,18 @@ class SyrusYml
   ConfigError = Class.new(ParseError)
 
 
-  Config = Data.define(:prepare, :grade, :hooks, :adversarial_review, :coverage)
+  Config = Data.define(:prepare, :grade, :hooks, :adversarial_review, :coverage, :formatters, :generated)
   GradeConfig = Data.define(:max_iterations, :steps)
   GradeStep = Data.define(:name, :run, :description, :required, :timeout_minutes, :when_files_changed)
+  # Deterministic, in-place, semantics-preserving cosmetic passes (safe
+  # autocorrect only). `files` are the globs this formatter owns — both its
+  # target set and its self-gate (empty slice of the diff → no-op).
+  FormatterStep = Data.define(:command, :files)
+  # Deterministic codegen: derives checked-in `generates` outputs from `sources`
+  # inputs. `codegen_ignore` marks an output committed for human reasons but
+  # exempt from the `regen == committed` assertion (non-deterministic generator,
+  # e.g. schema.rb across SQLite/MySQL) — grader-validated, not diff-validated.
+  GeneratedStep = Data.define(:command, :sources, :generates, :codegen_ignore)
   HooksConfig = Data.define(:post_checkout)
   AdversarialReviewConfig = Data.define(:rounds)
   # Backward-compat aliases — point to the canonical RepoCoveragePlan types so
@@ -55,13 +64,70 @@ class SyrusYml
       grade: parse_grade(raw["grade"]),
       hooks: parse_hooks(raw["hooks"]),
       adversarial_review: parse_adversarial_review(raw["adversarial_review"]),
-      coverage: parse_coverage(raw["coverage"])
+      coverage: parse_coverage(raw["coverage"]),
+      formatters: parse_formatters(raw["formatters"]),
+      generated: parse_generated(raw["generated"])
     )
   rescue Psych::SyntaxError => e
     raise ParseError, "YAML parse error: #{e.message}"
   end
 
   private
+
+  def parse_formatters(raw)
+    return [] if raw.nil?
+    raise ParseError, "formatters: must be an array" unless raw.is_a?(Array)
+
+    raw.each_with_index.map do |item, index|
+      label = "formatters[#{index}]"
+      raise ParseError, "#{label}: must be a mapping" unless item.is_a?(Hash)
+
+      command = item["command"].to_s.strip
+      raise ParseError, "#{label}.command: is required" if command.empty?
+
+      FormatterStep.new(
+        command: command,
+        files: parse_globs(item["files"], "#{label}.files", required: true)
+      )
+    end
+  end
+
+  def parse_generated(raw)
+    return [] if raw.nil?
+    raise ParseError, "generated: must be an array" unless raw.is_a?(Array)
+
+    raw.each_with_index.map do |item, index|
+      label = "generated[#{index}]"
+      raise ParseError, "#{label}: must be a mapping" unless item.is_a?(Hash)
+
+      command = item["command"].to_s.strip
+      raise ParseError, "#{label}.command: is required" if command.empty?
+
+      GeneratedStep.new(
+        command: command,
+        sources: parse_globs(item["sources"], "#{label}.sources", required: false),
+        generates: parse_globs(item["generates"], "#{label}.generates", required: true),
+        codegen_ignore: item.key?("codegen_ignore") ? ActiveModel::Type::Boolean.new.cast(item["codegen_ignore"]) : false
+      )
+    end
+  end
+
+  # Normalizes a glob field that accepts either a single string or an array of
+  # strings into a clean array of non-empty patterns.
+  def parse_globs(raw, label, required:)
+    globs =
+      case raw
+      when nil then []
+      when String then [ raw ]
+      when Array then raw
+      else raise ParseError, "#{label}: must be a glob string or an array of globs"
+      end
+
+    globs = globs.map { |g| g.to_s.strip }.reject(&:empty?)
+    raise ParseError, "#{label}: is required" if required && globs.empty?
+
+    globs
+  end
 
   def parse_adversarial_review(raw)
     return nil if raw.nil?
