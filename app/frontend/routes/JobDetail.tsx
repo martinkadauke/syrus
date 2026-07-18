@@ -66,6 +66,7 @@ import { buildSourceTree, sortSourceTree, sourceLanguage } from "./jobDetail/sou
 import { stepArtifactAdversarialReview, stepArtifactTestPlan } from "./jobDetail/stepArtifacts"
 import type { BranchDivergence, BranchDivergenceRecoveryStatus } from "./jobDetail/branchDivergence"
 import { workflowBranchDivergence, workflowBranchRecoveryStatus } from "./jobDetail/branchDivergence"
+import { latestWorkflowCoverage, workflowCreatedAtTime } from "./jobDetail/workflowArtifacts"
 
 type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
@@ -664,15 +665,6 @@ function NeedsAttentionBanner({ job }: { job: JobDetailPayload["job"] }) {
   )
 }
 
-function latestWorkflowCoverage(workflows: JobWorkflow[]): { workflowId: number; coverage: CoverageArtifact } | null {
-  for (let i = workflows.length - 1; i >= 0; i--) {
-    const artifacts = workflows[i].artifacts
-    const cov = artifacts?.["coverage"] as CoverageArtifact | undefined
-    if (cov) return { workflowId: workflows[i].id, coverage: cov }
-  }
-  return null
-}
-
 function SummaryTab({ payload, command, prefix, queryKey }: { payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; prefix: string; queryKey: JobDetailQueryKey }) {
   const { t } = useT("jobs")
   const coverageInfo = latestWorkflowCoverage(payload.workflows)
@@ -966,12 +958,6 @@ function feedbackTriggerLabel(triggerKind: string, t: ReturnType<typeof useT>["t
   if (triggerKind === "chat_feedback") return t("feedback_trigger_chat")
   if (triggerKind === "pr_comment") return t("feedback_trigger_pr")
   return triggerKind.replaceAll("_", " ")
-}
-
-function workflowCreatedAtTime(workflow: JobWorkflow) {
-  if (!workflow.created_at) return 0
-  const time = Date.parse(workflow.created_at)
-  return Number.isNaN(time) ? 0 : time
 }
 
 function EpicSummaryLink({ epic, prefix }: { epic: NonNullable<JobDetailPayload["epic"]>; prefix: string }) {
