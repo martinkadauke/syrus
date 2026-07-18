@@ -205,6 +205,7 @@ import { pendingActionBadgeLabel, pendingActionKey, pendingActionResourceTitle, 
 import type { MobileChatTab, WorkspaceTab } from "./chat/workspaceTabs"
 import type { ChatMessageImageAttachment } from "./chat/messageDisplay"
 import type { DependencyPill, EditableProposal } from "./chat/proposalDisplay"
+import { PencilIcon, UploadIcon } from "./chat/icons"
 import { editableChildProposal, initialProposalDependencyPills, proposalConfirmLabel } from "./chat/proposalDisplay"
 import { attachmentDataUrl, countIncomingVisibleMessages, formatMessageTimestamp, imageAttachments, isAgentActive, isLowPrioritySystemMessage, isProposalOutcomeSystemMessage } from "./chat/messageDisplay"
 import { clampWorkspaceWidth, defaultWorkspaceTab, mobileChatTabLabel, storeWorkspacePreference, storedWorkspaceCollapsed, storedWorkspaceTab, storedWorkspaceWidth, workspaceTabClass, workspaceTabLabel } from "./chat/workspaceTabs"
@@ -5433,24 +5434,6 @@ function CodingFilesPanel({ payload }: { payload: ChatPayload }) {
   )
 }
 
-function PencilIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
-    </svg>
-  )
-}
-
-function UploadIcon({ className = "h-4 w-4" }: { className?: string }) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24">
-      <path d="M12 3v12" />
-      <path d="m7 8 5-5 5 5" />
-      <path d="M5 21h14" />
-    </svg>
-  )
-}
 function routePrefix(pathname: string) {
   return pathname.startsWith("/app-shell") ? "/app-shell" : ""
 }
