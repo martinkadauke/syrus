@@ -188,6 +188,7 @@ import {
 } from "./chat/utils"
 import { structuredTool, systemMessage } from "./chat/systemMessages"
 import type { ChatDayDividerItem, ChatPendingActionStreamItem, ChatStreamItem, ChatTimestampItem } from "./chat/streamTypes"
+import { chatStreamItemsSignature, maxMessageId, mergeChatMessages, oldestMessageId, renderItemKey } from "./chat/messageStreamItems"
 import { fullResultBody, shortenWorkspacePaths, toolDetail, toolLabel, toolResultSummary } from "./chat/toolRendering"
 
 
@@ -5930,50 +5931,4 @@ function scrollToLastProposalCard() {
 function isPlainAnchorClick(event: ReactMouseEvent<HTMLAnchorElement>) {
   return event.button === 0 && !event.defaultPrevented && !event.metaKey && !event.altKey && !event.ctrlKey && !event.shiftKey
 }
-
-function mergeChatMessages(...groups: ChatMessageItem[][]) {
-  const seen = new Set<string>()
-  const messages: ChatMessageItem[] = []
-
-  for (const item of groups.flat()) {
-    const key = String(item.id)
-    if (seen.has(key)) continue
-
-    seen.add(key)
-    messages.push(item)
-  }
-
-  return messages
-}
-
-function renderItemKey(item: ChatStreamItem) {
-  if (item.type === "timestamp") return `timestamp-${item.fullDatetime}`
-  if (item.type === "day_divider") return `day-divider-${item.date}`
-  if (item.type === "pending_action") return `pending-action-${item.pendingAction.id}`
-  if (item.type === "message") return `message-${item.id}`
-
-  return `tool-${item.calls.map((call) => call.message_id).join("-")}`
-}
-
-function chatStreamItemsSignature(items: ChatStreamItem[]) {
-  return items.map((item) => {
-    if (item.type === "timestamp") return `${renderItemKey(item)}:${item.time}`
-    if (item.type === "day_divider") return `${renderItemKey(item)}:${item.label}`
-    if (item.type === "pending_action") return `${renderItemKey(item)}:${item.pendingAction.state}:${item.pendingAction.label.length}:${item.pendingAction.detail?.length || 0}`
-    if (item.type === "message") return `${renderItemKey(item)}:${item.text.length}`
-
-    return `${renderItemKey(item)}:${item.calls.map((call) => `${call.message_id}:${call.result_body.length}`).join(",")}`
-  }).join("|")
-}
-
-function oldestMessageId(messages: ChatMessageItem[]) {
-  const ids = messages.map((message) => message.id)
-  return ids.length > 0 ? Math.min(...ids) : null
-}
-
-function maxMessageId(messages: ChatMessageItem[]) {
-  const ids = messages.map((message) => message.id)
-  return ids.length > 0 ? Math.max(...ids) : null
-}
-
 
