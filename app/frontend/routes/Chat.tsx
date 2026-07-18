@@ -192,6 +192,8 @@ import { chatStreamItemsSignature, maxMessageId, mergeChatMessages, oldestMessag
 import { buildMessageStreamItems, groupableToolResult, groupableToolUse, injectTemporalMarkers, lastAssistantRenderedMessage, pendingActionCardData, renderChatMessages, renderMessage } from "./chat/streamBuilders"
 import { pendingActionBadgeLabel, pendingActionKey, pendingActionResourceTitle, pendingActionResourceUrl, pendingActionTerminalLabel } from "./chat/pendingActionDisplay"
 import type { MobileChatTab, WorkspaceTab } from "./chat/workspaceTabs"
+import type { ChatMessageImageAttachment } from "./chat/messageDisplay"
+import { attachmentDataUrl, countIncomingVisibleMessages, formatMessageTimestamp, imageAttachments, isAgentActive, isLowPrioritySystemMessage, isProposalOutcomeSystemMessage } from "./chat/messageDisplay"
 import { clampWorkspaceWidth, defaultWorkspaceTab, mobileChatTabLabel, storeWorkspacePreference, storedWorkspaceCollapsed, storedWorkspaceTab, storedWorkspaceWidth, workspaceTabClass, workspaceTabLabel } from "./chat/workspaceTabs"
 import { fullResultBody, shortenWorkspacePaths, toolDetail, toolLabel, toolResultSummary } from "./chat/toolRendering"
 
@@ -200,7 +202,6 @@ import { fullResultBody, shortenWorkspacePaths, toolDetail, toolLabel, toolResul
 type ExcalidrawComponent = typeof import("@excalidraw/excalidraw")["Excalidraw"]
 type ExcalidrawApi = Pick<ExcalidrawImperativeAPI, "addFiles" | "updateScene">
 type ChatComposeAttachment = ChatMessageAttachmentInput & { size: number }
-type ChatMessageImageAttachment = { name: string; mime_type: string; data: string }
 
 export function ChatRoute() {
   const params = useParams()
@@ -983,36 +984,6 @@ function ImageLightbox({ attachment, onClose }: { attachment: ChatMessageImageAt
   )
 }
 
-function attachmentDataUrl(attachment: ChatMessageImageAttachment) {
-  return `data:${attachment.mime_type};base64,${attachment.data}`
-}
-
-function imageAttachments(messages: ChatRenderItem[]) {
-  return messages.flatMap((message) => {
-    if (message.type !== "message") return []
-
-    return (message.attachments || [])
-      .filter((attachment): attachment is ChatMessageImageAttachment => attachment.mime_type.startsWith("image/"))
-      .map((attachment, index) => ({ attachment, key: `${message.id}-${attachment.name}-${index}` }))
-  })
-}
-
-function isLowPrioritySystemMessage(item: ChatRenderItem) {
-  return item.type === "message" &&
-    item.role === "system" &&
-    !isProposalOutcomeSystemMessage(item) &&
-    ["neutral", "success"].includes(item.system?.tone || "neutral")
-}
-
-function isProposalOutcomeSystemMessage(item: Extract<ChatRenderItem, { type: "message" }>) {
-  return contentRecord(item.content)?.source === "proposal_notification"
-}
-
-function isAgentActive(payload: ChatPayload) {
-  return payload.agent_busy || payload.turn_in_flight || payload.switching_provider
-}
-
-
 // chat_polish: only messages that ARRIVE while the thread is open animate in —
 // the initially loaded history must render at rest (and older pages prepend
 // with LOWER ids, so they can never satisfy the > check).
@@ -1021,40 +992,6 @@ export function shouldAnimateMessageEntrance(polish: boolean, messageId: number 
   return messageId > initialMaxId
 }
 
-
-function countIncomingVisibleMessages(messages: ChatMessageItem[], previousMaxMessageId: number, showSystemMessages: boolean) {
-  return messages.filter((message) => {
-    if (message.id <= previousMaxMessageId) return false
-    const item = renderMessage(message)
-    if (item === null) return false
-
-    return showSystemMessages || !isLowPrioritySystemMessage(item)
-  }).length
-}
-
-function formatMessageTimestamp(createdAt: string): string {
-  const date = new Date(createdAt)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMinutes = Math.floor(diffMs / 60_000)
-  const diffHours = Math.floor(diffMinutes / 60)
-
-  if (diffMinutes < 1) return "just now"
-  if (diffMinutes < 60) return `${diffMinutes}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-
-  const m = date.getMonth() + 1
-  const d = date.getDate()
-  const hh = date.getHours()
-  const mm = String(date.getMinutes()).padStart(2, "0")
-  const period = hh >= 12 ? "pm" : "am"
-  const h = hh % 12 || 12
-
-  if (date.getFullYear() === now.getFullYear()) {
-    return `${m}/${d} ${h}:${mm}${period}`
-  }
-  return `${m}/${d}/${date.getFullYear()} ${h}:${mm}${period}`
-}
 
 function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
   const { t } = useT("chat")
