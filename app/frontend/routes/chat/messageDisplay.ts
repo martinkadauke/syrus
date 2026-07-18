@@ -8,6 +8,7 @@
 import type { ChatMessageItem, ChatPayload, ChatRenderItem } from "../../api/chats"
 import { contentRecord } from "./utils"
 import { renderMessage } from "./streamBuilders"
+import { formatRelativeDate } from "../../lib/relativeTime"
 
 export type ChatMessageImageAttachment = { name: string; mime_type: string; data: string }
 
@@ -50,26 +51,24 @@ export function countIncomingVisibleMessages(messages: ChatMessageItem[], previo
   }).length
 }
 
+// Chat-bubble timestamp: a hybrid that reads relative for the first 24 hours
+// ("5 minutes ago") and flips to an absolute clock/date beyond that (scrollback
+// wants the actual time). Both halves respect the viewer's locale — the
+// relative side via Intl.RelativeTimeFormat (shared `formatRelativeDate`), the
+// absolute side via Intl.DateTimeFormat.
 export function formatMessageTimestamp(createdAt: string): string {
   const date = new Date(createdAt)
   const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMinutes = Math.floor(diffMs / 60_000)
-  const diffHours = Math.floor(diffMinutes / 60)
+  const diffHours = (now.getTime() - date.getTime()) / 3_600_000
 
-  if (diffMinutes < 1) return "just now"
-  if (diffMinutes < 60) return `${diffMinutes}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffHours < 24) return formatRelativeDate(date, now.getTime())
 
-  const m = date.getMonth() + 1
-  const d = date.getDate()
-  const hh = date.getHours()
-  const mm = String(date.getMinutes()).padStart(2, "0")
-  const period = hh >= 12 ? "pm" : "am"
-  const h = hh % 12 || 12
-
-  if (date.getFullYear() === now.getFullYear()) {
-    return `${m}/${d} ${h}:${mm}${period}`
-  }
-  return `${m}/${d}/${date.getFullYear()} ${h}:${mm}${period}`
+  const sameYear = date.getFullYear() === now.getFullYear()
+  return new Intl.DateTimeFormat(undefined, {
+    year: sameYear ? undefined : "numeric",
+    month: "numeric",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(date)
 }

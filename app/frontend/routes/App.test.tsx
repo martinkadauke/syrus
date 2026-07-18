@@ -12943,7 +12943,7 @@ describe("App", () => {
 
     expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
     const timeEl = screen.getByRole("time")
-    expect(timeEl).toHaveTextContent("4m ago")
+    expect(timeEl).toHaveTextContent("4 minutes ago")
     expect(timeEl).toHaveAttribute("dateTime", recentCreatedAt)
   })
 
@@ -12976,7 +12976,7 @@ describe("App", () => {
 
     expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
     const timeEl = screen.getByRole("time")
-    expect(timeEl).toHaveTextContent("1/15 10:29am")
+    expect(timeEl).toHaveTextContent("1/15, 10:29 AM")
     expect(timeEl).toHaveAttribute("dateTime", oldCreatedAt)
   })
 
@@ -13008,7 +13008,7 @@ describe("App", () => {
 
     expect(await screen.findByText("Discuss aqueducts.")).toBeInTheDocument()
     const timeEl = screen.getByRole("time")
-    expect(timeEl).toHaveTextContent(`7/5/${new Date().getFullYear() - 1} 10:29pm`)
+    expect(timeEl).toHaveTextContent(`7/5/${new Date().getFullYear() - 1}, 10:29 PM`)
     expect(timeEl).toHaveAttribute("dateTime", oldCreatedAt)
   })
 

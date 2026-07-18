@@ -38,13 +38,17 @@ sits inside a translated sentence (`t(…, { date })`) and can't carry the
 component, it uses the relative string `formatRelativeDate(new Date(x))`
 (localized, no hover).
 
-**One intentional exception, left for a product call:**
-`routes/chat/messageDisplay.ts#formatMessageTimestamp` — the chat message-bubble
-timestamp is a **hybrid** (relative for the last 24h, then clock time / date for
-older messages, e.g. `3/5 2:32pm`). That's a deliberate chat UX distinct from
-"3 days ago". **Want the chat bubbles uniformly relative too?** Say so and I'll
-switch it. Non-timestamp `Intl`/`toLocaleString` uses were left alone on purpose
-(`BuildBadge` version label, rate-limit numbers, snapshot names).
+**One intentional exception — RESOLVED as a localized hybrid:**
+`routes/chat/messageDisplay.ts#formatMessageTimestamp` is the chat message-bubble
+timestamp. By product decision it keeps its **hybrid** shape (relative for the
+first 24h, then an absolute clock/date beyond that — scrollback wants the actual
+time), which is distinct from the uniform "3 days ago" everywhere else. What was
+fixed: it used to be **hardcoded English + US format** ("5m ago", `3/5 2:32pm`);
+now both halves respect the viewer's locale — the relative side via the shared
+`formatRelativeDate` (Intl.RelativeTimeFormat), the absolute side via
+Intl.DateTimeFormat (`3/5, 2:32 PM` / `05.03., 14:32`). Non-timestamp
+`Intl`/`toLocaleString` uses were left alone on purpose (`BuildBadge` version
+label, rate-limit numbers, snapshot names).
 
 ---
 
