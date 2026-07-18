@@ -7,6 +7,7 @@ class Job < ApplicationRecord
   include JobCost
   include JobStackBase
   include JobDependencies
+  include JobExecutionAccessors
 
   KINDS = %w[ issue cron direct main_grader ].freeze
   MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
@@ -560,41 +561,6 @@ class Job < ApplicationRecord
   def current_run
     runs.last
   end
-  def retry_with_agent_providers
-    return [] unless open?
-    return [] if any_active_run?
-    return [] unless latest_workflow&.retry_as_new_workflow_available?
-
-    configured = user.configured_agent_providers
-    return [] unless configured.size > 1
-
-    configured - [ current_run&.agent_provider ]
-  end
-
-  def alternate_configured_agent_providers
-    user.configured_agent_providers - [ agent_provider ]
-  end
-
-  def switch_agent_provider!(provider)
-    update!(agent_provider: provider)
-  end
-
-  # The very first Run — the one that created the branch and PR.
-  def initial_run
-    runs.find_by(trigger_kind: "initial")
-  end
-
-  def latest_succeeded_run
-    runs.where(state: "succeeded").last
-  end
-
-  def head_sha
-    runs.where.not(head_sha: [ nil, "" ]).order(:created_at).last&.head_sha
-  end
-  def any_active_run?
-    runs.active.exists?
-  end
-
   SUCCESSFUL_CLOSURE_REASONS = %w[
     pr_merged
     external_pr_merged
