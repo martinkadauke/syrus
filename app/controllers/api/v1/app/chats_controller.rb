@@ -7,6 +7,7 @@ module Api
         include ChatIndexPayload
         include ChatMessagePagination
         include ChatPendingActions
+        include ChatProposalMutation
         include ChatProposalOutcome
         include ChatProviderOptions
         include ChatTurnStreaming
@@ -965,54 +966,6 @@ module Api
 
         def search_query
           params[:q].to_s.strip
-        end
-
-        def proposal_update_params
-          params.require(:proposal).permit(:title, :body, dependency_slugs: [], depends_on_job_ids: [], depends_on_epic_ids: [])
-        end
-
-        def rebuild_proposal_dependencies!(chat_session, proposal, dependency_slugs)
-          slugs = dependency_slugs.map(&:to_s).map(&:strip).reject(&:blank?).uniq
-          dependencies = chat_session.proposals.where(slug: slugs).index_by(&:slug)
-          missing = slugs - dependencies.keys
-          raise ArgumentError, "Unknown proposal dependency: #{missing.first}" if missing.any?
-
-          proposal.dependency_edges.destroy_all
-          slugs.each do |slug|
-            proposal.dependency_edges.create!(depends_on: dependencies.fetch(slug))
-          end
-        end
-
-        def dependency_ids!(scope, raw_ids, name)
-          ids = raw_ids.map(&:to_i).select(&:positive?).uniq
-          found_ids = scope.where(id: ids).pluck(:id)
-          missing = ids - found_ids
-          raise ArgumentError, "Unknown #{name}: #{missing.first}" if missing.any?
-
-          ids
-        end
-
-        def proposal_search_json(proposal)
-          {
-            id: proposal.id,
-            slug: proposal.slug,
-            title: proposal.title,
-            state: proposal.state
-          }
-        end
-
-        def broadcast_proposal_updated(chat_session, proposal)
-          AppEvents.broadcast(
-            user: chat_session.user,
-            type: "updated",
-            resource: "chat",
-            id: chat_session.id,
-            changed: [ "proposal" ],
-            payload: {
-              action: "update_proposal",
-              proposal_id: proposal.id
-            }
-          )
         end
 
         def search_page
