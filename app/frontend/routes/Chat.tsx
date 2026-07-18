@@ -171,6 +171,7 @@ import {
 import {
   contentInput,
   appendSearch,
+  visualViewportHeight,
   chatDisplayTitle,
   codingFilesTabVisible,
   currentRecentChat,
@@ -206,6 +207,8 @@ import type { MobileChatTab, WorkspaceTab } from "./chat/workspaceTabs"
 import type { ChatMessageImageAttachment } from "./chat/messageDisplay"
 import type { DependencyPill, EditableProposal } from "./chat/proposalDisplay"
 import { PencilIcon, UploadIcon } from "./chat/icons"
+import type { FileTreeNode } from "./chat/fileTree"
+import { buildFileTree } from "./chat/fileTree"
 import { editableChildProposal, initialProposalDependencyPills, proposalConfirmLabel } from "./chat/proposalDisplay"
 import { attachmentDataUrl, countIncomingVisibleMessages, formatMessageTimestamp, imageAttachments, isAgentActive, isLowPrioritySystemMessage, isProposalOutcomeSystemMessage } from "./chat/messageDisplay"
 import { clampWorkspaceWidth, defaultWorkspaceTab, mobileChatTabLabel, storeWorkspacePreference, storedWorkspaceCollapsed, storedWorkspaceTab, storedWorkspaceWidth, workspaceTabClass, workspaceTabLabel } from "./chat/workspaceTabs"
@@ -398,12 +401,6 @@ function useChatVisualViewportStyle() {
   if (height == null) return undefined
 
   return { "--chat-visual-viewport-height": `${height}px` } as CSSProperties
-}
-
-function visualViewportHeight() {
-  if (typeof window === "undefined" || !window.visualViewport) return null
-
-  return Math.round(window.visualViewport.height)
 }
 
 type ChatQueryKey = readonly ["chats", string, string]
@@ -5183,48 +5180,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
     muted: "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
   }
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
-}
-
-type FileTreeNode = {
-  name: string
-  path: string
-  type: "file" | "directory"
-  children: FileTreeNode[]
-}
-
-function buildFileTree(files: string[]): FileTreeNode[] {
-  const nodeMap = new Map<string, FileTreeNode>()
-
-  for (const filePath of files) {
-    const parts = filePath.split("/")
-    for (let i = 1; i < parts.length; i++) {
-      const dirPath = parts.slice(0, i).join("/")
-      if (!nodeMap.has(dirPath)) {
-        nodeMap.set(dirPath, { name: parts[i - 1], path: dirPath, type: "directory", children: [] })
-      }
-    }
-    nodeMap.set(filePath, { name: parts[parts.length - 1], path: filePath, type: "file", children: [] })
-  }
-
-  for (const [path, node] of nodeMap) {
-    const parts = path.split("/")
-    if (parts.length > 1) {
-      const parentPath = parts.slice(0, -1).join("/")
-      nodeMap.get(parentPath)?.children.push(node)
-    }
-  }
-
-  function sortNodes(nodes: FileTreeNode[]): FileTreeNode[] {
-    return [...nodes]
-      .sort((a, b) => (a.type !== b.type ? (a.type === "directory" ? -1 : 1) : a.name.localeCompare(b.name)))
-      .map((n) => ({ ...n, children: sortNodes(n.children) }))
-  }
-
-  const roots: FileTreeNode[] = []
-  for (const [path, node] of nodeMap) {
-    if (!path.includes("/")) roots.push(node)
-  }
-  return sortNodes(roots)
 }
 
 function FileTreeEntry({
