@@ -78,3 +78,31 @@ magnitudes), so it was left alone.
 
 **Question:** keep two precisions (rename to make intent explicit, e.g.
 `formatCost` vs `formatCurrency`), or standardize on one?
+
+---
+
+## 4. Large files whose remainder needs a *behaviour-aware* split, not a mechanical one
+
+Every other oversized file was decomposed by lifting cohesive clusters into leaf
+modules/concerns (see git history). Two remain large because what's left is a
+single tightly-coupled unit that can't be shattered mechanically without risk:
+
+- **`app/frontend/routes/chat/Compose.tsx` (~1757)** — dominated by one ~1400-line
+  `Compose` component. Its slash-command, attachment, draft, MCP-config,
+  walkthrough, and remote-suggestion logic share one big web of `useState`/`useRef`
+  state and handlers. Splitting it means extracting real sub-components with a
+  designed prop/callback interface (and possibly custom hooks), which is a
+  focused refactor, not a cut-and-paste. The six trailing sub-components
+  (ReportIssueDialog, SlashCommand*, QueuedMessages, StopButton) *could* move to
+  their own file, but they're interleaved with helpers the core still uses and
+  it wouldn't touch the 1400-line core — low value for the churn.
+- **`app/models/job.rb` (~1092, down from 1483)** — seven cohesive concerns were
+  already extracted (coding-mode, needs-attention, workflow accessors, cost,
+  stack/base, dependencies, execution accessors, lifecycle). What remains is the
+  core AASM state machine, its callbacks/validations, associations, and the
+  approval methods that call the state events — deliberately left in one place
+  because splitting the state machine from its guards/callbacks is behaviour-
+  critical.
+
+**Question:** do you want either of these taken on as a dedicated, carefully-
+tested refactor? They're the last two files over ~1000 lines.
