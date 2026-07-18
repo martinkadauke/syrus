@@ -36,3 +36,13 @@ export function formatRelative(value: string) {
   const days = Math.floor(hours / 24)
   return `${days}d ago`
 }
+
+export function buttonClass(tone: "green" | "blue" | "amber" | "gray", extra = "") {
+  const colors = {
+    amber: "bg-amber-600 text-white hover:bg-amber-500 dark:hover:bg-amber-500",
+    blue: "bg-blue-600 text-white hover:bg-blue-500 dark:hover:bg-blue-500",
+    gray: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
+    green: "bg-emerald-600 text-white hover:bg-emerald-500 dark:hover:bg-emerald-500"
+  }
+  return `rounded px-3 py-1.5 text-sm font-medium ${colors[tone]} ${extra}`.trim()
+}
