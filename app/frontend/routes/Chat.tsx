@@ -197,6 +197,8 @@ import { buildMessageStreamItems, groupableToolResult, groupableToolUse, injectT
 import { pendingActionBadgeLabel, pendingActionKey, pendingActionResourceTitle, pendingActionResourceUrl, pendingActionTerminalLabel } from "./chat/pendingActionDisplay"
 import type { MobileChatTab, WorkspaceTab } from "./chat/workspaceTabs"
 import type { ChatMessageImageAttachment } from "./chat/messageDisplay"
+import type { DependencyPill, EditableProposal } from "./chat/proposalDisplay"
+import { editableChildProposal, initialProposalDependencyPills, proposalConfirmLabel } from "./chat/proposalDisplay"
 import { attachmentDataUrl, countIncomingVisibleMessages, formatMessageTimestamp, imageAttachments, isAgentActive, isLowPrioritySystemMessage, isProposalOutcomeSystemMessage } from "./chat/messageDisplay"
 import { clampWorkspaceWidth, defaultWorkspaceTab, mobileChatTabLabel, storeWorkspacePreference, storedWorkspaceCollapsed, storedWorkspaceTab, storedWorkspaceWidth, workspaceTabClass, workspaceTabLabel } from "./chat/workspaceTabs"
 import { fullResultBody, shortenWorkspacePaths, toolDetail, toolLabel, toolResultSummary } from "./chat/toolRendering"
@@ -1133,18 +1135,6 @@ function SystemMessage({ item, prefix }: { item: ChatSystemMessage; prefix: stri
   )
 }
 
-type EditableProposal = Pick<ChatProposal, "id" | "title" | "slug" | "body" | "proposed" | "app_update_path"> & {
-  dependency_slugs?: string[]
-  dependencies?: ChatProposalDependency[]
-  depends_on_job_ids?: number[]
-  depends_on_epic_ids?: number[]
-}
-
-type DependencyPill = {
-  key: string
-  label: string
-  detail?: string
-}
 
 function ProposalEditModal({ chatId, proposal, search, queryKey, onClose, onNotice }: { chatId: string | number; proposal: EditableProposal; search: string; queryKey: ChatQueryKey; onClose: () => void; onNotice: (message: string | null) => void }) {
   const { t } = useT("chat")
@@ -1352,11 +1342,6 @@ function useDebouncedDependencySearch<T>(query: string, searcher: (query: string
   }, [query, searcher, setResults])
 }
 
-function initialProposalDependencyPills(proposal: EditableProposal) {
-  const details = new Map((proposal.dependencies || []).map((dependency) => [dependency.slug, dependency.title]))
-  return (proposal.dependency_slugs || []).map((slug) => ({ key: slug, label: slug, detail: details.get(slug) }))
-}
-
 type ProposalActionInput = { action: "confirm" | "reject"; path: string; start?: boolean }
 
 function ProposalCard({ proposal, prefix, queryKey, onNotice }: { proposal: ChatProposal; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
@@ -1453,34 +1438,6 @@ function ProposalEditButton({ label, onClick }: { label: string; onClick: (event
       <PencilIcon className="h-4 w-4" />
     </button>
   )
-}
-
-function editableChildProposal(child: ChatProposalChild): EditableProposal {
-  return {
-    id: child.id,
-    title: child.title,
-    slug: child.slug,
-    body: child.body,
-    proposed: child.proposed,
-    app_update_path: child.app_update_path,
-    dependency_slugs: child.dependencies,
-    dependencies: (child.dependency_details || []).map((dependency) => ({
-      slug: dependency.slug,
-      title: dependency.title,
-      state: "",
-      confirmed: dependency.confirmed,
-      materialized_label: dependency.materialized_label,
-      materialized_path: dependency.materialized_path
-    })),
-    depends_on_job_ids: child.depends_on_job_ids || [],
-    depends_on_epic_ids: child.depends_on_epic_ids || []
-  }
-}
-
-function proposalConfirmLabel(proposal: ChatProposal, childJobCount: number) {
-  if (!proposal.epic_bundle) return "Confirm"
-
-  return childJobCount > 0 ? "Confirm Epic and Jobs" : "Confirm Epic"
 }
 
 function PendingActionCard({ pendingAction, queryKey, onNotice, onSelectMessage }: { pendingAction: ChatPendingActionInline | ChatPendingAction; queryKey: ChatQueryKey; onNotice: (message: string | null) => void; onSelectMessage?: (messageId: number) => void }) {
