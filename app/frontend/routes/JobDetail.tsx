@@ -58,10 +58,9 @@ import type { DisplayTranscriptLog, TranscriptLog } from "./jobDetail/transcript
 import { coalesceTranscriptLogs, commandMarkerSource, isRunTranscriptAtBottom, joinTranscriptChunks, scrollRunTranscriptToBottom, shouldCoalesceTranscriptLogs, transcriptLogSourceKey } from "./jobDetail/transcript"
 import type { SourceRefPayload } from "./jobDetail/sourceRefs"
 import { refOptionsFor, sourceDiffSearch, sourceSearch } from "./jobDetail/sourceRefs"
+import type { JobDetailQueryKey, JobTab, JobWorkflowsQueryKey } from "./jobDetail/queryKeys"
+import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
 
-type JobTab = "summary" | "workflows" | "attachments" | "source"
-type JobDetailQueryKey = readonly ["jobs", string, "detail", string]
-type JobWorkflowsQueryKey = readonly ["jobs", string, "workflows", string]
 type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
   | { method: "patch"; path: string; body?: unknown; confirm?: string }
@@ -142,44 +141,6 @@ export function JobDetailRoute() {
       {payload ? <JobDetailView activeTab={activeTab} onSelectTab={selectTab} payload={payload} prefix={prefix} queryKey={queryKey} workflowsQueryKey={workflowsQueryKey} /> : null}
     </main>
   )
-}
-
-function jobDetailQueryKey(id: string | number, search: string): JobDetailQueryKey {
-  return ["jobs", String(id), "detail", search] as const
-}
-
-function jobWorkflowsQueryKey(id: string | number, search: string): JobWorkflowsQueryKey {
-  return ["jobs", String(id), "workflows", search] as const
-}
-
-function mergeJobWorkflowsPayload(payload: JobDetailPayload, workflows?: JobWorkflowsPayload): JobDetailPayload {
-  if (!workflows) return payload
-
-  return {
-    ...payload,
-    job: workflows.job,
-    workflows: workflows.workflows,
-    workflows_pagination: workflows.workflows_pagination,
-    feature_flags: workflows.feature_flags,
-    actions: workflows.actions,
-    paths: workflows.paths
-  }
-}
-
-function jobDetailSearch(search: string) {
-  const current = new URLSearchParams(search)
-  const next = new URLSearchParams()
-  const workflowsPage = current.get("workflows_page")
-  if (workflowsPage) next.set("workflows_page", workflowsPage)
-  const value = next.toString()
-  return value ? `?${value}` : ""
-}
-
-function tabFromLocation(pathname: string, search: string): JobTab {
-  if (pathname.endsWith("/source")) return "source"
-
-  const value = new URLSearchParams(search).get("tab")
-  return value === "workflows" || value === "attachments" || value === "source" ? value : "summary"
 }
 
 export function JobDetailView({ payload, queryKey, workflowsQueryKey, activeTab, onSelectTab, prefix }: { payload: JobDetailPayload; queryKey: JobDetailQueryKey; workflowsQueryKey?: JobWorkflowsQueryKey; activeTab: JobTab; onSelectTab: (tab: JobTab) => void; prefix: string }) {
