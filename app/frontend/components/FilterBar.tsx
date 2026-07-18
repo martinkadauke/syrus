@@ -4,53 +4,8 @@ import { Link, useNavigate } from "react-router-dom"
 import { useT } from "../hooks/useT"
 import { CloseIcon } from "./CloseIcon"
 
-export type FilterOption = {
-  value: string | number
-  label: string
-}
-
-export type FilterSchemaField = {
-  field: string
-  label: string
-  bucket: string
-  operators: string[]
-  values?: Array<FilterOption | string>
-  typeahead?: boolean
-  expansions?: Record<string, unknown>
-}
-
-export type FilterSuggestion = {
-  id: number | string
-  label: string
-  filter: Record<string, unknown>
-  source?: string
-  use_count?: number
-  last_used_at?: string | null
-}
-
-export type FilterChip = {
-  field: string
-  op: string
-  value?: unknown
-}
-
-export type FilterGroup = {
-  and?: FilterNode[]
-  or?: FilterNode[]
-  not?: FilterNode
-}
-
-export type FilterNode = FilterChip | FilterGroup
-export type FilterTree = FilterGroup
-
-type FilterPath = number[]
-type FilterLinkUpdates = Record<string, string | number | null | undefined>
-type FilterSuggestionSearchConfig = {
-  surface: string
-  subject: string
-}
-
-export type FilterLinkBuilder = (path: string, search: string, updates: FilterLinkUpdates) => string
+import type { FilterChip, FilterGroup, FilterLinkBuilder, FilterLinkUpdates, FilterNode, FilterOption, FilterPath, FilterSchemaField, FilterSuggestion, FilterSuggestionSearchConfig, FilterTree } from "./filterBar/types"
+export type { FilterChip, FilterGroup, FilterLinkBuilder, FilterNode, FilterOption, FilterSchemaField, FilterSuggestion, FilterTree } from "./filterBar/types"
 
 export function FilterBar({
   filter,
