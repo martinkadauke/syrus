@@ -1060,6 +1060,7 @@ function formatMessageTimestamp(createdAt: string): string {
 }
 
 function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<ChatRenderItem, { type: "message" }>; payload: ChatPayload; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   const queryClient = useQueryClient()
   const search = queryKey[2]
   const [open, setOpen] = useState(false)
@@ -1119,8 +1120,8 @@ function BookmarkControl({ item, payload, queryKey, onNotice }: { item: Extract<
               </label>
               {bookmark.isError ? <div className="text-xs text-red-700 dark:text-red-300">{errorMessage(bookmark.error, "Bookmark failed.")}</div> : null}
               <div className="flex justify-end gap-2">
-                <button className={secondaryButton()} disabled={bookmark.isPending} onClick={() => setOpen(false)} type="button">Cancel</button>
-                <button className={primaryButton()} disabled={bookmark.isPending} type="submit">Save</button>
+                <button className={secondaryButton()} disabled={bookmark.isPending} onClick={() => setOpen(false)} type="button">{t("cancel")}</button>
+                <button className={primaryButton()} disabled={bookmark.isPending} type="submit">{t("save")}</button>
               </div>
             </form>
           ) : null}
@@ -1261,10 +1262,10 @@ function ProposalEditModal({ chatId, proposal, search, queryKey, onClose, onNoti
         <form onSubmit={submit}>
           <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
             <div>
-              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100" id="proposal-edit-title">Edit proposal</h2>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100" id="proposal-edit-title">{t("edit_proposal")}</h2>
               <p className="mt-0.5 font-mono text-xs text-gray-500 dark:text-gray-400">{proposal.slug}</p>
             </div>
-            <button className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" onClick={onClose} type="button" aria-label="Close proposal editor">
+            <button className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" onClick={onClose} type="button" aria-label={t("aria_close_proposal_editor")}>
               <CloseIcon className="h-4 w-4" />
             </button>
           </div>
@@ -1336,8 +1337,8 @@ function ProposalEditModal({ chatId, proposal, search, queryKey, onClose, onNoti
             </div>
           </div>
           <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4 dark:border-gray-800">
-            <button className={secondaryButton()} onClick={onClose} type="button">Cancel</button>
-            <button className={primaryButton()} disabled={save.isPending || title.trim().length === 0} type="submit">Save</button>
+            <button className={secondaryButton()} onClick={onClose} type="button">{t("cancel")}</button>
+            <button className={primaryButton()} disabled={save.isPending || title.trim().length === 0} type="submit">{t("save")}</button>
           </div>
         </form>
       </div>
@@ -1711,10 +1712,11 @@ function ProposalDependencyLink({ dependency, prefix }: { dependency: ChatPropos
 }
 
 function ProposalResultFooter({ proposal, prefix, onNotice }: { proposal: ChatProposal; prefix: string; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   if (proposal.state === "confirmed") {
     return (
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 text-xs text-gray-600 dark:border-gray-800 dark:text-gray-300">
-        <span className="rounded bg-green-50 px-2 py-0.5 font-medium text-green-700 dark:bg-green-950 dark:text-green-200">Confirmed</span>
+        <span className="rounded bg-green-50 px-2 py-0.5 font-medium text-green-700 dark:bg-green-950 dark:text-green-200">{t("confirmed")}</span>
         <ProposalMaterializedResult proposal={proposal} prefix={prefix} />
         <StartEpicButton proposal={proposal} onNotice={onNotice} />
       </div>
@@ -1783,14 +1785,15 @@ function ProposalResultLink({ path, prefix, children }: { path: string | null; p
 }
 
 function ProposalMeta({ proposal }: { proposal: ChatProposal }) {
+  const { t } = useT("chat")
   return (
     <dl className="mt-3 grid gap-2 text-xs text-gray-600 sm:grid-cols-2 dark:text-gray-300">
-      <div><dt className="font-medium text-gray-500 dark:text-gray-400">Attached scope</dt><dd>{proposal.scoped_repository_slug || "No repository attached"}</dd></div>
+      <div><dt className="font-medium text-gray-500 dark:text-gray-400">{t("attached_scope")}</dt><dd>{proposal.scoped_repository_slug || t("no_repository_attached")}</dd></div>
       <div>
-        <dt className="font-medium text-gray-500 dark:text-gray-400">Dependencies</dt>
-        <dd>{(proposal.dependency_slugs || []).length > 0 ? <PillList values={proposal.dependency_slugs || []} /> : "None"}</dd>
+        <dt className="font-medium text-gray-500 dark:text-gray-400">{t("dependencies")}</dt>
+        <dd>{(proposal.dependency_slugs || []).length > 0 ? <PillList values={proposal.dependency_slugs || []} /> : t("none")}</dd>
       </div>
-      {proposal.target_epic_label ? <div><dt className="font-medium text-gray-500 dark:text-gray-400">Target Epic</dt><dd>{proposal.target_epic_label}</dd></div> : null}
+      {proposal.target_epic_label ? <div><dt className="font-medium text-gray-500 dark:text-gray-400">{t("target_epic")}</dt><dd>{proposal.target_epic_label}</dd></div> : null}
     </dl>
   )
 }
@@ -3276,6 +3279,7 @@ function Compose({ autoFocus = false, chatId, commandHandlers, payload, prefix, 
 }
 
 function ReportIssueDialog({ body, onClose, onFiled }: { body: string; onClose: () => void; onFiled: (issueUrl: string) => void }) {
+  const { t } = useT("chat")
   const [title, setTitle] = useState("")
   const [issueBody, setIssueBody] = useState(body)
   const report = useMutation({
@@ -3292,16 +3296,16 @@ function ReportIssueDialog({ body, onClose, onFiled }: { body: string; onClose: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" role="presentation">
-      <form aria-label="File a GitHub issue about Syrus" aria-modal="true" className="w-full max-w-lg rounded border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-950" onSubmit={submit} role="dialog">
+      <form aria-label={t("aria_report_dialog")} aria-modal="true" className="w-full max-w-lg rounded border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-950" onSubmit={submit} role="dialog">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">File a GitHub issue</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">{t("report_heading")}</h2>
           </div>
-          <button aria-label="Close report dialog" className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100" disabled={report.isPending} onClick={onClose} type="button">
+          <button aria-label={t("aria_close_report")} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100" disabled={report.isPending} onClick={onClose} type="button">
             <CloseIcon className="h-4 w-4" />
           </button>
         </div>
-        <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="report-issue-title">Title</label>
+        <label className="mt-4 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="report-issue-title">{t("field_title")}</label>
         <input
           autoFocus
           className="mt-1 w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
@@ -3312,7 +3316,7 @@ function ReportIssueDialog({ body, onClose, onFiled }: { body: string; onClose: 
           type="text"
           value={title}
         />
-        <label className="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="report-issue-body">Body</label>
+        <label className="mt-3 block text-sm font-medium text-gray-700 dark:text-gray-200" htmlFor="report-issue-body">{t("field_body")}</label>
         <textarea
           className="mt-1 h-40 w-full resize-y rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
           disabled={report.isPending}
@@ -3322,8 +3326,8 @@ function ReportIssueDialog({ body, onClose, onFiled }: { body: string; onClose: 
         />
         {report.isError ? <p className="mt-3 text-sm text-red-700 dark:text-red-300" role="alert">{errorMessage(report.error, "Issue could not be filed.")}</p> : null}
         <div className="mt-4 flex justify-end gap-2">
-          <button className={secondaryButton()} disabled={report.isPending} onClick={onClose} type="button">Cancel</button>
-          <button className={primaryButton()} disabled={report.isPending || title.trim().length === 0} type="submit">Submit</button>
+          <button className={secondaryButton()} disabled={report.isPending} onClick={onClose} type="button">{t("cancel")}</button>
+          <button className={primaryButton()} disabled={report.isPending || title.trim().length === 0} type="submit">{t("submit")}</button>
         </div>
       </form>
     </div>
@@ -3354,6 +3358,7 @@ function readAttachmentFile(file: File): Promise<ChatComposeAttachment> {
 }
 
 function SlashCommandConfirmation({ commandName, disabled, text, onCancel, onConfirm }: { commandName: SlashCommand["name"]; disabled: boolean; text: string; onCancel: () => void; onConfirm: () => void }) {
+  const { t } = useT("chat")
   return (
     <div className="mb-3 rounded border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3362,8 +3367,8 @@ function SlashCommandConfirmation({ commandName, disabled, text, onCancel, onCon
           <div className="mt-1 break-words font-mono text-sm text-gray-900 dark:text-gray-100">{text}</div>
         </div>
         <div className="flex shrink-0 gap-2">
-          <button className={secondaryButton()} disabled={disabled} onClick={onCancel} type="button">Cancel</button>
-          <button className={primaryButton()} disabled={disabled} onClick={onConfirm} type="button">Confirm</button>
+          <button className={secondaryButton()} disabled={disabled} onClick={onCancel} type="button">{t("cancel")}</button>
+          <button className={primaryButton()} disabled={disabled} onClick={onConfirm} type="button">{t("confirm")}</button>
         </div>
       </div>
     </div>
@@ -3475,8 +3480,8 @@ function QueuedMessageRow({ chatId, message, position, queryKey }: { chatId: str
           value={draft}
         />
         <div className="mt-2 flex justify-end gap-2">
-          <button className="rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800" disabled={update.isPending} onClick={() => setEditing(false)} type="button">Cancel</button>
-          <button className="rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-blue-300 dark:hover:bg-blue-500 dark:disabled:bg-gray-700" disabled={update.isPending || draft.trim().length === 0} onClick={() => update.mutate()} type="button">Save</button>
+          <button className="rounded border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800" disabled={update.isPending} onClick={() => setEditing(false)} type="button">{t("cancel")}</button>
+          <button className="rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:bg-blue-300 dark:hover:bg-blue-500 dark:disabled:bg-gray-700" disabled={update.isPending || draft.trim().length === 0} onClick={() => update.mutate()} type="button">{t("save")}</button>
         </div>
       </div>
     )
@@ -3944,6 +3949,7 @@ function useMediaQuery(query: string, defaultMatches: boolean) {
 }
 
 function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: ChatQueryKey }) {
+  const { t } = useT("chat")
   const queryClient = useQueryClient()
   const search = queryKey[2]
   const stop = useMutation({
@@ -3951,7 +3957,7 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
     onSuccess: (updated) => queryClient.setQueryData(queryKey, updated)
   })
   return (
-    <button aria-label="Stop agent" className="inline-flex h-9 items-center justify-center rounded border border-red-200 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:text-gray-400 dark:border-red-800 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-950 dark:disabled:text-gray-600" disabled={Boolean(payload.chat.stop_requested_at) || stop.isPending} onClick={() => stop.mutate()} type="button">
+    <button aria-label={t("aria_stop_agent")} className="inline-flex h-9 items-center justify-center rounded border border-red-200 bg-white px-3 text-sm font-medium text-red-700 hover:bg-red-50 disabled:text-gray-400 dark:border-red-800 dark:bg-gray-900 dark:text-red-300 dark:hover:bg-red-950 dark:disabled:text-gray-600" disabled={Boolean(payload.chat.stop_requested_at) || stop.isPending} onClick={() => stop.mutate()} type="button">
       <StopIcon className={`h-4 w-4 ${payload.chat.stop_requested_at || stop.isPending ? "opacity-50" : ""}`} />
     </button>
   )
@@ -4077,7 +4083,7 @@ function ChatWorkspace({
   if (!isDesktop && !expanded) {
     return (
       <div className="flex min-h-0 flex-1 flex-col bg-white dark:bg-gray-950">
-        <nav aria-label="Chat mobile tabs" className="flex shrink-0 overflow-x-auto border-b border-gray-200 px-2 pt-2 text-sm font-medium dark:border-gray-700">
+        <nav aria-label={t("aria_mobile_tabs")} className="flex shrink-0 overflow-x-auto border-b border-gray-200 px-2 pt-2 text-sm font-medium dark:border-gray-700">
           {(["chat", "whiteboard", "context", "media", ...(codingFilesTabVisible(payload) ? (["files"] as MobileChatTab[]) : []), ...(payload.local_tunnel_connected ? (["diff"] as MobileChatTab[]) : []), ...(jobsTabVisible(payload) ? (["jobs"] as MobileChatTab[]) : [])] as MobileChatTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeMobileTab === tab)}
@@ -4324,8 +4330,9 @@ function LocalDaemonBanner({ payload }: { payload: ChatPayload }) {
 }
 
 function AgentQuestions({ questions, queryKey, onNotice }: { questions: ChatAgentQuestion[]; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   return (
-    <section aria-label="Agent questions" className="w-full max-w-3xl space-y-3 rounded border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/60">
+    <section aria-label={t("aria_agent_questions")} className="w-full max-w-3xl space-y-3 rounded border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950/60">
       {questions.map((question) => <AgentQuestionPrompt key={question.id} question={question} queryKey={queryKey} onNotice={onNotice} />)}
     </section>
   )
@@ -4420,7 +4427,7 @@ function ChatWorkspacePanel({
   return (
     <aside aria-label={t("aria_chat_workspace")} className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 ${fullscreen ? "" : "h-full w-full"}`}>
       {fullscreen || !showTabs ? null : (
-        <nav aria-label="Chat workspace tabs" className="flex items-center border-b border-gray-200 px-3 pt-3 text-sm font-medium dark:border-gray-700">
+        <nav aria-label={t("aria_workspace_tabs")} className="flex items-center border-b border-gray-200 px-3 pt-3 text-sm font-medium dark:border-gray-700">
           {(["whiteboard", "context", "media", ...(codingFilesTabVisible(payload) ? (["files"] as WorkspaceTab[]) : []), ...(payload.local_tunnel_connected ? (["diff"] as WorkspaceTab[]) : []), ...(jobsTabVisible(payload) ? (["jobs"] as WorkspaceTab[]) : [])] as WorkspaceTab[]).map((tab) => (
             <button
               className={workspaceTabClass(activeTab === tab)}
@@ -4679,7 +4686,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
 
       {snapshotItems.length > 0 ? (
         <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Whiteboard Snapshots</h2>
+          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{t("whiteboard_snapshots")}</h2>
           <div className="space-y-2">
             {snapshotItems.map((snapshot) => (
               <article className="rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-950" key={snapshot.id}>
@@ -4738,7 +4745,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
 
       {images.length > 0 ? (
         <section className="space-y-2">
-          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">Image Attachments</h2>
+          <h2 className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">{t("image_attachments")}</h2>
           <div className="grid grid-cols-3 gap-2">
             {images.map(({ attachment, key }) => {
               const src = attachmentDataUrl(attachment)
@@ -4841,14 +4848,14 @@ function ChatSettingsDialog({ payload, prefix, queryKey, onClose }: { payload: C
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100" id="chat-settings-title">{t("chat_settings")}</h2>
             <p className="mt-1 break-words text-sm text-gray-600 dark:text-gray-300">{chatDisplayTitle(payload.chat)}</p>
           </div>
-          <button aria-label="Close chat settings" className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" onClick={onClose} type="button">
+          <button aria-label={t("aria_close_settings")} className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200" onClick={onClose} type="button">
             <CloseIcon className="h-4 w-4" />
           </button>
         </div>
         <div className="space-y-3 text-sm">
           {showProviderSelector ? (
             <label className="block">
-              <span className="mb-1 block text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Provider</span>
+              <span className="mb-1 block text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("provider")}</span>
               <select
                 aria-label={t("aria_chat_provider")}
                 className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:disabled:bg-gray-800"
@@ -5230,10 +5237,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 }
 
 function Attachments({ payload, queryKey, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   return (
     <>
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Attachments</h2>
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t("attachments")}</h2>
       </div>
       <div className="space-y-4">
         <AttachmentGroup label="Repos" rows={payload.attachment_groups.repositories} queryKey={queryKey} onNotice={onNotice} />
