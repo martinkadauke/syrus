@@ -54,6 +54,8 @@ import { errorMessage } from "../lib/errorMessage"
 import { formatBytes } from "../lib/format"
 import type { DiffLine, DiffLineKind, LineAnnotation } from "./jobDetail/diffRendering"
 import { diffCoverageBorderClass, diffGutterClass, diffLine, diffLineClass, diffMarkerClass, parseUnifiedDiff } from "./jobDetail/diffRendering"
+import type { DisplayTranscriptLog, TranscriptLog } from "./jobDetail/transcript"
+import { coalesceTranscriptLogs, commandMarkerSource, isRunTranscriptAtBottom, joinTranscriptChunks, scrollRunTranscriptToBottom, shouldCoalesceTranscriptLogs, transcriptLogSourceKey } from "./jobDetail/transcript"
 
 type JobTab = "summary" | "workflows" | "attachments" | "source"
 type JobDetailQueryKey = readonly ["jobs", string, "detail", string]
@@ -97,7 +99,6 @@ type PrepareFailure = {
   soft?: boolean
 }
 
-const RUN_TRANSCRIPT_BOTTOM_THRESHOLD_PX = 24
 
 export function JobDetailRoute() {
   const { t } = useT("jobs")
@@ -2106,67 +2107,6 @@ function RunTranscriptLogs({ logs }: { logs: Awaited<ReturnType<typeof fetchJobR
       ))}
     </ol>
   )
-}
-
-type TranscriptLog = Awaited<ReturnType<typeof fetchJobRunArtifacts>>["logs"][number]
-type DisplayTranscriptLog = TranscriptLog & { sourceKey: string }
-
-function coalesceTranscriptLogs(logs: TranscriptLog[]) {
-  const displayLogs: DisplayTranscriptLog[] = []
-  const sourceByKind = new Map<string, string>()
-
-  for (const log of logs) {
-    const displayLog = { ...log, sourceKey: transcriptLogSourceKey(log, sourceByKind) }
-    const previous = displayLogs.at(-1)
-    if (previous && shouldCoalesceTranscriptLogs(previous, displayLog)) {
-      previous.chunk = joinTranscriptChunks(previous.chunk, displayLog.chunk)
-      continue
-    }
-
-    displayLogs.push(displayLog)
-  }
-
-  return displayLogs
-}
-
-function transcriptLogSourceKey(log: TranscriptLog, sourceByKind: Map<string, string>) {
-  const kind = log.kind || "log"
-  const command = commandMarkerSource(log.chunk)
-  if (command) {
-    const source = `${kind}:command:${command}`
-    sourceByKind.set(kind, source)
-    return source
-  }
-
-  return sourceByKind.get(kind) || `${kind}:run`
-}
-
-function commandMarkerSource(chunk: string) {
-  const firstLine = chunk.split(/\r?\n/, 1)[0]?.trim() || ""
-  const marker = firstLine.match(/^\[(prepare|grade|grader:[^\]]+)\](?: \(\d+\/\d+\))? \$ (.+)$/)
-  if (!marker) return null
-
-  return `${marker[1]}:${marker[2]}`
-}
-
-function shouldCoalesceTranscriptLogs(previous: DisplayTranscriptLog, next: DisplayTranscriptLog) {
-  if (previous.kind !== next.kind) return false
-  if (previous.sourceKey !== next.sourceKey) return false
-  return !["tool_call", "rate_limited"].includes(previous.kind || "")
-}
-
-function joinTranscriptChunks(previous: string, next: string) {
-  if (previous.endsWith("\n") || next.startsWith("\n")) return previous + next
-  return `${previous}\n${next}`
-}
-
-function isRunTranscriptAtBottom(element: HTMLElement) {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= RUN_TRANSCRIPT_BOTTOM_THRESHOLD_PX
-}
-
-function scrollRunTranscriptToBottom(element: HTMLElement | null) {
-  if (!element) return
-  element.scrollTop = element.scrollHeight
 }
 
 function transcriptLogKindLabel(kind: string | null | undefined, t: ReturnType<typeof useT>["t"]) {
