@@ -21,6 +21,10 @@ class MainHealthChangedService
     new(repository).ensure_repair_job!(force: force)
   end
 
+  def self.repair_landed!(repository, job:)
+    new(repository).repair_landed!(job: job)
+  end
+
   def self.fix_main_job?(job)
     job.main_branch_repair?
   end
@@ -69,6 +73,8 @@ class MainHealthChangedService
     return unless @repository.main_health_broken?
     return if blocking_fix_job
 
+    return unless repair_target_sha_current?
+
     unless force || repair_signals_ready?
       Rails.logger.info(
         "[MainHealthChangedService] #{@repository.slug} not spawning main repair job; " \
@@ -87,6 +93,44 @@ class MainHealthChangedService
     end
 
     spawn_fix_job!
+  end
+
+  def repair_landed!(job:)
+    return unless @repository.main_branch_health_enabled?
+
+    sha = latest_default_branch_sha.presence || job.head_sha.presence || checked_sha
+    unless sha.present? && sha != "unknown"
+      Rails.logger.warn(
+        "[MainHealthChangedService] #{@repository.slug} repair job #{job.slug} landed, " \
+        "but current default branch SHA could not be determined"
+      )
+      return
+    end
+
+    ci_health = @repository.ci_health_not_configured? ? "not_configured" : "healthy"
+    @repository.update!(
+      last_health_checked_sha: sha,
+      last_ci_evaluated_sha: sha,
+      last_graded_sha: sha,
+      ci_health: ci_health,
+      grader_health: "healthy"
+    )
+
+    MainBranchHealthCheck.record_ci_poll(
+      repository: @repository,
+      sha: sha,
+      ci_health: ci_health,
+      ci_failed_checks: []
+    )
+    MainBranchHealthCheck.record_grader_workflow(
+      repository: @repository,
+      workflow: job.latest_workflow,
+      sha: sha,
+      grader_health: "healthy",
+      grader_failed_names: []
+    )
+
+    recovered!
   end
 
   def repair_status
@@ -509,6 +553,41 @@ class MainHealthChangedService
     return false if sha == "unknown"
 
     settled_ci_signal?(sha) && settled_grader_signal?(sha)
+  end
+
+  def repair_target_sha_current?
+    sha = checked_sha
+    return false if sha == "unknown"
+
+    live_sha = latest_default_branch_sha
+    if live_sha == sha
+      true
+    else
+      Rails.logger.info(
+        "[MainHealthChangedService] #{@repository.slug} not spawning main repair job; " \
+        "health target #{sha} is stale because #{@repository.default_branch} is now #{live_sha || 'unknown'}"
+      )
+      PollMainBranchHealthJob.perform_later(@repository.id)
+      false
+    end
+  rescue StandardError => e
+    Rails.logger.warn(
+      "[MainHealthChangedService] #{@repository.slug} could not verify current default branch " \
+      "before spawning a repair job: #{e.class}: #{e.message}"
+    )
+    false
+  end
+
+  def latest_default_branch_sha
+    return @latest_default_branch_sha if defined?(@latest_default_branch_sha)
+
+    @latest_default_branch_sha = if @repository.user
+      GithubClient
+        .for(repository: @repository, user: @repository.user)
+        .branch_head_sha(@repository.slug, @repository.default_branch)
+        .to_s
+        .presence
+    end
   end
 
   def settled_ci_signal?(sha)

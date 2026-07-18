@@ -5,6 +5,12 @@ RSpec.describe MainHealthChangedService do
 
   let(:user) { Factories.user }
   let(:repository) { Factories.repository(user: user) }
+  let(:github_client) { instance_double(GithubClient) }
+
+  before do
+    allow(GithubClient).to receive(:for).and_return(github_client)
+    allow(github_client).to receive(:branch_head_sha) { repository.reload.last_health_checked_sha }
+  end
 
   describe ".on_health_change!" do
     it "logs a warning with the repository slug and health states" do
@@ -111,6 +117,16 @@ RSpec.describe MainHealthChangedService do
           "- Graders: healthy",
           "Diagnostic logs are attached to this Job"
         )
+      end
+
+      it "does not spawn a fix Job when the broken health target is stale" do
+        allow(github_client).to receive(:branch_head_sha).and_return("newer-default-branch-sha")
+
+        expect {
+          described_class.on_health_change!(repository)
+        }.not_to change { repository.jobs.where(kind: "direct").count }
+
+        expect(PollMainBranchHealthJob).to have_been_enqueued.with(repository.id)
       end
 
       it "waits for both CI and grader signal before spawning a fix Job" do
@@ -394,6 +410,27 @@ RSpec.describe MainHealthChangedService do
           state: "queued",
           priority: "high"
         )
+      end
+
+      it "marks main healthy instead of spawning a replacement when a repair Job lands" do
+        repair = repository.jobs.create!(
+          user: user,
+          kind: "direct",
+          system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+          issue_title: "landed repair",
+          issue_body: "fixing main",
+          agent_provider: "claude",
+          priority: "high",
+          state: "landing"
+        )
+
+        allow(MainHealthChangedService).to receive(:repair_landed!)
+        allow(MainHealthChangedService).to receive(:ensure_repair_job!)
+
+        repair.close_with_reason!("pr_merged")
+
+        expect(MainHealthChangedService).to have_received(:repair_landed!).with(repository, job: repair)
+        expect(MainHealthChangedService).not_to have_received(:ensure_repair_job!)
       end
 
       it "does not spawn a replacement when an unrelated Job is closed" do
@@ -769,6 +806,70 @@ RSpec.describe MainHealthChangedService do
           described_class.recovered!(repository.reload)
         }.not_to change { Notification.count }
       end
+    end
+  end
+
+  describe ".repair_landed!" do
+    it "records the merged repair commit as healthy and resumes held work" do
+      settle_main_health!(repository, sha: "broken123", ci_health: "broken", grader_health: "broken")
+      repository.update!(landing_paused: true)
+      allow(github_client).to receive(:branch_head_sha).and_return("fixed456")
+      repair = repository.jobs.create!(
+        user: user,
+        kind: "direct",
+        system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+        issue_title: "landed repair",
+        issue_body: "fixing main",
+        agent_provider: "claude",
+        priority: "high",
+        state: "closed",
+        closure_reason: "pr_merged"
+      )
+      workflow = Workflow.create!(
+        job: repair,
+        user: user,
+        trigger_kind: "auto_merge",
+        agent_provider: "claude",
+        state: "succeeded"
+      )
+
+      described_class.repair_landed!(repository, job: repair)
+
+      expect(repository.reload).to have_attributes(
+        landing_paused: false,
+        last_health_checked_sha: "fixed456",
+        last_ci_evaluated_sha: "fixed456",
+        last_graded_sha: "fixed456",
+        ci_health: "healthy",
+        grader_health: "healthy"
+      )
+      expect(MainBranchHealthCheck.where(repository: repository, sha: "fixed456", source: "ci_poll", ci_health: "healthy")).to exist
+      expect(MainBranchHealthCheck.where(repository: repository, sha: "fixed456", source: "grader_workflow", grader_health: "healthy", workflow: workflow)).to exist
+      expect(Notification.last).to have_attributes(user: user, kind: "main_recovered")
+    end
+
+    it "keeps repositories without CI configured as no-CI healthy" do
+      settle_main_health!(repository, sha: "broken123", ci_health: "not_configured", grader_health: "broken")
+      allow(github_client).to receive(:branch_head_sha).and_return("fixed456")
+      repair = repository.jobs.create!(
+        user: user,
+        kind: "direct",
+        system_kind: Job::SYSTEM_KIND_MAIN_BRANCH_REPAIR,
+        issue_title: "landed repair",
+        issue_body: "fixing main",
+        agent_provider: "claude",
+        priority: "high",
+        state: "closed",
+        closure_reason: "pr_merged"
+      )
+
+      described_class.repair_landed!(repository, job: repair)
+
+      expect(repository.reload).to have_attributes(
+        ci_health: "not_configured",
+        grader_health: "healthy"
+      )
+      expect(repository.main_health).to eq("healthy")
     end
   end
 

@@ -1027,7 +1027,11 @@ class Job < ApplicationRecord
   end
 
   def ensure_main_branch_repair_after_close
-    MainHealthChangedService.ensure_repair_job!(repository)
+    if closure_reason.in?(%w[pr_merged external_pr_merged])
+      MainHealthChangedService.repair_landed!(repository, job: self)
+    else
+      MainHealthChangedService.ensure_repair_job!(repository)
+    end
   end
 
   def cancel_queued_retry_workflows_after_approval
