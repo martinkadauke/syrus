@@ -110,5 +110,6 @@
     "minutes_ago": "{{count}}m ago",
     "hours_ago": "{{count}}h ago",
     "days_ago": "{{count}}d ago"
-  }
+  },
+  "account_aria": "Account"
 }

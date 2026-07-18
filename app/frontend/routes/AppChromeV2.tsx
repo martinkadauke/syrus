@@ -515,7 +515,7 @@ function SidebarContent({
       <ShellNotices />
       <div className="shrink-0 border-t border-gray-200 p-3 dark:border-gray-800">
         {user ? (
-          <nav aria-label="Account">
+          <nav aria-label={t("account_aria")}>
             <SettingsPopup
               csrfToken={csrfToken}
               onCloseDrawer={onCloseDrawer}

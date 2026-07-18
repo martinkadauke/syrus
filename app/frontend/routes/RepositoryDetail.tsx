@@ -63,7 +63,7 @@ export function RepositoryDetailRoute() {
   })
 
   return (
-    <main aria-label="Repository" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t('repository.aria_repository')} className="mx-auto max-w-[96rem] space-y-6 p-6">
       {tab !== "github_issues" ? (
         <>
           {detail.isPending ? (
@@ -343,9 +343,9 @@ function RepositoryIssueRow({
             {t('repository.close')}
           </button> : null}
           {issue.delegated ? (
-            <span className="rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40 px-2 py-1 text-center text-xs font-medium text-green-700 dark:text-green-300">Delegated</span>
+            <span className="rounded border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40 px-2 py-1 text-center text-xs font-medium text-green-700 dark:text-green-300">{t('repository.delegated')}</span>
           ) : (
-            <button className="rounded bg-blue-50 dark:bg-blue-950/40 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-950/60" disabled={commandPending} onClick={onDelegate} type="button">Delegate</button>
+            <button className="rounded bg-blue-50 dark:bg-blue-950/40 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-950/60" disabled={commandPending} onClick={onDelegate} type="button">{t('repository.delegate')}</button>
           )}
         </div>
       </td>
@@ -533,7 +533,7 @@ function Actions({ payload, prefix, queryKey, onNotice }: { payload: RepositoryD
           {moreOpen ? (
             <div className="absolute left-0 z-20 mt-2 min-w-40 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-1 text-sm shadow-lg" id="repository-actions-menu">
               <Link className="block rounded px-3 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" onClick={() => setMoreOpen(false)} to={withRoutePrefix(payload.paths.edit_repository_path, prefix)}>Edit</Link>
-              <button className="block w-full rounded px-3 py-2 text-left text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/50 disabled:text-gray-300 dark:disabled:text-gray-600" disabled={disabled} onClick={archiveRepository} type="button">Archive</button>
+              <button className="block w-full rounded px-3 py-2 text-left text-amber-800 dark:text-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/50 disabled:text-gray-300 dark:disabled:text-gray-600" disabled={disabled} onClick={archiveRepository} type="button">{t('repository.archive')}</button>
             </div>
           ) : null}
         </div>

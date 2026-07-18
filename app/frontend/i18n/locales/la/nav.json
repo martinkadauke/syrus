@@ -110,5 +110,6 @@
     "minutes_ago": "ante {{count}}m",
     "hours_ago": "ante {{count}}h",
     "days_ago": "ante {{count}}d"
-  }
+  },
+  "account_aria": "Ratio"
 }

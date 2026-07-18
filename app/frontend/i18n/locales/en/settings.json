@@ -281,7 +281,11 @@
     "health_source_ci_poll": "CI",
     "health_source_grader_workflow": "Graders",
     "run_graders_now": "Run graders now",
-    "check_ci_now": "Check CI now"
+    "check_ci_now": "Check CI now",
+    "aria_repository": "Repository",
+    "delegate": "Delegate",
+    "delegated": "Delegated",
+    "archive": "Archive"
   },
   "memories": {
     "heading": "Memories",
@@ -546,7 +550,8 @@
     "revoke": "Revoke",
     "github_quota_not_recorded": "GitHub quota not yet recorded.",
     "github_quota_prefix": "GitHub API quota:",
-    "github_quota_suffix": "remaining ({{resource}} bucket)."
+    "github_quota_suffix": "remaining ({{resource}} bucket).",
+    "aria_pause_scheduling": "Pause scheduling"
   },
   "credential_cards": {
     "connected": "Connected",

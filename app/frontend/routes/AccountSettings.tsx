@@ -275,7 +275,7 @@ function CredentialsForm({ payload, onNotice, section }: { payload: CredentialsP
         {section === "preferences" ? (
           <label className="flex items-start gap-3 text-sm">
             <input
-              aria-label="Pause scheduling"
+              aria-label={t('account_settings.aria_pause_scheduling')}
               checked={values.scheduling_paused}
               className="mt-1 rounded border-gray-400"
               onChange={(event) => setValues({ ...values, scheduling_paused: event.target.checked })}
