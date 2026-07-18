@@ -191,6 +191,8 @@ import type { ChatDayDividerItem, ChatPendingActionStreamItem, ChatStreamItem, C
 import { chatStreamItemsSignature, maxMessageId, mergeChatMessages, oldestMessageId, renderItemKey } from "./chat/messageStreamItems"
 import { buildMessageStreamItems, groupableToolResult, groupableToolUse, injectTemporalMarkers, lastAssistantRenderedMessage, pendingActionCardData, renderChatMessages, renderMessage } from "./chat/streamBuilders"
 import { pendingActionBadgeLabel, pendingActionKey, pendingActionResourceTitle, pendingActionResourceUrl, pendingActionTerminalLabel } from "./chat/pendingActionDisplay"
+import type { MobileChatTab, WorkspaceTab } from "./chat/workspaceTabs"
+import { clampWorkspaceWidth, defaultWorkspaceTab, mobileChatTabLabel, storeWorkspacePreference, storedWorkspaceCollapsed, storedWorkspaceTab, storedWorkspaceWidth, workspaceTabClass, workspaceTabLabel } from "./chat/workspaceTabs"
 import { fullResultBody, shortenWorkspacePaths, toolDetail, toolLabel, toolResultSummary } from "./chat/toolRendering"
 
 
@@ -3923,8 +3925,6 @@ function StopButton({ payload, queryKey }: { payload: ChatPayload; queryKey: Cha
   )
 }
 
-type WorkspaceTab = "whiteboard" | "context" | "media" | "files" | "diff" | "jobs"
-type MobileChatTab = "chat" | WorkspaceTab
 
 function ChatWorkspace({
   chatId,
@@ -5596,68 +5596,6 @@ function CodingFilesPanel({ payload }: { payload: ChatPayload }) {
       )}
     </div>
   )
-}
-
-function workspaceTabClass(active: boolean) {
-  return `border-b-2 px-3 py-2 ${active ? "border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-300" : "border-transparent text-gray-600 hover:border-gray-300 hover:text-gray-900 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-100"}`
-}
-
-function workspaceTabLabel(tab: WorkspaceTab) {
-  if (tab === "whiteboard") return "Whiteboard"
-  if (tab === "context") return "Context"
-  if (tab === "media") return "Media"
-  if (tab === "files") return "Files"
-  if (tab === "diff") return "Local Diff"
-  if (tab === "jobs") return "Jobs"
-
-  return "Chats"
-}
-
-function mobileChatTabLabel(tab: MobileChatTab) {
-  return tab === "chat" ? "Chat" : workspaceTabLabel(tab)
-}
-
-function defaultWorkspaceTab(payload: ChatPayload): WorkspaceTab {
-  return whiteboardElements(payload).length > 0 ? "whiteboard" : "context"
-}
-
-function storedWorkspaceTab(): WorkspaceTab | null {
-  try {
-    const value = window.localStorage.getItem(CHAT_WORKSPACE_TAB_KEY)
-    return value === "whiteboard" || value === "context" || value === "media" || value === "files" || value === "diff" || value === "jobs" ? value : null
-  } catch (_error) {
-    return null
-  }
-}
-
-export function storedWorkspaceCollapsed(): boolean {
-  try {
-    const value = window.localStorage.getItem(CHAT_WORKSPACE_COLLAPSED_KEY)
-    return value === null ? true : value === "true"
-  } catch (_error) {
-    return true
-  }
-}
-
-function storedWorkspaceWidth() {
-  try {
-    return clampWorkspaceWidth(Number.parseInt(window.localStorage.getItem(CHAT_WORKSPACE_WIDTH_KEY) || "", 10) || CHAT_WORKSPACE_DEFAULT_WIDTH)
-  } catch (_error) {
-    return CHAT_WORKSPACE_DEFAULT_WIDTH
-  }
-}
-
-function storeWorkspacePreference(key: string, value: string) {
-  try {
-    window.localStorage.setItem(key, value)
-  } catch (_error) {
-    // Local storage can be unavailable in hardened browser modes; the
-    // workspace still works with in-memory state.
-  }
-}
-
-function clampWorkspaceWidth(width: number) {
-  return Math.min(Math.max(width, CHAT_WORKSPACE_MIN_WIDTH), CHAT_WORKSPACE_MAX_WIDTH)
 }
 
 function chatDisplayTitle(chat: Pick<ChatNavRecord, "id" | "title" | "title_pending" | "repository">) {
