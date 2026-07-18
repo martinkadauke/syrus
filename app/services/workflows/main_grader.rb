@@ -20,7 +20,7 @@ module Workflows
 
     def self.trigger_kind = "main_grader"
 
-    def self.queue_name = :default
+    def self.queue_name = :runs
 
     def self.after_success(workflow)
       update_grader_health!(workflow, "healthy")

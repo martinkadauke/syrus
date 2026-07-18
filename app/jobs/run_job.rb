@@ -124,8 +124,9 @@ class RunJob < ApplicationJob
   # back to the queue with a short delay. DB-counted so it holds across worker
   # pods (per-pod JOB_CONCURRENCY only bounds a single pod). Best-effort — a
   # couple extra may slip through under contention; it's a cost/rate ceiling,
-  # not a hard lock. 0 = unlimited. Landing/merges and main_grader Runs are not
-  # capped (different queues, isolated pools).
+  # not a hard lock. 0 = unlimited. Main-branch graders also run on `:runs` and
+  # are capped. Landing/merge Runs are not capped (different queues, isolated
+  # pools).
   def defer_for_agent_concurrency?(run_id)
     limit = AppSetting.max_concurrent_agent_runs
     return false if limit <= 0

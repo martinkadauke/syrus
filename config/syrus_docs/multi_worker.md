@@ -20,15 +20,15 @@ queues across two worker configs and select one per pod with the
 
 - **The home worker** runs everything bound to the single-node search index or
   co-located with it: `default` (Index\*Job = search **writes**, pollers,
-  reapers, broadcasts, `main_grader`), `chat` (search **reads** via the
-  `search_chats` MCP tool), and `videos`. It consumes `default`, so it is the
-  tier that **schedules recurring tasks** — leave `SOLID_QUEUE_SKIP_RECURRING`
-  unset here.
-- **The compute worker** runs the heavy, search-free queues — `runs` (agent
-  RunJobs) and `merges` (landing / rebase) — which enqueue their search updates
-  onto `default` rather than touching the index directly. Spread it one-per-node
-  on fast local disk. Set `SOLID_QUEUE_SKIP_RECURRING=1` so only the home worker
-  schedules recurring jobs.
+  reapers, broadcasts), `chat` (search **reads** via the `search_chats` MCP
+  tool), and `videos`. It consumes `default`, so it is the tier that
+  **schedules recurring tasks** — leave `SOLID_QUEUE_SKIP_RECURRING` unset here.
+- **The compute worker** runs the heavy, search-free queues — `runs`
+  (implementation, response, grader, and `main_grader` RunJobs) and `merges`
+  (landing / rebase) — which enqueue their search updates onto `default` rather
+  than touching the index directly. Spread it one-per-node on fast local disk.
+  Set `SOLID_QUEUE_SKIP_RECURRING=1` so only the home worker schedules recurring
+  jobs.
 - Both configs consume this pod's own `resume-<hostname>` queue, so
   retry-from-failed-step affinity (below) works on whichever pod holds the
   workspace.
@@ -66,8 +66,8 @@ Two things are specific to multi-worker:
 with pod count. `AppSetting.max_concurrent_agent_runs` (admin-configurable,
 `0` = unlimited) is a **cluster-wide** cap enforced by `RunJob`: if too many
 agent (`:runs`-queue) Runs are already executing across all pods, a new one is
-deferred and re-enqueued. Landing/merge and main-branch grader Runs are not
-counted. See `AppSetting` reference.
+deferred and re-enqueued. Main-branch grader Runs are on `:runs` and are counted
+too; landing/merge Runs are not counted. See `AppSetting` reference.
 
 ## Retry-from-failed-step worker affinity
 

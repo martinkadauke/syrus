@@ -66,7 +66,7 @@ GitHub repo slug used for the in-app "Report an issue" link. Change to your own 
 
 **Type:** integer · **Default:** 0 (unlimited)
 
-Global, cluster-wide cap on how many agent Runs (the `:runs` queue) execute at once, across **all** worker pods. `RunJob` enforces it with a best-effort defer-and-re-enqueue gate (DB-counted, so it holds across pods). Set this when running multiple worker pods so total agent concurrency — and Claude/Codex cost and rate-limit exposure — does not scale with pod count; each pod's `JOB_CONCURRENCY` only bounds that single pod. `0` means no global cap. Landing/merge Runs (`:merges` queue) and main-branch grader Runs are not counted, so they can't be starved by a saturated agent cap.
+Global, cluster-wide cap on how many `:runs` queue Runs execute at once, across **all** worker pods. `RunJob` enforces it with a best-effort defer-and-re-enqueue gate (DB-counted, so it holds across pods). Set this when running multiple worker pods so total compute concurrency — and Claude/Codex cost and rate-limit exposure — does not scale with pod count; each pod's `JOB_CONCURRENCY` only bounds that single pod. `0` means no global cap. Main-branch grader Runs are on `:runs` and are counted; landing/merge Runs (`:merges` queue) are not counted, so they can't be starved by a saturated agent cap.
 
 ## GitHub App
 

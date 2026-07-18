@@ -630,7 +630,8 @@ the live hook and retries a dead hook instead of parroting a stale mode.
   keyed on `job_id` so two Workflows on the same Job never overlap. (Was
   per-repo; changed because the shared WorkflowWorkspace path is per-Workflow-id,
   so the collision risk is within a Job, not across repos.)
-- **SolidQueue queues** — `runs` for normal agent workflow Runs; `merges`
+- **SolidQueue queues** — `runs` for heavy workflow RunJobs, including
+  implementation, response, graders, and main-branch graders; `merges`
   for auto-merge, rebase, and stack-rebase workflow roots; `chat`
   (dedicated low-concurrency worker) for ChatTurnJob and ChatWorkspaceJob;
   `videos` (low-concurrency) for VideoWalkthroughAnalysisJob, whose

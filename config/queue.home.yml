@@ -7,8 +7,8 @@
     The home worker runs the queues that are bound to the single-node search
     index (SQLite FTS5, an RWO PVC) or that must stay co-located with the web
     pods and the search volume:
-      - `default`  — pollers, reapers, app-event broadcasts, Index*Job (search
-                     WRITES), and main_grader Workflows.
+      - `default`  — pollers, reapers, app-event broadcasts, and Index*Job
+                     (search WRITES).
       - `chat`     — ChatTurnJob / chat workspace maintenance (search READS via
                      the search_chats MCP tool).
       - `videos`   — walkthrough-video analysis (local disk + Active Storage).
@@ -29,7 +29,7 @@ default: &default
   workers:
     # Maintenance + search-write + broadcast pool. Listed first with this pod's
     # per-pod `resume-<hostname>` queue so an operator resume that landed here
-    # (e.g. a reopened main_grader) is picked up ahead of routine default work.
+    # is picked up ahead of routine default work.
     # Multi-queue workers MUST be a YAML array: Solid Queue 1.4 does NOT split a
     # space-joined string (`Array("resume-x default")` is one literal queue), so
     # a string here would claim zero jobs and back up the recurring scheduler.

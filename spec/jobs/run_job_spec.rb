@@ -1089,11 +1089,11 @@ RSpec.describe RunJob do
       expect(job.initial_run.reload.state).to eq("queued")
     end
 
-    it "classifies only :runs-queue (agent) trigger kinds, excluding landing/merges/grader" do
+    it "classifies runs-queue trigger kinds, excluding landing and merge workflows" do
       kinds = Workflow.runs_queue_trigger_kinds
 
-      expect(kinds).to include("initial", "pr_comment", "retry", "ci_failure")
-      expect(kinds).not_to include("auto_merge", "merge_train", "rebase", "stack_rebase", "main_grader")
+      expect(kinds).to include("initial", "pr_comment", "retry", "ci_failure", "main_grader")
+      expect(kinds).not_to include("auto_merge", "merge_train", "rebase", "stack_rebase")
       expect(job.initial_run.agent_queue?).to be(true)
     end
   end

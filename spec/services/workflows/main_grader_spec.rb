@@ -39,8 +39,8 @@ RSpec.describe Workflows::MainGrader do
       expect(workflow.artifact("main_sha")).to eq(sha)
     end
 
-    it "uses the default queue" do
-      expect(described_class.queue_name).to eq(:default)
+    it "uses the runs queue" do
+      expect(described_class.queue_name).to eq(:runs)
     end
   end
 

@@ -7,9 +7,10 @@
 
     The compute worker runs the heavy, search-FREE queues so they can spread
     across worker nodes on local disk, away from the search/web node:
-      - `runs`   — agent RunJobs (implement / respond / graders / …), minutes
-                   each. Never touch the search index (they enqueue Index*Job
-                   onto `default`, which the home worker consumes).
+      - `runs`   — heavy workflow RunJobs (implement / respond / graders /
+                   main_grader / …), minutes each. Never touch the search
+                   index (they enqueue Index*Job onto `default`, which the home
+                   worker consumes).
       - `merges` — deterministic landing / rebase / stack-rebase Workflows.
     Each pod also consumes its own `resume-<hostname>` queue: a workspace lives
     on the local disk of the pod that ran it, so "Retry from failed step" and
@@ -28,9 +29,9 @@ default: &default
     - polling_interval: 1
       batch_size: 500
   workers:
-    # Long-running agent RunJobs. JOB_CONCURRENCY caps simultaneous agent
-    # invocations PER POD, so total agent concurrency across the cluster is
-    # JOB_CONCURRENCY × (compute pod count); a cluster-wide ceiling lives in
+    # Long-running workflow RunJobs. JOB_CONCURRENCY caps simultaneous runs PER
+    # POD, so total concurrency across the cluster is JOB_CONCURRENCY ×
+    # (compute pod count); a cluster-wide ceiling lives in
     # AppSetting.max_concurrent_agent_runs. Listed first with this pod's
     # `resume-<hostname>` queue so operator resumes land ahead of fresh work.
     # Multi-queue workers MUST be a YAML array: Solid Queue 1.4 does NOT split a
