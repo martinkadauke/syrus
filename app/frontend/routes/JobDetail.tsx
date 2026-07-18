@@ -60,6 +60,7 @@ import type { SourceRefPayload } from "./jobDetail/sourceRefs"
 import { refOptionsFor, sourceDiffSearch, sourceSearch } from "./jobDetail/sourceRefs"
 import type { JobDetailQueryKey, JobTab, JobWorkflowsQueryKey } from "./jobDetail/queryKeys"
 import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
+import { artifactPanelClass, disabledPaginationClass, menuButtonClass, paginationLinkClass, shortSha } from "./jobDetail/formatting"
 
 type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
@@ -1485,10 +1486,6 @@ function BranchDivergencePanel({
   )
 }
 
-function shortSha(sha: string | null) {
-  return sha ? sha.slice(0, 7) : "unknown"
-}
-
 function LoopGroup({ item, payload, command, workflowArtifacts }: { item: LoopStepItem; payload: JobDetailPayload; command: ReturnType<typeof useJobCommand>; workflowArtifacts?: Record<string, unknown> | null }) {
   const { t } = useT("jobs")
   const [open, setOpen] = useState(false)
@@ -1993,10 +1990,6 @@ function RunGradeLogPanel({ payload, onClose }: { payload: Awaited<ReturnType<ty
       <pre className="max-h-96 overflow-auto bg-white p-3 font-mono text-xs text-gray-800 whitespace-pre-wrap max-md:min-h-0 max-md:flex-1 max-md:max-h-none dark:bg-gray-950 dark:text-gray-200" data-testid="run-grade-log-stream"><AnsiText text={payload.contents} /></pre>
     </section>
   )
-}
-
-function artifactPanelClass() {
-  return "mt-3 rounded border border-gray-200 bg-gray-50 max-md:fixed max-md:inset-0 max-md:z-50 max-md:mt-0 max-md:flex max-md:h-[100dvh] max-md:flex-col max-md:rounded-none max-md:border-0 max-md:bg-white dark:border-gray-700 dark:bg-gray-950 max-md:dark:bg-gray-950"
 }
 
 function ArtifactPanelHeader({ children, onClose }: { children: ReactNode; onClose: () => void }) {
@@ -2637,25 +2630,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
     muted: "border-gray-200 bg-white text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
   }
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
-}
-
-function menuButtonClass(tone: ButtonTone) {
-  const tones = {
-    primary: "text-blue-700 hover:bg-blue-50 dark:text-blue-200 dark:hover:bg-blue-950/40",
-    secondary: "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800",
-    success: "text-emerald-700 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-950/40",
-    danger: "text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/40",
-    "danger-outline": "text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/40"
-  }
-  return `block w-full px-4 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]}`
-}
-
-function paginationLinkClass() {
-  return "rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
-}
-
-function disabledPaginationClass() {
-  return "rounded border border-gray-200 px-3 py-1 text-gray-300 dark:border-gray-800 dark:text-gray-600"
 }
 
 function PendingJobTitle({ pending, title }: { pending: boolean; title: string }) {

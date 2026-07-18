@@ -1,0 +1,33 @@
+// Small pure class/format helpers extracted from JobDetail.tsx.
+//
+// Tailwind class strings for the artifact panel, the action-menu buttons (by
+// tone), and the pagination links, plus the short-SHA formatter. No component
+// or JobDetail-local coupling.
+import type { ButtonTone } from "../../lib/buttonClasses"
+
+export function artifactPanelClass() {
+  return "mt-3 rounded border border-gray-200 bg-gray-50 max-md:fixed max-md:inset-0 max-md:z-50 max-md:mt-0 max-md:flex max-md:h-[100dvh] max-md:flex-col max-md:rounded-none max-md:border-0 max-md:bg-white dark:border-gray-700 dark:bg-gray-950 max-md:dark:bg-gray-950"
+}
+
+export function menuButtonClass(tone: ButtonTone) {
+  const tones = {
+    primary: "text-blue-700 hover:bg-blue-50 dark:text-blue-200 dark:hover:bg-blue-950/40",
+    secondary: "text-gray-700 hover:bg-gray-50 dark:text-gray-200 dark:hover:bg-gray-800",
+    success: "text-emerald-700 hover:bg-emerald-50 dark:text-emerald-200 dark:hover:bg-emerald-950/40",
+    danger: "text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/40",
+    "danger-outline": "text-red-700 hover:bg-red-50 dark:text-red-200 dark:hover:bg-red-950/40"
+  }
+  return `block w-full px-4 py-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-50 ${tones[tone]}`
+}
+
+export function paginationLinkClass() {
+  return "rounded border border-gray-300 px-3 py-1 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+}
+
+export function disabledPaginationClass() {
+  return "rounded border border-gray-200 px-3 py-1 text-gray-300 dark:border-gray-800 dark:text-gray-600"
+}
+
+export function shortSha(sha: string | null) {
+  return sha ? sha.slice(0, 7) : "unknown"
+}
