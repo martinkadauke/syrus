@@ -3,6 +3,8 @@ class Job < ApplicationRecord
   include RecordsStateTransitions
   include JobCodingMode
   include JobNeedsAttention
+  include JobWorkflowAccessors
+  include JobCost
 
   KINDS = %w[ issue cron direct main_grader ].freeze
   MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
@@ -556,47 +558,6 @@ class Job < ApplicationRecord
   def current_run
     runs.last
   end
-
-  def latest_workflow
-    if workflows.loaded?
-      workflows.max_by { |wf| [ wf.finished_at.nil? ? 1 : 0, wf.finished_at || Time.zone.at(0), wf.id || 0 ] }
-    else
-      workflows.reorder(Arel.sql("(finished_at IS NULL) DESC, finished_at DESC, id DESC")).first
-    end
-  end
-
-  def latest_workflow_id
-    return self[:latest_workflow_id] if has_attribute?(:latest_workflow_id)
-
-    latest_workflow&.id
-  end
-
-  def latest_workflow_state
-    return self[:latest_workflow_state].presence || "queued" if has_attribute?(:latest_workflow_state)
-
-    latest_workflow&.state || "queued"
-  end
-
-  def latest_workflow_trigger_kind
-    return self[:latest_workflow_trigger_kind] if has_attribute?(:latest_workflow_trigger_kind)
-
-    latest_workflow&.trigger_kind
-  end
-
-  def active_workflow_trigger_kind
-    scope = workflows.loaded? ? workflows.select { |workflow| workflow.state.in?(%w[ queued running ]) } : workflows.active
-    scope.max_by { |workflow| [ workflow.created_at || Time.at(0), workflow.id || 0 ] }&.trigger_kind
-  end
-
-  def latest_workflow_created_at
-    value = if has_attribute?(:latest_workflow_created_at)
-      self[:latest_workflow_created_at]
-    else
-      latest_workflow&.created_at
-    end
-    value.is_a?(String) ? Time.zone.parse(value) : value
-  end
-
   def retry_with_agent_providers
     return [] unless open?
     return [] if any_active_run?
@@ -628,29 +589,6 @@ class Job < ApplicationRecord
   def head_sha
     runs.where.not(head_sha: [ nil, "" ]).order(:created_at).last&.head_sha
   end
-
-  def total_cost_usd
-    if runs.loaded?
-      runs.sum { |run| run.cost_usd.to_d }
-    else
-      runs.sum(:cost_usd)
-    end
-  end
-
-  def display_total_cost_usd
-    return nil if billed_runs_count.zero?
-
-    total_cost_usd
-  end
-
-  def billed_runs_count
-    if runs.loaded?
-      runs.count { |run| run.cost_usd.present? }
-    else
-      runs.where.not(cost_usd: nil).count
-    end
-  end
-
   def any_active_run?
     runs.active.exists?
   end
