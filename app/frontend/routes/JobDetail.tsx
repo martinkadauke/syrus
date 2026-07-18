@@ -61,6 +61,8 @@ import { refOptionsFor, sourceDiffSearch, sourceSearch } from "./jobDetail/sourc
 import type { JobDetailQueryKey, JobTab, JobWorkflowsQueryKey } from "./jobDetail/queryKeys"
 import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
 import { artifactPanelClass, disabledPaginationClass, menuButtonClass, paginationLinkClass, shortSha } from "./jobDetail/formatting"
+import type { SourceFile, SourceTreeFile, SourceTreeNode } from "./jobDetail/sourceTree"
+import { buildSourceTree, sortSourceTree, sourceLanguage } from "./jobDetail/sourceTree"
 
 type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
@@ -2469,56 +2471,6 @@ function SourceDiffStatusBadge({ status }: { status: string }) {
   const labels: Record<string, string> = { added: "A", modified: "M", removed: "D", renamed: "R" }
 
   return <span className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-[11px] font-semibold ${styles[normalized] || "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{labels[normalized] || normalized.slice(0, 1).toUpperCase()}</span>
-}
-
-type SourceTreeFile = JobSourcePayload["tree_items"][number]
-type SourceFile = NonNullable<JobSourcePayload["file"]>
-type SourceTreeNode = {
-  path: string
-  name: string
-  children: SourceTreeNode[]
-  file: SourceTreeFile | null
-}
-
-function sourceLanguage(language: SourceFile["language"]): SyntaxLanguage | null {
-  const supported: SyntaxLanguage[] = [ "ruby", "javascript", "typescript", "json", "yaml", "shell", "css", "html" ]
-  return supported.includes(language as SyntaxLanguage) ? (language as SyntaxLanguage) : null
-}
-
-function buildSourceTree(items: SourceTreeFile[]) {
-  const root: SourceTreeNode = { path: "", name: "", children: [], file: null }
-  const directories = new Map<string, SourceTreeNode>([["", root]])
-
-  for (const item of items) {
-    const parts = item.path.split("/").filter(Boolean)
-    let parent = root
-    let currentPath = ""
-
-    parts.forEach((part, index) => {
-      currentPath = currentPath ? `${currentPath}/${part}` : part
-      let node = directories.get(currentPath)
-
-      if (!node) {
-        node = { path: currentPath, name: part, children: [], file: null }
-        directories.set(currentPath, node)
-        parent.children.push(node)
-      }
-
-      if (index === parts.length - 1) node.file = item
-      parent = node
-    })
-  }
-
-  sortSourceTree(root)
-  return root.children
-}
-
-function sortSourceTree(node: SourceTreeNode) {
-  node.children.sort((a, b) => {
-    if (!!a.file !== !!b.file) return a.file ? 1 : -1
-    return a.name.localeCompare(b.name)
-  })
-  node.children.forEach(sortSourceTree)
 }
 
 function SourceTreeRow({
