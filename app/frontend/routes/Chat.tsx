@@ -193,7 +193,7 @@ export function ChatRoute() {
 
   return (
     <main
-      aria-label="Chat"
+      aria-label={t("aria_chat")}
       className="mx-auto flex h-full max-w-[96rem] flex-col gap-6 overflow-hidden p-3 sm:p-6"
       style={viewportStyle}
     >
@@ -919,6 +919,7 @@ function MessageFileAttachments({ attachments, align = "start" }: { attachments?
 }
 
 function ImageLightbox({ attachment, onClose }: { attachment: ChatMessageImageAttachment; onClose: () => void }) {
+  const { t } = useT("chat")
   useEffect(() => {
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") onClose()
@@ -932,7 +933,7 @@ function ImageLightbox({ attachment, onClose }: { attachment: ChatMessageImageAt
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-gray-950/35 p-4" onClick={onClose} role="presentation">
       <section aria-label={attachment.name || "Image attachment"} aria-modal="true" className="relative max-h-full max-w-full" onClick={(event) => event.stopPropagation()} role="dialog">
         <button
-          aria-label="Close image preview"
+          aria-label={t("aria_close_image")}
           className="absolute right-2 top-2 rounded bg-white/90 p-1.5 text-gray-600 shadow hover:bg-white hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-900/90 dark:text-gray-200 dark:hover:bg-gray-900"
           onClick={onClose}
           type="button"
@@ -1211,6 +1212,7 @@ type DependencyPill = {
 }
 
 function ProposalEditModal({ chatId, proposal, search, queryKey, onClose, onNotice }: { chatId: string | number; proposal: EditableProposal; search: string; queryKey: ChatQueryKey; onClose: () => void; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   const queryClient = useQueryClient()
   const [title, setTitle] = useState(proposal.title)
   const [body, setBody] = useState(proposal.body)
@@ -1306,7 +1308,7 @@ function ProposalEditModal({ chatId, proposal, search, queryKey, onClose, onNoti
             <div className="grid gap-4 lg:grid-cols-3">
               <DependencyPicker
                 label="Proposal dependencies"
-                placeholder="Search proposals"
+                placeholder={t("ph_search_proposals")}
                 query={proposalQuery}
                 results={proposalResults.map((result) => ({ key: result.slug, label: result.slug, detail: result.title }))}
                 selected={proposalDeps}
@@ -1315,7 +1317,7 @@ function ProposalEditModal({ chatId, proposal, search, queryKey, onClose, onNoti
               />
               <DependencyPicker
                 label="Job dependencies"
-                placeholder="Search Jobs"
+                placeholder={t("ph_search_jobs")}
                 query={jobQuery}
                 results={jobResults.map((result) => ({ key: String(result.id), label: `JOB-${result.id}`, detail: result.issue_title || result.title || "" }))}
                 selected={jobDeps}
@@ -1324,7 +1326,7 @@ function ProposalEditModal({ chatId, proposal, search, queryKey, onClose, onNoti
               />
               <DependencyPicker
                 label="Epic dependencies"
-                placeholder="Search Epics"
+                placeholder={t("ph_search_epics")}
                 query={epicQuery}
                 results={epicResults.map((result) => ({ key: String(result.id), label: result.display_number || `EPIC-${result.id}`, detail: result.title }))}
                 selected={epicDeps}
@@ -3369,9 +3371,10 @@ function SlashCommandConfirmation({ commandName, disabled, text, onCancel, onCon
 }
 
 function SlashCommandPalette({ activeIndex, commands, context, query, onSelect }: { activeIndex: number; commands: SlashCommand[]; context: { chat: { pinned?: boolean } }; query: string; onSelect: (command: SlashCommand) => void }) {
+  const { t } = useT("chat")
   return (
     <div
-      aria-label="Slash commands"
+      aria-label={t("aria_slash_commands")}
       className="absolute bottom-full left-3 right-3 z-10 mb-2 max-h-[calc(var(--chat-visual-viewport-height,100dvh)-9rem)] overflow-y-auto rounded border border-gray-200 bg-white shadow-lg overscroll-contain dark:border-gray-700 dark:bg-gray-950"
       id="chat-slash-command-palette"
       role="listbox"
@@ -4329,6 +4332,7 @@ function AgentQuestions({ questions, queryKey, onNotice }: { questions: ChatAgen
 }
 
 function AgentQuestionPrompt({ question, queryKey, onNotice }: { question: ChatAgentQuestion; queryKey: ChatQueryKey; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   const queryClient = useQueryClient()
   const search = queryKey[2]
   const [answer, setAnswer] = useState("")
@@ -4371,14 +4375,14 @@ function AgentQuestionPrompt({ question, queryKey, onNotice }: { question: ChatA
       ) : null}
       <form className="flex flex-col gap-2 sm:flex-row" onSubmit={submitText}>
         <input
-          aria-label="Custom answer"
+          aria-label={t("aria_custom_answer")}
           className="min-h-9 flex-1 rounded border border-gray-300 px-3 py-2 text-base focus:border-blue-500 focus:ring-blue-500 sm:text-sm dark:border-gray-600 dark:bg-gray-950 dark:text-gray-100"
           disabled={submit.isPending}
           onChange={(event) => setAnswer(event.target.value)}
-          placeholder="Custom response"
+          placeholder={t("ph_custom_response")}
           value={answer}
         />
-        <button className={primaryButton()} disabled={submit.isPending || answer.trim().length === 0} type="submit">Submit</button>
+        <button className={primaryButton()} disabled={submit.isPending || answer.trim().length === 0} type="submit">{t("submit")}</button>
       </form>
       <button className={`${secondaryButton()} flex w-full justify-start text-left`} disabled={submit.isPending} onClick={declineAnswer} type="button">
         Decline to answer
@@ -4412,8 +4416,9 @@ function ChatWorkspacePanel({
   onNotice: (message: string | null) => void
   onBookmarkSelect: (messageId: number) => void
 }) {
+  const { t } = useT("chat")
   return (
-    <aside aria-label="Chat workspace" className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 ${fullscreen ? "" : "h-full w-full"}`}>
+    <aside aria-label={t("aria_chat_workspace")} className={`flex min-h-0 min-w-0 flex-1 flex-col rounded border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 ${fullscreen ? "" : "h-full w-full"}`}>
       {fullscreen || !showTabs ? null : (
         <nav aria-label="Chat workspace tabs" className="flex items-center border-b border-gray-200 px-3 pt-3 text-sm font-medium dark:border-gray-700">
           {(["whiteboard", "context", "media", ...(codingFilesTabVisible(payload) ? (["files"] as WorkspaceTab[]) : []), ...(payload.local_tunnel_connected ? (["diff"] as WorkspaceTab[]) : []), ...(jobsTabVisible(payload) ? (["jobs"] as WorkspaceTab[]) : [])] as WorkspaceTab[]).map((tab) => (
@@ -4428,10 +4433,10 @@ function ChatWorkspacePanel({
           ))}
           {onToggleCollapse ? (
             <button
-              aria-label="Close workspace panel"
+              aria-label={t("aria_close_workspace")}
               className="ml-auto self-center rounded p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
               onClick={onToggleCollapse}
-              title="Close panel"
+              title={t("aria_close_panel")}
               type="button"
             >
               <svg aria-hidden="true" className="h-4 w-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -4495,6 +4500,7 @@ function renderUnifiedDiff(diff: string): ReactNode[] {
 }
 
 function LocalDiffPanel() {
+  const { t } = useT("chat")
   const [state, setState] = useState<LocalDiffState>({ diff: null, mode: "head", loading: true, error: null })
   const subscriptionRef = useRef<Subscription | null>(null)
 
@@ -4546,11 +4552,11 @@ function LocalDiffPanel() {
           </button>
         </div>
         <button
-          aria-label="Refresh diff"
+          aria-label={t("aria_refresh_diff")}
           className="rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
           disabled={loading}
           onClick={() => refresh(mode)}
-          title="Refresh"
+          title={t("aria_refresh")}
           type="button"
         >
           <svg aria-hidden="true" className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -4844,7 +4850,7 @@ function ChatSettingsDialog({ payload, prefix, queryKey, onClose }: { payload: C
             <label className="block">
               <span className="mb-1 block text-xs font-medium uppercase text-gray-500 dark:text-gray-400">Provider</span>
               <select
-                aria-label="Chat provider"
+                aria-label={t("aria_chat_provider")}
                 className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-100 dark:disabled:bg-gray-800"
                 disabled={provider.isPending}
                 onChange={(event) => provider.mutate(event.target.value)}
@@ -5311,6 +5317,7 @@ function AttachmentGroup({ label, rows, queryKey, onNotice }: { label: string; r
 }
 
 function AddAttachment({ payload, prefix, queryKey, onAttached, onNotice }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onAttached?: () => void; onNotice: (message: string | null) => void }) {
+  const { t } = useT("chat")
   const queryClient = useQueryClient()
   const location = useLocation()
   const navigate = useNavigate()
@@ -5405,7 +5412,7 @@ function AddAttachment({ payload, prefix, queryKey, onAttached, onNotice }: { pa
                 submitSearch()
               }
             }}
-            placeholder="Search by name or id..."
+            placeholder={t("ph_search_name_id")}
             ref={searchInputRef}
             type="search"
             value={query}

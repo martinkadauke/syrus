@@ -201,5 +201,21 @@
   "job_status_blocker_landing_failed": "Landen fehlgeschlagen",
   "job_status_blocker_dependency_failed": "Abhängigkeit fehlgeschlagen",
   "job_status_hide_closed": "Abgeschlossene ausblenden",
-  "job_status_show_closed": "Abgeschlossene anzeigen"
+  "job_status_show_closed": "Abgeschlossene anzeigen",
+  "aria_chat": "Chat",
+  "aria_close_image": "Bildvorschau schließen",
+  "ph_search_proposals": "Vorschläge suchen",
+  "ph_search_jobs": "Jobs suchen",
+  "ph_search_epics": "Epics suchen",
+  "aria_slash_commands": "Schrägstrich-Befehle",
+  "aria_custom_answer": "Eigene Antwort",
+  "ph_custom_response": "Eigene Antwort",
+  "aria_close_workspace": "Workspace-Panel schließen",
+  "aria_close_panel": "Panel schließen",
+  "aria_refresh_diff": "Diff aktualisieren",
+  "aria_refresh": "Aktualisieren",
+  "aria_chat_provider": "Chat-Anbieter",
+  "ph_search_name_id": "Nach Name oder ID suchen...",
+  "submit": "Absenden",
+  "aria_chat_workspace": "Chat-Arbeitsbereich"
 }
