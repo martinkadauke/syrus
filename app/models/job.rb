@@ -5,6 +5,8 @@ class Job < ApplicationRecord
   include JobNeedsAttention
   include JobWorkflowAccessors
   include JobCost
+  include JobStackBase
+  include JobDependencies
 
   KINDS = %w[ issue cron direct main_grader ].freeze
   MAIN_GRADER_CLOSURE_REASON = "main_grader".freeze
@@ -599,87 +601,6 @@ class Job < ApplicationRecord
     pr_approved
     no_changes
   ].freeze
-
-  def dependencies_satisfied?
-    return false if epic.present? && !epic.releases_jobs_for_execution?
-    return true if dependencies_overridden_at.present?
-
-    dependencies.includes(:depends_on_job, :depends_on_epic).all? do |dependency|
-      dependency.dependency_succeeded?
-    end
-  end
-
-  def unsatisfied_dependencies
-    dependencies.includes(:depends_on_epic, depends_on_job: :repository).reject do |dependency|
-      dependency.dependency_succeeded?
-    end
-  end
-
-  def dependency_succeeded?
-    # :merged was removed; the merge path now closes the Job with
-    # closure_reason "pr_merged". SUCCESSFUL_CLOSURE_REASONS already
-    # includes that, so the (closed? && reason in set) branch covers
-    # both kinds of successful close.
-    closed? && SUCCESSFUL_CLOSURE_REASONS.include?(closure_reason)
-  end
-
-  def effective_base_branch
-    return base_default_branch if stack_base_forces_main?
-
-    parent = dependencies.includes(:depends_on_job).map(&:depends_on_job).compact.find do |dependency_job|
-      dependency_job.open? &&
-        dependency_job.pr_number.present? &&
-        dependency_job.branch_name.present? &&
-        !dependency_job.dependency_succeeded?
-    end
-
-    parent&.branch_name.presence || base_default_branch
-  end
-
-  # The repository whose default branch is this Job's base. For a fork with an
-  # in-instance upstream, that's the upstream; otherwise the Job's repository.
-  def base_repository
-    repository&.base_repository
-  end
-
-  def base_default_branch
-    repository&.base_default_branch
-  end
-
-  # True when the work branch (and diff, and PR base) should be based on the
-  # in-instance upstream's default branch — a fork contributing to upstream.
-  # False for non-forks, forks without an in-instance upstream, and stacked
-  # children (which base on their parent branch, not the upstream default).
-  def base_on_upstream_default?
-    return false unless repository&.fork_syncable?
-    return false if in_fork_review_mode?  # staging fork-review keeps its own base
-
-    effective_base_branch == base_default_branch
-  end
-
-  def stack_ready_for_execution?
-    return true if dependencies_overridden_at.present?
-
-    JobStackResolver.new(self).ready?
-  end
-
-  def resolve_stack_parent!
-    JobStackResolver.new(self).resolve!
-  end
-
-  def stack_base_forces_main?
-    stack_base_main? && !epic_internal_dependency?
-  end
-
-  def force_run_dependencies!(user:)
-    update!(
-      dependencies_overridden_at: Time.current,
-      dependencies_overridden_by_user: user
-    )
-    log_dependency_override!(user)
-    start_pending_workflows_if_dependencies_satisfied!
-  end
-
   def mark_valid_and_queue!
     transaction do
       update!(
