@@ -75,12 +75,10 @@ RSpec.describe InboundMessageRouter do
         expect(ChatMessage.where(role: "user").count).to eq(2)
       end
 
-      it "does not enqueue ChatTurnJob when trigger_policy differs" do
+      it "does not enqueue ChatTurnJob when trigger_policy is not speak_when_spoken_to" do
         session = ChatSession.for_platform(user: user, platform: "telegram")
-        session.update_column(:trigger_policy, "speak_when_spoken_to")
-        # Verify that only a session with the correct policy triggers the job.
-        # Currently only "speak_when_spoken_to" is defined, so test the guard path
-        # by forcing the session to have the policy already set and checking job is enqueued.
+        session.update_column(:trigger_policy, "proactive")
+
         expect {
           described_class.new(
             platform: "telegram",
@@ -88,7 +86,7 @@ RSpec.describe InboundMessageRouter do
             external_handle: "@alice",
             message_text: "Hello"
           ).call
-        }.to have_enqueued_job(ChatTurnJob)
+        }.not_to have_enqueued_job(ChatTurnJob)
       end
     end
   end
