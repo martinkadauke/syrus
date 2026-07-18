@@ -34,7 +34,6 @@ const fallbackOptions: ScheduledTaskOptions = {
     { value: "if_graders_pass_and_tagged_safe", label: "If graders pass and tagged safe", preview: "Jobs using this rule also need the safe tag before landing." }
   ]
 }
-const cronHelpText = "Five fields in UTC: minute hour day-of-month month day-of-week. Examples: 0 9 * * 1 for Mondays at 09:00; 30 14 * * * for every day at 14:30."
 
 export function ScheduledTasksIndex() {
   const { t } = useT("settings")
@@ -46,7 +45,7 @@ export function ScheduledTasksIndex() {
   })
 
   return (
-    <main aria-label="Scheduled tasks" className="mx-auto max-w-[96rem] space-y-6 p-6">
+    <main aria-label={t("scheduled_tasks.aria_index")} className="mx-auto max-w-[96rem] space-y-6 p-6">
       <header>
         <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{t("scheduled_tasks.heading")}</h1>
         <p className="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-400">{t("scheduled_tasks.description")}</p>
@@ -56,9 +55,9 @@ export function ScheduledTasksIndex() {
       {tasks.isError ? <ScheduledTasksError error={tasks.error} /> : null}
       {tasks.isSuccess ? (
         <>
-          <TaskSection basePath={tasksBase(location.pathname)} empty="No active scheduled tasks." prefix={prefix} tasks={tasks.data.active_tasks} title="Active" />
-          <TaskSection basePath={tasksBase(location.pathname)} empty="No fired one-shot tasks." prefix={prefix} tasks={tasks.data.fired_one_shots} title="Fired one-shots" />
-          <TaskSection basePath={tasksBase(location.pathname)} empty="No archived scheduled tasks." prefix={prefix} tasks={tasks.data.archived_tasks} title="Archived" />
+          <TaskSection basePath={tasksBase(location.pathname)} empty={t("scheduled_tasks.empty_active")} prefix={prefix} tasks={tasks.data.active_tasks} title={t("scheduled_tasks.section_active")} />
+          <TaskSection basePath={tasksBase(location.pathname)} empty={t("scheduled_tasks.empty_fired")} prefix={prefix} tasks={tasks.data.fired_one_shots} title={t("scheduled_tasks.section_fired")} />
+          <TaskSection basePath={tasksBase(location.pathname)} empty={t("scheduled_tasks.empty_archived")} prefix={prefix} tasks={tasks.data.archived_tasks} title={t("scheduled_tasks.section_archived")} />
         </>
       ) : null}
     </main>
@@ -66,6 +65,7 @@ export function ScheduledTasksIndex() {
 }
 
 export function ScheduledTaskDetailRoute() {
+  const { t } = useT("settings")
   const location = useLocation()
   const params = useParams()
   const id = params.id || ""
@@ -77,8 +77,8 @@ export function ScheduledTaskDetailRoute() {
   })
 
   return (
-    <main aria-label="Scheduled task detail" className="mx-auto max-w-[96rem] space-y-6 p-6">
-      {detail.isPending ? <PanelMessage>Loading scheduled task...</PanelMessage> : null}
+    <main aria-label={t("scheduled_tasks.aria_detail")} className="mx-auto max-w-[96rem] space-y-6 p-6">
+      {detail.isPending ? <PanelMessage>{t("scheduled_tasks.loading_detail")}</PanelMessage> : null}
       {detail.isError ? <ScheduledTasksError error={detail.error} /> : null}
       {detail.isSuccess ? <TaskDetail basePath={tasksBase(location.pathname)} payload={detail.data} prefix={prefix} /> : null}
     </main>
@@ -86,6 +86,7 @@ export function ScheduledTaskDetailRoute() {
 }
 
 export function ScheduledTaskFormRoute({ mode }: { mode: "new" | "edit" }) {
+  const { t } = useT("settings")
   const location = useLocation()
   const params = useParams()
   const id = params.id || ""
@@ -111,15 +112,15 @@ export function ScheduledTaskFormRoute({ mode }: { mode: "new" | "edit" }) {
   const repository = form.data?.repository || detail.data?.task.repository
 
   return (
-    <main aria-label={mode === "new" ? "New scheduled task" : "Edit scheduled task"} className="mx-auto max-w-3xl space-y-6 p-6">
+    <main aria-label={mode === "new" ? t("scheduled_tasks.new_heading") : t("scheduled_tasks.edit_heading")} className="mx-auto max-w-3xl space-y-6 p-6">
       <header>
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{mode === "new" ? "New scheduled task" : "Edit scheduled task"}</h1>
+        <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">{mode === "new" ? t("scheduled_tasks.new_heading") : t("scheduled_tasks.edit_heading")}</h1>
         {repository ? (
           <p className="mt-1 font-mono text-sm text-gray-600 dark:text-gray-400">{repository.slug}</p>
         ) : null}
       </header>
 
-      {loading ? <PanelMessage>Loading scheduled task form...</PanelMessage> : null}
+      {loading ? <PanelMessage>{t("scheduled_tasks.loading_form")}</PanelMessage> : null}
       {error ? <ScheduledTasksError error={error} /> : null}
       {!loading && !error && initial ? (
         <ScheduledTaskForm
@@ -137,6 +138,7 @@ export function ScheduledTaskFormRoute({ mode }: { mode: "new" | "edit" }) {
 }
 
 function TaskSection({ title, tasks, empty, basePath, prefix }: { title: string; tasks: ScheduledTaskRow[]; empty: string; basePath: string; prefix: string }) {
+  const { t } = useT("settings")
   return (
     <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
       <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
@@ -149,12 +151,12 @@ function TaskSection({ title, tasks, empty, basePath, prefix }: { title: string;
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-800 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
               <tr>
-                <th className="px-4 py-2">Task</th>
-                <th className="px-4 py-2">Repository</th>
-                <th className="px-4 py-2">Schedule</th>
-                <th className="px-4 py-2">State</th>
-                <th className="px-4 py-2">Last fired</th>
-                <th className="px-4 py-2"><span className="sr-only">Actions</span></th>
+                <th className="px-4 py-2">{t("scheduled_tasks.col_task")}</th>
+                <th className="px-4 py-2">{t("scheduled_tasks.col_repository")}</th>
+                <th className="px-4 py-2">{t("scheduled_tasks.schedule")}</th>
+                <th className="px-4 py-2">{t("scheduled_tasks.state")}</th>
+                <th className="px-4 py-2">{t("scheduled_tasks.col_last_fired")}</th>
+                <th className="px-4 py-2"><span className="sr-only">{t("scheduled_tasks.actions")}</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
@@ -166,11 +168,11 @@ function TaskSection({ title, tasks, empty, basePath, prefix }: { title: string;
                   <td className="px-4 py-3 font-mono text-xs">
                     <Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={withRoutePrefix(task.repository.repository_path, prefix)}>{task.repository.slug}</Link>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs">{task.schedule_label || "none"}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{task.schedule_label || t("scheduled_tasks.none")}</td>
                   <td className="px-4 py-3"><StatePill state={task.state} /></td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{formatDate(task.last_fired_at) || "never"}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{formatDate(task.last_fired_at) || t("scheduled_tasks.never")}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={`${basePath}/${task.id}`}>Open</Link>
+                    <Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={`${basePath}/${task.id}`}>{t("scheduled_tasks.open")}</Link>
                   </td>
                 </tr>
               ))}
@@ -225,28 +227,28 @@ function TaskDetail({ payload, basePath, prefix }: { payload: ScheduledTaskDetai
 
       <NoticeToast message={notice} onDismiss={() => setNotice(null)} />
       {command.isError ? <PanelMessage tone="error">{errorMessage(command.error, t("scheduled_tasks.error_update"))}</PanelMessage> : null}
-      {archive.isError ? <PanelMessage tone="error">{errorMessage(archive.error, "Unable to archive scheduled task.")}</PanelMessage> : null}
+      {archive.isError ? <PanelMessage tone="error">{errorMessage(archive.error, t("scheduled_tasks.error_archive"))}</PanelMessage> : null}
 
       <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-        <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">Schedule</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">{t("scheduled_tasks.schedule")}</h2>
         <dl className="grid gap-y-2 text-sm sm:grid-cols-2">
-          <dt className="text-gray-500 dark:text-gray-400">Kind</dt>
+          <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_kind")}</dt>
           <dd>{payload.task.kind}</dd>
-          <dt className="text-gray-500 dark:text-gray-400">Cron expression</dt>
-          <dd className="font-mono">{payload.task.cron_expression || "none"}</dd>
-          <dt className="text-gray-500 dark:text-gray-400">Fire at</dt>
-          <dd>{formatDate(payload.task.fire_at) || "none"}</dd>
-          <dt className="text-gray-500 dark:text-gray-400">Next fire</dt>
-          <dd>{formatDate(payload.task.next_fire_at) || "none"}</dd>
-          <dt className="text-gray-500 dark:text-gray-400">PR pileup policy</dt>
+          <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_cron")}</dt>
+          <dd className="font-mono">{payload.task.cron_expression || t("scheduled_tasks.none")}</dd>
+          <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_fire_at")}</dt>
+          <dd>{formatDate(payload.task.fire_at) || t("scheduled_tasks.none")}</dd>
+          <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_next_fire")}</dt>
+          <dd>{formatDate(payload.task.next_fire_at) || t("scheduled_tasks.none")}</dd>
+          <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_pileup")}</dt>
           <dd>{payload.task.pr_pileup_policy}</dd>
-          <dt className="text-gray-500 dark:text-gray-400">Auto-approval</dt>
+          <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_auto_approve")}</dt>
           <dd>{payload.task.auto_approve_preview}</dd>
         </dl>
       </section>
 
       <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-        <h2 className="mb-2 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">Prompt</h2>
+        <h2 className="mb-2 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">{t("scheduled_tasks.prompt_heading")}</h2>
         <pre className="whitespace-pre-wrap rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3 font-mono text-xs">{payload.task.prompt}</pre>
       </section>
 
@@ -266,28 +268,29 @@ function TaskActions({
   command: UseMutationResult<ScheduledTaskDetailPayload, Error, "pause" | "resume" | "fire">
   archive: UseMutationResult<ScheduledTasksIndexPayload, Error, void>
 }) {
+  const { t } = useT("settings")
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {task.editable ? <Link className={buttonClass("secondary")} to={`${basePath}/${task.id}/edit`}>Edit</Link> : null}
+      {task.editable ? <Link className={buttonClass("secondary")} to={`${basePath}/${task.id}/edit`}>{t("scheduled_tasks.action_edit")}</Link> : null}
       {task.pausable ? (
-        <button className={buttonClass("secondary")} disabled={command.isPending} onClick={() => command.mutate("pause")} type="button">Pause</button>
+        <button className={buttonClass("secondary")} disabled={command.isPending} onClick={() => command.mutate("pause")} type="button">{t("scheduled_tasks.action_pause")}</button>
       ) : null}
       {task.resumable ? (
-        <button className={buttonClass("secondary")} disabled={command.isPending} onClick={() => command.mutate("resume")} type="button">Resume</button>
+        <button className={buttonClass("secondary")} disabled={command.isPending} onClick={() => command.mutate("resume")} type="button">{t("scheduled_tasks.action_resume")}</button>
       ) : null}
       {task.fireable ? (
-        <button className={buttonClass("secondary")} disabled={command.isPending} onClick={() => command.mutate("fire")} type="button">Fire now</button>
+        <button className={buttonClass("secondary")} disabled={command.isPending} onClick={() => command.mutate("fire")} type="button">{t("scheduled_tasks.action_fire")}</button>
       ) : null}
       {task.editable ? (
         <button
           className={buttonClass("danger-outline")}
           disabled={archive.isPending}
           onClick={() => {
-            if (window.confirm("Archive this scheduled task?")) archive.mutate()
+            if (window.confirm(t("scheduled_tasks.confirm_archive"))) archive.mutate()
           }}
           type="button"
         >
-          Archive
+          {t("scheduled_tasks.action_archive")}
         </button>
       ) : null}
     </div>
@@ -295,19 +298,20 @@ function TaskActions({
 }
 
 function RecentJobs({ jobs, prefix }: { jobs: ScheduledTaskDetailPayload["recent_jobs"]; prefix: string }) {
+  const { t } = useT("settings")
   return (
     <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-      <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">Recent jobs</h2>
+      <h2 className="mb-3 text-sm font-semibold uppercase text-gray-500 dark:text-gray-400">{t("scheduled_tasks.recent_jobs")}</h2>
       {jobs.length === 0 ? (
-        <p className="text-sm text-gray-600 dark:text-gray-400">No jobs yet.</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">{t("scheduled_tasks.no_jobs")}</p>
       ) : (
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
             <tr>
-              <th className="px-2 py-2">Job</th>
-              <th className="px-2 py-2">State</th>
-              <th className="px-2 py-2">PR</th>
-              <th className="px-2 py-2">Created</th>
+              <th className="px-2 py-2">{t("scheduled_tasks.col_job")}</th>
+              <th className="px-2 py-2">{t("scheduled_tasks.state")}</th>
+              <th className="px-2 py-2">{t("scheduled_tasks.col_pr")}</th>
+              <th className="px-2 py-2">{t("scheduled_tasks.col_created")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800 text-sm">
@@ -315,7 +319,7 @@ function RecentJobs({ jobs, prefix }: { jobs: ScheduledTaskDetailPayload["recent
               <tr key={job.id}>
                 <td className="px-2 py-2"><Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={withRoutePrefix(job.job_path, prefix)}>#{job.id}</Link></td>
                 <td className="px-2 py-2">{job.closure_reason || job.state}</td>
-                <td className="px-2 py-2">{job.pr_number || job.external_pr_number || "none"}</td>
+                <td className="px-2 py-2">{job.pr_number || job.external_pr_number || t("scheduled_tasks.none")}</td>
                 <td className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">{formatDate(job.created_at)}</td>
               </tr>
             ))}
@@ -343,6 +347,7 @@ function ScheduledTaskForm({
   options: ScheduledTaskOptions
   basePath: string
 }) {
+  const { t } = useT("settings")
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const [values, setValues] = useState<ScheduledTaskInput>(initial)
@@ -370,44 +375,44 @@ function ScheduledTaskForm({
 
   return (
     <form className="space-y-5" onSubmit={submit}>
-      {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save scheduled task.")}</PanelMessage> : null}
-      <Field label="Name">
+      {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, t("scheduled_tasks.error_save"))}</PanelMessage> : null}
+      <Field label={t("scheduled_tasks.name")}>
         <input className={inputClass()} onChange={(event) => setValues({ ...values, name: event.target.value })} type="text" value={values.name} />
       </Field>
-      <Field label="Kind">
+      <Field label={t("scheduled_tasks.field_kind")}>
         <select className={inputClass()} onChange={(event) => setValues({ ...values, kind: event.target.value })} value={values.kind}>
           {options.kinds.map((kind) => <option key={kind} value={kind}>{kind}</option>)}
         </select>
       </Field>
       {values.kind === "one_shot" ? (
-        <Field label="Fire at">
+        <Field label={t("scheduled_tasks.field_fire_at")}>
           <input className={inputClass()} onChange={(event) => setValues({ ...values, fire_at: event.target.value })} type="datetime-local" value={values.fire_at} />
         </Field>
       ) : (
-        <Field label="Cron expression">
+        <Field label={t("scheduled_tasks.field_cron")}>
           <input className={`${inputClass()} font-mono`} onChange={(event) => setValues({ ...values, cron_expression: event.target.value })} placeholder="0 9 * * 1" type="text" value={values.cron_expression} />
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{cronHelpText}</p>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t("scheduled_tasks.cron_help")}</p>
         </Field>
       )}
-      <Field label="PR pileup policy">
+      <Field label={t("scheduled_tasks.field_pileup")}>
         <select className={inputClass()} onChange={(event) => setValues({ ...values, pr_pileup_policy: event.target.value })} value={values.pr_pileup_policy}>
           {options.pr_pileup_policies.map((policy) => <option key={policy} value={policy}>{policy}</option>)}
         </select>
       </Field>
-      <Field label="Auto-approval">
+      <Field label={t("scheduled_tasks.field_auto_approve")}>
         <select className={inputClass()} onChange={(event) => setValues({ ...values, auto_approve_mode: event.target.value })} value={values.auto_approve_mode}>
           {options.auto_approve_modes.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </select>
         <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{autoApproval?.preview}</p>
       </Field>
-      <Field label="Prompt">
+      <Field label={t("scheduled_tasks.prompt_heading")}>
         <textarea className={`${inputClass()} font-mono`} onChange={(event) => setValues({ ...values, prompt: event.target.value })} rows={8} value={values.prompt} />
       </Field>
       <div className="flex items-center gap-3">
         <button className="rounded bg-blue-600 px-3.5 py-2.5 font-medium text-white hover:bg-blue-500 dark:hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-blue-300 dark:disabled:bg-blue-900" disabled={save.isPending} type="submit">
-          {save.isPending ? "Saving..." : mode === "new" ? "Create task" : "Save"}
+          {save.isPending ? t("scheduled_tasks.saving") : mode === "new" ? t("scheduled_tasks.create_task") : t("scheduled_tasks.save")}
         </button>
-        <Link className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100" to={mode === "new" ? basePath : `${basePath}/${id}`}>Cancel</Link>
+        <Link className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100" to={mode === "new" ? basePath : `${basePath}/${id}`}>{t("scheduled_tasks.cancel")}</Link>
       </div>
     </form>
   )
@@ -433,7 +438,8 @@ function StatePill({ state }: { state: string }) {
 }
 
 function ScheduledTasksError({ error }: { error: Error }) {
-  return <PanelMessage tone="error">{errorMessage(error, "Unable to load scheduled tasks.")}</PanelMessage>
+  const { t } = useT("settings")
+  return <PanelMessage tone="error">{errorMessage(error, t("scheduled_tasks.error_load"))}</PanelMessage>
 }
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" | "success" }) {
