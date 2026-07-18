@@ -63,6 +63,7 @@ import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkf
 import { artifactPanelClass, disabledPaginationClass, menuButtonClass, paginationLinkClass, shortSha } from "./jobDetail/formatting"
 import type { SourceFile, SourceTreeFile, SourceTreeNode } from "./jobDetail/sourceTree"
 import { buildSourceTree, sortSourceTree, sourceLanguage } from "./jobDetail/sourceTree"
+import { stepArtifactAdversarialReview, stepArtifactTestPlan } from "./jobDetail/stepArtifacts"
 
 type CommandInput =
   | { method: "post"; path: string; body?: unknown; confirm?: string }
@@ -1717,27 +1718,6 @@ function StepCard({ step, payload, command, numberLabel, displayName, metadataLa
       ) : null}
     </div>
   )
-}
-
-function stepArtifactTestPlan(raw: unknown): { steps: string[]; notes: string | null } | null {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
-  const obj = raw as Record<string, unknown>
-  const steps = Array.isArray(obj.steps) ? obj.steps.filter((s): s is string => typeof s === "string") : []
-  if (steps.length === 0 && !obj.notes) return null
-  return { steps, notes: typeof obj.notes === "string" ? obj.notes : null }
-}
-
-function stepArtifactAdversarialReview(raw: unknown): JobAdversarialReviewIteration[] | null {
-  if (!Array.isArray(raw) || raw.length === 0) return null
-  const result: JobAdversarialReviewIteration[] = []
-  for (const item of raw) {
-    if (!item || typeof item !== "object" || Array.isArray(item)) continue
-    const obj = item as Record<string, unknown>
-    if (typeof obj.iteration === "number" && typeof obj.critique === "string" && (obj.verdict === "approved" || obj.verdict === "needs_work")) {
-      result.push({ iteration: obj.iteration, critique: obj.critique, verdict: obj.verdict })
-    }
-  }
-  return result.length > 0 ? result : null
 }
 
 function StepSummaryPanel({ summary, onClose }: { summary: string; onClose: () => void }) {
