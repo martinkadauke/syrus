@@ -39,3 +39,5 @@ export const CHAT_ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024
 export const CHAT_ATTACHMENT_TOTAL_MAX_BYTES = 20 * 1024 * 1024
 
 export const WHITEBOARD_MAX_ELEMENTS = 1000
+
+export type ChatQueryKey = readonly ["chats", string, string]

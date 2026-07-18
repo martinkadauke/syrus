@@ -172,3 +172,10 @@ export function visualViewportHeight() {
 
   return Math.round(window.visualViewport.height)
 }
+
+export function withRoutePrefix(path: string, prefix: string) {
+  if (!prefix || path.startsWith(prefix)) return path
+  if (!path.startsWith("/")) return path
+
+  return `${prefix}${path}`
+}
