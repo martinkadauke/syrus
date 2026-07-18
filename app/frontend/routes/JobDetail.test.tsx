@@ -3,7 +3,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { MemoryRouter, useLocation } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { JobDetailPayload, JobRun, JobSourcePayload, JobStep, JobWorkflow } from "../api/jobs"
-import { FeedbackHistoryPanel, JobDetailView, StepAdversarialReviewPanel, TestPlanPanel } from "./JobDetail"
+import { FeedbackHistoryPanel, JobDetailView, TestPlanPanel } from "./JobDetail"
+import { StepAdversarialReviewPanel } from "./jobDetail/WorkflowGraph"
 
 describe("JobDetailView", () => {
   afterEach(() => {
