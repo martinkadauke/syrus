@@ -146,10 +146,6 @@ module App
       user.repositories.active.exists?
     end
 
-    def any_job?
-      user.jobs.exists?
-    end
-
     def successful_first_job?
       user.jobs.where(closure_reason: SUCCESSFUL_CLOSURE_REASONS).exists?
     end

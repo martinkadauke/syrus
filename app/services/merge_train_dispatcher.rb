@@ -84,16 +84,8 @@ class MergeTrainDispatcher
       Workflow.active.where(trigger_kind: "merge_train", job_id: @epic.jobs.select(:id)).exists?
   end
 
-  def landing_in_progress?
-    landing_job_in_progress.present?
-  end
-
   def landing_job_in_progress
     Job.landing.where(repository_id: @epic.repository_id).order(:id).first
-  end
-
-  def cooling_down?
-    cooling_down_failure.present?
   end
 
   def cooling_down_failure

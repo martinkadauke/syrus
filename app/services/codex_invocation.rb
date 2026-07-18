@@ -376,11 +376,6 @@ class CodexInvocation
     [ "mcp", server, tool ].compact.join("__")
   end
 
-  def codex_tool_input(item)
-    input = item["arguments"] || item["input"]
-    input.is_a?(Hash) ? input : {}
-  end
-
   def rollout_path_for(codex_home, session_id)
     return nil if session_id.blank?
     Dir.glob(File.join(codex_home, "sessions", "**", "*#{session_id}.jsonl")).max_by { |path| File.mtime(path) }

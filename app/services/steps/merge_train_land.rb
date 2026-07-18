@@ -95,12 +95,6 @@ module Steps
       )
     end
 
-    def raise_stale_base!(train, built_base_sha, current_base_sha)
-      record_stale_base!(train, built_base_sha, current_base_sha)
-      raise StepFailed,
-            "#{STALE_BASE_FAILURE_PREFIX} from #{built_base_sha.first(12)} to #{current_base_sha.first(12)}; rebuild required"
-    end
-
     def raise_missing_base!(train, current_base_sha)
       workflow.set_artifact!(
         STALE_BASE_ARTIFACT,
