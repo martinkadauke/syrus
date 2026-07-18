@@ -862,10 +862,10 @@ function RecentChatsSidebar({ onCloseDrawer, onNotice, prefix, userPresent }: { 
                           <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-400 dark:bg-amber-500" />
                         )}
                         {chat.coding_checkout_uncommitted && (
-                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" title="Uncommitted coding changes" />
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400" title={t("nav:title_uncommitted")} />
                         )}
                         {chat.scratchpad_items_count > 0 && (
-                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-teal-500 dark:bg-teal-400" title="Has scratch pad items" />
+                          <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-teal-500 dark:bg-teal-400" title={t("nav:title_scratchpad")} />
                         )}
                         {chat.pinned ? (
                           <PinIcon className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-300" />
@@ -918,9 +918,10 @@ function RecentChatsSidebar({ onCloseDrawer, onNotice, prefix, userPresent }: { 
 }
 
 function RecentChatActivityMarker({ active, unread }: { active: boolean; unread: boolean }) {
+  const { t } = useTranslation("nav")
   if (active) {
     return (
-      <span aria-hidden="true" className="mt-[0.35rem] inline-flex h-2 w-3.5 shrink-0 items-center justify-between" title="Chat turn active">
+      <span aria-hidden="true" className="mt-[0.35rem] inline-flex h-2 w-3.5 shrink-0 items-center justify-between" title={t("nav:title_turn_active")}>
         {[0, 1, 2].map((index) => (
           <span
             aria-hidden="true"
