@@ -170,6 +170,10 @@ import {
 } from "./chat/messageStream"
 import {
   contentInput,
+  appendSearch,
+  diffLineClass,
+  primaryButton,
+  secondaryButton,
   contentRecord,
   errorAsError,
   firstLine,
@@ -442,10 +446,6 @@ type ChatSystemCommandAction =
   | { kind: "discard"; path: string }
   | { kind: "job"; action: "cancel" | "retry"; jobId: string }
   | { kind: "clear-canvas" }
-
-function appendSearch(path: string, search: string) {
-  return search ? `${path}${search}` : path
-}
 
 function ChatView({ chatId, payload, prefix, queryKey }: { chatId: string; payload: ChatPayload; prefix: string; queryKey: ChatQueryKey }) {
   const [notice, setNotice] = useState<string | null>(payload.message || null)
@@ -5249,14 +5249,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
-function primaryButton() {
-  return "flex h-9 items-center justify-center rounded bg-blue-600 px-3 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-60 dark:bg-blue-500 dark:hover:bg-blue-400"
-}
-
-function secondaryButton() {
-  return "rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:text-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800 dark:disabled:text-gray-600"
-}
-
 function codingFilesTabVisible(payload: ChatPayload): boolean {
   return Boolean(
     payload.coding_mode_enabled &&
@@ -5310,22 +5302,6 @@ function buildFileTree(files: string[]): FileTreeNode[] {
     if (!path.includes("/")) roots.push(node)
   }
   return sortNodes(roots)
-}
-
-function diffLineClass(line: string): string {
-  if (line.startsWith("+++") || line.startsWith("---")) {
-    return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-  }
-  if (line.startsWith("@@")) {
-    return "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-  }
-  if (line.startsWith("+")) {
-    return "bg-green-50 text-green-800 dark:bg-green-950 dark:text-green-200"
-  }
-  if (line.startsWith("-")) {
-    return "bg-red-50 text-red-800 dark:bg-red-950 dark:text-red-200"
-  }
-  return "text-gray-800 dark:text-gray-200"
 }
 
 function FileTreeEntry({
