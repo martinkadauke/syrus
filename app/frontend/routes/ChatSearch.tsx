@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useMemo, useState, type FormEvent } from "react"
 import { useT } from "../hooks/useT"
@@ -99,7 +100,7 @@ function SearchResultCard({ result, search }: { result: ChatSearchResult; search
         <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
           <Link className="hover:text-blue-700 dark:hover:text-blue-300" to={`/chats/${result.chat_session_id}`}>{result.chat_title}</Link>
         </h2>
-        <span className="text-sm text-gray-500 dark:text-gray-400">{formatRelativeTime(result.top_matches[0]?.created_at)}</span>
+        <span className="text-sm text-gray-500 dark:text-gray-400"><RelativeTimestamp value={result.top_matches[0]?.created_at} /></span>
       </div>
       <div className="mt-3 flex items-start gap-2">
         {result.has_more_matches ? (
@@ -144,7 +145,7 @@ function MatchRow({ chatSessionId, match }: { chatSessionId: number; match: Chat
     >
       <span className="inline-flex w-fit shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium capitalize text-gray-700 dark:bg-gray-800 dark:text-gray-200">{match.role.replace(/_/g, " ")}</span>
       <Snippet className="min-w-0 flex-1 text-gray-700 dark:text-gray-300" html={match.snippet || ""} />
-      <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400">{formatRelativeTime(match.created_at)}</span>
+      <span className="shrink-0 text-xs text-gray-500 dark:text-gray-400"><RelativeTimestamp value={match.created_at} /></span>
     </button>
   )
 }
@@ -296,22 +297,3 @@ function disabledPaginationClass() {
   return "rounded border border-gray-200 px-3 py-1 text-gray-300 dark:border-gray-800 dark:text-gray-600"
 }
 
-function formatRelativeTime(value: string | null | undefined) {
-  if (!value) return ""
-  const timestamp = new Date(value).getTime()
-  if (Number.isNaN(timestamp)) return ""
-
-  const seconds = Math.round((timestamp - Date.now()) / 1000)
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-    ["second", 1]
-  ]
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" })
-  const [unit, unitSeconds] = units.find(([, unitSeconds]) => Math.abs(seconds) >= unitSeconds) || ["second", 1]
-  return formatter.format(Math.round(seconds / unitSeconds), unit)
-}

@@ -1,3 +1,5 @@
+import { RelativeTimestamp } from "../../components/RelativeTimestamp"
+import { formatRelativeDate } from "../../lib/relativeTime"
 import { useQuery } from "@tanstack/react-query"
 import type { FormEvent } from "react"
 import { CloseIcon } from "../../components/CloseIcon"
@@ -17,7 +19,7 @@ import type { JobRun, fetchJobRunArtifacts } from "../../api/jobs"
 import { useT } from "../../hooks/useT"
 import type { LineAnnotation } from "./diffRendering"
 import { diffCoverageBorderClass, diffGutterClass, diffLineClass, diffMarkerClass, parseUnifiedDiff } from "./diffRendering"
-import { formatDate, withRoutePrefix } from "./formatting"
+import { withRoutePrefix } from "./formatting"
 import { formatElapsed, humanize } from "./stepModel"
 import { coalesceTranscriptLogs, isRunTranscriptAtBottom, scrollRunTranscriptToBottom } from "./transcript"
 
@@ -121,7 +123,7 @@ export function ActiveRunBanner({ run }: { run: JobRun }) {
   return (
     <div className="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-200">
       <span className="font-semibold">{t("run_running", { id: run.id })}{elapsed ? ` · ${elapsed}` : ""}</span>
-      <span> {t("run_running_suffix", { date: formatDate(run.started_at) })}</span>
+      <span> {t("run_running_suffix", { date: run.started_at ? formatRelativeDate(new Date(run.started_at)) : "-" })}</span>
       {activeProcess ? (
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-blue-700 dark:text-blue-300">
           <span>{t("run_active_process", { kind: humanize(activeProcess.kind) })}</span>
@@ -347,7 +349,7 @@ export function TimelinePanel({ canView, jobId, prefix, runsCount }: { canView: 
                     ) : event.title}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {formatDate(event.at)} · {event.source}
+                    <RelativeTimestamp value={event.at} /> · {event.source}
                     {event.ref_label ? (
                       <>
                         {" · "}

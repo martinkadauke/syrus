@@ -1,3 +1,4 @@
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent } from "react"
 import { useEffect, useState } from "react"
@@ -18,7 +19,7 @@ import { CommandButton, useJobCommand } from "./jobDetail/command"
 import { TagsPanel, NeedsAttentionBanner, FeedbackSourceBadge, EpicSummaryLink, TimelinePanel, AttachmentPreview, AttachmentCard, MergeablePill, JobStateBadge, PendingJobTitle, JobSourceLink, DependencyLink, PanelMessage, SmallPill, jobSourceLabel } from "./jobDetail/components"
 import { ChatBubbleIcon, HeaderActions, JobFeedbackPanel } from "./jobDetail/JobHeader"
 import { jobDetailQueryKey, jobDetailSearch, jobWorkflowsQueryKey, mergeJobWorkflowsPayload, tabFromLocation } from "./jobDetail/queryKeys"
-import { formatCurrency, formatDate, jobSlug, withRoutePrefix } from "./jobDetail/formatting"
+import { formatCurrency, jobSlug, withRoutePrefix } from "./jobDetail/formatting"
 import { latestWorkflowCoverage, workflowCreatedAtTime } from "./jobDetail/workflowArtifacts"
 import { WorkflowsTab } from "./jobDetail/WorkflowGraph"
 import { SourceTab } from "./jobDetail/SourceBrowser"
@@ -268,8 +269,8 @@ function SummaryTab({ payload, command, prefix, queryKey }: { payload: JobDetail
               <KeyValue label={t("detail_stack_base")}><StackBaseForm command={command} payload={payload} /></KeyValue>
               {payload.job.pr_number || payload.job.external_pr_number ? <KeyValue label={t("detail_pull_request")}><PullRequestSummary payload={payload} /></KeyValue> : null}
               <KeyValue label={t("detail_cost")}>{payload.job.total_cost_usd == null ? "-" : formatCurrency(payload.job.total_cost_usd)} <span className="text-xs text-gray-400 dark:text-gray-500">({payload.job.billed_runs_count} {t("detail_billed")})</span></KeyValue>
-              <KeyValue label={t("detail_started")}>{formatDate(payload.job.started_at)}</KeyValue>
-              {payload.job.finished_at ? <KeyValue label={t("detail_closed")}>{formatDate(payload.job.finished_at)} ({payload.job.closure_reason || "unspecified"})</KeyValue> : null}
+              <KeyValue label={t("detail_started")}><RelativeTimestamp value={payload.job.started_at} /></KeyValue>
+              {payload.job.finished_at ? <KeyValue label={t("detail_closed")}><RelativeTimestamp value={payload.job.finished_at} /> ({payload.job.closure_reason || "unspecified"})</KeyValue> : null}
             </div>
             <TagsPanel canManageTags={payload.actions.can_manage_tags} embedded command={command} payload={payload} />
           </section>
@@ -358,7 +359,7 @@ function PendingFeedbackPanel({ jobId, comments = [], queryKey }: { jobId: numbe
               <span className="capitalize">{comment.attributed_to}</span>
               <span>·</span>
               <span className="capitalize">{comment.pr_type} PR</span>
-              {comment.comment_created_at ? <span>· {formatDate(comment.comment_created_at)}</span> : null}
+              {comment.comment_created_at ? <span>· <RelativeTimestamp value={comment.comment_created_at} /></span> : null}
             </div>
             <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-700 dark:text-gray-300">{comment.body}</p>
             {replaceId === comment.id ? (
@@ -447,7 +448,7 @@ export function FeedbackHistoryPanel({ workflows, prefix }: { workflows: JobWork
                   <StatusPill state={workflow.state} />
                 </div>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>{formatDate(workflow.created_at)}</span>
+                  <span><RelativeTimestamp value={workflow.created_at} /></span>
                   <Link className="text-blue-600 hover:underline dark:text-blue-300" to={withRoutePrefix(workflow.path, prefix)}>
                     {workflow.slug || workflowSlug(workflow.id)}
                   </Link>
@@ -490,8 +491,8 @@ function RetryStatePanel({ payload }: { payload: JobDetailPayload }) {
         <SmallPill>{retry.retry_budget_remaining} {t("retry_remaining_label")}</SmallPill>
       </div>
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
-        {retry.next_auto_retry_at ? <span>{t("retry_state_next_retry")} {formatDate(retry.next_auto_retry_at)}</span> : null}
-        {retry.retry_delayed_until ? <span>{t("retry_state_delayed_until")} {formatDate(retry.retry_delayed_until)}</span> : null}
+        {retry.next_auto_retry_at ? <span>{t("retry_state_next_retry")} <RelativeTimestamp value={retry.next_auto_retry_at} /></span> : null}
+        {retry.retry_delayed_until ? <span>{t("retry_state_delayed_until")} <RelativeTimestamp value={retry.retry_delayed_until} /></span> : null}
         {retry.retry_delay_reason ? <span>{retry.retry_delay_reason}</span> : null}
       </div>
     </section>
@@ -509,7 +510,7 @@ function JobOwnerLabel({ payload, command, prefix }: { payload: JobDetailPayload
           <Link className="font-medium text-blue-700 hover:underline" to={withRoutePrefix(owner.profile_path, prefix)}>
             {payload.job.claimed_by_current_user ? t("owner_you") : owner.display_name}
           </Link>
-          {payload.job.claimed_at ? <span className="text-xs text-gray-400 dark:text-gray-500">{formatDate(payload.job.claimed_at)}</span> : null}
+          {payload.job.claimed_at ? <span className="text-xs text-gray-400 dark:text-gray-500"><RelativeTimestamp value={payload.job.claimed_at} /></span> : null}
         </>
       ) : (
         <span className="text-gray-400 dark:text-gray-500">{t("owner_unclaimed")}</span>
@@ -580,7 +581,7 @@ function PullRequestSummary({ payload }: { payload: JobDetailPayload }) {
     <div className="space-y-1">
       {payload.job.pr_number ? <a className="text-blue-600 hover:underline" href={payload.job.pr_url || "#"} rel="noopener" target="_blank">{t("pr_syrus", { number: payload.job.pr_number })}</a> : null}
       {payload.job.external_pr_number ? <a className="block text-violet-700 hover:underline" href={payload.job.external_pr_url || "#"} rel="noopener" target="_blank">{t("pr_external", { number: payload.job.external_pr_number })}</a> : null}
-      <div><MergeablePill value={payload.job.pr_mergeable} /> {payload.job.pr_mergeable_checked_at ? <span className="text-xs text-gray-400 dark:text-gray-500">{t("pr_checked")} {formatDate(payload.job.pr_mergeable_checked_at)}</span> : null}</div>
+      <div><MergeablePill value={payload.job.pr_mergeable} /> {payload.job.pr_mergeable_checked_at ? <span className="text-xs text-gray-400 dark:text-gray-500">{t("pr_checked")} <RelativeTimestamp value={payload.job.pr_mergeable_checked_at} /></span> : null}</div>
     </div>
   )
 }
@@ -623,7 +624,7 @@ function ApprovalStatusPanel({ payload }: { payload: JobDetailPayload }) {
               {approvals.map((approval) => (
                 <li key={approval.id} className="flex items-center justify-between py-1 text-xs">
                   <span className="truncate text-gray-700 dark:text-gray-300">{approval.user_email}</span>
-                  <span className="ml-2 shrink-0 text-gray-400 dark:text-gray-500">{new Date(approval.approved_at).toLocaleDateString()}</span>
+                  <span className="ml-2 shrink-0 text-gray-400 dark:text-gray-500"><RelativeTimestamp value={approval.approved_at} /></span>
                 </li>
               ))}
             </ul>

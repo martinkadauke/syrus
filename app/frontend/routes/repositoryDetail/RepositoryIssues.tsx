@@ -1,4 +1,5 @@
-import { PanelMessage, StatusPill, formatRelative, stateFilterClass, buttonClass } from "./shared"
+import { PanelMessage, StatusPill, stateFilterClass, buttonClass } from "./shared"
+import { RelativeTimestamp } from "../../components/RelativeTimestamp"
 import { withRoutePrefix } from "../../lib/routing"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent } from "react"
@@ -221,7 +222,7 @@ function RepositoryIssueRow({
           {issue.labels.map((label) => <IssueLabel color={label.color} key={label.name} name={label.name} />)}
           <a className="font-medium text-gray-900 dark:text-gray-100 hover:underline" href={issue.html_url} rel="noopener" target="_blank">{issue.title}</a>
         </div>
-        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{issue.user_login ? `${issue.user_login} · ` : ""}{issue.created_at ? formatRelative(issue.created_at) : ""}</div>
+        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{issue.user_login ? `${issue.user_login} · ` : ""}{issue.created_at ? <RelativeTimestamp value={issue.created_at} /> : ""}</div>
         {issue.body_excerpt ? <p className="mt-1 line-clamp-2 text-xs text-gray-400 dark:text-gray-500">{issue.body_excerpt}</p> : null}
       </td>
       <td className="px-4 py-3 align-top">

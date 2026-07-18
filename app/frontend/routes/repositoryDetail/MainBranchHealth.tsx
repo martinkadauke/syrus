@@ -1,4 +1,5 @@
-import { appendSearch, buttonClass, PanelMessage, StatusPill, formatRelative, type RepositoryDetailQueryKey } from "./shared"
+import { appendSearch, buttonClass, PanelMessage, StatusPill, type RepositoryDetailQueryKey } from "./shared"
+import { RelativeTimestamp } from "../../components/RelativeTimestamp"
 import { withRoutePrefix } from "../../lib/routing"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
@@ -253,7 +254,7 @@ function HealthHistoryRow({ prefix, record, t }: { prefix: string; record: Repos
   const graderPill = <StatusPill tone={healthTone(record.grader_health)}>{healthLabel(record.grader_health, t)}</StatusPill>
   return (
     <tr>
-      <td className="px-3 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap">{formatRelative(record.checked_at)}</td>
+      <td className="px-3 py-2 text-gray-500 dark:text-gray-400 whitespace-nowrap"><RelativeTimestamp value={record.checked_at} /></td>
       <td className="px-3 py-2">
         <a className="font-mono text-xs text-blue-600 dark:text-blue-400 hover:underline" href={record.sha_url} rel="noopener" target="_blank">
           {record.sha}

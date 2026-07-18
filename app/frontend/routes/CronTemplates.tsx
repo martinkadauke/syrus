@@ -1,4 +1,5 @@
 import { inputClass } from "../lib/formClasses"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
@@ -322,7 +323,7 @@ function AppliedTasks({ tasks, prefix }: { tasks: Awaited<ReturnType<typeof fetc
                 <td className="px-2 py-2 font-mono text-xs"><Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={withRoutePrefix(task.repository_path, prefix)}>{task.repository_slug}</Link></td>
                 <td className="px-2 py-2"><Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={withRoutePrefix(task.scheduled_task_path, prefix)}>{task.name}</Link></td>
                 <td className="px-2 py-2"><StatePill state={task.state} /></td>
-                <td className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">{task.last_fired_at ? new Date(task.last_fired_at).toLocaleString() : t("cron_templates.never")}</td>
+                <td className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400"><RelativeTimestamp fallback={t("cron_templates.never")} value={task.last_fired_at} /></td>
               </tr>
             ))}
           </tbody>

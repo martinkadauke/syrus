@@ -1,4 +1,5 @@
-import { formatDateTime as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
+import { formatRelativeDate } from "../lib/relativeTime"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -208,8 +209,8 @@ function JobsTable({ jobs, showClaimed = false, emptyLabel }: { jobs: QueueJob[]
               <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100">{job.class_name}</td>
               <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{job.queue_name}</td>
               <td className="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">{formatArguments(job.arguments)}</td>
-              <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(job.created_at)}</td>
-              {showClaimed ? <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(job.claimed_at)}</td> : null}
+              <td className="px-4 py-2 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={job.created_at} /></td>
+              {showClaimed ? <td className="px-4 py-2 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={job.claimed_at} /></td> : null}
             </tr>
           ))}
         </tbody>
@@ -222,7 +223,7 @@ function FailuresTable({ payload }: { payload: FailedQueuePayload }) {
   const { t } = useT("admin")
   const failures = payload.failures ?? []
 
-  if (failures.length === 0) return <PanelMessage>{t("queue.no_failures", { since: formatDate(payload.since) })}</PanelMessage>
+  if (failures.length === 0) return <PanelMessage>{t("queue.no_failures", { since: payload.since ? formatRelativeDate(new Date(payload.since)) : "-" })}</PanelMessage>
 
   return (
     <div className="overflow-x-auto">
@@ -239,7 +240,7 @@ function FailuresTable({ payload }: { payload: FailedQueuePayload }) {
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {failures.map((failure: QueueFailure) => (
             <tr key={failure.id}>
-              <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(failure.created_at)}</td>
+              <td className="px-4 py-2 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={failure.created_at} /></td>
               <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100">{failure.class_name || "-"}</td>
               <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{failure.exception_class || "-"}</td>
               <td className="max-w-md px-4 py-2 text-gray-700 dark:text-gray-200">{failure.message || "-"}</td>
@@ -275,8 +276,8 @@ function RecurringTable({ tasks }: { tasks: QueueRecurringTask[] }) {
               <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100">{task.key}</td>
               <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{task.class_name || "-"}</td>
               <td className="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">{task.schedule}</td>
-              <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(task.last_run_at)}</td>
-              <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(task.last_finished_at)}</td>
+              <td className="px-4 py-2 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={task.last_run_at} /></td>
+              <td className="px-4 py-2 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={task.last_finished_at} /></td>
             </tr>
           ))}
         </tbody>
@@ -319,7 +320,7 @@ function WorkerTable({ workers }: { workers: QueueWorker[] }) {
               <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{worker.pid}</td>
               <td className="px-4 py-2 font-mono text-xs text-gray-600 dark:text-gray-300">{formatQueues(worker.queues)}</td>
               <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{worker.threads ?? "-"}</td>
-              <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(worker.last_heartbeat_at)}</td>
+              <td className="px-4 py-2 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={worker.last_heartbeat_at} /></td>
               <td className={`px-4 py-2 ${worker.stale ? "text-red-700 dark:text-red-300" : "text-emerald-700 dark:text-emerald-300"}`}>{worker.stale ? t("queue.worker_stale") : t("queue.worker_healthy")}</td>
             </tr>
           ))}
@@ -351,7 +352,7 @@ function ProcessTable({ processes }: { processes: QueueProcess[] }) {
               <td className="px-4 py-2 font-medium text-gray-900 dark:text-gray-100">{process.kind}</td>
               <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{process.hostname || "-"}</td>
               <td className="px-4 py-2 text-gray-700 dark:text-gray-200">{process.pid}</td>
-              <td className="px-4 py-2 text-gray-600 dark:text-gray-300">{formatDate(process.last_heartbeat_at)}</td>
+              <td className="px-4 py-2 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={process.last_heartbeat_at} /></td>
             </tr>
           ))}
         </tbody>

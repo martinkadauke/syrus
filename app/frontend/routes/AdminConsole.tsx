@@ -1,4 +1,4 @@
-import { formatDateTime as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
@@ -222,7 +222,7 @@ function ActionsTable({ actions }: { actions: ConsoleAction[] }) {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
               {actions.map((action) => (
                 <tr key={action.id}>
-                  <td className="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300">{formatDate(action.performed_at)}</td>
+                  <td className="whitespace-nowrap px-4 py-2 text-xs text-gray-600 dark:text-gray-300"><RelativeTimestamp value={action.performed_at} /></td>
                   <td className="px-4 py-2 text-xs text-gray-700 dark:text-gray-200">{action.user_email}</td>
                   <td className="px-4 py-2 font-mono text-xs">{action.action}</td>
                   <td className="px-4 py-2 font-mono text-xs text-gray-500 dark:text-gray-400">{JSON.stringify(action.params).slice(0, 200)}</td>

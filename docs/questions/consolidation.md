@@ -15,93 +15,36 @@ Every code block below is the **actual current source** from the named file.
 
 ---
 
-## 1. `formatDate` — inconsistent date rendering across the SPA
+## 1. Date rendering across the SPA — **RESOLVED: uniform relative time**
 
-After consolidating the identical `null → "-"; toLocaleString()` copies into
-`lib/format.ts`, these distinct variants remain. They disagree on **three
-independent axes**: output format, locale, and the missing-value placeholder.
+Every timestamp now renders as a **localized relative time** ("2 minutes ago" /
+"vor 2 Minuten", via `Intl.RelativeTimeFormat`) with the **exact local
+timestamp in a hover title**, through one shared component:
+`app/frontend/components/RelativeTimestamp.tsx`
+(relative string from `lib/relativeTime.ts#formatRelativeDate`):
 
-### The canonical the identical copies were merged into
-```ts
-// app/frontend/lib/format.ts
-export function formatDateTime(value: string | null | undefined): string {
-  if (!value) return "-"
-  return new Date(value).toLocaleString()
-}
-// renders e.g. "1/5/2026, 3:45:12 PM" (viewer locale, full OS style), "-" when missing
+```tsx
+<RelativeTimestamp value={job.updated_at} />
+// -> <time datetime="…" title="Jan 5, 2026, 3:45 PM">2 minutes ago</time>
+<RelativeTimestamp value={task.last_fired_at} fallback={t("…never")} />  // per-caller empty text
 ```
 
-### The variants still in the wild
+~40 call sites across ~25 files were migrated (profiles, admin, scheduled
+tasks, repository detail/health/issues, job detail + workflow graph, dashboard
+tables, memories, search, epics, hidden chats, chat search, workspace panels,
+notifications, …) and all the per-file `formatDate` / `formatRelative` /
+`formatDateTime` / `formatRelativeTime` copies were deleted. Where a timestamp
+sits inside a translated sentence (`t(…, { date })`) and can't carry the
+component, it uses the relative string `formatRelativeDate(new Date(x))`
+(localized, no hover).
 
-`routes/Profile.tsx` — **hard-coded en-US**, missing → `"unknown"`, and `Intl`
-medium+short (a *different* string than `toLocaleString`):
-```ts
-function formatDate(value: string | null) {
-  if (!value) return "unknown"
-
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}
-// renders e.g. "Jan 5, 2026, 3:45 PM" — always en-US even for a German/Latin viewer; "unknown" when missing
-```
-
-`routes/Profiles.tsx` — **compact month/day only**, missing → `"not started"`:
-```ts
-function formatDate(value: string | null) {
-  if (!value) return "not started"
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(value))
-}
-// renders e.g. "Jan 5" (no year, no time); "not started" when missing
-```
-
-`routes/Search.tsx` — compact month/day, missing/invalid → `""` (empty):
-```ts
-function formatDate(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ""
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date)
-}
-// renders e.g. "Jan 5"; empty string on a bad date
-```
-
-`routes/RepositoryDetail.tsx` — hard-coded en-US, no missing-value guard:
-```ts
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}
-```
-
-`routes/Memories.tsx` — viewer locale, `Intl` medium+short, no guard:
-```ts
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}
-```
-
-### Summary
-| File | Format | Locale | Missing value |
-|---|---|---|---|
-| `lib/format.ts` `formatDateTime` (canonical, 7 files) | `toLocaleString()` | viewer | `"-"` |
-| `lib/format.ts` `formatDateTimeOrNull` (2 files) | `toLocaleString()` | viewer | `null` |
-| `Memories.tsx` | `Intl` medium+short | viewer | (none) |
-| `RepositoryDetail.tsx` | `Intl` medium+short | **en-US** | (none) |
-| `Profile.tsx` | `Intl` medium+short | **en-US** | `"unknown"` |
-| `Profiles.tsx` | `Intl` **month+day** | viewer | `"not started"` |
-| `Search.tsx` | `Intl` **month+day** | viewer | `""` |
-
-**Questions**
-- **Locale:** should everything use the viewer's locale? The two hard-coded
-  `en-US` sites (`Profile`, `RepositoryDetail`) look like oversights given the
-  app has en/de/la i18n — a German viewer sees English dates there today.
-- **Compact vs full:** `Profiles`/`Search` show `"Jan 5"` (no year/time) — a
-  deliberate dense-list choice? If so it should become a second canonical
-  `formatShortDate`, not fold into the full one.
-- **Missing text:** `"-"` vs `"unknown"` vs `"not started"` vs `""` vs `null`.
-  `"not started"` for an unstarted profile run is arguably better UX than `"-"`.
-
-**Simplest unification I'd propose:** one `formatDateTime` (viewer locale, `Intl`
-medium+short, `"-"` missing) + one `formatShortDate` (viewer locale, month+day,
-`"-"` missing). Say go and I'll migrate all seven and fix any tests that assert
-the old strings.
+**One intentional exception, left for a product call:**
+`routes/chat/messageDisplay.ts#formatMessageTimestamp` — the chat message-bubble
+timestamp is a **hybrid** (relative for the last 24h, then clock time / date for
+older messages, e.g. `3/5 2:32pm`). That's a deliberate chat UX distinct from
+"3 days ago". **Want the chat bubbles uniformly relative too?** Say so and I'll
+switch it. Non-timestamp `Intl`/`toLocaleString` uses were left alone on purpose
+(`BuildBadge` version label, rate-limit numbers, snapshot names).
 
 ---
 

@@ -1,4 +1,4 @@
-import { formatDateTime as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -223,7 +223,7 @@ function ArchivedRepositories({
             <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
               <div className="font-mono">{repository.slug}</div>
               <div className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                {t('repositories.archived')} {formatDate(repository.archived_at)}
+                {t('repositories.archived')} <RelativeTimestamp value={repository.archived_at} />
               </div>
             </td>
             <td className="px-4 py-3 text-right">
@@ -267,7 +267,7 @@ function LastPoll({ repository }: { repository: RepositoryRow }) {
         <span className="font-medium text-red-600 dark:text-red-300">
           {t('repositories.poll_failed')}
         </span>
-        <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">{formatDate(repository.last_poll_started_at)}</span>
+        <span className="ml-1 text-xs text-gray-500 dark:text-gray-400"><RelativeTimestamp value={repository.last_poll_started_at} /></span>
         {repository.last_poll_error ? <div className="mt-0.5 max-w-xs truncate font-mono text-xs text-red-500 dark:text-red-300" title={repository.last_poll_error}>{repository.last_poll_error}</div> : null}
       </div>
     )
@@ -279,7 +279,7 @@ function LastPoll({ repository }: { repository: RepositoryRow }) {
         <span className="text-green-700 dark:text-green-300">
           {t('repositories.poll_ok')}
         </span>
-        <span className="ml-1 text-xs text-gray-500 dark:text-gray-400">{formatDate(repository.last_poll_started_at)}</span>
+        <span className="ml-1 text-xs text-gray-500 dark:text-gray-400"><RelativeTimestamp value={repository.last_poll_started_at} /></span>
       </div>
     )
   }

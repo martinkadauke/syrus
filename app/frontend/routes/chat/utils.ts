@@ -143,26 +143,6 @@ export function snapshotKindLabel(kind: WhiteboardSnapshot["snapshot_kind"]) {
   if (kind === "auto_before_load") return "Before load"
   return "Saved"
 }
-
-export function formatRelativeTime(value: string) {
-  const timestamp = Date.parse(value)
-  if (Number.isNaN(timestamp)) return ""
-
-  const seconds = Math.round((timestamp - Date.now()) / 1000)
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-    ["second", 1]
-  ]
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" })
-  const [unit, unitSeconds] = units.find(([, unitSeconds]) => Math.abs(seconds) >= unitSeconds) || ["second", 1]
-  return formatter.format(Math.round(seconds / unitSeconds), unit)
-}
-
 export function isDesktopChatViewport() {
   return typeof window !== "undefined" && window.innerWidth >= CHAT_ENTER_SUBMIT_MIN_WIDTH
 }

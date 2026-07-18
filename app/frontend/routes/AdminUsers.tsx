@@ -1,4 +1,4 @@
-import { formatDateTime as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { routePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -164,7 +164,7 @@ function UserDetail({ user }: { user: AdminUserDetail }) {
           <Info label={t("users.info_admin")} value={user.admin ? t("users.yes") : t("users.no")} />
           <Info label={t("users.info_role")} value={<RoleOverride user={user} />} />
           <Info label={t("users.info_github_api_blocked")} value={user.github_api_blocked ? user.github_api_blocked_reason || t("users.yes") : t("users.no")} />
-          <Info label={t("users.info_created")} value={formatDate(user.created_at)} />
+          <Info label={t("users.info_created")} value={<RelativeTimestamp value={user.created_at} />} />
         </InfoPanel>
         <InfoPanel title={t("users.agent_tokens")}>
           <Info label={t("users.info_agent_provider")} value={user.agent_provider} />
@@ -183,8 +183,8 @@ function UserDetail({ user }: { user: AdminUserDetail }) {
         </div>
       </section>
 
-      <RecentTable title={t("users.recent_jobs")} rows={user.recent_jobs.map((job) => [`#${job.id}`, job.state, job.kind, formatDate(job.created_at)])} />
-      <RecentTable title={t("users.recent_runs")} rows={user.recent_runs.map((run) => [`#${run.id}`, run.state, run.trigger_kind, formatDate(run.started_at)])} />
+      <RecentTable title={t("users.recent_jobs")} rows={user.recent_jobs.map((job) => [`#${job.id}`, job.state, job.kind, <RelativeTimestamp value={job.created_at} />])} />
+      <RecentTable title={t("users.recent_runs")} rows={user.recent_runs.map((run) => [`#${run.id}`, run.state, run.trigger_kind, <RelativeTimestamp value={run.started_at} />])} />
     </>
   )
 }
@@ -255,7 +255,7 @@ function Info({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
-function RecentTable({ title, rows }: { title: string; rows: string[][] }) {
+function RecentTable({ title, rows }: { title: string; rows: ReactNode[][] }) {
   const { t } = useT("admin")
   return (
     <section className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -266,8 +266,8 @@ function RecentTable({ title, rows }: { title: string; rows: string[][] }) {
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 text-sm">
             <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {rows.map((row) => (
-                <tr key={row.join("-")}>{row.map((cell) => <td className="px-4 py-2" key={cell}>{cell}</td>)}</tr>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>{row.map((cell, cellIndex) => <td className="px-4 py-2" key={cellIndex}>{cell}</td>)}</tr>
               ))}
             </tbody>
           </table>

@@ -1,4 +1,5 @@
 import { withRoutePrefix } from "../lib/routing"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
@@ -114,7 +115,7 @@ function RecentJob({ job, prefix }: { job: TeamProfileJob; prefix: string }) {
         </Link>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
           {job.owner ? <OwnerProfileLink owner={job.owner} prefix={prefix} /> : null}
-          <span>{job.repository.slug} · updated {formatDate(job.updated_at)}</span>
+          <span>{job.repository.slug} · updated <RelativeTimestamp fallback="unknown" value={job.updated_at} /></span>
         </div>
       </div>
       <span className="rounded bg-gray-100 dark:bg-gray-800 px-2 py-1 text-xs font-medium text-gray-700 dark:text-gray-300">{humanize(job.state)}</span>
@@ -134,8 +135,3 @@ function humanize(value: string) {
   return value.replace(/_/g, " ").replace(/^\w/, (match) => match.toUpperCase())
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "unknown"
-
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}

@@ -1,4 +1,6 @@
-import { type RepositoryDetailQueryKey, appendSearch, buttonClass, PanelMessage, StatusPill, formatRelative } from "./repositoryDetail/shared"
+import { type RepositoryDetailQueryKey, appendSearch, buttonClass, PanelMessage, StatusPill } from "./repositoryDetail/shared"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
+import { formatRelativeDate } from "../lib/relativeTime"
 import { RepositoryIssues } from "./repositoryDetail/RepositoryIssues"
 import { MainBranchHealthSection } from "./repositoryDetail/MainBranchHealth"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
@@ -179,7 +181,7 @@ function RepositoryDetailsCard({ payload, prefix }: { payload: RepositoryDetailP
           <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">
             {t('repository.added')}
           </dt>
-          <dd className="mt-0.5 text-gray-700 dark:text-gray-300">{formatDate(repository.created_at)}</dd>
+          <dd className="mt-0.5 text-gray-700 dark:text-gray-300"><RelativeTimestamp value={repository.created_at} /></dd>
         </div>
         {repository.github_rate_limit ? (
           <div>
@@ -361,7 +363,7 @@ function NeedsTriageJobs({ payload, prefix, queryKey, onNotice }: { payload: Rep
                       </div>
                     ) : null}
                   </td>
-                  <td className="hidden px-4 py-3 text-gray-500 dark:text-gray-400 sm:table-cell">{formatRelative(job.created_at)}</td>
+                  <td className="hidden px-4 py-3 text-gray-500 dark:text-gray-400 sm:table-cell"><RelativeTimestamp value={job.created_at} /></td>
                   <td className="px-4 py-3 text-right">
                     <button className={buttonClass("blue")} disabled={release.isPending} onClick={() => { onNotice(null); release.mutate(job.id) }} type="button">
                       {t('repository.release_for_triage')}
@@ -454,11 +456,11 @@ function JobRow({ job, prefix }: { job: RepositoryDetailJob; prefix: string }) {
         <div className="mt-1 flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 sm:hidden">
           <span>{job.runs_count} {job.runs_count === 1 ? "run" : "runs"}</span>
           <span>·</span>
-          <span>{formatRelative(job.updated_at)}</span>
+          <span><RelativeTimestamp value={job.updated_at} /></span>
         </div>
       </td>
       <td className="hidden px-4 py-3 text-gray-600 dark:text-gray-400 sm:table-cell">{job.runs_count}</td>
-      <td className="hidden px-4 py-3 text-gray-500 dark:text-gray-400 sm:table-cell">{formatRelative(job.updated_at)}</td>
+      <td className="hidden px-4 py-3 text-gray-500 dark:text-gray-400 sm:table-cell"><RelativeTimestamp value={job.updated_at} /></td>
       <td className="hidden px-4 py-3 text-right sm:table-cell">
         <Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={withRoutePrefix(job.job_path, prefix)}>{t('repository.view')}</Link>
       </td>
@@ -481,7 +483,7 @@ function RepositoryRetryState({ job }: { job: RepositoryDetailJob }) {
       </span>
       {retry.next_auto_retry_at ? (
         <span>
-          {t('repository.retry_next', { time: formatRelative(retry.next_auto_retry_at) })}
+          {t('repository.retry_next', { time: formatRelativeDate(new Date(retry.next_auto_retry_at)) })}
         </span>
       ) : null}
     </div>
@@ -552,9 +554,5 @@ function pageSearch(search: string) {
   const params = new URLSearchParams(search)
   const page = params.get("page")
   return page ? `?${new URLSearchParams({ page }).toString()}` : ""
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
 }
 

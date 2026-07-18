@@ -1,4 +1,4 @@
-import { formatDateTimeOrNull as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { routePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -104,7 +104,7 @@ function RepositoryScheduledTasksView({ payload, prefix }: { payload: Repository
                   <td className="px-4 py-3 font-mono text-xs text-gray-700 dark:text-gray-300">{task.schedule_label || t("scheduled_tasks.none")}</td>
                   <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                     {task.next_fire_at
-                      ? <span title={toRomanDate(task.next_fire_at)}>{formatDate(task.next_fire_at)}</span>
+                      ? <span title={toRomanDate(task.next_fire_at)}><RelativeTimestamp value={task.next_fire_at} /></span>
                       : t("scheduled_tasks.none")}
                   </td>
                   <td className="px-4 py-3"><StatePill state={task.state} /></td>

@@ -1,3 +1,5 @@
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
+import { formatRelativeDate } from "../lib/relativeTime"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient, type UseMutationResult } from "@tanstack/react-query"
 import { type FormEvent, type ReactNode } from "react"
@@ -115,7 +117,7 @@ export function EpicDetail({ payload, prefix }: { payload: EpicDetailPayload; pr
           <Link className="font-mono hover:underline" to={withRoutePrefix(payload.epic.repository.repository_path, prefix)}>{payload.epic.repository.slug}</Link>
           <span> · {t("jobs_count", { count: payload.epic.jobs_count })}</span>
           <span> · {epicOwnerLabel(payload.epic, t)}</span>
-          <span> · {t("updated_relative", { time: formatRelative(payload.epic.updated_at) })}</span>
+          <span> · {t("updated_relative", { time: formatRelativeDate(new Date(payload.epic.updated_at)) })}</span>
         </p>
 
         {(payload.state_transitions.length > 0 || payload.epic.claimable || !payload.epic.archived) ? (
@@ -468,7 +470,7 @@ function HistorySection({ versions }: { versions: EpicVersionRecord[] }) {
               <li className="space-y-3 px-4 py-3" key={version.id}>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                   <span className="font-medium text-gray-700 dark:text-gray-200">{version.actor.email_address}</span>
-                  <span>{formatDateTime(version.created_at)}</span>
+                  <span><RelativeTimestamp value={version.created_at} /></span>
                 </div>
                 {version.title_before !== null || version.title_after !== null ? (
                   <div className="grid gap-2 md:grid-cols-2">
@@ -650,7 +652,7 @@ function DetailsPanel({ epic, jobs, prefix }: { epic: EpicDetailPayload["epic"];
         </div>
         <div>
           <dt className="text-xs font-medium uppercase text-gray-500 dark:text-gray-400">{t("updated_label")}</dt>
-          <dd className="mt-0.5 text-gray-700 dark:text-gray-200" title={formatDateTime(epic.updated_at)}>{formatRelative(epic.updated_at)}</dd>
+          <dd className="mt-0.5 text-gray-700 dark:text-gray-200"><RelativeTimestamp value={epic.updated_at} /></dd>
         </div>
       </dl>
     </section>
@@ -777,20 +779,5 @@ function humanize(value: string) {
 function epicOwnerLabel(epic: EpicDetailPayload["epic"], t: (key: string, opts?: Record<string, unknown>) => string) {
   const owner = epic.owner_user || epic.owner
   return owner ? t("owner_label", { email: owner.email_address }) : t("unclaimed")
-}
-
-function formatRelative(value: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
-  if (seconds < 60) return "just now"
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
-function formatDateTime(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
 }
 

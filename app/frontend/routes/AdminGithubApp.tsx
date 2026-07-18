@@ -1,4 +1,4 @@
-import { formatDateTime as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
 import type { ReactNode } from "react"
@@ -110,7 +110,7 @@ function StoredRegistration({ app }: { app: AdminGithubAppStatus }) {
         {app.registered ? (
           <>
             <span className="font-mono">{app.slug || `app-${app.id || "unknown"}`}</span>
-            {app.registered_at ? ` registered ${formatDate(app.registered_at)}.` : " registered."}
+            {app.registered_at ? <> registered <RelativeTimestamp value={app.registered_at} />.</> : " registered."}
           </>
         ) : (
           t("github_app.no_stored_registration")

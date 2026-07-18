@@ -25,18 +25,6 @@ export function PanelMessage({ children, tone = "muted" }: { children: ReactNode
 export function stateFilterClass(active: boolean) {
   return `rounded border px-3 py-1.5 text-sm font-medium ${active ? "border-blue-600 bg-blue-600 text-white" : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`
 }
-
-export function formatRelative(value: string) {
-  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000))
-  if (seconds < 60) return "just now"
-  const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  return `${days}d ago`
-}
-
 export function buttonClass(tone: "green" | "blue" | "amber" | "gray", extra = "") {
   const colors = {
     amber: "bg-amber-600 text-white hover:bg-amber-500 dark:hover:bg-amber-500",

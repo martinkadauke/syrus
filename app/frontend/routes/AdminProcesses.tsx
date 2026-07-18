@@ -1,4 +1,4 @@
-import { formatDateTime as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ReactNode } from "react"
@@ -141,9 +141,9 @@ function ProcessesTable({ processes, basePath }: { processes: SpawnedProcessPayl
                 {process.hostname || "-"}
                 {process.pid ? <div className="text-gray-500 dark:text-gray-400">pid {process.pid}</div> : null}
               </td>
-              <td className="whitespace-nowrap px-3 py-2 align-top text-xs text-gray-700 dark:text-gray-200">{formatDate(process.started_at)}</td>
+              <td className="whitespace-nowrap px-3 py-2 align-top text-xs text-gray-700 dark:text-gray-200"><RelativeTimestamp value={process.started_at} /></td>
               <td className="whitespace-nowrap px-3 py-2 align-top text-xs text-gray-700 dark:text-gray-200">
-                {formatDate(process.last_chunk_at)}
+                <RelativeTimestamp value={process.last_chunk_at} />
                 {process.stale ? <span className="ml-1 rounded bg-amber-200 dark:bg-amber-900/70 px-1 text-[0.65rem] font-semibold uppercase text-amber-900 dark:text-amber-100">{t("processes.stale")}</span> : null}
               </td>
               <td className="px-3 py-2 align-top text-xs text-gray-700 dark:text-gray-200">{formatDuration(process.duration_s)}</td>
@@ -183,11 +183,11 @@ function ProcessDetail({ process, prefix }: { process: SpawnedProcessPayload; pr
         <dt className="text-gray-500 dark:text-gray-400">{t("processes.detail_workdir")}</dt>
         <dd className="break-all font-mono text-gray-900 dark:text-gray-100">{process.workdir || "-"}</dd>
         <dt className="text-gray-500 dark:text-gray-400">{t("processes.detail_started")}</dt>
-        <dd>{formatDate(process.started_at)}</dd>
+        <dd><RelativeTimestamp value={process.started_at} /></dd>
         <dt className="text-gray-500 dark:text-gray-400">{t("processes.detail_last_chunk")}</dt>
-        <dd>{formatDate(process.last_chunk_at)} {process.stale ? <span className="rounded bg-amber-200 dark:bg-amber-900/70 px-1 text-[0.65rem] font-semibold uppercase text-amber-900 dark:text-amber-100">{t("processes.stale")}</span> : null}</dd>
+        <dd><RelativeTimestamp value={process.last_chunk_at} /> {process.stale ? <span className="rounded bg-amber-200 dark:bg-amber-900/70 px-1 text-[0.65rem] font-semibold uppercase text-amber-900 dark:text-amber-100">{t("processes.stale")}</span> : null}</dd>
         <dt className="text-gray-500 dark:text-gray-400">{t("processes.detail_finished")}</dt>
-        <dd>{formatDate(process.finished_at)}</dd>
+        <dd><RelativeTimestamp value={process.finished_at} /></dd>
         <dt className="text-gray-500 dark:text-gray-400">{t("processes.detail_duration")}</dt>
         <dd>{formatDuration(process.duration_s)}</dd>
         <dt className="text-gray-500 dark:text-gray-400">{t("processes.detail_outcome")}</dt>
@@ -217,7 +217,7 @@ function ProcessDetail({ process, prefix }: { process: SpawnedProcessPayload; pr
         {process.kill_requested_at ? (
           <>
             <dt className="text-gray-500 dark:text-gray-400">{t("processes.detail_kill_requested")}</dt>
-            <dd>{formatDate(process.kill_requested_at)}</dd>
+            <dd><RelativeTimestamp value={process.kill_requested_at} /></dd>
           </>
         ) : null}
       </dl>

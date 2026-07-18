@@ -1,4 +1,5 @@
 import { withRoutePrefix } from "../lib/routing"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation } from "react-router-dom"
 import { useState } from "react"
@@ -106,7 +107,7 @@ function SearchResultRow({ result }: { result: SearchResult }) {
           <Snippet html={result.snippet || ""} />
           {hasGroupedMatches ? <GroupedChatMatches result={result} routePrefix={prefix} /> : null}
         </div>
-        {result.created_at ? <time className="shrink-0 text-xs text-gray-500 dark:text-gray-400" dateTime={result.created_at}>{formatDate(result.created_at)}</time> : null}
+        {result.created_at ? <RelativeTimestamp className="shrink-0 text-xs text-gray-500 dark:text-gray-400" value={result.created_at} /> : null}
       </div>
     </article>
   )
@@ -136,7 +137,7 @@ function GroupedChatMatches({ result, routePrefix }: { result: Extract<SearchRes
           {groupedMatches.map((match) => (
             <Link className="block py-3 hover:bg-gray-50 dark:hover:bg-gray-900" key={match.id} to={withRoutePrefix(match.path, routePrefix)}>
               <Snippet html={match.snippet || ""} />
-              {match.created_at ? <time className="mt-1 block text-xs text-gray-500 dark:text-gray-400" dateTime={match.created_at}>{formatDate(match.created_at)}</time> : null}
+              {match.created_at ? <RelativeTimestamp className="mt-1 block text-xs text-gray-500 dark:text-gray-400" value={match.created_at} /> : null}
             </Link>
           ))}
           {result.has_more_matches ? <div className="py-3 text-xs text-gray-500 dark:text-gray-400">{t('search.top_matches_shown', { count: groupedMatches.length })}</div> : null}
@@ -221,9 +222,3 @@ function sanitizeSnippet(html: string) {
   return output.innerHTML
 }
 
-function formatDate(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return ""
-
-  return new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date)
-}

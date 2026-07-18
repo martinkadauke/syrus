@@ -1,4 +1,4 @@
-import { formatDateTimeOrNull as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { routePrefix, withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { UseMutationResult } from "@tanstack/react-query"
@@ -172,7 +172,7 @@ function TaskSection({ title, tasks, empty, basePath, prefix }: { title: string;
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{task.schedule_label || t("scheduled_tasks.none")}</td>
                   <td className="px-4 py-3"><StatePill state={task.state} /></td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{formatDate(task.last_fired_at) || t("scheduled_tasks.never")}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400"><RelativeTimestamp fallback={t("scheduled_tasks.never")} value={task.last_fired_at} /></td>
                   <td className="px-4 py-3 text-right">
                     <Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={`${basePath}/${task.id}`}>{t("scheduled_tasks.open")}</Link>
                   </td>
@@ -239,9 +239,9 @@ function TaskDetail({ payload, basePath, prefix }: { payload: ScheduledTaskDetai
           <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_cron")}</dt>
           <dd className="font-mono">{payload.task.cron_expression || t("scheduled_tasks.none")}</dd>
           <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_fire_at")}</dt>
-          <dd>{formatDate(payload.task.fire_at) || t("scheduled_tasks.none")}</dd>
+          <dd><RelativeTimestamp fallback={t("scheduled_tasks.none")} value={payload.task.fire_at} /></dd>
           <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_next_fire")}</dt>
-          <dd>{formatDate(payload.task.next_fire_at) || t("scheduled_tasks.none")}</dd>
+          <dd><RelativeTimestamp fallback={t("scheduled_tasks.none")} value={payload.task.next_fire_at} /></dd>
           <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_pileup")}</dt>
           <dd>{payload.task.pr_pileup_policy}</dd>
           <dt className="text-gray-500 dark:text-gray-400">{t("scheduled_tasks.field_auto_approve")}</dt>
@@ -322,7 +322,7 @@ function RecentJobs({ jobs, prefix }: { jobs: ScheduledTaskDetailPayload["recent
                 <td className="px-2 py-2"><Link className="text-blue-600 dark:text-blue-400 underline hover:no-underline" to={withRoutePrefix(job.job_path, prefix)}>#{job.id}</Link></td>
                 <td className="px-2 py-2">{job.closure_reason || job.state}</td>
                 <td className="px-2 py-2">{job.pr_number || job.external_pr_number || t("scheduled_tasks.none")}</td>
-                <td className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400">{formatDate(job.created_at)}</td>
+                <td className="px-2 py-2 text-xs text-gray-500 dark:text-gray-400"><RelativeTimestamp value={job.created_at} /></td>
               </tr>
             ))}
           </tbody>

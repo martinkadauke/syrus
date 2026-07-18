@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import type { FormEvent } from "react"
 import { useEffect, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -154,7 +155,7 @@ function MemoryRowView({ memory, payload, showOwner, onNotice }: { memory: Memor
       <td className="px-4 py-3">
         <span className={memory.published ? "text-green-700 dark:text-green-300" : "text-gray-500 dark:text-gray-400"}>{memory.published ? "Published" : "Unpublished"}</span>
       </td>
-      <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{formatDate(memory.created_at)}</td>
+      <td className="px-4 py-3 text-gray-600 dark:text-gray-400"><RelativeTimestamp value={memory.created_at} /></td>
       <td className="px-4 py-3">
         <div className="flex justify-end gap-2">
           {memory.permissions.can_manage ? (
@@ -407,10 +408,6 @@ function KindBadge({ kind }: { kind: string }) {
 
 function kindLabel(kind: string) {
   return kindLabels[kind] || kind
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
 }
 
 function labelClass() {

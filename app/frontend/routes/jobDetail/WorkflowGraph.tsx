@@ -1,3 +1,4 @@
+import { RelativeTimestamp } from "../../components/RelativeTimestamp"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { useState } from "react"
@@ -15,7 +16,7 @@ import { errorMessage } from "../../lib/errorMessage"
 import { CommandButton, useJobCommand } from "./command"
 import { booleanValue, displayStepItemKey, gradeDisplayStatus, gradePhases, gradeSummaries, gradeSummaryCounts, humanize, isActiveState, loopDisplayName, loopDisplayStatus, objectDetails, prepareFailureDetails, prepareFailureStatus, sortedRunsNewestFirst, stringify, stringValue, workflowStepItems, type DisplayStepItem, type GradeStepItem, type GradeSummary, type LoopStepItem, type PrepareFailure } from "./stepModel"
 import { AgentDiff, ActiveRunBanner, PanelMessage, RunTranscriptLogs, SmallPill } from "./components"
-import { artifactPanelClass, disabledPaginationClass, formatCurrency, formatDate, formatDuration, paginationLinkClass, shortSha, withRoutePrefix } from "./formatting"
+import { artifactPanelClass, disabledPaginationClass, formatCurrency, formatDuration, paginationLinkClass, shortSha, withRoutePrefix } from "./formatting"
 import { stepArtifactAdversarialReview, stepArtifactTestPlan } from "./stepArtifacts"
 import type { BranchDivergence } from "./branchDivergence"
 import { workflowBranchDivergence } from "./branchDivergence"
@@ -87,7 +88,7 @@ function WorkflowCard({ workflow, payload, command, prefix }: { workflow: JobWor
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             <Link className="hover:underline" to={withRoutePrefix(workflow.path, prefix)}>{workflow.slug || workflowSlug(workflow.id)}</Link>
           </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{workflow.trigger_kind} · {workflow.agent_provider || t("workflow_default_agent")} · {t("workflow_created")} {formatDate(workflow.created_at)}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{workflow.trigger_kind} · {workflow.agent_provider || t("workflow_default_agent")} · {t("workflow_created")} <RelativeTimestamp value={workflow.created_at} /></p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {workflow.state === "running" ? null : <StatusPill state={workflow.state} />}
@@ -356,7 +357,7 @@ function StepCard({ step, payload, command, numberLabel, displayName, metadataLa
             {step.loop_id ? <span>{t("step_metadata_iteration", { n: step.iteration ?? 1 })}</span> : null}
             {activeRun && step.state !== activeRun.state ? <SmallPill>{t("step_state_display", { state: step.state.replaceAll("_", " ") })}</SmallPill> : null}
             {step.latest ? <SmallPill>{t("step_latest")}</SmallPill> : null}
-            <span>{formatDate(step.started_at || step.created_at)}</span>
+            <span><RelativeTimestamp value={step.started_at || step.created_at} /></span>
             {step.finished_at ? <span>{formatDuration(step.started_at, step.finished_at)}</span> : null}
           </div>
           {activeRun ? <ActiveRunBanner run={activeRun} /> : null}
@@ -538,7 +539,7 @@ function RunRow({ run, payload, command, active = false, stepSummaryArtifact = n
           {run.agent_summary ? <p className="mt-2 whitespace-pre-wrap text-gray-700 dark:text-gray-300">{run.agent_summary}</p> : null}
           {run.health_snapshots.at(-1) ? <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">{t("run_health")} {run.health_snapshots.at(-1)?.health_status || "unknown"} {run.health_snapshots.at(-1)?.hint ? `- ${run.health_snapshots.at(-1)?.hint}` : ""}</p> : null}
           {run.failure_classification ? <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">{t("run_failure_label")} {humanize(run.failure_classification.classification)} · {run.failure_classification.retryable ? t("run_retryable") : t("run_not_retryable")}{run.failure_classification.reason ? ` - ${run.failure_classification.reason}` : ""}</p> : null}
-          {run.run_diagnostic?.present ? <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t("run_diagnostic_captured")} {formatDate(run.run_diagnostic.created_at)}{run.run_diagnostic.error_message ? `: ${run.run_diagnostic.error_message}` : ""}</p> : null}
+          {run.run_diagnostic?.present ? <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{t("run_diagnostic_captured")} <RelativeTimestamp value={run.run_diagnostic.created_at} />{run.run_diagnostic.error_message ? `: ${run.run_diagnostic.error_message}` : ""}</p> : null}
         </div>
         <div className="flex flex-wrap justify-end gap-2">
           {run.job_log_count > 0 ? (

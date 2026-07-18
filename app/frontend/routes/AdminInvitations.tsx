@@ -1,4 +1,4 @@
-import { formatDateTime as formatDate } from "../lib/format"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useState } from "react"
@@ -160,7 +160,7 @@ function InvitationRow({ invitation, onNotice }: { invitation: AdminInvitation; 
           <CopyIcon className={`h-3.5 w-3.5 shrink-0 no-underline ${copied ? "text-green-600 dark:text-green-300" : "text-gray-400 group-hover:text-gray-600 dark:text-gray-500 dark:group-hover:text-gray-300"}`} />
         </button>
       </td>
-      <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-300">{formatDate(invitation.expires_at)}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-300"><RelativeTimestamp value={invitation.expires_at} /></td>
       <td className="whitespace-nowrap px-4 py-3 text-gray-600 dark:text-gray-300">{invitation.invited_by_email_address}</td>
       <td className="whitespace-nowrap px-4 py-3 text-right">
         {confirming ? (

@@ -1,4 +1,5 @@
 import { inputClass } from "../lib/formClasses"
+import { RelativeTimestamp } from "../components/RelativeTimestamp"
 import { routePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { FormEvent, ReactNode } from "react"
@@ -240,7 +241,7 @@ function DocumentSummary({ document }: { document: RepositoryDocument }) {
           <>
             {t('repository_documents.unknown')}
           </>
-        )} · {new Date(document.created_at).toLocaleString()}
+        )} · <RelativeTimestamp value={document.created_at} />
       </div>
     </div>
   )

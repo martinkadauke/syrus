@@ -1,5 +1,7 @@
 import { SortableColumnHeader, TimestampCell, useMediaQuery, ExternalMetadataLink, MetadataLine, NeutralStatePill, OwnerBadge, PendingJobTitle, RepositorySlugLink, WorkflowBadges } from "./components"
-import { bulkButtonClass, columnAriaSort, formatCurrency, formatDate, humanizeOption, jobDateValue, pluralize, withRoutePrefix } from "./helpers"
+import { RelativeTimestamp } from "../../components/RelativeTimestamp"
+import { formatRelativeDate } from "../../lib/relativeTime"
+import { bulkButtonClass, columnAriaSort, formatCurrency, humanizeOption, jobDateValue, pluralize, withRoutePrefix } from "./helpers"
 import type { DashboardSortState } from "./helpers"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
@@ -452,7 +454,7 @@ function MobileJobRow({ job, selected, onToggleOne, prefix, topSeparator = false
           <span>{approvalLabel}</span>
           {job.owner_badge ? <OwnerBadge badge={job.owner_badge} /> : null}
           <span>{job.workflows_count} {pluralize(job.workflows_count, "workflow")}</span>
-          <span>{formatDate(job.started_at || job.created_at)}</span>
+          <span><RelativeTimestamp value={job.started_at || job.created_at} /></span>
         </MetadataLine>
         {job.tags.length > 0 ? (
           <div className="mt-1 flex flex-wrap gap-1">
@@ -587,7 +589,7 @@ function RetryStateInline({ job }: { job: DashboardJobItem }) {
     retry.classification_label,
     retry.retryable ? "retryable" : "not retryable",
     `${retry.retry_budget_remaining} left`,
-    retry.next_auto_retry_at ? `next ${formatDate(retry.next_auto_retry_at)}` : null,
+    retry.next_auto_retry_at ? `next ${formatRelativeDate(new Date(retry.next_auto_retry_at))}` : null,
     retry.provider_circuit_open ? "provider circuit open" : null
   ].filter(Boolean).join(" · ")
 

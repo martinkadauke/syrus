@@ -184,30 +184,7 @@ export function humanizeOption(value: string) {
 }
 
 
-export function formatDate(value: string | null) {
-  if (!value) return "-"
-
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}
-
-export function formatRelativeDate(date: Date) {
-  const seconds = Math.round((date.getTime() - Date.now()) / 1000)
-  const absSeconds = Math.abs(seconds)
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-    ["second", 1]
-  ]
-
-  const [unit, divisor] = units.find(([, unitSeconds]) => absSeconds >= unitSeconds) || ["second", 1]
-  const value = Math.round(seconds / divisor)
-
-  return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(value, unit)
-}
+export { formatRelativeDate } from "../../lib/relativeTime"
 
 export function dashboardEmptyFallbackPath(payload: DashboardPayload) {
   return payload.subject === "epic" ? payload.paths.new_epic_path : payload.paths.new_job_path

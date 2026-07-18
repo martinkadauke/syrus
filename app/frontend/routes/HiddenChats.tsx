@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { formatRelativeDate } from "../lib/relativeTime"
 import type { ReactNode } from "react"
 import { useState } from "react"
 import { fetchHiddenChats, unhideChat, type HiddenChatRecord } from "../api/chats"
@@ -65,7 +66,7 @@ function HiddenChatsPanel({ onNotice }: { onNotice: (message: string | null) => 
                     <div className="truncate font-medium text-gray-900 dark:text-gray-100">{chat.title || chat.repository?.slug || t("new_title")}</div>
                     <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                       <span>{chat.repository?.slug || t('hidden.general')}</span>
-                      <span>{t('hidden.hidden_at', { date: formatDateTime(chat.hidden_at) })}</span>
+                      <span>{t('hidden.hidden_at', { date: chat.hidden_at ? formatRelativeDate(new Date(chat.hidden_at)) : "-" })}</span>
                     </div>
                   </div>
                   <button
@@ -106,15 +107,6 @@ function HiddenChatsPanel({ onNotice }: { onNotice: (message: string | null) => 
 
 function chatTitle(chat: HiddenChatRecord) {
   return chat.title || chat.repository?.slug || "New chat"
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) return "unknown"
-
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value))
 }
 
 function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?: "muted" | "error" }) {

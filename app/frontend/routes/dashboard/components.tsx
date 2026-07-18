@@ -1,4 +1,5 @@
-import { dashboardColumnLabel, humanizeOption, sortableColumnFor, withRoutePrefix, formatDate, formatRelativeDate, type DashboardSortState } from "./helpers"
+import { RelativeTimestamp } from "../../components/RelativeTimestamp"
+import { dashboardColumnLabel, humanizeOption, sortableColumnFor, withRoutePrefix, type DashboardSortState } from "./helpers"
 import type { ReactNode } from "react"
 import { Children, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
@@ -203,15 +204,4 @@ export function useMediaQuery(query: string, defaultMatches: boolean) {
   return matches
 }
 
-export function RelativeTimestamp({ value }: { value: string | null }) {
-  if (!value) return <>-</>
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return <>-</>
-
-  return (
-    <time dateTime={value} title={formatDate(value)}>
-      {formatRelativeDate(date)}
-    </time>
-  )
-}
+export { RelativeTimestamp }

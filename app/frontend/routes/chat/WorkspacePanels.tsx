@@ -1,4 +1,5 @@
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types"
+import { RelativeTimestamp } from "../../components/RelativeTimestamp"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import type { ErrorInfo, MouseEvent as ReactMouseEvent, ReactNode } from "react"
 import { Component, useCallback, useEffect, useRef, useState } from "react"
@@ -15,7 +16,7 @@ import { ChatJobStatusPanel } from "../ChatJobStatusPanel"
 import { errorMessage } from "../../lib/errorMessage"
 import { asExcalidrawElements, asExcalidrawFiles, cleanWhiteboardAppState, cleanWhiteboardFiles, cloneWhiteboardScene, signatureForScene, whiteboardScene, withFreshElementIds } from "./whiteboardScene"
 import { type ChatQueryKey, WHITEBOARD_MAX_ELEMENTS, WHITEBOARD_SAVE_DEBOUNCE_MS } from "./constants"
-import { chatDisplayTitle, codingFilesTabVisible, formatRelativeTime, jobsTabVisible, snapshotKindLabel, diffLineClass, secondaryButton, errorAsError, formatCurrency, formatTokenCount, truncateSnapshotName, withRoutePrefix } from "./utils"
+import { chatDisplayTitle, codingFilesTabVisible, jobsTabVisible, snapshotKindLabel, diffLineClass, secondaryButton, errorAsError, formatCurrency, formatTokenCount, truncateSnapshotName, withRoutePrefix } from "./utils"
 import { ImageLightbox } from "./MessageCards"
 import { Attachments } from "./Attachments"
 import type { WorkspaceTab } from "./workspaceTabs"
@@ -334,7 +335,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                       <span className="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">{snapshotKindLabel(snapshot.snapshot_kind)}</span>
                       <span>{snapshot.element_count} {snapshot.element_count === 1 ? "element" : "elements"}</span>
-                      <span>{formatRelativeTime(snapshot.created_at)}</span>
+                      <span><RelativeTimestamp value={snapshot.created_at} /></span>
                     </div>
                   </div>
                   <button
@@ -365,7 +366,7 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                       {walkthrough.duration_seconds != null ? <span className="tabular-nums">{formatClock(walkthrough.duration_seconds)}</span> : null}
                       <span className="rounded bg-gray-100 px-1.5 py-0.5 font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">{walkthroughStateLabel(walkthrough.state)}</span>
-                      <span>{formatRelativeTime(walkthrough.created_at)}</span>
+                      <span><RelativeTimestamp value={walkthrough.created_at} /></span>
                     </div>
                     {walkthrough.state === "failed" && walkthrough.error_message ? (
                       <p className="mt-1 text-xs text-red-600 dark:text-red-400">{walkthrough.error_message}</p>

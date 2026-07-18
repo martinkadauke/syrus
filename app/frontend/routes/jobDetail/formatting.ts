@@ -37,12 +37,6 @@ export { withRoutePrefix } from "../../lib/routing"
 export function jobSlug(id: number) {
   return `JOB-${id}`
 }
-
-export function formatDate(value: string | null) {
-  if (!value) return "-"
-  return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
-}
-
 export function formatDuration(startedAt: string | null, finishedAt: string | null): string {
   if (!startedAt || !finishedAt) return "-"
   const ms = new Date(finishedAt).getTime() - new Date(startedAt).getTime()

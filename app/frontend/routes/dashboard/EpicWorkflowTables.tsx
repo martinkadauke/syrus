@@ -1,5 +1,6 @@
 import { SortableColumnHeader, TimestampCell, useMediaQuery, EpicProgressBar, EpicStuckBadge, NeutralStatePill, OwnerBadge, RepositorySlugLink, workflowLabel } from "./components"
-import { bulkButtonClass, columnAriaSort, compactText, epicDateValue, formatDate, withRoutePrefix, workflowDateValue } from "./helpers"
+import { formatRelativeDate } from "../../lib/relativeTime"
+import { bulkButtonClass, columnAriaSort, compactText, epicDateValue, withRoutePrefix, workflowDateValue } from "./helpers"
 import type { DashboardSortState } from "./helpers"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
@@ -244,8 +245,8 @@ function MobileWorkflowRow({ workflow, prefix }: { prefix: string; workflow: Das
           <span>{workflow.trigger_kind}</span>
           <span>{workflow.agent_provider}</span>
           <OwnerBadge badge={workflow.job.owner_badge} />
-          {startedAt ? <span>{t("started_at", { date: formatDate(startedAt) })}</span> : null}
-          {finishedAt ? <span>{t("finished_at", { date: formatDate(finishedAt) })}</span> : null}
+          {startedAt ? <span>{t("started_at", { date: formatRelativeDate(new Date(startedAt)) })}</span> : null}
+          {finishedAt ? <span>{t("finished_at", { date: formatRelativeDate(new Date(finishedAt)) })}</span> : null}
         </div>
       </div>
     </Link>

@@ -1,3 +1,4 @@
+import { RelativeTimestamp } from "./RelativeTimestamp"
 import { withRoutePrefix } from "../lib/routing"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type MouseEvent, type ReactNode, useEffect, useState } from "react"
@@ -196,12 +197,6 @@ function NotificationRow({ notification, onNavigate, prefix }: { notification: N
     if (notification.pr_url) window.open(notification.pr_url, "_blank", "noopener")
   }
 
-  const relative = relativeTimestamp(notification.created_at)
-  const relativeText = relative === null
-    ? ""
-    : "absolute" in relative
-      ? relative.absolute
-      : t(relative.key, relative.count === undefined ? undefined : { count: relative.count })
 
   return (
     <div
@@ -240,7 +235,7 @@ function NotificationRow({ notification, onNavigate, prefix }: { notification: N
               <span aria-hidden="true">·</span>
             </>
           ) : null}
-          <span>{relativeText}</span>
+          <span><RelativeTimestamp value={notification.created_at} /></span>
         </span>
       </span>
     </div>
@@ -263,26 +258,7 @@ function bodyIncludesJobTitle(body: string, jobTitle: string | null) {
   return jobTitle.length > 77 && body.includes(`${jobTitle.slice(0, 77)}...`)
 }
 
-type RelativeTime = { key: string; count?: number } | { absolute: string } | null
 
-function relativeTimestamp(value: string): RelativeTime {
-  const timestamp = Date.parse(value)
-  if (Number.isNaN(timestamp)) return null
-
-  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000))
-  if (elapsedSeconds < 60) return { key: "notifications.just_now" }
-
-  const elapsedMinutes = Math.floor(elapsedSeconds / 60)
-  if (elapsedMinutes < 60) return { key: "notifications.minutes_ago", count: elapsedMinutes }
-
-  const elapsedHours = Math.floor(elapsedMinutes / 60)
-  if (elapsedHours < 24) return { key: "notifications.hours_ago", count: elapsedHours }
-
-  const elapsedDays = Math.floor(elapsedHours / 24)
-  if (elapsedDays < 30) return { key: "notifications.days_ago", count: elapsedDays }
-
-  return { absolute: new Date(timestamp).toLocaleDateString() }
-}
 
 function useMediaQuery(query: string) {
   const [matches, setMatches] = useState(() => {
