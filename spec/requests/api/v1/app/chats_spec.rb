@@ -3067,7 +3067,7 @@ RSpec.describe "API: /api/v1/app/chats", type: :request do
   it "returns a validation error for oversized chat message attachment data" do
     sign_in_as(user)
     chat = ChatSession.create!(user: user, repository: repository, last_message_at: 1.day.ago)
-    stub_const("Api::V1::App::ChatsController::CHAT_ATTACHMENT_MAX_BASE64_BYTES", 4)
+    stub_const("ChatMessageParams::CHAT_ATTACHMENT_MAX_BASE64_BYTES", 4)
 
     expect {
       post "/api/v1/app/chats/#{chat.id}/message", params: {
