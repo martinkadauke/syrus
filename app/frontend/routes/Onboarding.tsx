@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Link, useLocation, useNavigate } from "react-router-dom"
@@ -228,7 +229,3 @@ function primaryCtaClass(current: boolean) {
   return current ? `${base} min-w-48 bg-blue-600 text-white hover:bg-blue-700` : `${base} border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800`
 }
 
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  return `${prefix}${path.startsWith("/") ? path : `/${path}`}`
-}

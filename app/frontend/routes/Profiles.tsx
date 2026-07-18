@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import { Link, useLocation, useParams } from "react-router-dom"
@@ -218,11 +219,6 @@ function ProfilesError({ error }: { error: Error }) {
   const { t } = useT("settings")
   const message = error instanceof ApiError ? error.message : "Unable to load profiles."
   return <div className="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40 p-4 text-sm text-red-700 dark:text-red-300" role="alert">{message}</div>
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  return `${prefix}${path}`
 }
 
 function formatDate(value: string | null) {

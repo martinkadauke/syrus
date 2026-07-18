@@ -1,3 +1,4 @@
+import { withRoutePrefix } from "../lib/routing"
 import { useQuery } from "@tanstack/react-query"
 import { Link, useLocation, useParams } from "react-router-dom"
 import { ApiError } from "../api/client"
@@ -127,11 +128,6 @@ function OwnerProfileLink({ owner, prefix }: { owner: NonNullable<TeamProfileJob
       {owner.display_name}
     </Link>
   )
-}
-
-function withRoutePrefix(path: string, prefix: string) {
-  if (!prefix || path.startsWith(prefix)) return path
-  return `${prefix}${path.startsWith("/") ? path : `/${path}`}`
 }
 
 function humanize(value: string) {
