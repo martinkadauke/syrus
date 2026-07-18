@@ -1,6 +1,6 @@
-import { EpicProgressBar, EpicStuckBadge, ExternalMetadataLink, MetadataLine, NeutralStatePill, OwnerBadge, PendingJobTitle, RepositorySlugLink, WorkflowBadges, workflowLabel } from "./dashboard/components"
+import { SortableColumnHeader, TimestampCell, useMediaQuery, EpicProgressBar, EpicStuckBadge, ExternalMetadataLink, MetadataLine, NeutralStatePill, OwnerBadge, PendingJobTitle, RepositorySlugLink, WorkflowBadges, workflowLabel } from "./dashboard/components"
 import { DashboardKanban } from "./dashboard/KanbanBoard"
-import { dashboardEmptyState, bulkButtonClass, columnAriaSort, compactText, dashboardColumnLabel, dashboardLinkFromSearch, dashboardVisibleColumns, epicDateValue, epicTableColumns, formatCurrency, formatDate, formatRelativeDate, humanizeOption, jobDateValue, pageLink, pluralize, sortValue, sortableColumnFor, subjectLabel, uniqueValue, withRoutePrefix, workflowDateValue } from "./dashboard/helpers"
+import { dashboardEmptyState, bulkButtonClass, columnAriaSort, compactText, dashboardLinkFromSearch, dashboardVisibleColumns, epicDateValue, epicTableColumns, formatCurrency, formatDate, humanizeOption, jobDateValue, pageLink, pluralize, sortValue, sortableColumnFor, subjectLabel, uniqueValue, withRoutePrefix, workflowDateValue } from "./dashboard/helpers"
 import type { DashboardSortState } from "./dashboard/helpers"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useEffect, useMemo, useState } from "react"
@@ -319,32 +319,6 @@ function DashboardContent({ payload, pathname, prefix, search }: { payload: Dash
       {payload.view === "list" ? <Pagination pathname={pathname} search={search} payload={payload} /> : null}
     </section>
   )
-}
-
-function useMediaQuery(query: string, defaultMatches: boolean) {
-  const [matches, setMatches] = useState(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return defaultMatches
-
-    return window.matchMedia(query).matches
-  })
-
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
-
-    const media = window.matchMedia(query)
-    const updateMatches = () => setMatches(media.matches)
-    updateMatches()
-
-    if (typeof media.addEventListener === "function") {
-      media.addEventListener("change", updateMatches)
-      return () => media.removeEventListener("change", updateMatches)
-    }
-
-    media.addListener(updateMatches)
-    return () => media.removeListener(updateMatches)
-  }, [query])
-
-  return matches
 }
 
 function DashboardCreateActions({ payload, prefix }: { payload: DashboardPayload; prefix: string }) {
@@ -1438,30 +1412,6 @@ function MobileWorkflowRow({ workflow, prefix }: { prefix: string; workflow: Das
   )
 }
 
-function SortableColumnHeader({ subject, column, sortState }: { subject: DashboardSubject; column: string; sortState: DashboardSortState }) {
-  const { t } = useT("dashboard")
-  const label = dashboardColumnLabel(subject, column, t)
-  const sortColumn = sortableColumnFor(subject, column)
-  if (!sortColumn || !sortState.sortableColumns.includes(sortColumn)) return <span>{label}</span>
-
-  const active = sortState.column === sortColumn
-  const nextDirection = active && sortState.direction === "asc" ? "desc" : "asc"
-  const directionLabel = nextDirection === "asc" ? t("ascending") : t("descending")
-
-  return (
-    <button
-      aria-label={t("sort_by", { label, direction: directionLabel.toLowerCase() })}
-      className={`inline-flex items-center gap-1 text-left font-semibold uppercase ${active ? "text-gray-900 dark:text-gray-100" : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"}`}
-      disabled={sortState.pending}
-      onClick={() => sortState.onSort(column)}
-      type="button"
-    >
-      <span>{label}</span>
-      {active ? <span aria-hidden="true" className="text-[11px] leading-none text-gray-700 dark:text-gray-300">{sortState.direction === "asc" ? "↑" : "↓"}</span> : null}
-    </button>
-  )
-}
-
 function WorkflowCell({ workflow, column, prefix }: { workflow: DashboardWorkflowItem; column: string; prefix: string }) {
   if (column === "workflow" || column === "title") {
     return (
@@ -1488,14 +1438,6 @@ function WorkflowCell({ workflow, column, prefix }: { workflow: DashboardWorkflo
   if (column === "finished") return <TimestampCell value={workflow.finished_at} />
 
   return <TimestampCell value={workflowDateValue(workflow, column)} />
-}
-
-function TimestampCell({ value }: { value: string | null }) {
-  return (
-    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
-      <RelativeTimestamp value={value} />
-    </td>
-  )
 }
 
 function Pagination({ payload, pathname, search }: { payload: DashboardPayload; pathname: string; search: string }) {
@@ -1530,19 +1472,6 @@ function DashboardError({ error }: { error: Error }) {
     <main aria-label={t("title")} className="p-6">
       <p className="text-sm text-red-700 dark:text-red-300">{error instanceof ApiError ? error.message : t("load_error")}</p>
     </main>
-  )
-}
-
-function RelativeTimestamp({ value }: { value: string | null }) {
-  if (!value) return <>-</>
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return <>-</>
-
-  return (
-    <time dateTime={value} title={formatDate(value)}>
-      {formatRelativeDate(date)}
-    </time>
   )
 }
 

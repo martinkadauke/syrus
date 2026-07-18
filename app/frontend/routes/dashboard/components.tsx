@@ -1,11 +1,11 @@
-import { humanizeOption, withRoutePrefix } from "./helpers"
+import { dashboardColumnLabel, humanizeOption, sortableColumnFor, withRoutePrefix, formatDate, formatRelativeDate, type DashboardSortState } from "./helpers"
 import type { ReactNode } from "react"
-import { Children } from "react"
+import { Children, useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useT } from "../../hooks/useT"
 import { StatusPill } from "../../components/StatusPill"
 import { workflowSlug } from "../../lib/slugs"
-import { type DashboardEpicItem, type DashboardRepository, type DashboardWorkflowItem } from "../../api/dashboard"
+import { type DashboardEpicItem, type DashboardRepository, type DashboardSubject, type DashboardWorkflowItem } from "../../api/dashboard"
 
 
 // Shared dashboard presentational primitives extracted from Dashboard.tsx:
@@ -142,5 +142,76 @@ export function EpicProgressBar({ epic, fullWidth = false }: { epic: DashboardEp
         percent > 0 ? <div className={`h-1.5 transition-[width] ${barColor}`} key={state} style={{ width: `${percent}%` }} /> : null
       )}
     </div>
+  )
+}
+
+export function SortableColumnHeader({ subject, column, sortState }: { subject: DashboardSubject; column: string; sortState: DashboardSortState }) {
+  const { t } = useT("dashboard")
+  const label = dashboardColumnLabel(subject, column, t)
+  const sortColumn = sortableColumnFor(subject, column)
+  if (!sortColumn || !sortState.sortableColumns.includes(sortColumn)) return <span>{label}</span>
+
+  const active = sortState.column === sortColumn
+  const nextDirection = active && sortState.direction === "asc" ? "desc" : "asc"
+  const directionLabel = nextDirection === "asc" ? t("ascending") : t("descending")
+
+  return (
+    <button
+      aria-label={t("sort_by", { label, direction: directionLabel.toLowerCase() })}
+      className={`inline-flex items-center gap-1 text-left font-semibold uppercase ${active ? "text-gray-900 dark:text-gray-100" : "text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"}`}
+      disabled={sortState.pending}
+      onClick={() => sortState.onSort(column)}
+      type="button"
+    >
+      <span>{label}</span>
+      {active ? <span aria-hidden="true" className="text-[11px] leading-none text-gray-700 dark:text-gray-300">{sortState.direction === "asc" ? "↑" : "↓"}</span> : null}
+    </button>
+  )
+}
+
+export function TimestampCell({ value }: { value: string | null }) {
+  return (
+    <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
+      <RelativeTimestamp value={value} />
+    </td>
+  )
+}
+
+export function useMediaQuery(query: string, defaultMatches: boolean) {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return defaultMatches
+
+    return window.matchMedia(query).matches
+  })
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+
+    const media = window.matchMedia(query)
+    const updateMatches = () => setMatches(media.matches)
+    updateMatches()
+
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", updateMatches)
+      return () => media.removeEventListener("change", updateMatches)
+    }
+
+    media.addListener(updateMatches)
+    return () => media.removeListener(updateMatches)
+  }, [query])
+
+  return matches
+}
+
+export function RelativeTimestamp({ value }: { value: string | null }) {
+  if (!value) return <>-</>
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return <>-</>
+
+  return (
+    <time dateTime={value} title={formatDate(value)}>
+      {formatRelativeDate(date)}
+    </time>
   )
 }
