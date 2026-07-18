@@ -1,9 +1,11 @@
-// Generic pure value/string utilities extracted from Chat.tsx.
+// Pure value/string/display utilities extracted from Chat.tsx.
 //
-// No React, no chat types — just coercion/normalization helpers used across
-// the chat message/tool rendering. Lifting them into a leaf module lets the
-// tool-rendering and message-transformation helpers move out of the 6k-line
+// Mostly generic coercion/normalization helpers (no chat types) plus a few
+// small chat-payload display predicates/formatters. Lifting them into a leaf
+// module lets the rendering helpers and components move out of the 6k-line
 // Chat.tsx without importing back from it.
+import type { ChatNavRecord, ChatPayload, WhiteboardSnapshot } from "../../api/chats"
+import { CHAT_ENTER_SUBMIT_MIN_WIDTH } from "./constants"
 
 export function stringValue(value: unknown) {
   return typeof value === "string" ? value : value == null ? "" : String(value)
@@ -111,4 +113,56 @@ export function dayDividerLabel(date: Date) {
   if (dayDelta === 1) return "Yesterday"
 
   return date.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
+}
+
+export function codingFilesTabVisible(payload: ChatPayload): boolean {
+  return Boolean(
+    payload.coding_mode_enabled &&
+    payload.chat.mode === "coding" &&
+    payload.chat.coding_checkout_branch
+  )
+}
+
+export function jobsTabVisible(payload: ChatPayload): boolean {
+  return (payload.chat.confirmed_proposal_count ?? 0) > 0 ||
+    (payload.chat.linked_direct_job_count ?? 0) > 0
+}
+
+export function currentRecentChat(payload: ChatPayload) {
+  return payload.recent_chats.find((chat) => chat.id === payload.chat.id)
+}
+
+export function chatDisplayTitle(chat: Pick<ChatNavRecord, "id" | "title" | "title_pending" | "repository">) {
+  if (chat.title_pending) return "Naming chat..."
+
+  return chat.title || chat.repository?.slug || `Chat #${chat.id}`
+}
+
+export function snapshotKindLabel(kind: WhiteboardSnapshot["snapshot_kind"]) {
+  if (kind === "auto_clear") return "Before clear"
+  if (kind === "auto_before_load") return "Before load"
+  return "Saved"
+}
+
+export function formatRelativeTime(value: string) {
+  const timestamp = Date.parse(value)
+  if (Number.isNaN(timestamp)) return ""
+
+  const seconds = Math.round((timestamp - Date.now()) / 1000)
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 60 * 60 * 24 * 365],
+    ["month", 60 * 60 * 24 * 30],
+    ["week", 60 * 60 * 24 * 7],
+    ["day", 60 * 60 * 24],
+    ["hour", 60 * 60],
+    ["minute", 60],
+    ["second", 1]
+  ]
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" })
+  const [unit, unitSeconds] = units.find(([, unitSeconds]) => Math.abs(seconds) >= unitSeconds) || ["second", 1]
+  return formatter.format(Math.round(seconds / unitSeconds), unit)
+}
+
+export function isDesktopChatViewport() {
+  return typeof window !== "undefined" && window.innerWidth >= CHAT_ENTER_SUBMIT_MIN_WIDTH
 }

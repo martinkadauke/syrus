@@ -171,6 +171,13 @@ import {
 import {
   contentInput,
   appendSearch,
+  chatDisplayTitle,
+  codingFilesTabVisible,
+  currentRecentChat,
+  formatRelativeTime,
+  isDesktopChatViewport,
+  jobsTabVisible,
+  snapshotKindLabel,
   diffLineClass,
   primaryButton,
   secondaryButton,
@@ -3774,10 +3781,6 @@ function useSubmitChatWithEnter() {
   return enabled
 }
 
-function isDesktopChatViewport() {
-  return typeof window !== "undefined" && window.innerWidth >= CHAT_ENTER_SUBMIT_MIN_WIDTH
-}
-
 function useMediaQuery(query: string, defaultMatches: boolean) {
   const [matches, setMatches] = useState(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") return defaultMatches
@@ -4638,31 +4641,6 @@ function MediaGallery({ messages, payload, queryKey, onNotice }: { messages: Cha
   )
 }
 
-function snapshotKindLabel(kind: WhiteboardSnapshot["snapshot_kind"]) {
-  if (kind === "auto_clear") return "Before clear"
-  if (kind === "auto_before_load") return "Before load"
-  return "Saved"
-}
-
-function formatRelativeTime(value: string) {
-  const timestamp = Date.parse(value)
-  if (Number.isNaN(timestamp)) return ""
-
-  const seconds = Math.round((timestamp - Date.now()) / 1000)
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-    ["second", 1]
-  ]
-  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "always" })
-  const [unit, unitSeconds] = units.find(([, unitSeconds]) => Math.abs(seconds) >= unitSeconds) || ["second", 1]
-  return formatter.format(Math.round(seconds / unitSeconds), unit)
-}
-
 function ChatSettingsDialog({ payload, prefix, queryKey, onClose }: { payload: ChatPayload; prefix: string; queryKey: ChatQueryKey; onClose: () => void }) {
   const queryClient = useQueryClient()
   const { t } = useT("chat")
@@ -5206,19 +5184,6 @@ function PanelMessage({ children, tone = "muted" }: { children: ReactNode; tone?
   return <div className={`rounded border p-4 text-sm ${colors[tone]}`}>{children}</div>
 }
 
-function codingFilesTabVisible(payload: ChatPayload): boolean {
-  return Boolean(
-    payload.coding_mode_enabled &&
-    payload.chat.mode === "coding" &&
-    payload.chat.coding_checkout_branch
-  )
-}
-
-function jobsTabVisible(payload: ChatPayload): boolean {
-  return (payload.chat.confirmed_proposal_count ?? 0) > 0 ||
-    (payload.chat.linked_direct_job_count ?? 0) > 0
-}
-
 type FileTreeNode = {
   name: string
   path: string
@@ -5466,16 +5431,6 @@ function CodingFilesPanel({ payload }: { payload: ChatPayload }) {
       )}
     </div>
   )
-}
-
-function chatDisplayTitle(chat: Pick<ChatNavRecord, "id" | "title" | "title_pending" | "repository">) {
-  if (chat.title_pending) return "Naming chat..."
-
-  return chat.title || chat.repository?.slug || `Chat #${chat.id}`
-}
-
-function currentRecentChat(payload: ChatPayload) {
-  return payload.recent_chats.find((chat) => chat.id === payload.chat.id)
 }
 
 function PencilIcon({ className = "h-4 w-4" }: { className?: string }) {
