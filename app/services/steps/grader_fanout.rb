@@ -18,7 +18,8 @@ module Steps
     def call
       workspace.setup
       plan = RepoGradePlan.for(workspace.path)
-      record_plan_source!(plan)
+      grader_fingerprint = GraderConclusionCache.fingerprint_for_plan(plan)
+      record_plan_source!(plan, grader_fingerprint)
       apply_loop_max_iterations!(plan.max_iterations)
 
       log("[grader_fanout] source: #{plan.source}")
@@ -29,12 +30,30 @@ module Steps
         return
       end
 
+      # Skip graders whose when_files_changed globs don't match this PR's diff.
       files = changed_files
       active_graders, skipped_graders = plan.graders.partition { |g| files_match?(g, files) }
       skipped_graders.each { |g| log("[grader_fanout] skipped #{g.name} (no matching files changed)") }
 
       if active_graders.empty?
         log("[grader_fanout] all graders skipped — collect Step will pass through")
+        return
+      end
+
+      # A recorded success for this exact head SHA + grader set short-circuits
+      # the re-run. Safe alongside the skip above: the fingerprint is the full
+      # plan, so a full-plan success implies the active subset would pass too.
+      if (cache_hit = reusable_success(grader_fingerprint))
+        workflow.set_artifact!(
+          GraderConclusionCache::ARTIFACT_CACHE_HIT_KEY,
+          {
+            "commit_sha" => cache_hit.commit_sha,
+            "grader_fingerprint" => cache_hit.grader_fingerprint,
+            "checked_at" => cache_hit.checked_at&.iso8601,
+            "conclusion_id" => cache_hit.id
+          }.compact
+        )
+        log("[grader_fanout] reused successful grader conclusion for #{cache_hit.commit_sha.first(7)} - collect Step will pass through")
         return
       end
 
@@ -59,8 +78,27 @@ module Steps
       end
     end
 
-    def record_plan_source!(plan)
+    def record_plan_source!(plan, grader_fingerprint)
       workflow.set_artifact!("grade_plan_source", plan.source)
+      workflow.set_artifact!(GraderConclusionCache::ARTIFACT_FINGERPRINT_KEY, grader_fingerprint)
+    end
+
+    def reusable_success(grader_fingerprint)
+      head_sha = current_head_sha
+      return nil if head_sha.blank?
+
+      GraderConclusionCache.latest_success(
+        repository: repository,
+        commit_sha: head_sha,
+        grader_fingerprint: grader_fingerprint
+      )
+    end
+
+    def current_head_sha
+      GitRunner.new.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
+    rescue StandardError => e
+      log("[grader_fanout] could not read current HEAD for grader conclusion cache: #{e.message}")
+      nil
     end
 
     def apply_loop_max_iterations!(max_iterations)

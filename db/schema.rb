@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_07_17_192619) do
+ActiveRecord::Schema[8.1].define(version: 2026_07_18_012421) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.bigint "blob_id", null: false
     t.datetime "created_at", null: false
@@ -483,6 +483,32 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_192619) do
     t.index ["user_id", "surface", "subject", "fingerprint"], name: "index_filter_usages_on_user_surface_subject_fingerprint", unique: true
     t.index ["user_id", "surface", "subject", "last_used_at"], name: "index_filter_usages_on_user_surface_subject_recent"
     t.index ["user_id"], name: "index_filter_usages_on_user_id"
+  end
+
+  create_table "grader_conclusions", force: :cascade do |t|
+    t.datetime "checked_at", null: false
+    t.string "commit_sha", limit: 64, null: false
+    t.datetime "created_at", null: false
+    t.float "duration_s"
+    t.integer "exit_code"
+    t.string "grader_fingerprint", limit: 64, null: false
+    t.string "grader_name", limit: 128, null: false
+    t.bigint "job_id"
+    t.bigint "log_bytes"
+    t.string "log_path", limit: 1024
+    t.json "metadata"
+    t.bigint "repository_id", null: false
+    t.boolean "required"
+    t.bigint "run_id"
+    t.string "status", limit: 32, null: false
+    t.bigint "step_id"
+    t.boolean "timed_out", default: false, null: false
+    t.datetime "updated_at", null: false
+    t.bigint "workflow_id"
+    t.index ["repository_id", "commit_sha", "grader_fingerprint", "status"], name: "idx_grader_conclusions_success_lookup"
+    t.index ["repository_id", "grader_name", "status", "created_at"], name: "idx_grader_conclusions_history_lookup"
+    t.index ["run_id"], name: "index_grader_conclusions_on_run_id"
+    t.index ["workflow_id"], name: "index_grader_conclusions_on_workflow_id"
   end
 
   create_table "input_sources", force: :cascade do |t|
@@ -1335,6 +1361,11 @@ ActiveRecord::Schema[8.1].define(version: 2026_07_17_192619) do
   add_foreign_key "epics", "users", column: "owner_id"
   add_foreign_key "epics", "users", column: "owner_user_id"
   add_foreign_key "filter_usages", "users"
+  add_foreign_key "grader_conclusions", "jobs"
+  add_foreign_key "grader_conclusions", "repositories"
+  add_foreign_key "grader_conclusions", "runs"
+  add_foreign_key "grader_conclusions", "steps"
+  add_foreign_key "grader_conclusions", "workflows"
   add_foreign_key "input_sources", "repositories"
   add_foreign_key "input_sources", "users"
   add_foreign_key "installations", "users"

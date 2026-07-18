@@ -40,6 +40,61 @@ RSpec.describe Steps::GraderCollect do
     allow(GitRunner).to receive(:new).and_return(git)
   end
 
+  it "records successful grader conclusions for reuse" do
+    workflow.set_artifact!(GraderConclusionCache::ARTIFACT_FINGERPRINT_KEY, "grade-fingerprint")
+
+    expect { handler.call }.to change(GraderConclusion, :count).by(2)
+
+    per_grader = GraderConclusion.where(workflow: workflow, grader_name: "tests").sole
+    expect(per_grader).to have_attributes(
+      repository: job.repository,
+      job: job,
+      commit_sha: "abc123",
+      grader_fingerprint: "grade-fingerprint",
+      required: true,
+      status: "passed"
+    )
+
+    aggregate = GraderConclusion.aggregate.where(workflow: workflow).sole
+    expect(aggregate).to have_attributes(
+      repository: job.repository,
+      job: job,
+      commit_sha: "abc123",
+      grader_fingerprint: "grade-fingerprint",
+      required: true,
+      status: "passed"
+    )
+  end
+
+  it "records timeout conclusions without making them reusable" do
+    fingerprint = "timeout-fingerprint"
+    workflow.set_artifact!(GraderConclusionCache::ARTIFACT_FINGERPRINT_KEY, fingerprint)
+    workflow.steps.find_by!(kind: "grader").update!(
+      state: "failed",
+      details: {
+        "name" => "react-tests",
+        "required" => true,
+        "exit_code" => 1,
+        "duration_s" => 5.0,
+        "timed_out" => false,
+        "output" => "Error: Test timed out in 5000ms."
+      }
+    )
+
+    expect { handler.call }.to raise_error(Steps::Base::StepFailed, /required graders failed/)
+
+    conclusions = GraderConclusion.where(workflow: workflow).pluck(:grader_name, :status).to_h
+    expect(conclusions).to include(
+      "react-tests" => "timed_out",
+      GraderConclusion::AGGREGATE_NAME => "timed_out"
+    )
+    expect(GraderConclusionCache.successful?(
+      repository: job.repository,
+      commit_sha: "abc123",
+      grader_fingerprint: fingerprint
+    )).to be(false)
+  end
+
   it "records a reusable validation artifact when required graders pass" do
     handler.call
 

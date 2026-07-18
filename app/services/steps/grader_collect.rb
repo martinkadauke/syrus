@@ -21,6 +21,8 @@ module Steps
       failed_required = grader_steps.select do |g|
         g.details && g.details["required"] && g.state == "failed"
       end
+      aggregate_status = GraderConclusionCache.aggregate_status_for(failed_required)
+      record_grader_conclusions!(grader_steps, aggregate_status)
 
       if failed_required.empty?
         log("[grader_collect] all required graders passed (#{grader_steps.size} grader Step(s) ran)")
@@ -60,27 +62,54 @@ module Steps
     def append_iteration_results!(grader_steps)
       iterations = Array(workflow.artifact("iterations"))
       index = run.iteration - 1
-      iterations[index] = grader_steps.map do |g|
-        details = g.details || {}
-        {
-          "name" => details["name"],
-          "required" => details["required"],
-          "status" => g.state == "succeeded" ? "passed" : "failed",
-          "exit_code" => details["exit_code"],
-          "duration_s" => details["duration_s"],
-          "timed_out" => details["timed_out"],
-          "log_path" => details["log_path"],
-          "log_bytes" => details["log_bytes"],
-          "output" => details["output"]
-        }
+      iterations[index] = if grader_steps.empty? && (cache_hit = workflow.artifact(GraderConclusionCache::ARTIFACT_CACHE_HIT_KEY))
+        [
+          {
+            "name" => "cached grader conclusion",
+            "required" => true,
+            "status" => "passed",
+            "cached" => true,
+            "commit_sha" => cache_hit["commit_sha"],
+            "checked_at" => cache_hit["checked_at"]
+          }.compact
+        ]
+      else
+        grader_steps.map do |g|
+          details = g.details || {}
+          {
+            "name" => details["name"],
+            "required" => details["required"],
+            "status" => g.state == "succeeded" ? "passed" : "failed",
+            "exit_code" => details["exit_code"],
+            "duration_s" => details["duration_s"],
+            "timed_out" => details["timed_out"],
+            "log_path" => details["log_path"],
+            "log_bytes" => details["log_bytes"],
+            "output" => details["output"]
+          }
+        end
       end
       workflow.set_artifact!("iterations", iterations)
+    end
+
+    def record_grader_conclusions!(grader_steps, aggregate_status)
+      return if grader_steps.empty?
+
+      GraderConclusionCache.record!(
+        workflow: workflow,
+        run: run,
+        step: step,
+        commit_sha: current_head_sha,
+        grader_steps: grader_steps,
+        aggregate_status: aggregate_status,
+        grader_fingerprint: workflow.artifact(GraderConclusionCache::ARTIFACT_FINGERPRINT_KEY)
+      )
     end
 
     def record_landing_validation!
       return if workflow.trigger_kind == "main_grader"
 
-      head_sha = GitRunner.new.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
+      head_sha = current_head_sha
       base_sha = workflow.trigger_kind == "auto_merge" ? job.mergeability_base_sha.presence : nil
       base_ref = workflow.trigger_kind == "auto_merge" ? job.mergeability_base_ref.presence : nil
       return if head_sha.blank?
@@ -94,6 +123,15 @@ module Steps
     rescue StandardError => e
       Rails.logger.warn("[GraderCollect] landing validation capture failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
       nil
+    end
+
+    def current_head_sha
+      return @current_head_sha if defined?(@current_head_sha)
+
+      @current_head_sha = GitRunner.new.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
+    rescue StandardError => e
+      Rails.logger.warn("[GraderCollect] current HEAD capture failed for Workflow ##{workflow.id}: #{e.class}: #{e.message}")
+      @current_head_sha = nil
     end
   end
 end
