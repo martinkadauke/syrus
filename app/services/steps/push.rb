@@ -22,7 +22,7 @@ module Steps
       git.run("push", push_url, "HEAD:refs/heads/#{workspace.branch_name}",
               chdir: workspace.path.to_s)
     rescue GitRunner::GitError => e
-      raise unless non_fast_forward_push?(e)
+      raise unless push_rejected?(e)
 
       log("push: remote branch advanced; rebasing #{workspace.branch_name} onto the current remote tip and retrying")
       rebase_onto_remote_branch!(git, push_url)
@@ -56,9 +56,6 @@ module Steps
       nil
     end
 
-    def non_fast_forward_push?(error)
-      error.output.to_s.match?(/non-fast-forward|fetch first|rejected|stale info/i)
-    end
 
     def mark_failure_code!(code)
       step.update!(details: step.details.to_h.merge("failure_code" => code))

@@ -19,6 +19,25 @@ RSpec.describe Steps::Base do
   end
   let(:handler) { handler_class.new(run) }
 
+  describe "#push_rejected?" do
+    def git_error(output)
+      GitRunner::GitError.new([ "push" ], 1, output)
+    end
+
+    # Each token in isolation. "non-fast-forward" is the one force_push and
+    # stack_force_push used to drop, so a bare non-ff was re-raised as a raw
+    # GitError instead of the intended StepFailed.
+    [ "non-fast-forward", "fetch first", "rejected", "stale info" ].each do |phrase|
+      it "classifies a #{phrase.inspect} rejection" do
+        expect(handler.send(:push_rejected?, git_error("error: failed to push: #{phrase}"))).to be(true)
+      end
+    end
+
+    it "does not classify an unrelated git error as a push rejection" do
+      expect(handler.send(:push_rejected?, git_error("fatal: unable to access remote"))).to be(false)
+    end
+  end
+
   describe "#log" do
     it "appends a JobLog with auto-incremented sequence" do
       handler.log("hello")

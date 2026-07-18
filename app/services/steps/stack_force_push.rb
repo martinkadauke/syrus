@@ -29,7 +29,7 @@ module Steps
         log("stack_force_push: pushing rebased #{branch} (#{workflow.slug})")
         git.run("push", force_with_lease_arg(entry), push_url, "#{branch}:refs/heads/#{branch}", chdir: workspace.path.to_s)
       rescue GitRunner::GitError => e
-        raise unless e.output.to_s.match?(/stale info|fetch first|rejected/i)
+        raise unless push_rejected?(e)
 
         message = "stack_force_push: lease rejected for #{branch}; remote branch moved after Syrus fetched it. Refusing to overwrite newer remote work."
         log(message)

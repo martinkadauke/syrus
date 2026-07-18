@@ -53,6 +53,17 @@ module Steps
       @workspace ||= WorkflowWorkspace.new(workflow)
     end
 
+    # True when a git push was rejected because the remote branch moved — a
+    # non-fast-forward, a failed --force-with-lease, or a stale-info lease
+    # break. One source of truth so the normal-push / force-push / stack-push
+    # handlers can't drift their patterns (they had: force_push and
+    # stack_force_push silently dropped the "non-fast-forward" token).
+    PUSH_REJECTED_PATTERN = /non-fast-forward|fetch first|rejected|stale info/i
+
+    def push_rejected?(error)
+      error.output.to_s.match?(PUSH_REJECTED_PATTERN)
+    end
+
     def workspace_dependency_env
       WorkspaceDependencyEnv.for(workspace.path)
     end

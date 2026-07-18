@@ -23,7 +23,7 @@ module Steps
 
       carry_forward_landing_validation!
     rescue GitRunner::GitError => e
-      raise unless lease_rejected?(e)
+      raise unless push_rejected?(e)
 
       message = "force_push: lease rejected for #{workspace.branch_name}; remote branch moved after Syrus fetched it. " \
                 "Refusing to overwrite newer remote work."
@@ -88,8 +88,5 @@ module Steps
       end
     end
 
-    def lease_rejected?(error)
-      error.output.to_s.match?(/stale info|fetch first|rejected/i)
-    end
   end
 end

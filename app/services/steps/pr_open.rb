@@ -190,7 +190,7 @@ module Steps
       git.run("push", push_url, "HEAD:refs/heads/#{workspace.branch_name}",
               chdir: workspace.path.to_s)
     rescue GitRunner::GitError => e
-      raise unless job.pr_number.present? && non_fast_forward_push?(e)
+      raise unless job.pr_number.present? && push_rejected?(e)
 
       record_branch_divergence!(git, e.message)
       raise BranchDiverged, branch_divergence_message
@@ -250,9 +250,6 @@ module Steps
       git.run("rev-parse", "HEAD", chdir: workspace.path.to_s).strip
     end
 
-    def non_fast_forward_push?(error)
-      error.output.to_s.match?(/non-fast-forward|fetch first|rejected|stale info/i)
-    end
 
     def branch_divergence_message
       "PR branch changed before Syrus could push #{workflow.slug}; choose whether to retry from the current PR branch or replace it with this workflow's output."
