@@ -1,4 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query"
+import type { TFunction } from "i18next"
 import type { FormEvent, ReactNode } from "react"
 import { useEffect, useMemo, useState } from "react"
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom"
@@ -36,9 +37,9 @@ export function RepositoryFormRoute({ mode }: { mode: "new" | "edit" }) {
   })
 
   return (
-    <main aria-label={mode === "new" ? "Add Repository" : "Edit Repository"} className="mx-auto max-w-3xl space-y-6 p-6">
+    <main aria-label={mode === "new" ? t('repository_form.aria_new') : t('repository_form.aria_edit')} className="mx-auto max-w-3xl space-y-6 p-6">
       {form.isPending ? <PanelMessage>{t('repository_form.loading')}</PanelMessage> : null}
-      {form.isError ? <PanelMessage tone="error">{errorMessage(form.error, "Unable to load repository form.")}</PanelMessage> : null}
+      {form.isError ? <PanelMessage tone="error">{errorMessage(form.error, t('repository_form.error_load'))}</PanelMessage> : null}
       {form.isSuccess ? <RepositoryForm mode={mode} payload={form.data} prefix={prefix} /> : null}
     </main>
   )
@@ -55,7 +56,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
   const [ownerOptions, setOwnerOptions] = useState<OwnerOption[]>([])
   const [ownerNotice, setOwnerNotice] = useState<string | null>(null)
   const [repoOptions, setRepoOptions] = useState<GitHubRepositoryOption[]>([])
-  const [repoNotice, setRepoNotice] = useState<string | null>(null)
+  const [repoNotice, setRepoNotice] = useState<{ text: string; tone: "error" | "muted" } | null>(null)
   const [branchOptions, setBranchOptions] = useState<string[]>([])
   const save = useMutation({
     mutationFn: () => {
@@ -90,7 +91,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
   useEffect(() => {
     if (!owners.isSuccess) return
     if (owners.data.error) {
-      setOwnerNotice(ownerErrorMessage(owners.data.error))
+      setOwnerNotice(ownerErrorMessage(t, owners.data.error))
       setOwnerMode("manual")
       return
     }
@@ -114,7 +115,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
     fetchRepositoryOptions(values.owner, selectedOwnerType).then((data) => {
       if (!active) return
       if (data.error) {
-        setRepoNotice(repoErrorMessage(data.error))
+        setRepoNotice(repoErrorMessage(t, data.error))
         setRepoMode("manual")
         setRepoOptions([])
         return
@@ -131,7 +132,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
       if (options.length > 0) setRepoMode("select")
     }).catch(() => {
       if (!active) return
-      setRepoNotice("Unable to load repositories. Enter the name manually.")
+      setRepoNotice({ text: t('repository_form.repo_err_generic'), tone: "muted" })
       setRepoMode("manual")
       setRepoOptions([])
     })
@@ -147,7 +148,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
       fetchRepositoryBranches(values.owner, values.name).then((data) => {
         if (!active) return
         if (data.error) {
-          if (data.error === "not_found") setRepoNotice("Repository not found or not accessible.")
+          if (data.error === "not_found") setRepoNotice({ text: t('repository_form.repo_branch_not_found'), tone: "error" })
           setBranchMode("manual")
           setBranchOptions([])
           return
@@ -214,7 +215,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
     setValues(next)
   }
 
-  const title = mode === "new" ? "Add repository" : `Edit ${payload.repository.slug || `${payload.repository.owner}/${payload.repository.name}`}`
+  const title = mode === "new"
+    ? t('repository_form.heading_new')
+    : t('repository_form.heading_edit', { slug: payload.repository.slug || `${payload.repository.owner}/${payload.repository.name}` })
 
   return (
     <>
@@ -225,9 +228,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
         </Link> : null}
       </header>
 
-      {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, "Unable to save repository.")}</PanelMessage> : null}
+      {save.isError ? <PanelMessage tone="error">{errorMessage(save.error, t('repository_form.error_save'))}</PanelMessage> : null}
       {ownerNotice ? <PanelMessage>{ownerNotice}</PanelMessage> : null}
-      {repoNotice ? <PanelMessage tone={repoNotice.includes("not found") ? "error" : "muted"}>{repoNotice}</PanelMessage> : null}
+      {repoNotice ? <PanelMessage tone={repoNotice.tone}>{repoNotice.text}</PanelMessage> : null}
 
       <form className="space-y-5" onSubmit={submit}>
         <section className="space-y-4 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
@@ -240,10 +243,10 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Working owner">
+            <Field label={t('repository_form.label_working_owner')}>
               {ownerMode === "select" && ownerOptions.length > 0 ? (
                 <SelectWithManual
-                  label="Working owner"
+                  label={t('repository_form.label_working_owner')}
                   onManual={() => setOwnerMode("manual")}
                   onChange={chooseOwner}
                   value={values.owner}
@@ -255,7 +258,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
                 </SelectWithManual>
               ) : (
                 <input
-                  aria-label="Working owner"
+                  aria-label={t('repository_form.label_working_owner')}
                   className={`${inputClass()} font-mono`}
                   onChange={(event) => {
                     setValues({ ...values, owner: event.target.value, github_owner_id: "", github_repository_id: "" })
@@ -268,10 +271,10 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
               )}
             </Field>
 
-            <Field label="Working name">
+            <Field label={t('repository_form.label_working_name')}>
               {repoMode === "select" && repoOptions.length > 0 ? (
                 <SelectWithManual
-                  label="Working name"
+                  label={t('repository_form.label_working_name')}
                   onManual={() => {
                     setRepoMode("manual")
                     setValues({ ...values, github_owner_id: "", github_repository_id: "" })
@@ -286,7 +289,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
                 </SelectWithManual>
               ) : (
                 <input
-                  aria-label="Working name"
+                  aria-label={t('repository_form.label_working_name')}
                   className={`${inputClass()} font-mono`}
                   onChange={(event) => setValues({ ...values, name: event.target.value, github_owner_id: "", github_repository_id: "" })}
                   required
@@ -297,10 +300,10 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             </Field>
           </div>
 
-          <Field label="Default branch">
+          <Field label={t('repository_form.label_default_branch')}>
             {branchMode === "select" && branchOptions.length > 0 ? (
               <select
-                aria-label="Default branch"
+                aria-label={t('repository_form.label_default_branch')}
                 className={`${inputClass()} font-mono`}
                 onChange={(event) => setValues({ ...values, default_branch: event.target.value })}
                 required
@@ -310,7 +313,7 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
               </select>
             ) : (
               <input
-                aria-label="Default branch"
+                aria-label={t('repository_form.label_default_branch')}
                 className={`${inputClass()} font-mono`}
                 onChange={(event) => setValues({ ...values, default_branch: event.target.value })}
                 required
@@ -320,9 +323,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             )}
           </Field>
 
-          <Field label="Trigger label">
+          <Field label={t('repository_form.label_trigger')}>
             <input
-              aria-label="Trigger label"
+              aria-label={t('repository_form.label_trigger')}
               className={`${inputClass()} font-mono`}
               onChange={(event) => setValues({ ...values, trigger_label: event.target.value })}
               required
@@ -345,9 +348,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Upstream owner">
+            <Field label={t('repository_form.label_upstream_owner')}>
               <input
-                aria-label="Upstream owner"
+                aria-label={t('repository_form.label_upstream_owner')}
                 className={`${inputClass()} font-mono`}
                 onChange={(event) => updateUpstream("upstream_owner", event.target.value)}
                 type="text"
@@ -355,9 +358,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
               />
             </Field>
 
-            <Field label="Upstream name">
+            <Field label={t('repository_form.label_upstream_name')}>
               <input
-                aria-label="Upstream name"
+                aria-label={t('repository_form.label_upstream_name')}
                 className={`${inputClass()} font-mono`}
                 onChange={(event) => updateUpstream("upstream_name", event.target.value)}
                 type="text"
@@ -366,9 +369,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             </Field>
           </div>
 
-          <Field label="Upstream default branch">
+          <Field label={t('repository_form.label_upstream_branch')}>
             <input
-              aria-label="Upstream default branch"
+              aria-label={t('repository_form.label_upstream_branch')}
               className={`${inputClass()} font-mono`}
               onChange={(event) => updateUpstream("upstream_default_branch", event.target.value)}
               type="text"
@@ -381,9 +384,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
             {t('repository_form.automation_section')}
           </h2>
-          <Field label="Default agent">
+          <Field label={t('repository_form.label_default_agent')}>
             <select
-              aria-label="Default agent"
+              aria-label={t('repository_form.label_default_agent')}
               className={inputClass()}
               onChange={(event) => setValues({ ...values, agent_provider: event.target.value })}
               value={values.agent_provider}
@@ -400,9 +403,9 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             </p>
           </Field>
 
-          <Field label="Auto-approval fallback">
+          <Field label={t('repository_form.label_auto_approve')}>
             <select
-              aria-label="Auto-approval fallback"
+              aria-label={t('repository_form.label_auto_approve')}
               className={inputClass()}
               onChange={(event) => setValues({ ...values, auto_approve_mode: event.target.value })}
               value={values.auto_approve_mode}
@@ -414,24 +417,24 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{payload.auto_approve_modes.find((option) => option.value === values.auto_approve_mode)?.preview}</p>
           </Field>
 
-          <Checkbox label="Polling enabled" onChange={(checked) => setValues({ ...values, polling_enabled: checked })} value={values.polling_enabled} />
-          <Checkbox label="Run prepare step on this repository's Workflows" onChange={(checked) => setValues({ ...values, prepare_enabled: checked })} value={values.prepare_enabled} />
-          <Checkbox label="Add Syrus cost footer to PR descriptions" onChange={(checked) => setValues({ ...values, pr_cost_footer_enabled: checked })} value={values.pr_cost_footer_enabled} />
-          <Checkbox label="Auto-merge approved Syrus PRs" onChange={(checked) => setValues({ ...values, auto_merge_enabled: checked })} value={values.auto_merge_enabled} />
-          <Checkbox label="Trust clean rebases (skip re-grading after a conflict-free rebase)" onChange={(checked) => setValues({ ...values, trust_clean_rebase_grade: checked })} value={values.trust_clean_rebase_grade} />
-          <Checkbox label="Pause work when the main branch is broken" onChange={(checked) => setValues({ ...values, main_branch_health_enabled: checked })} value={values.main_branch_health_enabled} />
-          <Checkbox label="Automatically create a fix job when main breaks" onChange={(checked) => {
+          <Checkbox label={t('repository_form.check_polling')} onChange={(checked) => setValues({ ...values, polling_enabled: checked })} value={values.polling_enabled} />
+          <Checkbox label={t('repository_form.check_prepare')} onChange={(checked) => setValues({ ...values, prepare_enabled: checked })} value={values.prepare_enabled} />
+          <Checkbox label={t('repository_form.check_cost_footer')} onChange={(checked) => setValues({ ...values, pr_cost_footer_enabled: checked })} value={values.pr_cost_footer_enabled} />
+          <Checkbox label={t('repository_form.check_auto_merge')} onChange={(checked) => setValues({ ...values, auto_merge_enabled: checked })} value={values.auto_merge_enabled} />
+          <Checkbox label={t('repository_form.check_trust_rebase')} onChange={(checked) => setValues({ ...values, trust_clean_rebase_grade: checked })} value={values.trust_clean_rebase_grade} />
+          <Checkbox label={t('repository_form.check_main_health')} onChange={(checked) => setValues({ ...values, main_branch_health_enabled: checked })} value={values.main_branch_health_enabled} />
+          <Checkbox label={t('repository_form.check_main_repair')} onChange={(checked) => {
             setRepairTouched(true)
             setValues({ ...values, main_branch_repair_enabled: checked })
           }} value={values.main_branch_repair_enabled} />
-          <Checkbox label="Auto-approve successful main branch fix jobs" onChange={(checked) => setValues({ ...values, main_branch_repair_auto_approve: checked })} value={values.main_branch_repair_auto_approve} />
+          <Checkbox label={t('repository_form.check_repair_auto_approve')} onChange={(checked) => setValues({ ...values, main_branch_repair_auto_approve: checked })} value={values.main_branch_repair_auto_approve} />
           <Checkbox
-            label="Treat grader timeouts as failures"
+            label={t('repository_form.check_timeout_failures')}
             onChange={(checked) => setValues({ ...values, treat_grader_timeouts_as_failures: checked })}
             value={values.treat_grader_timeouts_as_failures}
           />
           <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">
-            When off, timeout-only grader results mark main branch health inconclusive instead of broken.
+            {t('repository_form.timeout_hint')}
           </p>
 
           {mode === "edit" && payload.repository.fork_syncable ? (
@@ -461,18 +464,18 @@ function RepositoryForm({ mode, payload, prefix }: { mode: "new" | "edit"; paylo
             </div>
           ) : null}
 
-          <Field label="Feedback policy">
+          <Field label={t('repository_form.label_feedback_policy')}>
             <select
-              aria-label="Feedback policy"
+              aria-label={t('repository_form.label_feedback_policy')}
               className={inputClass()}
               onChange={(event) => setValues({ ...values, feedback_policy: event.target.value })}
               value={values.feedback_policy}
             >
-              <option value="confirm">Confirm — require job owner approval before acting on external/member comments</option>
-              <option value="auto">Auto — immediately queue a workflow for any actionable comment</option>
+              <option value="confirm">{t('repository_form.feedback_confirm')}</option>
+              <option value="auto">{t('repository_form.feedback_auto')}</option>
             </select>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              Job owner comments always trigger automatically regardless of this setting.
+              {t('repository_form.feedback_hint')}
             </p>
           </Field>
         </section>
@@ -629,15 +632,18 @@ function inputClass() {
   return "block w-full rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500 shadow-sm focus:outline-blue-600"
 }
 
-function ownerErrorMessage(error: string) {
-  if (error === "no_token") return "No GitHub token configured. Enter the repository manually or add a token in Credentials."
-  if (error === "unauthorized") return "GitHub rejected the configured credentials. Enter the repository manually or update Credentials."
-  return "Unable to load GitHub owners. Enter the repository manually."
+function ownerErrorMessage(t: TFunction, error: string) {
+  if (error === "no_token") return t('repository_form.owner_err_no_token')
+  if (error === "unauthorized") return t('repository_form.owner_err_unauthorized')
+  return t('repository_form.owner_err_generic')
 }
 
-function repoErrorMessage(error: string) {
-  if (error === "no_token") return "No GitHub token configured. Enter the repository name manually."
-  if (error === "not_found") return "Repository owner not found or not accessible."
-  return "Unable to load repositories. Enter the name manually."
+// Returns text + tone so the caller never has to infer severity by
+// substring-matching the (now translated) message. "not found" is the
+// only hard error (red); other notices are informational (muted).
+function repoErrorMessage(t: TFunction, error: string): { text: string; tone: "error" | "muted" } {
+  if (error === "no_token") return { text: t('repository_form.repo_err_no_token'), tone: "muted" }
+  if (error === "not_found") return { text: t('repository_form.repo_err_not_found'), tone: "error" }
+  return { text: t('repository_form.repo_err_generic'), tone: "muted" }
 }
 
