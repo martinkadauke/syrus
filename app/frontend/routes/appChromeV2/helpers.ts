@@ -93,6 +93,14 @@ export function titleize(value: string) {
   return value.replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
+export type ChatSection = {
+  key: string
+  label: string
+  repository_id: number | null
+  chats: ChatNavRecord[]
+  has_more: boolean
+}
+
 export function chatSectionsFromPayload(groups: ChatGroupRecord[], loadedSections: Record<string, { chats: ChatNavRecord[]; has_more: boolean }>) {
   return groups.map((group) => {
     const loaded = loadedSections[group.key]
