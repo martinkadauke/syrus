@@ -79,7 +79,8 @@ module Api
             end
 
             new_job = Current.user.jobs.create!(attrs)
-            new_job.advance_after_triage!
+            new_job.advance_after_triage! if new_job.may_advance_after_triage?
+
             broadcast_job_change(job.reload, [ "state" ])
             broadcast_job_change(new_job.reload, [ "created" ])
 

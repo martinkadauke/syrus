@@ -35,7 +35,8 @@ module PendingActions
         state: "queued"
       )
 
-      job.claim_for_coding!
+      job.claim_for_coding! if job.may_claim_for_coding?
+
       job.save!
 
       workflow = job.start_coding_handoff!(artifacts: artifacts)

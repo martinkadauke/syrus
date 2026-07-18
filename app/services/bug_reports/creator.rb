@@ -40,7 +40,8 @@ module BugReports
 
         # advance_after_triage's after-callback creates the initial
         # workflow + starts it for direct Jobs (Job#create_initial_run_if_needed).
-        job.advance_after_triage!
+        job.advance_after_triage! if job.may_advance_after_triage?
+
         attach_screenshot!(job, screenshot) if screenshot.present?
       end
 
