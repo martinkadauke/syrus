@@ -5,6 +5,7 @@ import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom"
 import { fetchBootstrap, readInitialBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { authPrimaryButtonClass } from "../lib/buttonStyles"
 import { isDesktopShell } from "../lib/desktopShell"
+import { useT } from "../hooks/useT"
 import { NoticeToast } from "../components/NoticeToast"
 import { RouteErrorBoundary } from "../components/RouteErrorBoundary"
 import { NotificationsRoute } from "../components/Notifications"
@@ -202,10 +203,11 @@ function RootRoute({ initialBootstrap }: { initialBootstrap: BootstrapPayload | 
 }
 
 function PublicLanding({ payload }: { payload: BootstrapPayload }) {
+  const { t } = useT("landing")
   const location = useLocation()
   const prefix = location.pathname.startsWith("/app-shell") ? "/app-shell" : ""
   const invitationToken = new URLSearchParams(location.search).get("token")?.trim()
-  const cta = publicCta(payload.public, prefix, invitationToken)
+  const cta = publicCta(payload.public, prefix, invitationToken, t)
   // No "Sign in" when sign-ups are locked, or when no users exist yet (the
   // first account is created via "Set up this Syrus instance" — there is
   // nobody to sign in as).
@@ -230,10 +232,10 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
   // inside the desktop app — and just needs the one next step.
   if (cta.kind === "first") {
     return (
-      <main aria-label="Syrus first-run welcome" className="flex min-h-[70vh] items-center justify-center px-6">
+      <main aria-label={t("aria_first_run")} className="flex min-h-[70vh] items-center justify-center px-6">
         <div className="max-w-md text-center">
           <img alt="" aria-hidden="true" className="mx-auto h-16 w-16 rounded-2xl" src={BRAND_ICON_SRC} />
-          <h1 className="mt-6 text-3xl font-semibold text-gray-950 dark:text-gray-100">Welcome to Syrus!</h1>
+          <h1 className="mt-6 text-3xl font-semibold text-gray-950 dark:text-gray-100">{t("welcome")}</h1>
           <p className="mt-3 text-sm leading-6 text-gray-600 dark:text-gray-400">{cta.description}</p>
           <div className="mt-7">
             <Link className={authPrimaryButtonClass} to={cta.href}>{cta.label}</Link>
@@ -244,43 +246,43 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
   }
 
   const workflowSteps = [
-    ["Issue", "A GitHub issue, PR comment, schedule, retry, or rebase enters the queue."],
-    ["Job", "Syrus creates the thread, workspace, branch, prompt, logs, and state machine records."],
-    ["Agent", "Claude or Codex runs in the cloned repository with bounded setup and captured output."],
-    ["PR", "Syrus commits the result, captures the three-dot diff, and opens or updates the pull request."]
+    [t("step_issue_title"), t("step_issue_body")],
+    [t("step_job_title"), t("step_job_body")],
+    [t("step_agent_title"), t("step_agent_body")],
+    [t("step_pr_title"), t("step_pr_body")]
   ]
   const featureCards = [
-    ["Polling, not webhooks", "Runs from outbound GitHub polling, so private deployments do not need inbound callback plumbing."],
-    ["Operator-grade state", "Jobs, Workflows, Steps, and Runs keep retries, failures, feedback, summaries, and costs auditable."],
-    ["Credentials stay local", "Use a GitHub App or PAT fallback while agent provider configuration remains under your instance control."],
-    ["PR feedback loops", "Review comments, CI failures, retries, and rebases become follow-up attempts on the same Job."]
+    [t("feature1_title"), t("feature1_body")],
+    [t("feature2_title"), t("feature2_body")],
+    [t("feature3_title"), t("feature3_body")],
+    [t("feature4_title"), t("feature4_body")]
   ]
 
   return (
-    <main aria-label="Syrus public landing" className="mx-auto max-w-[96rem] px-6 py-8 sm:py-12">
+    <main aria-label={t("aria_public")} className="mx-auto max-w-[96rem] px-6 py-8 sm:py-12">
       <section className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_32rem] lg:items-center">
         <div className="max-w-3xl">
-          <p className="text-sm font-medium uppercase text-blue-700">Self-hosted agent workflow control</p>
+          <p className="text-sm font-medium uppercase text-blue-700">{t("eyebrow_hero")}</p>
           <h1 className="mt-4 max-w-2xl text-4xl font-semibold leading-tight text-gray-950 sm:text-5xl">
-            Syrus turns GitHub issues into reviewed pull requests.
+            {t("hero_title")}
           </h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-gray-700">
-            Delegate work from GitHub and keep the deterministic parts in your hands: repository setup, credentials, queues, retries, rebases, summaries, and the PR that lands back in review.
+            {t("hero_body")}
           </p>
           <div className="mt-7 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link className={authPrimaryButtonClass} to={cta.href}>{cta.label}</Link>
-            {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link> : null}
+            {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>{t("sign_in")}</Link> : null}
           </div>
           <p className="mt-3 max-w-xl text-sm text-gray-600">{cta.description}</p>
         </div>
 
-        <aside aria-label="Syrus run flow" className="rounded border border-gray-200 bg-white p-5 shadow-sm">
+        <aside aria-label={t("aria_run_flow")} className="rounded border border-gray-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-4">
             <div>
-              <h2 className="text-base font-semibold text-gray-900">Live work path</h2>
-              <p className="mt-1 text-sm text-gray-600">From external signal to pull request.</p>
+              <h2 className="text-base font-semibold text-gray-900">{t("live_work_path")}</h2>
+              <p className="mt-1 text-sm text-gray-600">{t("live_work_sub")}</p>
             </div>
-            <span className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800">Audited</span>
+            <span className="rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800">{t("audited")}</span>
           </div>
           <ol className="mt-5 space-y-3">
             {workflowSteps.map(([title, body], index) => (
@@ -295,26 +297,26 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
           </ol>
           <dl className="mt-5 grid grid-cols-3 gap-2 border-t border-gray-100 pt-4 text-center text-xs">
             <div className="rounded bg-blue-50 p-2">
-              <dt className="text-blue-800">Workspace</dt>
-              <dd className="mt-1 font-semibold text-blue-950">Cloned</dd>
+              <dt className="text-blue-800">{t("workspace")}</dt>
+              <dd className="mt-1 font-semibold text-blue-950">{t("cloned")}</dd>
             </div>
             <div className="rounded bg-amber-50 p-2">
-              <dt className="text-amber-800">Diff</dt>
-              <dd className="mt-1 font-semibold text-amber-950">Captured</dd>
+              <dt className="text-amber-800">{t("diff")}</dt>
+              <dd className="mt-1 font-semibold text-amber-950">{t("captured")}</dd>
             </div>
             <div className="rounded bg-green-50 p-2">
-              <dt className="text-green-800">PR</dt>
-              <dd className="mt-1 font-semibold text-green-950">Updated</dd>
+              <dt className="text-green-800">{t("pr")}</dt>
+              <dd className="mt-1 font-semibold text-green-950">{t("updated")}</dd>
             </div>
           </dl>
         </aside>
       </section>
 
-      <section className="mt-12" aria-label="Workflow">
+      <section className="mt-12" aria-label={t("aria_workflow")}>
         <div className="max-w-3xl">
-          <p className="text-sm font-medium text-blue-700">Issue to PR</p>
-          <h2 className="mt-2 text-2xl font-semibold text-gray-950">The agent writes code; Syrus owns the run.</h2>
-          <p className="mt-3 text-sm leading-6 text-gray-600">Every attempt has a visible state, workspace, logs, prompt, provider, captured diff, and PR summary.</p>
+          <p className="text-sm font-medium text-blue-700">{t("eyebrow_workflow")}</p>
+          <h2 className="mt-2 text-2xl font-semibold text-gray-950">{t("workflow_title")}</h2>
+          <p className="mt-3 text-sm leading-6 text-gray-600">{t("workflow_body")}</p>
         </div>
         <div className="mt-5 grid gap-4 md:grid-cols-4">
           {workflowSteps.map(([title, body], index) => (
@@ -327,12 +329,12 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
         </div>
       </section>
 
-      <section className="mt-12 grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start" aria-label="Why self-host Syrus">
+      <section className="mt-12 grid gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] lg:items-start" aria-label={t("aria_why")}>
         <div>
-          <p className="text-sm font-medium text-blue-700">Why self-host</p>
-          <h2 className="mt-2 text-2xl font-semibold text-gray-950">Keep automation close to the repositories it changes.</h2>
+          <p className="text-sm font-medium text-blue-700">{t("eyebrow_why")}</p>
+          <h2 className="mt-2 text-2xl font-semibold text-gray-950">{t("why_title")}</h2>
           <p className="mt-3 text-sm leading-6 text-gray-600">
-            Syrus is built for operators who want agent work to pass through their own queues, credentials, audit logs, and deployment boundaries before a pull request appears.
+            {t("why_body")}
           </p>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -345,49 +347,49 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
         </div>
       </section>
 
-      <section className="mt-12 rounded border border-gray-200 bg-white p-5" aria-label="Instance access">
+      <section className="mt-12 rounded border border-gray-200 bg-white p-5" aria-label={t("aria_instance_access")}>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:items-center">
           <div>
-            <p className="text-sm font-medium text-blue-700">This instance</p>
+            <p className="text-sm font-medium text-blue-700">{t("eyebrow_instance")}</p>
             <h2 className="mt-2 text-2xl font-semibold text-gray-950">{cta.label}</h2>
             <p className="mt-3 text-sm leading-6 text-gray-600">
-              {cta.kind === "invite" ? "Use the invitation token in this URL to create your account on this instance." : cta.description}
+              {cta.kind === "invite" ? t("invite_token_hint") : cta.description}
             </p>
             {!payload.public.first_signup && !payload.public.signups_open && !invitationToken ? (
               <p className="mt-2 text-sm leading-6 text-gray-600">
-                Access to this Syrus instance is controlled by its operator. Use an invitation link, or sign in with an existing account.
+                {t("access_controlled")}
               </p>
             ) : null}
             <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link aria-label={`${cta.label} from instance access`} className={authPrimaryButtonClass} to={cta.href}>{cta.label}</Link>
-              {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>Sign in</Link> : null}
+              <Link aria-label={t("from_instance_access", { label: cta.label })} className={authPrimaryButtonClass} to={cta.href}>{cta.label}</Link>
+              {showSignIn ? <Link className={landingSecondaryButtonClass()} to={signInPath}>{t("sign_in")}</Link> : null}
             </div>
           </div>
           <dl className="grid gap-3 text-sm sm:grid-cols-3 lg:grid-cols-1">
             <div className="flex items-start justify-between gap-4 rounded bg-gray-50 px-3 py-2">
-              <dt className="text-gray-600">First admin</dt>
-              <dd className="font-medium text-gray-900">{payload.public.first_signup ? "Ready to create" : "Already configured"}</dd>
+              <dt className="text-gray-600">{t("first_admin")}</dt>
+              <dd className="font-medium text-gray-900">{payload.public.first_signup ? t("ready_to_create") : t("already_configured")}</dd>
             </div>
             <div className="flex items-start justify-between gap-4 rounded bg-gray-50 px-3 py-2">
-              <dt className="text-gray-600">Sign-ups</dt>
-              <dd className="font-medium text-gray-900">{payload.public.signups_open ? "Open" : "Invitation-only"}</dd>
+              <dt className="text-gray-600">{t("signups")}</dt>
+              <dd className="font-medium text-gray-900">{payload.public.signups_open ? t("open") : t("invitation_only")}</dd>
             </div>
             <div className="flex items-start justify-between gap-4 rounded bg-gray-50 px-3 py-2">
-              <dt className="text-gray-600">Invitation link</dt>
-              <dd className="font-medium text-gray-900">{invitationToken ? "Detected" : "Not present"}</dd>
+              <dt className="text-gray-600">{t("invitation_link")}</dt>
+              <dd className="font-medium text-gray-900">{invitationToken ? t("detected") : t("not_present")}</dd>
             </div>
           </dl>
         </div>
       </section>
 
       <section className="mt-10 flex flex-col gap-3 border-t border-gray-200 pt-6 text-sm text-gray-700 sm:flex-row sm:items-center">
-        <a className="font-medium text-blue-700 underline hover:no-underline" href={payload.public.docs_url}>Read the setup docs</a>
+        <a className="font-medium text-blue-700 underline hover:no-underline" href={payload.public.docs_url}>{t("read_docs")}</a>
         <span className="hidden text-gray-300 sm:inline">/</span>
-        <a className="font-medium text-blue-700 underline hover:no-underline" href={payload.public.evaluation_url}>Run Syrus locally</a>
+        <a className="font-medium text-blue-700 underline hover:no-underline" href={payload.public.evaluation_url}>{t("run_locally")}</a>
         {payload.public.signups_open || invitationToken ? (
           <>
             <span className="hidden text-gray-300 sm:inline">/</span>
-            <Link className="font-medium text-blue-700 underline hover:no-underline" to={signupPath}>Create account</Link>
+            <Link className="font-medium text-blue-700 underline hover:no-underline" to={signupPath}>{t("create_account")}</Link>
           </>
         ) : null}
       </section>
@@ -395,13 +397,13 @@ function PublicLanding({ payload }: { payload: BootstrapPayload }) {
   )
 }
 
-function publicCta(publicState: BootstrapPayload["public"], prefix: string, invitationToken?: string) {
+function publicCta(publicState: BootstrapPayload["public"], prefix: string, invitationToken: string | undefined, t: (key: string) => string) {
   if (publicState.first_signup) {
     return {
       kind: "first" as const,
       href: withRoutePrefix(publicState.signup_path, prefix),
-      label: "Set up this Syrus instance",
-      description: "No users exist yet. The first account becomes the administrator for this instance."
+      label: t("cta_first_label"),
+      description: t("cta_first_desc")
     }
   }
 
@@ -409,8 +411,8 @@ function publicCta(publicState: BootstrapPayload["public"], prefix: string, invi
     return {
       kind: "invite" as const,
       href: `${withRoutePrefix(publicState.signup_path, prefix)}?token=${encodeURIComponent(invitationToken)}`,
-      label: "Create account from invitation",
-      description: "An invitation token is present in this link. Create your account to join this instance."
+      label: t("cta_invite_label"),
+      description: t("cta_invite_desc")
     }
   }
 
@@ -418,16 +420,16 @@ function publicCta(publicState: BootstrapPayload["public"], prefix: string, invi
     return {
       kind: "open" as const,
       href: withRoutePrefix(publicState.signup_path, prefix),
-      label: "Create account",
-      description: "Open sign-ups are enabled for this instance."
+      label: t("cta_open_label"),
+      description: t("cta_open_desc")
     }
   }
 
   return {
     kind: "locked" as const,
     href: withRoutePrefix(publicState.sign_in_path, prefix),
-    label: "Sign in",
-    description: "This instance is invitation-only. Ask the operator for an invitation if you need access."
+    label: t("cta_locked_label"),
+    description: t("cta_locked_desc")
   }
 }
 

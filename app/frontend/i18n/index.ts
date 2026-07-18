@@ -10,6 +10,7 @@ import enChat from "./locales/en/chat.json"
 import enSettings from "./locales/en/settings.json"
 import enAdmin from "./locales/en/admin.json"
 import enAuth from "./locales/en/auth.json"
+import enLanding from "./locales/en/landing.json"
 
 import deCommon from "./locales/de/common.json"
 import deNav from "./locales/de/nav.json"
@@ -20,6 +21,7 @@ import deChat from "./locales/de/chat.json"
 import deSettings from "./locales/de/settings.json"
 import deAdmin from "./locales/de/admin.json"
 import deAuth from "./locales/de/auth.json"
+import deLanding from "./locales/de/landing.json"
 
 import laCommon from "./locales/la/common.json"
 import laNav from "./locales/la/nav.json"
@@ -30,6 +32,7 @@ import laChat from "./locales/la/chat.json"
 import laSettings from "./locales/la/settings.json"
 import laAdmin from "./locales/la/admin.json"
 import laAuth from "./locales/la/auth.json"
+import laLanding from "./locales/la/landing.json"
 
 import { readInitialBootstrap } from "../api/bootstrap"
 
@@ -43,7 +46,7 @@ i18n.use(initReactI18next).init({
   lng: detectedLocale,
   fallbackLng: "en",
   defaultNS: "common",
-  ns: ["common", "nav", "jobs", "epics", "dashboard", "chat", "settings", "admin", "auth"],
+  ns: ["common", "nav", "jobs", "epics", "dashboard", "chat", "settings", "admin", "auth", "landing"],
   resources: {
     en: {
       common: enCommon,
@@ -54,7 +57,8 @@ i18n.use(initReactI18next).init({
       chat: enChat,
       settings: enSettings,
       admin: enAdmin,
-      auth: enAuth
+      auth: enAuth,
+      landing: enLanding
     },
     de: {
       common: deCommon,
@@ -65,7 +69,8 @@ i18n.use(initReactI18next).init({
       chat: deChat,
       settings: deSettings,
       admin: deAdmin,
-      auth: deAuth
+      auth: deAuth,
+      landing: deLanding
     },
     la: {
       common: laCommon,
@@ -76,7 +81,8 @@ i18n.use(initReactI18next).init({
       chat: laChat,
       settings: laSettings,
       admin: laAdmin,
-      auth: laAuth
+      auth: laAuth,
+      landing: laLanding
     }
   },
   interpolation: {
