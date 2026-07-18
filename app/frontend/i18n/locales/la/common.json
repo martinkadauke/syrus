@@ -150,5 +150,15 @@
     "invalid": "Invalidum",
     "unmergeable": "Bellum",
     "mergeable": "Concordia"
+  },
+  "terminal": {
+    "sessions": "Sessiones terminalis",
+    "close_session": "Claude {{name}}",
+    "loading": "Sessiones leguntur...",
+    "load_error": "Sessiones terminalis legi non possunt.",
+    "empty": "Nullae sessiones",
+    "connected": "coniunctum",
+    "disconnected": "seiunctum",
+    "kill": "Neca"
   }
 }

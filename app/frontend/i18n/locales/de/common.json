@@ -150,5 +150,15 @@
     "invalid": "ungültig",
     "unmergeable": "nicht mergebar",
     "mergeable": "mergebar"
+  },
+  "terminal": {
+    "sessions": "Terminal-Sitzungen",
+    "close_session": "{{name}} schließen",
+    "loading": "Sitzungen werden geladen...",
+    "load_error": "Terminal-Sitzungen konnten nicht geladen werden.",
+    "empty": "Keine Terminal-Sitzungen",
+    "connected": "verbunden",
+    "disconnected": "getrennt",
+    "kill": "Beenden"
   }
 }

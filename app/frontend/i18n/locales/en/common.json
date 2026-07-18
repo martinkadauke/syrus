@@ -150,5 +150,15 @@
     "invalid": "invalid",
     "unmergeable": "unmergeable",
     "mergeable": "mergeable"
+  },
+  "terminal": {
+    "sessions": "Terminal sessions",
+    "close_session": "Close {{name}}",
+    "loading": "Loading sessions...",
+    "load_error": "Unable to load terminal sessions.",
+    "empty": "No terminal sessions",
+    "connected": "connected",
+    "disconnected": "disconnected",
+    "kill": "Kill"
   }
 }

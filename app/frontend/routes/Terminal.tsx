@@ -8,11 +8,13 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
 import { fetchBootstrap, type BootstrapPayload } from "../api/bootstrap"
 import { createTerminalSession, fetchTerminalSessions, killTerminalSession, type TerminalSessionRecord, type TerminalSessionsPayload } from "../api/terminal"
+import { useT } from "../hooks/useT"
 import { CloseIcon } from "../components/CloseIcon"
 
 const terminalSessionsQueryKey = ["terminal_sessions"] as const
 
 export function TerminalRoute() {
+  const { t } = useT("common")
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -85,7 +87,7 @@ export function TerminalRoute() {
     <main aria-label="Terminal" className="flex h-screen flex-col overflow-hidden bg-gray-950 text-gray-100">
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center gap-2 border-b border-gray-800 bg-gray-900 px-3 py-2">
-          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" aria-label="Terminal sessions">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto" role="tablist" aria-label={t("terminal.sessions")}>
             {sessions.map((session) => (
               <div
                 className={`group inline-flex h-9 min-w-0 max-w-64 items-center gap-2 rounded border px-2 text-sm ${activeSession?.id === session.id ? "border-blue-500 bg-blue-950 text-white" : "border-gray-700 bg-gray-900 text-gray-300 hover:border-gray-600 hover:bg-gray-800"}`}
@@ -104,7 +106,7 @@ export function TerminalRoute() {
                   {session.name}
                 </button>
                 <button
-                  aria-label={`Close ${session.name}`}
+                  aria-label={t("terminal.close_session", { name: session.name })}
                   className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-gray-400 hover:bg-gray-700 hover:text-white disabled:opacity-50"
                   disabled={killMutation.isPending}
                   onClick={() => killMutation.mutate(session.id)}
@@ -146,13 +148,13 @@ export function TerminalRoute() {
         </div>
 
         {terminalEnabled && sessionsQuery.isPending ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-gray-400">Loading sessions...</div>
+          <div className="flex flex-1 items-center justify-center text-sm text-gray-400">{t("terminal.loading")}</div>
         ) : sessionsQuery.isError ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-red-300">Unable to load terminal sessions.</div>
+          <div className="flex flex-1 items-center justify-center text-sm text-red-300">{t("terminal.load_error")}</div>
         ) : activeSession ? (
           <TerminalPane key={activeSession.id} session={activeSession} />
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-gray-400">No terminal sessions</div>
+          <div className="flex flex-1 items-center justify-center text-sm text-gray-400">{t("terminal.empty")}</div>
         )}
       </div>
     </main>
@@ -160,6 +162,7 @@ export function TerminalRoute() {
 }
 
 export function TerminalPane({ session }: { session: TerminalSessionRecord }) {
+  const { t } = useT("common")
   const containerRef = useRef<HTMLDivElement | null>(null)
   const queryClient = useQueryClient()
   const [connected, setConnected] = useState(true)
@@ -284,7 +287,7 @@ export function TerminalPane({ session }: { session: TerminalSessionRecord }) {
         </div>
       ) : null}
       <div className="flex shrink-0 items-center gap-3 border-t border-gray-800 bg-gray-900 px-3 py-2 text-xs text-gray-300">
-        <span className={connected ? "text-emerald-300" : "text-gray-500"}>{connected ? "● connected" : "○ disconnected"}</span>
+        <span className={connected ? "text-emerald-300" : "text-gray-500"}>{connected ? `● ${t("terminal.connected")}` : `○ ${t("terminal.disconnected")}`}</span>
         <span className="min-w-0 flex-1 truncate font-mono">{session.working_directory}</span>
         <span>{elapsed}</span>
         <button
@@ -293,7 +296,7 @@ export function TerminalPane({ session }: { session: TerminalSessionRecord }) {
           onClick={() => killMutation.mutate()}
           type="button"
         >
-          Kill
+          {t("terminal.kill")}
         </button>
       </div>
     </div>
