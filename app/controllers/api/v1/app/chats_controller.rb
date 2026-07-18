@@ -7,6 +7,7 @@ module Api
         include ChatIndexPayload
         include ChatPendingActions
         include ChatProposalOutcome
+        include ChatProviderOptions
 
         PAGE_SIZE = ChatSession::MESSAGE_PAGE_SIZE
         HIDDEN_CHATS_PAGE_SIZE = 20
@@ -1629,39 +1630,6 @@ module Api
             id: repository.id,
             slug: repository.slug
           }
-        end
-
-        def normalized_chat_provider_param(value)
-          value.to_s.strip.presence
-        end
-
-        def chat_provider_label(provider)
-          case provider
-          when "claude" then "Claude"
-          when "codex" then "Codex"
-          else provider.to_s.titleize
-          end
-        end
-
-        def chat_provider_options(chat_session)
-          configured = Current.user.configured_agent_providers
-          [
-            {
-              value: nil,
-              label: "Default",
-              configured: Current.user.chat_provider_configured?(chat_session.user.effective_chat_provider),
-              effective_provider: chat_session.user.effective_chat_provider,
-              effective_label: chat_provider_label(chat_session.user.effective_chat_provider)
-            }
-          ] + User::CHAT_PROVIDERS.map do |provider|
-            {
-              value: provider,
-              label: chat_provider_label(provider),
-              configured: configured.include?(provider),
-              effective_provider: provider,
-              effective_label: chat_provider_label(provider)
-            }
-          end
         end
 
         def attachment_label(record)

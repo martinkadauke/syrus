@@ -22,6 +22,7 @@ per-user/private:
   - app/controllers/concerns/chat_attachment_search.rb
   - app/controllers/concerns/chat_index_payload.rb
   - app/controllers/concerns/chat_proposal_outcome.rb
+  - app/controllers/concerns/chat_provider_options.rb
   - app/controllers/api/v1/app/credentials_controller.rb
   - app/controllers/api/v1/app/credentials/documents_controller.rb
   - app/controllers/api/v1/app/cron_templates_controller.rb
@@ -113,6 +114,7 @@ instead of broader model scopes.
 | `app/controllers/concerns/chat_attachment_search.rb` | per-user/private | Attachment-search helpers (extracted from `ChatsController`) scope candidate repositories/jobs/documents/epics through `Current.user`'s associations. |
 | `app/controllers/concerns/chat_index_payload.rb` | per-user/private | Chat index / recent-chats payload builders (extracted from `ChatsController`) list and group the current user's chat sessions through `Current.user.chat_sessions`. |
 | `app/controllers/concerns/chat_proposal_outcome.rb` | per-user/private | Proposal-outcome helpers (extracted from `ChatsController`) start a confirmed Epic as `Current.user` and build the confirmation/rejection notices. |
+| `app/controllers/concerns/chat_provider_options.rb` | per-user/private | Chat-provider picker helpers (extracted from `ChatsController`) build options from `Current.user`'s configured agent providers. |
 | `app/controllers/api/v1/app/credentials/documents_controller.rb` | per-user/private | Personal credential documents are listed, created, and deleted through `Current.user.documents`. |
 | `app/controllers/api/v1/app/cron_templates_controller.rb` | per-user/private | Cron templates and selectable repositories are scoped to the current user. |
 | `app/controllers/api/v1/app/dashboard_controller.rb` | per-user/private | Dashboard payload, preferences, bulk job actions, tags, approvals, and broadcasts operate on `Current.user` jobs/epics/tags. |
