@@ -190,6 +190,7 @@ import { structuredTool, systemMessage } from "./chat/systemMessages"
 import type { ChatDayDividerItem, ChatPendingActionStreamItem, ChatStreamItem, ChatTimestampItem } from "./chat/streamTypes"
 import { chatStreamItemsSignature, maxMessageId, mergeChatMessages, oldestMessageId, renderItemKey } from "./chat/messageStreamItems"
 import { buildMessageStreamItems, groupableToolResult, groupableToolUse, injectTemporalMarkers, lastAssistantRenderedMessage, pendingActionCardData, renderChatMessages, renderMessage } from "./chat/streamBuilders"
+import { pendingActionBadgeLabel, pendingActionKey, pendingActionResourceTitle, pendingActionResourceUrl, pendingActionTerminalLabel } from "./chat/pendingActionDisplay"
 import { fullResultBody, shortenWorkspacePaths, toolDetail, toolLabel, toolResultSummary } from "./chat/toolRendering"
 
 
@@ -1634,36 +1635,6 @@ function PendingActionCard({ pendingAction, queryKey, onNotice, onSelectMessage 
       }
     />
   )
-}
-
-function pendingActionTerminalLabel(state: ChatPendingAction["state"] | ChatPendingActionInline["state"]) {
-  if (state === "confirmed") return "Confirmed"
-  if (state === "rejected") return "Rejected"
-  if (state === "cancelled") return "Cancelled"
-  return null
-}
-
-function pendingActionResourceTitle(pendingAction: ChatPendingActionInline | ChatPendingAction) {
-  return "resource_title" in pendingAction ? pendingAction.resource_title : null
-}
-
-function pendingActionResourceUrl(pendingAction: ChatPendingActionInline | ChatPendingAction) {
-  return "resource_url" in pendingAction ? pendingAction.resource_url : null
-}
-
-function pendingActionKey(pendingAction: ChatPendingActionInline | ChatPendingAction) {
-  return pendingAction.action || ("action_type" in pendingAction ? pendingAction.action_type : null)
-}
-
-function pendingActionBadgeLabel(pendingAction: ChatPendingActionInline | ChatPendingAction) {
-  const actionKey = pendingActionKey(pendingAction)
-  if (actionKey === "submit_chat_feedback") return "Submit feedback"
-  if (actionKey === "cancel_job") return "Cancel"
-  if (actionKey === "retry_job") return "Retry"
-  if (actionKey === "rebase_job") return "Rebase"
-  if (actionKey === "reopen_job") return "Reopen"
-  if ("action_type" in pendingAction && pendingAction.action_type) return pendingAction.action_type.replace(/_/g, " ")
-  return "Action"
 }
 
 function PendingActionDetail({ detail }: { detail: string }) {
