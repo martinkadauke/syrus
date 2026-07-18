@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom"
-import { ChatRoute, storedWorkspaceCollapsed, getStartingPhrase, shouldAnimateMessageEntrance, renderChatMessages } from "./Chat"
+import { ChatRoute, storedWorkspaceCollapsed, getStartingPhrase, shouldAnimateMessageEntrance } from "./Chat"
+import { renderChatMessages } from "./chat/streamBuilders"
 import { asExcalidrawElements, VALID_EXCALIDRAW_TYPES } from "./chat/whiteboardScene"
 
 describe("storedWorkspaceCollapsed", () => {
