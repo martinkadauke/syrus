@@ -83,8 +83,7 @@ class LocalMergeabilityCheck
   end
 
   def authenticated_url
-    token = GithubClient.for(repository: @job.repository, user: @job.user).access_token
-    @job.repository.authenticated_push_url(token)
+    @job.repository.authenticated_url(user: @job.user)
   end
 
   def base_ref

@@ -65,8 +65,7 @@ module Steps
     end
 
     def authenticated_url
-      token = GithubClient.for(repository: repository, user: job.user).access_token
-      repository.authenticated_push_url(token)
+      repository.authenticated_url(user: job.user)
     end
 
     def refresh_installation_token_after_auth_failure(error)

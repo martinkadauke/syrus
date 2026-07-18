@@ -241,6 +241,16 @@ RSpec.describe Repository do
       expect(repo.remote_url).not_to include("ghp_")
       expect(repo.remote_url).not_to include("x-access-token")
     end
+
+    it "builds an authenticated_url from the user's GithubClient token" do
+      user = Factories.user
+      client = instance_double(GithubClient, access_token: "ghs_fresh")
+      allow(GithubClient).to receive(:for).with(repository: repo, user: user).and_return(client)
+
+      expect(repo.authenticated_url(user: user)).to eq(
+        "https://x-access-token:ghs_fresh@github.com/acme/widgets.git"
+      )
+    end
   end
 
   describe "archive lifecycle" do

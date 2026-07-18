@@ -188,6 +188,14 @@ class Repository < ApplicationRecord
     "https://x-access-token:#{token}@github.com/#{owner}/#{name}.git"
   end
 
+  # A push/fetch URL carrying a short-lived GitHub token for `user`'s
+  # credentials (GithubClient.for prefers the App installation, falls back to
+  # the user's PAT). Centralizes the token-acquisition + URL dance that several
+  # git services each re-implemented.
+  def authenticated_url(user:)
+    authenticated_push_url(GithubClient.for(repository: self, user: user).access_token)
+  end
+
   private
 
   def normalize_agent_provider

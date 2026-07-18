@@ -99,8 +99,6 @@ class CodingHandoffCapture
   end
 
   def authenticated_url
-    @authenticated_url ||= repository.authenticated_push_url(
-      GithubClient.for(repository: repository, user: user).access_token
-    )
+    @authenticated_url ||= repository.authenticated_url(user: user)
   end
 end
