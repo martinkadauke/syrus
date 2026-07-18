@@ -368,13 +368,6 @@ module App
       table[:owner_user_id].eq(owner_id).or(table[:owner_id].eq(owner_id))
     end
 
-    def epic_default_claimable_condition
-      table = Epic.arel_table
-      table[:owner_user_id].eq(nil)
-        .and(table[:owner_id].eq(nil))
-        .and(table[:state].in(%w[backlog ready]))
-    end
-
     def jobs_base_scope
       @jobs_base_scope ||= apply_ownership_scope(
         Job.where(repository_id: active_repo_ids),
